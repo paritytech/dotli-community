@@ -5,8 +5,6 @@ interface UADataLike {
   mobile?: boolean;
 }
 
-// Shared phone/tablet check for the pairing deeplink, desktop-app banner, and
-// topbar auto-hide. Prefers navigator.userAgentData.mobile, falls back to UA.
 export function isMobileDevice(): boolean {
   const uaData = (navigator as Navigator & { userAgentData?: UADataLike }).userAgentData;
   if (typeof uaData?.mobile === 'boolean') {

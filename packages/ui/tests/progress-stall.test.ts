@@ -129,7 +129,6 @@ describe('The loading bar never stands still', () => {
     vi.useRealTimers();
   });
 
-  /** The whole number the bar shows. */
   function shownPercent(): number {
     return Math.round(getLoadingState().progress);
   }

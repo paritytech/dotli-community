@@ -5,9 +5,8 @@ import type { JSX } from '@solidjs/web';
 import s from './Well.module.css';
 
 /**
- * `plain` padded content, `list` text rows (16 px sides), `controls` rows
- * ending in a control (closer to the right edge, matching the control's top
- * and bottom inset), `kv` key-value rows, `flush` full-bleed menu rows.
+ * `plain` padded content, `list` text rows, `controls` rows ending in a control (right inset matches
+ * its vertical inset), `kv` key-value rows, `flush` full-bleed menu rows.
  */
 export type WellLayout = 'plain' | 'list' | 'controls' | 'kv' | 'flush';
 
@@ -25,7 +24,7 @@ export function Well(props: {
   );
 }
 
-/** A 48 px row: the label takes the space, the trailing control keeps its size. */
+/** A row whose label takes the space while the trailing control keeps its size. */
 export function Row(props: {
   label: JSX.Element;
   children?: JSX.Element;
@@ -41,15 +40,13 @@ export function Row(props: {
 }
 
 /**
- * A key and its mono value (code, so it reads as a value to copy). A
- * `copyable` row is the click target: it carries the pointer and underlines
- * its value on hover. Its value sits in a button stretched over the row, so
- * the keyboard reaches it and the click handler stays on the row.
+ * A key and its mono value. A `copyable` row is the click target, its value a button stretched over
+ * the row so the keyboard reaches it while the click handler stays on the row.
  */
 export function KeyValue(props: {
   k: string;
   v: JSX.Element;
-  /** 24 px rows keyed by code, for long lists such as packages. */
+  /** Compact rows keyed by code, for long lists such as packages. */
   dense?: boolean;
   copyable?: boolean;
   title?: string | undefined;
@@ -72,7 +69,7 @@ export function KeyValue(props: {
     >
       <span class={s['key']}>{props.k}</span>
       {props.copyable === true ? (
-        // The value stays in the name (WCAG 2.5.3) so speech input can say what it sees.
+        // The value stays in the accessible name so speech input can say what it sees.
         <button type="button" class={s['copy']}>
           <span class={s['srOnly']}>Copy {props.k} </span>
           <code class={s['value']}>{props.v}</code>

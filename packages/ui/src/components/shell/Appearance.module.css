@@ -1,0 +1,74 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-1);
+  border-radius: var(--r-sm);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+}
+.tiles .tile {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  border: none;
+  cursor: pointer;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 60px;
+  min-height: 0;
+  padding: 0 10px;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--chrome-text-muted);
+  font: var(--fw-medium) var(--fs-small) / 1 var(--font-sans);
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.tiles .tile:hover {
+  background: transparent;
+  color: var(--chrome-text);
+}
+.tiles .tile[aria-checked='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+.tiles .tile > svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+.tiles .tile:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tiles .tile {
+    transition: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .tiles {
+    border-radius: var(--r-md);
+  }
+  .tiles .tile {
+    gap: var(--sp-2);
+    height: var(--h-tile);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+  .tiles .tile > svg {
+    width: 20px;
+    height: 20px;
+  }
+}

@@ -1,12 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the protocol iframe says when it cannot serve a request.
-//
-// These messages leave the iframe over the protocol envelope and end up on the
-// host error page, so the wording is part of the contract with the host. The
-// broker failure is shared with the SharedWorker, which raises the same
-// condition on its own thread.
+// These messages reach the host error page, so the wording is part of the contract with the host.
 
 export const PROTOCOL_APP_ERRORS = {
   SHARED_WORKER_READY_TIMEOUT: 'SharedWorker did not signal ready within timeout',

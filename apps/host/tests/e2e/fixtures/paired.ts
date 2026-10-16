@@ -10,73 +10,15 @@ const PORT = process.env['PORT'] ?? '5173';
 const HOST = process.env['E2E_HOST'] ?? 'host-playground';
 const PRODUCT_URL = process.env['E2E_PRODUCT_URL'];
 
-// Restored-session badge wait. The signing host was paired once in
-// globalSetup, the storageState restores the host's auth on every context,
-// so seeing the user-badge should be near-instant. A tight cap surfaces a
-// broken signer or host fast instead of running out the workflow clock.
+// A restored session shows the badge almost at once, so a tight cap surfaces a broken signer or host fast.
 const USER_BADGE_TIMEOUT_MS = 15_000;
-// A fresh page downloads the product's CAR from the public IPFS gateway,
-// which takes 4-23 s from CI runners (about 1 s locally). The SW archive
-// cache does not survive into a new browser context, so every worker start
-// pays it again.
+// Every new context downloads the product's CAR from the public gateway again, which takes up to ~23s on CI.
 const PRODUCT_IFRAME_TIMEOUT_MS = 60_000;
-// A fresh page's product asks for its product account right after it
-// renders, which opens a blocking host modal over the iframe. A click that
-// lands while it is up hits the backdrop instead of the product.
+// The product asks for its account right after rendering, and a click during that host modal hits its backdrop.
 const HOST_MODAL_QUIET_MS = 750;
 const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
 
-/**
- * Background poller that dismisses the host's "Permission Request" modal
- * by clicking its lasting-grant button as soon as one appears. Idempotent: a
- * dismissed modal that re-opens later (different permission, different
- * test) is dismissed again. Returns a stop function that cancels the
- * loop on fixture teardown.
- */
-function startAutoAllow(page: Page): () => void {
-  // Read through a function: TypeScript would narrow a plain flag, set only
-  // in the stop closure, to `false` for the whole loop.
-  const stop = new AbortController();
-  const stopped = (): boolean => stop.signal.aborted;
-  const POLL_MS = 300;
-  void (async () => {
-    while (!stopped()) {
-      try {
-        // Three-way prompts label the lasting grant "Always allow"; two-way
-        // ones keep "Allow". Neither picks the one-time grant, so a test's
-        // later operations are not prompted again.
-        const allow = page.getByRole('button', {
-          name: /^(Always allow|Allow)$/,
-        });
-        const visible = await allow
-          .first()
-          .isVisible({ timeout: POLL_MS })
-          .catch(() => false);
-        if (visible) {
-          await allow
-            .first()
-            .click({ timeout: 2_000 })
-            .catch(() => {});
-        } else {
-          await page.waitForTimeout(POLL_MS);
-        }
-      } catch {
-        if (!stopped()) {
-          await page.waitForTimeout(POLL_MS);
-        }
-      }
-    }
-  })();
-  return () => {
-    stop.abort();
-  };
-}
-
-/**
- * Wait until the host-playground product iframe has mounted and rendered.
- * Identified by its `<h1>` heading rather than URL because the frame URL
- * lives on a per-CID subdomain that varies between builds.
- */
+/** Found by its heading, since the frame URL is a per-CID subdomain that varies between builds. */
 export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promise<Frame> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -98,30 +40,29 @@ export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number):
   throw new Error(`host-playground iframe not visible within ${String(timeoutMs)}ms`);
 }
 
-/**
- * Wait until no blocking host modal has been open for `HOST_MODAL_QUIET_MS`.
- * The auto-allow poller answers permission and account prompts meanwhile.
- */
+/** Startup may request only the playground's own Product Account; tests own all later consent. */
 async function waitForHostModalsSettled(page: Page): Promise<void> {
   const backdrop = page.getByTestId('signing-modal-backdrop');
   const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
+  const accountDialog = page.getByTestId('signing-modal').filter({
+    has: page.getByRole('heading', { name: 'Product Account', exact: true }),
+  });
   let quietSince = Date.now();
   while (Date.now() < deadline) {
     if ((await backdrop.count()) > 0) {
+      if (await accountDialog.isVisible()) {
+        await accountDialog.getByRole('button', { name: 'Allow', exact: true }).click();
+      }
       quietSince = Date.now();
     } else if (Date.now() - quietSince >= HOST_MODAL_QUIET_MS) {
       return;
     }
     await page.waitForTimeout(100);
   }
-  console.log(`[productFrame] host modal still open after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`);
+  throw new Error(`Unexpected or unsettled host modal after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`);
 }
 
-/**
- * Load host-playground in dot.li on `page` and wait for the restored session.
- * The fixture opens the worker's page with it, and a test that sends the page
- * to another product calls it to hand the next test a host-playground page.
- */
+/** A test that sends the page to another product calls this to hand the next test a host-playground page. */
 export async function openHostPlayground(page: Page): Promise<void> {
   const productHostUrl =
     PRODUCT_URL === undefined
@@ -145,18 +86,7 @@ export async function openHostPlayground(page: Page): Promise<void> {
   console.log(`[pairedPage] session restored in ${String(Date.now() - restoreStart)}ms`);
 }
 
-/**
- * Worker-scoped fixtures: open a fresh page that inherits the
- * once-per-run signing-host pairing via `storageState` written by
- * globalSetup. No QR scan, no CLI spawn here. If the badge doesn't appear
- * inside 15 s the worker fails fast. The signing host is either dead or
- * the host can't restore auth from the saved state.
- *
- * State sharing: every worker reads the same `.auth/state.json`, so all
- * tests across the run share one signer account. This matches the prior
- * behavior under `workers: 1` (worker-scope pairing) and avoids the
- * re-pair cascade that previously timed out CI on a single test failure.
- */
+/** Every worker restores the one pairing globalSetup made, so all tests share one signer account. */
 export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
   pairedPage: [
     async ({ browser }, use) => {
@@ -171,8 +101,7 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
       const ctx = await browser.newContext({ storageState: STATE_FILE });
       const page = await ctx.newPage();
 
-      // Surface host and iframe console noise filtered to dotli internals so
-      // we can diagnose SDK calls that never resolve without flooding logs.
+      // Filtered to dotli internals, enough to diagnose SDK calls that never resolve without flooding logs.
       page.on('console', msg => {
         const text = msg.text();
         const type = msg.type();
@@ -193,12 +122,10 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         }
       });
 
-      // Mirror the init flags globalSetup used so the page boots into the
-      // same backend mode and the restored localStorage stays consistent.
+      // The same backend globalSetup paired on, so the restored localStorage stays consistent.
       await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
 
-      // WebSocket frames: statement_submit / broadcast traffic for
-      // diagnosing the signing tests. Filtered to avoid chain-head spam.
+      // Statement traffic for diagnosing the signing tests, filtered to avoid chain-head spam.
       try {
         const cdp = await ctx.newCDPSession(page);
         await cdp.send('Network.enable');
@@ -220,21 +147,8 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
 
       await openHostPlayground(page);
 
-      // Auto-allow Permission Request modals.
-      //
-      // The first signing-capable product call (e.g. `getProductAccount`,
-      // `requestResourceAllocation`) triggers the host's "Permission
-      // Request" modal asking the user to grant `AutoSigning` / similar.
-      // `runWebSignedTest` knows to click "Allow"; plain `runTest` reads
-      // (Get Product Account, Chain Spec, Contract Query, …) don't, and
-      // get stuck behind the modal backdrop. Run a low-rate poller that
-      // dismisses any Allow button that appears, so every test path
-      // works regardless of whether the helper expects a modal.
-      const stopAutoAllow = startAutoAllow(page);
-
       await use(page);
 
-      stopAutoAllow();
       await ctx.close();
     },
     { scope: 'worker' },
@@ -248,11 +162,8 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
       console.log(`[productFrame] iframe ready in ${String(Date.now() - start)}ms`);
       await use(frame);
     },
-    // Test-scoped: dot.li replaces the product iframe when the page navigates
-    // (a product handoff) or reloads the product, so a frame kept for the
-    // whole worker would be detached for every test after that.
-    // Its own timeout: a gateway download can exceed the 30 s test timeout
-    // it would otherwise share.
+    // Test-scoped, since a product handoff or reload replaces the iframe. Its own timeout, since a gateway download
+    // can exceed the test's.
     {
       scope: 'test',
       timeout: PRODUCT_IFRAME_TIMEOUT_MS + HOST_MODAL_SETTLE_TIMEOUT_MS + 10_000,

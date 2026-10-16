@@ -12,7 +12,6 @@ const meta = { title: 'Primitives/IconTile', component: IconTile, parameters: { 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The tile as the permission prompt fills it, from the app's own icon set.
 export const Markup: Story = { args: { markup: iconMarkup(PERMISSION_ICONS.Camera) } };
 export const Children: Story = {
   render: args => (

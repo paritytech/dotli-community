@@ -1,19 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li IndexedDB cache of content blocks, keyed by CID.
-//
-// The host relays every bitswap block a sandbox asks for, so it keeps them
-// here and answers the next load of the same app without the network. The
-// sandbox can't keep them itself: its iframe is credentialless, so its
-// storage is dropped on every reload.
-//
-// This module only moves bytes. The relay hash-checks each block against its
-// CID before storing it and after reading it back (`listenForSandboxBitswap`
-// in `@dotli/content/bitswap`).
-//
-// Bytes and bookkeeping live in separate stores, so touching a block on read
-// and walking the cache to prune it never load the bytes.
+// Host-side cache of bitswap blocks, since the credentialless sandbox loses its storage on every reload.
+// No hash checks here, the relay verifies each block. Bookkeeping sits apart so touch and prune skip the bytes.
 
 import { getDb, isExpectedDbError } from './db.js';
 import { log } from '@dotli/shared';
@@ -48,8 +37,7 @@ function completion(tx: IDBTransaction): Promise<void> {
   });
 }
 
-// Sentry capture is throttled to once per action per page: a flaky cache is
-// noisy, and every read on a stuck cache would otherwise report identically.
+// One Sentry capture per action per page, since every read on a stuck cache would report identically.
 const reportedActions = new Set<string>();
 
 function report(action: string, err: unknown): void {
@@ -60,8 +48,7 @@ function report(action: string, err: unknown): void {
   }
   const name = err instanceof Error ? err.name : undefined;
   if (name === 'QuotaExceededError') {
-    // Expected under storage pressure, not a bug to page on. Still logged
-    // every time so a full cache is visible in the console.
+    // Expected under storage pressure, so it is logged but never reported.
     log.warn(`[dot.li block-cache] ${action} error:`, err);
     return;
   }
@@ -77,7 +64,7 @@ function meta(cid: string, size: number): BlockMeta {
   return { cid, size, lastUsed: Date.now() };
 }
 
-/** The cached bytes for `cid`, or `null` on a miss or a storage failure. */
+/** Resolves `null` on a miss or a storage failure. */
 export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
   try {
     const db = await getDb();
@@ -85,11 +72,8 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
     const request = tx.objectStore(BLOCKS).get(cid);
     let settled = false;
     return await new Promise<Uint8Array | null>(resolve => {
-      // The read and the touch write share one transaction, so a failure in
-      // either reaches this same `tx.onerror`/`onabort`. `settled` tells them
-      // apart: before it, a failure means the read itself never came back, so
-      // the caller sees a miss; after it, the bytes were already handed back
-      // and only the housekeeping write failed, so it's report-only.
+      // Read and touch share one transaction and its error handlers. A failure after `settled` is the
+      // touch, which the caller never sees.
       const settle = (value: Uint8Array | null): void => {
         if (settled) {
           return;
@@ -99,19 +83,15 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
       };
       request.onsuccess = () => {
         const entry = request.result as BlockEntry | undefined;
-        // A record whose `bytes` isn't a `Uint8Array` is corrupt (or from a
-        // future schema). Treat it as a miss instead of touching `.byteLength`
-        // on whatever it actually is.
+        // Corrupt or from a future schema.
         if (entry === undefined || !(entry.bytes instanceof Uint8Array)) {
           settle(null);
           return;
         }
         settle(entry.bytes);
-        // Reading a block is using it, so it outlives blocks nobody asked for.
         tx.objectStore(META).put(meta(cid, entry.bytes.byteLength));
       };
-      // A failed request bubbles to `tx.onerror` and then aborts the
-      // transaction, so one failure fires both. Report it once.
+      // A failed request fires both `onerror` and `onabort`.
       let reported = false;
       const fail = (err: Error): void => {
         if (!reported) {
@@ -121,8 +101,7 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
         settle(null);
       };
       tx.onerror = event => {
-        // `tx.error` is still null while the failing request bubbles; the
-        // request carries the cause.
+        // `tx.error` is still null while the failing request bubbles, so the request carries the cause.
         const failed = event.target as IDBRequest | null;
         fail(failed?.error ?? tx.error ?? new Error('IDB transaction error'));
       };
@@ -136,7 +115,7 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
   }
 }
 
-/** Keep `bytes` as the block for `cid`. Best-effort: failures are logged. */
+/** Best-effort, failures are only logged. */
 export async function putCachedBlock(cid: string, bytes: Uint8Array): Promise<void> {
   try {
     const db = await getDb();
@@ -150,7 +129,7 @@ export async function putCachedBlock(cid: string, bytes: Uint8Array): Promise<vo
   }
 }
 
-/** Forget the block for `cid`. Best-effort: failures are logged. */
+/** Best-effort, failures are only logged. */
 export async function deleteCachedBlock(cid: string): Promise<void> {
   try {
     const db = await getDb();
@@ -163,7 +142,6 @@ export async function deleteCachedBlock(cid: string): Promise<void> {
   }
 }
 
-/** Forget every block. Used when the user turns the archive cache off. */
 export async function clearBlockCache(): Promise<void> {
   try {
     const db = await getDb();
@@ -176,10 +154,7 @@ export async function clearBlockCache(): Promise<void> {
   }
 }
 
-/**
- * Drop the least recently used blocks until the cache holds at most
- * `maxBytes`. Returns how many blocks it dropped.
- */
+/** Drop the least recently used blocks down to `maxBytes`. Resolves the number dropped. */
 export async function pruneBlockCache(maxBytes: number): Promise<number> {
   try {
     const db = await getDb();

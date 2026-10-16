@@ -2,6 +2,11 @@
 // The product and protocol frames are never navigated in these tests, and
 // happy-dom would otherwise try to fetch their pages from a dev server.
 import 'fake-indexeddb/auto';
+import { MessageChannel as NodeMessageChannel, MessagePort as NodeMessagePort } from 'node:worker_threads';
+import type * as TruapiHostWeb from '@parity/truapi-host/web';
+import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
+import type { RequiredHostCallbacks } from '@parity/truapi-host';
+import { waitForTruapiPort } from '../../../apps/sandbox/src/polkavm-runtime.js';
 import { afterEach, assert, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent } from '@solidjs/testing-library';
 import {
@@ -50,8 +55,7 @@ interface MockRuntime {
 type ProviderListener = (message: Uint8Array) => void;
 type ProviderCloseListener = (error: Error) => void;
 
-// Window listeners the bridge under test added; removed after each test so an
-// earlier test's bridge never reacts to a later test's events.
+// Removed after each test so an earlier test's bridge never hears a later test's events.
 let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
 let uninstallWebLocks: (() => void) | undefined;
 
@@ -91,16 +95,10 @@ const mocks = vi.hoisted(() => ({
     dispose: Mock;
   }[],
   createWebWorkerPairingHostRuntime: vi.fn(),
-  createWebWorkerSigningHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
   HostWorker: vi.fn(),
-}));
-
-vi.mock('@dotli/config', async importOriginal => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  DEBUG: false,
 }));
 
 vi.mock('@parity/truapi-host', async importOriginal => ({
@@ -112,7 +110,6 @@ vi.mock('@parity/truapi-host', async importOriginal => ({
 vi.mock('@parity/truapi-host/web', async () => ({
   createBrowserNativeChatFilesHost: vi.fn(),
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
-  createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,
   createBrowserMediaBackend: (await import('./helpers/web-locks.js')).fakeBrowserMediaBackend,
 }));
@@ -123,6 +120,13 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
 vi.mock('../../metrics/src/sentry.js', () => sentry);
+vi.mock('../src/wallet-boot.js', () => ({
+  readWalletBoot: () => Promise.resolve(null),
+  reportLocalWalletFailure: vi.fn(),
+}));
+
+const walletSwitch = vi.hoisted(() => ({ switchToPolkadotApp: vi.fn(() => Promise.resolve()) }));
+vi.mock('../src/wallet-switch.js', () => walletSwitch);
 
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
@@ -277,7 +281,6 @@ describe('bridge render lifecycle', () => {
     mocks.coreProviderDefers.length = 0;
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
-    localStorage.clear();
     document.body.innerHTML = `<div id="app"></div>`;
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
@@ -311,19 +314,6 @@ describe('bridge render lifecycle', () => {
     initBridgeEventListeners(createBlockingModalCoordinator());
     bridgeListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
     spy.mockRestore();
-  });
-
-  it('does not enable experimental custody through stored state or a debug URL in production', async () => {
-    localStorage.setItem('dotli:local-wallet-enabled', '1');
-    window.history.replaceState(null, '', '/?debug=true');
-    const { experimentalWalletControls } = await import('../src/bridge.js');
-    expect(experimentalWalletControls.isActive()).toBe(false);
-    await expect(experimentalWalletControls.activate()).rejects.toThrow();
-    await expect(experimentalWalletControls.disconnect()).rejects.toThrow();
-    await expect(experimentalWalletControls.deleteWallet()).rejects.toThrow();
-    await expect(experimentalWalletControls.exportMnemonic()).rejects.toThrow();
-    await expect(experimentalWalletControls.importMnemonic('abandon '.repeat(11) + 'about')).rejects.toThrow();
-    expect(localStorage.getItem('dotli:local-wallet-enabled')).toBe('1');
   });
 
   it('delivers direct-frame notifications without carrying activations into a replacement execution', async ({
@@ -487,7 +477,6 @@ describe('bridge render lifecycle', () => {
       expect(compositor?.style.position).toBe('fixed');
       expect(iframe.style.position).toBe('absolute');
 
-      // And later layout changes reach it
       layout.setTopbarLayout({ offset: false });
       expect(compositor?.style.top).toBe('var(--safe-top, 0px)');
     }
@@ -881,6 +870,59 @@ describe('bridge render lifecycle', () => {
     };
   }
 
+  it('cancels prior-document permission prompts while keeping the wallet available to the replacement', async ({
+    onTestFinished,
+  }) => {
+    const product = await renderWithProductPort('document-permission');
+    const { overlaysReady: readyOverlays, resetOverlays: resetCurrentOverlays } = await import('./helpers/overlays.js');
+    onTestFinished(() => {
+      resetCurrentOverlays();
+      product.productPort.close();
+      for (const port of product.inits()) {
+        port.close();
+      }
+    });
+    product.ready('first');
+    const runtime = nth(mocks.coreRuntimes, 0);
+    const callbacks = nth(runtime.createProvider.mock.calls, 0)[1] as RequiredHostCallbacks;
+    const productContext = { productId: 'document-permission.paseo', executionKind: 'App' as const };
+    const permission = callbacks.permissions.devicePermission(productContext, 'Notifications');
+    const outcome = permission.catch((error: unknown) => error);
+    await readyOverlays();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal"]')).not.toBeNull();
+    });
+
+    product.ready('second');
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
+    });
+    await expect(outcome).resolves.toMatchObject({ name: 'AbortError' });
+    expect(runtime.dispose).not.toHaveBeenCalled();
+
+    await waitForProviderRequests(2);
+    const supersededCallbacks = nth(runtime.createProvider.mock.calls, 1)[1] as RequiredHostCallbacks;
+    product.ready('third');
+    product.ready('fourth');
+    expect(mocks.coreProviderDefers).toHaveLength(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await waitForProviderRequests(3);
+    await expect(
+      supersededCallbacks.permissions.devicePermission(productContext, 'Notifications'),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    nth(mocks.coreProviderDefers, 2).resolve(makeProvider());
+    const nextCallbacks = nth(runtime.createProvider.mock.calls, 2)[1] as RequiredHostCallbacks;
+    const nextPermission = nextCallbacks.permissions.devicePermission(productContext, 'Notifications');
+    await readyOverlays();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="signing-btn-sign"]')).not.toBeNull();
+    });
+    const allowOnce = document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]');
+    assert(allowOnce);
+    fireEvent.click(allowOnce);
+    await expect(nextPermission).resolves.toBe('AllowOnce');
+  });
+
   it('treats connectionId-less ready repeats as retries until the product uses its port', async () => {
     const product = await renderWithProductPort('legacy-ready');
     // Pre-0.23 clients retry ready every 50 ms without a connectionId and
@@ -903,11 +945,15 @@ describe('bridge render lifecycle', () => {
     expect(product.inits()).toHaveLength(1);
 
     const replacement = nth(product.inits(), 0);
+    await waitForProviderRequests(2);
+    const replacementCore = makeProvider();
+    nth(mocks.coreProviderDefers, 1).resolve(replacementCore);
     const replacementFrame = new Uint8Array([9, 9]);
     replacement.postMessage(replacementFrame);
     await vi.waitFor(() => {
-      expect(product.core.postMessage).toHaveBeenCalledWith(replacementFrame);
+      expect(replacementCore.postMessage).toHaveBeenCalledWith(replacementFrame);
     });
+    expect(product.core.postMessage).not.toHaveBeenCalledWith(replacementFrame);
     product.ready();
     expect(product.inits()).toHaveLength(2);
     product.productPort.close();
@@ -929,6 +975,68 @@ describe('bridge render lifecycle', () => {
     product.productPort.close();
     for (const port of product.inits()) {
       port.close();
+    }
+  });
+
+  it('carries sandbox frames after restarting with an unused previous Host port', async () => {
+    vi.stubGlobal('MessageChannel', NodeMessageChannel);
+    vi.stubGlobal('MessagePort', NodeMessagePort);
+    const { createIframeHost } = await vi.importActual<typeof TruapiHostWeb>('@parity/truapi-host/web');
+    const hosts: IframeHost[] = [];
+    mocks.createIframeHost.mockImplementationOnce((options: IframeHostOptions) => {
+      const host = createIframeHost(options);
+      hosts.push(host);
+      return host;
+    });
+    // beforeEach resets the module cache; load this render's bridge afterward.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('cid', 'sandbox-restart');
+    await waitForProviderRequests(1);
+    const core = makeProvider();
+    nth(mocks.coreProviderDefers, 0).resolve(core);
+    await render;
+    const host = nth(hosts, 0);
+    const sandbox = host.iframe.contentWindow;
+    assert(sandbox);
+    const parentOrigin = window.location.origin;
+    const productOrigin = new URL(host.iframe.src).origin;
+    // Supply only the cross-window delivery happy-dom lacks. Both handshake
+    // handlers and the MessageChannels carrying product frames are real.
+    const toSandbox = vi.spyOn(sandbox, 'postMessage').mockImplementation((...args: unknown[]) => {
+      const [message, , transfer] = args;
+      const ports = Array.isArray(transfer)
+        ? transfer.filter((port): port is MessagePort => port instanceof NodeMessagePort)
+        : [];
+      sandbox.dispatchEvent(
+        new MessageEvent('message', { data: message, origin: parentOrigin, source: window, ports }),
+      );
+    });
+    const toParent = vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      window.dispatchEvent(new MessageEvent('message', { data: message, origin: productOrigin, source: sandbox }));
+    });
+    try {
+      const first = await waitForTruapiPort(sandbox, window, parentOrigin, 1_000);
+      expect(core.postMessage).not.toHaveBeenCalled();
+      // Match runtime teardown without sending any TrUAPI traffic first.
+      first.close();
+      delete sandbox.__HOST_API_PORT__;
+      const replacement = await waitForTruapiPort(sandbox, window, parentOrigin, 1_000);
+      expect(replacement).not.toBe(first);
+      await waitForProviderRequests(2);
+      const replacementCore = makeProvider();
+      nth(mocks.coreProviderDefers, 1).resolve(replacementCore);
+      const frame = new Uint8Array([9, 9]);
+      replacement.postMessage(frame);
+      await vi.waitFor(() => {
+        expect(replacementCore.postMessage).toHaveBeenCalledWith(frame);
+      });
+      expect(core.postMessage).not.toHaveBeenCalled();
+    } finally {
+      sandbox.__HOST_API_PORT__?.close();
+      delete sandbox.__HOST_API_PORT__;
+      toParent.mockRestore();
+      toSandbox.mockRestore();
+      host.dispose();
     }
   });
 
@@ -1177,6 +1285,23 @@ describe('bridge render lifecycle', () => {
       expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
     });
   }, 10_000);
+
+  it('As a local wallet user, I log out by leaving local mode instead of disconnecting a session', async () => {
+    // Given
+    await import('../src/bridge.js');
+    const { setWalletModeState } = await import('../src/state/wallet-mode.js');
+    setWalletModeState({ mode: 'local', failure: null });
+
+    // When
+    window.dispatchEvent(new Event('dotli:truapi-disconnect-request'));
+
+    // Then
+    await vi.waitFor(() => {
+      expect(walletSwitch.switchToPolkadotApp).toHaveBeenCalledTimes(1);
+    });
+    // No core was booted to disconnect a session.
+    expect(mocks.coreRuntimes).toHaveLength(0);
+  });
 });
 
 describe('bridge app roots', () => {
@@ -1299,7 +1424,6 @@ describe('bridge app roots', () => {
     // Then
     expect(disposePage).toHaveBeenCalledTimes(1);
     expect(disposeLoading).toHaveBeenCalledTimes(1);
-    // Page first, then loading.
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(nth(disposeLoading.mock.invocationCallOrder, 0));
     const app = document.getElementById('app');
     expect(app?.children).toHaveLength(1);

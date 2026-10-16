@@ -20,6 +20,9 @@ const MAX_PENDING_BATCHES = 4;
 // graphics process after resize, backgrounding, or memory pressure.
 const MAX_DEVICE_RESTORE_ATTEMPTS = 3;
 const DEVICE_RESTORE_RETRY_DELAY_MS = 250;
+// A replacement must stay alive this long before another loss starts a fresh
+// recovery episode; merely acquiring a device does not prove recovery.
+const DEVICE_RESTORE_STABLE_MS = 30_000;
 const BATCH_ERROR_STALE_SURFACE = 4;
 const MAX_RENDER_PASSES_PER_BATCH = 16;
 const MAX_DRAWS_PER_BATCH = 8_192;
@@ -1166,6 +1169,10 @@ class GpuEngine {
     this.lastSequence = 0;
     this.stopped = false;
     this.disposed = false;
+    this.restoreAttempts = 0;
+    this.restoreInProgress = false;
+    this.restoreFailed = false;
+    this.deviceRestoredAt = null;
     this.backgrounded = false;
     this.backgroundRequested = false;
     this.foregroundScheduled = false;
@@ -1215,66 +1222,101 @@ class GpuEngine {
   }
 
   async restore() {
-    if (this.disposed) {
+    if (this.disposed || this.restoreInProgress || this.restoreFailed) {
       return;
     }
-    let replacement;
-    let failure;
-    for (let attempt = 1; attempt <= MAX_DEVICE_RESTORE_ATTEMPTS; attempt++) {
-      if (this.disposed) {
-        return;
-      }
-      try {
-        replacement = await GpuEngine.acquireDevice(
-          this.canvas,
-          this.requirements
-        );
-        break;
-      } catch (error) {
-        failure = error;
-        if (attempt < MAX_DEVICE_RESTORE_ATTEMPTS) {
+    if (
+      this.deviceRestoredAt !== null &&
+      performance.now() - this.deviceRestoredAt >= DEVICE_RESTORE_STABLE_MS
+    ) {
+      this.restoreAttempts = 0;
+    }
+    this.deviceRestoredAt = null;
+    this.restoreInProgress = true;
+    const lostDevice = this.device;
+    let failure = new Error("replacement WebGPU device repeatedly lost");
+    try {
+      while (this.restoreAttempts < MAX_DEVICE_RESTORE_ATTEMPTS) {
+        if (this.disposed || this.device !== lostDevice) {
+          return;
+        }
+        if (this.restoreAttempts > 0) {
           await new Promise(resolve => {
-            setTimeout(resolve, DEVICE_RESTORE_RETRY_DELAY_MS * attempt);
+            setTimeout(
+              resolve,
+              DEVICE_RESTORE_RETRY_DELAY_MS * this.restoreAttempts
+            );
           });
         }
+        if (this.disposed || this.device !== lostDevice) {
+          return;
+        }
+        this.restoreAttempts++;
+        let replacement;
+        try {
+          replacement = await GpuEngine.acquireDevice(
+            this.canvas,
+            this.requirements
+          );
+        } catch (error) {
+          failure = error;
+          continue;
+        }
+        if (this.disposed || this.device !== lostDevice) {
+          replacement.device.destroy();
+          return;
+        }
+        // Every handle referred to the dead device, so the slot table starts
+        // empty and the guest rebuilds after the restored event.
+        this.resources.clear();
+        this.handleSlots.clear();
+        this.destroyBackgroundTexture();
+        this.device = replacement.device;
+        this.context = replacement.context;
+        this.format = replacement.format;
+        this.formatId = formatIds.get(replacement.format);
+        this.limits = replacement.limits;
+        this.deviceGeneration++;
+        this.lastSequence = 0;
+        this.pendingBatches = 0;
+        this.resizeScheduled = false;
+        this.foregroundScheduled = false;
+        this.backgrounded = this.backgroundRequested;
+        this.queue = Promise.resolve();
+        const dimensions = this.pendingResize ?? this;
+        this.pendingResize = null;
+        const resized = this.resize(dimensions);
+        this.stopped = false;
+        this.deviceRestoredAt = performance.now();
+        this.observeDevice(replacement.device);
+        if (!resized) {
+          postBytes("capabilities", this.capabilities());
+        }
+        this.emitTextEvent(8, 0, 0, "WebGPU device restored");
+        return;
       }
-    }
-    if (!replacement) {
-      // The guest already has the loss event; a Host that cannot rebuild the
-      // device leaves it there rather than pretending the surface came back.
+      if (this.disposed || this.device !== lostDevice) {
+        return;
+      }
+      // Acquisition failure and immediate replacement loss share one ceiling.
+      this.restoreFailed = true;
       postMessage({
         type: "error",
         message: `WebGPU device could not be restored: ${failure?.message || String(failure)}`,
       });
-      return;
+    } catch (error) {
+      // A rejected canvas configuration is fatal, not a successful recovery.
+      this.stopped = true;
+      this.restoreFailed = true;
+      this.device.destroy();
+      postMessage({
+        type: "error",
+        message: `WebGPU device could not be restored: ${error?.message || String(error)}`,
+      });
+    } finally {
+      this.restoreInProgress = false;
     }
-    if (this.disposed) {
-      replacement.device.destroy();
-      return;
-    }
-    // Every handle referred to the dead device, so the slot table starts empty
-    // and the guest re-creates what it needs after the restored event.
-    this.resources.clear();
-    this.handleSlots.clear();
-    this.destroyBackgroundTexture();
-    this.device = replacement.device;
-    this.context = replacement.context;
-    this.format = replacement.format;
-    this.formatId = formatIds.get(replacement.format);
-    this.limits = replacement.limits;
-    this.deviceGeneration++;
-    this.lastSequence = 0;
-    this.pendingBatches = 0;
-    this.pendingResize = null;
-    this.resizeScheduled = false;
-    this.foregroundScheduled = false;
-    this.backgrounded = this.backgroundRequested;
-    this.queue = Promise.resolve();
-    this.stopped = false;
-    this.configureSurface();
-    this.observeDevice(replacement.device);
-    postBytes("capabilities", this.capabilities());
-    this.emitTextEvent(8, 0, 0, "WebGPU device restored");
+
   }
 
   /** Acquires an adapter, device, context and limit table for `requirements`. */
@@ -1448,6 +1490,7 @@ class GpuEngine {
       view.setUint16(24, this.formatId, true);
       postBytes("event", makeEvent(6, 0, payload));
     }
+    return changed;
   }
 
   /** Binds the canvas to the current device; a restored device needs this too. */
@@ -1533,8 +1576,9 @@ class GpuEngine {
   }
 
   scheduleResize(dimensions) {
+    if (this.disposed) return;
     this.pendingResize = dimensions;
-    if (this.resizeScheduled) {
+    if (this.stopped || this.resizeScheduled) {
       return;
     }
     this.resizeScheduled = true;
@@ -1542,10 +1586,11 @@ class GpuEngine {
     this.queue = this.queue
       .then(() => {
         if (this.device !== device || this.disposed) return;
+        this.resizeScheduled = false;
+        if (this.stopped) return;
         const latest = this.pendingResize;
         this.pendingResize = null;
-        this.resizeScheduled = false;
-        if (!this.stopped && latest) {
+        if (latest) {
           this.resize(latest);
         }
       })

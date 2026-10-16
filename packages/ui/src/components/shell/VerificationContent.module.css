@@ -1,11 +1,20 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The pill shield's own glyphs, 16 px (the board's 20 on phones), in the
-   shield's colours. Choice places them. */
+/* Laid out as Choice (primitives/Choice.module.css), without its card. */
+.source {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--sp-4);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+}
 .icon {
+  flex: none;
   width: 16px;
   height: 16px;
+  margin-top: var(--sp-hair);
 }
 .verified {
   color: var(--chrome-ok);
@@ -13,7 +22,28 @@
 .trusted {
   color: var(--chrome-warn);
 }
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.description {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
 @media (max-width: 560px) {
+  .source {
+    gap: var(--sp-3);
+  }
   .icon {
     width: 20px;
     height: 20px;

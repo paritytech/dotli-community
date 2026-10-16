@@ -1,25 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Detail pane of the TrUAPI debug panel.
-//
-// Rebuilt only when `revision` changes, which the panel bumps on user actions
-// (selection, a filter change that hides or shows the selected event, tab
-// swap, clear, mount). Incoming events never touch it: rebuilding under
-// traffic tore down an open "What is this?" block and dropped clicks inside
-// the pane between pointerdown and click.
-//
-// So the pane renders from a snapshot (the event, its group, the view) taken
-// untracked when the revision changes. The components below it get plain
-// values and read nothing reactive.
+// Rebuilt only when `revision` changes, never on traffic, which would close an open explanation and drop
+// clicks. It renders a snapshot taken untracked, so the components below read nothing reactive.
 
 import { createMemo, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from '@dotli/truapi-debug';
 import { GroupDetail } from './detail/GroupDetail.js';
 import { SingleDetail } from './detail/SingleDetail.js';
-import type { PanelView } from './Tabs.js';
-import s from './DetailPane.module.css';
+import type { PanelView } from './ViewTabs.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { Pane } from './shared/Pane.js';
 
 type Content =
   | { kind: 'empty'; message: string }
@@ -54,13 +46,10 @@ export function DetailPane(props: {
   selectedSeq: EventSeq | null;
   view: PanelView;
   store: EventStore;
-  /** A full-width view (Resolution, Archive) is showing. */
   hidden: boolean;
   onSelectPair: (seq: EventSeq) => void;
 }): JSX.Element {
-  // The revision is the memo's one tracked read, so it alone decides when the
-  // pane rebuilds. The snapshot keeps it: a minifier drops a property read
-  // whose value goes unused, and with it the dependency.
+  // The revision is kept in the snapshot because a minifier drops an unused property read, and with it the dependency.
   const snapshot = createMemo((): Snapshot => {
     const revision = props.revision;
     return { revision, ...untrack(() => contentOf(props.store, props.selectedSeq, props.view)) };
@@ -72,11 +61,7 @@ export function DetailPane(props: {
   const render = (snap: Snapshot): JSX.Element => {
     switch (snap.kind) {
       case 'empty':
-        return (
-          <div class={s['empty']} data-testid="td-detail-empty">
-            {snap.message}
-          </div>
-        );
+        return <EmptyState testId="td-detail-empty">{snap.message}</EmptyState>;
       case 'group':
         return <GroupDetail event={snap.event} group={snap.group} first={snap.first} />;
       case 'single':
@@ -85,8 +70,8 @@ export function DetailPane(props: {
   };
 
   return (
-    <div class={s['detail']} data-testid="td-detail" hidden={props.hidden}>
+    <Pane testId="td-detail" hidden={props.hidden} padded>
       {render(snapshot())}
-    </div>
+    </Pane>
   );
 }

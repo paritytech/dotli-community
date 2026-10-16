@@ -1,12 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The SharedWorker's remote chain connections: one pool lease each, tied to
-// the port and the origin that opened it. The limit is counted per port, so
-// each tab has the budget its own iframe has in smoldot-direct. A port is one
-// host page's iframe, so it carries one origin, and needs no per-origin limit
-// of its own. There is no worker-wide cap: the pool shares the chains, so a
-// session is a broker entry.
+// The SharedWorker's remote chain connections. The limit is per port (one tab), matching the iframe's budget in
+// smoldot-direct. No worker-wide cap, since the pool shares the chains.
 
 import type { ChainPool, ProtocolEnvelope, StringJsonRpcConnection } from '@dotli/protocol';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -21,7 +17,7 @@ export interface WorkerChainSessions {
   send(origin: string, connectionId: string, message: string): void;
   /** `chainDisconnect`: an unknown id or another origin's is a no-op. */
   disconnect(origin: string, connectionId: string): void;
-  /** Release every connection opened on `port`; returns how many. */
+  /** Returns how many connections were released. */
   removePort(port: MessagePort): number;
   readonly size: number;
 }
@@ -63,10 +59,7 @@ export function createWorkerChainSessions(
       if (!isChainSupported(genesisHash)) {
         throw new Error(`Unsupported chain: ${genesisHash}`);
       }
-      // The resolver and all dApp sessions share one Asset Hub chain via the
-      // pool, so there is no resolver chain to release here; connect directly.
-      // Only the first message is logged: it shows the chain answers, and every
-      // later one would push the load's own steps out of the breadcrumb trail.
+      // Only the first message is logged, later ones would push the load's steps out of the breadcrumb trail.
       let answered = false;
       const connection = pool.connectRemote(
         genesisHash,
@@ -84,8 +77,7 @@ export function createWorkerChainSessions(
           });
         },
         () => {
-          // The pool has answered this connection's pending requests and
-          // stopped its follows by now; the tab drops it on `chain-halt`.
+          // The pool has already answered pending requests and stopped follows. The tab drops it on `chain-halt`.
           if (forget(key) === null) {
             return;
           }

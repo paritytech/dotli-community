@@ -5,21 +5,13 @@ import { expect, type Page, type Frame } from '@playwright/test';
 
 type PageLike = Page | Frame;
 
-/**
- * host-playground product helpers. Works against either Page (top-level) or
- * Frame (the host-playground iframe inside dot.li). New log entries are
- * prepended (useLogs.ts), so the newest is .first().
- */
+// The playground prepends new log entries, so the newest is `.first()`.
 
 export async function waitForPlaygroundReady(page: PageLike, timeout = 60_000): Promise<void> {
   await expect(page.locator('h1:has-text("Host Playground")').first()).toBeVisible({ timeout });
 }
 
-/**
- * Click run-<testId>, wait for a new log entry, return its data-status.
- * Returns "error" rather than throwing on stuck-pending so a single hung
- * test doesn't cascade-skip the rest.
- */
+/** Runs one playground test. A stuck entry returns "error" rather than throwing, so one hung test skips no others. */
 export async function runTest(page: PageLike, testId: string, timeout = 20_000): Promise<'success' | 'error'> {
   const entries = page.locator('[data-testid="log-entry"]');
   const initialCount = await entries.count();

@@ -11,7 +11,6 @@ import { byId, byTestId } from './support.js';
 
 let unbind: (() => void) | undefined;
 
-/** The build-time URL bar, bound to the store. */
 function bind(): HTMLElement {
   document.body.innerHTML = `
     <div id="topbar-url" hidden>

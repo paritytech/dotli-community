@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The petal logo's six petals on a 256 px box, in the order they pulse. The
- * loading screen island and the sandbox's retry screen both draw it, and the
- * sandbox must not load the island's code or stylesheet, so the paths live
- * here on their own.
+ * The petal logo on a 256 px box, in pulse order. Kept apart because the sandbox's retry screen draws it
+ * and must not load the loading island's code or stylesheet.
  */
 export const PETAL_PATHS = [
   'M31.016 57.718c-16.361 19.059-16.793 45.588-.93 59.202 15.863 13.646 41.98 9.23 58.375-9.862 16.36-19.059 16.792-45.588.929-59.201-6.206-5.346-14.038-7.903-22.202-7.903-12.677 0-26.217 6.176-36.172 17.764Z',

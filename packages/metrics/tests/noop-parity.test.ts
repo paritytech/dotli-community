@@ -3,10 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-// `stripAnalytics` (strip-analytics-plugin.ts) swaps these modules for their no-op twins at
-// bundle time whenever `VITE_METRICS` is not "true". Types always resolve to the
-// real module, so `tsc` never compares the two and an export added to one but
-// not the other only fails in the bundler, on a build nobody runs locally.
+// `tsc` only sees the real modules, so an export missing from a twin fails only a metrics-stripped build.
 
 const PAIRS: readonly [string, () => Promise<object>, () => Promise<object>][] = [
   ['sentry', () => import('../src/sentry.js'), () => import('../src/sentry.noop.js')],

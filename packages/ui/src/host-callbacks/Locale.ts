@@ -2,9 +2,7 @@ import type { LocaleHost } from '@parity/truapi-host';
 import type { HostLocaleSubscribeItem } from '@parity/truapi';
 import { createResultStream } from './result-stream.js';
 
-// dotli presents English chrome and has no language setting of its own, so the
-// visitor's browser preference is the only real signal a product can localize
-// against. A product that does not ship the tag picks its own fallback.
+// dotli has no language setting, so the browser preference is the only signal a product can localize against.
 function currentLocale(): HostLocaleSubscribeItem {
   return {
     languageTag: navigator.language,

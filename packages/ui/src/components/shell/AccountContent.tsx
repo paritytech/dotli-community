@@ -4,11 +4,14 @@
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { requestTruapiDisconnect } from '../../auth-controller.js';
+import { walletModeStore } from '../../state/wallet-mode.js';
 import { Button } from '../primitives/Button.js';
+import { Chip } from '../primitives/Chip.js';
 import { Surface } from '../primitives/Surface.js';
 import { Callout, InfoIcon } from '../primitives/Well.js';
 import { sessionDisplayName, sessionInitials, sessionUsername, useAccount, UserIcon } from './account.js';
 import { usePopover } from '../floating/Popover.js';
+import { useStore } from '../use-store.js';
 import s from './AccountContent.module.css';
 
 function LogOutIcon(): JSX.Element {
@@ -30,17 +33,12 @@ function LogOutIcon(): JSX.Element {
   );
 }
 
-/**
- * The account popover's body (AuthButton), its own chunk: the avatar, the
- * username (or the shortened account, with a hint that the account has no
- * username on this network) and Log out, which asks the Rust core to
- * disconnect. For the debug-only experimental test wallet it says so, points
- * at the debug panel's Wallet tab and disconnects the test wallet. Its ids follow the popover's (`#user-popover-username`, or the
- * landing page's `#landing-user-popover-username`).
- */
+/** The account popover's body, its own chunk. */
 export function AccountContent(): JSX.Element {
   const popover = usePopover();
   const account = useAccount();
+  const walletMode = useStore(walletModeStore);
+  const local = (): boolean => walletMode().mode === 'local';
   const id = (name: string): string => `${popover.id}-${name}`;
   const username = (): string | undefined => {
     const session = account.session();
@@ -55,13 +53,15 @@ export function AccountContent(): JSX.Element {
     return session === undefined ? undefined : sessionInitials(session);
   };
   const name = (): string =>
-    account.session() === undefined ? '' : (displayName() ?? 'Connected with Polkadot Mobile');
+    account.session() === undefined
+      ? ''
+      : (displayName() ?? (local() ? 'Connected' : 'Connected with Polkadot Mobile'));
   const onDisconnect = (): void => {
     popover.close();
     requestTruapiDisconnect();
   };
   return (
-    <Surface width="sm" testId="account-content">
+    <Surface width="sm" class={s['panel']} testId="account-content">
       <div class={s['identity']}>
         <span class={s['avatar']} aria-hidden="true">
           <Show when={initials()} fallback={<UserIcon />}>
@@ -69,7 +69,7 @@ export function AccountContent(): JSX.Element {
           </Show>
         </span>
         <div class={s['text']}>
-          <div class={s['label']}>{account.experimental() ? 'Experimental test wallet' : 'Welcome back'}</div>
+          <div class={s['label']}>Welcome back</div>
           <div
             class={s['name']}
             id={id('username')}
@@ -77,27 +77,24 @@ export function AccountContent(): JSX.Element {
           >
             {name()}
           </div>
+          {/* The keys live in this browser, not in Polkadot App. */}
+          <Show when={local()}>
+            <Chip tone="warn" class={s['local']} testId="account-local">
+              Local account
+            </Chip>
+          </Show>
         </div>
       </div>
-      {/* Explains the username-less state instead of leaving a bare
-          address that reads as a rendering bug. */}
-      <Show when={!account.experimental() && account.loggedIn() && (username() ?? '').length === 0}>
+      {/* A bare address with no explanation reads as a rendering bug. */}
+      <Show when={account.loggedIn() && (username() ?? '').length === 0}>
         <Callout icon={<InfoIcon />}>
           <span id={id('hint')}>No username found for this account on this network.</span>
-        </Callout>
-      </Show>
-      <Show when={account.experimental()}>
-        <Callout icon={<InfoIcon />}>
-          <span id={id('experimental-hint')}>
-            Testing only. Open Debug → Wallet for username, allowances and Recovery settings. Disconnect to sign in with
-            Polkadot Mobile.
-          </span>
         </Callout>
       </Show>
       <hr class={s['divider']} />
       <Button id={id('disconnect')} block onClick={onDisconnect}>
         <LogOutIcon />
-        {account.experimental() ? 'Disconnect test wallet' : 'Log out'}
+        Log out
       </Button>
     </Surface>
   );

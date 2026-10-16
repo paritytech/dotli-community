@@ -1,11 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// TrUAPI debug panel dock-position persistence.
-//
-// Solid-free: consumed by the Solid truapi-debug components in
-// `packages/ui/src/components/truapi-debug/`, so it must not import
-// `@dotli/ui` or `solid-js`.
+// Must not import `@dotli/ui` or `solid-js`, whose truapi-debug components consume it.
 
 export type DockPosition = 'bottom' | 'right';
 

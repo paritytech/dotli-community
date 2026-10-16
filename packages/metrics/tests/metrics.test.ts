@@ -30,7 +30,6 @@ describe('metrics (disabled)', () => {
   });
 
   it('count, measure, distribution, gauge, tag, breadcrumb are no-ops', () => {
-    // Should not throw
     m.count('test.count');
     m.measure('test.measure', 100);
     m.distribution('test.dist', 50);
@@ -53,7 +52,7 @@ describe('metrics (disabled)', () => {
       addBreadcrumb: vi.fn(),
     };
     m.bind(fake);
-    // Still disabled: bind doesn't enable metrics
+    // Binding does not enable metrics.
     m.count('test');
     expect(fake.metrics.count).not.toHaveBeenCalled();
   });

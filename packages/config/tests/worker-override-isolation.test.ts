@@ -6,26 +6,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-// Runtime network config reaches documents through a blocking script that sets
-// `globalThis.__DOTLI_NETWORK__`. The protocol SharedWorker has no document, so
-// no global, so it builds the plain built-in table — the two tables genuinely
-// differ within one session.
-//
-// That is only safe because the worker reads exclusively fields that cannot be
-// overridden. If it ever reads `rpcs` (say a future gateway path inside the
-// worker), the document and the worker would silently disagree about which node
-// to talk to, which is precisely the class of failure runtime config is built to
-// avoid. These tests pin both halves of that invariant so the divergence cannot
-// become a real bug unnoticed.
+// Runtime config reaches documents through a global, but the protocol SharedWorker has no document and builds the
+// built-in table. That is safe only while the worker reads fields an override cannot change.
 
 const REPO = resolve(import.meta.dirname, '../../..');
 
 /** Fields a runtime override may set, and therefore may differ per context. */
 const OVERRIDABLE_FIELDS = ['label', 'rpcs', 'ipfsGateways'] as const;
 
-/**
- * The worker and the resolver modules it imports that read the network table.
- */
+/** The worker and the resolver modules it imports that read the network table. */
 const WORKER_GRAPH = [
   'apps/protocol/src/protocol-shared-worker.ts',
   'packages/resolver/src/provider.ts',
@@ -40,7 +29,7 @@ describe('worker / document override isolation', () => {
   it('As a maintainer, I see the worker read only fields an override cannot change', () => {
     for (const file of WORKER_GRAPH) {
       const source = read(file);
-      // Reads off the config, either directly or via a local `cfg`/`dotns` alias.
+      // Reads off the config, directly or through a local `cfg` alias.
       const reads = [
         ...source.matchAll(/(?:getActiveServicesConfig\(\)|\bcfg)\.(?:relay|assethub|bulletin|people)\.(\w+)/g),
       ].map(m => m[1]);
@@ -60,14 +49,13 @@ describe('worker / document override isolation', () => {
   it('As a maintainer, I see genesis and dotns stay non-overridable', () => {
     const source = read('packages/config/src/network.ts');
 
-    // Both merges must copy genesis from the built-in rather than the patch.
+    // Merges copy genesis from the built-in, never the patch.
     const chainMerges = [...source.matchAll(/function merge(?:Chain|Bulletin)\([^]*?\n\}/g)];
     expect(chainMerges.length).toBeGreaterThan(0);
     for (const [body] of chainMerges) {
       expect(body).toContain('genesis: base.genesis');
     }
 
-    // And no merge may accept genesis or dotns as an allowed field.
     const allowLists = [...source.matchAll(/checkFields\(\s*p,\s*(\[[^\]]*\])/g)].map(m => m[1]).join(' ');
     expect(allowLists).not.toContain('genesis');
     expect(allowLists).not.toContain('dotns');

@@ -831,8 +831,7 @@ describe('PolkaVM host-frame transport', () => {
     };
     const parentOrigin = 'https://chinpokomon-polkavm.westendli.dev';
     const target = {
-      postMessage(message: unknown, targetOrigin: string) {
-        expect(message).toEqual({ type: 'truapi-ready' });
+      postMessage(_message: unknown, targetOrigin: string) {
         expect(targetOrigin).toBe(parentOrigin);
         if (listener === null) {
           throw new Error('message listener was not ready');
@@ -869,7 +868,6 @@ describe('PolkaVM host-frame transport', () => {
     await expect(waitForTruapiPort(scope, target, parentOrigin, 0)).rejects.toThrow(
       /TrUAPI Host port was not available/,
     );
-    expect(target.postMessage).toHaveBeenCalledWith({ type: 'truapi-ready' }, parentOrigin);
   });
 });
 

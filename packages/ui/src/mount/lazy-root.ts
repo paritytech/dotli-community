@@ -1,35 +1,25 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A root whose chunk loads on first use. Solid-free: the loaders that use it
-// sit on startup paths and only import their chunk dynamically.
+// Solid-free because the loaders that use it sit on startup paths and only import their chunk dynamically.
 
 import { captureException } from '@dotli/metrics';
 
-/** How long an idle prefetch waits for the browser to go idle. */
 const PREFETCH_TIMEOUT_MS = 2000;
 
 export interface LazyRoot {
-  /** Load and mount the root once. Never rejects. */
+  /** Never rejects. */
   ensure: () => Promise<void>;
-  /** Load and mount it when the browser is idle, before anything needs it. */
   prefetch: () => void;
   /** Tests only: forget the mounted root. */
   reset: () => void;
 }
 
 export interface LazyRootOptions {
-  /**
-   * Import the chunk and mount the root, passing it `onBroken` as mountRoot's
-   * option of that name.
-   */
+  /** Passes `onBroken` on as mountRoot's option of that name. */
   load: (onBroken: () => void) => Promise<unknown>;
-  /** The root's name, tagged on the report of a chunk that failed to load or mount. */
   root: string;
-  /**
-   * The fallback when the chunk failed to load or mount, or the root later
-   * broke. The next ensure() then tries again.
-   */
+  /** Runs when the chunk fails to load or mount, or the root later breaks. The next ensure() retries. */
   onFailure: () => void;
 }
 

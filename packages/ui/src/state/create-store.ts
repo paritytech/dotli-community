@@ -1,63 +1,38 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * A value plus the listeners that want to hear when it changes. Deliberately
- * free of Solid: stores are imported by boot-path code (bridge, topbar, host
- * callbacks, the sandbox's error screen), and Solid's reactive core would
- * otherwise ship on those eager paths before any component reads a store.
- * Components read a store through the `useStore` helper in `components/`.
- */
+// Solid-free because boot-path code imports stores, and Solid's reactive core would otherwise ship
+// before any component reads one. Components read a store through `useStore`.
 
 import { captureException } from '@dotli/metrics';
 
 export interface ReadableStore<T> {
-  /** Latest written value, immediately. */
   get: () => T;
-  /**
-   * The value the store starts with: what a build-time render (the host
-   * page's islands) shows, as nothing writes a store then.
-   */
+  /** What a build-time render shows, as nothing writes a store then. */
   initial: T;
   /**
-   * Called synchronously after every set that changed the value (see
-   * {@link SyncStoreOptions.equals}). Returns the unsubscribe.
-   * Notifications are synchronous. A listener that calls another store's
-   * setter (the auth controller, the chat panel's rules) runs that nested
-   * set, its listeners and its window event, before the outer setter
-   * dispatches its own event.
+   * Notifications are synchronous, so a listener calling another store's setter runs that nested set,
+   * its listeners and its window event before the outer setter dispatches its own event.
    */
   subscribe: (listener: () => void) => () => void;
 }
 
 export interface SyncStore<T> extends ReadableStore<T> {
-  /**
-   * The only writer: updates the value, then notifies listeners in order. A
-   * value equal to the current one (see {@link SyncStoreOptions.equals}) is
-   * dropped: the store keeps the value it holds and notifies nobody.
-   */
+  /** A value equal to the current one is dropped and notifies nobody. */
   set: (next: T) => void;
-  /** Restore the initial value. Tests only. */
+  /** Tests only. */
   reset: () => void;
 }
 
 export interface SyncStoreOptions<T> {
   /**
-   * Whether `next` would change nothing over `current`, so the set is
-   * dropped. Defaults to `Object.is`, which drops only a set of the value
-   * already held. Stores whose producers rebuild an object on every write
-   * pass {@link shallowEqual}. Window events dispatched by a store's setter
-   * functions are not notifications: they fire whether or not the set was
-   * dropped.
+   * Stores whose producers rebuild an object on every write pass {@link shallowEqual}. Window events
+   * from a store's setters fire whether or not the set was dropped.
    */
   equals?: (current: T, next: T) => boolean;
 }
 
-/**
- * `Object.is` for primitives; for two arrays or two plain objects, the same
- * length or keys with `Object.is`-equal values. One level only: a nested
- * object must be the same reference.
- */
+/** One level only: a nested object must be the same reference. */
 export function shallowEqual<T>(a: T, b: T): boolean {
   if (Object.is(a, b)) {
     return true;
@@ -129,15 +104,11 @@ export function createSyncStore<T>(name: string, initial: T, options: SyncStoreO
   return { get: () => current, initial, set, subscribe, reset };
 }
 
-/**
- * Also run `reset` whenever {@link resetAllStoresForTests} runs, for module
- * state kept beside a store. Tests only.
- */
+/** Tests only, for module state kept beside a store. */
 export function registerStoreStateReset(reset: () => void): void {
   registry.add(reset);
 }
 
-/** Restore every store created so far to its initial value. Tests only. */
 export function resetAllStoresForTests(): void {
   for (const reset of registry) {
     reset();

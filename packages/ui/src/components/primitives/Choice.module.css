@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .choice and .radio. The native radio is visually hidden but
-   stays focusable, so the arrow keys and the form semantics are the browser's. */
+/* The native radio is visually hidden but focusable, so arrow keys and form semantics stay native. */
 
 :where(.choice) {
   box-sizing: border-box;
@@ -42,7 +41,7 @@ label.choice:hover {
   width: 1px;
   height: 1px;
   margin: 0;
-  /* Invisible: only so it holds no UA 13.333 px font size. */
+  /* Drops the UA 13.333 px font size. */
   font: inherit;
   opacity: 0;
 }
@@ -92,7 +91,6 @@ label.choice:hover {
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
-/* Phones: the boards' sizes, with the 18 px radio. */
 @media (max-width: 560px) {
   :where(.choice) {
     gap: var(--sp-3);

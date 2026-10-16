@@ -13,7 +13,6 @@
   background: var(--tone);
   box-shadow: 0 0 0 var(--dot-halo) color-mix(in srgb, var(--tone) var(--chrome-tint-strong), transparent);
 }
-/* 8 px in a 3 px halo on desktop, the boards' 10 px in 4 px on phones. */
 .dot[data-size='md'] {
   --dot-halo: 3px;
 }

@@ -1,31 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Sync every workspace package.json `version` field to a single version.
-//
-// The source of truth for a release is the git tag (e.g. `v0.6.1`). On
-// release the Deploy workflow runs this script against the checked-out tag
-// so the built artifacts always carry the release version and the package
-// versions never drift apart from each other.
-//
-// Usage:
-//   node scripts/set-version.ts <version>      # e.g. 0.6.1 or v0.6.1
-//   node scripts/set-version.ts                # derive from $RELEASE_TAG / $GITHUB_REF_NAME / $GITHUB_REF
-//   node scripts/set-version.ts --check        # assert every package shares one version (CI guard)
-//   node scripts/set-version.ts --check <ver>  # assert every package is already at <ver>
-//
-// Packages are discovered from the root `workspaces` globs, so new packages
-// are covered automatically. The root package.json is left untouched when it
-// has no `version` field (it is private and intentionally version-less).
-//
-// Internal dependencies use the `*` range, so bumping a version
-// never changes dependency resolution. The committed `package-lock.json` does
-// embed each workspace version, so after a local bump run `npm install` to
-// refresh it; in CI this script runs *after* `npm ci`, so the lockfile
-// check has already passed and the ephemeral bump does not re-trigger
-// install.
-//
-// Exit codes: 0 on success, 1 on a --check mismatch or any error.
+// Syncs every workspace package.json `version` to the release tag, so built artifacts carry the release version.
+//   node scripts/set-version.ts [<version>]          # default from $RELEASE_TAG, $GITHUB_REF_NAME or $GITHUB_REF
+//   node scripts/set-version.ts --check [<version>]  # every package at <version>, or sharing one
+// The lockfile embeds workspace versions, so run `npm install` after a local bump. CI runs this after `npm ci`.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
@@ -33,11 +12,11 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// SemVer core with optional prerelease/build metadata, tolerant of a leading "v".
+// Tolerates a leading "v".
 const SEMVER = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
 
 function normalizeVersion(raw: string): string {
-  const version = SEMVER.exec(raw.trim())?.[1]; // strip any leading "v"
+  const version = SEMVER.exec(raw.trim())?.[1];
   if (version === undefined) {
     throw new Error(`Not a valid semver version: "${raw}"`);
   }
@@ -65,7 +44,7 @@ function findPackageJsons(): string[] {
   };
   const out = [rootPkgPath];
   for (const glob of rootPkg.workspaces ?? []) {
-    // The repo only uses the `dir/*` form; expand it one level deep.
+    // The repo only uses the `dir/*` form.
     const base = glob.endsWith('/*') ? glob.slice(0, -2) : glob;
     const baseDir = join(REPO_ROOT, base);
     if (!existsSync(baseDir)) {
@@ -93,7 +72,6 @@ interface PkgVersion {
   text: string;
 }
 
-/** Read every package.json that declares a `version`, skipping the rest. */
 function readVersionedPackages(): PkgVersion[] {
   const result: PkgVersion[] = [];
   for (const file of findPackageJsons()) {
@@ -106,7 +84,7 @@ function readVersionedPackages(): PkgVersion[] {
   return result;
 }
 
-/** Replace only the package's own top-level `version` field, preserving formatting. */
+/** Rewrites only the top-level `version` field, preserving formatting. */
 function writeVersion(pkg: PkgVersion, target: string): void {
   const re = new RegExp(`("version"\\s*:\\s*")${escapeRegExp(pkg.version)}(")`);
   const updated = pkg.text.replace(re, `$1${target}$2`);

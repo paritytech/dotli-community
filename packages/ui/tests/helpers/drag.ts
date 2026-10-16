@@ -3,7 +3,6 @@
 
 import { vi } from 'vitest';
 
-/** A drag on `el` from y 100 by `dy` pixels over `ms` milliseconds. */
 export function drag(el: HTMLElement, dy: number, ms: number): void {
   const now = vi.spyOn(performance, 'now');
   now.mockReturnValue(1000);

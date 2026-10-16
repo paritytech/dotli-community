@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* 10 px above and below on desktop, the board's 12 on phones. The value's
-   type follows the chrome's (a Modal's frame is data-chrome). */
 :where(.field) {
   box-sizing: border-box;
   display: flex;
@@ -25,8 +23,7 @@
   overflow-wrap: anywhere;
 }
 .field[data-mono] .value {
-  /* A long value scrolls in its own box, so the fields after it (an
-     unprotected-signature warning) and the notice stay in view. */
+  /* Scrolls in its own box so the fields and notice after it stay in view. */
   max-height: 120px;
   overflow-y: auto;
   font-family: var(--font-mono);
@@ -41,7 +38,7 @@
   color: var(--chrome-warn-text);
 }
 
-/* PHONE_QUERY in phone-viewport.ts: the board's 12 px padding. */
+/* Keep in step with PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   :where(.field) {
     padding: var(--sp-3) 0;

@@ -1,27 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Count every byte the light client pulls off the network.
- *
- * smoldot opens its own sockets from inside its own JS, and resource timing
- * covers neither WebSocket nor WebRTC, so the constructor is the only place
- * the bytes are visible. Install this before smoldot starts, or connections
- * it already opened go uncounted.
- */
+// Counts the light client's inbound bytes at the socket constructors, since resource timing misses
+// WebSocket and WebRTC. Install before smoldot starts, or its earlier connections go uncounted.
 
 let received = 0;
 let installed = false;
 
-/** Total bytes received over the light client transports so far. */
 export function chainBytesReceived(): number {
   return received;
 }
 
 function sizeOf(data: unknown): number {
   if (typeof data === 'string') {
-    // Frames are binary in practice. A text frame is counted as UTF-8 rather
-    // than as UTF-16 code units, which is what actually crossed the wire.
+    // UTF-8 is what crossed the wire, not UTF-16 code units.
     return new TextEncoder().encode(data).length;
   }
   if (data instanceof ArrayBuffer) {
@@ -36,21 +28,14 @@ function sizeOf(data: unknown): number {
   return 0;
 }
 
-/**
- * Wrap `WebSocket` and `RTCDataChannel` so their inbound frames are tallied.
- *
- * Idempotent, and a no-op outside a browser. Listeners are added rather than
- * replacing `onmessage`, so the handler smoldot installed is untouched.
- */
+/** Idempotent. Adds listeners rather than replacing `onmessage`, so smoldot's own handler stays. */
 export function installByteMeter(): void {
   if (installed || typeof window === 'undefined') {
     return;
   }
   installed = true;
 
-  // Subclassing rather than wrapping in a plain function: `WebSocket` is a
-  // real class, so a caller doing `new WebSocket(...)` needs a construct
-  // signature, and the statics and prototype come along for free.
+  // A subclass keeps the construct signature, statics and prototype that `new WebSocket()` callers need.
   class MeteredWebSocket extends window.WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
@@ -61,11 +46,9 @@ export function installByteMeter(): void {
   }
   window.WebSocket = MeteredWebSocket;
 
-  // webrtc-direct bootnodes carry a real share of the sync on networks that
-  // publish them, so the data channels are counted the same way.
+  // webrtc-direct bootnodes carry a real share of the sync where a network publishes them.
   if (typeof RTCPeerConnection !== 'undefined') {
-    // Taken off the prototype only to call it back with the original `this`.
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- called back with the original `this`.
     const nativeCreate = RTCPeerConnection.prototype.createDataChannel;
     RTCPeerConnection.prototype.createDataChannel = function (
       this: RTCPeerConnection,

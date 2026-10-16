@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import {
-  SANDBOX_SCHEMA_VERSION,
-  SANDBOX_CONTRACT_PARAMS,
-  validateSandboxParams,
-} from '../src/host-sandbox-contract.js';
+import { SANDBOX_CONTRACT_PARAMS, validateSandboxParams } from '../src/host-sandbox-contract.js';
+import { SANDBOX_SCHEMA_VERSION } from '../src/host-sandbox-version.js';
 import { NetworkName } from '../src/network.js';
 
 const VALID_CID = 'bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 
-/** Build a search string with the required v5 params, allowing overrides. */
+/** Required v5 params, with overrides. `null` removes one. */
 function search(overrides: Record<string, string | null> = {}): URLSearchParams {
   const base: Record<string, string> = {
     [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),

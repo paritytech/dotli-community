@@ -6,7 +6,6 @@ import { expect, waitFor } from 'storybook/test';
 import { TopbarFrame, expectPhone, openSurface } from '../../../../.storybook/shell-fixtures.js';
 import { resetAllStoresForTests } from '../../../state/create-store.js';
 import { setProductLoaded } from '../../../state/product.js';
-import { recordChainsButtonVisible } from '../../../state/topbar.js';
 import { initSettingsStore } from '../../../state/settings.js';
 import { ChainsPopover } from '../ChainsPopover.js';
 import { PermissionsPopover } from '../PermissionsPopover.js';
@@ -26,11 +25,10 @@ function el(selector: string): HTMLElement {
 const meta = {
   title: 'Shell/More',
   component: OverflowMenu,
-  // The bar's own group builds the rows and the button ref; the render below ignores these.
+  // The bar's own group builds the rows and the button ref, so the render ignores these.
   args: { rows: [], buttonRef: () => undefined },
   parameters: { chrome: true, docs: { story: { inline: false, height: '360px' } } },
   beforeEach: () => {
-    recordChainsButtonVisible(true);
     setProductLoaded('Example', 'example');
     initSettingsStore();
     return resetAllStoresForTests;

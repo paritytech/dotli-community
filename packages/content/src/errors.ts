@@ -1,17 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Names of the errors this package throws.
-//
-// Callers branch on `error.name`, not `instanceof`: bitswap errors are rebuilt
-// on the far side of a postMessage, and a caller classifying a fetch failure
-// must not import the verifier's hashing code just to name it. Kept apart from
-// the modules that throw them so importing a name costs nothing.
+// Callers branch on `error.name`, not `instanceof`, because bitswap errors are rebuilt across postMessage.
+// Kept apart from the throwing modules so importing a name pulls in no hashing code.
 
 export const CONTENT_ERRORS = {
   /** Fetched bytes are not the content the CID names, or cannot be checked. */
   VERIFICATION: 'ContentVerificationError',
-  /** The Bulletin chain is not reachable from this host at all. */
   BITSWAP_UNAVAILABLE: 'BitswapUnavailableError',
   /** The light client answered with an error the retry loop does not retry. */
   BITSWAP_RPC: 'BitswapRpcError',
@@ -19,7 +14,6 @@ export const CONTENT_ERRORS = {
   BITSWAP_CONNECTION: 'BitswapConnectionError',
   /** No peer produced the block within the discovery allowance. */
   BITSWAP_NOT_FOUND: 'BitswapNotFoundError',
-  /** The whole retry budget ran out. */
   BITSWAP_TIMEOUT: 'BitswapTimeoutError',
 } as const;
 

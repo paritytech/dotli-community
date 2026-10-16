@@ -11,12 +11,7 @@ const SWIPE_CLOSE_SPEED = 0.5;
 const SWIPE_FLICK_MIN_PX = 24;
 
 /**
- * Follow a drag down on a bottom sheet's head, begun with `down` on `head`.
- *
- * The sheet (`surface`, marked `data-dragging` meanwhile) moves with the
- * pointer. Released past 30% of its height, or in a flick, it calls `close`,
- * and springs back otherwise. Returns a function that ends the drag early,
- * for a component unmounting mid-drag.
+ * Drags a bottom sheet down from its head and closes it on a long drag or a flick. Returns an early-end for unmount.
  */
 export function dragSheet(head: HTMLElement, surface: HTMLElement, down: PointerEvent, close: () => void): () => void {
   const startY = down.clientY;

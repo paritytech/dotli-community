@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The deployment variables the apps read through `import.meta.env`. Declaring
-// them keeps dot access legal under `noPropertyAccessFromIndexSignature`, and
-// dot access is what Vite replaces with a literal at build time: a bracketed
-// read survives as a lookup, and the code behind it is never dropped.
+// Declared so dot access passes `noPropertyAccessFromIndexSignature`. Vite inlines only dot reads, a bracketed read
+// stays a runtime lookup and keeps the code behind it from being dropped.
 
 interface ImportMetaEnv {
   readonly VITE_APP_DEBUG?: string;

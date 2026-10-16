@@ -1,12 +1,6 @@
-// Composes the typed host callback surface consumed by
-// `createWasmRawCallbacks`. Each callback lives in its own file so the
-// dotli-specific UI and storage behavior stays outside the Rust core.
-//
-// Scoping:
-// - `label` identifies the dApp, used in topbar notifications, permission
-//   storage keys, and sign modal titles.
-// - product storage keys are opaque; Rust core owns product namespacing.
-//
+// Each callback lives in its own file so dotli's UI and storage behaviour stays outside the Rust core.
+// Product storage keys are opaque because the core owns product namespacing.
+
 import { localizeTimestamps, type ContactsPlatform, type RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './OpenUrl.js';
 import { createNotificationAdapters } from './PushNotification.js';
@@ -37,8 +31,10 @@ export interface CreateHostCallbacksOptions {
   pairingDotSuffix?: boolean | undefined;
   pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
-  custodyLease?: string;
-  contacts?: Required<ContactsPlatform>;
+  /** For a local wallet core, whose storage must not touch the paired session. */
+  local?: boolean | undefined;
+  /** Served only beside the local signer, from the native Chat directory. */
+  contacts?: Required<ContactsPlatform> | undefined;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -48,7 +44,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
-    custodyLease,
+    local,
     contacts,
   } = options;
   const presentAuth = createAuthStateChanged(pairingLabel ?? label, {
@@ -70,7 +66,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: createSessionStoreAdapters(custodyLease),
+    coreStorage: createSessionStoreAdapters({ local }),
     auth: {
       authStateChanged: state => {
         setNotificationAccount(label, state.tag === 'Connected' ? state.value.identityAccountId : undefined);
@@ -83,8 +79,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
     hop: createHopProvider(),
-    // Always served; the core itself denies chat calls on non-Chat
-    // executions and without an active session.
+    // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),
     ...(contacts === undefined ? {} : { contacts }),
   };

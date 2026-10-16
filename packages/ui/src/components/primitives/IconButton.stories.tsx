@@ -7,7 +7,6 @@ import { expect, fn } from 'storybook/test';
 import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { CloseIcon, IconButton } from './IconButton.js';
 
-// The board's sliders glyph, as the Settings button draws it.
 const Sliders = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
     <path d={SLIDERS_PATH} />
@@ -19,8 +18,7 @@ const meta = {
   parameters: { chrome: true },
   component: IconButton,
   args: { 'aria-label': 'Settings', onClick: fn() },
-  // Icons render per story, since one node in the args would move between
-  // every button that shows it.
+  // Per story, since one node in the args would move between every button that shows it.
   render: args => (
     <IconButton {...args}>
       <Sliders />

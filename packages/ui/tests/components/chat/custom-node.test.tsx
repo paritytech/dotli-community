@@ -103,7 +103,7 @@ describe('chat custom renderer', () => {
     expect(row.style.width).toBe('100%');
     expect(row.style.alignItems).toBe('flex-end');
     expect(row.style.justifyContent).toBe('flex-end');
-    // Spacer renders; Nil renders nothing.
+    // Spacer renders and Nil renders nothing.
     expect(row.children).toHaveLength(1);
     expect(row.children[0]?.getAttribute('data-testid')).toBe('chat-custom-spacer');
 
@@ -476,8 +476,7 @@ describe('chat custom renderer, updates', () => {
 });
 
 describe('chat custom renderer, a text field the product echoes', () => {
-  // The product's round trip (worker, product, render stream) lands its
-  // echo of a keystroke after later keystrokes.
+  // The product's round trip lands its echo of a keystroke after later keystrokes.
   function echo(text: string): RendererNode {
     return {
       tag: 'TextField',

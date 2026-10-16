@@ -24,12 +24,17 @@ interface TouchControl {
 
 export interface PolkaVmTouchControls {
   setEnabled: (enabled: boolean) => void;
+  setPlaying: (playing: boolean) => void;
   reset: () => void;
   cleanup: () => void;
 }
 
-/** The caller owns coarse-pointer eligibility and the guest's capture state. */
-export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: TouchCallbacks): PolkaVmTouchControls {
+/** The caller owns eligibility, pause state and the guest's capture state. */
+export function installPolkaVmTouchControls(
+  surface: HTMLElement,
+  callbacks: TouchCallbacks,
+  profile: 'classic' | 'halo' = 'classic',
+): PolkaVmTouchControls {
   const document = surface.ownerDocument;
   const view = document.defaultView;
   if (view === null) {
@@ -38,6 +43,7 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
   const window = view;
   const root = document.createElement('div');
   root.dataset['polkavmTouchControls'] = '';
+  root.dataset['profile'] = profile;
   root.setAttribute('role', 'group');
   root.setAttribute('aria-label', 'Touch game controls');
   root.hidden = true;
@@ -131,12 +137,34 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
         bottom: calc(var(--edge-bottom) + 6px);
       }
     }
+    [data-polkavm-touch-controls][data-profile="halo"] {
+      --stick-size: clamp(88px, 22vw, 120px);
+      --edge-left: max(12px, var(--dotli-polkavm-safe-left, 0px), env(safe-area-inset-left, 0px));
+      --edge-right: max(12px, var(--dotli-polkavm-safe-right, 0px), env(safe-area-inset-right, 0px));
+      --edge-bottom: max(12px, var(--dotli-polkavm-safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
+    }
+    [data-profile="halo"] .pvm-halo-actions {
+      position: absolute; bottom: calc(var(--edge-bottom) + var(--stick-size) + 12px);
+      display: grid; grid-template-columns: repeat(3, 48px); gap: 6px;
+    }
+    [data-profile="halo"] .pvm-halo-actions[data-side="left"] { left: var(--edge-left); }
+    [data-profile="halo"] .pvm-halo-actions[data-side="right"] { right: var(--edge-right); }
+    [data-polkavm-touch-controls][data-profile="halo"] .pvm-halo-actions [data-touch-control] {
+      position: static; width: 48px; height: 48px; transform: none;
+      border-radius: 14px; font-size: 9px; letter-spacing: 0;
+    }
+    [data-polkavm-touch-controls] [data-touch-control][hidden] { display: none; }
+    @media (max-width: 359px) {
+      [data-profile="halo"] .pvm-halo-actions { grid-template-columns: repeat(2, 48px); }
+    }
   `;
   root.append(style);
   const byElement = new Map<Element, TouchControl>();
   const pointers = new Map<number, TouchControl>();
+  const touchPointers = new Map<number, number>();
   const movementKeys = new Set<string>();
   let enabled = false;
+  let playing = true;
   let disposed = false;
   let resetting = false;
   let resetGeneration = 0;
@@ -181,12 +209,49 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
     control.element.append(label, thumb);
     control.stick = { kind, thumb, centerX: 0, centerY: 0, radius: 1 };
   }
-  addControl('fire', 'Fire (hold)', 'FIRE', undefined, 1);
-  addControl('grapple', 'Grapple (hold Q)', 'GRAPPLE', 'KeyQ');
-  addControl('jump', 'Jump (Space)', 'JUMP', 'Space');
-  addControl('reload', 'Reload (R)', 'RELOAD', 'KeyR');
-  addControl('start', 'Start or continue (Enter)', 'START', 'Enter');
-  addControl('run', 'Run (hold Shift)', 'RUN', 'ShiftLeft');
+  if (profile === 'halo') {
+    const left = document.createElement('div');
+    const right = document.createElement('div');
+    for (const [group, side] of [
+      [left, 'left'],
+      [right, 'right'],
+    ] as const) {
+      group.className = 'pvm-halo-actions';
+      group.dataset['side'] = side;
+      root.append(group);
+    }
+    const action = (
+      group: HTMLElement,
+      name: string,
+      label: string,
+      text: string,
+      code?: string,
+      button?: number,
+    ): void => {
+      group.append(addControl(name, label, text, code, button).element);
+    };
+    action(left, 'grenade', 'Throw grenade (G)', 'GRENADE', 'KeyG');
+    action(left, 'crouch', 'Crouch (hold C)', 'CROUCH', 'KeyC');
+    action(left, 'zoom', 'Zoom (Z)', 'ZOOM', 'KeyZ');
+    action(left, 'white', 'White button (Q)', 'WHITE', 'KeyQ');
+    action(left, 'black', 'Black button (X)', 'BLACK', 'KeyX');
+    action(left, 'pause', 'Pause (Escape)', 'PAUSE', 'Escape');
+    action(right, 'fire', 'Fire (hold)', 'FIRE', undefined, 1);
+    action(right, 'jump', 'Jump (Space)', 'JUMP', 'Space');
+    action(right, 'melee', 'Melee (F)', 'MELEE', 'KeyF');
+    action(right, 'reload', 'Reload or use (hold E)', 'USE', 'KeyE');
+    action(right, 'weapon', 'Switch weapon (Tab)', 'WEAPON', 'Tab');
+    action(right, 'view', 'Back button (F1)', 'BACK', 'F1');
+    action(left, 'back', 'Back (Backspace)', 'BACK', 'Backspace');
+    action(right, 'accept', 'Accept (Enter)', 'ACCEPT', 'Enter');
+  } else {
+    addControl('fire', 'Fire (hold)', 'FIRE', undefined, 1);
+    addControl('grapple', 'Grapple (hold Q)', 'GRAPPLE', 'KeyQ');
+    addControl('jump', 'Jump (Space)', 'JUMP', 'Space');
+    addControl('reload', 'Reload (R)', 'RELOAD', 'KeyR');
+    addControl('start', 'Start or continue (Enter)', 'START', 'Enter');
+    addControl('run', 'Run (hold Shift)', 'RUN', 'ShiftLeft');
+  }
   surface.append(root);
 
   function active(control: TouchControl, down: boolean): void {
@@ -261,10 +326,11 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
     if (stick.kind === 'move') {
       const moving = distance > 0.22;
       const magnitude = Math.hypot(x, y) || 1;
-      moveKey(control, 'KeyW', moving && y / magnitude < -0.38);
-      moveKey(control, 'KeyS', moving && y / magnitude > 0.38);
-      moveKey(control, 'KeyA', moving && x / magnitude < -0.38);
-      moveKey(control, 'KeyD', moving && x / magnitude > 0.38);
+      const menu = profile === 'halo' && !playing;
+      moveKey(control, menu ? 'ArrowUp' : 'KeyW', moving && y / magnitude < -0.38);
+      moveKey(control, menu ? 'ArrowDown' : 'KeyS', moving && y / magnitude > 0.38);
+      moveKey(control, menu ? 'ArrowLeft' : 'KeyA', moving && x / magnitude < -0.38);
+      moveKey(control, menu ? 'ArrowRight' : 'KeyD', moving && x / magnitude > 0.38);
     } else {
       const magnitude = Math.min(distance, 1);
       if (magnitude <= 0.14) {
@@ -301,6 +367,7 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
     }
     // Remove ownership before releasing capture: the resulting lost event is normal.
     pointers.delete(pointerId);
+    touchPointers.delete(pointerId);
     control.pointers.delete(pointerId);
     if (control.pointers.size === 0) {
       active(control, false);
@@ -372,6 +439,9 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
       return;
     }
     pointers.set(event.pointerId, control);
+    if (event.pointerType === 'touch') {
+      touchPointers.set(event.pointerId, event.timeStamp);
+    }
     const first = control.pointers.size === 0;
     control.pointers.add(event.pointerId);
     active(control, true);
@@ -421,7 +491,27 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
       return;
     }
     consume(event);
-    release(event.pointerId);
+    if (root.isConnected) {
+      release(event.pointerId);
+    } else {
+      // A detached overlay has lost every control, including stationary contacts
+      // whose pending capture may never produce its own loss notification.
+      reset();
+    }
+  }
+
+  function touchesEnded(event: TouchEvent): void {
+    if (event.touches.length !== 0) {
+      return;
+    }
+    // A browser gesture can end the touch stream without delivering its final
+    // PointerEvents. No live touches means no touch control may retain an owner.
+    // Mouse/pen holders and surviving contacts are independent of this boundary.
+    for (const [pointerId, started] of touchPointers) {
+      if (started <= event.timeStamp) {
+        release(pointerId);
+      }
+    }
   }
 
   function visibilityChange(): void {
@@ -436,7 +526,6 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
   root.addEventListener('pointermove', pointerMove, options);
   root.addEventListener('pointerup', consume, options);
   root.addEventListener('pointercancel', consume, options);
-  root.addEventListener('lostpointercapture', pointerCancel, options);
   for (const event of [
     'mousedown',
     'mouseup',
@@ -446,6 +535,7 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
     'touchstart',
     'touchmove',
     'touchend',
+    'touchcancel',
   ]) {
     root.addEventListener(event, consume, { ...options, passive: false });
   }
@@ -457,6 +547,19 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
     ...options,
     capture: true,
   });
+  // When a capture target is detached, the browser sends loss to the document,
+  // not the old control. Observe the whole path, as for up/cancel.
+  window.addEventListener('lostpointercapture', pointerCancel, {
+    ...options,
+    capture: true,
+  });
+  for (const event of ['touchend', 'touchcancel'] as const) {
+    window.addEventListener(event, touchesEnded, {
+      ...options,
+      capture: true,
+      passive: true,
+    });
+  }
   window.addEventListener('blur', reset, options);
   window.addEventListener('pagehide', reset, options);
   window.addEventListener('resize', reset, options);
@@ -488,6 +591,27 @@ export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: Tou
         reset();
       }
       root.hidden = !enabled;
+    },
+    setPlaying(next: boolean): void {
+      if (profile !== 'halo' || disposed) {
+        return;
+      }
+      if (playing !== next) {
+        reset();
+        playing = next;
+      }
+      for (const control of byElement.values()) {
+        const name = control.element.dataset['touchControl'];
+        const menuOnly = name === 'accept' || name === 'back';
+        control.element.hidden = name !== 'move' && (menuOnly ? playing : !playing);
+        if (control.stick?.kind === 'move') {
+          const label = control.element.querySelector('.pvm-touch-stick-label');
+          if (label) {
+            label.textContent = playing ? 'MOVE' : 'MENU';
+          }
+          control.element.setAttribute('aria-label', playing ? 'Movement joystick' : 'Menu directions');
+        }
+      }
     },
     reset,
     cleanup(): void {

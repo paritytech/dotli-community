@@ -13,11 +13,7 @@ import { nth } from '../../helpers/nth.js';
 const CLEAR_OF_BAR_HEIGHT = 'calc(100dvh - var(--content-top, 68px) - var(--content-bottom, 0px))';
 
 let iframe: HTMLIFrameElement;
-/**
- * The geometry the frame layout writes. happy-dom's CSS parser discards a
- * `calc()` holding a `var()`, so the layout writes to a stand-in frame that
- * records each declaration as written.
- */
+/** What the frame layout writes, on a stand-in since happy-dom drops a `calc()` holding a `var()`. */
 let frame: Record<string, string>;
 let dispose: () => void = () => undefined;
 
@@ -30,7 +26,6 @@ function panel(): HTMLElement {
 }
 
 beforeEach(() => {
-  // The host page, which has the topbar.
   setTopbarPresent();
   document.body.replaceChildren();
   iframe = document.createElement('iframe');
@@ -338,7 +333,6 @@ describe('sandbox checker violation panel', () => {
         details: {},
         timestamp: 0,
       });
-      // The new row is a DOM write.
       log.push('write');
       await settle();
     };

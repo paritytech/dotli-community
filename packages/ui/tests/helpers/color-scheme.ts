@@ -3,11 +3,7 @@
 
 import { vi } from 'vitest';
 
-/**
- * Deterministic stand-in for the OS colour scheme, since happy-dom cannot
- * evaluate prefers-color-scheme queries. `set` changes it and notifies the
- * `change` listeners. Other queries never match.
- */
+/** A stand-in for the OS colour scheme, which happy-dom cannot evaluate. */
 export function stubColorScheme(initial: 'light' | 'dark'): {
   set: (scheme: 'light' | 'dark') => void;
 } {
@@ -25,8 +21,7 @@ export function stubColorScheme(initial: 'light' | 'dark'): {
       listeners.delete(cb);
     },
   };
-  // Any other query (the settings sheet's width breakpoint) does not match:
-  // a desktop-wide viewport.
+  // Other queries do not match, as on a desktop-wide viewport.
   vi.stubGlobal('matchMedia', (query: string) =>
     query.includes('prefers-color-scheme')
       ? mql

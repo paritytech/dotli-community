@@ -1,17 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Browser-context scaffolding for specs that bridge iframe and worker
- * console output to the page.
- *
- * `setupContext` returns a fresh `BrowserContext` with OS-level
- * permission grants, document and worker route handlers that inject
- * the console-bridge forwarders, and a SharedWorker shim that pipes
- * worker logs back. It carries no test-specific seed. Callers layer
- * `seedSettings` (or any other init script) on top.
- */
-
 import type { Browser, BrowserContext, ConsoleMessage, Page } from '@playwright/test';
 import { IFRAME_FORWARDER, SHARED_WORKER_FORWARDER, WORKER_FORWARDER } from '../../iframe-logs-forwarder.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from '../fixtures/permissions.js';
@@ -27,15 +16,7 @@ export interface TestSetup extends PageWithCapture {
   context: BrowserContext;
 }
 
-/**
- * One-call test bootstrap.
- *
- * Builds a fresh context with browser permissions, route handlers, and
- * the SharedWorker shim. Seeds dotli permissions and the requested
- * backend/cache settings into localStorage. Returns a page with
- * console capture attached. Cleanup is the caller's responsibility
- * via `context.close()`.
- */
+/** The caller closes the returned context. */
 export async function setupTest(browser: Browser, settings: SettingsSeed): Promise<TestSetup> {
   const context = await setupContext(browser);
   await seedPermissions(context);

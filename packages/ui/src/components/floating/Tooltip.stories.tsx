@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { Tooltip } from './Tooltip.js';
@@ -9,21 +10,16 @@ import { Tooltip } from './Tooltip.js';
 const body = within(document.body);
 
 function Harness() {
+  const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (
     <div style={{ display: 'flex', gap: '8px' }}>
-      <Tooltip id="story-tip">
-        <Tooltip.Trigger>
-          {t => (
-            <button {...t} type="button" data-testid="tip-trigger">
-              Shield
-            </button>
-          )}
-        </Tooltip.Trigger>
-        <Tooltip.Content>
-          <p style={{ margin: '12px' }} data-testid="tip-text">
-            Loaded through a light client.
-          </p>
-        </Tooltip.Content>
+      <button ref={setTrigger} type="button" data-testid="tip-trigger">
+        Shield
+      </button>
+      <Tooltip id="story-tip" trigger={trigger()}>
+        <p style={{ margin: 0, padding: '12px' }} data-testid="tip-text">
+          Loaded through a light client.
+        </p>
       </Tooltip>
       <button type="button" data-testid="elsewhere">
         Elsewhere
@@ -43,19 +39,15 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Trusted input, a user's: a real mouse over the trigger, and a real Tab,
- * which `:focus-visible` tells from a click. Loaded on use, so the stories
- * still load in Storybook outside Vitest.
+ * Trusted input, so `:focus-visible` tells a real Tab from a click. Imported lazily so Storybook loads the stories
+ * outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 
 /**
- * A real tap (a touch start and end through the DevTools protocol, as
- * Playwright's own tap does), at the centre of `el` in the top page's
- * coordinates: the test runs in a frame, which the runner may scale. A
- * scripted touch focuses as a script does, which `:focus-visible` takes for
- * a keyboard's. Not `Input.synthesizeTapGesture`: on Linux CI its gesture
- * never reaches the page.
+ * A real tap through the DevTools protocol, in top-page coordinates since the runner may scale the test's frame.
+ * A scripted touch would read as keyboard focus to `:focus-visible`, and `Input.synthesizeTapGesture` never
+ * reaches the page on Linux CI.
  */
 const tap = async (el: Element) => {
   const { cdp } = await import('vitest/browser');

@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A 26 px circle pulled into the address's 16 px end (on a phone 32 px
-   into 20 px), so its glyph sits where the text's end sits on the other
-   side. */
+/* Pulled into the address's end padding, so its glyph sits where the text ends on the other side. */
 .wrap {
   position: relative;
   display: inline-flex;
@@ -60,56 +58,11 @@
   }
 }
 
-/* The explainer, as wide as the menus, from the shield's left edge. It
-   drops from the bar's bottom, as every topbar surface does, not from the
-   shield's: an area from the horizontal axis alone spans the whole height,
-   so `top` is set from the viewport's. */
+/* Drops from the bar's bottom like every topbar surface, not from the shield's. An anchored area from
+   the horizontal axis alone spans the whole height, so `top` is set from the viewport. */
 .tooltip {
   width: var(--w-pop-md);
   position-area: span-right;
   top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   margin-top: 0;
-}
-
-/* Phones: the whole address is the button (the board's button.address), so
-   the shield's hit area stretches over the pill, the nearest positioned box
-   once this wrap stops being one (UrlPill.module.css draws the hover, open
-   and focus states there). */
-@media (max-width: 560px) {
-  .wrap {
-    position: static;
-    margin-left: calc(-1 * var(--sp-2));
-  }
-  .shield {
-    width: var(--h-row-sm);
-    height: var(--h-row-sm);
-  }
-  .glyph {
-    width: 16px;
-    height: 16px;
-  }
-  .shield::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: var(--r-full);
-  }
-  .shield:hover,
-  .shield[aria-expanded='true'] {
-    background: transparent;
-  }
-  .shield:focus-visible {
-    outline: none;
-  }
-  /* Over the pill, which fills the bar at the foot of the screen: centred,
-     with the bar's gutters, where from the shield's left edge it would run
-     off the screen. */
-  .tooltip {
-    position-area: span-all;
-    justify-self: center;
-    top: auto;
-    bottom: calc(var(--content-bottom) + var(--pop-gap));
-    transform-origin: bottom center;
-    width: min(var(--w-pop-md), calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
-  }
 }

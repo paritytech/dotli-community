@@ -1,12 +1,6 @@
 name: Deploy nginx
 
-# Renders nginx/nginx.conf.template for one environment and installs it, plus
-# nginx/snippets/, on that environment's box via `make deploy-nginx`.
-#
-# Approval comes from the target environment's own protection rules. The config
-# is taken from the ref the workflow is dispatched on, so each environment's
-# deployment branch policy also applies (paseo.li only accepts release tags,
-# paseoli.dev only main). Snippets are shared by every site on a
+# Gated by the environment's protection rules and deployment branch policy. Snippets are shared by every site on a
 # box, so a deploy to one environment reloads them for its neighbours too.
 
 run-name: Deploy nginx to ${{ inputs.environment }} from ${{ github.ref_name }}
@@ -39,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # GitHub environments are named by domain; the Makefile keys envs by tag.
+      # GitHub environments are named by domain, the Makefile keys them by tag.
       - name: Resolve Makefile ENV
         id: env
         env:

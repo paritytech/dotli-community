@@ -7,7 +7,7 @@
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  max-width: 300px;
+  max-width: var(--w-landing);
   margin: var(--sp-8) 0 0;
   padding: 0;
 }
@@ -34,7 +34,7 @@
     0 0 0 2px var(--border-focus);
 }
 
-/* After the focus rule, so an invalid name stays red while the input has focus. */
+/* After the focus rule, so an invalid name stays red while focused. */
 .bar[data-invalid],
 .bar[data-invalid]:focus-within {
   box-shadow: inset 0 0 0 1px var(--danger);
@@ -53,8 +53,7 @@
   font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
 }
 
-/* The bar draws the ring. Outweighs global.css's :focus-visible whatever the
-   sheet order (dev loads it last). */
+/* The bar draws the ring. Outweighs global.css's :focus-visible in any sheet order (dev loads it last). */
 .input:focus-visible {
   outline: none;
 }

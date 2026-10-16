@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { ModalLayer } from './ModalLayer.js';
 import { holdForHandOff, SheetFrame, takeHandOff, type SheetFrameProps } from './SheetFrame.js';
 
-/** A sheet's slide, `--dur-morph`. */
+/** Matches `--dur-morph`. */
 export const SHEET_EXIT_MS = 460;
 
 export interface BottomSheetProps {
@@ -16,27 +16,21 @@ export interface BottomSheetProps {
   id?: string | undefined;
   testId: string;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
-  /** For a menu in a sheet: the body is the `role="menu"` element, with the menu's keys. */
+  /** For a menu in a sheet, the body is the `role="menu"` element with the menu's keys. */
   body?: SheetFrameProps['body'];
   children: JSX.Element;
 }
 
-/**
- * A modal bottom sheet: the board's phone surface. Popover and DropdownMenu
- * render one in place of their anchored surface when they open on a phone.
- */
+/** A modal bottom sheet. Popover and DropdownMenu render one in place of their anchored surface on a phone. */
 export function BottomSheet(props: BottomSheetProps): JSX.Element {
-  /** The outcome of the hand-off this sheet's close waited on, by hold. */
+  /** Tagged by hold so the outcome of an earlier close's hand-off is ignored. */
   const [settled, setSettled] = createSignal<{ hold: number; taken: boolean } | undefined>(undefined, {
     ownedWrite: true,
   });
   let holds = 0;
-  // A memo, not an effect writing a signal: the marks must be on the frame
-  // before ModalLayer's effect shows or hides it, since showModal() and
-  // focus() fix the sheet's starting style. A hand-off marks one opening and
-  // one closing only. A close inside a hand-off holds the sheet up until it
-  // is known whether another sheet came (see handOffSheet), so the leaving
-  // mark lands with the close, whichever sheet's memo runs first.
+  // A memo, not an effect, so the marks are on the frame before ModalLayer's effect shows or hides it, since its
+  // focus() fixes the starting style. A close inside a hand-off is held until it is known whether another sheet
+  // came, so the leaving mark lands with the close whichever sheet's memo runs first.
   const layer = createMemo<{ open: boolean; handedOff: boolean; held: boolean }>(prev => {
     const outcome = settled();
     if (props.open) {

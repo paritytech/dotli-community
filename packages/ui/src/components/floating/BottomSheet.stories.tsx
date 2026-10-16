@@ -54,9 +54,10 @@ export const Open: Story = {
   args: { initiallyOpen: true },
   play: async ({ step }) => {
     await step('Then the sheet is a modal dialog titled Settings', async () => {
-      const dialog = document.getElementById('story-sheet') as HTMLDialogElement;
-      await waitFor(() => expect(dialog.open).toBe(true));
-      await expect(dialog.matches(':modal')).toBe(true);
+      const dialog = document.getElementById('story-sheet');
+      await waitFor(() => expect(dialog).toHaveAttribute('data-open'));
+      await expect(dialog).toHaveAttribute('role', 'dialog');
+      await expect(dialog).toHaveAttribute('aria-modal', 'true');
       await expect(document.querySelector('[data-testid="story-sheet-sheet-title"]')).toHaveTextContent('Settings');
     });
   },
@@ -67,7 +68,7 @@ export const EscapeClosesAndRestoresFocus: Story = {
     onOpenChange.mockClear();
     await step('Given I opened the sheet from its button', async () => {
       await userEvent.click(canvas.getByTestId('opener'));
-      await waitFor(() => expect((document.getElementById('story-sheet') as HTMLDialogElement).open).toBe(true));
+      await waitFor(() => expect(document.getElementById('story-sheet')).toHaveAttribute('data-open'));
     });
     await step('When I press Escape', async () => {
       await userEvent.keyboard('{Escape}');
@@ -118,8 +119,8 @@ interface HandOffMarks {
 }
 
 const marks = (id: string) => {
-  const el = document.getElementById(id) as HTMLDialogElement;
-  return { open: el.open, handoff: el.hasAttribute('data-handoff') };
+  const el = document.getElementById(id);
+  return { open: el?.hasAttribute('data-open') === true, handoff: el?.hasAttribute('data-handoff') === true };
 };
 
 function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMarks) => void }) {
@@ -160,7 +161,7 @@ export const HandOff: Story = {
   play: async ({ userEvent, step }) => {
     onMarks.mockClear();
     await step('When a sheet hands off to another as it closes', async () => {
-      await waitFor(() => expect((document.getElementById('first-sheet') as HTMLDialogElement).open).toBe(true));
+      await waitFor(() => expect(document.getElementById('first-sheet')).toHaveAttribute('data-open'));
       await userEvent.click(body.getByTestId('hand-off'));
     });
     await step('Then by the time the hand-off returns, the leaving and the coming sheet are both marked', async () => {
@@ -180,7 +181,7 @@ export const CloseWithoutHandOff: Story = {
   play: async ({ userEvent, step }) => {
     onMarks.mockClear();
     await step('When a sheet closes in a hand-off that opens no other sheet', async () => {
-      await waitFor(() => expect((document.getElementById('first-sheet') as HTMLDialogElement).open).toBe(true));
+      await waitFor(() => expect(document.getElementById('first-sheet')).toHaveAttribute('data-open'));
       await userEvent.click(body.getByTestId('hand-off'));
     });
     await step('Then it closed as usual, unmarked, so it slides out', async () => {
@@ -226,17 +227,17 @@ export const HandOffThatThrows: Story = {
   render: () => <ThrowingHandOffHarness />,
   play: async ({ userEvent, step }) => {
     onThrow.mockClear();
-    const dialog = () => document.getElementById('first-sheet') as HTMLDialogElement;
+    const dialog = () => document.getElementById('first-sheet');
     await step('Given the sheet is open', async () => {
-      await waitFor(() => expect(dialog().open).toBe(true));
+      await waitFor(() => expect(dialog()).toHaveAttribute('data-open'));
     });
     await step('When the hand-off it runs throws after the sheet was held', async () => {
       await userEvent.click(body.getByTestId('hand-off'));
     });
     await step('Then the sheet closed with the throw, and the page is no longer inert', async () => {
       await expect(onThrow).toHaveBeenCalledOnce();
-      await expect(dialog().open).toBe(false);
-      await expect(document.querySelector(':modal')).toBeNull();
+      await expect(dialog()).not.toHaveAttribute('data-open');
+      await expect(document.querySelector('[inert]')).toBeNull();
     });
   },
 };

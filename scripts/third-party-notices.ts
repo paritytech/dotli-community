@@ -1,23 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency tree.
-//
-// Usage:
-//   node scripts/third-party-notices.ts
-//
-// Every package `package-lock.json` resolves and `npm install` put on disk is
-// listed under the SPDX license its lockfile entry declares, workspace
-// packages (@dotli/*) aside. A name whose installed versions carry different
-// licenses is listed under each. Platform-specific binaries are the build
-// host's, as the notice says.
-//
-// The notice's introduction speaks for the license families it lists, so a
-// license missing from SECTIONS fails the run: review what the new license
-// asks of the project, then add it (and, if need be, a sentence to INTRO).
-//
-// Run after dependency changes; the output is formatted with the repo's
-// Prettier config.
+// Regenerates THIRD_PARTY_NOTICES.md from the installed dependency tree. Run after dependency changes.
+// INTRO speaks for the license families listed, so a license missing from SECTIONS fails the run. Review what it asks
+// of the project, then add it.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -33,6 +19,8 @@ const SECTIONS = [
   'Apache-2.0',
   'Apache-2.0 OR MIT',
   'Apache-2.0 AND MIT',
+  'Unlicense OR Apache-2.0',
+  'MIT AND BSD-3-Clause',
   'ISC',
   'BSD-2-Clause',
   'BSD-3-Clause',
@@ -55,6 +43,8 @@ const ALIASES: Record<string, string> = {
   'MIT OR Apache-2.0': 'Apache-2.0 OR MIT',
   '(Apache-2.0 OR MIT)': 'Apache-2.0 OR MIT',
   'MIT AND Apache-2.0': 'Apache-2.0 AND MIT',
+  '(Unlicense OR Apache-2.0)': 'Unlicense OR Apache-2.0',
+  '(MIT AND BSD-3-Clause)': 'MIT AND BSD-3-Clause',
 };
 
 const INTRO = `# Third-Party Notices
@@ -65,8 +55,15 @@ license. Packages are grouped by SPDX license identifier and listed alphabetical
 each package are retained in its distribution under \`node_modules\`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are compatible with this project's AGPL-3.0
-outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT)
-terms is used to build the application and is not redistributed as part of it.`;
+outbound license. The shipped \`@parity/polkavm-browser-runtime\` artifacts remain under MPL-2.0. Their full license,
+dependency notices, per-file hashes and source provenance are served beside the runtime. Build-time-only tooling under
+source-available FSL-1.1-MIT terms is not redistributed as part of the application.
+
+The vendored \`@parity/truapi\` client is MIT-licensed. The \`@parity/truapi-host\` distribution is
+\`MIT AND AGPL-3.0-only\`: its signing runtime includes the native Chat, HOP and Coinage implementations.
+License texts and attribution are retained in \`vendor/truapi/LICENSE\`, \`vendor/truapi-host/LICENSE\`,
+\`vendor/truapi-host/LICENSE-AGPL-3.0\` and \`vendor/truapi-host/NOTICE\`.
+Exact source revision, package versions and artifact hashes are recorded in \`vendor/truapi-host.lock.json\`.`;
 
 interface LockEntry {
   name?: string;

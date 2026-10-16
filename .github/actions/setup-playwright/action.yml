@@ -7,10 +7,8 @@ runs:
     - name: Setup Node
       uses: ./.github/actions/setup-node
 
-    # Run from apps/host so npx resolves the workspace-pinned playwright
-    # (@playwright/test in apps/host) instead of fetching the latest from the
-    # registry. A version mismatch installs the wrong browser build and the
-    # tests fail at launch with "Executable doesn't exist".
+    # Run from apps/host so npx uses the workspace-pinned Playwright. A registry version installs a mismatched
+    # browser and tests fail with "Executable doesn't exist".
     - name: Install Playwright browsers
       working-directory: apps/host
       run: npx playwright install --with-deps chromium

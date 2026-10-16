@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Every story on the app's page, also inside a docs page's white blocks.
-   The 16 px is Storybook's padded layout, which this replaces. */
+/* Replaces Storybook's padded layout so every story, also in docs blocks, sits on the app page. */
 .root {
   box-sizing: border-box;
   padding: var(--sp-4);

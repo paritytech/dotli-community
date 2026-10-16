@@ -79,9 +79,8 @@ describe('overlays loader', () => {
     // Given
     const controller = new AbortController();
     const outcome = presentModal(VIEW, controller.signal);
-    // Rejects synchronously inside abort() below, well before the `await
-    // overlaysReady()` gap; a silent catch here keeps Node from flagging it
-    // as unhandled in that gap. The real assertion is the `.rejects` below.
+    // Rejects inside abort(), before the `await overlaysReady()` gap, so catch it to keep Node from flagging it as
+    // unhandled. The `.rejects` below is the real assertion.
     outcome.catch(() => undefined);
 
     // When
@@ -179,10 +178,7 @@ describe('overlays loader', () => {
     }
   });
 
-  // Must stay last: it replaces the module registry (vi.resetModules() +
-  // vi.doMock), so any test after it would mount a fresh
-  // components/overlays/mount tree bound to re-imported store instances
-  // instead of the ones this file imported statically at the top.
+  // Must stay last: it replaces the module registry, so a later test would mount against re-imported stores.
   it('As a dotli user, when the overlay code cannot load, action toasts fall back to a confirm and dialogs settle with their fallback', async () => {
     // Given
     vi.resetModules();

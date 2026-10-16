@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Pure DOM UI helpers
-//
-// No heavy dependencies and no Solid (the sandbox imports this), kept in the
-// eager bundle. Text goes in as text nodes, so nothing a visitor typed is ever
-// parsed as markup.
+// Plain DOM error and retry screens, Solid-free because the sandbox imports this. Text goes in as text
+// nodes, so nothing a visitor typed is parsed as markup.
 
 import { getActiveTldSuffix } from '@dotli/config';
 import { RELOAD_GLYPH } from './reload-glyph.js';
@@ -13,22 +10,14 @@ import s from './ErrorPage.module.css';
 import retry from './RetryScreen.module.css';
 import { PETAL_PATHS } from './petal-mark.js';
 import { setProductError } from './state/product.js';
-import { setLandingPage } from './state/topbar.js';
 import { disposeAppRoots } from './mount/app-roots.js';
 
-/** Where the error pages go, looked up when one shows. */
 function appElement(): HTMLElement {
   return document.getElementById('app') ?? document.body;
 }
 
-/**
- * Clear the page for an error page: dispose the loading screen and any page
- * root, whose timers stop with them, and take the landing page down (the
- * LandingPage island hides, and the topbar and `#app` come back).
- */
 function clearPage(): void {
   disposeAppRoots();
-  setLandingPage(false);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -43,13 +32,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
 export interface ErrorAction {
   label: string;
   onClick: (event: MouseEvent) => void;
-  /**
-   * The recommended way out. Rendered filled and pushed to the right of the
-   * row, whatever its position in the array. Defaults to the first action, so
-   * a lone button is always the primary one.
-   */
+  /** Rendered last whatever its array position. Defaults to the first action. */
   primary?: boolean;
-  /** Inline SVG markup for a leading icon. Constant only, never user input. */
+  /** Inline SVG markup. Constant only, never user input. */
   icon?: string;
 }
 
@@ -59,10 +44,7 @@ const SHIELD_ALERT_GLYPH = `<svg width="24" height="24" viewBox="0 0 24 24" fill
 
 const GLOBE_GLYPH = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
 
-/**
- * A sentence, optionally with parts picked out in bold. Spelled as segments
- * rather than markup so every piece goes in as text.
- */
+/** Segments rather than markup, so every piece goes in as text. */
 export type ErrorText = string | readonly (string | { strong: string })[];
 
 function errorText(text: ErrorText): (string | Node)[] {
@@ -90,7 +72,7 @@ function glyphElement(svg: string, warning: boolean): HTMLElement {
   return glyph;
 }
 
-/** The page carries `data-error-page`, which bridge.ts looks for when it clears a stray one. */
+/** bridge.ts looks for `data-error-page` when it clears a stray one. */
 function mountErrorPage(inner: HTMLElement): void {
   const app = appElement();
   const page = el('div', s['page'], app === document.body ? s['standalone'] : undefined);
@@ -102,16 +84,11 @@ function mountErrorPage(inner: HTMLElement): void {
 
 export interface ErrorPage {
   title: string;
-  /** Paragraph below the title. Omit for a title-only screen. */
   detail?: ErrorText | undefined;
-  /** Things worth checking before retrying, listed under a "Try" heading. */
+  /** Listed under a "Try" heading. */
   tips?: readonly string[];
-  /**
-   * One button per entry. The first keeps `#error-retry-btn` regardless of
-   * which one is `primary`.
-   */
+  /** The first keeps `#error-retry-btn` whichever one is `primary`. */
   actions?: readonly ErrorAction[];
-  /** The warning interstitial's amber shield, in place of the generic glyph. */
   glyph?: 'warning';
 }
 
@@ -135,7 +112,6 @@ function actionButton(action: ErrorAction, id: string, primary: boolean): HTMLBu
   return button;
 }
 
-/** Render a full-page error state, replacing whatever `#app` holds. */
 export function showErrorPage(page: ErrorPage): void {
   clearPage();
   const { title, detail, glyph } = page;
@@ -144,9 +120,7 @@ export function showErrorPage(page: ErrorPage): void {
   const idFor = (i: number): string => (i === 0 ? 'error-retry-btn' : `error-retry-btn-${String(i)}`);
   const declaredPrimary = actions.findIndex(a => a.primary === true);
   const primaryIndex = declaredPrimary === -1 ? 0 : declaredPrimary;
-  // Rendered with the primary last so reading order, DOM order and tab order
-  // all agree. The id still comes from the array position, so `#error-retry-btn`
-  // is the first action whichever one is recommended.
+  // Primary last, so reading, DOM and tab order agree. Ids still follow array position.
   const rendered = actions
     .map((a, i) => ({ a, i }))
     .sort((x, y) => Number(x.i === primaryIndex) - Number(y.i === primaryIndex));
@@ -187,20 +161,14 @@ export function showErrorPage(page: ErrorPage): void {
   }
   mountErrorPage(inner);
 
-  // The button that triggered this render is gone, so focus would otherwise
-  // fall to `body` and a screen reader would announce nothing. Moving it to the
-  // title both names the new screen and puts the actions next in tab order.
-  // Matters most on the failover interstitial, which replaces one error screen
-  // with another in place.
+  // The triggering button is gone, so focus would fall to `body` and a screen reader would announce
+  // nothing. The title names the new screen and puts the actions next in tab order.
   heading.focus();
 
   setProductError();
 }
 
-/**
- * Positional shorthand for {@link showErrorPage}, kept because most callers
- * only ever need a title, a line of detail and a retry.
- */
+/** Positional shorthand for {@link showErrorPage}. */
 export function showError(
   title: string,
   detail?: string,
@@ -218,10 +186,7 @@ export function showError(
   });
 }
 
-/**
- * The "reload" error page, for a page of the host's own (the landing page)
- * that cannot show.
- */
+/** For a page of the host's own, such as the landing page, that cannot show. */
 export function showBrokenPage(): void {
   showError('Something went wrong on our side', "This page didn't load properly. Reloading usually fixes it.", {
     label: 'Reload',
@@ -232,13 +197,8 @@ export function showBrokenPage(): void {
   });
 }
 
-/**
- * Show the "no content set" error in a Chrome-style "site can't be reached"
- * layout. The domain sits on its own chip so the user can immediately scan
- * it for a typo.
- */
+/** The domain sits on its own chip so the user can scan it for a typo. */
 export function showNoContentError(label: string): void {
-  // Replaces the loading screen mid-load.
   clearPage();
   const inner = el('div', s['inner'], s['unreached']);
   const heading = el('h1', s['title']);
@@ -263,7 +223,7 @@ export function showNoContentError(label: string): void {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** The loading screen's petal mark, pulsing, built here so the sandbox never loads the island. */
+/** Built here so the sandbox never loads the loading screen island. */
 function petalMark(): SVGSVGElement {
   const mark = document.createElementNS(SVG_NS, 'svg');
   mark.setAttribute('width', '56');

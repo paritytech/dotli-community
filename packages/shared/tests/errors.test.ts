@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest';
 import { serializeError, fullErrorChain } from '../src/errors.js';
 
 describe('serializeError', () => {
-  // primitives
   it("returns 'null' for null", () => {
     expect(serializeError(null)).toBe('null');
   });
@@ -27,7 +26,6 @@ describe('serializeError', () => {
     expect(serializeError(false)).toBe('false');
   });
 
-  // Error instances
   it('extracts message from Error', () => {
     expect(serializeError(new Error('kaboom'))).toBe('kaboom');
   });
@@ -54,7 +52,6 @@ describe('serializeError', () => {
     expect(serializeError(err)).toBe('out of range');
   });
 
-  // .cause chain
   it('appends a shallow cause description', () => {
     const inner = new Error('inner boom');
     const outer = new Error('outer boom', { cause: inner });
@@ -71,13 +68,11 @@ describe('serializeError', () => {
     const b = new Error('b') as Error & { cause?: unknown };
     a.cause = b;
     b.cause = a;
-    // .cause only walks one level, so no stack overflow.
     const out = serializeError(a);
     expect(out).toContain('a');
     expect(out).toContain('cause: b');
   });
 
-  // AggregateError
   it('includes inner errors from AggregateError', () => {
     const agg = new AggregateError([new Error('first'), new Error('second')], 'all failed');
     expect(serializeError(agg)).toBe('all failed [first; second]');
@@ -91,7 +86,6 @@ describe('serializeError', () => {
     expect(serializeError(agg)).toBe('many failed [a; b; c, ...]');
   });
 
-  // plain objects
   it('extracts .message from a plain object', () => {
     expect(serializeError({ message: 'plain object error' })).toBe('plain object error');
   });
@@ -111,11 +105,9 @@ describe('serializeError', () => {
   it('tolerates circular objects', () => {
     const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
-    // Should not throw. Should return a non-empty fallback.
     expect(serializeError(cyclic)).toBe('[object Object]');
   });
 
-  // invariant
   it('never returns an empty string', () => {
     const inputs: unknown[] = [null, undefined, '', 0, false, {}, [], new Error(''), new Error(), { message: '' }];
     for (const value of inputs) {
@@ -125,15 +117,9 @@ describe('serializeError', () => {
   });
 });
 
-// Cycle detection uses the active DFS path, not a global visited set.
-// Regression guard for the "shared references collapsed to Cycle" bug.
+// Cycle detection follows the active path, so shared references are not cycles.
 describe('fullErrorChain cycle semantics', () => {
   it('walks shared cause references in separate branches independently', () => {
-    // Same `inner` attached as `.cause` of two separate Errors, both
-    // bundled under an AggregateError. Previously the second branch
-    // saw `inner` as already-visited and returned `Cycle`, losing the
-    // real message/stack. With path-local tracking, each branch walks
-    // `inner` fully.
     const inner = new Error('inner boom');
     const left = new Error('left branch', { cause: inner });
     const right = new Error('right branch', { cause: inner });
@@ -154,7 +140,6 @@ describe('fullErrorChain cycle semantics', () => {
     a.cause = b;
     b.cause = a;
     const chain = fullErrorChain(a);
-    // a references b references a, where the last hop is the Cycle node.
     expect(chain.message).toBe('a');
     expect(chain.causes).toHaveLength(1);
     expect(chain.causes[0]?.message).toBe('b');
@@ -163,9 +148,6 @@ describe('fullErrorChain cycle semantics', () => {
   });
 
   it('walks a DAG where two branches share a leaf without cycling', () => {
-    // A aggregates [B, C]. B.cause = Leaf and C.cause = Leaf. Leaf is
-    // shared but no back-edge exists, so both branches should fully
-    // materialize Leaf.
     const leaf = new Error('leaf');
     const b = new Error('B', { cause: leaf });
     const c = new Error('C', { cause: leaf });

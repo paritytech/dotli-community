@@ -4,19 +4,14 @@
 import { afterEach, vi } from 'vitest';
 import { PHONE_QUERY, resetPhoneViewport } from '../../src/phone-viewport.js';
 
-// phone-viewport.ts keeps one MediaQueryList, so a stub dropped by
-// `vi.unstubAllGlobals()` must not outlive its test.
+// phone-viewport.ts keeps one MediaQueryList, so a stub dropped by `vi.unstubAllGlobals()` must not outlive its test.
 afterEach(() => {
   resetPhoneViewport();
 });
 
 /**
- * A viewport as narrow as a phone's (`phone` true) or as wide as a desktop's,
- * for the code that reads PHONE_QUERY. Only that query is answered here: every
- * other one (the colour scheme, reduced motion) goes to the `matchMedia` in
- * place before, so a `stubColorScheme` stub keeps working. `set` resizes the
- * viewport across the phone width and notifies the phone query's `change`
- * listeners. Restored by `vi.unstubAllGlobals()`.
+ * Answers only PHONE_QUERY and passes other queries to the previous `matchMedia`, so a `stubColorScheme` stub keeps
+ * working.
  */
 export function stubPhoneViewport(initial: boolean): { set: (phone: boolean) => void } {
   let phone = initial;
@@ -50,17 +45,12 @@ export function stubPhoneViewport(initial: boolean): { set: (phone: boolean) => 
   };
 }
 
-/**
- * Resize the viewport as a phone or a rotation does: the stylesheets' media
- * queries and `matchMedia` follow, and the phone query's listeners hear the
- * change. Happy DOM's window starts 1024 wide.
- */
+/** Resizes as a phone or a rotation does, so stylesheet media queries and `matchMedia` follow. */
 export function setViewportWidth(width: number): void {
   (window as unknown as { happyDOM: { setViewport: (viewport: { width: number }) => void } }).happyDOM.setViewport({
     width,
   });
-  // Happy DOM keeps an element's computed style until the DOM changes, not
-  // on a resize. A stylesheet coming and going drops it.
+  // Happy DOM keeps computed styles across a resize until the DOM changes, so add and drop a stylesheet.
   const style = document.createElement('style');
   document.head.append(style);
   style.remove();

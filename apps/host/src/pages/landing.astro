@@ -1,0 +1,22 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The bare host's root. No topbar and no loading screen, and the landing page renders at build time, so it is the first
+// paint. With no `#app`, an error page takes over the whole body.
+import { AuthModal } from '@dotli/ui/islands/AuthModal';
+import Landing from '../components/Landing.astro';
+import PageHead from '../components/PageHead.astro';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <PageHead />
+  </head>
+  <body data-landing>
+    <Landing />
+    <AuthModal client:idle />
+    <script src="../landing.ts"></script>
+  </body>
+</html>

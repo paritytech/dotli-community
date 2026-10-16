@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Prod no-op shim for `@dotli/metrics/metrics`, aliased in
-// `apps/*/vite.config.ts`. Return contracts must match `metrics.ts`:
-// `span(name, fn)` returns `fn(undefined)` (sync and async), and `timer`
-// returns a stop fn.
+// No-op twin of `metrics.ts`, swapped in by `stripAnalytics`. Exports and return contracts must match it.
 
 type SpanArg = { setAttribute: (key: string, value: string) => void } | undefined;
 
@@ -52,9 +49,7 @@ export function sentrySpanOf(_handle: SpanHandle): unknown {
 
 let resolutionId: string | null = null;
 
-// Storage is kept even here: the host reads the id back to build the protocol
-// and sandbox URLs, so stripping it would change those URLs rather than just
-// drop telemetry. Only the Sentry tagging is absent.
+// Kept even here: the host reads the id back to build the protocol and sandbox URLs.
 export function setResolutionId(id: string): void {
   resolutionId = id;
 }

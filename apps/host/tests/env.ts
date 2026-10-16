@@ -1,15 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Env overrides shared by every host test suite.
- *
- * Centralised so a single env change propagates everywhere. Tests
- * import these instead of re-reading `process.env`.
- */
-
-// From its source file, not the `@dotli/config` barrel, which cannot load in
-// Node (it reads `self.location` and `import.meta.env` at load).
+// From its source file: the `@dotli/config` barrel reads `self.location` and `import.meta.env` at load, so Node
+// cannot load it.
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
@@ -18,16 +11,11 @@ import {
 } from '../../../packages/config/src/network.js';
 
 export const DOMAIN = process.env['DOMAIN'] ?? 'host-playground';
-/**
- * Preview-server port for this worker. The functional config starts one server
- * per worker (5173, 5174, …) so parallel tests never share the server's
- * in-memory mode-sync store or metrics buffer; `TEST_PARALLEL_INDEX` picks
- * this worker's one. Outside a worker it is unset and this is 5173.
- */
+/** The functional config starts one preview server per worker. */
 export const PORT = process.env['PORT'] ?? String(5173 + Number(process.env['TEST_PARALLEL_INDEX'] ?? '0'));
 export const TIMEOUT_MS = parseInt(process.env['TIMEOUT_MS'] ?? '45000', 10);
 
-/** Network under test. Must match the first entry of the build's VITE_NETWORKS. */
+/** Must match the first entry of the build's VITE_NETWORKS. */
 export const NETWORK: Network = (() => {
   const raw = process.env['NETWORK'] ?? NetworkName.PASEO;
   if (!isValidNetwork(raw)) {
@@ -36,8 +24,6 @@ export const NETWORK: Network = (() => {
   return raw;
 })();
 
-/** dotNS suffix of the network under test, e.g. `.paseo`. Read from the same config the app uses. */
 export const TLD_SUFFIX = `.${NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK].dotns.TLD}`;
 
-/** The full dotNS name under test, e.g. `host-playground.paseo`. */
 export const DOTNS_NAME = `${DOMAIN}${TLD_SUFFIX}`;

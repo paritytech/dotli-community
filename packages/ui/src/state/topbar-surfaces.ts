@@ -1,13 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's surfaces (its popovers, menus and the pairing modal), as
-// FloatingLayer and AuthModal register them: the auto-hide keeps the bar on
-// screen while one is open or holds the focus, wherever it renders (most
-// portal into the body, outside `#topbar`).
+// Topbar popovers, menus and the pairing modal register here so auto-hide keeps the bar up
+// while one is open or focused, even when it is portalled outside `#topbar`.
 
 export interface TopbarSurface {
-  /** The surface's element, once rendered. */
   element: () => HTMLElement | undefined;
   /** Open as last set (not as last rendered). */
   open: () => boolean;
@@ -15,7 +12,6 @@ export interface TopbarSurface {
 
 const surfaces = new Set<TopbarSurface>();
 
-/** Register `surface`; returns the unregister. */
 export function registerTopbarSurface(surface: TopbarSurface): () => void {
   surfaces.add(surface);
   return () => {
@@ -23,12 +19,10 @@ export function registerTopbarSurface(surface: TopbarSurface): () => void {
   };
 }
 
-/** Some surface is open. */
 export function anyTopbarSurfaceOpen(): boolean {
   return [...surfaces].some(surface => surface.open());
 }
 
-/** Some surface holds `el`. */
 export function topbarSurfaceContains(el: Element): boolean {
   return [...surfaces].some(surface => surface.element()?.contains(el) === true);
 }

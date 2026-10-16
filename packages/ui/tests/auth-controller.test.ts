@@ -14,12 +14,10 @@ type Modules = typeof AuthControllerModule &
   typeof AuthModule &
   typeof BlockingModalQueueModule;
 
-// Window listeners the controller under test added; removed after each test
-// so an earlier test's controller never reacts to a later test's events.
+// Removed after each test so an earlier test's controller never hears a later test's events.
 let controllerListeners: Parameters<typeof window.removeEventListener>[] = [];
 
-// A fresh module graph per test: the controller keeps its lease and session
-// flags at module scope, and the stores start from their defaults.
+// A fresh module graph per test, as the controller keeps its lease and session flags at module scope.
 async function load(
   coordinator?: BlockingModalCoordinator,
 ): Promise<Modules & { coordinator: BlockingModalCoordinator }> {
@@ -47,9 +45,8 @@ function countEvents(name: string): { count: number; details: unknown[] } {
 }
 
 /**
- * Holds each enqueued task until the test runs it, to force races. Dispose
- * is only recorded, never aborts: the task sees a live signal, as when a
- * queue starts a task before it processes that scope's disposal.
+ * Holds each task until the test runs it, to force races. Dispose never aborts, as when a queue
+ * starts a task before it processes that scope's disposal.
  */
 function manualCoordinator(): {
   coordinator: BlockingModalCoordinator;
@@ -125,6 +122,21 @@ describe('auth controller: login requests', () => {
     // Then
     expect(getAuthModalState().productLabel).toBe(withActiveTld('foo'));
     expect(getAuthModalState().reason).toBeNull();
+  });
+
+  it('As a product asking for a sign-in while the saved session cannot be reached, I get no modal and no pairing', async () => {
+    // Given
+    const { getAuthModalState, getLoggedIn, setAuthState } = await load();
+    const requests = countEvents('dotli:truapi-login-request');
+    setAuthState({ tag: 'Unreachable' });
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'foo' } }));
+
+    // Then
+    expect(getAuthModalState().open).toBe(false);
+    expect(requests.count).toBe(0);
+    expect(getLoggedIn()).toBe(false);
   });
 
   it('As the error view, retryLogin re-opens the spinner and asks the core to log in again', async () => {
@@ -422,19 +434,6 @@ describe('auth controller: auth states', () => {
     expect(getAuthModalState().open).toBe(false);
     expect(cancels.count).toBe(0);
     expect(getLoggedIn()).toBe(true);
-  });
-
-  it('revokes authentication and closes pending login without falling back to Mobile when the wallet becomes unavailable', async () => {
-    const { getAuthModalState, getLoggedIn, setAuthState } = await load();
-    const requests = countEvents('dotli:truapi-login-request');
-    const cancels = countEvents('dotli:truapi-cancel-login');
-    setAuthState({ tag: 'Connected', session: { connected: true } });
-    setAuthState(pairing);
-    setAuthState({ tag: 'WalletUnavailable', reason: 'Native worker stopped' });
-    expect(getLoggedIn()).toBe(false);
-    expect(getAuthModalState().open).toBe(false);
-    expect(requests.count).toBe(0);
-    expect(cancels.count).toBe(0);
   });
 
   it('As the core, Disconnected logs out but never tears down an active pairing', async () => {

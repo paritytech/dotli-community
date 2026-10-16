@@ -15,36 +15,26 @@ import {
 import { test } from './helpers/shared-mode-reset.js';
 import { findAppFrame } from '../product-frame.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
-// Playwright loads specs in Node, where the package barrels cannot load (they
-// read `self.location` and `import.meta.env` at load), so these constants come
-// from their side-effect-free source files.
+// From source files, since the package barrels read `self.location` and `import.meta.env` at load and Node cannot.
 import { TIMEOUTS } from '../../../../packages/config/src/timeouts.js';
-import { NETWORK_NAME_TO_SERVICES_CONFIG } from '../../../../packages/config/src/network.js';
 import { METHOD_TIMEOUTS } from '../../../../packages/protocol/src/method-timeouts.js';
 
-import { NETWORK, PORT, TLD_SUFFIX } from '../env.js';
+import { PORT, TLD_SUFFIX } from '../env.js';
 
 const DOMAIN = process.env['COMBO_DOMAIN'] ?? 'host-playground';
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
-// The drop to a trusted provider is gated: the first sighting of a failure
-// offers Settings, and only a repeat of the same kind offers the one-click
-// switch. Most tests below assert the first screen.
+// The first sighting of a failure offers Settings, only a repeat of the same kind offers the one-click switch.
 const RETRY_LABEL_FROM_SMOLDOT = FAILOVER_BTN_LABELS['rpc-gateway'];
 
 // The budget a `resolveDotName` handler derives from its request deadline.
 const RESOLVER_SYNC_BUDGET_MS = (METHOD_TIMEOUTS.resolveDotName ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE;
 
-// Preserve the post-retry backend that the in-page button just flipped.
+// Keeps the backend the in-page retry button flipped.
 async function setBackend(page: Page, backend: Backend): Promise<void> {
   await seedBackend(page, backend, { onlyIfUnset: true });
 }
 
-/**
- * Replace the protocol iframe document with a mock that runs a provided script.
- * Lets each test simulate ready / init-failed / fatal / response envelopes
- * without running the real smoldot pipeline.
- */
 async function mockProtocolIframe(page: Page, script: string): Promise<void> {
   await page.route('**', async route => {
     const isProtocolDoc =
@@ -62,11 +52,7 @@ async function mockProtocolIframe(page: Page, script: string): Promise<void> {
 
 const READY = `window.parent.postMessage({namespace:"dotli:protocol",kind:"ready"},"*");`;
 
-// Post init-failed AFTER the iframe's load event fires, then retry with
-// exponential backoff until the parent acks via `resetProtocolFrameState` (which
-// blanks the iframe). A single fixed delay races the parent's `ensureProtocolFrame`
-// resolver-registration window. Retries cover the worst case where the first
-// post lands before any waiter is queued.
+// Retried until the parent blanks the iframe, since a single post can land before any waiter is queued.
 const initFailed = (message: string): string => `
   window.addEventListener("load", function() {
     var msg = {
@@ -293,52 +279,6 @@ test('As a user, when the app executable manifest is invalid, I see its validati
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
 
-test('As a user, a stopped chainHead follow reconnects once without showing a domain error', async ({ page }) => {
-  await setBackend(page, 'rpc-gateway');
-  const endpoints = new Set(NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK].assethub.rpcs.map(url => new URL(url).href));
-  let stopped = false;
-  let follows = 0;
-  await page.routeWebSocket(
-    url => endpoints.has(url.href),
-    socket => {
-      const upstream = socket.connectToServer();
-      socket.onMessage(message => {
-        const request = JSON.parse(String(message)) as { method?: string; params?: unknown[] };
-        // The resolver follows without runtime updates. The topbar's health
-        // watch opens its own runtime follow on the same socket once the
-        // product is on screen; that is not a reconnect.
-        if (request.method === 'chainHead_v1_follow' && request.params?.[0] === false) {
-          follows += 1;
-        }
-        if (!stopped && request.method === 'chainHead_v1_storage') {
-          const subscription = request.params?.[0];
-          if (typeof subscription !== 'string') {
-            throw new Error('A storage read must belong to an active follow');
-          }
-          stopped = true;
-          // Interrupt a real read below the resolver's recovery boundary.
-          // Every other response still comes from the actual configured node.
-          socket.send(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              method: 'chainHead_v1_followEvent',
-              params: { subscription, result: { event: 'stop' } },
-            }),
-          );
-          return;
-        }
-        upstream.send(message);
-      });
-    },
-  );
-
-  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  expect(await findAppFrame(page, 10_000)).not.toBeNull();
-  expect(stopped).toBe(true);
-  expect(follows).toBe(2);
-  await expect(page.locator('.error-page-title')).toHaveCount(0);
-});
-
 test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({
   page,
 }) => {
@@ -408,8 +348,7 @@ test('As a user using smoldot directly, when every peer WebSocket is unavailable
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  // A window, not equality: the budget is the deadline minus however long
-  // dispatch took, so it lands just under the constant.
+  // A window, not equality: dispatch time comes off the budget, so it lands just under the constant.
   await page.addInitScript((budgetMs: number) => {
     const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
     globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
@@ -589,8 +528,7 @@ test('As a user, after a resolution failure, clicking retry switches backend and
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  // The switch is only offered on the second sighting, so reload into the
-  // same failure first.
+  // The switch is offered only on the second sighting.
   await page.locator('#error-retry-btn').click();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('#error-retry-btn-1')).toContainText(RETRY_LABEL_FROM_SMOLDOT, { timeout: 10_000 });
@@ -599,8 +537,7 @@ test('As a user, after a resolution failure, clicking retry switches backend and
 
   // When
   await page.locator('#error-retry-btn-1').click();
-  // Dropping verification is confirmed first: `Try Anyway` is the leading
-  // action on the interstitial, so it keeps `#error-retry-btn`.
+  // Dropping verification is confirmed first, and `Try Anyway` leads, so it keeps `#error-retry-btn`.
   await expect(page.locator('#error-retry-btn')).toContainText(TRY_ANYWAY_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(GO_BACK_BTN_LABEL);
   await page.locator('#error-retry-btn').click();

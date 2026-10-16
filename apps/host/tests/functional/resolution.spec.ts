@@ -1,13 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Cold resolution test against every supported backend, plus warm start
- * across a browser restart.
- *
- * Env overrides: DOMAIN, PORT, TIMEOUT_MS, WARM_DOMAIN
- */
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,7 +17,7 @@ const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 /** A second product, so session 2 cannot be answered from the content cache. */
 const WARM_DOMAIN = process.env['WARM_DOMAIN'] ?? 'browse';
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
-/** The provider's smoldot database store, on the protocol iframe's origin. */
+/** The provider's smoldot database store lives on this origin. */
 const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;
 /** Long enough for the provider to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
@@ -56,9 +49,7 @@ test.describe('Resolution across chain backends', () => {
     });
 
     try {
-      // Record the counts as they reach the shell. The rendered figure can
-      // change faster than a poll can catch, so the envelope is the reliable
-      // signal and the visible readout is accepted as an alternative.
+      // The rendered figure can change faster than a poll catches, so the envelope is the reliable signal.
       await page.addInitScript(() => {
         const seen: unknown[] = [];
         (window as unknown as { __dotliPeerCounts: unknown[] }).__dotliPeerCounts = seen;
@@ -108,13 +99,7 @@ interface SmoldotDbState {
   loaded: string[];
 }
 
-/**
- * Read the provider's smoldot database store from the protocol iframe.
- *
- * The store lives on the protocol origin rather than the product's, and in
- * the default backend the provider writes it from a SharedWorker, so this is
- * the only vantage point the test has on warm start.
- */
+/** The protocol iframe is the test's only view of warm start, since the default backend writes from a SharedWorker. */
 async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
   const frame = page.frames().find(f => f.url().startsWith(PROTOCOL_ORIGIN));
   if (frame === undefined) {
@@ -156,12 +141,7 @@ async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
   });
 }
 
-/**
- * Open a session against `profile`, resolve `url`, then hand the page to `run`.
- *
- * The profile directory is locked while a context holds it, so each session
- * must close before the next one opens against the same profile.
- */
+/** A context locks its profile directory, so each session must close before the next one opens. */
 async function withWarmSession<T>(
   profile: string,
   url: string,
@@ -184,10 +164,7 @@ async function withWarmSession<T>(
 }
 
 test.describe('Warm start across a browser restart', () => {
-  // No `test.setTimeout` here. Every wait inside is bounded on its own, so a
-  // real hang surfaces from `waitForResolutionOutcome` with the failing
-  // session named. A tighter ceiling than the config's only turns a slow CI
-  // runner into "Test timeout exceeded", which says nothing about the cause.
+  // No `test.setTimeout`: every wait inside is bounded, so a hang surfaces with the failing session named.
 
   test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resumes the light client from stored state`, async () => {
     const profile = mkdtempSync(join(tmpdir(), 'dotli-warm-'));

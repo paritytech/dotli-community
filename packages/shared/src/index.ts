@@ -1,9 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Public API of @dotli/shared. Other workspace packages import only from here.
-// Every other module under src/ is private to the package.
-
+export {
+  createAsyncTaskPool,
+  DEFAULT_POOL,
+  type AsyncTaskParams,
+  type AsyncTaskPool,
+  type AsyncTaskPoolParams,
+} from './async-task-pool.js';
 export {
   formatAppVersion,
   getActiveAppManifest,

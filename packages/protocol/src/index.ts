@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Public API of @dotli/protocol. Other workspace packages import only from here.
-// Every other module under src/ is private to the package.
-
 export {
   SHARED_CORE_SESSION_KEY,
   buildSharedAuthStorageKey,
@@ -12,8 +9,10 @@ export {
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
+  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
+  type SharedWalletRequestMethod,
 } from './auth-storage.js';
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
 export {
@@ -23,14 +22,25 @@ export {
   haltReasonOf,
   type RemoteChainHalt,
 } from './chain-halted.js';
-export { createChainPool, type ChainPool, type LeaseProvider } from './chain-pool.js';
+export {
+  createChainPool,
+  type ChainActivity,
+  type ChainPool,
+  type ChainPoolWatcher,
+  type LeaseProvider,
+} from './chain-pool.js';
 export {
   clearSharedAuthStorage,
   compareExchangeSharedAuthStorage,
   clearSharedModeStorage,
+  forgetSharedLocalWallet,
+  readSharedLocalWallet,
+  saveSharedLocalWallet,
+  updateSharedLocalWalletIdentity,
   createRemoteChainProvider,
   ensureProtocolFrame,
   getProtocolOrigin,
+  getSharedStoreStatus,
   getSmoldotDbOutcome,
   isProtocolBooting,
   isProtocolReady,
@@ -42,47 +52,36 @@ export {
   onProtocolReady,
   readSharedAuthStorage,
   readSharedModeStorage,
-  resetProtocolFrame,
   requestCoreCustody,
-  requestSharedWallet,
-  requestWalletOwner,
+  resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
   resolveOwnerRemote,
   resolveRootManifestRemote,
   setProtocolSubMode,
+  type SharedStoreStatus,
   subscribeSharedAuthStorage,
-  subscribeSharedWallet,
-  subscribeWalletOwnerRevoked,
+  subscribeSharedStoreStatus,
   type RemoteChainProvider,
   warmupProtocol,
   writeSharedAuthStorage,
   writeSharedModeStorage,
 } from './client.js';
-export { CORE_CUSTODY_BUSY_ERROR, isCoreCustodyOperation, type CoreCustodyOperation } from './core-custody.js';
+export {
+  CORE_CUSTODY_BUSY_ERROR,
+  isCoreCustodyOperation,
+  localWalletCustodyId,
+  type CoreCustodyOperation,
+} from './core-custody.js';
 export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 export {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,
+  type LocalWalletIdentity,
+  type LocalWalletReadResult,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type SmoldotDbChain,
   type SmoldotDbOutcome,
 } from './messages.js';
-export {
-  isSharedWalletOperation,
-  isSharedWalletState,
-  type SharedWalletOperation,
-  type SharedWalletResult,
-  type SharedWalletState,
-} from './wallet-storage.js';
-export {
-  createWalletOwner,
-  isWalletOwnerOperation,
-  WALLET_OWNER_BUSY_ERROR,
-  WALLET_OWNER_REVOKED_EVENT,
-  type WalletOwner,
-  type WalletOwnerDeps,
-  type WalletOwnerOperation,
-} from './wallet-owner.js';

@@ -1,20 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Recently-visited labels
-//
-// A label is recorded once it resolves, which happens on
-// `<label>.<BASE_DOMAIN>`, but the pills are rendered on the bare landing
-// origin. Those are different origins, so per-origin `localStorage` can't
-// carry the list between them. The list therefore lives in the same
-// cross-subdomain store the mode preferences use (the
-// `host.<BASE_DOMAIN>` iframe in production, the preview server's HTTP
-// store on localhost).
-//
-// Every write is a read-modify-write against that store so a visit
-// recorded on one subdomain doesn't clobber one recorded on another.
-// `localStorage` stays a mirror: it is what the landing page falls back to
-// when the shared store is unreachable (iframe blocked, preview down).
+// Labels are recorded on `<label>.<BASE_DOMAIN>` but shown on the landing origin, so the list lives in the
+// cross-subdomain shared store. `localStorage` is a mirror for when that store is unreachable.
 
 import {
   RECENT_KEY,
@@ -28,12 +16,7 @@ import { isValidDotLabel, log } from '@dotli/shared';
 
 import { getSharedChannel } from './shared-mode.js';
 
-/**
- * Read the shared list, falling back to this origin's mirror.
- *
- * An absent shared key is seeded from the mirror so a device upgrading from
- * the pre-shared-store build keeps its list. An empty one is left alone.
- */
+/** An absent shared key is seeded from the mirror, so an upgrading device keeps its list. */
 export async function loadRecentLabels(): Promise<string[]> {
   const channel = getSharedChannel();
   let raw: string | null;
@@ -55,12 +38,11 @@ export async function loadRecentLabels(): Promise<string[]> {
   }
 
   const labels = parseRecentLabels(raw);
-  // Warm mirror for a later boot that can't reach the shared store.
   writeRecentLabels(labels);
   return labels;
 }
 
-/** Record a resolved label. Only call this after a successful resolution. */
+/** Only call this after a successful resolution. */
 export async function recordRecentLabel(label: string): Promise<void> {
   if (!isValidDotLabel(label)) {
     return;
@@ -68,19 +50,18 @@ export async function recordRecentLabel(label: string): Promise<void> {
   await updateRecentLabels(labels => withRecentLabel(labels, label));
 }
 
-/** Drop a label, both from the shared store and this origin's mirror. */
 export async function forgetRecentLabel(label: string): Promise<void> {
   await updateRecentLabels(labels => labels.filter(l => l !== label));
 }
 
+// Read-modify-write, so a visit recorded on one subdomain does not clobber one from another.
 async function updateRecentLabels(next: (labels: string[]) => string[]): Promise<void> {
   const channel = getSharedChannel();
   let current: string[];
   try {
     current = parseRecentLabels(await channel.read(RECENT_KEY));
   } catch {
-    // Unreachable shared store. Keep the mirror moving so the list still
-    // works on whichever origin is up.
+    // Keep the mirror moving so the list still works while the shared store is unreachable.
     current = getRecentLabels();
   }
   const updated = next(current);

@@ -15,7 +15,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 // Node-loaded specs use the side-effect-free contract, not the browser config barrel.
-import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-contract.js';
+import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-version.js';
 import { archiveCar, installTruapiPortResponder } from './helpers/polkavm.js';
 
 const bundleDir = process.env['DOTLI_CHINPOKOMON_BUNDLE'];

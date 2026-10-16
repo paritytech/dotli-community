@@ -1,17 +1,13 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's .toast-stack: bottom right on desktop, full width on phones. */
-
 .stack {
   position: fixed;
   /* Clear the notch, and the home indicator or the phone bar below. */
   right: calc(var(--sp-4) + var(--safe-right));
   bottom: calc(var(--sp-4) + var(--content-bottom));
-  /* Under the header (1000), the scrims and popovers (1400 up) and the modals
-     (2000 up), so a toast never covers a prompt the user has to answer. Under
-     the docked chat (900) and the debug panel (950) too, so it never covers
-     the chat's composer. */
+  /* Under the header (1000), scrims, popovers and modals (1400 up), the docked chat (900) and the debug
+     panel (950), so a toast never covers a prompt or the chat's composer. */
   z-index: 850;
   box-sizing: border-box;
   width: var(--w-toast);
@@ -44,8 +40,7 @@
   overflow-y: auto;
 }
 
-/* 20 px with its centre 4 px inside the card's corner, the board's 24 on
-   phones. */
+/* Its centre sits 4 px inside the card's corner. */
 .close-all {
   position: absolute;
   top: -6px;
@@ -68,8 +63,7 @@
   cursor: pointer;
   transition: color var(--dur-fast);
 }
-/* The shared 16 px close icon drawn at the board's 12 px (10 on desktop),
-   its stroke thickened so it reads at that size. */
+/* The shared 16 px close icon drawn smaller, its stroke thickened so it reads. */
 .close-all svg {
   width: 10px;
   height: 10px;
@@ -82,7 +76,7 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-/* PHONE_QUERY in phone-viewport.ts: the board's sizes. */
+/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack[data-expanded] .cards {
     gap: var(--sp-2);

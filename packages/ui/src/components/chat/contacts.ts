@@ -1,20 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChatBotRecord, ChatRoomRecord } from '../../chat/service.js';
+import type { ChatBotRecord, ChatRoomFooter, ChatRoomRecord } from '../../chat/service.js';
 
-/** One list entry: a room, or a registered bot. Both open a conversation;
- *  a bot's is keyed by its botId, which the product uses as the roomId when
- *  it posts into or reads from that conversation. */
+/** A room or a registered bot. A bot's conversation is keyed by its botId, which the product uses as the roomId. */
 export interface ContactEntry {
   kind: 'room' | 'bot';
   id: string;
   name: string;
   icon: string;
   createdAt: number;
-  // null until the conversation has messages; the list then falls back to
-  // creation time, so one recency order covers active and new contacts.
+  /** Null until the conversation has a message. */
   lastMessageAt: number | null;
+  /** What the conversation shows below its messages. A bot's conversation always takes text. */
+  footer: ChatRoomFooter;
 }
 
 export function contactEntries(
@@ -30,6 +29,7 @@ export function contactEntries(
       icon: room.icon,
       createdAt: room.createdAt,
       lastMessageAt: lastMessageTimes.get(room.roomId) ?? null,
+      footer: room.footer ?? ('TextInput' as const),
     })),
     ...bots.map(bot => ({
       kind: 'bot' as const,
@@ -38,13 +38,14 @@ export function contactEntries(
       icon: bot.icon,
       createdAt: bot.createdAt,
       lastMessageAt: lastMessageTimes.get(bot.botId) ?? null,
+      footer: 'TextInput' as const,
     })),
   ];
   const recency = (entry: ContactEntry): number => entry.lastMessageAt ?? entry.createdAt;
   return entries.sort((a, b) => recency(b) - recency(a));
 }
 
-/** "just now" / "5 mins ago" / "an hour ago" style label for a bubble. */
+/** A bubble's relative time label, such as "5 mins ago". */
 export function relativeTime(timestamp: number, now: number): string {
   const minutes = Math.floor((now - timestamp) / 60_000);
   if (minutes < 1) {

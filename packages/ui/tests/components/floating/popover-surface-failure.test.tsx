@@ -11,7 +11,6 @@ import { byId } from '../../support.js';
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
 
-/** How many times the surface was fetched; the first fails, as a chunk gone after a deploy. */
 const fetches = vi.hoisted(() => ({ count: 0 }));
 
 vi.mock('../../../src/components/floating/PopoverSurface.js', async importOriginal => {

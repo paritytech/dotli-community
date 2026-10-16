@@ -1,13 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The anchored surface is FloatingLayer's glass with a cap on its size. The
-   rule is wrapped in :where(), so a consumer's own class (its width and
-   look) wins over it whatever order the stylesheets load in. */
+/* :where() so a consumer's class wins whatever the load order. */
 :where(.surface) {
   max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
-  /* `--content-height` is dvh-based: it tracks the visible area as mobile
-     browser chrome shows and hides, without the home indicator. */
+  /* dvh tracks the visible area as mobile browser chrome shows and hides. */
   max-height: calc(
     100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
   );
@@ -25,7 +22,6 @@
   margin: 0;
 }
 
-/* Phones: the boards' 96 px placeholder. */
 @media (max-width: 560px) {
   .loading {
     min-height: 96px;

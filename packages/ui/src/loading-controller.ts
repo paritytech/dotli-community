@@ -1,50 +1,28 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The loading screen's behaviour: the progress bar, the stage narration, the
-// stall watch and the dismiss. It writes the loading store, which the loading
-// screen island (components/shell/LoadingScreen.tsx) renders, so it stays on
-// the startup path without Solid. It touches no DOM: the island renders
-// nothing once the loading root is disposed.
+// The loading screen's behaviour. It writes the loading store and touches no DOM, so it stays on the
+// startup path without Solid.
 
 import { getActiveTldSuffix, isSandboxOrigin } from '@dotli/config';
 
 import { disposeAppRoot, registerAppRoot } from './mount/app-roots.js';
+import { prefersReducedMotion } from './reduced-motion.js';
 import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
 
-// Phase-based loading indicator.
-//
-// Each phase owns a `[base, target]` band of the bar plus an `expectedMs`:
-// how long that step typically takes. Two things follow from `expectedMs`,
-// and together they make the bar track real work instead of an arbitrary
-// easing curve (the Asset Hub finalized-block sync dwarfs every other step,
-// so callers size their bands and durations accordingly):
-//   - Band WIDTH is sized to the step's share of total load time, so the
-//     one dominant sync step owns most of the bar.
-//   - Crawl SPEED is paced so the band is crossed in roughly `expectedMs`,
-//     advancing steadily across the whole step rather than decelerating and
-//     parking near the top (the old asymptotic crawl barely moved during a
-//     30s sync, which is exactly the symptom we are fixing).
+/** A loading step owning the `[base, target]` band of the bar, crossed in about `expectedMs`. */
 export interface LoadingPhase {
   label: string;
   base: number;
   target: number;
   expectedMs: number;
-  /** Which set of messages narrates this phase. */
   stage: LoadingStage;
-  /**
-   * This step publishes a true percentage, so the indicator waits for it.
-   *
-   * Without this the crawl guessed its way to 84% during the first seconds
-   * of a download and then had nowhere to go, because the real figure that
-   * followed was lower and the indicator never moves backwards.
-   */
+  /** The step reports a real percentage, so the bar waits instead of crawling past it. */
   reportsProgress?: boolean;
 }
 let phases: LoadingPhase[] = [];
 let currentPhase = -1;
 
-// Progress indicator state
 let currentProgress = 0;
 let targetProgress = 0;
 let crawlStep = 0;
@@ -52,51 +30,31 @@ let progressInterval: ReturnType<typeof setInterval> | null = null;
 
 const CRAWL_TICK_MS = 200;
 
-// Where an exhausted band creeps on to, and how long it takes. Stops short
-// of 100 so only a finished load can fill the indicator.
-/**
- * The displayed whole number must change at least this often.
- *
- * Measured over ten cold loads, the bar sat at 62% for up to 41 seconds while a
- * step waited on bytes that never came. A still number reads as a hang, so it
- * always creeps, capped by the band the step owns.
- */
+// A still number reads as a hang, so the shown percentage changes at least this often.
 const PROGRESS_FLOOR_MS = 2_500;
 let lastShownAt = 0;
 let lastShown = -1;
 /** The last number reached by real progress rather than by the floor creep. */
 let lastRealShown = -1;
 
+// Short of 100, so only a finished load can fill the bar.
 const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 let creepCeiling = 0;
 let creepStep = 0;
-/** True while the current step owes the indicator a real percentage. */
 let phaseReportsProgress = false;
 
-/**
- * How long the bar may sit at one percentage before it owes an explanation.
- *
- * The per-chain watchdog cannot see this. A load whose content chain never
- * finds a peer leaves every chain lifecycle quiet while the bar creeps to its
- * ceiling and parks, measured at over a minute in one run.
- */
+// The per-chain watchdog cannot see a bar parked at its ceiling, such as a content chain with no peers.
 const PROGRESS_STALL_MS = 4_000;
 
 let progressStallTimer: ReturnType<typeof setTimeout> | null = null;
 let progressStallListener: ((pct: number) => void) | null = null;
 
-/**
- * Report when the bar stops moving, and again each time it stops afresh.
- *
- * The listener is handed the percentage it stalled at, so the caller can say
- * where the load got to. Replaces any previous listener.
- */
+/** Fires each time the bar stops afresh. Replaces any previous listener. */
 export function onProgressStall(listener: (pct: number) => void): void {
   progressStallListener = listener;
 }
 
-/** Stop watching, for a load that finished or failed. */
 export function stopProgressWatch(): void {
   if (progressStallTimer !== null) {
     clearTimeout(progressStallTimer);
@@ -114,14 +72,7 @@ function armProgressWatch(pct: number): void {
   }, PROGRESS_STALL_MS);
 }
 
-/**
- * Move the bar.
- *
- * `cosmetic` marks the movement-floor creep, which exists so the number never
- * stands still. It deliberately does not count as progress: if it did, it would
- * re-arm the stall watch every couple of seconds and the warning explaining the
- * stall could never appear.
- */
+/** `cosmetic` movement does not re-arm the stall watch, or the stall warning could never appear. */
 function setProgress(pct: number, cosmetic = false): void {
   const shown = Math.round(pct);
   if (shown !== lastShown) {
@@ -145,10 +96,7 @@ function startProgressCrawl(): void {
     return;
   }
   progressInterval = setInterval(() => {
-    // A step that reports a real percentage owns the indicator, so neither the
-    // crawl nor the creep may run past what it says. Both are guesses, and a
-    // download slower than the estimate would otherwise walk the bar to nearly
-    // full while the readout underneath still said 58%.
+    // A step reporting a real percentage owns the bar, and the guesses must not run past it.
     if (!phaseReportsProgress) {
       if (currentProgress < targetProgress) {
         setProgress(Math.min(currentProgress + crawlStep, targetProgress));
@@ -159,8 +107,7 @@ function startProgressCrawl(): void {
         return;
       }
     }
-    // Whatever owns the indicator, the number still has to move. Nudge it just
-    // past the next whole number, never beyond the band the current step owns.
+    // Whatever owns the bar, the number still moves, within the current step's band.
     if (Date.now() - lastShownAt >= PROGRESS_FLOOR_MS) {
       const ceiling = Math.min(phaseReportsProgress ? targetProgress : creepCeiling, CREEP_CEILING);
       const next = Math.min(Math.floor(currentProgress) + 1, ceiling);
@@ -178,19 +125,12 @@ function stopProgressCrawl(): void {
   }
 }
 
-/**
- * Snap the progress bar to 100%.
- * Called when loading is done, before the overlay fades out.
- */
 export function completeProgress(): void {
   stopProgressCrawl();
   setProgress(100);
 }
 
-/**
- * Initialize the loading progress indicator.
- * Call once before resolution/fetching begins.
- */
+/** Call once before resolution begins. */
 export function initPhases(phaseList: LoadingPhase[]): void {
   phases = phaseList;
   currentPhase = -1;
@@ -204,34 +144,23 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   lastShownAt = Date.now();
   trackLoadingRoot();
 
-  // Not on the first `advancePhase`, which lands seconds later once the
-  // protocol frame is up. The markup already shows this stage's step line,
-  // so the explanation clock has to start from when that line became visible.
+  // Not on the first `advancePhase`, seconds later. The markup already shows this stage's step line, so
+  // the explanation clock starts now.
   setLoadingStage('starting');
 }
 
-// How often the explanation turns over. Most of this window is the turnover
-// animation, so the finished sentence itself is only still for the last ~4s.
+// Most of this window is the turnover animation, so the finished sentence is still for only about 4s.
 const MESSAGE_ROTATE_MS = 9_000;
 
-/** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = '{domain}';
 
-function prefersReducedMotion(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-/** The steps a load moves through, in the order they happen. */
+/** In the order they happen. */
 export const LOADING_STAGES = ['starting', 'relay', 'assetHub', 'resolving', 'content', 'preparing'] as const;
 export type LoadingStage = (typeof LOADING_STAGES)[number];
 
 /**
- * What the shell is doing, in the user's terms.
- *
- * The first line of each stage is its step line, which names the step and
- * stays up for the whole stage. The rest are its explanations, which say what
- * a light client is doing, and only a slow load reaches them. List lengths
- * follow how long each step runs, so the long ones do not repeat.
+ * The first line is the step line, up for the whole stage. The rest are explanations only a slow load
+ * reaches, as many as the step runs long, so the long ones do not repeat.
  */
 const STAGE_MESSAGES: Record<LoadingStage, readonly [string, ...string[]]> = {
   starting: [
@@ -269,16 +198,11 @@ let currentStageIndex = -1;
 let openingLine = true;
 let loadingDomain = '';
 
-/** Name the domain being loaded, for the messages that mention it. */
 export function setLoadingDomain(domain: string): void {
   loadingDomain = domain;
 }
 
-/**
- * A step line's parts, the domain split into host and TLD. Falls back to
- * "the name" when no domain has been set, which is the preview and
- * local-target paths where there is no dotNS name to show.
- */
+/** Falls back to "the name" on the preview and local-target paths, which have no dotNS name. */
 function stepParts(message: string): StepPart[] {
   const at = message.indexOf(DOMAIN_TOKEN);
   if (at === -1) {
@@ -292,14 +216,11 @@ function stepSentence(parts: readonly StepPart[]): string {
   return parts.map(part => (typeof part === 'string' ? part : `${part.host}${part.tld}`)).join('');
 }
 
-// A fixed budget rather than a per-character delay, so a long sentence
-// animates at the same pace as a short one and always lands inside the
-// rotation interval.
+// A fixed budget rather than a per-character delay, so any sentence lands inside the rotation interval.
 const ERASE_MS = 1_400;
 const TYPE_MS = 3_600;
 let typingFrame: number | null = null;
 
-/** Slow at both ends, quickest in the middle. */
 function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
@@ -315,27 +236,21 @@ function cancelTyping(): void {
 
 function writeExplanation(next: string): void {
   cancelTyping();
-  // Screen readers get the whole sentence once, from an element the typing
-  // never touches.
+  // Screen readers get the whole sentence once, from an element the typing never touches.
   updateLoading({ srText: next });
   const previous = getLoadingState().explanation;
   if (next === previous || prefersReducedMotion() || !trackLoadingRoot()) {
     updateLoading({ explanation: next });
     return;
   }
-  // A stage's first explanation has no line before it to erase.
   const eraseMs = previous === '' ? 0 : ERASE_MS;
   const start = performance.now();
   const step = (now: number): void => {
     const elapsedMs = now - start;
-    // The frame clock can start a little before `start`, so an erase of no
-    // length is skipped outright rather than divided by.
+    // The frame clock can start a little before `start`, so a zero-length erase is skipped, not divided by.
     if (eraseMs > 0 && elapsedMs < eraseMs) {
       const gone = easeInOut(elapsedMs / eraseMs);
-      // Dims as it empties and brightens as the new line arrives, so the
-      // turnover reads as one settling motion rather than a text scramble.
-      // Only a shallow dip: the contrast of this block is built on solid colours
-      // precisely because opacity once sank it below AA.
+      // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
       updateLoading({
         explanation: previous.slice(0, Math.ceil(previous.length * (1 - gone))),
         explanationOpacity: 1 - 0.25 * gone,
@@ -356,13 +271,7 @@ function writeExplanation(next: string): void {
   typingFrame = requestAnimationFrame(step);
 }
 
-/**
- * Move to a stage: show its step line, then cycle its explanations.
- *
- * Only ever moves forward. Re-entering the running stage is ignored so the
- * copy does not restart on every signal for a step already underway, and an
- * earlier stage is refused so a late event cannot walk the story backwards.
- */
+/** Only moves forward, so a late event cannot walk the story backwards or restart a running stage. */
 export function setLoadingStage(stage: LoadingStage): void {
   const stageIndex = LOADING_STAGES.indexOf(stage);
   if (stageIndex <= currentStageIndex) {
@@ -371,13 +280,9 @@ export function setLoadingStage(stage: LoadingStage): void {
   currentStageIndex = stageIndex;
   const [opening, ...explanations] = STAGE_MESSAGES[stage];
   stopStageMessages();
-  // The last stage's explanation is about a step that is over, so it goes at
-  // once with the step line it explained.
   const step = stepParts(opening);
   updateLoading({ step, explanation: '', explanationOpacity: 1, srText: stepSentence(step) });
-  // The opening step line has been on screen since the page painted, so the
-  // first explanation is due relative to that, not to whenever this ran.
-  // Later turns get the full interval.
+  // The opening step line has been up since first paint, so its first explanation is due from then.
   const firstDelay = openingLine ? Math.max(500, MESSAGE_ROTATE_MS - performance.now()) : MESSAGE_ROTATE_MS;
   openingLine = false;
   if (explanations.length === 0 || !trackLoadingRoot()) {
@@ -399,18 +304,12 @@ function stopStageTimer(): void {
   }
 }
 
-/** Stop narrating entirely: no more turns, and no line half-written. */
 function stopStageMessages(): void {
   stopStageTimer();
   cancelTyping();
 }
 
-/**
- * Advance to a specific phase (0-indexed).
- * Jumps the indicator to the base percentage of the phase and begins crawling
- * toward its target. Moves the step line to the phase's stage.
- * No-ops if the phase is already active or past.
- */
+/** No-op if the phase is already active or past. */
 export function advancePhase(index: number): void {
   const phase = phases[index];
   if (index <= currentPhase || phase === undefined) {
@@ -419,46 +318,27 @@ export function advancePhase(index: number): void {
   currentPhase = index;
 
   const { base, target, expectedMs, reportsProgress } = phase;
-  // Each step has to earn the indicator back: the real progress of the previous step
-  // percentage says nothing about this one. A step that publishes its own
-  // figure holds the indicator at its band base until the figure arrives,
-  // rather than crawling somewhere the real number cannot then reach.
   phaseReportsProgress = reportsProgress === true;
   if (base > currentProgress) {
     setProgress(base);
   }
   targetProgress = target;
-  // Pace the crawl so the band is traversed over the typical time of the step
-  // duration: each tick advances a constant slice sized to cross from
-  // `base` to `target` in `expectedMs`. This is what makes the bar move
-  // steadily through a long sync instead of stalling near the top.
+  // A constant slice per tick, so the bar moves steadily through a long sync instead of stalling near the top.
   crawlStep = ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
-  // Headroom for a band that overruns: the space of the next band, or the ceiling
-  // for the last one. A band that reports a real percentage lends nothing,
-  // since creeping into it would put the indicator above the figure that step
-  // is about to publish.
+  // An overrunning band creeps into the next one, unless that one reports a real percentage, which the
+  // creep would overshoot.
   const next = phases[index + 1];
   const lentCeiling = next === undefined ? CREEP_CEILING : next.reportsProgress === true ? next.base : next.target;
   creepCeiling = Math.min(lentCeiling, CREEP_CEILING);
   creepStep = (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / Math.max(CREEP_MS, CRAWL_TICK_MS);
   startProgressCrawl();
 
-  // The step line is the stage's, not the phase label's: the label names the
-  // step for us, the stage says it in words the visitor can act on. Adjacent
-  // phases can share one stage, and re-entering a running stage is a no-op.
   setLoadingStage(phase.stage);
 }
 
 /**
- * Pull the indicator to a real fraction of the band `stage` owns.
- *
- * Takes the indicator over from the crawl for as long as that step has
- * something to say. Monotonic and clamped to the band, so a late or noisy
- * signal can never rewind it.
- *
- * The `stage` is checked against the running one, so a signal cannot drive a
- * band it does not own. Without it the relay warp fraction arriving mid-sync
- * would both move the Asset Hub band and freeze its crawl.
+ * Monotonic and clamped to the band, so a late or noisy signal never rewinds the bar. `stage` must be
+ * the running one, so a signal cannot drive a band it does not own.
  */
 export function nudgePhaseProgress(fraction: number, stage: LoadingStage): void {
   if (!Number.isFinite(fraction) || currentPhase < 0) {
@@ -470,9 +350,7 @@ export function nudgePhaseProgress(fraction: number, stage: LoadingStage): void 
   }
   const { base, target } = phase;
   const clamped = Math.max(0, Math.min(1, fraction));
-  // Only a band that asked to be driven this way may suppress the crawl, and
-  // only until its own work is done. After that the creep carries the
-  // indicator through the tail, which nothing reports on.
+  // Suppresses the crawl only until the work is done, then the creep carries the unreported tail.
   if (phase.reportsProgress === true) {
     phaseReportsProgress = clamped < 1;
   }
@@ -482,42 +360,22 @@ export function nudgePhaseProgress(fraction: number, stage: LoadingStage): void 
   }
 }
 
-/**
- * Give the indicator back to the clock.
- *
- * A step that declared `reportsProgress` holds the indicator until it can say
- * where the work is. This is how it admits it never will.
- *
- * Deliberately not a timeout. A timeout fired whether or not anything was
- * happening, so a load whose content chain never found a peer still crept to
- * 99% and sat there claiming to be nearly done.
- */
+/** For a `reportsProgress` step that will never report. Not a timeout, which fires regardless of progress. */
 export function releasePhaseProgress(): void {
   phaseReportsProgress = false;
 }
 
-/** Stop everything the loading screen has running. */
 export function stopStatusTick(): void {
   stopProgressCrawl();
   stopStageMessages();
   stopProgressWatch();
 }
 
-/** True while the loading screen is registered as the `"loading"` app root. */
 let loadingRootLive = false;
 
 /**
- * Track the loading screen as the `"loading"` app root, so whatever replaces
- * it (the product frame, an error page) stops its timers instead of leaving
- * them running behind the new content.
- *
- * Called whenever a timer starts, so no timer runs without a live root to
- * stop it. Once per root: starting the phases again must not dispose the
- * screen it is about to drive.
- *
- * Returns false once the screen is gone, which is terminal: nothing puts it
- * back, so a late signal (content bytes after `done`, a signal behind an
- * error page) must not start a timer that no root would ever stop.
+ * Registers the `"loading"` app root so whatever replaces the screen stops its timers. Called whenever a
+ * timer starts. False once the screen is gone for good, so a late signal starts no orphan timer.
  */
 function trackLoadingRoot(): boolean {
   if (getLoadingState().phase === 'gone') {
@@ -529,40 +387,25 @@ function trackLoadingRoot(): boolean {
   loadingRootLive = true;
   registerAppRoot('loading', () => {
     loadingRootLive = false;
-    // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
-    // The screen renders nothing from here on (components/shell/
-    // LoadingScreen.tsx).
     updateLoading({ phase: 'gone' });
   });
   return true;
 }
 
-// The screen is live from first paint (the store starts `active`), so it is
-// a root before any timer starts. Whatever replaces it first (the landing
-// page, a preview or local-target frame, an error page shown before the
-// phases start) then disposes it.
+// The screen is live from first paint, so it is a root before any timer starts, for whatever replaces it first.
 trackLoadingRoot();
 
-/** Take the loading screen down at once, without the fade: for a page that replaces it (the landing page). */
+/** Without the fade, for a page that replaces the screen. */
 export function hideLoading(): void {
   disposeAppRoot('loading');
 }
 
-/**
- * Show or clear the stall warning under the bar.
- *
- * Passing null hides it. The host decides when a chain has stopped moving and
- * what to say, this only renders it.
- */
+/** Null hides it. */
 export function setLoadingWarning(message: string | null): void {
   updateLoading({ warning: message });
 }
 
-/**
- * Remove the loading overlay (logo, progress bar, log).
- * Called when the app is fully loaded and the iframe is ready.
- */
 export function dismissLoading(): void {
   completeProgress();
   stopProgressWatch();
@@ -570,9 +413,7 @@ export function dismissLoading(): void {
   if (getLoadingState().phase !== 'active') {
     return;
   }
-  // The fade is a 0.3s opacity transition, so the screen goes once it ends,
-  // with its root. Tracked first, so there is a root to dispose even for a
-  // screen whose load never started a timer.
+  // Tracked first, so there is a root to dispose even when no timer ever started. 300ms matches the fade.
   trackLoadingRoot();
   updateLoading({ phase: 'dismissing' });
   setTimeout(() => {
@@ -582,31 +423,14 @@ export function dismissLoading(): void {
   }, 300);
 }
 
-/**
- * Listen for status messages from the sandbox iframe.
- * The sandbox posts { type: "dotli:loading-status", message } in relay mode.
- *
- * Only messages from a sandbox origin (`<label>.app.<root>`) may drive the
- * host loading overlay. Without this gate any frame on the page (e.g. a
- * nested cross-origin frame or browser extension) could spoof the status
- * text or prematurely dismiss the overlay while content is still loading.
- */
-/** How the sandbox's content load ended. */
 export type SandboxOutcome = 'loaded' | 'failed';
 
-/**
- * The sandbox step a failed content load stopped at (`content_fetch`,
- * `verify`, ...), when it says. It becomes a Sentry tag, so anything that is
- * not a short snake_case token is dropped rather than trusted: the message
- * comes from another origin.
- */
+/** Becomes a Sentry tag from another origin, so anything but a short snake_case token is dropped. */
 export type SandboxFailedStep = string | undefined;
 
 const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
 
-// One-shot subscribers for the sandbox's terminal `done` signal. The host
-// uses it to time telemetry that must not be captured before the content
-// fetch has run (the bulletin chain is only dialed during that fetch).
+// One-shot, for telemetry that must wait until the content fetch has dialled the Bulletin Chain.
 const sandboxDoneCallbacks: ((outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void)[] = [];
 
 export function onSandboxDone(cb: (outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void): void {
@@ -615,23 +439,17 @@ export function onSandboxDone(cb: (outcome: SandboxOutcome, failedStep: SandboxF
 
 export function listenForSandboxStatus(): void {
   window.addEventListener('message', (event: MessageEvent) => {
-    // Cheap shape check first — `message` fires for all postMessage traffic
-    // (bridge, bitswap relay, extensions); only parse the origin once a message
-    // is actually a loading-status candidate. The origin gate still runs before
-    // any side effect. Mirrors `listenForSandboxBitswap`'s check ordering.
+    // Cheap shape check before the origin parse, since `message` carries all postMessage traffic.
     const data = event.data as Record<string, unknown> | null;
     if (data === null || typeof data !== 'object' || data['type'] !== 'dotli:loading-status') {
       return;
     }
+    // Otherwise any frame or extension could spoof the status or dismiss the overlay early.
     if (!isSandboxOrigin(event.origin)) {
       return;
     }
-    // The progress prose the sandbox writes is written for a developer reading
-    // the console, so it is left there. The stage messages narrate this step
-    // to the user, and `done` is the part the loading screen acts on.
-    // A `done` without an outcome only clears the overlay for a prompt the
-    // sandbox shows before its content has loaded (the archive password), so
-    // the callbacks wait for the outcome that ends the load.
+    // A `done` without an outcome only clears the overlay for an early sandbox prompt such as the
+    // archive password, so the callbacks wait for the outcome.
     if (data['done'] === true) {
       dismissLoading();
       const outcome = data['outcome'];

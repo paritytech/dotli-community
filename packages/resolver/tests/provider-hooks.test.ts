@@ -222,8 +222,7 @@ describe('smoldot chain provider hooks', () => {
     expect(chainHooks.onStatus).toHaveBeenLastCalledWith('disconnected');
   });
 
-  // `fatalMessage` latches for the life of the module, so each fatal check
-  // loads its own copy of the provider instead of the file-wide import.
+  // `fatalMessage` latches for the module's life, so each fatal check loads its own copy.
   describe('fatal reporting', () => {
     interface Fresh {
       provider: typeof ProviderModule;
@@ -232,7 +231,6 @@ describe('smoldot chain provider hooks', () => {
       event: Mock<(name: string, attrs?: Record<string, unknown>) => void>;
     }
 
-    /** A fresh provider, with the log it writes to (fresh too) spied on. */
     async function freshProvider(): Promise<Fresh> {
       vi.resetModules();
       const { log } = await import('@dotli/shared');

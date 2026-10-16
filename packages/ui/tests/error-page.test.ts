@@ -12,8 +12,7 @@ beforeEach(() => {
 });
 
 describe('showErrorPage escaping', () => {
-  // The detail line carries the domain the visitor typed, so every segment of
-  // it is attacker-influenced. A raw `innerHTML` write here is an XSS sink.
+  // The detail carries the typed domain, so it is attacker-influenced and must never reach `innerHTML`.
   it('As a visitor, markup in an error message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: XSS });
     expect(document.querySelector('img')).toBeNull();
@@ -83,8 +82,7 @@ describe('showErrorPage primary action', () => {
     expect(query(document, '#error-retry-btn-1').hasAttribute('data-primary')).toBe(false);
   });
 
-  // The gated failover screen puts `Go Back` second and marks it primary, so
-  // this ordering is the one the two-step confirmation depends on.
+  // The gated failover screen puts `Go Back` second and primary, and its two-step confirmation depends on that.
   it('As a visitor, the button marked primary is the recommended one wherever it sits', () => {
     showErrorPage({
       title: 't',
@@ -97,8 +95,7 @@ describe('showErrorPage primary action', () => {
     expect(query(document, '#error-retry-btn-1').hasAttribute('data-primary')).toBe(true);
   });
 
-  // Reading order, DOM order and tab order have to agree. Placing the primary
-  // with CSS `order` instead left the tab sequence running right to left.
+  // Reading, DOM and tab order must agree, so the primary is never placed with CSS `order`.
   it('As a keyboard user, I reach the buttons in the order I read them', () => {
     showErrorPage({
       title: 't',
@@ -120,10 +117,8 @@ describe('showErrorPage primary action', () => {
     expect(labels).toEqual(['Only']);
   });
 
-  // The distinguishing case: the primary is first in the array but rendered
-  // last, so an id keyed on render position instead of array position would
-  // hand `#error-retry-btn` to the wrong button. The reverse arrangement does
-  // not catch it, because there the two positions coincide.
+  // The primary is first in the array but rendered last, the only arrangement that catches an id keyed on render
+  // position.
   it('As a test author, the first action keeps its id even when it renders last', () => {
     showErrorPage({
       title: 't',
@@ -191,9 +186,7 @@ describe('showErrorPage optional blocks', () => {
 });
 
 describe('showErrorPage focus', () => {
-  // The button that triggered the render is gone, so without this the focus
-  // lands on body and a screen reader announces nothing. The interstitial
-  // replaces one error screen with another in place, which is the worst case.
+  // The triggering button is gone, so unless focus moves a screen reader announces nothing.
   it('As a screen-reader user, the new screen is announced when it replaces the old one', () => {
     showErrorPage({ title: "Your connection won't be verified" });
     const title = byTestId('error-page-title');

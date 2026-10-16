@@ -1,11 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// TrUAPI debug event store
-//
-// Ring buffer of debug events from TrUAPI wire frames and dotli-internal
-// boot/resolve/render/bridge/failover sources.
-//
 // Events are never mutated after insertion.
 
 import type { DotliDebugEvent } from './dotli-debug-types.js';
@@ -18,7 +13,7 @@ export interface TruapiDebugMessageEvent {
   payload: { tag: string; value: unknown };
 }
 
-/** Monotonic sequence number assigned at insertion time. Stable, unique, and sortable. */
+/** Monotonic, assigned at insertion. */
 export type EventSeq = number;
 
 export interface StoredTruapiEvent {
@@ -27,7 +22,6 @@ export interface StoredTruapiEvent {
   receivedAt: number;
   direction: TruapiDebugMessageEvent['direction'];
   productId: string | undefined;
-  /** Correlation key for TrUAPI groups (request/response, subscription). */
   requestId: string;
   tag: string;
   payload: unknown;
@@ -40,20 +34,17 @@ export interface StoredSystemEvent {
   source: 'dotli';
   layer: string;
   event: string;
-  /** Correlation key for multi-event system flows (one flow = one box). */
   flowId: string;
   payload: unknown;
 }
 
 export type StoredEvent = StoredTruapiEvent | StoredSystemEvent;
 
-/** Stable key used for grouping: `requestId` for truapi, `flowId` for system. */
 export function correlationKeyOf(ev: StoredEvent): string {
   return ev.kind === 'truapi' ? ev.requestId : ev.flowId;
 }
 
 export interface EventStoreConfig {
-  /** Hard cap on retained events. Oldest overflow entries are dropped. */
   capacity: number;
 }
 
@@ -65,13 +56,10 @@ export class EventStore {
   private paused = false;
   private nextSeq = 0;
   private droppedCount = 0;
-  /** Backing counter for `version()`. */
   private versionCount = 0;
-  /** Correlation key mapped to the first event observed with that key. */
   private readonly firstByKey = new Map<string, StoredEvent>();
-  /** Each event's group anchor as it stood at insert time. */
   private readonly anchors = new WeakMap<StoredEvent, StoredEvent>();
-  /** Retained TrUAPI events per product id, so `productIds()` needs no scan. */
+  /** Kept so `productIds()` needs no scan. */
   private readonly productCounts = new Map<string | undefined, number>();
   private readonly listeners = new Set<Listener>();
 
@@ -79,7 +67,6 @@ export class EventStore {
     this.capacity = config.capacity;
   }
 
-  /** Number of events evicted from the ring buffer since the last clear(). */
   dropped(): number {
     return this.droppedCount;
   }
@@ -104,7 +91,6 @@ export class EventStore {
     this.notify();
   }
 
-  /** Insert a TrUAPI host-to-product event. */
   insertTruapi(ev: TruapiDebugMessageEvent): void {
     if (this.paused) {
       return;
@@ -122,7 +108,6 @@ export class EventStore {
     this.pushAndEvict(stored);
   }
 
-  /** Insert a dotli-internal system event (boot/resolve/render/bridge/failover). */
   insertDotli(ev: DotliDebugEvent): void {
     if (this.paused) {
       return;
@@ -181,25 +166,19 @@ export class EventStore {
     return this.buf;
   }
 
-  /**
-   * First retained event for a given correlation key, the anchor of a
-   * flow. Used to compute latency/duration inside a flow group.
-   */
   firstInGroup(key: string): StoredEvent | undefined {
     return this.firstByKey.get(key);
   }
 
   /**
-   * The first event of `ev`'s group as it stood when `ev` was inserted, or
-   * undefined when `ev` itself opened the group. Unlike `firstInGroup`, it
-   * survives the anchor's eviction, so a row's latency never depends on when
-   * the row was drawn.
+   * The group's first event as it stood when `ev` was inserted, undefined when `ev` opened the group.
+   * Unlike `firstInGroup`, it survives the anchor's eviction, so a row's latency never depends on when it was drawn.
    */
   anchorOf(ev: StoredEvent): StoredEvent | undefined {
     return this.anchors.get(ev);
   }
 
-  /** Lookup by seq. O(N) scan, used only on click/detail paths. */
+  /** O(N), used only on click and detail paths. */
   getBySeq(seq: EventSeq): StoredEvent | undefined {
     for (let i = this.buf.length - 1; i >= 0; i--) {
       const ev = this.buf[i];
@@ -210,7 +189,6 @@ export class EventStore {
     return undefined;
   }
 
-  /** Every retained event sharing a correlation key, in insertion order. */
   eventsInGroup(key: string): StoredEvent[] {
     const out: StoredEvent[] = [];
     for (const e of this.buf) {
@@ -221,13 +199,11 @@ export class EventStore {
     return out;
   }
 
-  /** Back-compat alias: truapi events used to call this by the requestId. */
+  /** Back-compat alias of `eventsInGroup`. */
   eventsForRequestId(requestId: string): StoredEvent[] {
     return this.eventsInGroup(requestId);
   }
 
-  /** Discover every distinct productId present in the buffer (incl. `undefined`).
-   *  System events have no productId and do not contribute. */
   productIds(): (string | undefined)[] {
     return Array.from(this.productCounts.keys());
   }
@@ -237,12 +213,7 @@ export class EventStore {
     return () => this.listeners.delete(l);
   }
 
-  /**
-   * Monotonic counter bumped every time subscribers are notified (insert,
-   * clear, prune, pause/resume). Lets a consumer snapshot `list()` cheaply
-   * by comparing versions rather than diffing the array on every render.
-   * A paused insert returns before `notify()` runs, so it never bumps this.
-   */
+  /** Bumped on every notify, so a consumer can snapshot `list()` by comparing versions instead of diffing. */
   version(): number {
     return this.versionCount;
   }
@@ -261,13 +232,9 @@ export class EventStore {
 }
 
 /**
- * Index in `next` of the first event `prev` did not hold, for two snapshots
- * of one store taken in order. Events are appended in seq order and only
- * ever leave from the head (or all at once on `clear()`), so everything past
- * `prev`'s last seq is new. Walks back from the end: O(new events).
- *
- * A caller that reads the live ring buffer, which it cannot keep as a
- * snapshot, passes the last seq it saw as `{ lastSeq }` (-1 for none).
+ * Index in `next` of the first event `prev` did not hold.
+ * Events only leave from the head, so everything past `prev`'s last seq is new.
+ * A caller reading the live buffer, which it cannot snapshot, passes `{ lastSeq }` (-1 for none).
  */
 export function firstNewIndex(
   prev: readonly StoredEvent[] | { readonly lastSeq: EventSeq },

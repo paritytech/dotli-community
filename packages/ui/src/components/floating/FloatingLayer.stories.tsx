@@ -101,9 +101,8 @@ type Story = StoryObj<typeof meta>;
 const body = within(document.body);
 const surface = () => body.getByTestId('story-popover-surface');
 /**
- * Trusted input, a user's: the browser's light dismiss, invokers and close
- * requests act on it only, and a press in an iframe moves focus there.
- * Loaded on use, so the stories still load in Storybook outside Vitest.
+ * Trusted input, which light dismiss, invokers, close requests and iframe focus require.
+ * Imported lazily so Storybook loads the stories outside Vitest.
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 const openIt = async () => {

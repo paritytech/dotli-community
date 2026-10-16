@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Rows are keyed by role, and blocks and ticks by position (a row only ever
-// gains blocks at its end, and the axis always has the same ticks). So while
-// a load is in flight a redraw moves and relabels the nodes already there,
-// and a block keeps its node, and its native `title` tooltip, as it grows.
+// Blocks and ticks are keyed by position because rows only grow at the end, so a growing block keeps its node
+// and its `title` tooltip across redraws.
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';

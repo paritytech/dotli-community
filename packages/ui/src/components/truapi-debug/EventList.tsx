@@ -1,19 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// List view of the TrUAPI debug panel.
-//
-// Rows are keyed by event seq. The panel refreshes `events` at most once per
-// animation frame, and keyed reconciliation keeps every row that is still
-// visible as the same DOM node: new rows are appended, evicted ones removed.
-// A browser drops a click whose target node is replaced between pointerdown
-// and click, so rows must never be rebuilt under streaming traffic.
+// Rows are keyed by seq and must never be rebuilt under streaming traffic, because a browser drops a click
+// whose target node is replaced between pointerdown and click.
 
 import { createEffect, createSignal, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   formatLatency,
-  formatTime,
   correlationKeyOf,
   type EventSeq,
   type EventStore,
@@ -30,54 +24,49 @@ import {
 } from '@dotli/truapi-debug';
 
 import { createKeyedSignals, type KeyedSignals } from './keyed-signals.js';
+import { DirectionArrow } from './shared/DirectionArrow.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { IdBadge } from './shared/IdBadge.js';
+import { itemClass, itemListClass } from './shared/ItemList.js';
+import { LayerBadge } from './shared/LayerBadge.js';
+import { Latency } from './shared/Latency.js';
+import { MethodTag } from './shared/MethodTag.js';
+import { Timestamp } from './shared/Timestamp.js';
 import s from './EventList.module.css';
 
-/** A pending badge counts up with the clock rather than with traffic, and a
- *  host that has stalled is precisely one that has stopped emitting events,
- *  so the store cannot be what wakes it. */
+/** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
 const PENDING_TICK_MS = 1000;
 
 export interface Selection {
   seq: EventSeq;
-  /** Correlation key of the selected event; its siblings are `paired`. */
+  /** Correlation key. Events sharing it are `paired`. */
   key: string | null;
 }
 
-/**
- * Per-row reactive inputs, shared by every row. Each is a map of per-key
- * signals, so a row subscribes to its own entries only: a click, an arrow key or a pending
- * call's clock re-runs the rows it changes, never all 2000 (one signal read
- * by every row is a HUGE_FAN_OUT at capacity).
- */
+/** Per-key signals, so a selection or clock change re-runs only the rows it touches, not all of them. */
 interface RowContext {
-  /** The selected event, by seq. */
   selectedSeq: KeyedSignals<EventSeq, true>;
-  /** The selected event's group, by correlation key. */
+  /** By correlation key. */
   selectedKey: KeyedSignals<string, true>;
-  /** How long each call still waiting on a reply has waited, in ms, by
-   *  pending key. Absent once the reply lands. */
+  /** Ms waited by each call still open, by pending key. */
   waiting: KeyedSignals<string, number>;
 }
 
 export function EventList(props: {
-  /** The filtered events, in seq order. */
   events: readonly StoredEvent[];
-  /** Every retained event: a reply outside the filter still closes a call. */
+  /** Unfiltered, because a reply outside the filter still closes a call. */
   allEvents: readonly StoredEvent[];
-  /** When `allEvents` was read from the store. */
   refreshedAt: number;
   store: EventStore;
   selection: Selection | null;
   active: boolean;
-  /** A collapsed panel shows no rows, so the badges stand still. */
   collapsed: boolean;
   onSelect: (seq: EventSeq) => void;
   listRef: (el: HTMLDivElement) => void;
 }): JSX.Element {
   let list: HTMLDivElement | undefined;
 
-  // Writes happen in effect functions, never in a compute. Only the entries
-  // that flip are written, so only their rows re-run.
+  // Written in effect functions, never in a compute.
   const selectedSeq = createKeyedSignals<EventSeq, true>();
   const selectedKey = createKeyedSignals<string, true>();
   createEffect(
@@ -104,8 +93,6 @@ export function EventList(props: {
     },
   );
 
-  // The badge clock. Ticks only while the rows are on screen, and renders
-  // only while a call is pending.
   const tracker = new OpenCallTracker();
   const [tickedAt, setTickedAt] = createSignal(0);
   createEffect(
@@ -125,8 +112,7 @@ export function EventList(props: {
     },
   );
 
-  // Traffic writes only the calls it opened or closed; the tick, or coming
-  // back on screen, rewrites every badge once.
+  // Traffic writes only the calls it opened or closed. A tick, or coming back on screen, rewrites every badge.
   const waiting = createKeyedSignals<string, number>();
   let clockAt = 0;
   let wasLive = false;
@@ -135,8 +121,6 @@ export function EventList(props: {
       props.active && !props.collapsed
         ? {
             events: props.allEvents,
-            // The latest clock reading: the refresh that brought the rows,
-            // or the tick.
             tick: tickedAt(),
             now: Math.max(props.refreshedAt, tickedAt()),
           }
@@ -175,7 +159,7 @@ export function EventList(props: {
 
   return (
     <div
-      class={s['list']}
+      class={[itemListClass, s['list']]}
       data-testid="td-list"
       hidden={!props.active}
       role="list"
@@ -190,15 +174,11 @@ export function EventList(props: {
         if (seqAttr === undefined) {
           return;
         }
-        // Move focus to the list so keyboard navigation picks up immediately
-        // after a click. Without this, arrow keys would scroll the page
-        // instead of stepping through rows.
+        // Otherwise arrow keys after a click scroll the page instead of stepping rows.
         list?.focus({ preventScroll: true });
         props.onSelect(Number(seqAttr));
       }}
       onKeyDown={e => {
-        // Only while the list itself has focus (tabindex=0), so typing in the
-        // filter inputs and browser shortcuts are left alone.
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
           return;
         }
@@ -211,10 +191,8 @@ export function EventList(props: {
         const currentIdx = selected === null ? -1 : events.findIndex(ev => ev.seq === selected.seq);
         let nextIdx: number;
         if (e.key === 'ArrowDown') {
-          // From nothing, the first row; otherwise the next, clamped to the last.
           nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, events.length - 1);
         } else {
-          // From nothing, the last row; otherwise the previous, clamped to the first.
           nextIdx = currentIdx < 0 ? events.length - 1 : Math.max(currentIdx - 1, 0);
         }
         const nextSeq = events[nextIdx]?.seq;
@@ -228,11 +206,7 @@ export function EventList(props: {
       <For
         each={props.events}
         keyed={ev => ev.seq}
-        fallback={
-          <div class={s['empty']} data-testid="td-empty">
-            No events match the current filter.
-          </div>
-        }
+        fallback={<EmptyState testId="td-empty">No events match the current filter.</EmptyState>}
       >
         {ev => renderRow(untrack(ev), props.store, ctx)}
       </For>
@@ -241,17 +215,14 @@ export function EventList(props: {
 }
 
 /**
- * One list row. Stored events never change and rows are keyed by seq, so the
- * event is read once, at creation.
+ * One list row, reading its immutable event once.
  *
- * A render helper rather than a component: in dev builds every component
- * instance gets its own refresh wrapper, and the list would then track one
- * source per row (a HUGE_FAN_IN diagnostic at the 2000-event capacity).
+ * A helper, not a component, because dev builds wrap each component instance and the list would track one
+ * source per row (HUGE_FAN_IN at capacity).
  */
 function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Element {
   const key = correlationKeyOf(ev);
-  // Measured against the group's first event as it stood at insert time, so
-  // a row drawn after that event was evicted shows the same latency.
+  // The anchor is captured at insert time, so a row drawn after the group head was evicted keeps its latency.
   const anchor = store.anchorOf(ev);
   const latency = anchor !== undefined ? `+${formatLatency(ev.receivedAt - anchor.receivedAt)}` : null;
 
@@ -260,16 +231,14 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
 
   return (
     <div
-      class={s['row']}
+      class={[itemClass, s['row']]}
       data-testid="td-row"
       data-selection={selection()}
       data-system={ev.kind === 'system' ? '' : undefined}
       data-seq={String(ev.seq)}
       role="listitem"
     >
-      <span class={s['time']} data-testid="td-time">
-        {formatTime(ev.receivedAt)}
-      </span>
+      <Timestamp at={ev.receivedAt} />
       {ev.kind === 'truapi' ? (
         <TruapiCells event={ev} latency={latency} ctx={ctx} />
       ) : (
@@ -279,40 +248,16 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
   );
 }
 
-function Latency(props: { text: string | null }): JSX.Element {
-  return (
-    <Show when={props.text}>
-      {text => (
-        <>
-          {' '}
-          <span class={s['latency']} data-testid="td-latency">
-            {text()}
-          </span>
-        </>
-      )}
-    </Show>
-  );
-}
-
 function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; ctx: RowContext }): JSX.Element {
   const ev = untrack(() => props.event);
   const ctx = untrack(() => props.ctx);
   const data = truapiRowData(ev, pendingKeyOf(ev));
   const pendingKey = data.pendingKey;
-  /** Reads this row's own entry only. */
   const waiting = (): number | undefined => (pendingKey === null ? undefined : ctx.waiting.read(pendingKey));
 
   return (
     <>
-      {data.direction === 'outgoing' ? (
-        <span class={s['arrowOut']} data-testid="td-arrow-out">
-          ▶
-        </span>
-      ) : (
-        <span class={s['arrowIn']} data-testid="td-arrow-in">
-          ◀
-        </span>
-      )}
+      <DirectionArrow direction={data.direction} />
       {data.productId === undefined ? (
         <span class={s['product']} data-testid="td-product" data-anon="">
           (no id)
@@ -322,20 +267,10 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
           {data.productId}
         </span>
       )}
-      <span
-        class={s['rid']}
-        data-testid="td-rid"
-        style={{ color: data.ridColor }}
-        title={`requestId: ${data.requestId}`}
-      >
-        {data.ridShort}
-      </span>
+      <IdBadge id={data.requestId} testId="td-rid" title={`requestId: ${data.requestId}`} />
       <span class={s['tagAndSummary']}>
-        <span class={s['tag']} data-testid="td-tag" data-kind={data.tagKind}>
-          {data.displayTag}
-        </span>
+        <MethodTag kind={data.tagKind}>{data.displayTag}</MethodTag>
         <Latency text={untrack(() => props.latency)} />
-        {/* Present until the reply lands, counting up on the clock. */}
         <Show when={waiting() !== undefined}>
           <span
             class={s['pending']}
@@ -360,16 +295,10 @@ function SystemCells(props: { event: StoredSystemEvent; latency: string | null }
   const data = systemRowData(untrack(() => props.event));
   return (
     <>
-      <span class={s['layer']} data-testid="td-layer-badge" data-layer={data.layer} title={`source: ${data.source}`}>
-        {data.layer}
-      </span>
-      <span class={s['rid']} data-testid="td-rid" style={{ color: data.ridColor }} title={`flowId: ${data.flowId}`}>
-        {data.flowIdShort}
-      </span>
+      <LayerBadge layer={data.layer} title={`source: ${data.source}`} />
+      <IdBadge id={data.flowId} testId="td-rid" title={`flowId: ${data.flowId}`} />
       <span class={s['tagAndSummary']}>
-        <span class={s['tag']} data-testid="td-tag" data-kind="system">
-          {data.eventText}
-        </span>
+        <MethodTag kind="system">{data.eventText}</MethodTag>
         <Latency text={untrack(() => props.latency)} />
         <span class={s['summary']} data-testid="td-summary">
           {data.summary}

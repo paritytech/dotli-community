@@ -65,6 +65,22 @@ export const Disabled: Story = {
   },
 };
 
+/** Toggle `loading` off to watch the circle grow to the label. */
+export const Loading: Story = {
+  args: { loading: true, 'aria-label': 'Continue' },
+  play: async ({ args, canvas, userEvent, step }) => {
+    const button = canvas.getByRole('button', { name: 'Continue' });
+    await step('Then the button is busy and shows no label', async () => {
+      await expect(button).toHaveAttribute('aria-busy', 'true');
+      await expect(button).not.toHaveTextContent('Continue');
+    });
+    await step('When I press it, nothing happens', async () => {
+      await userEvent.click(button);
+      await expect(args.onClick).not.toHaveBeenCalled();
+    });
+  },
+};
+
 export const Link: Story = {
   render: () => (
     <ButtonLink href="https://dot.li" variant="primary">

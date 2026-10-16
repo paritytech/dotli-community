@@ -3,11 +3,7 @@
 
 import type { TopbarState } from './topbar.js';
 
-/**
- * Whether the collapsed capsule leads with the pulsing action dot: chat has
- * unread messages, a prompt waits behind the one on screen, or a prompt is
- * open while the bar is collapsed.
- */
+/** Whether the collapsed capsule leads with the pulsing action dot. */
 export function needsAction(
   state: Pick<TopbarState, 'visible' | 'blockingModalActive' | 'blockingModalsWaiting'>,
   chatUnread: number,

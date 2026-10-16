@@ -1,18 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Build-time plugin: inject the runtime network config script, but only into
-// builds that opt in.
-//
-// The overridable fields are endpoints only — never `genesis` or `dotns`, see
-// network.ts — so the blast radius of this hook is small by construction. The
-// hosted deployments still have no use for it, so they do not carry it at all:
-// injecting on opt-in rather than stripping on opt-out means a default build's
-// HTML is byte-identical to one from before runtime config existed. The reader
-// side is gated separately in network.ts, so neither half alone enables it.
-//
-// Imported by the three vite configs and the preview/serve scripts through
-// `@config/vite/runtime-network-config`.
+// Injected only on opt-in, so hosted builds do not carry the hook at all. The reader side is gated separately in
+// network.ts, so neither half alone enables it.
 
 import type { Plugin } from 'vite';
 
@@ -20,19 +10,13 @@ import type { Plugin } from 'vite';
 const SCRIPT_SRC = '/dotli-network.js';
 
 /**
- * The script body, from `$DOTLI_NETWORK` — the same variable the container
- * entrypoint reads, so a local run and a container run are configured
- * identically. Empty/unset means no overrides, i.e. the built-in networks.
- *
- * Exported so `scripts/preview-server.ts` serves the same bytes as the dev
- * servers. Something must serve this path: without it the injected tag hits
- * whatever the server does with an unknown path, and an SPA fallback answers 200
- * with HTML that the browser then tries to execute as JavaScript.
+ * The script body, from the same `$DOTLI_NETWORK` the container entrypoint reads.
+ * Every server must serve this path, or an SPA fallback answers with HTML the browser runs as JavaScript.
  */
 export function runtimeNetworkConfigScriptBody(): string {
   const raw = process.env['DOTLI_NETWORK']?.trim();
   const config = raw === undefined || raw === '' ? '{}' : raw;
-  // Parsed only to fail early on a typo; the original text is what gets served.
+  // Parsed only to fail early on a typo. The original text is served.
   try {
     JSON.parse(config);
   } catch (err) {
@@ -41,14 +25,7 @@ export function runtimeNetworkConfigScriptBody(): string {
   return `window.__DOTLI_NETWORK__ = ${config};\n`;
 }
 
-/**
- * Injects `<script src="/dotli-network.js">` at the top of <head> when
- * `VITE_RUNTIME_NETWORK_CONFIG === "true"`, and does nothing otherwise.
- *
- * Blocking and classic on purpose. It must set the global before the deferred
- * module bundle runs so every reader in `@dotli/config/network` can stay
- * synchronous — the same trick the apps already use to pre-open IndexedDB.
- */
+/** A blocking classic script, so the global is set before the module bundle runs and every reader stays synchronous. */
 export function runtimeNetworkConfigScript(): Plugin {
   const enabled = process.env['VITE_RUNTIME_NETWORK_CONFIG'] === 'true';
   return {
@@ -65,9 +42,7 @@ export function runtimeNetworkConfigScript(): Plugin {
         },
       ];
     },
-    // nginx serves this path in the container; under `vite dev` nothing would, so
-    // the injected tag would 404 and the global would never be set. Serving it
-    // here is what makes runtime config testable without building an image.
+    // nginx serves this path in the container. Under `vite dev` nothing else would.
     configureServer(server) {
       if (!enabled) {
         return;

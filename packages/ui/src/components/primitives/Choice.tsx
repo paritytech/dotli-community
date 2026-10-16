@@ -70,12 +70,10 @@ export function Choice(props: ChoiceProps): JSX.Element {
             checked={props.selected}
             disabled={radio().disabled}
             onClick={ev => {
-              // The owner decides. A cancelled click makes the browser restore
-              // the radio that was checked, so a refused pick leaves the group
-              // as it was. Arrow keys click too, and still move the focus.
+              // The owner decides. Cancelling makes the browser restore the previous
+              // radio, so a refused pick changes nothing. Arrow keys fire click too.
               ev.preventDefault();
-              // Safari leaves the focus where it was on a pointer pick. On the
-              // radio, the arrow keys go on from the pick.
+              // Safari does not focus on a pointer pick, and arrow keys must go on from it.
               ev.currentTarget.focus();
               if (!props.selected) {
                 radio().onChoose();

@@ -1,9 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Every store but the auth state skips a write that would not change what
-// it holds, so no reader recomputes for it. The window events some setters
-// dispatch are not the store's notification: they still fire as before.
+// Every store but the auth state skips a write that would not change it. The window events some setters dispatch
+// still fire.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,12 +13,7 @@ import { CHAT_AVAILABILITY_EVENT } from '@dotli/shared';
 import type { ReadableStore } from '../../src/state/create-store.js';
 import { resetStores } from '../helpers/solid.js';
 import { getLoadingState, loadingStore, updateLoading } from '../../src/state/loading.js';
-import {
-  recordChainsButtonVisible,
-  setBlockingModalActive,
-  setTopbarVisible,
-  topbarStore,
-} from '../../src/state/topbar.js';
+import { setBlockingModalActive, setTopbarVisible, topbarStore } from '../../src/state/topbar.js';
 import {
   chatPanelStore,
   initChatPanelState,
@@ -39,7 +33,6 @@ import {
   urlPillStore,
 } from '../../src/state/url-pill.js';
 
-/** Count the store's notifications from now on. */
 function countNotifications<T>(store: ReadableStore<T>): {
   count: () => number;
   stop: () => void;
@@ -51,7 +44,6 @@ function countNotifications<T>(store: ReadableStore<T>): {
   return { count: () => count, stop };
 }
 
-/** Count the window event `name` from now on. */
 function countEvents(name: string): { count: () => number; stop: () => void } {
   let count = 0;
   const listener = (): void => {
@@ -113,15 +105,13 @@ describe('store equality', () => {
     topbar.stop();
   });
 
-  it('As the topbar, an unchanged blocking-modal flag or chains button notifies nobody', () => {
+  it('As the topbar, an unchanged blocking-modal flag notifies nobody', () => {
     // Given
     setBlockingModalActive(true);
-    recordChainsButtonVisible(true);
     const topbar = countNotifications(topbarStore);
 
     // When
     setBlockingModalActive(true);
-    recordChainsButtonVisible(true);
 
     // Then
     expect(topbar.count()).toBe(0);

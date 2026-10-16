@@ -1,0 +1,23 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The landing page's entry. It signs in through the same core as the shell, so it shares the shell's startup, but it
+// registers no service worker and loads no product.
+
+// Must stay the first import: it starts Sentry before any other module evaluates.
+import './boot.js';
+import { log } from '@dotli/shared';
+import { createBootFlowId, reportBootFailure, startHost } from './startup.js';
+
+async function main(): Promise<void> {
+  // No nested dot.li.
+  if (window.self !== window.top) {
+    return;
+  }
+
+  await startHost(createBootFlowId());
+  performance.mark('dotli:main:end');
+  log.event('Route: landing page', { flow: 'boot' });
+}
+
+main().catch(reportBootFailure);

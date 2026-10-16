@@ -6,10 +6,8 @@ import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
 
 /**
- * A surface's content that failed (a `lazy()` chunk gone after a deploy, or
- * a throw): reported once under `root` (`popover:<id>`, `tooltip:<id>`),
- * then `fail` closes the surface. Its own module, so Tooltip does not pull
- * the sheet into its chunk.
+ * Reports a surface's failed content (a chunk gone after a deploy, or a throw) once, then closes it via `fail`.
+ * Its own module so Tooltip doesn't pull the sheet into its chunk.
  */
 export function Broken(props: { root: string; error: unknown; fail: () => void }): JSX.Element {
   createEffect(

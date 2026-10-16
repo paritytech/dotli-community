@@ -19,9 +19,6 @@ describe('gatewayUnreachable', () => {
     expect(gatewayUnreachable('')).toBe("Your browser couldn't connect to the trusted provider.");
   });
 
-  // The caller supplies the host, never the noun. A caller that passes its own
-  // "a trusted provider" fallback renders "the trusted provider a trusted
-  // provider", which is the bug this sentence is shaped to make impossible.
   it('As a visitor, I never read the words trusted provider twice in a row', () => {
     expect(gatewayUnreachable(undefined)).not.toContain('provider a trusted');
     expect(gatewayUnreachable('ipfs.example.io')).toContain('the trusted provider ipfs.example.io.');
@@ -45,8 +42,7 @@ describe('endpointHost', () => {
     expect(endpointHost('')).toBeUndefined();
   });
 
-  // An unparseable value is still more use to a visitor than nothing, since it
-  // is what an operator would have typed into the config.
+  // An unparseable value is what an operator typed into the config, so it still helps the visitor.
   it('As a caller, an unparseable endpoint comes back verbatim', () => {
     expect(endpointHost('not a url')).toBe('not a url');
   });

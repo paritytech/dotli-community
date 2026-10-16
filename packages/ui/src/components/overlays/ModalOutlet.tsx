@@ -7,7 +7,6 @@ import { modalsStore, type ModalEntry } from '../../state/modals.js';
 import { useStore } from '../use-store.js';
 import { PromptDialog } from '../entities/PromptDialog.js';
 
-/** Shows the first queued dialog; the rest wait their turn. */
 export function ModalOutlet(): JSX.Element {
   const entries = useStore(modalsStore);
   return (

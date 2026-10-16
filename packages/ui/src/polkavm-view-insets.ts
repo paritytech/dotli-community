@@ -103,7 +103,7 @@ export function installPolkaVmViewInsetsRelay(iframe: HTMLIFrameElement, targetO
   let topbarOffset: boolean | null = null;
   const updateProbe = (): void => {
     const state = topbarStore.get();
-    const reserve = state.present && !state.landing;
+    const reserve = state.present;
     if (reserve === topbarOffset) {
       return;
     }

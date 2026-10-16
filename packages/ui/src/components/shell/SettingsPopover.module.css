@@ -2,5 +2,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 .popover {
-  width: var(--w-pop-xl);
+  width: var(--w-pop-lg);
 }

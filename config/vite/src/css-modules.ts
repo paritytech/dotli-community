@@ -3,13 +3,7 @@
 
 /**
  * CSS-modules options shared by the host, the sandbox and the ui tests.
- *
- * In dev a class is `Spinner_spinner_ab12`, so a name in devtools points at
- * its file. In production it is the next name of a build-wide counter (`a`,
- * `b`, ..., `z`, `aa`, `ab`, ...): the names ship in both the CSS and the JS, so
- * the shortest names keep both small. One counter serves every Vite
- * environment of a build (Astro's prerender and client builds run in one
- * process), so the server-rendered HTML and the client code agree on a name.
+ * One counter serves every Vite environment of a build, so prerendered HTML and client code agree on a name.
  */
 
 import { createHash } from 'node:crypto';
@@ -22,11 +16,7 @@ const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-/**
- * The `index`th name, shortest first and never repeated: a letter, then the
- * rest of the index in bijective base 36 (no digit stands for zero, so every
- * suffix is distinct, `a`, `aa`, `ab` included).
- */
+/** The `index`th name, shortest first and never repeated: a letter, then the rest in bijective base 36. */
 function shortName(index: number) {
   let name = LETTERS.charAt(index % LETTERS.length);
   let rest = Math.floor(index / LETTERS.length);

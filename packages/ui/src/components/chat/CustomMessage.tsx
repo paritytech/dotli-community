@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Visibility gates both the live subscription and its tree's host resources.
+
 import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { RenderContext, RendererNode } from '@parity/truapi';

@@ -16,29 +16,22 @@ jobs:
   perf:
     name: Continuous Integration
     runs-on: ubuntu-latest
-    # A healthy PR run takes a few minutes. Without a cap, iterations that
-    # never finish loading run into the spec's own timeouts for hours.
+    # Iterations that never finish loading would otherwise run the spec's own timeouts for hours.
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Installs the Chromium build that matches the workspace-pinned
-      # playwright. Installing from the repo root fetched the latest playwright
-      # instead, so every test failed at launch and `|| true` hid it.
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
 
       - name: Build
         env:
-          # Required build-time config (see packages/config/src/network.ts).
-          # Without it the host shell throws on boot and never mounts the
-          # app iframe, so every iteration times out.
+          # Required, or the host throws on boot and every iteration times out.
           VITE_NETWORKS: paseo-next-v2,previewnet
         run: npx turbo run build
 
-      # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
         if: github.event_name == 'pull_request'
         id: baseline
@@ -61,8 +54,6 @@ jobs:
             echo "::warning::No baseline found — run will be recorded without comparison"
           fi
 
-      # ── Run perf tests ─────────────────────────────────────────
-      # On main: long run (baseline). On PR: shorter run (compare).
       - name: Run perf tests (baseline)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: apps/host
@@ -86,7 +77,6 @@ jobs:
           npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts ||
           true
 
-      # ── main: upload baseline artifact ─────────────────────────
       - name: Upload baseline artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -96,7 +86,6 @@ jobs:
           retention-days: 90
           overwrite: true
 
-      # ── PR: build comparison report and comment ────────────────
       - name: Generate comparison
         if: github.event_name == 'pull_request' && env.HAVE_BASE == 'true'
         working-directory: apps/host

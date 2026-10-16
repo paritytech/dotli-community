@@ -3,10 +3,6 @@
 
 import { BASE_DOMAIN } from '@dotli/config';
 
-/**
- * The site of the `.dot` name `label`: its `.localhost` subdomain on this port
- * in local development, its subdomain of the base domain otherwise.
- */
 export function dotUrl(label: string): string {
   const host = window.location.hostname;
   if (host.endsWith('.localhost') || host === 'localhost') {

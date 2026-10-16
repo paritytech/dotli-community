@@ -14,10 +14,8 @@ import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './SettingsPopover.module.css';
 
-/** The popover's body, its own chunk. */
 const Settings = lazy(() => import('./SettingsContent.js'), { export: 'SettingsContent' });
 
-/** The board's settings sliders, on the button and the More menu row. */
 function SlidersIcon(): JSX.Element {
   return (
     <svg
@@ -34,31 +32,11 @@ function SlidersIcon(): JSX.Element {
 }
 
 /**
- * The settings button (`#mode-button`) and its popover (`#mode-popover`, a
- * floating Popover), an item of the topbar's action group island (see
- * src/islands/), rendered with the host page and hydrated.
+ * The settings button and its popover.
  *
- * The popover's body, SettingsContent, is its own chunk: the network and
- * transport choices, the cache switches, "Clear all caches" and the
- * diagnostics. Changes stay a draft until Save and apply, which saves them and
- * reloads (settings-actions.ts); each opening starts from the saved
- * settings. The button carries its badge (`data-badge`) while the session is
- * not verified (trusted providers).
- *
- * The saved settings come only from settingsStore, which the host seeds at
- * boot, possibly after this island mounted: until then the button shows no
- * mark and the popover nothing, and an opening under way when the store is
- * seeded fills in then. The island never reads @dotli/config itself,
- * because reading can rewrite a setting (getBackend drops a shared worker
- * choice the browser cannot run), and the boot's URL settings step must see
- * the saved value first.
- *
- * On a wide screen it is a non-modal popover, Tab looping inside it; on a
- * phone it is a modal bottom sheet, with a header and a close button. It
- * closes as every Popover does (floating/Popover.tsx). The topbar store's
- * `settingsOpen` follows it, and openSettings() (an error page's "Open
- * settings") opens it through that. The More menu's Settings row opens it
- * while the topbar has collapsed the button.
+ * Saved settings come only from settingsStore, which boot may seed after this island mounts. Never read
+ * @dotli/config here: a read can rewrite a setting (getBackend drops a shared worker choice the browser
+ * cannot run), and boot's URL settings step must see the saved value first.
  */
 export function SettingsPopover(): JSX.Element {
   const settings = useStore(settingsStore);

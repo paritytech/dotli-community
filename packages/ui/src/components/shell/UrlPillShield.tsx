@@ -8,11 +8,8 @@ import { useStore } from '../use-store.js';
 import { VerificationShield } from './VerificationShield.js';
 
 /**
- * The URL pill's verification shield, an island (see src/islands/) in the
- * pill the host page renders (apps/host/src/components/UrlPill.astro): the
- * shield and its explainer while the pill is a `.dot` product's, in the
- * state the url-pill store holds for it; nothing otherwise. The rest of the
- * pill is the page's markup, which bindUrlPill (url-pill.ts) fills in.
+ * Island that shows the verification shield while the URL pill is a `.dot` product's.
+ * The rest of the pill is page markup that bindUrlPill (url-pill.ts) fills in.
  */
 export function UrlPillShield(): JSX.Element {
   const shown = useStore(urlPillStore, state => pillShield(state) !== undefined);

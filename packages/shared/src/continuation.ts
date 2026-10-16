@@ -1,13 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Why this tab is about to reload, when the app itself is the one reloading it.
-//
-// A reload looks the same to the next page whichever button caused it, so the
-// code that reloads writes its reason here first and the next boot reads it
-// back. Telemetry uses it to tell a visitor who retried from the error page
-// from one who switched transport or applied new settings. Per tab, and never
-// more than the one value: it describes the next page load and nothing else.
+// Why the app is reloading this tab, written before the reload and read by the next boot for telemetry.
 
 export type Continuation = 'reload_button' | 'switch_backend' | 'settings_change' | 'app_update';
 
@@ -24,7 +18,7 @@ function isContinuation(value: string | null): value is Continuation {
   return value !== null && CONTINUATIONS.includes(value);
 }
 
-/** Record why the reload that follows is happening. Call right before reloading. */
+/** Call right before reloading. */
 export function markContinuation(reason: Continuation): void {
   try {
     sessionStorage.setItem(KEY, reason);
@@ -34,7 +28,6 @@ export function markContinuation(reason: Continuation): void {
   }
 }
 
-/** The reason the last page set before leaving, without consuming it. */
 export function peekContinuation(): Continuation | null {
   try {
     const value = sessionStorage.getItem(KEY);
@@ -45,7 +38,7 @@ export function peekContinuation(): Continuation | null {
   }
 }
 
-/** Read and clear the reason, so it describes exactly one page load. */
+/** Clears the reason, so it describes exactly one page load. */
 export function takeContinuation(): Continuation | null {
   const value = peekContinuation();
   try {

@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// TrUAPI timeline geometry
-//
-// Every rail, tick and box carries a `key` from its stable seq, so the view
-// can key its nodes on it and update a box in place as traffic streams in.
+// Every rail, tick and box is keyed by its stable seq, so the view updates a box in place as traffic streams in.
 
 import type { EventSeq, StoredEvent } from './event-store.js';
 import {
@@ -43,7 +40,7 @@ export interface TimelineTick {
 export interface TimelineBox {
   key: EventSeq;
   seq: EventSeq;
-  /** Every event the box stands for. Selecting any of them selects the box. */
+  /** Selecting any of them selects the box. */
   memberSeqs: readonly EventSeq[];
   x: number;
   y: number;
@@ -69,10 +66,7 @@ export interface TimelineLane {
   boxes: TimelineBox[];
 }
 
-/**
- * Lay the visible events out as swimlanes. Every lane shares one Y axis, so
- * the same height across lanes is the same moment in time.
- */
+/** Every lane shares one Y axis, so the same height across lanes is the same moment. */
 export function buildTimeline(events: readonly StoredEvent[]): TimelineLane[] {
   const layoutOpts = computeGlobalYPositions(events);
   return partitionIntoSwimlanes(events).map(sw => {
@@ -146,10 +140,6 @@ function boxOf(seg: SegmentEntry, lanesStartX: number): TimelineBox {
   };
 }
 
-/**
- * The tooltip for a box: method name, detail, and a pending marker so an
- * in-flight box reads differently from a complete one.
- */
 function segmentTooltip(seg: SegmentEntry): string {
   const parts = [seg.label];
   if (seg.detail !== undefined) {

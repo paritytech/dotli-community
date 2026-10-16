@@ -1,10 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Unit tests for the incremental bookkeeping the debug panel reads once per
-// frame: product ids, group anchors, the new tail of a snapshot, open calls
-// and the Resolution recorder. Each must follow the ring buffer exactly while
-// costing work proportional to what changed, not to what is retained.
+// The panel's per-frame bookkeeping must follow the ring buffer exactly, at a cost proportional to what
+// changed, not to what is retained.
 
 import { describe, expect, it } from 'vitest';
 import { createRenderEffect, createRoot, flush } from 'solid-js';
@@ -73,7 +71,7 @@ describe('EventStore.productIds()', () => {
     insert(store, 'a_request', '3', 'one.dot');
     expect(store.productIds().sort()).toEqual(['one.dot', undefined]);
 
-    // Evicts the first one.dot event; another is still retained.
+    // Evicts the first one.dot event, while another is still retained.
     insert(store, 'a_request', '4', 'two.dot');
     expect(store.productIds().sort()).toEqual(['one.dot', 'two.dot', undefined]);
 
@@ -131,7 +129,7 @@ describe('firstNewIndex()', () => {
   });
 });
 
-/** The tracker's spec, recomputed from the whole snapshot. */
+/** The reference result, recomputed from the whole snapshot. */
 function openCalls(events: readonly StoredEvent[]): Map<string, number> {
   const requestedAt = new Map<string, number>();
   const answered = new Set<string>();

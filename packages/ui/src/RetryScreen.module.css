@@ -1,10 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The loading screen's column, mark and lines, kept here rather than shared:
-   importing LoadingScreen.module.css from a page script alongside the
-   LoadingScreen island makes the page link that island's chunk sheet, a
-   second render-blocking copy of CSS that index.css already holds. */
+/* Duplicates the loading screen's styles because importing LoadingScreen.module.css here would link a
+   second render-blocking copy of that island's sheet. */
 
 .screen {
   display: flex;
@@ -51,8 +49,7 @@
   transform-origin: 128px 128px;
 }
 
-/* The loading screen's pulse: each petal lights up in turn, one 1.4 s cycle
-   for all six. Still under reduced motion. */
+/* Still under reduced motion. */
 @media (prefers-reduced-motion: no-preference) {
   .petal {
     animation: petal-pulse 1.4s linear infinite;

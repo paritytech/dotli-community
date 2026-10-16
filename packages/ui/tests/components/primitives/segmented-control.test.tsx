@@ -158,12 +158,10 @@ describe('SegmentedControl', () => {
   });
 });
 
-/** Each option's tabindex, in order. */
 function tabIndexes(): (string | null)[] {
   return TEST_IDS.map(id => byTestId(id).getAttribute('tabindex'));
 }
 
-/** A keydown on the focused element. */
 function press(key: string): KeyboardEvent {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
   (document.activeElement ?? document.body).dispatchEvent(event);

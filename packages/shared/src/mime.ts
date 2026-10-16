@@ -1,15 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li MIME type detection.
-//
-// Shared between archive.ts (main thread) and sw.ts (Service Worker).
-//
-// - Strip `?query` and `#fragment` before extracting the extension so
-//   `/foo.js?v=1` doesn't fall into the unknown-extension branch.
-// - Differentiate `no-ext` from `unknown-ext` from `mime-default` outcomes
-//   via the discriminated `getMimeTypeResult` helper, so callers can log
-//   which branch fired without parsing the response string.
 const MIME_TYPES: Record<string, string> = {
   html: 'text/html',
   htm: 'text/html',

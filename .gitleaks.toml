@@ -1,8 +1,4 @@
-# gitleaks configuration for dot.li
-#
-# Extends the built-in gitleaks ruleset and narrows the known false
-# positives so an enforced scan stays signal-rich. See the Secret Scan
-# workflow in .github/workflows/secret-scan.yml.
+# The default ruleset, minus known false positives.
 
 title = "dot.li gitleaks config"
 

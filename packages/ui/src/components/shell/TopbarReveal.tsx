@@ -15,16 +15,11 @@ import { useStore } from '../use-store.js';
 import s from './TopbarReveal.module.css';
 
 /**
- * The auto-hiding topbar's ways back (see topbar-autohide.ts), an island of
- * the host page right after `#app`, while the auto-hide is on:
+ * The auto-hiding topbar's ways back.
  *
- * - A skip-link style control, so one forward Tab out of the dApp reaches
- *   the bar: keys pressed inside the cross-origin frame never reach this
- *   document, which rules out a shortcut-only recovery. Its focus alone
- *   reveals the bar, so a passing Tab already shows what it does, and
- *   activating it hands the focus to the bar's first control.
- * - An invisible strip at the very top, so hover reaches the host document
- *   even when the pointer is over the product frame.
+ * - A skip-link style button: keys pressed inside the cross-origin frame never reach this document, so a
+ *   shortcut alone cannot recover the bar. One forward Tab out of the dApp reaches it instead.
+ * - An invisible strip at the top, so hover reaches the host document over the product frame.
  */
 export function TopbarReveal(): JSX.Element {
   let button: HTMLButtonElement | undefined;

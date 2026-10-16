@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The URL pill's shield island (components/shell/UrlPillShield.tsx): the
-// shield for a product pill, in the state the host set, and none otherwise.
-
 import { cleanup } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it } from 'vitest';
 import { UrlPillShield } from '../../../src/components/shell/UrlPillShield.js';

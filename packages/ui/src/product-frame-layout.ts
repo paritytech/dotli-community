@@ -1,37 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * The one writer of the product iframe's inline geometry.
- *
- * Several parties shape the frame: the bridge places each newly rendered frame,
- * the topbar says whether the frame keeps clear of it, the chat panel narrows it, and
- * the TrUAPI debug dock and the sandbox checker reserve an edge for their
- * panels. They each report their part here, and every change recomputes the
- * whole box from `productIframeBox()` and writes all of it, so a product reload
- * keeps the chat width and the docks, and the chat width keeps the safe-area
- * insets.
- */
+// The one writer of the product iframe's inline geometry. Every report recomputes and writes the whole
+// box, so a product reload keeps the chat width and docks, and the chat width keeps the safe-area insets.
 
 import { productIframeBox } from './product-iframe-box.js';
 import { getTopbarState } from './state/topbar.js';
 
 export interface TopbarLayout {
-  /**
-   * The frame keeps clear of the bar: below it on a touch device's pill,
-   * above it at the foot of a phone. Otherwise it takes the full height and
-   * the bar floats over it, as the pill and the capsule do.
-   */
+  /** The frame keeps clear of the bar. Otherwise it takes the full height and the bar floats over it. */
   offset: boolean;
 }
 
-/** Space a docked panel covers along the frame's edges, in px (0 for none). */
+/** In px. */
 export interface DockInset {
   right: number;
   bottom: number;
 }
 
-/** The panels that can dock over the frame, at the same time. */
 export type DockSource = 'debug' | 'sandbox-checker';
 
 interface LayoutState {
@@ -60,8 +46,7 @@ function write(): void {
   if (target === null) {
     return;
   }
-  // Floating (offset off), the frame never moves with the bar, so the
-  // product document never relayouts on a hide or a reveal.
+  // Floating, the frame never moves with the bar, so the product never relayouts on a hide or reveal.
   const box = productIframeBox({ topbarOffset: state.topbarOffset && getTopbarState().present });
   // Docks at the same edge stack, so their insets add up.
   let right = state.chatWidth;
@@ -96,35 +81,29 @@ export function attachProductFrame(iframe: HTMLIFrameElement, box: HTMLElement =
   write();
 }
 
-/**
- * The product frame on screen: the one attached last, while it is still in
- * the page. During a reload the outgoing frame can stay in `#app` while the
- * new one boots; this is always the new one.
- */
+/** The frame attached last. During a reload the outgoing frame can still be in `#app`. */
 export function currentProductFrame(): HTMLIFrameElement | null {
   const { frame } = state;
   return frame?.isConnected === true ? frame : null;
 }
 
-/** Report whether the frame keeps clear of the bar, from the topbar auto-hide. */
 export function setTopbarLayout(layout: TopbarLayout): void {
   state.topbarOffset = layout.offset;
   write();
 }
 
-/** Report the docked chat panel's width in px, 0 while it is closed. */
+/** 0 while the chat panel is closed. */
 export function setChatWidth(px: number): void {
   state.chatWidth = px;
   write();
 }
 
-/** Report the space `source`'s docked panel covers, all 0 once it is gone. */
 export function setDockInset(inset: DockInset, source: DockSource): void {
   state.docks[source] = inset;
   write();
 }
 
-/** Forget the frame and the reported layout. Tests only. */
+/** Tests only. */
 export function resetProductFrameLayout(): void {
   state = initialState();
 }

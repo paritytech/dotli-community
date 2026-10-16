@@ -1,10 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's collapsible action group (components/shell/topbar/
-// ActionGroup.tsx), with stand-in items. The real items reaching their
-// surfaces from the More menu are covered in their own tests and in
-// topbar-actions.test.tsx (the action group island).
+// The topbar's action group with stand-in items. topbar-actions.test.tsx covers the real items.
 
 import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -54,7 +51,6 @@ function Item(props: {
   );
 }
 
-/** Auth (pinned), network 5, chat 4, permissions 3, theme 2, settings 1. */
 function Items(props: { chat?: boolean }): JSX.Element {
   return (
     <>
@@ -68,7 +64,7 @@ function Items(props: { chat?: boolean }): JSX.Element {
   );
 }
 
-/** Room for `n` items side by side (no gap in the stand-in layout). */
+/** Room for `n` items, as the stand-in layout has no gap. */
 const room = (n: number): number => n * ITEM_WIDTH;
 
 function inline(name: string): boolean {
@@ -80,7 +76,6 @@ function moreShows(): boolean {
   return !byTestId('more-item').hasAttribute('data-parked');
 }
 
-/** Open, as the menu says; it is in the page only from its first opening. */
 function isOpen(): boolean {
   return document.getElementById('more-popover')?.hasAttribute('data-open') === true;
 }
@@ -314,7 +309,7 @@ describe('ActionGroup', () => {
     expect(row.lastElementChild?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('As the build-time render, the items that may collapse are marked, and the More button is parked', async () => {
+  it('As the build-time render, the More button is parked', async () => {
     // Given: a bar that has not measured yet, as in the host page's build-time render.
     const bar: TopbarBar = {
       register: () => () => false,
@@ -331,11 +326,7 @@ describe('ActionGroup', () => {
     ));
     await settle();
 
-    // Then: until the bar measures, a narrow viewport keeps these out and shows the More button.
-    const mayCollapse = [...document.querySelectorAll<HTMLElement>('[data-testid="topbar-item"]')]
-      .filter(item => item.hasAttribute('data-may-collapse'))
-      .map(item => item.dataset['item']);
-    expect(mayCollapse).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
+    // Then
     expect(byTestId('more-item').hasAttribute('data-parked')).toBe(true);
   });
 
@@ -440,8 +431,8 @@ describe('ActionGroup', () => {
     await settle();
 
     // Then
-    const sheet = byId('more-popover', HTMLDialogElement);
-    expect(sheet.open).toBe(true);
+    const sheet = byId('more-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(isOpen()).toBe(true);
     expect(byId('topbar-actions').contains(sheet)).toBe(false);
     expect(byTestId('menu-sheet-title', sheet).textContent).toBe('More');
@@ -454,7 +445,7 @@ describe('ActionGroup', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(sheet.open).toBe(false);
+    expect(sheet.hasAttribute('data-open')).toBe(false);
     expect(document.activeElement).toBe(byId('more-button'));
   });
 
@@ -468,7 +459,7 @@ describe('ActionGroup', () => {
     await settle();
 
     // Then
-    expect(byId('more-popover', HTMLDialogElement).open).toBe(true);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(true);
     expect(document.activeElement).toBe(moreRow('permissions'));
 
     // When

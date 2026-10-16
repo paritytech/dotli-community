@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The server renderer (src/server.ts), called the way Astro calls it: bound
-// to a page render's result, once per component on the page.
+// Called the way Astro calls it: bound to a page render's result, once per component on the page.
 
 import type { SSRResult } from 'astro';
 import type { JSX } from '@solidjs/web';

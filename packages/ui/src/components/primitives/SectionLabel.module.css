@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Wrapped in :where() so the consumer's class (its padding in a list, the
-   landing's page colours) wins whatever order the stylesheets load in. */
+/* :where() so a consumer's class wins whatever order the stylesheets load in. */
 :where(.label) {
   margin: 0;
   padding: 0 var(--sp-1);

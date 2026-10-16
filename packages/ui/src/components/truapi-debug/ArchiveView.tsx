@@ -1,16 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Archive view of the TrUAPI debug panel: the files of the product's CID, a
-// sidebar listing them and a pane showing the one selected. The archive is
-// read when the tab first shows (see archive-source.ts), once per CID.
-
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isEncrypted, type ArchiveFiles } from '@dotli/content';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import type { ArchiveLoader } from './archive-source.js';
+import { Bar } from './shared/Bar.js';
+import { CodeBlock } from './shared/CodeBlock.js';
+import { EmptyState } from './shared/EmptyState.js';
+import { Item, ItemList } from './shared/ItemList.js';
+import { Note } from './shared/Note.js';
+import { Pane } from './shared/Pane.js';
+import { Stack } from './shared/Stack.js';
 import s from './ArchiveView.module.css';
 
 interface ArchiveFile {
@@ -23,7 +26,6 @@ type ArchiveRead =
   | { status: 'loaded'; files: readonly ArchiveFile[]; total: number }
   | { status: 'failed'; reason: string };
 
-/** What the content pane shows for a file. */
 type Preview = { kind: 'encrypted' } | { kind: 'image' } | { kind: 'text'; text: string } | { kind: 'binary' };
 
 const IMAGE_TYPES: Readonly<Record<string, string>> = {
@@ -37,7 +39,7 @@ const IMAGE_TYPES: Readonly<Record<string, string>> = {
   bmp: 'image/bmp',
 };
 
-/** Text past this many characters is cut, so a huge bundle stays responsive. */
+/** Cut so a huge bundle stays responsive. */
 const MAX_TEXT_CHARS = 1_000_000;
 
 function imageType(path: string): string | undefined {
@@ -45,7 +47,6 @@ function imageType(path: string): string | undefined {
   return dot === -1 ? undefined : IMAGE_TYPES[path.slice(dot + 1).toLowerCase()];
 }
 
-/** The file as UTF-8 text, or null when it is not text. */
 function decodeText(bytes: Uint8Array): string | null {
   if (bytes.includes(0)) {
     return null;
@@ -85,11 +86,7 @@ function toFiles(files: ArchiveFiles): ArchiveRead {
   return { status: 'loaded', files: list, total: list.reduce((sum, file) => sum + file.bytes.length, 0) };
 }
 
-export function ArchiveView(props: {
-  active: boolean;
-  /** Reads the archive behind a CID. */
-  load: ArchiveLoader;
-}): JSX.Element {
+export function ArchiveView(props: { active: boolean; load: ArchiveLoader }): JSX.Element {
   const product = useStore(productStore);
   const cid = (): string | undefined => {
     const state = product();
@@ -99,8 +96,7 @@ export function ArchiveView(props: {
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [imageUrl, setImageUrl] = createSignal<string | null>(null);
 
-  // Read on first show, and again only for a new CID (a product reloaded
-  // under another one).
+  // Read on first show, and again only for a new CID.
   let readCid: string | null = null;
   createEffect(
     () => (props.active ? (cid() ?? null) : null),
@@ -136,7 +132,6 @@ export function ArchiveView(props: {
     return file === undefined ? undefined : preview(file);
   });
 
-  // An image previews through a blob URL, freed when another file is picked.
   let url: string | null = null;
   const freeUrl = (): void => {
     if (url !== null) {
@@ -174,67 +169,57 @@ export function ArchiveView(props: {
     <div class={s['archive']} data-testid="td-archive" hidden={!props.active}>
       <Switch>
         <Match when={product().status !== 'loaded'}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             No product loaded yet.
-          </div>
+          </EmptyState>
         </Match>
         <Match when={cid() === undefined}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             This product is not served from a CID, so it has no archive.
-          </div>
+          </EmptyState>
         </Match>
         <Match when={failure() !== undefined}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             Could not read the archive: {failure()}
-          </div>
+          </EmptyState>
         </Match>
         <Match when={loaded() === undefined}>
-          <div class={s['empty']} data-testid="td-archive-empty">
+          <EmptyState testId="td-archive-empty" class={s['whole']}>
             Reading archive {cid()}…
-          </div>
+          </EmptyState>
         </Match>
         <Match when={loaded()}>
           {archive => (
             <>
               <div class={s['sidebar']}>
-                <div class={s['summary']} data-testid="td-archive-summary">
+                <Bar testId="td-archive-summary">
                   {`${String(archive().files.length)} ${archive().files.length === 1 ? 'file' : 'files'} · ${formatBytes(archive().total)}`}
-                </div>
-                <ul class={s['files']}>
+                </Bar>
+                <ItemList>
                   <For each={archive().files}>
                     {file => (
-                      <li>
-                        <button
-                          type="button"
-                          class={s['file']}
-                          data-testid="td-archive-file"
-                          data-active={selectedPath() === file.path ? '' : undefined}
-                          data-path={file.path}
-                          title={file.path}
-                          onClick={() => {
-                            setSelectedPath(file.path);
-                          }}
-                        >
-                          <span class={s['path']}>{file.path}</span>
-                          <span class={s['size']}>{formatBytes(file.bytes.length)}</span>
-                        </button>
-                      </li>
+                      <Item
+                        testId="td-archive-file"
+                        value={file.path}
+                        selected={selectedPath() === file.path}
+                        title={file.path}
+                        meta={formatBytes(file.bytes.length)}
+                        onSelect={() => {
+                          setSelectedPath(file.path);
+                        }}
+                      >
+                        {file.path}
+                      </Item>
                     )}
                   </For>
-                </ul>
+                </ItemList>
               </div>
-              <div class={s['content']} data-testid="td-archive-content">
-                <Switch
-                  fallback={
-                    <div class={s['empty']} data-testid="td-archive-empty">
-                      Select a file.
-                    </div>
-                  }
-                >
+              <Pane testId="td-archive-content" padded>
+                <Switch fallback={<EmptyState testId="td-archive-empty">Select a file.</EmptyState>}>
                   <Match when={shown()?.kind === 'encrypted'}>
-                    <div class={s['empty']} data-testid="td-archive-empty">
+                    <EmptyState testId="td-archive-empty">
                       Encrypted, not decrypted: the sandbox asks for its password.
-                    </div>
+                    </EmptyState>
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
@@ -242,22 +227,22 @@ export function ArchiveView(props: {
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
-                    <div class={s['empty']} data-testid="td-archive-empty">
+                    <EmptyState testId="td-archive-empty">
                       Binary, {formatBytes(selected()?.bytes.length ?? 0)}
-                    </div>
+                    </EmptyState>
                   </Match>
                   <Match when={shownText()}>
                     {text => (
-                      <>
+                      <Stack>
                         <Show when={text().length > MAX_TEXT_CHARS}>
-                          <div class={s['note']}>Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.</div>
+                          <Note>Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.</Note>
                         </Show>
-                        <pre class={s['text']}>{text().slice(0, MAX_TEXT_CHARS)}</pre>
-                      </>
+                        <CodeBlock>{text().slice(0, MAX_TEXT_CHARS)}</CodeBlock>
+                      </Stack>
                     )}
                   </Match>
                 </Switch>
-              </div>
+              </Pane>
             </>
           )}
         </Match>

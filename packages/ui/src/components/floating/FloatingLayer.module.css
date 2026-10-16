@@ -1,12 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The glass every anchored surface draws. The base rule is wrapped in
-   :where(), so a consumer's own class (its width and look) wins whatever
-   order the stylesheets load in. The UA's [popover] box (inset 0, margin
-   auto, padding, border, Canvas, overflow auto) is reset first in the same
-   block, so the place set after it holds. `display` animates (allow-discrete),
-   and @starting-style gives the way in its first frame. */
+/* :where() so a consumer's class wins whatever the load order. The UA's [popover] box is reset first so the
+   placement set after it holds. */
 :where(.layer) {
   inset: auto;
   margin: 0;
@@ -39,25 +35,21 @@
     backdrop-filter: var(--chrome-blur);
   }
 }
-/* Under the topbar at its right edge: overlaps the bar's bottom so the
-   surface attaches to it. */
+/* Overlaps the bar's bottom so the surface attaches to it. */
 :where(.topbarEnd) {
   top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
 }
-/* Under its trigger, from the trigger's left edge. */
 :where(.triggerStart) {
   position-area: bottom span-right;
   margin-top: var(--pop-gap);
   transform-origin: top left;
 }
-/* The surface takes focus itself (tabindex -1) when it holds nothing that
-   does, and shows no ring for it. */
+/* The surface takes focus itself when it holds nothing focusable, with no ring. */
 .layer:focus-visible {
   outline: none;
 }
-/* The open `display` alone is wrapped in :where(), so a consumer's
-   `[data-open]` rule lays the surface out as a flex column or a grid. */
+/* Only the open `display` is in :where(), so a consumer's `[data-open]` rule can lay it out as flex or grid. */
 :where(.layer[data-open]) {
   display: block;
 }

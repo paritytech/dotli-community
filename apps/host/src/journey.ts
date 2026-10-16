@@ -1,25 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The attempts one visitor makes at opening one app, counted as a journey.
-//
-// Every page load is one attempt with its own resolution id. A journey strings
-// together the attempts of a tab until one of them reaches the app, so Sentry
-// can tell a failure the visitor recovered from (a reload, a transport switch)
-// from one they gave up on, instead of counting each retry as a new visitor.
-//
-// The id is random and lives in this tab's sessionStorage only: it dies with
-// the tab and never links two sessions, so it identifies a journey and not a
-// person. Each app is its own origin, so a journey never spans two apps. A
-// network change wipes this origin's sessionStorage (`wipeOriginState`), and
-// with it the journey: on another network it is a different app.
+// A journey strings a tab's page loads at one app together until one reaches it, so Sentry can tell a recovered
+// failure from an abandoned one. The id lives in sessionStorage only, so it never identifies a person.
 
 import { takeContinuation, type Continuation } from '@dotli/shared';
 
 /**
- * How this attempt began. The app's own reloads say why they reloaded (see
- * `markContinuation`). Anything else is read from the navigation itself, which
- * cannot tell a typed URL from a followed link.
+ * The app's own reloads say why (`markContinuation`). Others come from the navigation, which cannot tell a typed URL
+ * from a followed link.
  */
 export type AttemptEntry = Continuation | 'browser_reload' | 'back_forward' | 'navigation';
 
@@ -78,7 +67,6 @@ function newJourneyId(): string {
     : `journey-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 }
 
-/** Count this page load as the next attempt of the tab's journey for `label`. */
 export function beginAttempt(label: string): Attempt {
   const entry = takeContinuation() ?? navigationEntry();
   const stored = readJourney();
@@ -88,10 +76,7 @@ export function beginAttempt(label: string): Attempt {
   return { journeyId: journey.id, attemptNumber: journey.attempts, entry };
 }
 
-/**
- * Close the journey: the visitor reached the app, or learned there is nothing
- * to reach. The next load starts a new one.
- */
+/** The visitor reached the app, or learned there is nothing to reach. */
 export function endJourney(): void {
   try {
     sessionStorage.removeItem(KEY);

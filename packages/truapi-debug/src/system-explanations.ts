@@ -1,30 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Long-form explanations for every system event.
-//
-// The one-line `summariseSystemEvent` strings tell the reader *what*
-// an event captures. These entries tell them *what is happening in the
-// system* at that moment: which subsystem is active, what state just
-// changed, and what the downstream dependencies are. Surfaced in the
-// detail pane via a collapsible "What is this?" section.
-//
-// Keyed by `layer:event`. Every emit site must have an entry. The
-// test below (and the fallback) catches any drift.
+// Keyed by `layer:event`. Every emitted system event needs an entry.
 
 interface SystemExplanation {
-  /** Short title shown on the collapsible summary. */
   title: string;
-  /**
-   * Prose body. Line breaks are preserved. Aim for 3–6 sentences
-   * describing the phase, its triggers, and what it unblocks next.
-   */
+  /** Line breaks are preserved. Aim for 3 to 6 sentences on the phase, its triggers and what it unblocks. */
   body: string;
 }
 
 const EXPLANATIONS: Record<string, SystemExplanation> = {
-  // boot
-
   'boot:started': {
     title: 'Host boot started',
     body: `The host application has begun executing \`main()\` in \`apps/host/src/main.ts\`. At this point the browser URL has not been parsed yet, the topbar is not mounted, and no network requests have gone out — but the chosen mode and backend preferences have already been read from localStorage.
@@ -92,8 +77,6 @@ After this event, the TrUAPI bus starts producing traffic and the product is dri
 \`dependency\` identifies which subsystem failed: \`smoldot\` for light-client issues (bootnode connectivity, chain sync timeout, panics) or \`asset-hub-rpc\` for RPC endpoint failures (DNS, 502, read timeout).`,
   },
 
-  // resolve
-
   'resolve:started': {
     title: 'Name resolution started',
     body: `Beginning to resolve \`<label>.<tld>\` to its content CID. Two code paths exist:
@@ -136,8 +119,6 @@ These events drive the loading UI's phase bar and ship to this panel so you can 
 The host catches this and emits a \`boot:failed\` event (or a user-facing error with a failover button).`,
   },
 
-  // render
-
   'render:iframe_begin': {
     title: 'Product iframe creation starting',
     body: `The host is about to insert an \`<iframe>\` into the DOM for the product. Two modes:
@@ -152,8 +133,6 @@ The iframe's \`sandbox\` and \`allow\` attributes are configured here based on t
     title: 'Product iframe ready',
     body: `The iframe element is in the DOM and has started navigating to its URL. The product itself has not executed yet — that happens asynchronously as the browser loads the iframe content. Next up is the TrUAPI bridge setup, which runs in parallel.`,
   },
-
-  // bridge
 
   'bridge:setup_begin': {
     title: 'TrUAPI bridge wiring',
@@ -190,16 +169,12 @@ Gaps between \`setup_ready\` and \`first_inbound\` mean the product iframe wasn'
 Gaps between \`first_inbound\` and \`first_outbound\` imply a host-side problem (the handler wasn't registered, or the main thread was blocked). Under normal conditions these two events land in the same millisecond.`,
   },
 
-  // failover
-
   'failover:chain_backend': {
     title: 'Chain backend failover',
     body: `The user clicked the "try the other backend" button after a resolution failure. The host persists the new backend selection to localStorage and reloads the tab. On the next boot, \`boot:started\` will show the new backend and resolution will run against it.
 
 Tiered failover order: any smoldot variant → RPC; RPC → smoldot-shared-worker. The \`reason\` field captures the preceding error message so you can see *why* the failover was offered.`,
   },
-
-  // main-thread monitor
 
   'main:stall_detected': {
     title: 'Main-thread stall',
@@ -294,8 +269,6 @@ This **must** complete before \`document.write\` for multi-file archives — oth
 **This event is the key anchor for the "host sends 300 handshake requests" window.** The gap between the host's \`bridge:setup_ready\` and \`sandbox:document_written\` is exactly the window during which the product cannot yet respond to anything. \`totalMs\` is wall-clock from sandbox \`main()\` to this point.`,
   },
 
-  // chain
-
   'chain:phase': {
     title: 'A chain changed lifecycle phase',
     body: `One of the light client's chains moved to a new phase. These are derived from smoldot's \`lifecycle_unstable_follow\` stream, which reports a phase, a live peer count and a health verdict, and are the same milestones the loading screen advances on:
@@ -321,11 +294,6 @@ This counts chain traffic only. The archive download rides the same metered WebS
   },
 };
 
-/**
- * Look up the long-form explanation for a system event. Returns
- * `undefined` for any key that's not registered. Callers should
- * fall back to the summary line plus raw payload.
- */
 export function getSystemExplanation(layer: string, event: string): SystemExplanation | undefined {
   return EXPLANATIONS[`${layer}:${event}`];
 }

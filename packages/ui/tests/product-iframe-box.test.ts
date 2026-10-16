@@ -4,14 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { productIframeBox } from '../src/product-iframe-box.js';
 
-/**
- * These assert the declared style, not the resolved pixels.
- *
- * happy-dom's CSS parser discards any declaration whose value is a `var()` or a
- * `calc()`, so reading the values back off an element yields empty strings. The
- * box is built as plain data for that reason, which keeps the contract that the
- * host reserves each inset checkable without a browser.
- */
+// happy-dom drops any `var()` or `calc()` declaration, so the box is plain data and these tests check the declared
+// values, not resolved pixels.
 
 describe('product iframe box', () => {
   it('As a user on a notched phone, the product keeps clear of the topbar and of every display inset', () => {

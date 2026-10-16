@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // Node-loaded specs use the side-effect-free contract, not the browser config barrel.
-import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-contract.js';
+import { SANDBOX_SCHEMA_VERSION } from '../../../../packages/config/src/host-sandbox-version.js';
 import {
   archiveCar,
   installRepeatedTruapiPortResponder,
@@ -15,14 +15,15 @@ import {
   type TestCar,
 } from './helpers/polkavm.js';
 
-async function polkavmCar(): Promise<TestCar> {
+async function polkavmCar(): Promise<TestCar & { manifest: string }> {
   const fixture = join(import.meta.dirname, 'fixtures/polkavm');
   const manifest = new Uint8Array(await readFile(join(fixture, 'manifest.json')));
   const program = new Uint8Array(await readFile(join(fixture, 'framebuffer-test.polkavm')));
-  return archiveCar([
+  const car = await archiveCar([
     ['manifest.json', manifest],
     ['app.polkavm', program],
   ]);
+  return { ...car, manifest: new TextDecoder().decode(manifest) };
 }
 
 // The runtime's file-input conformance guest: during `init` it walks the
@@ -148,16 +149,19 @@ test('a verified PolkaVM package translates and renders in the sandbox', async (
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
-    ({ cid, schemaVersion }) => {
+    ({ cid, manifest, schemaVersion }) => {
       const iframe = document.createElement('iframe');
       iframe.id = 'polkavm-product';
       iframe.style.width = '400px';
       iframe.style.height = '400px';
       iframe.style.border = '0';
       iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1`;
+      const url = new URL(iframe.src);
+      url.searchParams.set('executableManifest', manifest);
+      iframe.src = url.toString();
       document.body.replaceChildren(iframe);
     },
-    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+    { cid: fixture.cid, manifest: fixture.manifest, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const product = page.frameLocator('#polkavm-product');
@@ -329,13 +333,16 @@ ${worker}`,
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
-    ({ cid, schemaVersion }) => {
+    ({ cid, manifest, schemaVersion }) => {
       const iframe = document.createElement('iframe');
       iframe.id = 'polkavm-sentry-product';
       iframe.src = `http://polkavm-sentry.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1`;
+      const url = new URL(iframe.src);
+      url.searchParams.set('executableManifest', manifest);
+      iframe.src = url.toString();
       document.body.replaceChildren(iframe);
     },
-    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+    { cid: fixture.cid, manifest: fixture.manifest, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const product = page.frameLocator('#polkavm-sentry-product');
@@ -374,13 +381,16 @@ test('a PolkaVM package starts only after the user enables the experimental runt
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
-    ({ cid, schemaVersion }) => {
+    ({ cid, manifest, schemaVersion }) => {
       const iframe = document.createElement('iframe');
       iframe.id = 'polkavm-disabled-product';
       iframe.src = `http://polkavm-disabled.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=0`;
+      const url = new URL(iframe.src);
+      url.searchParams.set('executableManifest', manifest);
+      iframe.src = url.toString();
       document.body.replaceChildren(iframe);
     },
-    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+    { cid: fixture.cid, manifest: fixture.manifest, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const product = page.frameLocator('#polkavm-disabled-product');
@@ -462,13 +472,16 @@ test('a PolkaVM package can bypass translation and use the interpreter', async (
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
-    ({ cid, schemaVersion }) => {
+    ({ cid, manifest, schemaVersion }) => {
       const iframe = document.createElement('iframe');
       iframe.id = 'polkavm-interpreter-product';
       iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&polkavmMode=interpreter`;
+      const url = new URL(iframe.src);
+      url.searchParams.set('executableManifest', manifest);
+      iframe.src = url.toString();
       document.body.replaceChildren(iframe);
     },
-    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+    { cid: fixture.cid, manifest: fixture.manifest, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const canvas = page.frameLocator('#polkavm-interpreter-product').locator('#dotli-polkavm-canvas');
@@ -499,7 +512,7 @@ test('shows PolkaVM diagnostics inside the docked debug panel', async ({ page })
   const panel = page.locator('#truapi-debug-panel');
   await expect(panel).toBeVisible();
   await page.evaluate(
-    ({ cid, schemaVersion }) => {
+    ({ cid, manifest, schemaVersion }) => {
       const app = document.querySelector('#app');
       if (app === null) {
         throw new Error('host app container is missing');
@@ -508,6 +521,9 @@ test('shows PolkaVM diagnostics inside the docked debug panel', async ({ page })
       iframe.id = 'polkavm-debug-product';
       iframe.style.cssText = 'width:100%;height:100%;border:0';
       iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1`;
+      const url = new URL(iframe.src);
+      url.searchParams.set('executableManifest', manifest);
+      iframe.src = url.toString();
       app.replaceChildren(iframe);
       window.dispatchEvent(
         new CustomEvent('dotli:product-loaded', {
@@ -515,7 +531,7 @@ test('shows PolkaVM diagnostics inside the docked debug panel', async ({ page })
         }),
       );
     },
-    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+    { cid: fixture.cid, manifest: fixture.manifest, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const product = page.frameLocator('#polkavm-debug-product');
@@ -768,7 +784,7 @@ test('touch and wheel gestures reach the guest without scrolling the host page',
       body: Buffer.from(fixture.bytes),
     });
   });
-  await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://polkavm-fixture.localhost:5173/', { waitUntil: 'domcontentloaded' });
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   // Input records reach the guest through the runtime worker, so recording the
@@ -789,14 +805,17 @@ test('touch and wheel gestures reach the guest without scrolling the host page',
     } as typeof Worker.prototype.postMessage;
   });
   await page.evaluate(
-    ({ cid, schemaVersion }) => {
+    ({ cid, manifest, schemaVersion }) => {
       const iframe = document.createElement('iframe');
       iframe.id = 'polkavm-product';
       iframe.style.cssText = 'width:100%;height:100%;border:0';
       iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1&polkavmMode=interpreter`;
+      const url = new URL(iframe.src);
+      url.searchParams.set('executableManifest', manifest);
+      iframe.src = url.toString();
       (document.getElementById('app') ?? document.body).replaceChildren(iframe);
     },
-    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+    { cid: fixture.cid, manifest: fixture.manifest, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const product = page.frameLocator('#polkavm-product');

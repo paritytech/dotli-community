@@ -7,6 +7,7 @@ const sharedAuth = vi.hoisted(() => ({
 }));
 
 vi.mock('../../protocol/src/client.js', () => ({
+  readSharedLocalWallet: () => Promise.resolve({ status: 'none' }),
   readSharedAuthStorage: (siteId: string, key: string) =>
     Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
@@ -33,11 +34,6 @@ vi.mock('../../shared/src/device.js', () => ({
   isMobileDevice: () => device.mobile,
 }));
 
-async function flushMicrotasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
 function installTopbarDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
@@ -55,82 +51,6 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
-// The auth button, the user popover and the pairing modal are islands now:
-// their tests are tests/components/shell/auth-button, user-popover and
-// auth-modal, and the controller's are tests/auth-controller.test.ts. The
-// permissions popover is an island too: tests/components/shell/
-// permissions-popover.test.tsx. So are the network popover
-// (chains-popover.test.tsx), the settings popover (settings-popover.test.tsx)
-// and the mobile "More" flyout (more-menu.test.tsx).
-
-describe('topbar boot rehydration', () => {
-  it('As a dotli integrator, the host renders the persisted session badge on idle after init', async () => {
-    // Given
-    installTopbarDom();
-    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
-      callback();
-      return 0;
-    });
-
-    const { SHARED_CORE_SESSION_KEY } = await import('../../protocol/src/auth-storage.js');
-    const { SITE_ID } = await import('../../config/src/config.js');
-    // Opaque session blob plus the JSON UI-state cache the core-driven
-    // authStateChanged callback persists alongside it in shared auth storage.
-    sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, '0x0102');
-    sharedAuth.storage.set(
-      `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,
-      JSON.stringify({
-        connected: true,
-        publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-        liteUsername: 'pgherveou.04',
-        primaryUsername: 'pgherveou.04',
-      }),
-    );
-
-    // When
-    const { initTopBar } = await import('../src/topbar.js');
-    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
-    initTopBar();
-
-    // Then: the stores the auth islands render, whenever they mount.
-    await vi.waitFor(() => {
-      expect(getAuthState()).toEqual({
-        tag: 'Connected',
-        session: {
-          connected: true,
-          publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-          liteUsername: 'pgherveou.04',
-          primaryUsername: 'pgherveou.04',
-        },
-      });
-    });
-    expect(getLoggedIn()).toBe(true);
-  });
-
-  it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {
-    // Given
-    installTopbarDom();
-    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
-      callback();
-      return 0;
-    });
-
-    // When
-    const { initTopBar } = await import('../src/topbar.js');
-    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
-    initTopBar();
-    await flushMicrotasks();
-
-    // Then
-    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
-    expect(getLoggedIn()).toBe(false);
-  });
-});
-
-// The theme menu itself is components/shell/ThemeToggle.tsx (tested in
-// tests/components/shell/theme-toggle.test.tsx) and the preference logic is
-// theme-controller.ts (tests/theme-controller.test.ts). The topbar keeps
-// applying the stored preference at initTopBar(), as before.
 describe('topbar theme', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');
@@ -182,39 +102,5 @@ describe('topbar theme', () => {
 
     // Then
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-  });
-});
-
-describe('The status capsule network watch', () => {
-  it('As a dApp user, the capsule starts watching the chains only once the page is idle after the product renders', async () => {
-    // Given
-    let idle: (() => void) | undefined;
-    vi.stubGlobal('requestIdleCallback', (callback: () => void) => {
-      idle = callback;
-      return 1;
-    });
-    const monitor = await import('../src/network-monitor.js');
-    const subscribed: string[] = [];
-    monitor.setBlockSource({
-      isReachable: () => true,
-      subscribe: genesis => {
-        subscribed.push(genesis);
-        return () => {};
-      },
-    });
-    const { setChainsButtonVisible } = await import('../src/topbar.js');
-
-    // When
-    setChainsButtonVisible(true);
-
-    // Then
-    expect(subscribed).toEqual([]);
-
-    // When
-    idle?.();
-
-    // Then
-    expect(subscribed.length).toBeGreaterThan(0);
-    setChainsButtonVisible(false);
   });
 });

@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The pairing modal's lazy `qrcode` import resolving after the view moved
-// on. A file of its own: a module is imported once per file, so only the
-// first import can be held back.
+// A file of its own: a module is imported once per file, so only the first `qrcode` import can be held back.
 
 import { describe, expect, it, vi } from 'vitest';
 import { AuthModal } from '../../../src/components/shell/AuthModal.js';

@@ -8,9 +8,7 @@
 .item[hidden] {
   display: none;
 }
-/* Apart from the items before it: a 20 px hairline with 6 px each side
-   (before it the group's 4 px gap plus 2 px of margin, after it 6 px of
-   margin). On the item, so the bar's measure counts it. */
+/* On the item, so the bar's measure counts it. */
 .item[data-separated]::before {
   content: '';
   align-self: center;
@@ -21,7 +19,6 @@
   background: var(--chrome-ring);
 }
 
-/* Phones: no hairline, the items sit side by side. */
 @media (max-width: 560px) {
   .item[data-separated]::before {
     display: none;

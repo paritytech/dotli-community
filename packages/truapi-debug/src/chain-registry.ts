@@ -1,17 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Known-chain name registry
-//
-// Maps well-known genesis hashes to human-readable names so the
-// timeline can label swimlanes and the detail-pane summary can
-// describe calls in prose. The registry is built from every network
-// in `NETWORK_NAME_TO_SERVICES_CONFIG`, so all genesis hashes across
-// all supported testnets resolve regardless of the active network.
-//
-// The registry is lowercase-keyed so inputs with mixed case (e.g. from
-// payloads) resolve without extra normalisation at every call site.
-
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 
 function buildRegistry(): ReadonlyMap<string, string> {
@@ -27,19 +16,10 @@ function buildRegistry(): ReadonlyMap<string, string> {
 
 const NAME_BY_GENESIS: ReadonlyMap<string, string> = buildRegistry();
 
-/**
- * Resolve a human-readable chain name for a given genesis hash.
- * Returns `null` for unknown chains; callers should fall back to
- * rendering a shortened hex form in that case.
- */
 export function getChainName(genesisHash: string): string | null {
   return NAME_BY_GENESIS.get(genesisHash.toLowerCase()) ?? null;
 }
 
-/**
- * Best-effort display string for a chain: its registered name when
- * known, otherwise a shortened genesis hash (`0x12345678…abcd`).
- */
 export function formatChainDisplay(genesisHash: string): string {
   const name = getChainName(genesisHash);
   if (name !== null) {

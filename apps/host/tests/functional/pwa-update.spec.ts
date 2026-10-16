@@ -93,7 +93,7 @@ async function serveUpgrade(): Promise<UpgradeFixture> {
     throw new Error('Expected an ephemeral TCP listener');
   }
   return {
-    origin: `http://localhost:${String(address.port)}`,
+    origin: `http://pwa-upgrade.localhost:${String(address.port)}`,
     get failedWorkerRequests(): number {
       return failedWorkerRequests;
     },
@@ -224,7 +224,7 @@ test.describe('host service worker update recovery', () => {
         await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
         await page.reload();
         await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-        await expect(page.getByTestId('landing')).toBeVisible();
+        await expect(page.locator('body[data-host]')).toBeVisible();
         await seedUserData(page);
         let navigations = 0;
         page.on('framenavigated', frame => {
@@ -272,13 +272,13 @@ test.describe('host service worker update recovery', () => {
         fixture.setWorkerAvailable(true);
         await check();
         if (trigger !== 'required') {
-          const reload = page.getByRole('button', { name: 'Reload', exact: true });
+          const reload = page.getByTestId('notif-cards').getByRole('button', { name: 'Reload', exact: true });
           await expect(reload).toBeVisible();
           expect(navigations).toBe(0);
           await reload.click();
         }
         await expect.poll(() => navigations).toBe(1);
-        await expect(page.getByTestId('landing')).toBeVisible();
+        await expect(page.locator('body[data-host]')).toBeVisible();
         await expectUserData(page);
         expect(errors).toEqual([]);
       } finally {

@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Collapsible "What is this?" block under a system event's summary. Native
-// <details>/<summary>, so keyboard and assistive tech work out of the box.
-
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { explanationDetail, type InlineSegment, type StoredSystemEvent } from '@dotli/truapi-debug';

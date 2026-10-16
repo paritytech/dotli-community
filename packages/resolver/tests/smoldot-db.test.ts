@@ -9,11 +9,7 @@ const GENESIS = '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a01
 // Over the 100_000 byte floor, so `save` gets as far as opening the database.
 const BLOB = 'x'.repeat(200_000);
 
-/**
- * Hold `dotli-smoldot-db` open at version 1 and never let go, the way a tab
- * running the previous build does. That is what stops a version 2 upgrade in
- * another tab from running.
- */
+/** Hold the database open at version 1, as a tab on the previous build does, which blocks the upgrade. */
 function holdDatabaseAtV1(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open('dotli-smoldot-db', 1);

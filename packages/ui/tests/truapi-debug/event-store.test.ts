@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Unit tests for `EventStore.version()`: a monotonic counter a Solid
-// adapter can compare against to know when `list()` needs re-reading,
-// without diffing the array on every render.
+// `EventStore.version()` tells a Solid adapter when `list()` needs re-reading, without diffing it.
 
 import { describe, expect, it } from 'vitest';
 import { EventStore } from '@dotli/truapi-debug';
@@ -60,8 +58,7 @@ describe('EventStore.version()', () => {
     store.insertTruapi(truapiEvent('r1'));
     store.insertTruapi(truapiEvent('r2'));
     const beforePrune = store.version();
-    // Capacity 2: this insert evicts r1's event and prunes it in the
-    // same notify — still a single version bump, not two.
+    // Capacity 2: this insert evicts r1's event and prunes it in the same notify, so one version bump.
     store.insertTruapi(truapiEvent('r3'));
     expect(store.dropped()).toBe(1);
     expect(store.version()).toBe(beforePrune + 1);

@@ -1,10 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's .modal-icon. The base rule is wrapped in :where() so a
-   consumer's class (a margin, hiding it in a sheet) wins whatever order the
-   stylesheets load in. 40 px with a 16 px glyph on desktop, the board's 48
-   and 20 on phones. */
+/* :where() so a consumer's class wins whatever order the stylesheets load in. */
 
 :where(.tile) {
   display: grid;
@@ -20,16 +17,14 @@
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
 }
-/* The board's 1.75 stroke, whatever size and stroke the markup was drawn
-   at (the password prompt's lock is 24 px at 2). */
+/* Overrides the size and stroke the markup was drawn at. */
 .tile > svg {
   width: var(--sp-4);
   height: var(--sp-4);
   stroke-width: 1.75;
 }
 
-/* PHONE_QUERY in phone-viewport.ts: the board's 48 px tile, 16 px corners
-   and 20 px glyph. */
+/* Keep in step with PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   :where(.tile) {
     width: var(--h-row);

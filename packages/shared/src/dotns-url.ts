@@ -1,31 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dotNS URL parsing utilities.
-//
-// Parses dotNS domain URLs in various formats (bare, with protocol,
-// polkadot://) and identifies products by the active network's TLD. The TLD is
-// per-network: `.testnet` on previewnet, `.paseo` on Paseo Next V2. URLs with any
-// other TLD (dot.li, paseo.li, google.com, etc.) are regular websites.
-//
-// Parse outcomes are discriminated unions. A `null` return would hide
-// whether the input was empty, unparseable, the wrong TLD, a localhost
-// attempt, etc. Callers that only need a pass/fail signal can use the
-// legacy wrappers (`parseDotNsDomain`, `parseLocalhostUrl`, `normalizeUrl`)
-// which collapse the result. Callers that need the reason should use the
-// `*Result` helpers.
-//
-// This module intentionally does not import `@dotli/metrics` to avoid a
-// dependency cycle (`metrics` depends on `shared` which would depend on
-// `metrics`). Observability for parse failures is the caller's
-// responsibility. The caller has enough context (which input, which user
-// action) to tag the metric meaningfully.
+// A product is any host under the active network's TLD. Anything else is a regular website.
+// No metrics here, since `@dotli/metrics` depends on this package. Callers record parse failures.
 
 import { getActiveTldSuffix } from '@dotli/config';
 
 export interface DotNsUrl {
-  identifier: string; // e.g. "mytestapp.paseo" (always ends with the active TLD)
-  pathname: string; // e.g. "some/path?q=1#h=2" (no leading slash)
+  identifier: string;
+  /** No leading slash. Carries the query and hash. */
+  pathname: string;
 }
 
 export type DotNsUrlResult =
@@ -35,15 +19,7 @@ export type DotNsUrlResult =
   | { kind: 'not-dot-domain'; hostname: string }
   | { kind: 'port-or-userinfo'; hostname: string };
 
-/**
- * dotNS TLD check against the active network, NFC-normalized and case-folded.
- *
- * The TLD authority is defined over lowercase ASCII. A hostname arriving via
- * `new URL(...)` might be pre-punycoded or mixed-case. Normalizing here means
- * both `Example.PASEO` and `example.paseo` hit the same outcome, while genuine
- * IDN labels outside the ASCII range still round-trip through their punycode
- * form.
- */
+/** Names are registered in lowercase ASCII, so the host is NFC-normalized and case-folded first. */
 function isDotDomain(domain: string): boolean {
   return domain.normalize('NFC').toLowerCase().endsWith(getActiveTldSuffix());
 }
@@ -65,14 +41,6 @@ function parseUrl(url: string): URL | null {
   }
 }
 
-/**
- * Parse a URL, optionally assuming `https://` when no protocol is present.
- *
- * Callers must opt in explicitly via `assumeHttps`. Prepending `https://`
- * on any parse failure would be a hidden fallback, so when the prefix is
- *  applied, the call site is responsible for documenting the reason (e.g.,
- * the user typed a bare hostname).
- */
 function parseUrlWithExplicitHttps(url: string, options: { assumeHttps: boolean }): URL | null {
   const direct = parseUrl(url);
   if (direct !== null) {
@@ -85,15 +53,8 @@ function parseUrlWithExplicitHttps(url: string, options: { assumeHttps: boolean 
 }
 
 /**
- * Parse a `.dot` domain URL. Returns a discriminated result so callers
- * can distinguish empty input from the wrong TLD from a parse failure.
- * Each warrants a different UI hint.
- *
- * Host validation rejects URLs that carry an explicit port or userinfo
- * component. `.dot` identifiers are resolved via the chain and IPFS path
- * and have no concept of either. Silently dropping them would let a user
- * paste `user:pass@x.dot:8080/path` and land on `x.dot/path` without being
- * told the credentials and port were discarded.
+ * Parse a product URL into a discriminated result, since each failure warrants a different UI hint.
+ * A port or userinfo is rejected rather than silently dropped, because names have neither.
  */
 export function parseDotNsDomainResult(url: string): DotNsUrlResult {
   const normalized = url.trim();
@@ -126,15 +87,16 @@ export function parseDotNsDomainResult(url: string): DotNsUrlResult {
   };
 }
 
-/** Legacy pass/fail wrapper. Prefer `parseDotNsDomainResult`. */
+/** Prefer `parseDotNsDomainResult`. */
 function parseDotNsDomain(url: string): DotNsUrl | null {
   const result = parseDotNsDomainResult(url);
   return result.kind === 'ok' ? result.url : null;
 }
 
 export interface LocalhostUrl {
-  host: string; // e.g. "localhost:5000"
-  pathname: string; // e.g. "path?q=1#h=2" (no leading slash)
+  host: string;
+  /** No leading slash. Carries the query and hash. */
+  pathname: string;
 }
 
 export type LocalhostUrlResult =
@@ -168,7 +130,7 @@ export function parseLocalhostUrlResult(url: string): LocalhostUrlResult {
   };
 }
 
-/** Legacy pass/fail wrapper. Prefer `parseLocalhostUrlResult`. */
+/** Prefer `parseLocalhostUrlResult`. */
 function parseLocalhostUrl(url: string): LocalhostUrl | null {
   const result = parseLocalhostUrlResult(url);
   return result.kind === 'ok' ? result.url : null;
@@ -176,12 +138,7 @@ function parseLocalhostUrl(url: string): LocalhostUrl | null {
 
 export type NormalizeUrlResult = { kind: 'ok'; url: string } | { kind: 'empty' } | { kind: 'parse-error'; raw: string };
 
-/**
- * Ensure a URL has a protocol so it opens as absolute, not relative.
- *
- * Returns a discriminated result so callers know whether the input was
- * returned unchanged (parse failure) or normalized.
- */
+/** Ensure a URL has a protocol so it opens as absolute, not relative. */
 export function normalizeUrlResult(url: string): NormalizeUrlResult {
   const trimmed = url.trim();
   if (trimmed.length === 0) {
@@ -194,12 +151,7 @@ export function normalizeUrlResult(url: string): NormalizeUrlResult {
   return { kind: 'ok', url: parsed.href };
 }
 
-/**
- * Legacy wrapper that collapses the discriminated outcome to a string.
- *
- * Returns the raw input on parse failure so existing call sites keep
- * working. Prefer `normalizeUrlResult` for new code.
- */
+/** Returns the raw input on failure. Prefer `normalizeUrlResult`. */
 function normalizeUrl(url: string): string {
   const result = normalizeUrlResult(url);
   switch (result.kind) {

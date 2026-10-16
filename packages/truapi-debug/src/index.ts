@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Public API of @dotli/truapi-debug. Other workspace packages import only from here.
-// Every other module under src/ is private to the package.
-
 export { decodeChainAnnotations, type ChainAnnotations } from './chain-decode.js';
 export {
   chainDetail,
@@ -18,6 +15,7 @@ export {
   type InlineSegment,
 } from './detail-format.js';
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
+export { readStoredSection, writeStoredSection, type PanelSection } from './section-storage.js';
 export {
   emitDotliDebugEvent,
   emitPolkaVmDebugSnapshot,
@@ -56,11 +54,3 @@ export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData } from '.
 export { summariseSystemEvent } from './system-summary.js';
 export { buildTimeline, type TimelineLane } from './timeline.js';
 export { loadDotliDebugBus } from './lazy.js';
-export { isAllocationEvent, observedAllocations, type AllocationOutcome } from './wallet-allocations.js';
-export type {
-  ExperimentalWalletControls,
-  InspectorIdentity,
-  InspectorProduct,
-  InspectorResource,
-  LocalIdentityProgress,
-} from './wallet-types.js';

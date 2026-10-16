@@ -59,9 +59,7 @@ describe('config constants', () => {
     });
   });
 
-  // Gates postMessage traffic the host shell accepts from the sandbox iframe
-  // (loading status, bitswap relay). Only `<label>.app.<root>` origins — over
-  // https in production, or *.app.localhost in dev — may drive host services.
+  // Gates the postMessage traffic the host accepts from the sandbox iframe.
   describe('isSandboxOrigin', () => {
     it('accepts a label app-subdomain over https', () => {
       expect(isSandboxOrigin(`https://name.app.${BASE_DOMAIN}`)).toBe(true);
@@ -69,8 +67,6 @@ describe('config constants', () => {
     });
 
     it('rejects the bare host (non-app) subdomain', () => {
-      // The product's own `<label>.<root>` shell origin must NOT count as a
-      // sandbox — only the cross-origin `<label>.app.<root>` sandbox does.
       expect(isSandboxOrigin(`https://name.${BASE_DOMAIN}`)).toBe(false);
       expect(isSandboxOrigin(`https://app.${BASE_DOMAIN}`)).toBe(false);
       expect(isSandboxOrigin(`https://${BASE_DOMAIN}`)).toBe(false);
@@ -82,8 +78,6 @@ describe('config constants', () => {
 
     it('rejects unrelated and lookalike origins', () => {
       expect(isSandboxOrigin('https://evil.com')).toBe(false);
-      // Leading-dot anchoring prevents `*.app.<root>.evil.com` and
-      // `evilapp.<root>` style suffix tricks.
       expect(isSandboxOrigin(`https://name.app.${BASE_DOMAIN}.evil.com`)).toBe(false);
       expect(isSandboxOrigin(`https://evil-app.${BASE_DOMAIN}`)).toBe(false);
     });

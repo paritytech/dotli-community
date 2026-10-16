@@ -1,17 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Build-time plugin for the app vite configs. When `strip` is true (i.e.
-// VITE_METRICS is not "true") it swaps the Sentry and metrics modules for their
-// no-op twins. The swap keys on the resolved file, not on the import
-// specifier, so it catches the `@dotli/metrics` barrel's re-exports and
-// relative imports inside the package alike. Worker bundles don't inherit the
-// app's `plugins`, so each config also lists it under `worker.plugins`. Self-resolves paths via
-// `import.meta.url` (web `URL` only, no Node APIs, so this typechecks under
-// the metrics package's browser-target tsconfig).
+// Swaps the Sentry and metrics modules for no-op twins. Keys on the resolved file to catch barrel
+// re-exports and relative imports alike. Workers don't inherit `plugins`, so list it under `worker.plugins` too.
 
 import type { Plugin } from 'vite';
 
+// Web `URL` rather than Node APIs, to typecheck under the browser tsconfig.
 const METRICS_SRC = new URL('.', import.meta.url).pathname;
 
 const SENTRY_SDK_NOOP = `${METRICS_SRC}sentry-sdk.noop.ts`;

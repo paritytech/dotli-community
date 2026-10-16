@@ -21,12 +21,7 @@ import type { Api } from './api.js';
 
 export type StatusCallback = (status: string) => void;
 
-/**
- * Structured resolver phase events. Callers that want to advance a
- * multi-step loading indicator should listen to these instead of
- * parsing status strings with regex. The string formats are for
- * humans and change freely, and the phase tokens are a stable contract.
- */
+/** Stable phase tokens. Status strings are for humans and change freely. */
 export type ResolvePhase =
   | 'light-client-starting'
   | 'relay-chain-adding'
@@ -37,16 +32,7 @@ export type ResolvePhase =
 
 export type PhaseCallback = (phase: ResolvePhase) => void;
 
-/**
- * Map a human-readable resolver status string back to its `ResolvePhase`.
- *
- * The resolver itself now emits phase events directly via its `onPhase`
- * callback, but callers that bridge status across a worker/iframe
- * boundary (where a structured callback can't cross easily) can use
- * this helper to reconstruct the phase on the receiving side without
- * duplicating the regex in every consumer. Returns `null` for status
- * messages that don't map to a known phase.
- */
+/** Recovers the phase from a status string, for callers that only receive strings across a frame boundary. */
 export function statusToPhase(message: string): ResolvePhase | null {
   if (message.startsWith('Starting light client')) {
     return 'light-client-starting';
@@ -109,16 +95,7 @@ export async function readMappingBytes(
   });
 }
 
-/**
- * Read a UTF-8 string value from `mapping(bytes32 => mapping(string => string))`.
- *
- * The dotNS content resolver stores text records under this shape. The outer
- * key is the namehash of the dotNS name, the inner key is the record name
- * such as `"manifest"` or `"executable"`.
- *
- * Returns `null` when the value is unset. Throws when a multi-slot read
- * aborts partway, mirroring [`readMappingBytes`](./storage.ts).
- */
+/** Reads a dotNS text record, keyed by namehash and then record name. Throws when a read stops partway. */
 export function readNestedMappingString(
   api: Api,
   contractAddress: string,

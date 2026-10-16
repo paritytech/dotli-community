@@ -1,22 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Diffs perf runs and ranks deltas with statistical significance.
- *
- * Compares `base.json` vs `last.json` along p50 (primary), p95 (tail),
- * p99 (worst case), stddev, cv (stability), and runs a Mann-Whitney U
- * test for significance.
- *
- * Reading order:
- *   1. p50 first. Did the typical experience improve?
- *   2. p95 next. Did tail latency improve?
- *   3. cv. Did stability change?
- *   4. Only trust mean if cv is low on BOTH runs.
- *   5. Delta < 5% with < 30 samples is likely noise unless Mann-Whitney confirms.
- *
- * Run: npm run test:perf:compare
- */
+// Diffs `base.json` against `last.json` per phase. Trust a mean only when cv is low on both runs.
+//
+//   npm run test:perf:compare
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -66,20 +53,13 @@ const Y = '\x1b[33m';
 const D = '\x1b[2m';
 const B = '\x1b[1m';
 
-// Non-parametric test for comparing two independent samples.
-// Returns z-score and whether the difference is significant
-// at the 0.05 level (|z| > 1.96).
-
 function mannWhitneyU(a: number[], b: number[]): { u: number; z: number; significant: boolean } {
-  // Need at least 2 values per sample for any meaningful test
   if (a.length < 2 || b.length < 2) {
     return { u: 0, z: 0, significant: false };
   }
 
-  // Combine and rank
   const combined = [...a.map(v => ({ v, group: 0 })), ...b.map(v => ({ v, group: 1 }))].sort((x, y) => x.v - y.v);
 
-  // Assign ranks with tie correction
   const ranks = new Array<number>(combined.length);
   let i = 0;
   while (i < combined.length) {
@@ -94,7 +74,6 @@ function mannWhitneyU(a: number[], b: number[]): { u: number; z: number; signifi
     i = j;
   }
 
-  // Sum ranks for group a
   let rankSumA = 0;
   for (const [k, { group }] of combined.entries()) {
     if (group === 0) {
@@ -108,11 +87,10 @@ function mannWhitneyU(a: number[], b: number[]): { u: number; z: number; signifi
   const u2 = n1 * n2 - u1;
   const u = Math.min(u1, u2);
 
-  // Normal approximation (valid for n >= 3)
+  // The normal approximation holds for n >= 3.
   const mu = (n1 * n2) / 2;
   const n = n1 + n2;
 
-  // Tie correction
   const tieGroups: number[] = [];
   let ti = 0;
   while (ti < combined.length) {
@@ -206,25 +184,23 @@ function getVerdict(bStat: PhaseStats, lStat: PhaseStats): Verdict {
   const p95Diff = lStat.p95 - bStat.p95;
   const p50Pct = bStat.p50 > 0 ? Math.abs(p50Diff / bStat.p50) : 0;
 
-  // If Mann-Whitney says significant
   if (mw.significant) {
     if (p50Diff < 0 && p95Diff <= 0) {
       return { label: 'improved', color: G, icon: '+' };
     }
     if (p50Diff < 0 && p95Diff > 0) {
       return { label: 'mixed', color: Y, icon: '~' };
-    } // p50 better but p95 worse
+    }
     if (p50Diff > 0) {
       return { label: 'regressed', color: RD, icon: '-' };
     }
   }
 
-  // Not significant
   if (p50Pct < 0.05) {
     return { label: 'unchanged', color: D, icon: '=' };
   }
 
-  // Big delta but not enough samples for significance
+  // A big delta without enough samples for significance.
   return { label: 'uncertain', color: Y, icon: '?' };
 }
 
@@ -292,7 +268,6 @@ function compareRunsMd(label: string, base: RunStats, last: RunStats): string {
   lines.push(`### ${label}`);
   lines.push('');
 
-  // Overall summary (always visible)
   if ('End-to-end' in base.phases && 'End-to-end' in last.phases) {
     const bTotal = base.phases['End-to-end'];
     const lTotal = last.phases['End-to-end'];
@@ -313,7 +288,6 @@ function compareRunsMd(label: string, base: RunStats, last: RunStats): string {
     lines.push('');
   }
 
-  // Detailed table in expandable section
   const allPhases = ORDERED_PHASES.filter(p => p in base.phases || p in last.phases);
 
   lines.push('<details>');

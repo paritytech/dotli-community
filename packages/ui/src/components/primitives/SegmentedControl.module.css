@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .seg. The pressed option is a raised fill with
-   white text, never coloured text, so it keeps AAA contrast and every option
-   keeps its width (no layout shift between states). */
+/* Pressed is a raised fill, never coloured text, to keep AAA contrast and every option's width. */
 
 :where(.seg) {
   box-sizing: border-box;
@@ -16,6 +14,12 @@
   border-radius: var(--r-full);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
+}
+.seg[data-block] {
+  width: 100%;
+}
+.seg[data-block] > .option {
+  flex: 1;
 }
 .option {
   box-sizing: border-box;
@@ -52,7 +56,6 @@
 .option > svg {
   flex: none;
 }
-/* Phones: the boards' 36 px control, 32 px options. */
 @media (max-width: 560px) {
   .option {
     gap: var(--sp-2);

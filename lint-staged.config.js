@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Formats the staged files, then lints the packages a commit touches.
-// lint-staged hides unstaged edits while this runs and stages what Prettier
-// rewrites; `--ignore-unknown` skips files Prettier has no parser for. Turbo's
-// `[HEAD]` filter then picks every workspace (and the root, for `lint:root`)
-// with changes against HEAD, so each changed package is linted whole, with
-// its own config. Dependents are not linted; CI lints everything. One key, so
-// the formatting finishes before the lint starts.
+// One key, so formatting finishes before linting starts. Turbo's `[HEAD]` filter lints each changed workspace (and
+// the root, via `lint:root`) whole with its own config. Dependents are left to CI.
 
 export default {
   /** @param {readonly string[]} files */

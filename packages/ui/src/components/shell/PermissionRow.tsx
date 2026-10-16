@@ -8,8 +8,7 @@ import { SegmentedControl, type SegmentOption } from '../primitives/SegmentedCon
 import { Row } from '../primitives/Well.js';
 import s from './PermissionRow.module.css';
 
-// One array for every row, so a re-read never re-creates the buttons and a
-// pressed segment keeps the focus.
+// One array for every row, so a re-read never re-creates the buttons and a pressed segment keeps focus.
 const STATUS_OPTIONS: readonly SegmentOption<PermissionStatus>[] = [
   { value: 'ask', label: 'Ask', testId: 'permissions-popover-segment-ask' },
   { value: 'granted', label: 'Allow', testId: 'permissions-popover-segment-granted' },
@@ -23,10 +22,6 @@ export interface PermissionRowProps {
   choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
 }
 
-/**
- * One row of the permissions popover: the permission's icon and name, and
- * Ask, Allow and Deny segments with its status pressed.
- */
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
   return (
     <Row

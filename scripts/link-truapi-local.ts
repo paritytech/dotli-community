@@ -3,8 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// dotli lives either as the `hosts/dotli` submodule of the truapi checkout or
-// as a standalone clone next to it.
+// dotli is either the `hosts/dotli` submodule of the truapi checkout or a clone next to it.
 const truapiRoot = resolve(
   process.env['TRUAPI_REPO'] ??
     [resolve(dotliRoot, '../..'), resolve(dotliRoot, '../host-rust-core')].find(root =>

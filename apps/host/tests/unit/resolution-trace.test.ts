@@ -5,15 +5,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { m } from '@dotli/metrics';
 import { markContinuation } from '@dotli/shared';
 import { updateLoading } from '../../../../packages/ui/src/state/loading.js';
-import { startResolutionTrace } from '../../src/resolution-trace.js';
+import { createChainPhaseTracker, startResolutionTrace } from '../../src/resolution-trace.js';
 
-/**
- * A Sentry stand-in that records the span tree instead of sending it.
- *
- * The tests assert what a resolution actually produces, so a no-op metrics
- * build would prove nothing: `vitest.config.ts` turns metrics on for this
- * suite and binds this in their place.
- */
+/** Records the span tree instead of sending it. `vitest.config.ts` turns metrics on so the real tree is built. */
 interface RecordedSpan {
   name: string;
   parent: RecordedSpan | null;
@@ -66,7 +60,6 @@ function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
 
 let spans: RecordedSpan[];
 
-/** The span named `dotli.<name>`, or undefined. */
 function span(name: string): RecordedSpan | undefined {
   return spans.find(s => s.name === `dotli.${name}`);
 }
@@ -414,5 +407,61 @@ describe('A resolution is one attempt of a journey', () => {
     // Then
     expect(span('resolution')?.attributes['outcome']).toBe('rendered');
     expect(span('resolution')?.attributes['exit']).toBeUndefined();
+  });
+});
+
+describe('The chain phase tracker', () => {
+  it('As a visitor back from another tab, a chain that stalled while ready is ready again once it recovers', () => {
+    // Given
+    const track = createChainPhaseTracker();
+    track('relay', 'bootstrapComplete');
+
+    // When
+    const stalled = track('relay', 'stalled');
+    const recovered = track('relay', 'recovered');
+
+    // Then
+    expect(stalled).toBe('stalled');
+    expect(recovered).toBe('ready');
+  });
+
+  it('As a visitor, a chain that stalled mid-sync returns to syncing once it recovers', () => {
+    // Given
+    const track = createChainPhaseTracker();
+    track('relay', 'warpSyncProgress');
+    track('relay', 'stalled');
+
+    // When
+    const recovered = track('relay', 'recovered');
+
+    // Then
+    expect(recovered).toBe('syncing');
+  });
+
+  it('As a visitor, a phase the chain reached during its stall is the one recovery keeps', () => {
+    // Given
+    const track = createChainPhaseTracker();
+    track('relay', 'bootstrapComplete');
+    track('relay', 'stalled');
+    track('relay', 'connecting');
+
+    // When
+    const recovered = track('relay', 'recovered');
+
+    // Then
+    expect(recovered).toBe('connecting');
+  });
+
+  it('As a visitor, a recovery with no phase known before it reads as syncing, and a peer count moves no phase', () => {
+    // Given
+    const track = createChainPhaseTracker();
+
+    // When
+    const peers = track('bulletin', 'peers');
+    const recovered = track('relay', 'recovered');
+
+    // Then
+    expect(peers).toBeUndefined();
+    expect(recovered).toBe('syncing');
   });
 });

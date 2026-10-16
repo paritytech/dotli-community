@@ -1,10 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Permission fixtures.
- */
-
 import type { BrowserContext } from '@playwright/test';
 import { DOMAIN } from '../../env.js';
 

@@ -26,8 +26,6 @@ describe('isCarFile', () => {
   });
 
   it('detects valid CAR v1 header', () => {
-    // Minimal CAR v1 header: varint length + CBOR map {roots: [...], version: 1}
-    // The CBOR starts with 0xa2 (2-element map), then 0x65 "roots" key
     const header = new Uint8Array([
       0x33, // varint header length = 51
       0xa2, // CBOR: map(2)
@@ -40,7 +38,7 @@ describe('isCarFile', () => {
       0x81, // CBOR: array(1)
       0xd8,
       0x2a, // CBOR: tag(42)
-      // ... rest of CAR data (pad to offset + headerLen = 1 + 51 = 52 bytes total)
+      // Padding up to the 52 bytes the length claims.
       0x00,
       0x00,
       0x00,
@@ -120,14 +118,12 @@ describe('packArchive', () => {
     const result = packArchive(files);
     expect(result.index).toHaveLength(3);
 
-    // Verify offsets are sequential
     let expectedOffset = 0;
     for (const entry of result.index) {
       expect(entry.o).toBe(expectedOffset);
       expectedOffset += entry.l;
     }
 
-    // Total size should be sum of all file sizes
     const totalSize = Object.values(files).reduce((sum, data) => sum + data.byteLength, 0);
     expect(result.packed.byteLength).toBe(totalSize);
   });

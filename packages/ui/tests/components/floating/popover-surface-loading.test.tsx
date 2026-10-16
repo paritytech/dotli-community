@@ -7,7 +7,6 @@ import { Popover } from '../../../src/components/floating/Popover.js';
 import { mouseClick, renderComponent, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 
-/** The surface's chunk, on its way until `release()`. */
 const chunk = vi.hoisted(() => {
   let release = (): void => undefined;
   const arrived = new Promise<void>(resolve => {
@@ -26,7 +25,6 @@ vi.mock('../../../src/components/floating/PopoverSurface.js', async importOrigin
   return importOriginal();
 });
 
-/** A button and the popover it opens, `#<id>-trigger` and `#<id>`, its content `#<id>-inside`. */
 function Slow(props: { id: string; onOpenChange: (open: boolean) => void }) {
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   return (

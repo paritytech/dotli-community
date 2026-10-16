@@ -1,18 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/**
- * Cold-start performance harness for the host shell.
- *
- * Runs the loading pipeline N times and computes p50, p95, p99, mean,
- * stddev, and coefficient of variation via simple-statistics.
- *
- * Usage:
- *   npm run test:perf               run N iterations, save to last.json
- *   npm run test:perf:base          save as base.json (immutable)
- *   npm run test:perf:compare       diff base vs last
- *   PERF_RUNS=5 npm run test:perf   override iteration count
- */
+// Usage:
+//   npm run test:perf               run N iterations, save to last.json
+//   npm run test:perf:base          save as base.json
+//   npm run test:perf:compare       diff base against last
+//   PERF_RUNS=5 npm run test:perf   override the iteration count
 
 import { test, expect, type Page, type Browser } from '@playwright/test';
 import * as ss from 'simple-statistics';
@@ -75,12 +68,10 @@ const DOMAIN_A = process.env['PERF_DOMAIN_A'] ?? 'browse';
 const DOMAIN_B = process.env['PERF_DOMAIN_B'] ?? 'host-playground';
 const PORT = process.env['PERF_PORT'] ?? '5173';
 const PERF_VERBOSE = process.env['PERF_VERBOSE'] === '1';
-const ITERATION_TIMEOUT = 3 * 60_000; // 3 minutes per iteration
+const ITERATION_TIMEOUT = 3 * 60_000;
 
 const PHASE_PAIRS: [string, string, string][] = [
-  // Cross-layer: host start through app end (wall-clock end-to-end)
   ['End-to-end', 'dotli:main:start', 'dotli:app:end'],
-  // Host phases (name.localhost: resolution and iframe creation)
   ['Host total', 'dotli:main:start', 'dotli:main:end'],
   ['SW registration', 'dotli:sw:start', 'dotli:sw:end'],
   ['Name resolution', 'dotli:resolve:start', 'dotli:resolve:end'],
@@ -89,19 +80,13 @@ const PHASE_PAIRS: [string, string, string][] = [
   ['    Parachain', 'dotli:smoldot:parachain:start', 'dotli:smoldot:parachain:end'],
   ['    Chain sync', 'dotli:smoldot:sync:start', 'dotli:smoldot:sync:end'],
   ['  SW smoldot', 'dotli:smoldot:sw:start', 'dotli:smoldot:sw:end'],
-  // App phases on `<label>.app.localhost` cover content fetch and render.
   ['App total', 'dotli:app:start', 'dotli:app:end'],
   ['  P2P attempt', 'dotli:fetch:p2p:start', 'dotli:fetch:p2p:end'],
   ['  Gateway fetch', 'dotli:fetch:gateway:start', 'dotli:fetch:gateway:end'],
   ['  Archive parse', 'dotli:fetch:parse:start', 'dotli:fetch:parse:end'],
 ];
 
-/**
- * Discard outlier values that exceed 2x the best (minimum) time.
- * P2P connections are inherently noisy. Slow iterations where peers are
- * unreachable skew all metrics. Filtering before stats gives a more
- * representative picture of actual performance.
- */
+/** Drops values over twice the best, since an iteration with unreachable peers skews every metric. */
 function filterOutliers(values: number[]): {
   filtered: number[];
   discarded: number;
@@ -112,7 +97,6 @@ function filterOutliers(values: number[]): {
   const best = Math.min(...values);
   const threshold = best * 2;
   const filtered = values.filter(v => v <= threshold);
-  // Keep at least 2 values even if most are outliers
   if (filtered.length < 2) {
     const sorted = [...values].sort((a, b) => a - b);
     return {
@@ -143,7 +127,6 @@ function computeStats(rawValues: number[]): PhaseStats {
 }
 
 async function collectMarks(page: Page): Promise<PerfMark[]> {
-  // Collect host-side marks and timeOrigin for cross-frame normalization
   const hostData = await page.evaluate(() => ({
     marks: performance
       .getEntriesByType('mark')
@@ -152,7 +135,6 @@ async function collectMarks(page: Page): Promise<PerfMark[]> {
     timeOrigin: performance.timeOrigin,
   }));
 
-  // Collect app iframe marks (<label>.app.localhost) and normalize to host timeline
   const appFrame = page.frames().find(f => f.url().includes('.app.localhost'));
   if (!appFrame) {
     return hostData.marks;
@@ -167,9 +149,7 @@ async function collectMarks(page: Page): Promise<PerfMark[]> {
       timeOrigin: performance.timeOrigin,
     }));
 
-    // Normalize app marks onto the host performance timeline. The offset is
-    // appTimeOrigin minus hostTimeOrigin. Adding it converts app mark
-    // timestamps to be relative to the host's timeOrigin.
+    // Onto the host's timeline.
     const offset = appData.timeOrigin - hostData.timeOrigin;
     const normalizedAppMarks = appData.marks.map(m => ({
       name: m.name,
@@ -178,7 +158,7 @@ async function collectMarks(page: Page): Promise<PerfMark[]> {
 
     return [...hostData.marks, ...normalizedAppMarks];
   } catch {
-    // App frame may not be accessible after document.write() replaces it
+    // The app frame may be inaccessible once document.write() replaces it.
     return hostData.marks;
   }
 }
@@ -205,13 +185,11 @@ function computePhases(marks: PerfMark[]): PhaseResult[] {
 }
 
 async function waitForPipeline(page: Page): Promise<void> {
-  // 1. Wait for host to finish (CID resolution and app iframe creation)
   await page.waitForFunction(() => performance.getEntriesByType('mark').some(m => m.name === 'dotli:main:end'), {
     timeout: 90_000,
     polling: 500,
   });
 
-  // 2. Wait for the app iframe (<label>.app.localhost) to appear and finish
   const appFrame = await findAppFrame(page, 30_000);
   if (appFrame !== null) {
     try {
@@ -226,8 +204,7 @@ async function waitForPipeline(page: Page): Promise<void> {
     console.log('  Warning: app iframe not found within timeout');
   }
 
-  // Drain trailing network activity (chain-spec fetches, lazy chunks) so the
-  // perf snapshot captures phases that emit marks after `dotli:app:end`.
+  // Some phases emit marks after `dotli:app:end`.
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 }
 
@@ -392,7 +369,6 @@ function printStatsTable(
   const hasBase = baseStats !== undefined && baseStats !== null && Object.keys(baseStats.phases).length > 0;
   const hasLast = lastStats !== undefined && lastStats !== null && Object.keys(lastStats.phases).length > 0;
 
-  // Browser metrics
   const dcl = stats.browserMetrics.domContentLoaded;
   const heap = stats.browserMetrics.jsHeapUsed;
   const reqs = stats.networkStats.requestCount;
@@ -406,7 +382,6 @@ function printStatsTable(
   console.log(`  Network Requests:  p50=${String(reqs.p50)}  range=${String(reqs.min)}-${String(reqs.max)}`);
   console.log(`  Bytes Transferred: p50=${(bytes.p50 / 1024 / 1024).toFixed(2)}MB`);
 
-  // Phase table
   let header = `\n  ${'Phase'.padEnd(22)} ${'p50'.padStart(9)} ${'p95'.padStart(9)} ${'p99'.padStart(9)} ${'Mean'.padStart(9)} ${'StdDev'.padStart(9)} ${'CV'.padStart(6)}`;
   if (hasBase) {
     header += `  ${'vs Base (p50)'.padStart(26)}`;
@@ -455,7 +430,6 @@ function printStatsTable(
     console.log(row);
   }
 
-  // Per-iteration breakdown
   if (totalPhase !== null) {
     console.log(`\n  ${DIM}Iterations: [${totalPhase.values.map(v => fmt(v)).join(', ')}]${RESET}`);
   }
@@ -501,18 +475,12 @@ async function runColdIteration(browser: Browser, index: number, total: number):
   };
 }
 
-/**
- * Run all warm iterations in a single browser context.
- * The first load populates caches (SW, IndexedDB, HTTP cache),
- * then each iteration reloads and measures against warm caches.
- */
 async function runWarmIterations(browser: Browser, total: number): Promise<SingleRun[]> {
   const context = await browser.newContext({
     serviceWorkers: 'allow',
   });
   const page = await context.newPage();
 
-  // First load populates caches (SW registration, IndexedDB archive, etc.)
   console.log(`  Warm: initial load (populating caches)...`);
   await page.goto(`http://${DOMAIN_A}.localhost:${PORT}/`, {
     waitUntil: 'commit',
@@ -574,12 +542,10 @@ async function runLukewarmIterations(browser: Browser, total: number): Promise<S
     console.log(`  Lukewarm iteration ${String(i + 1)}/${String(total)}...`);
 
     const iterationWork = async (): Promise<SingleRun> => {
-      // Fresh context per iteration for independent samples
       const context = await browser.newContext({
         serviceWorkers: 'allow',
       });
 
-      // Step 1: Prime with DOMAIN_A (populates HTTP cache, WASM compilation cache)
       console.log(`    Priming with ${DOMAIN_A}.dot...`);
       const primePage = await context.newPage();
       await primePage.goto(`http://${DOMAIN_A}.localhost:${PORT}/`, {
@@ -587,7 +553,6 @@ async function runLukewarmIterations(browser: Browser, total: number): Promise<S
       });
       await waitForPipeline(primePage);
 
-      // Step 2: Open DOMAIN_B in a new tab (different origin, shared HTTP cache)
       console.log(`    Loading ${DOMAIN_B}.dot (lukewarm)...`);
       const page = await context.newPage();
 
@@ -634,7 +599,6 @@ async function runLukewarmIterations(browser: Browser, total: number): Promise<S
   return runs;
 }
 
-// 3 tests, N iterations each: cold (~15s each), warm (~5s each), lukewarm (~30s each, prime then measure)
 test.setTimeout(NUM_RUNS * 300_000 + 30_000);
 
 test.describe('Cold Start Performance', () => {

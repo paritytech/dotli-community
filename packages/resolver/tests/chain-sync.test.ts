@@ -30,8 +30,7 @@ let attachChainSync: typeof ChainSyncModule.attachChainSync;
 beforeEach(async () => {
   vi.clearAllMocks();
   metrics.enabled = true;
-  // The event history and the opt-in sets are module state, so each test
-  // needs its own copy of the module.
+  // History and opt-ins are module state, so each test loads its own copy.
   vi.resetModules();
   const mod = await import('../src/chain-sync.js');
   onChainSync = mod.onChainSync;
@@ -42,11 +41,8 @@ beforeEach(async () => {
 type Lifecycle = ChainLifecycle;
 
 /**
- * One chain connection, standing in for truapi-provider's.
- *
- * `push` plays a lifecycle snapshot through the watch, `deliver` plays a raw
- * response through the tap the way `./provider` does, and returns whether the
- * tap claimed it. Anything it does not claim would have reached polkadot-api.
+ * Stands in for a truapi-provider connection. `deliver` plays a response through the tap as `./provider`
+ * does, and whatever the tap does not claim would have reached polkadot-api.
  */
 interface Pipe {
   tap: ChainSyncTap;
@@ -123,12 +119,7 @@ function requirePipe(chain: 'relay' | 'asset-hub'): Pipe {
   return pipe;
 }
 
-/**
- * One lifecycle snapshot.
- *
- * The watch reports the whole chain state every time, so a test describes
- * where the chain now stands rather than which milestone fired.
- */
+/** The whole chain state, as the watch reports it every time. */
 function state(phase: Lifecycle['phase'], peers: number, health: Lifecycle['health'] = { kind: 'ok' }): Lifecycle {
   return { phase, peers, health };
 }
@@ -383,34 +374,6 @@ describe('Light client sync reporting works', () => {
 
     // Then
     expect(pipe.forwarded).toEqual([appResponse]);
-  });
-
-  it('As a user waiting for sync, lifecycle progress does not report a broken side channel while health is queued', async () => {
-    vi.useFakeTimers();
-    // Match the fresh module graph created by beforeEach's vi.resetModules().
-    const { log } = await import('@dotli/shared');
-    const warn = vi.spyOn(log, 'warn');
-    try {
-      enableSyncReporting(['relay']);
-      const pipe = requirePipe('relay');
-      const seen: unknown[] = [];
-      onChainSync(event => seen.push(event));
-
-      // 0.3.1 holds system_health until ready, but not lifecycle traffic.
-      await pipe.push(state(syncing(20, 100), 3));
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      expect(seen).toEqual([
-        { chain: 'relay', kind: 'firstPeer' },
-        { chain: 'relay', kind: 'peers', peers: 3, isSyncing: true },
-        { chain: 'relay', kind: 'warpSyncProgress', at: 20, target: 100 },
-      ]);
-      expect(warn).not.toHaveBeenCalled();
-      pipe.tap.stop();
-    } finally {
-      warn.mockRestore();
-      vi.useRealTimers();
-    }
   });
 
   it('As a user leaving the page, stopping the tap closes the lifecycle watch', () => {

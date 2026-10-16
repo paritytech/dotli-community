@@ -7,11 +7,9 @@ import { defineConfig } from 'eslint/config';
 import { config as viteConfig } from './vite.js';
 
 /**
- * ESLint configuration for Astro apps: the Vite config for their TypeScript,
- * plus eslint-plugin-astro's recommended rules for `.astro` components, their
- * frontmatter and their `<script>`s. The type-aware rules are off in
- * components, which TypeScript's project service does not load; `astro
- * check` type-checks them.
+ * ESLint configuration for Astro apps.
+ * Type-aware rules are off in components, which the TypeScript project service does not load. `astro check` covers
+ * them.
  */
 export const config = defineConfig([
   ...viteConfig,

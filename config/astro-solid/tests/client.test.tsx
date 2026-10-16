@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The client entrypoint (src/client.ts), called the way Astro's
-// <astro-island> calls it: with the island element, then the component, its
-// props, its slots' HTML and the client directive. The server markup it
-// hydrates comes from the server entrypoint, run in a Vite SSR server with
-// the same Solid compile, as Astro's build does.
+// Called the way Astro's <astro-island> calls it. The server markup comes from the server entrypoint in a Vite SSR
+// server with the same Solid compile, as in Astro's build.
 
 import { resolve } from 'node:path';
 import { flush } from 'solid-js';
@@ -21,7 +18,6 @@ const ROOT = resolve(import.meta.dirname, '..');
 let server: ViteDevServer;
 
 beforeAll(async () => {
-  // A middleware-mode-only Vite server, never listening on a port.
   server = await createServer({
     configFile: false,
     root: ROOT,

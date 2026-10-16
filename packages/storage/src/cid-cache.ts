@@ -103,8 +103,7 @@ function transactionCompletion(tx: IDBTransaction, action: string): Promise<void
 
 type CacheAction = 'write' | 'clear' | 'evict';
 
-// Sentry capture is throttled to once per action per page: a cache stuck in
-// one failure reports identically on every access.
+// One Sentry capture per action per page, since a stuck cache reports identically on every access.
 const reportedActions = new Set<CacheAction>();
 
 function report(action: CacheAction, err: unknown): void {
@@ -165,12 +164,7 @@ export async function getCachedInstalledExecutable(
 export const RECENT_KEY = 'dotli_recent';
 const MAX_RECENT = 8;
 
-/**
- * Decode a stored recent list, dropping anything that isn't a usable label.
- *
- * Shared with the cross-subdomain transport in `@dotli/ui/recent-labels`,
- * which holds the same list under the shared-mode store.
- */
+/** Drops anything that isn't a usable label. Also used by the cross-subdomain store in `@dotli/ui`. */
 export function parseRecentLabels(raw: string | null): string[] {
   if (raw === null || raw === '') {
     return [];
@@ -190,12 +184,11 @@ export function serializeRecentLabels(labels: string[]): string {
   return JSON.stringify(labels.slice(0, MAX_RECENT));
 }
 
-/** Put `label` at the front of `labels`, deduplicated and length-capped. */
 export function withRecentLabel(labels: string[], label: string): string[] {
   return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
 }
 
-/** Read this origin's recent list. The shared store is authoritative. */
+/** This origin's copy. The shared store is authoritative. */
 export function getRecentLabels(): string[] {
   try {
     return parseRecentLabels(localStorage.getItem(RECENT_KEY));
@@ -207,9 +200,9 @@ export function getRecentLabels(): string[] {
 export function writeRecentLabels(labels: string[]): void {
   try {
     localStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
-    // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable / quota exceeded when writing a UI-only "recent labels" list. Not worth a metric per page load; defaults keep working.
+    // eslint-disable-next-line no-restricted-syntax -- the recent list is UI-only, so a full or missing localStorage is not worth a metric.
   } catch {
-    /* non-critical. The recent list is UI decoration */
+    /* the recent list is UI decoration */
   }
 }
 
