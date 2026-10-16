@@ -69,8 +69,8 @@ and no data source.
   `ModalButtonVariant`) and the toast store (`toastsStore` and the type `ToastEntry`).
 - Page helpers: `focusables`, `runWhenIdle` and `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`,
   `watchPhoneViewport`, `prefersReducedMotion` and the type `StatusTone`.
-- Helpers: `useStore`, `createDrags` with the type `Drags` (one owner for a component's pointer drags, which ends every
-  drag still held when the component cleans up), `focusLostOrInside`, `focusTrigger`.
+- Helpers: `useStore`, `createDrags` with the type `Drags` (one owner for a component's pointer drags, which cancels
+  every drag still held when the component cleans up), `focusLostOrInside`, `focusTrigger`.
 - Roots: `mountRoot` with `MountRootOptions`, `RootBoundary`, `ensureOverlayRoot`.
 - Screens and overlays: `showErrorPage` and `showError` with the types `ErrorAction`, `ErrorPageContent`, `ErrorText`
   and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, `showScreen`, `clearScreen`,
