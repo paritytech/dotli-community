@@ -7,7 +7,7 @@
   flex-direction: column;
   gap: var(--sp-1);
   margin: 0;
-  padding: 10px 0;
+  padding: var(--sp-2) 0;
 }
 .field + .field {
   border-top: 1px solid var(--chrome-line);

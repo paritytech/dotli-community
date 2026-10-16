@@ -87,7 +87,7 @@
 .stops {
   position: relative;
   height: 16px;
-  margin: 6px 8px 0;
+  margin: var(--sp-1_5) 8px 0;
   /* Only the labels take presses, so the strip between them that overlaps the track on phones still starts a drag. */
   pointer-events: none;
 }

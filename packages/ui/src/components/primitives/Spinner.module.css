@@ -5,7 +5,7 @@
   box-sizing: border-box;
   width: 24px;
   height: 24px;
-  margin: 1rem auto;
+  margin: var(--sp-4) auto;
   padding: 0;
   border: 2px solid var(--chrome-ring);
   border-top-color: var(--chrome-text);

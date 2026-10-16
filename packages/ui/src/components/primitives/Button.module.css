@@ -8,7 +8,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   --button-h: 36px;
   height: var(--button-h);
   margin: 0;
@@ -72,7 +72,7 @@
 }
 /* Less padding beside a leading icon, so icon and label look centred. */
 :where(.button:has(> svg:first-child)) {
-  padding-left: 13px;
+  padding-left: var(--sp-3);
 }
 .button:disabled {
   background: transparent;

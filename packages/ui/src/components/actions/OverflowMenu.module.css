@@ -25,7 +25,7 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);

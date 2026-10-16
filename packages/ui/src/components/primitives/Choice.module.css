@@ -7,10 +7,10 @@
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--sp-2);
   width: 100%;
   margin: 0;
-  padding: 10px var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
   background: var(--chrome-well);
   box-shadow: inset 0 0 0 1px var(--chrome-ring-subtle);
@@ -81,7 +81,7 @@ label.choice:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);

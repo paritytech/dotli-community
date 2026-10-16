@@ -9,10 +9,10 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   width: fit-content;
   min-height: 36px;
-  padding: 6px 4px;
+  padding: var(--sp-1_5) var(--sp-1);
   border-radius: var(--r-xs);
   color: var(--chrome-text);
   font: var(--fw-medium) 13px / var(--lh-tight) var(--font-sans);
@@ -44,7 +44,7 @@
 }
 /* Padding, not a margin, so the closed section folds it away with the body. */
 .body {
-  padding-top: 10px;
+  padding-top: var(--sp-2);
 }
 /* A browser that cannot size to `auto` in a transition opens the section at once with its native styles. */
 @supports (interpolate-size: allow-keywords) {
@@ -70,7 +70,7 @@
 @media (max-width: 560px) {
   .summary {
     min-height: 44px;
-    margin: 2px 0;
+    margin: var(--sp-hair) 0;
     font-size: 14px;
   }
   .chevron {
@@ -78,7 +78,7 @@
     height: 16px;
   }
   .body {
-    padding-top: 4px;
+    padding-top: var(--sp-1);
   }
 }
 /* Two rules, since a browser that does not know the pseudo-element drops every selector listed with it. */

@@ -15,7 +15,7 @@
   flex: none;
   width: 1px;
   height: 20px;
-  margin: 0 6px 0 2px;
+  margin: 0 var(--sp-1_5) 0 var(--sp-hair);
   background: var(--chrome-ring);
 }
 

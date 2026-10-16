@@ -34,7 +34,7 @@
 .stack[data-expanded] .cards {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1_5);
   max-height: 60dvh;
   margin: calc(-1 * var(--sp-3));
   padding: var(--sp-3);
