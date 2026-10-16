@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { stopAt, stopForKey } from './step-slider.js';
+import { handlesKey, stopAt, stopForKey } from './step-slider.js';
 
 describe('step slider', () => {
   it.each([
@@ -26,8 +26,12 @@ describe('step slider', () => {
     ['ArrowDown', 1, 0],
     ['Home', 2, 0],
     ['End', 1, 3],
-    ['ArrowRight', 3, 3],
-    ['ArrowLeft', 0, 0],
+    ['ArrowRight', 3, null],
+    ['ArrowUp', 3, null],
+    ['ArrowLeft', 0, null],
+    ['ArrowDown', 0, null],
+    ['End', 3, null],
+    ['Home', 0, null],
     ['Enter', 2, 2],
     [' ', 2, 2],
     ['Tab', 2, null],
@@ -35,5 +39,17 @@ describe('step slider', () => {
   ])('As a keyboard user pressing %j on stop %d of four, I commit stop %j', (key, index, stop) => {
     // Then
     expect(stopForKey(key, index, 4)).toBe(stop);
+  });
+
+  it.each<[string, boolean]>([
+    ['ArrowRight', true],
+    ['End', true],
+    ['Enter', true],
+    [' ', true],
+    ['Tab', false],
+    ['a', false],
+  ])('As a keyboard user pressing %j, the slider takes the key from the page: %j', (key, handled) => {
+    // Then
+    expect(handlesKey(key)).toBe(handled);
   });
 });

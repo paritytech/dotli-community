@@ -51,7 +51,7 @@ function pointer(target: HTMLElement, type: string, fraction: number): void {
   );
 }
 
-/** As a keyboard user, each step key commits the stop it lands on, and End at the end commits it again. */
+/** As a keyboard user, each step key commits the stop it lands on, End at the end commits nothing and Enter commits again. */
 export const Keyboard: Story = {
   render: Owned,
   play: async ({ args, canvas, userEvent, step }) => {
@@ -63,11 +63,19 @@ export const Keyboard: Story = {
     await step('When I press ArrowRight, then End twice', async () => {
       await userEvent.keyboard('{ArrowRight}');
       await userEvent.keyboard('{End}');
+      await waitFor(() => expect(slider(canvas)).toHaveAttribute('aria-valuenow', '3'));
       await userEvent.keyboard('{End}');
     });
-    await step('Then High, Max and Max again were committed', async () => {
+    await step('Then High and Max were committed, and the second End committed nothing', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(2);
       await expect(args.onCommit).toHaveBeenNthCalledWith(1, 2);
       await expect(args.onCommit).toHaveBeenNthCalledWith(2, 3);
+    });
+    await step('When I press Enter', async () => {
+      await userEvent.keyboard('{Enter}');
+    });
+    await step('Then Max is committed again', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(3);
       await expect(args.onCommit).toHaveBeenNthCalledWith(3, 3);
       await expect(slider(canvas)).toHaveAttribute('aria-valuenow', '3');
     });

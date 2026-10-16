@@ -4,7 +4,7 @@
 import { createSignal, For, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../drag.js';
-import { stopAt, stopForKey } from './step-slider.js';
+import { handlesKey, stopAt, stopForKey } from './step-slider.js';
 import s from './StepSlider.module.css';
 
 export interface StepSliderStop {
@@ -22,15 +22,15 @@ export interface StepSliderProps {
   /** Read aloud for a stop in place of its label, such as the stop and a note on it. */
   valueText?: (index: number) => string;
   /**
-   * Every commit: a pointer released over the track, a step key, Enter or Space, or a stop's label pressed. The stop
-   * the slider is on is committed too, so its owner can apply it again.
+   * Every commit: a pointer released over the track, a stop's label pressed, Enter or Space, which commit the stop the
+   * slider is on too, so its owner can apply it again, or a step key, which commits only a step.
    */
   onCommit: (index: number) => void;
   class?: string | undefined;
   testId?: string;
 }
 
-/** One of a few named stops on a track, committed by the gesture that ends on it. */
+/** One of a few named stops on a track, committed by the pointer release, label press or key that picks it. */
 export function StepSlider(props: StepSliderProps): JSX.Element {
   const drags = createDrags();
   onCleanup(drags.stopAll);
@@ -74,12 +74,14 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    const next = stopForKey(event.key, props.value, props.stops.length);
-    if (next === null) {
+    if (!handlesKey(event.key)) {
       return;
     }
     event.preventDefault();
-    props.onCommit(next);
+    const next = stopForKey(event.key, props.value, props.stops.length);
+    if (next !== null) {
+      props.onCommit(next);
+    }
   };
 
   return (
