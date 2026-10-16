@@ -124,7 +124,7 @@ function buildChainEntries(): Map<number, ChainEntry> {
   const entries = new Map<number, ChainEntry>();
 
   for (const { wireTableKey, stem } of CHAIN_LINKAGE) {
-    const ids = WIRE_TABLE[wireTableKey] as unknown as MethodIds;
+    const ids: MethodIds = WIRE_TABLE[wireTableKey];
     const tagBase = `remote_chain_${snakeCase(stem)}`;
     const set = (messageType: number, role: string, codec: WireCodec | null): void => {
       entries.set(wireFrameKey(wireFrameId(ids, messageType)), {
@@ -169,7 +169,7 @@ const WALLET_LINKAGE: readonly ChainLinkage[] = [
 function buildWalletCodecs(): Map<number, WireCodec> {
   const codecs = new Map<number, WireCodec>();
   for (const { wireTableKey, stem } of WALLET_LINKAGE) {
-    const ids = WIRE_TABLE[wireTableKey] as unknown as MethodIds;
+    const ids: MethodIds = WIRE_TABLE[wireTableKey];
     const request = resolveCodec(`VersionedHost${stem}Request`);
     const ok = resolveCodec(`VersionedHost${stem}Response`);
     const err = resolveCodec(`VersionedHost${stem}Error`);
