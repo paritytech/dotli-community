@@ -30,6 +30,26 @@ Legacy Nova `window.postMessage` frames are rejected with a product-update notic
 incompatible decoder. Products must use a compatible TrUAPI MessagePort transport. Account, signing, statement-store,
 SSO pairing, restore, and logout are core-owned and do not cross the JS host callback boundary as Nova-specific routes.
 
+## Existing Chat and profile state
+
+The local signing runtime keeps native Chat records, profile disclosures, received profile references and host-channel
+peer keys in shared custody for the active account. Profile and peer keys include their root identity and People
+network. Chat grants additionally bind the account and network because their native storage key does not include them.
+
+On first access, an existing profile record moves from the product's storage into custody. A newer custody value wins.
+Migration persists the destination before retiring the source, and a durable tombstone prevents another product's stale
+copy from restoring a withdrawn record. Reads, writes and clears for one slot are serialized through the shared task pool.
+An absent source does not retire that slot, so opening Chat before the profile product does not prevent migration.
+
+Old Chat grants have no account or network binding. Their bytes are retained, but they do not grant access in the new
+scope. The Chat product asks for fresh consent. Existing conversation history and profile records are not reset.
+
+Host-channel qualification must distinguish direct delivery from the older Chat relay. Pair two accounts in Chat, then
+leave Chat and share, update and withdraw a profile through Seity. Check the receiving host's
+`host channel reference recorded from a contact` trace and the visible profile. Reopen the receiving host after withdrawal
+to check that replay does not restore it. The native host-channel regression suite separately exercises delivery with no
+Chat relay, including replay, peer and network isolation.
+
 ## dotli callback boundary
 
 dotli still supplies platform primitives that are host policy or browser UI:
@@ -53,16 +73,22 @@ channels, or statement-store request routing that belongs inside the Rust core.
 
 ## Dependencies
 
-`packages/ui/package.json` depends on the published TrUAPI packages:
+The root `package.json` uses matched vendored TrUAPI packages:
 
 ```jsonc
-"@parity/truapi": "0.5.0",
-"@parity/truapi-host": "0.2.0"
+"@parity/truapi": "file:vendor/truapi",
+"@parity/truapi-host": "file:vendor/truapi-host"
 ```
 
-Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's development and E2E Make targets run
-`npm run link:truapi` after building the local packages, so parent-repo work always exercises the current checkout
-instead of the npm artifacts.
+`vendor/truapi-host.lock.json` records the native source revision and artifact checksums. Each feature layer uses the
+artifact from its corresponding native layer. `scripts/build-vendored-truapi-host.sh` regenerates the client bindings
+and both WebAssembly bundles together.
+
+Standalone installs and CI use these vendored artifacts. Local development can use `npm run link:truapi` after building
+the local packages. Permission reads and changes go through core-owned administration, not page-memory overrides.
+
+Notification activation and acknowledgement callbacks belong in the receiving integration, whose native API declares
+them. The generic PolkaVM adapter does not register those receiving-only callbacks.
 
 The runtime manifests and source must not depend on or import the removed `@novasamatech/*` runtime packages.
 

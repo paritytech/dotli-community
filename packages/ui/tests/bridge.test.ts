@@ -551,7 +551,6 @@ describe('bridge render lifecycle', () => {
     window.dispatchEvent(new Event('dotli:logged-out'));
     await expect(api.pushNotification({ text: 'After logout' })).rejects.toThrow('authenticated account');
   }, 10_000);
-
   it('As a dotli integrator, the host disposes a host that resolves after a newer render has started', async () => {
     // Given
     const { renderIframe } = await import('../src/bridge.js');
