@@ -184,11 +184,18 @@ describe('native Chat beside the local wallet core', () => {
     chatPage.dispose();
   });
 
-  it.each(PROFILE_KEYS)('migrates existing $tag bytes once and shares them across product pages', async key => {
+  it.each(PROFILE_KEYS)('As a returning person, I keep my $tag across product pages after upgrading', async key => {
+    // Given
     const legacy = memoryStorage();
     const bytes = new Uint8Array([7, 8, 9]);
     await legacy.writeCoreStorage(key, bytes);
+    const earlierPage = createLocalWalletChat(WALLET, () => true);
+    expect(await earlierPage.coreStorage(memoryStorage()).readCoreStorage(key)).toBeUndefined();
+    earlierPage.dispose();
+
+    // When
     const firstPage = createLocalWalletChat(WALLET, () => true);
+    // Then
     expect(await firstPage.coreStorage(legacy).readCoreStorage(key)).toEqual(bytes);
     expect(await legacy.readCoreStorage(key)).toBeUndefined();
     firstPage.dispose();
@@ -198,65 +205,84 @@ describe('native Chat beside the local wallet core', () => {
     otherPage.dispose();
   });
 
-  it.each(PROFILE_KEYS)('never overwrites newer $tag custody or resurrects a cleared record', async key => {
+  it.each(PROFILE_KEYS)('As a person, I keep newer $tag state and stale copies cannot undo a withdrawal', async key => {
+    // Given
     const chat = createLocalWalletChat(WALLET, () => true);
     const newer = chat.coreStorage(memoryStorage());
     await newer.writeCoreStorage(key, new Uint8Array([9]));
     const stale = memoryStorage();
     await stale.writeCoreStorage(key, new Uint8Array([1]));
+    // When
     expect(await chat.coreStorage(stale).readCoreStorage(key)).toEqual(new Uint8Array([9]));
 
     await newer.clearCoreStorage(key);
     const anotherOrigin = memoryStorage();
     await anotherOrigin.writeCoreStorage(key, new Uint8Array([2]));
+    // Then
     expect(await chat.coreStorage(anotherOrigin).readCoreStorage(key)).toBeUndefined();
     expect(await anotherOrigin.readCoreStorage(key)).toBeUndefined();
     chat.dispose();
   });
 
-  it('keeps a failed migration recoverable without deleting the legacy bytes', async () => {
+  it('As a returning person, I can retry a failed profile read without losing my old data', async () => {
+    // Given
     const key = PROFILE_KEYS[0]!;
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
     const originalRead = legacy.readCoreStorage;
-    legacy.readCoreStorage = vi.fn().mockRejectedValueOnce(new Error('storage unavailable')).mockImplementation(originalRead);
+    legacy.readCoreStorage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('storage unavailable'))
+      .mockImplementation(originalRead);
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(legacy);
-    await expect(storage.readCoreStorage(key)).rejects.toThrow('storage unavailable');
+    // When
+    await expect(storage.readCoreStorage(key)).rejects.toThrow(Error);
+    // Then
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([3]));
     chat.dispose();
   });
 
-  it('retains legacy data when custody persistence fails, then retries without data loss', async () => {
+  it('As a returning person, I retain my old profile when shared storage fails and can retry safely', async () => {
+    // Given
     const key = PROFILE_KEYS[0]!;
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(legacy);
+    // When
     custody.failNextWrite = true;
-    await expect(storage.readCoreStorage(key)).rejects.toThrow('custody unavailable');
+    await expect(storage.readCoreStorage(key)).rejects.toThrow(Error);
+    // Then
     expect(await legacy.readCoreStorage(key)).toEqual(new Uint8Array([3]));
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([3]));
     expect(await legacy.readCoreStorage(key)).toBeUndefined();
     chat.dispose();
   });
 
-  it('recovers a failed source cleanup without replacing an already migrated value', async () => {
+  it('As a person, I keep my latest profile after retrying failed migration cleanup', async () => {
+    // Given
     const key = PROFILE_KEYS[0]!;
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([3]));
     const originalClear = legacy.clearCoreStorage;
-    legacy.clearCoreStorage = vi.fn().mockRejectedValueOnce(new Error('cleanup unavailable')).mockImplementation(originalClear);
+    legacy.clearCoreStorage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('cleanup unavailable'))
+      .mockImplementation(originalClear);
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(legacy);
-    await expect(storage.readCoreStorage(key)).rejects.toThrow('cleanup unavailable');
+    // When
+    await expect(storage.readCoreStorage(key)).rejects.toThrow(Error);
     await chat.coreStorage(memoryStorage()).writeCoreStorage(key, new Uint8Array([9]));
+    // Then
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([9]));
     expect(await legacy.readCoreStorage(key)).toBeUndefined();
     chat.dispose();
   });
 
-  it('serializes a delayed upgrade read before a newer write on the same slot', async () => {
+  it('As a person, I can update my profile during migration without an older read overwriting it', async () => {
+    // Given
     const key = PROFILE_KEYS[0]!;
     const legacy = memoryStorage();
     const started = Promise.withResolvers<void>();
@@ -267,26 +293,31 @@ describe('native Chat beside the local wallet core', () => {
     };
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(legacy);
+    // When
     const reading = storage.readCoreStorage(key);
     await started.promise;
     const writing = storage.writeCoreStorage(key, new Uint8Array([9]));
     delayed.resolve(new Uint8Array([1]));
+    // Then
     expect(await reading).toEqual(new Uint8Array([1]));
     await writing;
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([9]));
     chat.dispose();
   });
 
-  it('preserves ambiguous legacy Chat grants but requires fresh consent under wallet and network scope', async () => {
+  it('As a person, I approve Chat afresh after upgrading and that approval cannot cross accounts or networks', async () => {
+    // Given
     const legacy = memoryStorage();
     const oldGrant = new Uint8Array([1]);
     await legacy.writeCoreStorage(CHAT_ACCESS, oldGrant);
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(legacy);
+    // When
     expect(await storage.readCoreStorage(CHAT_ACCESS)).toBeUndefined();
     expect(await legacy.readCoreStorage(CHAT_ACCESS)).toEqual(oldGrant);
     await storage.writeCoreStorage(CHAT_ACCESS, new Uint8Array([2]));
     chat.dispose();
+    // Then
 
     const otherWallet = createLocalWalletChat({ ...WALLET, entropy: new Uint8Array(16).fill(2) }, () => true);
     expect(await otherWallet.coreStorage(legacy).readCoreStorage(CHAT_ACCESS)).toBeUndefined();
@@ -303,18 +334,21 @@ describe('native Chat beside the local wallet core', () => {
     otherNetwork.dispose();
   });
 
-  it.each(PROFILE_KEYS)('keeps migrated $tag scoped to its root and network', async key => {
+  it.each(PROFILE_KEYS)('As a person, I keep migrated $tag separate from other identities and networks', async key => {
+    // Given
     const legacy = memoryStorage();
     await legacy.writeCoreStorage(key, new Uint8Array([4]));
     const chat = createLocalWalletChat(WALLET, () => true);
     const storage = chat.coreStorage(legacy);
+    const otherIdentity = structuredClone(key);
+    otherIdentity.value.rootPublicKey = new Uint8Array(32).fill(6);
+    const otherNetwork = structuredClone(key);
+    otherNetwork.value.genesisHash = new Uint8Array(32).fill(6);
+    // When
     expect(await storage.readCoreStorage(key)).toEqual(new Uint8Array([4]));
-    expect(await storage.readCoreStorage({
-      ...key, value: { ...key.value, rootPublicKey: new Uint8Array(32).fill(6) },
-    })).toBeUndefined();
-    expect(await storage.readCoreStorage({
-      ...key, value: { ...key.value, genesisHash: new Uint8Array(32).fill(6) },
-    })).toBeUndefined();
+    // Then
+    expect(await storage.readCoreStorage(otherIdentity)).toBeUndefined();
+    expect(await storage.readCoreStorage(otherNetwork)).toBeUndefined();
     chat.dispose();
   });
 

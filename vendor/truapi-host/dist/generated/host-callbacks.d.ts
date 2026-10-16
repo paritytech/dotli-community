@@ -294,8 +294,8 @@ export type CoreStorageKey =
  * wallet and network, whichever product wrote it. The reference is a
  * bearer capability.
  *
- * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose
- * replaces the others.
+ * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose replaces
+ * the others.
  */
  | {
     tag: "ProfileDisclosure";
@@ -1115,6 +1115,15 @@ export interface PlacedContactLabels {
     labels: Array<PlacedContactLabel>;
 }
 /**
+ * Review shown before a preimage is submitted.
+ */
+export interface PreimageSubmitReview {
+    /**
+     * Size of the preimage in bytes.
+     */
+    size: bigint;
+}
+/**
  * Host-only presentation of a contact's shared profile or its absence.
  */
 export interface PresentedContactProfile {
@@ -1408,6 +1417,13 @@ export type UserConfirmationReview =
     value: ResourceAllocationReview;
 }
 /**
+ * Submit a preimage to the host-selected backend.
+ */
+ | {
+    tag: "PreimageSubmit";
+    value: PreimageSubmitReview;
+}
+/**
  * Allow a product to access another product account.
  */
  | {
@@ -1640,6 +1656,10 @@ export declare const PlacedContactLabel: S.Codec<PlacedContactLabel>;
  * Complete replacement of names drawn over one product connection.
  */
 export declare const PlacedContactLabels: S.Codec<PlacedContactLabels>;
+/**
+ * Review shown before a preimage is submitted.
+ */
+export declare const PreimageSubmitReview: S.Codec<PreimageSubmitReview>;
 /**
  * Host-only presentation of a contact's shared profile or its absence.
  */

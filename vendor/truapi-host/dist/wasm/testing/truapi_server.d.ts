@@ -281,11 +281,19 @@ export class WasmSigningHostRuntime {
      */
     notifyContactsChanged(): void;
     /**
-     * Read one permission authorization status for a product.
+     * Read a permission authorization status for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      */
     permissionAuthorizationStatus(product_id: string, payload: Uint8Array): Promise<any>;
     /**
      * Read permission authorization statuses for a product.
+     *
+     * A device capability resolves the host application's OS gate as well as
+     * storage, so an OS refusal reads as `Denied` whatever is stored. Remote,
+     * identity-disclosure and account-access decisions have no OS gate.
      */
     permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
     /**
@@ -294,13 +302,10 @@ export class WasmSigningHostRuntime {
      */
     productRuntime(product: any, core_callbacks: any, platform_callbacks?: any | null): WasmProductRuntime;
     /**
-     * The product's hard-subtree public key, derived from the active session
-     * root. `undefined` while no session is active.
-     *
-     * Paired with `deriveProductAccountPublicKey` and `productAccountAddress`
-     * this gives a host the product's address without asking the product.
+     * Resolve a product's hard-subtree public key from the active local
+     * signing session.
      */
-    productSubtreePublicKey(product_id: string): Uint8Array | undefined;
+    productSubtreePublicKey(product_id: string, timeout_ms?: number | null): Promise<Uint8Array | undefined>;
     /**
      * Install freshly verified dotNS metadata only for the captured local activation.
      */
@@ -329,7 +334,7 @@ export class WasmSigningHostRuntime {
      */
     setGrantAllowancesUnchecked(granted: boolean): void;
     /**
-     * Update one stored permission authorization status for a product.
+     * Update a stored permission authorization status for a product.
      */
     setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
     /**
@@ -488,7 +493,7 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => void;
+    readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
@@ -497,12 +502,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_10209: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_10265: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_2280: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2273: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_10096: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_2277: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10224: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10282: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4714: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4707: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4711: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10105: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

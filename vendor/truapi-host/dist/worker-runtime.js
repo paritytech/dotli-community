@@ -574,17 +574,16 @@ let allowanceGeneration = 0;
 const allowanceOperations = new Set();
 const nativeChatContactsOperations = new Set();
 function handleNativeChatContacts(requestId) {
-    const booted = host;
+    const rt = host?.role === "signing" ? host.runtime : null;
     const generation = allowanceGeneration;
     const operation = (async () => {
         try {
-            if (booted?.role !== "signing") {
+            if (!rt) {
                 throw new Error("native Chat contacts are unsupported on a pairing host");
             }
-            const rt = booted.runtime;
             const activation = rt.localIdentityContext().activationId;
             const snapshot = await rt.getNativeChatContacts();
-            if (host !== booted ||
+            if (host?.runtime !== rt ||
                 generation !== allowanceGeneration ||
                 rt.localIdentityContext().activationId !== activation) {
                 throw new Error("local identity activation changed");
@@ -609,18 +608,17 @@ function handleNativeChatContacts(requestId) {
     void operation.finally(() => nativeChatContactsOperations.delete(operation));
 }
 function handleWalletAllowanceSnapshot(requestId, input) {
-    const booted = host;
+    const rt = host?.role === "signing" ? host.runtime : null;
     const generation = allowanceGeneration;
     const operation = (async () => {
         try {
-            if (booted?.role !== "signing" || allowanceNetworkSuffix === null) {
+            if (!rt || allowanceNetworkSuffix === null) {
                 throw new Error("wallet allowance inspection requires a signing runtime");
             }
-            const rt = booted.runtime;
             const productIds = validateAllowanceProductIds(input);
             const context = rt.localIdentityContext();
             const snapshot = await rt.getWalletAllowanceSnapshot(context.activationId, productIds);
-            if (host !== booted ||
+            if (host?.runtime !== rt ||
                 generation !== allowanceGeneration ||
                 rt.localIdentityContext().activationId !== context.activationId) {
                 throw new Error("local identity activation changed during allowance inspection");
@@ -646,8 +644,8 @@ function handleWalletAllowanceSnapshot(requestId, input) {
     void operation.finally(() => allowanceOperations.delete(operation));
 }
 function handleLocalIdentity(requestId, registration) {
-    const booted = host;
-    if (booted?.role !== "signing" || identityAbort) {
+    const rt = host?.role === "signing" ? host.runtime : null;
+    if (!rt || identityAbort) {
         postToMain({
             kind: "localIdentityResponse",
             requestId,
@@ -658,12 +656,11 @@ function handleLocalIdentity(requestId, registration) {
         });
         return;
     }
-    const signing = booted.runtime;
     const controller = new AbortController();
     identityAbort = controller;
     const operation = (async () => {
         try {
-            const identity = await resolveLocalIdentity(signing, controller.signal, registration, (progress) => {
+            const identity = await resolveLocalIdentity(rt, controller.signal, registration, (progress) => {
                 if (controller.signal.aborted || identityAbort !== controller)
                     return;
                 postToMain({ kind: "localIdentityProgress", requestId, progress });
@@ -883,7 +880,7 @@ ctx.addEventListener("message", (ev) => {
                 const signing = signingRuntime(booted, "setWithheldResources");
                 if (typeof signing.setWithheldResources !== "function") {
                     return Promise.reject(new Error("setWithheldResources needs a signing host built with " +
-                        "`wasm-signing-host`; this core does not carry it"));
+                        "`test-host`; this core does not carry it"));
                 }
                 signing.setWithheldResources(tags);
                 return Promise.resolve();
@@ -896,14 +893,8 @@ ctx.addEventListener("message", (ev) => {
         case "activateLocalSessionWithIdentity": {
             identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (booted) => {
-                const signing = signingRuntime(booted, "activateLocalSessionWithIdentity");
-                if (typeof signing.activateLocalSessionWithIdentity !== "function") {
-                    return Promise.reject(new Error("activateLocalSessionWithIdentity needs a core built with " +
-                        "`wasm-signing-host`; this core does not carry it"));
-                }
-                return signing.activateLocalSessionWithIdentity(secret, liteUsername);
-            });
+            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (booted) => signingRuntime(booted, "activateLocalSessionWithIdentity")
+                .activateLocalSessionWithIdentity(secret, liteUsername));
             break;
         }
         case "refreshLocalIdentity":
@@ -982,8 +973,7 @@ ctx.addEventListener("message", (ev) => {
             // Null the runtime synchronously so a message arriving mid-disposal takes
             // its `if (!host)` path instead of calling into a runtime being torn
             // down; free the captured handle after the cores finish disposing.
-            const disposingHost = host;
-            const disposing = disposingHost?.runtime;
+            const disposing = host;
             host = null;
             allowanceGeneration++;
             identityAbort?.abort(new Error("runtime disposed"));
@@ -998,13 +988,13 @@ ctx.addEventListener("message", (ev) => {
             }
             void (async () => {
                 try {
-                    if (disposingHost?.role === "signing")
-                        await disposingHost.runtime.disconnectSession();
+                    if (disposing?.role === "signing")
+                        await disposing.runtime.disconnectSession();
                     await Promise.allSettled(identityOperations);
                     await Promise.allSettled(allowanceOperations);
                     await Promise.allSettled(nativeChatContactsOperations);
                     await Promise.all([...cores.keys()].map((coreId) => disposeCore(coreId)));
-                    disposing?.free();
+                    disposing?.runtime.free();
                 }
                 catch (err) {
                     postToMain({ kind: "disposeError", error: errorMessage(err) });
@@ -1112,7 +1102,7 @@ function handleGetSessionChatIdentityKey(requestId) {
             kind: "sessionChatIdentityKeyResponse",
             requestId,
             ok: true,
-            key: pairingRuntime(host, "getSessionChatIdentityKey").sessionChatIdentityKey(),
+            key: host.runtime.sessionChatIdentityKey(),
         });
     }
     catch (err) {
@@ -1193,7 +1183,7 @@ async function handleGetDeviceEncryptionKey(requestId) {
             kind: "deviceEncryptionKeyResponse",
             requestId,
             ok: true,
-            key: await pairingRuntime(host, "getDeviceEncryptionKey").deviceEncryptionKey(),
+            key: await host.runtime.deviceEncryptionKey(),
         });
     }
     catch (err) {
