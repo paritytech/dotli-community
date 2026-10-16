@@ -78,9 +78,9 @@ The Media layer uses the current local signer and native Chat custody from its p
 experimental-wallet owner or storage protocol. Wallet creation and submission behavior remain a separate feature layer
 that joins the release umbrella.
 
-Core storage compare-exchange distinguishes an absent record from an empty byte array. Encrypted custody serializes
-the complete read, decrypt and write operation, including overlapping operations within one lease and lease handover.
-Shared session writes, clears and compare-exchange use the same cross-document slot lock.
+Core storage compare-exchange distinguishes an absent record from an empty byte array. Encrypted custody serializes the
+complete read, decrypt and write operation, including overlapping operations within one lease and lease handover. Shared
+session writes, clears and compare-exchange use the same cross-document slot lock.
 
 Media waits for queued native permission refresh before serving a product call. Storage change notifications trigger
 that refresh but do not replace native permission authority. Consent callbacks return their decision without an

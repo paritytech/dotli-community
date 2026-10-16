@@ -39,7 +39,10 @@ vi.mock('../../protocol/src/client.js', () => ({
     return Promise.resolve();
   },
   compareExchangeSharedAuthStorage: (
-    siteId: string, key: string, expected: Uint8Array | null, replacement: Uint8Array,
+    siteId: string,
+    key: string,
+    expected: Uint8Array | null,
+    replacement: Uint8Array,
   ) => {
     const slot = `${siteId}:${key}`;
     const matches = (sharedAuth.storage.get(slot) ?? null) === (expected === null ? null : bytesToHex(expected));
@@ -292,15 +295,15 @@ describe('session-store host callbacks', () => {
       const key = { tag: 'AutoSigningKeys' } satisfies CoreStorageKey;
       const slot = 'dotli:core:auto-signing-keys';
       localStorage.setItem(slot, '0x01');
-      expect(
-        await storage.compareExchangeCoreStorage(key, new Uint8Array([2]), new Uint8Array([3]), false),
-      ).toBe(false);
+      expect(await storage.compareExchangeCoreStorage(key, new Uint8Array([2]), new Uint8Array([3]), false)).toBe(
+        false,
+      );
       expect(localStorage.getItem(slot)).toBe('0x01');
 
       localStorage.setItem(slot, 'enc1:0x00');
-      await expect(
-        storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([3]), false),
-      ).rejects.toThrow('Core storage value cannot be decoded');
+      await expect(storage.compareExchangeCoreStorage(key, undefined, new Uint8Array([3]), false)).rejects.toThrow(
+        'Core storage value cannot be decoded',
+      );
       expect(localStorage.getItem(slot)).toBe('enc1:0x00');
     } finally {
       if (previousLocks === undefined) {
@@ -1125,9 +1128,9 @@ describe('session-store host callbacks', () => {
     const read = await storage.readCoreStorage(AUTH_SESSION_KEY);
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9, 9]));
     await storage.clearCoreStorage(AUTH_SESSION_KEY);
-    expect(
-      await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, undefined, new Uint8Array([8]), false),
-    ).toBe(true);
+    expect(await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, undefined, new Uint8Array([8]), false)).toBe(
+      true,
+    );
     expect(
       await storage.compareExchangeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]), new Uint8Array([7]), false),
     ).toBe(false);
