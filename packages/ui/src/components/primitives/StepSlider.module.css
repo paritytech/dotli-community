@@ -4,81 +4,160 @@
 :where(.slider) {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
 }
 .track {
   position: relative;
   height: 24px;
-  margin: 0 8px;
-  border-radius: var(--r-full);
   cursor: pointer;
+  outline: none;
   /* The pointer drags the thumb, so the browser must not take it for a scroll. */
   touch-action: none;
 }
-.track::before {
-  content: '';
+.rail {
   position: absolute;
-  top: 10px;
-  right: 0;
-  left: 0;
-  height: 4px;
+  top: 50%;
+  right: 5px;
+  left: 5px;
+  height: 6px;
+  transform: translateY(-50%);
   border-radius: var(--r-full);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
 }
-.track:focus-visible {
-  outline: var(--chrome-focus-ring);
-  outline-offset: 2px;
+/* Its inset is the thumb radius, so the end stops land on the rail's rounded ends. */
+.layer {
+  --fill-lead: 3px;
+  position: absolute;
+  inset: 0 8px;
 }
 .fill {
   position: absolute;
-  top: 10px;
-  left: 0;
-  height: 4px;
+  top: 50%;
+  left: calc(-1 * var(--fill-lead));
+  height: 6px;
+  transform: translateY(-50%);
   border-radius: var(--r-full);
   background: var(--chrome-text-muted);
   transition: width var(--dur) var(--ease-spring);
 }
-.thumb {
+.tick {
   position: absolute;
-  top: 4px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--chrome-action-dim);
+}
+.tick[data-filled] {
+  background: color-mix(in srgb, var(--chrome-on-primary) 40%, transparent);
+}
+.thumb {
+  --thumb-inset: inset 0 0 0 0 transparent;
+  --thumb-halo: 0 0 0 0 transparent;
+  position: absolute;
+  top: 50%;
   width: 16px;
   height: 16px;
-  margin-left: -8px;
+  margin: -8px 0 0 -8px;
   border-radius: 50%;
   background: var(--chrome-text);
-  box-shadow: var(--chrome-shadow-knob);
+  box-shadow: var(--thumb-inset), var(--chrome-shadow-knob), var(--thumb-halo);
   transition: left var(--dur) var(--ease-spring);
 }
-.track[data-dragging] > .fill,
-.track[data-dragging] > .thumb {
+.track:hover > .layer > .thumb {
+  --thumb-halo: 0 0 0 6px var(--chrome-fill);
+}
+.track[data-dragging] > .layer > .thumb {
+  --thumb-halo: 0 0 0 7px var(--chrome-fill-strong);
+  transform: scale(1.12);
+}
+.track[data-marked] > .layer > .thumb {
+  --thumb-inset: inset 0 0 0 4px var(--chrome-text);
+  background: var(--chrome-solid);
+}
+.track:focus-visible > .layer > .thumb {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.track[data-dragging] > .layer > .fill,
+.track[data-dragging] > .layer > .thumb {
   transition: none;
 }
 .stops {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 16px;
+  margin: 6px 8px 0;
 }
 .stop {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  height: 100%;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--chrome-text-muted);
-  font: var(--fw-medium) var(--fs-caption) / 1.3 var(--font-sans);
+  font: var(--fw-medium) var(--fs-caption) / 16px var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
+  transform: translateX(-50%);
+  transition: color var(--dur-fast);
+}
+.stop:first-child {
+  transform: translateX(-8px);
+}
+.stop:last-child {
+  transform: translateX(calc(-100% + 8px));
 }
 .stop:hover,
 .stop[data-current] {
   color: var(--chrome-text);
 }
 @media (max-width: 560px) {
+  .track {
+    height: 44px;
+  }
+  .rail {
+    right: 6px;
+    left: 6px;
+    height: 8px;
+  }
+  .layer {
+    --fill-lead: 4px;
+    inset: 0 10px;
+  }
+  .fill {
+    height: 8px;
+  }
+  .thumb {
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+  }
+  .track[data-marked] > .layer > .thumb {
+    --thumb-inset: inset 0 0 0 5px var(--chrome-text);
+  }
+  .stops {
+    height: 44px;
+    margin: -6px 10px;
+  }
   .stop {
     font-size: var(--fs-small);
+  }
+  .stop:first-child {
+    transform: translateX(-10px);
+  }
+  .stop:last-child {
+    transform: translateX(calc(-100% + 10px));
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .fill,
-  .thumb {
+  .thumb,
+  .stop {
     transition: none;
   }
 }

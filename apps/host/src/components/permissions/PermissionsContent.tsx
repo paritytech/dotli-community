@@ -142,6 +142,7 @@ export function PermissionsContent(props: PermissionsContentProps): JSX.Element 
             <>
               <PresetPicker
                 statuses={list()}
+                pending={props.pending()}
                 onPick={preset => {
                   apply(preset.statuses);
                 }}

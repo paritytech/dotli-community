@@ -40,7 +40,8 @@ and no data source.
 - A disabled `SegmentedControl` keeps its options focusable and ignores presses, so a popover it sits in stays open.
 - `StepSlider` commits the stop a pointer release, a stop's label, Enter or Space picks, the current one included, so
   its owner decides what a repeat means. A step key commits only a step, so at an end it commits nothing. A pointer the
-  browser cancels commits nothing.
+  browser cancels commits nothing. While a pointer is held the thumb follows it freely and the nearest stop is the one
+  shown. `marked` hollows the thumb for a value that is a stop only approximately, and sets `data-marked` on the track.
 - `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
   screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
   takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while

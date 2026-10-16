@@ -109,8 +109,9 @@ export const DragCommitsOnRelease: Story = {
       pointer(track, 'pointermove', 0.5);
       pointer(track, 'pointermove', 1);
     });
-    await step('Then the slider shows Max and nothing is committed yet', async () => {
+    await step('Then the slider shows Max, its label is current and nothing is committed yet', async () => {
       await waitFor(() => expect(track).toHaveAttribute('aria-valuenow', '3'));
+      await expect(canvas.getByTestId('stop-max')).toHaveAttribute('data-current');
       await expect(args.onCommit).not.toHaveBeenCalled();
     });
     await step('When I release', () => {
@@ -162,6 +163,51 @@ export const ValueText: Story = {
   play: async ({ canvas, step }) => {
     await step('Then the value text names the stop and its note', async () => {
       await expect(slider(canvas)).toHaveAttribute('aria-valuetext', 'Mid, modified');
+    });
+  },
+};
+
+/** As a pointer user, the held thumb follows the pointer between stops while the nearest stop is the one shown. */
+export const DragFollowsPointer: Story = {
+  render: Owned,
+  play: async ({ args, canvas, step }) => {
+    const track = slider(canvas);
+    const thumb = (): number => canvas.getByTestId('step-slider-thumb').getBoundingClientRect().left;
+    await step('When I hold the pointer a third of the way between Mid and High', () => {
+      pointer(track, 'pointerdown', 0.4);
+      pointer(track, 'pointermove', 0.5 - 1 / 12);
+    });
+    await step('Then Mid is current while the thumb is off its stop', async () => {
+      await waitFor(() => expect(canvas.getByTestId('stop-mid')).toHaveAttribute('data-current'));
+      const rect = track.getBoundingClientRect();
+      const midThumb = rect.left + 8 + (rect.width - 16) / 3 - 8;
+      await waitFor(() => expect(Math.abs(thumb() - midThumb)).toBeGreaterThan(2));
+      await expect(thumb()).toBeGreaterThan(midThumb);
+    });
+    await step('When I release', () => {
+      pointer(track, 'pointerup', 0.5 - 1 / 12);
+    });
+    await step('Then the nearest stop alone is committed', async () => {
+      await expect(args.onCommit).toHaveBeenCalledTimes(1);
+      await expect(args.onCommit).toHaveBeenCalledWith(1);
+    });
+  },
+};
+
+/** As a screen reader or sighted user, a marked slider says its value is a stop only approximately. */
+export const Marked: Story = {
+  args: { marked: true },
+  play: async ({ canvas, step }) => {
+    await step('Then the track carries the marked attribute', async () => {
+      await expect(slider(canvas)).toHaveAttribute('data-marked');
+    });
+  },
+};
+
+export const NotMarked: Story = {
+  play: async ({ canvas, step }) => {
+    await step('Then the track does not carry the marked attribute', async () => {
+      await expect(slider(canvas)).not.toHaveAttribute('data-marked');
     });
   },
 };

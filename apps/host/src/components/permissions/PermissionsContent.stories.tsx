@@ -295,6 +295,7 @@ export const RowMarksModified: Story = {
       await expect(permissionsAsked.changes).toHaveBeenCalledWith({ Location: 'granted' });
       await waitFor(() => expect(statusOf('Location')).toBe('granted'));
       await expectPreset('secure', true);
+      await expect(slider()).toHaveAttribute('data-marked');
     });
   },
 };
@@ -340,6 +341,7 @@ export const PendingLocksRows: Story = {
       await waitFor(() => expect(byId('permissions-popover-list')).toHaveAttribute('data-pending'));
     });
     await ctx.step('Then the rows wait, focus stays on Allow, and the slider still takes a move', async () => {
+      await expect(byTestId('permissions-preset-pending', document, HTMLElement)).toBeInTheDocument();
       await expect(within(row('Camera')).getByRole('group')).toHaveAttribute('aria-disabled', 'true');
       await expect(segment('Notifications', 'granted')).toHaveFocus();
       await expect(byId('permissions-popover')).toHaveAttribute('data-open');
@@ -364,6 +366,7 @@ export const PendingLocksRows: Story = {
     await ctx.step('Then the rows take presses again', async () => {
       await waitFor(() => expect(byId('permissions-popover-list')).not.toHaveAttribute('data-pending'));
       await expect(within(row('Camera')).getByRole('group')).not.toHaveAttribute('aria-disabled');
+      await waitFor(() => expect(document.querySelector('[data-testid="permissions-preset-pending"]')).toBeNull());
     });
   },
 };

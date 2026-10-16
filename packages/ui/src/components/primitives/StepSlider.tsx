@@ -26,6 +26,8 @@ export interface StepSliderProps {
    * slider is on too, so its owner can apply it again, or a step key, which commits only a step.
    */
   onCommit: (index: number) => void;
+  /** The value is a stop only approximately, so the thumb shows hollow. Exposed as `data-marked` on the track. */
+  marked?: boolean;
   class?: string | undefined;
   testId?: string;
 }
@@ -36,18 +38,31 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
   onCleanup(drags.stopAll);
   // The stop under a held pointer, shown until its release commits it or a cancel drops it.
   const [dragged, setDragged] = createSignal<number | null>(null);
+  // Where a held pointer is along the stops, 0 to 1. It places the thumb only, the stop it would commit is `dragged`.
+  const [pointerAt, setPointerAt] = createSignal<number | null>(null);
   const shown = (): number => dragged() ?? props.value;
   const last = (): number => Math.max(props.stops.length - 1, 0);
-  const percent = (): number => (last() > 0 ? (shown() / last()) * 100 : 0);
+  const stopPercent = (): number => (last() > 0 ? (shown() / last()) * 100 : 0);
+  const percent = (): number => {
+    const at = pointerAt();
+    return at === null ? stopPercent() : at * 100;
+  };
   // The signal shows the stop, and this holds it for the release, which may land before the signal's write applies.
   let target: number | null = null;
   let track: HTMLDivElement | undefined;
+  let layer: HTMLDivElement | undefined;
 
-  const stopUnder = (clientX: number): number => {
-    const rect = track?.getBoundingClientRect();
-    return rect === undefined || rect.width === 0
-      ? shown()
-      : stopAt((clientX - rect.left) / rect.width, props.stops.length);
+  /** Moves the held thumb under the pointer and picks the stop nearest to it. */
+  const follow = (clientX: number): void => {
+    const rect = layer?.getBoundingClientRect();
+    if (rect === undefined || rect.width === 0) {
+      target = shown();
+    } else {
+      const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      target = stopAt(fraction, props.stops.length);
+      setPointerAt(fraction);
+    }
+    setDragged(target);
   };
 
   const onPointerDown = (event: PointerEvent): void => {
@@ -55,17 +70,16 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
       return;
     }
     track.focus();
-    target = stopUnder(event.clientX);
-    setDragged(target);
+    follow(event.clientX);
     drags.start(track, event, {
       move: moved => {
-        target = stopUnder(moved.clientX);
-        setDragged(target);
+        follow(moved.clientX);
       },
       end: released => {
         const at = target;
         target = null;
         setDragged(null);
+        setPointerAt(null);
         if (released && at !== null) {
           props.onCommit(at);
         }
@@ -99,11 +113,29 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
         aria-valuetext={props.valueText?.(shown()) ?? props.stops[shown()]?.label}
         class={s['track']}
         data-dragging={dragged() === null ? undefined : ''}
+        data-marked={props.marked === true ? '' : undefined}
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
       >
-        <span class={s['fill']} style={{ width: `${String(percent())}%` }} />
-        <span class={s['thumb']} style={{ left: `${String(percent())}%` }} />
+        <span class={s['rail']} />
+        <div
+          ref={el => {
+            layer = el;
+          }}
+          class={s['layer']}
+        >
+          <span class={s['fill']} style={{ width: `calc(${String(percent())}% + var(--fill-lead))` }} />
+          <For each={props.stops}>
+            {(_stop, index) => (
+              <span
+                class={s['tick']}
+                style={{ left: `${String(last() > 0 ? (index() / last()) * 100 : 0)}%` }}
+                data-filled={(last() > 0 ? (index() / last()) * 100 : 0) <= percent() ? '' : undefined}
+              />
+            )}
+          </For>
+          <span class={s['thumb']} data-testid="step-slider-thumb" style={{ left: `${String(percent())}%` }} />
+        </div>
       </div>
       <div class={s['stops']}>
         <For each={props.stops}>
@@ -112,6 +144,7 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
               type="button"
               tabindex="-1"
               class={s['stop']}
+              style={{ left: `${String(last() > 0 ? (index() / last()) * 100 : 0)}%` }}
               data-current={index() === shown() ? '' : undefined}
               data-testid={stop.testId}
               onClick={() => {
