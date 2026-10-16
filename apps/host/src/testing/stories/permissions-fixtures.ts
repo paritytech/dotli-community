@@ -6,7 +6,7 @@
 
 import { createSignal, flush } from 'solid-js';
 import { fn } from 'storybook/test';
-import type { EnforceablePermissionName, PermissionStatus } from '../../runtime/permissions.js';
+import type { EnforceablePermissionName, PermissionStatus, PermissionTargets } from '../../runtime/permissions.js';
 import type { MenuPermission, PermissionsNotice } from '../../components/permissions/permissions.js';
 import type { PermissionsItemProps } from '../../components/permissions/PermissionsItem.js';
 
@@ -29,12 +29,16 @@ export const STORY_PERMISSIONS: readonly MenuPermission[] = [
 const [notice, setNotice] = createSignal<PermissionsNotice | undefined>('loading');
 const [statuses, setStatuses] = createSignal<readonly PermissionStatus[] | undefined>(undefined);
 const [hasGrants, setHasGrants] = createSignal(false);
+const [pending, setPending] = createSignal(false);
+
+// A held change stays pending until the story releases it.
+let held: PromiseWithResolvers<undefined> | null = null;
+let refused: readonly EnforceablePermissionName[] = [];
 
 /** What the panel asked of the page. */
 export const permissionsAsked = {
   opens: 0,
-  choices: fn<(name: EnforceablePermissionName, status: PermissionStatus) => void>(),
-  resets: 0,
+  changes: fn<(targets: PermissionTargets) => void>(),
 };
 
 function write(next: readonly PermissionStatus[] | undefined): void {
@@ -43,29 +47,49 @@ function write(next: readonly PermissionStatus[] | undefined): void {
   flush();
 }
 
+function laidOver(base: readonly PermissionStatus[], targets: PermissionTargets): PermissionStatus[] {
+  return base.map((was, i) => {
+    const name = STORY_PERMISSIONS[i]?.name;
+    return name === undefined ? was : (targets[name] ?? was);
+  });
+}
+
 /** The props a page gives the permissions button. */
 export const storyPermissions: PermissionsItemProps = {
   permissions: STORY_PERMISSIONS,
   hasGrants,
   notice,
   statuses,
+  pending,
   onOpen: () => {
     permissionsAsked.opens += 1;
   },
-  onChoose: (name, status) => {
-    permissionsAsked.choices(name, status);
-    const current = statuses();
-    if (current !== undefined) {
-      write(current.map((was, i) => (STORY_PERMISSIONS[i]?.name === name ? status : was)));
+  onChange: async targets => {
+    permissionsAsked.changes(targets);
+    const before = statuses();
+    if (before === undefined) {
+      return [];
     }
-  },
-  onReset: () => {
-    permissionsAsked.resets += 1;
-    const current = statuses();
-    if (current !== undefined) {
-      write(current.map(() => 'ask'));
+    write(laidOver(before, targets));
+    const hold = held;
+    if (hold !== null) {
+      setPending(true);
+      flush();
+      await hold.promise;
+      setPending(false);
+      flush();
     }
-    return Promise.resolve();
+    const failed = STORY_PERMISSIONS.map(({ name }) => name).filter(
+      name => refused.includes(name) && targets[name] !== undefined,
+    );
+    if (failed.length > 0) {
+      // A refused write leaves the status the core had before.
+      const kept = Object.fromEntries(
+        failed.map(name => [name, before[STORY_PERMISSIONS.findIndex(perm => perm.name === name)] ?? 'ask']),
+      );
+      write(laidOver(statuses() ?? before, kept));
+    }
+    return failed;
   },
 };
 
@@ -86,10 +110,27 @@ export function readAll(status: PermissionStatus): void {
   write(STORY_PERMISSIONS.map(() => status));
 }
 
-/** For a story's `beforeEach`: no app loaded yet, nothing asked. */
+/** Holds every change pending until the returned release. */
+export function holdChanges(): () => void {
+  const hold = Promise.withResolvers<undefined>();
+  held = hold;
+  return () => {
+    held = null;
+    hold.resolve(undefined);
+  };
+}
+
+/** The core refuses every write of `names` until the story resets. */
+export function refuseChanges(names: readonly EnforceablePermissionName[]): void {
+  refused = names;
+}
+
+/** For a story's `beforeEach`: no app loaded yet, nothing asked, nothing held or refused. */
 export function resetStoryPermissions(): void {
   givenNotice('loading');
   permissionsAsked.opens = 0;
-  permissionsAsked.choices.mockClear();
-  permissionsAsked.resets = 0;
+  permissionsAsked.changes.mockClear();
+  held = null;
+  refused = [];
+  setPending(false);
 }

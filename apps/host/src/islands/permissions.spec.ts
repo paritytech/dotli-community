@@ -4,7 +4,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
-import type { PermissionStatus } from '../runtime/permissions.js';
+import type { PermissionStatus, PermissionTargets } from '../runtime/permissions.js';
+import type { ChangeOutcome, PendingPermissions } from '../runtime/state/product-permissions.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
 import { type ReadPermissions, type ShownProduct, usePermissionsPanel } from './permissions.js';
 
@@ -19,13 +20,13 @@ const LOADED: ShownProduct = { status: 'loaded', label: 'app' };
 function mount() {
   const product = createSyncStore<ShownProduct>('permissions-test-product', { status: 'none' });
   const state = createSyncStore<ReadPermissions>('permissions-test-state', { status: 'none' });
+  const pending = createSyncStore<PendingPermissions>('permissions-test-pending', null);
   const intents = {
     refresh: vi.fn(() => Promise.resolve()),
-    choose: vi.fn(() => Promise.resolve()),
-    reset: vi.fn(() => Promise.resolve()),
+    change: vi.fn((_label: string, _targets: PermissionTargets) => Promise.resolve<ChangeOutcome>({ failed: [] })),
   };
   const { panel, dispose } = createRoot(d => ({
-    panel: usePermissionsPanel({ permissions: PERMISSIONS, product, state, ...intents }),
+    panel: usePermissionsPanel({ permissions: PERMISSIONS, product, state, pending, ...intents }),
     dispose: d,
   }));
   flush();
@@ -34,7 +35,7 @@ function mount() {
     state.set(read);
     flush();
   };
-  return { panel, dispose, intents, given };
+  return { panel, dispose, intents, given, pending };
 }
 
 const read = (statuses: readonly PermissionStatus[], label = 'app'): ReadPermissions => ({
@@ -117,19 +118,19 @@ describe('usePermissionsPanel', () => {
     dispose();
   });
 
-  it('As a user, a status I press and Reset all apply to the app whose permissions were read, its label passed as is', async () => {
+  it('As a user, a change applies to the app whose permissions were read, its label passed as is, and resolves what failed', async () => {
     // Given
     const markup = '<img id="injected" src="x">';
     const { panel, dispose, intents, given } = mount();
+    intents.change.mockResolvedValueOnce({ failed: ['Camera'] });
     given({ status: 'loaded', label: markup }, read(['ask', 'ask'], markup));
 
     // When
-    panel.onChoose('Camera', 'granted');
-    await panel.onReset();
+    const failed = await panel.onChange({ Camera: 'granted' });
 
     // Then
-    expect(intents.choose).toHaveBeenCalledExactlyOnceWith(markup, 'Camera', 'granted');
-    expect(intents.reset).toHaveBeenCalledExactlyOnceWith(markup);
+    expect(intents.change).toHaveBeenCalledExactlyOnceWith(markup, { Camera: 'granted' });
+    expect(failed).toEqual(['Camera']);
     dispose();
   });
 
@@ -139,12 +140,48 @@ describe('usePermissionsPanel', () => {
     given(LOADED, { status: 'reading', label: 'app' });
 
     // When
-    panel.onChoose('Camera', 'granted');
-    await panel.onReset();
+    const failed = await panel.onChange({ Camera: 'granted' });
 
     // Then
-    expect(intents.choose).not.toHaveBeenCalled();
-    expect(intents.reset).not.toHaveBeenCalled();
+    expect(failed).toEqual([]);
+    expect(intents.change).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it('As the permissions panel, a pending change shows its targets over the statuses read and marks the panel pending', () => {
+    // Given
+    const { panel, dispose, given, pending } = mount();
+    given(LOADED, read(['ask', 'denied']));
+
+    // When
+    pending.set({ label: 'app', targets: { Camera: 'granted' } });
+    flush();
+
+    // Then
+    expect(panel.statuses()).toEqual(['granted', 'denied']);
+    expect(panel.pending()).toBe(true);
+
+    // When
+    pending.set(null);
+    flush();
+
+    // Then
+    expect(panel.statuses()).toEqual(['ask', 'denied']);
+    expect(panel.pending()).toBe(false);
+    dispose();
+  });
+
+  it('As the permissions panel, a pending change of the app shown before is not laid over this one', () => {
+    // Given
+    const { panel, dispose, given, pending } = mount();
+    pending.set({ label: 'other', targets: { Camera: 'granted' } });
+
+    // When
+    given(LOADED, read(['ask', 'ask']));
+
+    // Then
+    expect(panel.statuses()).toEqual(['ask', 'ask']);
+    expect(panel.pending()).toBe(false);
     dispose();
   });
 });

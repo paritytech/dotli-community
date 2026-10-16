@@ -57,8 +57,8 @@ export function PermissionsItem(props: PermissionsItemProps): JSX.Element {
           notice={props.notice}
           statuses={props.statuses}
           onOpen={props.onOpen}
-          onChoose={props.onChoose}
-          onReset={props.onReset}
+          pending={props.pending}
+          onChange={props.onChange}
         />
       </Popover>
     </ActionItem>

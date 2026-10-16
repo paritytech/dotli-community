@@ -20,6 +20,8 @@ export interface PermissionRowProps {
   status: PermissionStatus;
   /** A segment other than the current status was pressed. */
   choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
+  /** A change is pending, so the row shows its status but takes no press. */
+  disabled?: boolean;
 }
 
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
@@ -40,6 +42,7 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
         label={props.perm.label}
         options={STATUS_OPTIONS}
         value={props.status}
+        disabled={props.disabled === true}
         onChange={status => {
           props.choose(props.perm.name, status);
         }}

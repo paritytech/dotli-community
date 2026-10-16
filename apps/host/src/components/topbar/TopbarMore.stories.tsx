@@ -138,13 +138,13 @@ export const PhoneRowMarksGrants: Story = {
       await expect(byId('more-button')).toHaveAttribute('aria-label', 'More');
     });
     await step('When the only grant goes back to Ask', () => {
-      storyPermissions.onChoose('Camera', 'ask');
+      void storyPermissions.onChange({ Camera: 'ask' });
     });
     await step('Then the row has no mark', async () => {
       await waitFor(() => expect(moreRow('permissions').querySelector('[data-testid="more-row-aside"]')).toBeNull());
     });
     await step('When Camera is allowed again and I choose the Permissions row', async () => {
-      storyPermissions.onChoose('Camera', 'granted');
+      void storyPermissions.onChange({ Camera: 'granted' });
       await userEvent.click(moreRow('permissions'));
     });
     await step("Then the panel took More's place with every permission, Camera pressed Allow", async () => {
