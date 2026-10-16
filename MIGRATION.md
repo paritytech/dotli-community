@@ -53,16 +53,22 @@ channels, or statement-store request routing that belongs inside the Rust core.
 
 ## Dependencies
 
-`packages/ui/package.json` depends on the published TrUAPI packages:
+The root `package.json` uses matched vendored TrUAPI packages:
 
 ```jsonc
-"@parity/truapi": "0.5.0",
-"@parity/truapi-host": "0.2.0"
+"@parity/truapi": "file:vendor/truapi",
+"@parity/truapi-host": "file:vendor/truapi-host"
 ```
 
-Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's development and E2E Make targets run
-`npm run link:truapi` after building the local packages, so parent-repo work always exercises the current checkout
-instead of the npm artifacts.
+`vendor/truapi-host.lock.json` records the native source revision and artifact checksums. Each feature layer uses the
+artifact from its corresponding native layer. `scripts/build-vendored-truapi-host.sh` regenerates the client bindings
+and both WebAssembly bundles together.
+
+Standalone installs and CI use these vendored artifacts. Local development can use `npm run link:truapi` after building
+the local packages. Permission reads and changes go through core-owned administration, not page-memory overrides.
+
+Notification activation and acknowledgement callbacks belong in the receiving integration, whose native API declares
+them. The generic PolkaVM adapter does not register those receiving-only callbacks.
 
 The runtime manifests and source must not depend on or import the removed `@novasamatech/*` runtime packages.
 
