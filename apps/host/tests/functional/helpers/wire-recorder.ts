@@ -15,7 +15,10 @@ export interface MessageMatch {
   body?: Record<string, unknown>;
 }
 
-/** Call before the first navigation. The page runs the built recorder in every frame, and it records only in the top one. */
+/**
+ * Call before the first navigation. The page runs the built recorder in every frame, and it records only in the top
+ * one.
+ */
 export async function recordProtocolMessages(target: BrowserContext | Page): Promise<void> {
   await target.addInitScript({ path: RECORDER_BUNDLE_PATH });
 }

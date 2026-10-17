@@ -25,11 +25,12 @@ export default async function globalSetup(): Promise<void> {
         copyPublicDir: false,
         reportCompressedSize: false,
         minify: false,
+        // Lib mode, since an app build emits the assets of modules it then drops, the light client's wasm among them.
         lib: {
           entry: bundle.entry,
           formats: ['iife'],
-          // Required for the format. An entry with no exports leaves it unused.
-          name: 'dotliWire',
+          // The format requires a name, and an entry with no exports defines nothing under it.
+          name: 'unusedIifeName',
           fileName: () => basename(bundle.path),
         },
       },
