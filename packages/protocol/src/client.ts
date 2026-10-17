@@ -21,6 +21,7 @@ import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
 import { getResolutionId, m, spans as S } from '@dotli/metrics';
 import type { CoreCustodyOperation } from './core-custody.js';
 import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
+import type { WalletOwnerOperation } from './wallet-owner.js';
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -81,6 +82,9 @@ const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const protocolReadyListeners = new Set<() => void>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
+// Undefined when the frame holding the lease went away rather than another tab asking for it.
+const localWalletOwnerRevokedListeners = new Set<(lease: string | undefined) => void>();
+const localWalletChangedListeners = new Set<() => void>();
 const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
@@ -166,6 +170,10 @@ export function resetProtocolFrame(): void {
 function resetProtocolFrameState(reason?: Error): void {
   hostFrameBoot?.abort(reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET));
   hostFrameBoot = null;
+  if (protocolIframe !== null) {
+    // The frame holds the owner lock. Stop the page's signer before removing the frame lets another tab start.
+    broadcast(localWalletOwnerRevokedListeners, undefined, 'Local wallet owner');
+  }
   protocolIframe?.remove();
   protocolIframe = null;
   // The rebuilt frame's byte meter restarts at zero, and the monotonic gate would drop its reports.
@@ -358,6 +366,14 @@ function bindMessageListener(): void {
         broadcast(sharedAuthListeners, change, 'Shared auth');
         return;
       }
+      case 'local-wallet-owner-revoked':
+        if (typeof msg.lease === 'string') {
+          broadcast(localWalletOwnerRevokedListeners, msg.lease, 'Local wallet owner');
+        }
+        return;
+      case 'local-wallet-changed':
+        broadcast(localWalletChangedListeners, undefined, 'Local wallet change');
+        return;
     }
   });
 }
@@ -790,6 +806,20 @@ export async function clearSharedAuthStorage(siteId: SiteId, key: string): Promi
   await postRequest('authStorageClear', { siteId, key });
 }
 
+/** Atomic core-session bytes, executed at the actual shared storage origin. */
+export async function compareExchangeSharedAuthStorage(
+  siteId: SiteId,
+  key: string,
+  expected: Uint8Array | null,
+  replacement: Uint8Array,
+): Promise<boolean> {
+  const result = await postRequest('authStorageCompareExchange', { siteId, key, expected, replacement });
+  if (typeof result !== 'boolean') {
+    throw new Error('Invalid shared storage CAS response');
+  }
+  return result;
+}
+
 /** Lives on `host.<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
 export async function readSharedModeStorage(siteId: SiteId, key: string): Promise<string | null> {
   return (await postRequest('modeStorageRead', { siteId, key })) as string | null;
@@ -824,11 +854,12 @@ export async function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
 export async function requestCoreCustody(
   siteId: SiteId,
   operation: CoreCustodyOperation,
-): Promise<string | Uint8Array | Blob | undefined> {
+): Promise<string | Uint8Array | Blob | boolean | undefined> {
   const result = await postRequest('coreCustody', { siteId, operation });
   if (
     result !== undefined &&
     typeof result !== 'string' &&
+    typeof result !== 'boolean' &&
     !(result instanceof Uint8Array) &&
     !(result instanceof Blob)
   ) {
@@ -837,6 +868,34 @@ export async function requestCoreCustody(
   return result;
 }
 
+/** `acquire` resolves with this page's lease once no other tab signs with the local wallet. */
+export async function requestLocalWalletOwner(
+  siteId: SiteId,
+  operation: WalletOwnerOperation,
+): Promise<string | undefined> {
+  return (await postRequest('localWalletOwner', { siteId, operation })) as string | undefined;
+}
+
+/** Another tab took the local wallet (with the lease to release), or the frame holding the lease went away. */
+export function subscribeLocalWalletOwnerRevoked(listener: (lease: string | undefined) => void): () => void {
+  bindMessageListener();
+  localWalletOwnerRevokedListeners.add(listener);
+  return () => {
+    localWalletOwnerRevokedListeners.delete(listener);
+  };
+}
+
+/** A sibling tab saved or forgot the local wallet. A tab's own changes do not arrive here. */
+export function subscribeLocalWalletChanged(listener: () => void): () => void {
+  bindMessageListener();
+  localWalletChangedListeners.add(listener);
+  void ensureHostFrame().catch((error: unknown) => {
+    log.warn('[dot.li protocol] Failed to ensure host frame for local wallet changes:', error);
+  });
+  return () => {
+    localWalletChangedListeners.delete(listener);
+  };
+}
 /**
  * Hears shared-auth writes from sibling tabs of the same root domain, relayed by the host iframe
  * over `BroadcastChannel`. A tab's own writes do not arrive here.

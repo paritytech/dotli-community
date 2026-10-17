@@ -67,28 +67,13 @@ describe('permission changes', () => {
 });
 
 describe('permissions changed together', () => {
-  it('As a user resetting a device permission among others, the app hears one device change, so it reloads once', () => {
+  it('As a user resetting a device permission among others, the app hears one grant change, so the committed policy reloads it at most once', () => {
     // Given
     const grants = capture('dotli:permission-changed');
     const devices = capture('dotli:device-permission-changed');
 
     // When
     recordPermissionsChanged('myapp', ['Notifications', 'Camera', 'Microphone', 'ChainSubmit']);
-
-    // Then
-    expect(devices.details).toEqual([{ label: 'myapp', permission: 'Camera' }]);
-    expect(grants.details).toEqual([]);
-    grants.stop();
-    devices.stop();
-  });
-
-  it('As a user resetting only permissions the iframe does not gate, the app hears one grant change and does not reload', () => {
-    // Given
-    const grants = capture('dotli:permission-changed');
-    const devices = capture('dotli:device-permission-changed');
-
-    // When
-    recordPermissionsChanged('myapp', ['Notifications', 'ChainSubmit']);
 
     // Then
     expect(grants.details).toEqual([{ label: 'myapp', permission: 'Notifications' }]);

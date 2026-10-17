@@ -3,7 +3,16 @@
 
 import { describe, expect, it } from 'vitest';
 import { DEV_PHRASE, entropyToMnemonic, mnemonicToEntropy } from '@polkadot-labs/hdkd-helpers';
-import { phraseToEntropy } from '../src/recovery-phrase.js';
+import { createRecoveryPhrase, phraseToEntropy } from '../src/recovery-phrase.js';
+
+describe('createRecoveryPhrase', () => {
+  it('As a user creating a wallet, I receive a valid 24-word recovery phrase', () => {
+    const phrase = createRecoveryPhrase();
+
+    expect(phrase.split(' ')).toHaveLength(24);
+    expect(phraseToEntropy(phrase)).toHaveLength(32);
+  });
+});
 
 describe('phraseToEntropy', () => {
   it('As a user, I turn a 12-word Polkadot App phrase into its 16 bytes of entropy', () => {

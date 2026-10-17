@@ -37,9 +37,9 @@ dynamically imported, so users who never see the panel pay zero download cost.
 
 A resizable, dockable panel at the bottom of the viewport. It mounts visible whenever debug mode is on; the panel's `×`
 button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The header holds the top-level
-tabs: **TrUAPI**, **Resolution**, **Archive**, **Diagnostics** and **Wallet**, plus **Runtime** while a PolkaVM product
-reports diagnostics. The panel reopens on the tab you last picked, kept in `localStorage` like the dock side; Runtime is
-never restored.
+tabs: **TrUAPI**, **Resolution**, **Archive**, **Diagnostics** and, when the local-wallet experiment is enabled,
+**Wallet**, plus **Runtime** while a PolkaVM product reports diagnostics. The panel reopens on the tab you last picked,
+kept in `localStorage` like the dock side; Runtime is never restored.
 
 The TrUAPI tab shows the captured events. Its filters sit under the header, the left pane is your choice of **List** or
 **Timeline**, and the right pane is the detail inspector for the selected event. A draggable splitter between them lets
@@ -193,11 +193,18 @@ The site, backend and package versions, for a bug report.
 
 ### Wallet
 
-Switches every app on the domain between Polkadot App and a local wallet. In Polkadot App mode it takes the recovery
-phrase from Polkadot App. "Use locally" saves its entropy, encrypted, in the protocol frame on `host.<domain>` and
-reloads, and each app's core then boots as a signing host on it. In local mode it shows the identity account and
-username, and "Replace" takes another phrase in its place, and "Forget" forgets the wallet and reloads in Polkadot App
-mode. Logging out from the topbar in local mode does the same.
+Switches every app on the domain between Polkadot App and a local wallet. The tab and wallet boot path are controlled by
+**Settings → Advanced → Experimental → Local wallet**. The experiment defaults off on `dot.li` and on for test,
+development and localhost sites.
+
+In Polkadot App mode, "Create new" generates a 24-word recovery phrase from browser cryptographic randomness. The phrase
+remains in component memory and is not saved until "I saved these words" confirms the explicit backup step.
+Alternatively, paste a Polkadot App recovery phrase and choose "Use locally". Both paths save only its entropy,
+encrypted, in the protocol frame on `host.<domain>`, then reload; each app's core boots as a signing host on it.
+
+In local mode, the tab shows the identity account and username. "Replace" creates or imports another phrase, and
+"Forget" deletes the wallet and reloads in Polkadot App mode. Logging out from the topbar in local mode does the same.
+Turning the experiment off leaves the encrypted record in place but neither reads it nor exposes the Wallet tab.
 
 ## Filters
 

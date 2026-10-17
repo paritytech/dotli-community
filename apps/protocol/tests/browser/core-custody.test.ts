@@ -96,4 +96,66 @@ describe('native Chat attachment sources in browser storage', () => {
     await expect(readSource(token, 'second')).resolves.toEqual(second);
     await expect(readSource(token, 'first')).resolves.toEqual(first);
   });
+
+  it('As a core, I commit only one of two overlapping replacements of the same private record', async () => {
+    // Given
+    const token = await acquire();
+    const key = '01';
+    const replacements = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])];
+
+    // When
+    const outcomes = await Promise.all(
+      replacements.map(replacement =>
+        handleCoreCustody({ action: 'compareExchange', lease: token, key, expected: null, replacement }),
+      ),
+    );
+
+    // Then
+    expect(outcomes.filter(result => result === true)).toHaveLength(1);
+    expect(outcomes.filter(result => result === false)).toHaveLength(1);
+    await handleCoreCustody({ action: 'release', lease: token });
+    const reopened = await acquire();
+    await expect(handleCoreCustody({ action: 'read', lease: reopened, key })).resolves.toEqual(
+      replacements[outcomes.indexOf(true)],
+    );
+  });
+
+  it('As a core, I distinguish an empty private record from an absent record when replacing it', async () => {
+    // Given
+    const token = await acquire();
+    const key = '02';
+    await handleCoreCustody({ action: 'write', lease: token, key, value: new Uint8Array() });
+
+    // When
+    const absent = await handleCoreCustody({
+      action: 'compareExchange',
+      lease: token,
+      key,
+      expected: null,
+      replacement: new Uint8Array([9]),
+    });
+    const empty = await handleCoreCustody({
+      action: 'compareExchange',
+      lease: token,
+      key,
+      expected: new Uint8Array(),
+      replacement: new Uint8Array([7]),
+    });
+
+    // Then
+    expect(absent).toBe(false);
+    expect(empty).toBe(true);
+    await expect(handleCoreCustody({ action: 'read', lease: token, key })).resolves.toEqual(new Uint8Array([7]));
+    await handleCoreCustody({ action: 'clear', lease: token, key });
+    await expect(
+      handleCoreCustody({
+        action: 'compareExchange',
+        lease: token,
+        key,
+        expected: new Uint8Array([7]),
+        replacement: new Uint8Array([8]),
+      }),
+    ).resolves.toBe(false);
+    await expect(handleCoreCustody({ action: 'read', lease: token, key })).resolves.toBeUndefined();
+  });
 });

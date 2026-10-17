@@ -106,7 +106,7 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   let disposed = false;
   const custody = async (
     operation: (lease: string) => CoreCustodyOperation,
-  ): Promise<string | Uint8Array | Blob | undefined> => {
+  ): Promise<string | Uint8Array | Blob | boolean | undefined> => {
     const token = await lease;
     if (disposed || !isLive() || genesis !== getActiveServicesConfig().people.genesis) {
       throw new Error('Native Chat custody was released');
@@ -146,6 +146,25 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
     }
     await storage.clearCoreStorage(key);
   };
+  const readMigrated = async (
+    storage: CoreStorage,
+    key: CoreStorageKey,
+    slot: string,
+  ): Promise<Uint8Array | undefined> => {
+    let result = await readRecord(slot);
+    if (hasLegacyCustodySlot(key)) {
+      if (result === undefined && (await readRecord(`ff${slot}`)) === undefined) {
+        const legacy = await storage.readCoreStorage(key);
+        if (legacy === undefined) {
+          return undefined;
+        }
+        await custody(token => ({ action: 'write', lease: token, key: slot, value: legacy }));
+        result = legacy;
+      }
+      await retireLegacy(storage, key, slot);
+    }
+    return result;
+  };
 
   const nativeChatFiles = createBrowserNativeChatFilesHost({
     async putSources(sources) {
@@ -166,25 +185,12 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   return {
     coreStorage(storage) {
       return directory.observeStorage({
+        ...storage,
         async readCoreStorage(key) {
           if (!isCustodySlot(key)) {
             return storage.readCoreStorage(key);
           }
-          return withSlot(key, async slot => {
-            let result = await readRecord(slot);
-            if (hasLegacyCustodySlot(key)) {
-              if (result === undefined && (await readRecord(`ff${slot}`)) === undefined) {
-                const legacy = await storage.readCoreStorage(key);
-                if (legacy === undefined) {
-                  return undefined;
-                }
-                await custody(token => ({ action: 'write', lease: token, key: slot, value: legacy }));
-                result = legacy;
-              }
-              await retireLegacy(storage, key, slot);
-            }
-            return result;
-          });
+          return withSlot(key, slot => readMigrated(storage, key, slot));
         },
         async writeCoreStorage(key, value) {
           if (!isCustodySlot(key)) {
@@ -205,6 +211,37 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
             await retireLegacy(storage, key, slot);
             await custody(token => ({ action: 'clear', lease: token, key: slot }));
           });
+        },
+        // The custody lock serializes compare-exchange with every custody write and clear.
+        async compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess) {
+          if (!isCustodySlot(key)) {
+            return storage.compareExchangeCoreStorage(key, expected, replacement, notifyOnSuccess);
+          }
+          return withSlot(key, async slot => {
+            if (hasLegacyCustodySlot(key)) {
+              await readMigrated(storage, key, slot);
+            }
+            const changed = await custody(token => ({
+              action: 'compareExchange',
+              lease: token,
+              key: slot,
+              expected: expected ?? null,
+              replacement,
+            }));
+            if (typeof changed !== 'boolean') {
+              throw new Error('Invalid private custody compare-exchange response');
+            }
+            if (changed) {
+              await retireLegacy(storage, key, slot);
+              if (notifyOnSuccess) {
+                storage.coreStorageChanged(key);
+              }
+            }
+            return changed;
+          });
+        },
+        coreStorageChanged(key) {
+          storage.coreStorageChanged(key);
         },
       });
     },

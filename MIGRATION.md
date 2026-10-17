@@ -92,6 +92,20 @@ them. The generic PolkaVM adapter does not register those receiving-only callbac
 
 The runtime manifests and source must not depend on or import the removed `@novasamatech/*` runtime packages.
 
+## Media state and permission refresh
+
+The Media layer uses the current local signer and native Chat custody from its parent. It does not restore the retired
+experimental-wallet owner or storage protocol. Wallet creation and submission behavior remain a separate feature layer
+that joins the release umbrella.
+
+Core storage compare-exchange distinguishes an absent record from an empty byte array. Encrypted custody serializes the
+complete read, decrypt and write operation, including overlapping operations within one lease and lease handover. Shared
+session writes, clears and compare-exchange use the same cross-document slot lock.
+
+Media waits for queued native permission refresh before serving a product call. Storage change notifications trigger
+that refresh but do not replace native permission authority. Consent callbacks return their decision without an
+administrative write that could invalidate the native prompt still waiting for it.
+
 ## Nested dApps
 
 The old `setupNestedBridgeDetector` path created extra JS bridges for nested iframe sources. TrUAPI v1 does not create

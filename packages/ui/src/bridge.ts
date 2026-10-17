@@ -43,9 +43,16 @@ import { createContactLabelOverlay } from './contacts/label-overlay.js';
 import { LoginRequestError } from './login-request-error.js';
 import { attachProductFrame } from './product-frame-layout.js';
 import { labelToProductId } from './runtime-config.js';
-import { acquireCore, cancelPairing, initPageCore, setPageProduct, type CoreConnection } from './page-core.js';
+import {
+  acquireCore,
+  cancelPairing,
+  initPageCore,
+  setPageProduct,
+  type CoreConnection,
+  type CoreLease,
+} from './page-core.js';
 
-export { setPageProduct } from './page-core.js';
+export { activateLocalUsername, pageProductId, setPageProduct } from './page-core.js';
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
 export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
@@ -68,6 +75,7 @@ import { installPolkaVmViewInsetsRelay } from './polkavm-view-insets.js';
 import { revokeReceivingOnLogout, setReceivingActivation, receivingAccount } from './receiving.js';
 import type { ReceivingExecution } from './receiving-execution.js';
 import type { ReceivingAuthority } from '@parity/truapi-host/browser-receiving';
+import { createMediaHost, mediaOwnsCapture, PROTECTED_MEDIA_ALLOW, PROTECTED_MEDIA_SANDBOX } from './media-host.js';
 
 const noop = (): void => undefined;
 
@@ -90,6 +98,8 @@ interface ActiveHost {
   productId: string;
   iframe: HTMLIFrameElement;
   receiving: ReceivingExecution;
+  /** End host-owned calls now, before a replacement render settles. */
+  stopMedia: () => void;
   refreshPermissionPolicy: () => Promise<void>;
   dispose: () => void;
 }
@@ -97,7 +107,10 @@ interface ActiveHost {
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatuses'
+    | 'setPermissionAuthorizationStatus'
+    | 'trustedRemotePermissions'
   >;
 type CurrentProduct =
   | {
@@ -105,12 +118,14 @@ type CurrentProduct =
       label: string;
       url: string;
       productId?: string | undefined;
+      legacyCapture: boolean;
     }
   | {
       mode: 'subdomain';
       label: string;
       cid: string;
       executableManifest: string | null;
+      legacyCapture: boolean;
     };
 
 let currentHost: ActiveHost | null = null;
@@ -193,8 +208,11 @@ function rerenderProduct(product: CurrentProduct): void {
     product.mode === 'iframe'
       ? renderIframe(product.url, product.label, {
           productId: product.productId,
+          legacyCapture: product.legacyCapture,
         })
-      : renderAppSubdomain(product.cid, product.label, product.executableManifest);
+      : renderAppSubdomain(product.cid, product.label, product.executableManifest, {
+          legacyCapture: product.legacyCapture,
+        });
   void render.catch((error: unknown) => {
     // A newer render owns the UI now.
     if (renderGeneration !== expectedGeneration) {
@@ -217,16 +235,23 @@ function rerenderProduct(product: CurrentProduct): void {
 }
 
 // A new `allow` attribute only takes effect in a fresh iframe.
-window.addEventListener('dotli:device-permission-changed', () => {
+window.addEventListener('dotli:device-permission-changed', event => {
   const product = currentProduct;
-  if (product !== null) {
+  const permission = (event as CustomEvent<{ permission?: unknown } | null>).detail?.permission;
+  // A protected Media container denies raw camera and microphone in its
+  // `allow` attribute whatever the grant, so those changes need no reload.
+  if (
+    product !== null &&
+    !(mediaOwnsCapture(product.label) && (permission === 'Camera' || permission === 'Microphone'))
+  ) {
     rerenderProduct(product);
   }
 });
 
 window.addEventListener('dotli:permission-changed', event => {
-  const detail = (event as CustomEvent<{ productId?: string; label?: string }>).detail;
+  const detail = (event as CustomEvent<{ productId?: string; label?: string } | null>).detail;
   if (
+    detail === null ||
     currentProduct === null ||
     currentHost === null ||
     (detail.productId !== currentHost.productId && detail.label !== currentProduct.label)
@@ -319,6 +344,20 @@ setReceivingActivation(async authority => {
     await new Promise<void>(resolve => setTimeout(resolve, 100));
   }
   return false;
+});
+
+// The trusted permissions menu switches this execution between the protected
+// host Media container and legacy raw product capture.
+window.addEventListener('dotli:capture-container-changed', event => {
+  const detail = (event as CustomEvent<{ label?: unknown; legacyCapture?: unknown } | null>).detail;
+  const product = currentProduct;
+  if (product === null || detail?.label !== product.label || typeof detail.legacyCapture !== 'boolean') {
+    return;
+  }
+  // Calls and raw capture end before the replacement container exists.
+  currentHost?.dispose();
+  currentHost = null;
+  rerenderProduct({ ...product, legacyCapture: detail.legacyCapture });
 });
 
 let motionRelayCleanup: (() => void) | null = null;
@@ -827,7 +866,8 @@ function getDeepPath(): string {
 }
 
 function applyIframeStyling(iframe: HTMLIFrameElement): void {
-  attachProductFrame(iframe);
+  const parent = iframe.parentElement;
+  attachProductFrame(iframe, parent?.classList.contains('host-media-compositor') === true ? parent : iframe);
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
 }
@@ -926,6 +966,7 @@ function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase 
   });
 
   return {
+    trustedRemotePermissions: provider.trustedRemotePermissions === true,
     postMessage(message: Uint8Array): void {
       if (disposed) {
         return;
@@ -948,8 +989,14 @@ function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase 
     getPermissionAuthorizationStatuses(requests) {
       return provider.getPermissionAuthorizationStatuses(requests);
     },
-    setPermissionAuthorizationStatus(request, status) {
-      return provider.setPermissionAuthorizationStatus(request, status);
+    async setPermissionAuthorizationStatus(request, status) {
+      await provider.setPermissionAuthorizationStatus(request, status);
+      // Live-resource permissions complete only after every sharing core
+      // applies them. Upload consent uses its own persisted revision/budget
+      // key and is re-read by the core, not the live-resource policy cache.
+      if (request.tag !== 'AutomaticPreimageSubmit') {
+        await connection.waitForPermissionRefresh(request);
+      }
     },
     dispose() {
       if (disposed) {
@@ -1090,9 +1137,43 @@ async function createHost(args: {
   viewInsetsRelay?: boolean;
   /** How the product's avatar surface maps onto the frame. */
   avatarSurface?: AvatarSurfaceFit;
+  /** Cross-origin product origin of a protected Media container. */
+  mediaOrigin?: string;
 }): Promise<ActiveHost> {
   const hostGeneration = renderGeneration;
-  const lease = await acquireCore();
+  const coordinator = blockingModalCoordinator;
+  const mediaOptions =
+    args.mediaOrigin !== undefined && coordinator !== null
+      ? {
+          label: args.label,
+          productId: args.productId ?? labelToProductId(args.label),
+          origin: args.mediaOrigin,
+          coordinator,
+        }
+      : undefined;
+  let media = mediaOptions === undefined ? undefined : createMediaHost(mediaOptions);
+  let mediaFrame: HTMLIFrameElement | null = null;
+  // The trusted compositor is the product frame's immediate, isolated parent;
+  // host media planes sit beside the frame inside it.
+  const container = media === undefined ? args.container : document.createElement('div');
+  if (media !== undefined) {
+    container.className = 'host-media-compositor';
+    container.style.cssText = 'position:fixed;isolation:isolate;z-index:0;overflow:hidden;';
+    args.container.append(container);
+  }
+  const disposeMedia = (): void => {
+    media?.dispose();
+    if (media !== undefined) {
+      container.remove();
+    }
+  };
+  let lease: CoreLease;
+  try {
+    lease = await acquireCore();
+  } catch (error) {
+    disposeMedia();
+    throw error;
+  }
   const contactAvatars = createContactAvatars();
   const contactLabels = createContactLabelOverlay();
   let connection: CoreConnection;
@@ -1106,15 +1187,18 @@ async function createHost(args: {
       contactLabels,
       archiveCid: args.archiveCid,
       isCurrentExecution: () => hostGeneration === renderGeneration,
+      ...(media === undefined ? {} : { media }),
     });
     log.event('product connected to wallet core', { flow: 'wallet', kind: chatCapable ? 'Worker' : 'App' });
   } catch (error) {
     contactAvatars.dispose();
     contactLabels.dispose();
+    disposeMedia();
     lease.release();
     throw error;
   }
   let coreProvider: CoreProviderBase | null = wrapCoreProviderForDebug(connection);
+  media?.bindProvider(coreProvider);
   let unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
   let unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
   let executionGeneration = 0;
@@ -1165,6 +1249,7 @@ async function createHost(args: {
     unregisterPermissions = noop;
     unregisterChat();
     unregisterChat = noop;
+    media?.dispose();
     previous?.dispose();
   };
   const connectPendingPort = (): void => {
@@ -1174,6 +1259,10 @@ async function createHost(args: {
     }
     connecting = true;
     const generation = executionGeneration;
+    media = mediaOptions === undefined ? undefined : createMediaHost(mediaOptions);
+    if (media !== undefined && mediaFrame !== null) {
+      media.attach(mediaFrame, container);
+    }
     void lease
       .connect(chatCapable ? 'Worker' : 'App', {
         contactAvatars,
@@ -1181,6 +1270,7 @@ async function createHost(args: {
         archiveCid: args.archiveCid,
         isCurrentExecution: () =>
           !disposed && hostGeneration === renderGeneration && generation === executionGeneration,
+        ...(media === undefined ? {} : { media }),
       })
       .then(next => {
         if (disposed || generation !== executionGeneration) {
@@ -1191,6 +1281,7 @@ async function createHost(args: {
         connection = next;
         try {
           coreProvider = wrapCoreProviderForDebug(next);
+          media?.bindProvider(coreProvider);
           unregisterChat = chatCapable ? registerProductChat(next, args.archiveCid) : noop;
           unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
           pendingPort = null;
@@ -1263,24 +1354,42 @@ async function createHost(args: {
     pendingPort = null;
     cleanupProductSide();
     retireExecution();
+    disposeMedia();
     contactAvatars.dispose();
     contactLabels.dispose();
     lease.release();
   };
   try {
-    const readAllow = async (): Promise<string> =>
-      [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    const readAllow = async (): Promise<string> => {
+      const granted = await buildAllowAttribute(args.label, args.allowedOrigin);
+      // Protected Media denies capture even when a legacy grant names an origin.
+      const productAllow =
+        media === undefined
+          ? granted
+          : [
+              ...granted
+                .split('; ')
+                .filter(directive => !/^(?:camera|microphone|display-capture)(?:\s|$)/.test(directive)),
+              PROTECTED_MEDIA_ALLOW,
+            ].join('; ');
+      return [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    };
     const allow = await readAllow();
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
       allow,
       sandbox: args.sandbox,
-      container: args.container,
+      container,
       onPort: connectProductPort,
     });
     contactAvatars.attach(host.iframe, args.avatarSurface ?? 'viewport');
     contactLabels.attach(host.iframe, args.avatarSurface ?? 'viewport');
+    mediaFrame = host.iframe;
+    if (media !== undefined) {
+      host.iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;z-index:1;';
+      media.attach(host.iframe, container);
+    }
     if (args.viewInsetsRelay === true) {
       disposeViewInsets = installPolkaVmViewInsetsRelay(host.iframe, args.allowedOrigin);
     }
@@ -1317,6 +1426,7 @@ async function createHost(args: {
           probeConnectionId = null;
         }
         if (probeMode === 'modern') {
+          // A second handshake means the product document was replaced.
           const channel = new MessageChannel();
           connectProductPort(channel.port1);
           targetWindow.postMessage({ type: 'truapi-init' }, args.allowedOrigin, [channel.port2]);
@@ -1345,6 +1455,9 @@ async function createHost(args: {
         return connection.receiving;
       },
       iframe: host.iframe,
+      stopMedia() {
+        media?.dispose();
+      },
       async refreshPermissionPolicy() {
         const nextAllow = await readAllow();
         // Only committed policy changes can replace the current execution.
@@ -1398,7 +1511,7 @@ function registerProductChat({ provider, productId }: CoreConnection, archiveCid
 export async function renderIframe(
   url: string,
   label: string,
-  options: { productId?: string | undefined } = {},
+  options: { productId?: string | undefined; legacyCapture?: boolean } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   currentHost?.receiving.close();
@@ -1413,8 +1526,8 @@ export async function renderIframe(
     payload: { label, url, mode: 'iframe' },
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  // Keep the current product visible while its replacement connects, which can take seconds.
-  const previousHost = currentHost;
+  // Keep the previous frame visible, but immediately retire its protected capture.
+  const previousHost = retirePreviousMedia(options.legacyCapture === true);
   if (previousHost === null) {
     // This path has no loading overlay to keep.
     disposeAppRoots();
@@ -1427,6 +1540,7 @@ export async function renderIframe(
     label,
     url,
     productId: options.productId,
+    legacyCapture: options.legacyCapture === true,
   };
 
   const iframeUrl = new URL(url, window.location.href);
@@ -1440,11 +1554,18 @@ export async function renderIframe(
   const host = await createHost({
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
-    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock',
+    sandbox:
+      options.legacyCapture === true
+        ? 'allow-scripts allow-same-origin allow-forms allow-pointer-lock'
+        : PROTECTED_MEDIA_SANDBOX,
     label,
     productId: options.productId,
     container: app,
     debugFlowId: bridgeFlowId,
+    // Same-origin frames cannot be isolated from the host's Media.
+    ...(options.legacyCapture !== true && iframeUrl.origin !== location.origin
+      ? { mediaOrigin: iframeUrl.origin }
+      : {}),
   });
   if (myRenderGeneration !== renderGeneration) {
     host.dispose();
@@ -1497,6 +1618,22 @@ export async function renderIframe(
   });
 }
 
+/**
+ * End the current product's host Media before its replacement renders. A
+ * legacy raw-capture frame is removed at once when protected Media replaces
+ * it. Returns the host to keep visible until the replacement is ready.
+ */
+function retirePreviousMedia(legacyCapture: boolean): ActiveHost | null {
+  const previous = currentHost;
+  previous?.stopMedia();
+  if (previous !== null && currentProduct?.legacyCapture === true && !legacyCapture) {
+    previous.dispose();
+    currentHost = null;
+    return null;
+  }
+  return previous;
+}
+
 function field(value: unknown, key: string): unknown {
   return value !== null && typeof value === 'object' && key in value
     ? (value as Record<string, unknown>)[key]
@@ -1541,14 +1678,15 @@ export async function renderAppSubdomain(
   cid: string,
   label: string,
   executableManifest: string | null = null,
+  options: { legacyCapture?: boolean } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   currentHost?.receiving.close();
   const renderFlowId = newFlowId('render');
   const bridgeFlowId = newFlowId('bridge');
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  // Keep the current product visible until its replacement connects.
-  const previousHost = currentHost;
+  // Keep the previous frame visible, but immediately retire its protected capture.
+  const previousHost = retirePreviousMedia(options.legacyCapture === true);
   setPageProduct({ label });
 
   currentProduct = {
@@ -1556,6 +1694,7 @@ export async function renderAppSubdomain(
     label,
     cid,
     executableManifest,
+    legacyCapture: options.legacyCapture === true,
   };
 
   // The sandbox validator rejects unknown params.
@@ -1618,7 +1757,10 @@ export async function renderAppSubdomain(
     // The CID comes from host resolution, never product postMessage data.
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
-    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
+    sandbox:
+      options.legacyCapture === true
+        ? 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups'
+        : PROTECTED_MEDIA_SANDBOX,
     label,
     archiveCid: cid,
     extraAllow: surface.polkaVm ? ['accelerometer', 'gyroscope'] : [],
@@ -1626,6 +1768,7 @@ export async function renderAppSubdomain(
     avatarSurface: surface.avatarSurface,
     container: app,
     debugFlowId: bridgeFlowId,
+    ...(options.legacyCapture === true ? {} : { mediaOrigin: appOrigin }),
   });
   if (myRenderGeneration !== renderGeneration) {
     host.dispose();

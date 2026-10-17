@@ -29,18 +29,46 @@ import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport } from './frame-transport.js';
 import { createRedialGate, type RedialGate } from './redial-gate.js';
+import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
+import { createMediaAdvertisementLookupRoute } from './media-advertisement-lookup.js';
+import { createVoxPresenceSnapshotRoute } from './vox-presence-snapshot.js';
 import { recordBestBlock, recordChainActivity } from '../network-monitor.js';
+import { getWalletMode } from '../state/wallet-mode.js';
 
-/** Every backend switch reloads the page, so a pool entry never outlives its backend. */
+/** Built on first use, as only a dropped light-client submission in local wallet mode ever leases it. */
+let trustedSubmitPool: ChainPool | null = null;
+
+/**
+ * Every backend switch reloads the page, so a pool entry never outlives its backend. Light-client transports are
+ * always wrapped, and the wallet mode is read when a submission drops: a lease opened before the wallet read settled
+ * the mode may be the one the core reuses, and every mode switch reloads.
+ */
 export function createHostChainPool(destroyDelay?: number): ChainPool {
   return createChainPool({
     // Unset, an idle chain closes after the pool's default minute. Reopening is cheap on every
     // backend, since the frame keeps the light client's chain.
     ...(destroyDelay === undefined ? {} : { destroyDelay }),
-    createTransport: (genesisHash, hooks) =>
-      getBackend() === 'rpc-gateway'
-        ? createCoreRpcChainProvider(genesisHash, hooks)
-        : createFrameChainTransport(genesisHash, hooks),
+    createTransport: (genesisHash, hooks) => {
+      if (getBackend() === 'rpc-gateway') {
+        return createCoreRpcChainProvider(genesisHash, hooks);
+      }
+      const lightClient = createFrameChainTransport(genesisHash, hooks);
+      if (lightClient === null) {
+        return null;
+      }
+      return withTrustedSubmitFallback(
+        lightClient,
+        () => {
+          // Only the local wallet submits from this page. In Polkadot App mode a drop reaches the core as it is.
+          if (getWalletMode() !== 'local') {
+            return null;
+          }
+          trustedSubmitPool ??= createChainPool({ createTransport: createCoreRpcChainProvider, destroyDelay: 0 });
+          return trustedSubmitPool.getLocalProvider(genesisHash, 'submit-fallback');
+        },
+        genesisHash,
+      );
+    },
   });
 }
 
@@ -127,6 +155,11 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     wake?.();
     wake = null;
   };
+  // TEMPORARY: the light client returns no stored statements. Media's
+  // marked advertisement lookups and the exact vox.paseo presence snapshot
+  // use the trusted RPC node instead.
+  const mediaLookup = getBackend() === 'rpc-gateway' ? null : createMediaAdvertisementLookupRoute(genesisHash, deliver);
+  const voxPresence = getBackend() === 'rpc-gateway' ? null : createVoxPresenceSnapshotRoute(genesisHash, deliver);
   // A halt drops the lease but the stream stays open, since truapi-host ignores its end and keeps
   // sending. The next send takes a new lease, behind the chain gate or the frame gate.
   const open = (provider: LeaseProvider): void => {
@@ -178,6 +211,8 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
       return;
     }
     closed = true;
+    mediaLookup?.close();
+    voxPresence?.close();
     lease?.disconnect();
     lease = null;
     wake?.();
@@ -191,6 +226,12 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
       }
       if (closed) {
+        return;
+      }
+      if (mediaLookup?.send(parsed) === true) {
+        return;
+      }
+      if (voxPresence?.send(parsed) === true) {
         return;
       }
       const connection = lease ?? reopen();
