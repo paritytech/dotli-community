@@ -1,16 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { memoryStorage } from '@dotli/shared/testing';
 import { SITE_ID } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
-import type { ProtocolEnvelope, ProtocolRequestEnvelope, ProtocolRequestMap } from '@dotli/protocol';
 import { createSharedStoreHandler, type SharedAuthChannel, type SharedStoreDeps } from './shared-store-handler.js';
+import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
 
-const HOST = 'http://host-playground.localhost:5173';
-const OTHER_HOST = 'http://landing.localhost:5173';
-const PRODUCT = 'http://bafy.app.localhost:5173';
+afterEach(closeHostLinks);
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -48,73 +46,57 @@ function fakeChannel(post: (message: unknown) => void = () => undefined): FakeCh
   };
 }
 
-function setup(overrides: Partial<SharedStoreDeps> = {}): {
-  handler: ReturnType<typeof createSharedStoreHandler>;
+function setup(
+  overrides: Partial<SharedStoreDeps> = {},
+  origin = HOST_ORIGIN,
+): {
+  link: ReturnType<typeof linkHost>;
   storage: Storage;
   channel: FakeChannel;
-  toParent: { message: ProtocolEnvelope; origin: string }[];
+  store: ReturnType<typeof createSharedStoreHandler>;
 } {
   const storage = memoryStorage();
   const channel = fakeChannel();
-  const toParent: { message: ProtocolEnvelope; origin: string }[] = [];
-  const handler = createSharedStoreHandler({
+  const link = linkHost(origin);
+  const store = createSharedStoreHandler(link.serving, {
     storage: () => storage,
     channel: channel.channel,
-    parent: {
-      postMessage: (message, origin) => {
-        toParent.push({ message, origin });
-      },
-    },
-    initialParentOrigin: null,
     ...overrides,
   });
-  return { handler, storage, channel, toParent };
+  return { link, storage, channel, store };
 }
-
-function request<M extends keyof ProtocolRequestMap>(
-  method: M,
-  payload: ProtocolRequestMap[M],
-  id = 'r1',
-): ProtocolRequestEnvelope<M> {
-  return { namespace: 'dotli:protocol', kind: 'request', id, method, payload };
-}
-
-function answers(run: (respond: (envelope: ProtocolEnvelope) => void) => void): ProtocolEnvelope[] {
-  const out: ProtocolEnvelope[] = [];
-  run(envelope => out.push(envelope));
-  return out;
-}
-
-const ok = (id: string, result: unknown): ProtocolEnvelope => ({
-  namespace: 'dotli:protocol',
-  kind: 'response',
-  id,
-  ok: true,
-  result,
-});
 
 describe('the shared auth store', () => {
-  it('As a host page, I write a shared auth key and read it back', () => {
+  it('As a host page, I write a shared auth key and read it back', async () => {
     // Given
-    const { handler } = setup();
-    handler.auth(request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' }), HOST, () => undefined);
+    const { link } = setup();
+    await link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
 
     // When
-    const read = answers(respond => {
-      handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }, 'r2'), HOST, respond);
-    });
+    const read = await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    expect(read).toEqual([ok('r2', 'abc')]);
+    expect(read).toBe('abc');
   });
 
-  it("As a host page in another tab, I hear this tab's auth writes and clears", () => {
+  it('As a host page, I read a key nobody wrote as null', async () => {
     // Given
-    const { handler, channel } = setup();
+    const { link } = setup();
 
     // When
-    handler.auth(request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' }), HOST, () => undefined);
-    handler.auth(request('authStorageClear', { siteId: SITE_ID, key: 'session' }), HOST, () => undefined);
+    const read = await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    expect(read).toBeNull();
+  });
+
+  it("As a host page in another tab, I hear this tab's auth writes and clears", async () => {
+    // Given
+    const { link, channel } = setup();
+
+    // When
+    await link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
+    await link.host.request('authStorageClear', { siteId: SITE_ID, key: 'session' });
 
     // Then
     expect(channel.posted).toEqual([
@@ -123,58 +105,66 @@ describe('the shared auth store', () => {
     ]);
   });
 
-  it("As a host page, a sibling tab's auth write reaches me at the origin of my last request", () => {
-    // Given a parent first known from the referrer, then from its own request
-    const { handler, channel, toParent } = setup({ initialParentOrigin: OTHER_HOST });
-    handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }), HOST, () => undefined);
+  it("As the host, I hear a sibling tab's auth change through my subscription", async () => {
+    // Given
+    const { link, channel } = setup();
+    const changes = record(link.host, 'sharedAuthChanges', undefined);
+    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
 
-    // When another tab writes
+    // When another tab writes, then clears, and a stranger posts junk on the channel
     channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    channel.deliver({ siteId: 'evil.li', key: 'session', value: 'junk' });
+    channel.deliver('junk');
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: null });
+    await changes.until(2);
 
     // Then
-    expect(toParent).toEqual([
-      {
-        message: {
-          namespace: 'dotli:protocol',
-          kind: 'auth-storage-changed',
-          siteId: SITE_ID,
-          key: 'session',
-          value: 'xyz',
-        },
-        origin: HOST,
-      },
+    expect(changes.events).toEqual([
+      { siteId: SITE_ID, key: 'session', value: 'xyz' },
+      { siteId: SITE_ID, key: 'session', value: null },
     ]);
   });
 
-  it("As a host page under a strict referrer policy, a sibling tab's write waits until I have asked once", () => {
-    // Given a parent whose origin the referrer did not give
-    const { channel, toParent } = setup();
+  it("As the host, once I unsubscribe I no longer hear sibling tabs' changes", async () => {
+    // Given
+    const { link, channel } = setup();
+    const changes = record(link.host, 'sharedAuthChanges', undefined);
+    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
 
-    // When another tab writes
+    // When
+    changes.unsubscribe();
+    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
     channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    const later = record(link.host, 'sharedAuthChanges', undefined);
+    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'abc' });
+    await later.until(1);
 
-    // Then nothing is posted to an unknown origin
-    expect(toParent).toEqual([]);
+    // Then
+    expect(changes.events).toEqual([]);
+    expect(later.events).toEqual([{ siteId: SITE_ID, key: 'session', value: 'abc' }]);
   });
 
-  it('As a dotli user, a product page cannot read my shared session', () => {
+  it('As a dotli user, a product page cannot read my shared session nor hear it change', async () => {
     // Given
-    const { handler, storage } = setup();
+    const { link, storage } = setup({}, PRODUCT_ORIGIN);
     storage.setItem(`TRUAPI_${SITE_ID}_session`, 'secret');
 
     // When
-    const read = (): void => {
-      handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }), PRODUCT, () => undefined);
-    };
+    const read = link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const changes = record(link.host, 'sharedAuthChanges', undefined);
 
     // Then
-    expect(read).toThrow(`Shared auth request denied from origin: ${PRODUCT}`);
+    await expect(read).rejects.toThrow(`Shared auth request denied from origin: ${PRODUCT_ORIGIN}`);
+    expect(await changes.ended).toMatchObject({
+      message: `Shared auth request denied from origin: ${PRODUCT_ORIGIN}`,
+    });
   });
 
-  it('As a dotli operator, a failed broadcast is reported and the write is still answered', () => {
+  it('As a dotli operator, a failed broadcast is reported and the write is still answered', async () => {
     // Given
     const failure = new DOMException('could not be cloned', 'DataCloneError');
-    const { handler } = setup({
+    const { link } = setup({
       channel: fakeChannel(() => {
         throw failure;
       }).channel,
@@ -182,116 +172,102 @@ describe('the shared auth store', () => {
     captures.exception.mockClear();
 
     // When
-    const written = answers(respond => {
-      handler.auth(request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' }), HOST, respond);
-    });
+    const written = link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
 
     // Then
-    expect(written).toEqual([ok('r1', true)]);
+    await expect(written).resolves.toBeUndefined();
     expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'storage', step: 'shared_auth_broadcast' });
   });
 
-  it('As a dotli integrator, a key outside the allowed characters is refused', () => {
+  it('As a dotli integrator, a key outside the allowed characters is refused', async () => {
     // Given
-    const { handler } = setup();
+    const { link } = setup();
 
     // When
-    const write = (): void => {
-      handler.auth(
-        request('authStorageWrite', { siteId: SITE_ID, key: 'no spaces', value: 'x' }),
-        HOST,
-        () => undefined,
-      );
-    };
+    const write = link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'no spaces', value: 'x' });
 
     // Then
-    expect(write).toThrow('Invalid shared auth key: no spaces');
-  });
-});
-
-describe('the shared auth store origin rules', () => {
-  it('As a host page, a refused product request does not move where sibling tab writes are sent', () => {
-    // Given an allowed parent known from its own request
-    const { handler, channel, toParent } = setup();
-    handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }), HOST, () => undefined);
-
-    // When a product origin asks and is refused, then another tab writes
-    expect(() => {
-      handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }), PRODUCT, () => undefined);
-    }).toThrow(`Shared auth request denied from origin: ${PRODUCT}`);
-    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
-
-    // Then only the allowed parent origin is posted to
-    expect(toParent.map(entry => entry.origin)).toEqual([HOST]);
+    await expect(write).rejects.toThrow('Invalid shared auth key: no spaces');
   });
 
-  it('As a host page with no known parent, a refused product request does not make me a relay target', () => {
+  it('As a page on another root domain, I am refused the shared session', async () => {
     // Given
-    const { handler, channel, toParent } = setup();
+    const { link } = setup();
 
     // When
-    expect(() => {
-      handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }), PRODUCT, () => undefined);
-    }).toThrow();
-    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    const read = link.host.request('authStorageRead', { siteId: 'evil.li', key: 'session' });
 
     // Then
-    expect(toParent).toEqual([]);
+    await expect(read).rejects.toThrow('Invalid siteId: evil.li');
   });
 
-  it('As a dotli user, storage blocked by the browser is answered per request and the handler still starts', () => {
+  it('As a dotli user, storage blocked by the browser is answered per request and the handler still starts', async () => {
     // Given storage that throws on access
     const blocked = new DOMException('storage is blocked', 'SecurityError');
-    const { handler } = setup({
+    const { link } = setup({
       storage: () => {
         throw blocked;
       },
     });
 
     // When
-    const read = (): void => {
-      handler.auth(request('authStorageRead', { siteId: SITE_ID, key: 'session' }), HOST, () => undefined);
-    };
+    const read = link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    expect(read).toThrow(blocked);
+    await expect(read).rejects.toThrow('storage is blocked');
+  });
+
+  it('As a dotli integrator, a stopped store serves nothing and hears no sibling tab', async () => {
+    // Given
+    const { link, channel, store } = setup();
+
+    // When
+    store.stop();
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    const read = link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    await expect(read).rejects.toThrow('This end does not handle authStorageRead');
   });
 });
 
 describe('the shared mode store', () => {
-  it('As a host page, I keep the protocol mode apart from the session and no other tab is told', () => {
+  it('As a host page, I keep the protocol mode apart from the session and no other tab is told', async () => {
     // Given
-    const { handler, storage, channel } = setup();
+    const { link, storage, channel } = setup();
 
     // When
-    handler.mode(
-      request('modeStorageWrite', { siteId: SITE_ID, key: 'session', value: 'direct' }),
-      HOST,
-      () => undefined,
-    );
-    const read = answers(respond => {
-      handler.mode(request('modeStorageRead', { siteId: SITE_ID, key: 'session' }, 'r2'), HOST, respond);
-    });
+    await link.host.request('modeStorageWrite', { siteId: SITE_ID, key: 'session', value: 'direct' });
+    const read = await link.host.request('modeStorageRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    expect(read).toEqual([ok('r2', 'direct')]);
+    expect(read).toBe('direct');
     expect(storage.length).toBe(1);
     expect(storage.key(0)).toBe(`DOTLI_MODE_${SITE_ID}_session`);
     expect(channel.posted).toEqual([]);
   });
 
-  it('As a host page, I clear the protocol mode', () => {
+  it('As a host page, I clear the protocol mode', async () => {
     // Given
-    const { handler, storage } = setup();
+    const { link, storage } = setup();
     storage.setItem(`DOTLI_MODE_${SITE_ID}_mode`, 'rpc');
 
     // When
-    const cleared = answers(respond => {
-      handler.mode(request('modeStorageClear', { siteId: SITE_ID, key: 'mode' }), HOST, respond);
-    });
+    await link.host.request('modeStorageClear', { siteId: SITE_ID, key: 'mode' });
 
     // Then
-    expect(cleared).toEqual([ok('r1', true)]);
+    expect(storage.length).toBe(0);
+  });
+
+  it('As a dotli user, a product page cannot change my protocol mode', async () => {
+    // Given
+    const { link, storage } = setup({}, PRODUCT_ORIGIN);
+
+    // When
+    const write = link.host.request('modeStorageWrite', { siteId: SITE_ID, key: 'mode', value: 'rpc' });
+
+    // Then
+    await expect(write).rejects.toThrow(`Shared auth request denied from origin: ${PRODUCT_ORIGIN}`);
     expect(storage.length).toBe(0);
   });
 });

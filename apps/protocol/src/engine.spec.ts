@@ -9,20 +9,25 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { createChainPool, type ChainPool } from '@dotli/chains';
-import type { ProtocolEnvelope, ProtocolRequestEnvelope, ProtocolRequestMap } from '@dotli/protocol';
-import type { ChainTransportHooks } from '@dotli/chains';
+import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
+import { TIMEOUTS } from '@dotli/config';
+import type { ConsumerTransport } from '@dotli/protocol';
 import {
   createEngine,
   MAX_CONNS,
+  serveEngineScope,
   type EngineOptions,
   type EngineResolver,
   type EngineScope,
   type ProtocolEngine,
 } from './engine.js';
+import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 
-const ORIGIN_A = 'https://a.example';
-const ORIGIN_B = 'https://b.example';
+afterEach(() => {
+  vi.useRealTimers();
+  closeHostLinks();
+});
 
 interface TransportRecord {
   genesisHash: string;
@@ -62,32 +67,34 @@ function createTransports(): {
   return { createChainProvider, built };
 }
 
-let requestCounter = 0;
+/** One host page served by one engine scope over the wire. */
+interface Tab {
+  host: ConsumerTransport;
+  scope: EngineScope;
+  /** Settles once the chain is connected or the connect ended. */
+  connect: (genesisHash: string, connectionId: string) => Promise<Recording<'chainConnect'>>;
+  send: (connectionId: string, message: string) => Promise<void>;
+}
 
-/** Collects every envelope the engine answers with, including later ones. */
-async function call<M extends keyof ProtocolRequestMap>(
-  scope: EngineScope,
-  method: M,
-  payload: ProtocolRequestMap[M],
-  origin = ORIGIN_A,
-): Promise<ProtocolEnvelope[]> {
-  const out: ProtocolEnvelope[] = [];
-  requestCounter += 1;
-  const request = {
-    namespace: 'dotli:protocol',
-    kind: 'request',
-    id: `r${String(requestCounter)}`,
-    method,
-    payload,
-  } as ProtocolRequestEnvelope<M>;
-  await scope.handleRequest(request, origin, envelope => out.push(envelope));
-  return out;
+function openTab(engine: ProtocolEngine): Tab {
+  const { serving, host } = linkHost();
+  const scope = serveEngineScope(serving, engine);
+  return {
+    host,
+    scope,
+    connect: async (genesisHash, connectionId) => {
+      const chain = record(host, 'chainConnect', { genesisHash, connectionId });
+      await Promise.race([chain.until(1), chain.ended]);
+      return chain;
+    },
+    send: (connectionId, message) => host.request('chainSend', { connectionId, message }),
+  };
 }
 
 function setup(
   extra: Partial<EngineOptions> = {},
   destroyDelay = Infinity,
-): { engine: ProtocolEngine; scope: EngineScope; built: TransportRecord[]; opened: string[] } {
+): { engine: ProtocolEngine; tab: Tab; built: TransportRecord[]; opened: string[] } {
   const { createChainProvider, built } = createTransports();
   const pool = createChainPool({ createTransport: createChainProvider, destroyDelay });
   // The id of each connection the engine opens on the real pool.
@@ -100,66 +107,10 @@ function setup(
     },
   };
   const engine = createEngine({ pool: counting, isChainSupported: () => true, ...extra });
-  return { engine, scope: engine.openScope(), built, opened };
+  return { engine, tab: openTab(engine), built, opened };
 }
 
-describe('createEngine chain connections', () => {
-  it('As a dotli integrator, a remote chain connection carries requests and answers', async () => {
-    // Given
-    const { scope, built } = setup();
-    const connected = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-
-    // When
-    await call(scope, 'chainSend', {
-      connectionId: 'c1',
-      message: JSON.stringify({ jsonrpc: '2.0', id: 'q1', method: 'chainSpec_v1_genesisHash', params: [] }),
-    });
-    const transport = must(built[0], 'transport');
-    transport.emit({ jsonrpc: '2.0', id: must(transport.sent[0], 'request').id ?? null, result: '0xaa' });
-
-    // Then
-    expect(connected[0]).toMatchObject({ kind: 'response', ok: true, result: true });
-    expect(connected[1]).toMatchObject({ kind: 'chain-message', connectionId: 'c1' });
-    expect(JSON.parse((connected[1] as { message: string }).message)).toEqual({
-      jsonrpc: '2.0',
-      id: 'q1',
-      result: '0xaa',
-    });
-  });
-
-  it('As a dotli integrator, chainSend on a connection that does not exist fails', async () => {
-    // Given
-    const { scope } = setup();
-
-    // When
-    const send = call(scope, 'chainSend', { connectionId: 'nope', message: '{}' });
-
-    // Then
-    await expect(send).rejects.toThrow('Unknown chain connection: nope');
-  });
-
-  it('As a dotli integrator, chainDisconnect on a connection that does not exist succeeds', async () => {
-    // Given
-    const { scope } = setup();
-
-    // When
-    const out = await call(scope, 'chainDisconnect', { connectionId: 'nope' });
-
-    // Then
-    expect(out[0]).toMatchObject({ kind: 'response', ok: true, result: true });
-  });
-
-  it('As a dotli user, an unsupported chain is refused', async () => {
-    // Given
-    const { scope } = setup({ isChainSupported: () => false });
-
-    // When
-    const connect = call(scope, 'chainConnect', { genesisHash: '0xdead', connectionId: 'c1' });
-
-    // Then
-    await expect(connect).rejects.toThrow('Unsupported chain: 0xdead');
-  });
-});
+const CONNECTED = { tag: 'connected' };
 
 /** The transport reports itself dead, as a smoldot chain does. */
 function haltTransport(transport: TransportRecord): void {
@@ -171,19 +122,119 @@ function haltTransport(transport: TransportRecord): void {
 const genesisRequest = (id: string): string =>
   JSON.stringify({ jsonrpc: '2.0', id, method: 'chainSpec_v1_genesisHash', params: [] });
 
+function resolverOf(resolveDotName: EngineResolver['resolveDotName']): EngineResolver {
+  return {
+    resolveDotName,
+    resolveOwner: () => Promise.resolve(null),
+    resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
+    resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
+  };
+}
+
+describe('createEngine chain connections', () => {
+  it('As a product, a remote chain connection carries requests and answers', async () => {
+    // Given
+    const { tab, built } = setup();
+    const chain = await tab.connect('0xaa', 'c1');
+
+    // When
+    await tab.send('c1', genesisRequest('q1'));
+    const transport = must(built[0], 'transport');
+    transport.emit({ jsonrpc: '2.0', id: must(transport.sent[0], 'request').id ?? null, result: '0xaa' });
+    await chain.until(2);
+
+    // Then
+    expect(chain.events[0]).toEqual(CONNECTED);
+    const answer = must(chain.events[1], 'answer');
+    expect(answer.tag === 'message' ? JSON.parse(answer.value) : answer).toEqual({
+      jsonrpc: '2.0',
+      id: 'q1',
+      result: '0xaa',
+    });
+  });
+
+  it('As a product, a send on a connection that does not exist fails', async () => {
+    // Given
+    const { tab } = setup();
+
+    // When
+    const send = tab.send('nope', '{}');
+
+    // Then
+    await expect(send).rejects.toThrow('Unknown chain connection: nope');
+  });
+
+  it('As a dotli user, an unsupported chain is refused', async () => {
+    // Given
+    const { tab } = setup({ isChainSupported: () => false });
+
+    // When
+    const chain = await tab.connect('0xdead', 'c1');
+
+    // Then
+    expect(await chain.ended).toMatchObject({ message: 'Unsupported chain: 0xdead' });
+    expect(chain.events).toEqual([]);
+  });
+
+  it('As the host, my connect is refused at the connection limit and the subscription ends with that error', async () => {
+    // Given a tab at its limit
+    const { tab } = setup();
+    for (let i = 0; i < MAX_CONNS; i++) {
+      await tab.connect('0xaa', `c${String(i)}`);
+    }
+
+    // When
+    const overflow = await tab.connect('0xaa', 'extra');
+
+    // Then
+    expect(await overflow.ended).toMatchObject({ message: 'Connection limit reached (max 10)' });
+    expect(overflow.events).toEqual([]);
+  });
+
+  it('As the host, my unsubscribe disconnects the chain', async () => {
+    // Given
+    const { tab, built } = setup({}, 0);
+    const chain = await tab.connect('0xaa', 'c1');
+
+    // When
+    chain.unsubscribe();
+
+    // Then the connection is gone by the time a later call is answered
+    await expect(tab.send('c1', genesisRequest('q1'))).rejects.toThrow('Unknown chain connection: c1');
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a product, a second connect under a live connection id is refused and the first keeps working', async () => {
+    // Given
+    const { tab, built } = setup();
+    await tab.connect('0xaa', 'c1');
+
+    // When
+    const again = await tab.connect('0xaa', 'c1');
+    const elsewhere = await tab.connect('0xbb', 'c1');
+
+    // Then
+    expect(await again.ended).toMatchObject({ message: 'Duplicate chain connection: c1' });
+    expect(await elsewhere.ended).toMatchObject({ message: 'Duplicate chain connection: c1' });
+    await tab.send('c1', genesisRequest('q1'));
+    expect(built).toHaveLength(1);
+    expect(must(built[0], 'transport').sent).toHaveLength(1);
+  });
+});
+
 describe('createEngine chain pool', () => {
   it('As the protocol frame, I hand the engine the chain pool the name resolver reads, so a product shares its chain', async () => {
-    // Given: the resolver already holds a lease on the chain
+    // Given the resolver already holds a lease on the chain
     const { createChainProvider, built } = createTransports();
     const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
     must(pool.getLocalProvider('0xaa', 'resolver'), 'resolver lease')(() => undefined);
     const engine = createEngine({ pool, isChainSupported: () => true });
 
     // When
-    const connected = await call(engine.openScope(), 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    const chain = await openTab(engine).connect('0xaa', 'c1');
 
     // Then
-    expect(connected[0]).toMatchObject({ kind: 'response', ok: true, result: true });
+    expect(chain.events).toEqual([CONNECTED]);
     expect(built).toHaveLength(1);
   });
 
@@ -192,7 +243,7 @@ describe('createEngine chain pool', () => {
     const { createChainProvider, built } = createTransports();
     const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
     const engine = createEngine({ pool, isChainSupported: () => true });
-    await call(engine.openScope(), 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    await openTab(engine).connect('0xaa', 'c1');
 
     // When
     engine.cleanup();
@@ -203,246 +254,187 @@ describe('createEngine chain pool', () => {
 });
 
 describe('createEngine name reads', () => {
-  it("As the host waiting on a name, I hear the resolver's phases as typed progress before the answer", async () => {
+  it("As the host waiting on a name, I hear the resolver's phases, then the name, then the end", async () => {
     // Given
-    const { createChainProvider } = createTransports();
-    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
-    const resolver: EngineResolver = {
-      resolveDotName: (_label, opts) => {
+    const { tab } = setup({
+      resolver: resolverOf((_label, opts) => {
         opts?.onPhase?.('asset-hub-syncing');
         opts?.onPhase?.('resolving-content');
         return Promise.resolve('bafy-doom');
-      },
-      resolveOwner: () => Promise.resolve(null),
-      resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
-      resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
-    };
-    const engine = createEngine({ pool, isChainSupported: () => true, resolver });
+      }),
+    });
 
     // When
-    const out = await call(engine.openScope(), 'resolveDotName', { label: 'doom' });
+    const read = record(tab.host, 'resolveDotName', { label: 'doom' });
 
     // Then
-    expect(out).toMatchObject([
-      { namespace: 'dotli:protocol', kind: 'progress', phase: 'asset-hub-syncing' },
-      { namespace: 'dotli:protocol', kind: 'progress', phase: 'resolving-content' },
-      { namespace: 'dotli:protocol', kind: 'response', ok: true, result: 'bafy-doom' },
+    expect(await read.ended).toBeNull();
+    expect(read.events).toEqual([
+      { tag: 'phase', value: 'asset-hub-syncing' },
+      { tag: 'phase', value: 'resolving-content' },
+      { tag: 'resolved', value: 'bafy-doom' },
     ]);
-    expect(new Set(out.map(envelope => ('id' in envelope ? envelope.id : null))).size).toBe(1);
   });
+
+  it('As the host, a name read that fails ends with its error', async () => {
+    // Given
+    const { tab } = setup({ resolver: resolverOf(() => Promise.reject(new TypeError('bad label'))) });
+
+    // When
+    const read = record(tab.host, 'resolveDotName', { label: 'doom' });
+
+    // Then
+    expect(await read.ended).toMatchObject({ name: 'TypeError', message: 'bad label' });
+  });
+
+  it('As the host in gateway mode, every name read is refused at once', async () => {
+    // Given an engine with no resolver
+    const { tab } = setup();
+
+    // When
+    const read = record(tab.host, 'resolveDotName', { label: 'doom' });
+    const owner = tab.host.request('resolveOwner', { label: 'doom' });
+
+    // Then
+    expect(await read.ended).toMatchObject({ message: PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED });
+    await expect(owner).rejects.toThrow(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
+  });
+
+  const HOUR = 60 * 60 * 1000;
 
   it.each([
     ['caps the budget a far deadline allows', 1000, 1000],
-    ['leaves the budget to the deadline', undefined, 'deadline'],
+    [
+      'leaves the budget to what is left of the deadline, less the delivery grace',
+      undefined,
+      HOUR - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+    ],
   ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
-    // Given
-    const { createChainProvider } = createTransports();
-    const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
+    // Given a frame clock at 10 s and a host deadline an hour later
     const seen: (number | undefined)[] = [];
-    const resolver: EngineResolver = {
-      resolveDotName: (_label, opts) => {
+    const { tab } = setup({
+      resolver: resolverOf((_label, opts) => {
         seen.push(opts?.syncTimeoutMs);
         return Promise.resolve('bafy-doom');
-      },
-      resolveOwner: () => Promise.resolve(null),
-      resolveExecutableManifest: () => Promise.resolve({ kind: 'empty' }),
-      resolveRootManifest: () => Promise.resolve({ kind: 'empty' }),
-    };
-    const engine = createEngine({ pool, isChainSupported: () => true, resolver, syncBudgetCapMs });
-    const hour = 60 * 60 * 1000;
+      }),
+      syncBudgetCapMs,
+      timers: { now: () => 10_000 },
+    });
 
     // When
-    await engine.openScope().handleRequest(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'request',
-        id: 'r1',
-        method: 'resolveDotName',
-        payload: { label: 'doom' },
-        deadlineMs: Date.now() + hour,
-      },
-      ORIGIN_A,
-      () => undefined,
-    );
+    await record(tab.host, 'resolveDotName', { label: 'doom' }, { deadlineMs: 10_000 + HOUR }).ended;
 
     // Then
-    expect(seen).toHaveLength(1);
-    if (expected === 'deadline') {
-      expect(seen[0]).toBeGreaterThan(1000);
-      expect(seen[0]).toBeLessThanOrEqual(hour);
-    } else {
-      expect(seen[0]).toBe(expected);
-    }
+    expect(seen).toEqual([expected]);
+  });
+
+  it('As the host, a read without a deadline leaves the budget to the resolver', async () => {
+    // Given
+    const seen: unknown[] = [];
+    const { tab } = setup({
+      resolver: {
+        ...resolverOf(() => Promise.resolve(null)),
+        resolveOwner: (_label, opts) => {
+          seen.push(opts);
+          return Promise.resolve('0xowner');
+        },
+      },
+    });
+
+    // When
+    const owner = await tab.host.request('resolveOwner', { label: 'doom' });
+
+    // Then
+    expect(owner).toBe('0xowner');
+    expect(seen).toEqual([{}]);
   });
 });
 
 describe('createEngine halts', () => {
-  it('As a dotli user, a dead chain answers what my app was waiting for, then says the connection halted', async () => {
+  it('As the host, a halted chain ends my subscription cleanly, after what my app was waiting for', async () => {
     // Given
-    const { scope, built } = setup();
-    const out = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
+    const { tab, built } = setup();
+    const chain = await tab.connect('0xaa', 'c1');
+    await tab.send('c1', genesisRequest('q1'));
 
     // When
     haltTransport(must(built[0], 'transport'));
 
     // Then
-    expect(out.slice(1)).toEqual([
+    expect(await chain.ended).toBeNull();
+    expect(chain.events).toEqual([
+      CONNECTED,
       {
-        namespace: 'dotli:protocol',
-        kind: 'chain-message',
-        connectionId: 'c1',
-        message: JSON.stringify({
+        tag: 'message',
+        value: JSON.stringify({
           jsonrpc: '2.0',
           id: 'q1',
           error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
         }),
       },
-      { namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' },
     ]);
   });
 
-  it('As a dotli integrator, a halted connection is gone and frees its slot', async () => {
+  it('As a product, a halted connection is gone and frees its slot', async () => {
     // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    const { tab, built } = setup();
+    const chain = await tab.connect('0xaa', 'c1');
     haltTransport(must(built[0], 'transport'));
+    await chain.ended;
 
     // When
-    const send = call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
+    const send = tab.send('c1', genesisRequest('q1'));
 
     // Then
     await expect(send).rejects.toThrow('Unknown chain connection: c1');
     // The freed slot lets the whole quota fill again.
     for (let i = 0; i < MAX_CONNS; i += 1) {
-      await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: `n${String(i)}` });
+      expect((await tab.connect('0xaa', `n${String(i)}`)).events).toEqual([CONNECTED]);
     }
   });
 
-  it('As a dotli integrator, a client reconnecting under the same id after a halt gets a fresh chain', async () => {
+  it('As a product, reconnecting under the same id after a halt gets a fresh chain', async () => {
     // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    const { tab, built } = setup();
+    const first = await tab.connect('0xaa', 'c1');
     haltTransport(must(built[0], 'transport'));
+    await first.ended;
 
     // When
-    const out = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') });
+    const again = await tab.connect('0xaa', 'c1');
+    await tab.send('c1', genesisRequest('q2'));
 
     // Then
-    expect(out[0]).toMatchObject({ kind: 'response', ok: true });
+    expect(again.events).toEqual([CONNECTED]);
     expect(built).toHaveLength(2);
     expect(must(built[1], 'rebuilt transport').sent).toHaveLength(1);
   });
 
   it('As a dotli user, a dead chain leaves my connections on other chains working', async () => {
     // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c2' });
+    const { tab, built } = setup();
+    await tab.connect('0xaa', 'c1');
+    await tab.connect('0xbb', 'c2');
 
     // When
     haltTransport(must(built[0], 'first chain'));
-    await call(scope, 'chainSend', { connectionId: 'c2', message: genesisRequest('q1') });
+    await tab.send('c2', genesisRequest('q1'));
 
     // Then
     expect(must(built[1], 'second chain').sent).toHaveLength(1);
   });
 });
 
-describe('createEngine origin binding', () => {
-  it("As a dotli user, another site cannot send on my app's chain connection", async () => {
-    // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
-
-    // When
-    const send = call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_B);
-
-    // Then
-    await expect(send).rejects.toThrow('Unknown chain connection: c1');
-    expect(must(built[0], 'transport').sent).toHaveLength(0);
-  });
-
-  it("As a dotli user, another site cannot close my app's chain connection", async () => {
-    // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
-
-    // When
-    const out = await call(scope, 'chainDisconnect', { connectionId: 'c1' }, ORIGIN_B);
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
-
-    // Then
-    expect(out[0]).toMatchObject({ kind: 'response', ok: true, result: true });
-    expect(must(built[0], 'transport').sent).toHaveLength(1);
-  });
-
-  it('As a dotli user, a site using the same connection id as my app gets its own connection', async () => {
-    // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
-
-    // When
-    const second = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_B);
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') }, ORIGIN_B);
-    await call(scope, 'chainDisconnect', { connectionId: 'c1' }, ORIGIN_A);
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q3') }, ORIGIN_B);
-
-    // Then
-    expect(second[0]).toMatchObject({ kind: 'response', ok: true });
-    expect(must(built[0], 'transport').sent).toHaveLength(3);
-  });
-
-  it('As a dotli integrator, an app reusing its own connection id on another chain is refused', async () => {
-    // Given
-    const { scope, built } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
-
-    // When
-    const again = call(scope, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c1' }, ORIGIN_A);
-
-    // Then
-    await expect(again).rejects.toThrow('Duplicate chain connection: c1');
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
-    expect(must(built[0], 'transport').sent).toHaveLength(1);
-    expect(built).toHaveLength(1);
-  });
-
-  it("As a dotli user, another site's connection on another chain cannot take my connection id", async () => {
-    // Given
-    const { scope, built } = setup();
-    const mine = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
-    const theirs = await call(scope, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c1' }, ORIGIN_B);
-
-    // When
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
-    haltTransport(must(built[0], 'my chain'));
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') }, ORIGIN_B);
-
-    // Then
-    expect(theirs[0]).toMatchObject({ kind: 'response', ok: true });
-    expect(must(built[0], 'my chain').sent).toHaveLength(1);
-    expect(must(built[1], 'their chain').sent).toHaveLength(1);
-    expect(mine.at(-1)).toEqual({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' });
-    expect(theirs.some(envelope => envelope.kind === 'chain-halt')).toBe(false);
-  });
-});
-
 describe('createEngine destroy delay', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('As a dotli user on a light client, a chain my apps stopped using stays synced', async () => {
     // Given
+    const { tab, built } = setup({}, Infinity);
+    const chain = await tab.connect('0xaa', 'c1');
     vi.useFakeTimers();
-    const { scope, built } = setup({}, Infinity);
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
 
     // When
-    await call(scope, 'chainDisconnect', { connectionId: 'c1' });
+    chain.unsubscribe();
+    await expect(tab.send('c1', '{}')).rejects.toThrow('Unknown chain connection: c1');
     vi.advanceTimersByTime(600_000);
 
     // Then
@@ -451,10 +443,11 @@ describe('createEngine destroy delay', () => {
 
   it('As a dotli user on Trusted Providers, a chain my apps stopped using closes its socket a minute later', async () => {
     // Given
+    const { tab, built } = setup({}, 60_000);
+    const chain = await tab.connect('0xaa', 'c1');
     vi.useFakeTimers();
-    const { scope, built } = setup({}, 60_000);
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainDisconnect', { connectionId: 'c1' });
+    chain.unsubscribe();
+    await expect(tab.send('c1', '{}')).rejects.toThrow('Unknown chain connection: c1');
 
     // When
     vi.advanceTimersByTime(59_999);
@@ -467,216 +460,113 @@ describe('createEngine destroy delay', () => {
   });
 });
 
-describe('createEngine repeated connects', () => {
-  it('As a dotli integrator, a chainConnect repeated with the same id and chain answers ok and opens one connection', async () => {
-    // Given
-    const { scope, built, opened } = setup();
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-
-    // When
-    const again = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
-
-    // Then
-    expect(again).toHaveLength(1);
-    expect(again[0]).toMatchObject({ kind: 'response', ok: true, result: true });
-    expect(built).toHaveLength(1);
-    expect(must(built[0], 'transport').sent).toHaveLength(1);
-    expect(opened).toEqual([expect.stringMatching(/ c1$/) as string]);
-  });
-
-  it('As a dotli integrator, I repeat a chainConnect at the tab limit and it answers ok', async () => {
-    // Given a tab at its limit
-    const { scope, built } = setup();
-    for (let i = 0; i < MAX_CONNS; i++) {
-      await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: `c${String(i)}` });
-    }
-
-    // When it repeats one of its connects
-    const again = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c0' });
-
-    // Then it keeps the connection it has, instead of being refused for the limit
-    expect(again[0]).toMatchObject({ kind: 'response', ok: true, result: true });
-    expect(built).toHaveLength(1);
-  });
-});
-
 describe('createEngine scopes', () => {
-  it('As a dotli user on the shared light client, my chain answers reach my tab and not another tab of the same site', async () => {
+  it('As a dotli user on the shared light client, my chain answers reach my tab and not another tab', async () => {
     // Given
     const { engine, built } = setup();
-    const mine = engine.openScope();
-    const theirs = engine.openScope();
-    const heardByMine = await call(mine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    const heardByTheirs = await call(theirs, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    const mine = openTab(engine);
+    const theirs = openTab(engine);
+    const heardByMine = await mine.connect('0xaa', 'c1');
+    const heardByTheirs = await theirs.connect('0xaa', 'c1');
 
     // When
-    await call(mine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
+    await mine.send('c1', genesisRequest('q1'));
     const transport = must(built[0], 'transport');
     transport.emit({ jsonrpc: '2.0', id: must(transport.sent[0], 'request').id ?? null, result: '0xaa' });
+    await heardByMine.until(2);
+    await theirs.send('c1', genesisRequest('q2'));
 
     // Then
-    expect(heardByMine.map(envelope => envelope.kind)).toEqual(['response', 'chain-message']);
-    expect(heardByTheirs.map(envelope => envelope.kind)).toEqual(['response']);
+    expect(heardByMine.events.map(event => event.tag)).toEqual(['connected', 'message']);
+    expect(heardByTheirs.events.map(event => event.tag)).toEqual(['connected']);
   });
 
-  it('As a dotli user on the shared light client, another tab of my site cannot send on or close my connection', async () => {
+  it('As a dotli user on the shared light client, another tab cannot send on my connection', async () => {
     // Given
     const { engine, built } = setup();
-    const mine = engine.openScope();
-    const theirs = engine.openScope();
-    await call(mine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    const mine = openTab(engine);
+    const theirs = openTab(engine);
+    await mine.connect('0xaa', 'c1');
 
     // When
-    const send = call(theirs, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
-    await call(theirs, 'chainDisconnect', { connectionId: 'c1' });
+    const send = theirs.send('c1', genesisRequest('q1'));
 
     // Then
     await expect(send).rejects.toThrow('Unknown chain connection: c1');
-    await call(mine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') });
+    await mine.send('c1', genesisRequest('q2'));
     expect(must(built[0], 'transport').sent).toHaveLength(1);
   });
 
-  it("As a dotli user on the shared light client, two tabs of one site each get a tab's limit", async () => {
+  it("As a dotli user on the shared light client, two tabs each get a tab's limit", async () => {
     // Given
     const { engine } = setup();
-    const tabs = [engine.openScope(), engine.openScope()];
+    const tabs = [openTab(engine), openTab(engine)];
 
     // When
     const connected = await Promise.all(
       tabs.flatMap((tab, t) =>
-        Array.from({ length: MAX_CONNS }, (_, i) =>
-          call(tab, 'chainConnect', { genesisHash: '0xaa', connectionId: `t${String(t)}c${String(i)}` }),
-        ),
+        Array.from({ length: MAX_CONNS }, (_, i) => tab.connect('0xaa', `t${String(t)}c${String(i)}`)),
       ),
     );
 
     // Then
-    expect(connected.flat().map(envelope => envelope.kind === 'response' && envelope.ok)).toEqual(
-      Array.from({ length: 2 * MAX_CONNS }, () => true),
-    );
-  });
-
-  it('As a dotli user on the shared light client, a tab stops getting connections at its limit, whatever the site', async () => {
-    // Given
-    const { scope } = setup();
-    for (let i = 0; i < MAX_CONNS; i++) {
-      await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c' }, `https://site${String(i)}.example`);
-    }
-
-    // When
-    const overflow = call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c' }, 'https://extra.example');
-
-    // Then
-    await expect(overflow).rejects.toThrow('Connection limit reached (max 10)');
+    expect(connected.map(chain => chain.events)).toEqual(Array.from({ length: 2 * MAX_CONNS }, () => [CONNECTED]));
   });
 
   it('As a dotli user on the shared light client, I disconnect one connection at my tab limit and can connect again', async () => {
     // Given a tab at its limit, whose next connect is refused
-    const { scope } = setup();
+    const { tab } = setup();
+    const chains: Recording<'chainConnect'>[] = [];
     for (let i = 0; i < MAX_CONNS; i++) {
-      await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: `c${String(i)}` });
+      chains.push(await tab.connect('0xaa', `c${String(i)}`));
     }
-    const overflow = call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'extra' });
-    await expect(overflow).rejects.toThrow('Connection limit reached (max 10)');
+    const overflow = await tab.connect('0xaa', 'extra');
+    expect(await overflow.ended).toMatchObject({ message: 'Connection limit reached (max 10)' });
 
     // When it disconnects one and connects again
-    await call(scope, 'chainDisconnect', { connectionId: 'c0' });
-    const again = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'extra' });
+    must(chains[0], 'first chain').unsubscribe();
+    const again = await tab.connect('0xaa', 'extra');
 
     // Then
-    expect(again[0]).toMatchObject({ kind: 'response', ok: true, result: true });
+    expect(again.events).toEqual([CONNECTED]);
   });
 
-  it("As a dotli user on the shared light client, closing a tab releases only that tab's connections and frees its limit", async () => {
+  it('As a dotli user on the shared light client, closing a tab ends its connections, releases only them and frees its limit', async () => {
     // Given
     const { engine, built } = setup({}, 0);
-    const closing = engine.openScope();
-    const staying = engine.openScope();
-    await call(closing, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(staying, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c2' });
+    const closing = openTab(engine);
+    const staying = openTab(engine);
+    const first = await closing.connect('0xaa', 'c1');
+    const second = await staying.connect('0xbb', 'c2');
 
     // When
-    const released = closing.close();
+    const released = closing.scope.close();
 
     // Then
     expect(released).toBe(1);
+    expect(await first.ended).toBeNull();
     expect(must(built[0], 'first chain').disconnect).toHaveBeenCalledTimes(1);
     expect(must(built[1], 'second chain').disconnect).not.toHaveBeenCalled();
+    await staying.send('c2', genesisRequest('q1'));
+    expect(second.events).toEqual([CONNECTED]);
     for (let i = 0; i < MAX_CONNS; i++) {
-      await call(closing, 'chainConnect', { genesisHash: '0xaa', connectionId: `again${String(i)}` });
+      expect((await closing.connect('0xaa', `again${String(i)}`)).events).toEqual([CONNECTED]);
     }
-  });
-
-  it('As a dotli user on the shared light client, a tab closed with halts hears each connection halted before it is released', async () => {
-    // Given a tab holding two connections
-    const { scope, built } = setup({}, 0);
-    const heard = await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c2' });
-
-    // When
-    const released = scope.close({ halt: true });
-
-    // Then
-    expect(released).toBe(2);
-    expect(heard.at(-1)).toEqual({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' });
-    expect(must(built[0], 'first chain').disconnect).toHaveBeenCalledTimes(1);
-    expect(must(built[1], 'second chain').disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user on the shared light client, closing a tab after its chain died releases only what is left', async () => {
     // Given
-    const { scope, built } = setup({}, 0);
-    await call(scope, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await call(scope, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c2' });
+    const { tab, built } = setup({}, 0);
+    await tab.connect('0xaa', 'c1');
+    await tab.connect('0xbb', 'c2');
     haltTransport(must(built[0], 'first chain'));
 
     // When
-    const released = scope.close();
+    const released = tab.scope.close();
 
     // Then
     expect(released).toBe(1);
     expect(must(built[1], 'second chain').disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli user on the shared light client, a halt that closes my tab while it is told releases nothing twice', async () => {
-    // Given a tab whose port turns out closed when the halt is posted to it
-    const { engine, built } = setup({}, 0);
-    const scope = engine.openScope();
-    const closeOnHalt = (envelope: ProtocolEnvelope): void => {
-      if (envelope.kind === 'chain-halt') {
-        scope.close();
-      }
-    };
-    await scope.handleRequest(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'request',
-        id: 'r1',
-        method: 'chainConnect',
-        payload: { genesisHash: '0xaa', connectionId: 'c1' },
-      },
-      ORIGIN_A,
-      closeOnHalt,
-    );
-    await scope.handleRequest(
-      {
-        namespace: 'dotli:protocol',
-        kind: 'request',
-        id: 'r2',
-        method: 'chainConnect',
-        payload: { genesisHash: '0xbb', connectionId: 'c2' },
-      },
-      ORIGIN_A,
-      closeOnHalt,
-    );
-
-    // When
-    haltTransport(must(built[0], 'first chain'));
-
-    // Then
-    expect(must(built[0], 'first chain').disconnect).toHaveBeenCalledTimes(1);
-    expect(must(built[1], 'second chain').disconnect).toHaveBeenCalledTimes(1);
-    expect(scope.close()).toBe(0);
+    expect(tab.scope.close()).toBe(0);
   });
 });

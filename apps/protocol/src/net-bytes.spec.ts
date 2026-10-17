@@ -21,7 +21,7 @@ describe('reportNetBytes', () => {
     // When
     const stop = reportNetBytes(
       () => total,
-      envelope => posted.push(envelope.received),
+      received => posted.push(received),
       ticker,
     );
     total = 25;

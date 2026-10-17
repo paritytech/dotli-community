@@ -1,94 +1,30 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The messages between a tab's protocol iframe and the SharedWorker, over the port the worker hands each tab, and the
-// iframe's end of that port.
-
-import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '@dotli/protocol';
-
-/** Iframe to worker: a host page's request. */
-export interface SWRelayRequest {
-  type: 'relay-request';
-  envelope: ProtocolRequestEnvelope;
-  origin: string;
-  /** The sending tab's page load. Per request, because this worker serves every tab at once. */
-  resolutionId?: string;
-}
-
-/** Iframe to worker: the tab is unloading. */
-export interface SWDisconnect {
-  type: 'disconnect';
-}
-
-/** Iframe to worker: the answer to a ping, so the worker keeps the tab's port. */
-export interface SWPong {
-  type: 'pong';
-}
-
-export type SWInbound = SWRelayRequest | SWDisconnect | SWPong;
-
-/** Worker to iframe: an envelope for the host page. */
-export interface SWRelayResponse {
-  type: 'relay-response';
-  envelope: ProtocolEnvelope;
-}
-
-/** Worker to iframe: the light client is synced, so the iframe tells its host it is ready. */
-export interface SWReady {
-  type: 'ready';
-}
-
-/** Worker to iframe: the light client will never be ready, and why. */
-export interface SWError {
-  type: 'error';
-  message: string;
-}
-
-/** Worker to iframe: the heartbeat, answered with a pong. */
-export interface SWPing {
-  type: 'ping';
-}
-
-export type SWOutbound = SWRelayResponse | SWReady | SWError | SWPing;
-
-/** The iframe's end of the port: relays the worker's envelopes to the host page and answers its heartbeat. */
-export function relayFromWorker(
-  port: Pick<MessagePort, 'addEventListener' | 'postMessage'>,
-  forward: (envelope: ProtocolEnvelope) => void,
-): void {
-  port.addEventListener('message', (event: MessageEvent) => {
-    const data = event.data as SWOutbound | null;
-    if (data?.type === 'ping') {
-      const pong: SWPong = { type: 'pong' };
-      port.postMessage(pong);
-      return;
-    }
-    if (data?.type === 'relay-response') {
-      forward(data.envelope);
-    }
-  });
-}
+// What a tab's protocol iframe and the SharedWorker agree on over the port the worker hands each tab: the heartbeat's
+// pace, and when the iframe lets go of its end.
 
 /**
- * Tells the worker the tab is gone once its page is hidden for good, so the worker frees its connections at once.
- * `pagehide` and not `beforeunload`, because a frame the host removes fires only the former. A page kept in the
- * back-forward cache may come back, so it keeps its port.
+ * A closed tab's port neither throws nor tells the worker, so the iframe sends a heartbeat on this interval and the
+ * worker lets go of a port it heard nothing from for this many beats. Three beats of 20 s release a dead tab's
+ * connections within about a minute, and leave an iframe stuck in a long task two beats of slack.
  */
-export function disconnectOnPageHide(
+export const HEARTBEAT_INTERVAL_MS = 20_000;
+export const HEARTBEAT_MISSED_BEATS = 3;
+
+/**
+ * Disposes the iframe's worker transport once its page is hidden for good, which ends its subscriptions and so frees
+ * its connections at once. `pagehide` and not `beforeunload`, because a frame the host removes fires only the former.
+ * A page kept in the back-forward cache may come back, so it keeps its transport.
+ */
+export function disposeOnPageHide(
   target: Pick<EventTarget, 'addEventListener'>,
-  port: Pick<MessagePort, 'postMessage' | 'close'>,
+  transport: { dispose: (reason: Error) => void },
+  reason: Error,
 ): void {
   target.addEventListener('pagehide', event => {
-    if ((event as PageTransitionEvent).persisted) {
-      return;
+    if (!(event as PageTransitionEvent).persisted) {
+      transport.dispose(reason);
     }
-    try {
-      const msg: SWDisconnect = { type: 'disconnect' };
-      port.postMessage(msg);
-      // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal, the port may already be closed.
-    } catch {
-      /* port already closed on unload, safe */
-    }
-    port.close();
   });
 }

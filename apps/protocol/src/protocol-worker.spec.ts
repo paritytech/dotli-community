@@ -2,25 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The light client and the resolver functions the worker is given are fakes, and the worker global is a fake scope.
+// Each tab is a real consumer transport on its own port pair, so the worker is driven over the wire as an iframe
+// drives it.
 
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { deferred, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, type m } from '@dotli/metrics';
-import type { ProtocolRequestEnvelope } from '@dotli/protocol';
+import { createConsumerTransport, createPortProvider, type ConsumerTransport } from '@dotli/protocol';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
-import { PROTOCOL_APP_ERRORS } from './errors.js';
 import type { Ticker } from './net-bytes.js';
 import {
-  HEARTBEAT_MISSED_BEATS,
   startProtocolWorker,
   workerNetwork,
   type HeartbeatClock,
   type WorkerResolver,
   type WorkerScope,
 } from './protocol-worker.js';
+import { record, type Recording } from './testing/host-link.js';
+import { HEARTBEAT_MISSED_BEATS } from './worker-messages.js';
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
 type ChainDetail = Parameters<Parameters<WorkerResolver['onChainDetail']>[0]>[0];
@@ -33,8 +35,6 @@ bindCaptureSink(captures);
 interface LogLine {
   level: LogLevel;
   message: string;
-  attrs: Record<string, unknown> | undefined;
-  args: unknown[] | undefined;
 }
 
 /** The light client and resolver the worker drives, with the levers a test pulls. */
@@ -49,10 +49,11 @@ interface FakeLightClient {
   sync: ChainSyncEvent[];
   detail: ChainDetail[];
   syncListeners: Set<(event: ChainSyncEvent) => void>;
-  detailListeners: Set<(detail: ChainDetail) => void>;
-  /** The disconnect of each chain connection the worker opened, in order. */
+  /** Settles once no more than `count` listeners hear chain sync. */
+  untilSyncListeners: (count: number) => Promise<void>;
+  /** The disconnect of each chain the worker opened, in order. */
   disconnects: Mock<() => void>[];
-  /** The genesis hash of each chain connection the worker opened, in order. */
+  /** The genesis hash of each chain the worker opened, in order. */
   chains: string[];
   /** What the worker built its name resolver on. */
   dotnsDeps: DotnsResolverDeps | null;
@@ -74,10 +75,11 @@ function fakeLightClient(
 ): FakeLightClient {
   const listeners = new Set<(change: LightClientChange) => void>();
   const db = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+  const syncWaiters: { count: number; resolve: () => void }[] = [];
   let fatal: string | null = null;
   const defaultPresync = Promise.resolve();
   const tell = (change: LightClientChange): void => {
-    for (const listener of listeners) {
+    for (const listener of [...listeners]) {
       listener(change);
     }
   };
@@ -93,7 +95,12 @@ function fakeLightClient(
     sync: options.sync ?? [],
     detail: options.detail ?? [],
     syncListeners: new Set(),
-    detailListeners: new Set(),
+    untilSyncListeners: count =>
+      light.syncListeners.size <= count
+        ? Promise.resolve()
+        : new Promise(resolve => {
+            syncWaiters.push({ count, resolve });
+          }),
     disconnects: [],
     chains: [],
     dotnsDeps: null,
@@ -127,14 +134,15 @@ function fakeLightClient(
       light.syncListeners.add(cb);
       return () => {
         light.syncListeners.delete(cb);
+        for (const waiter of syncWaiters.filter(w => light.syncListeners.size <= w.count)) {
+          syncWaiters.splice(syncWaiters.indexOf(waiter), 1);
+          waiter.resolve();
+        }
       };
     },
     onChainDetail: cb => {
       light.detail.forEach(cb);
-      light.detailListeners.add(cb);
-      return () => {
-        light.detailListeners.delete(cb);
-      };
+      return () => undefined;
     },
     createDotnsResolver: deps => {
       light.dotnsDeps = deps;
@@ -156,65 +164,35 @@ function fakeLightClient(
   return light;
 }
 
-interface FakePort {
-  posted: Mock<(message: unknown) => void>;
-  port: MessagePort;
-  /** Deliver a message from the tab's iframe to the worker. */
-  receive: (data: unknown) => void;
-  /** Settles once the port has been handed `count` more messages, pings aside, whether or not the send threw. */
-  postedMore: (count?: number) => Promise<void>;
+/** A tab's protocol iframe, linked to the worker over its own port. */
+interface Tab {
+  transport: ConsumerTransport;
+  /** The worker's status as the tab hears it, subscribed on connect as an iframe does. */
+  status: Recording<'frameStatus'>;
+  /** Every buffer the worker posted to this tab, as it was before the transfer detached it. */
+  posted: ArrayBuffer[];
 }
 
-function fakePort(): FakePort {
-  const posted = vi.fn<(message: unknown) => void>();
-  const listeners: ((event: MessageEvent) => void)[] = [];
-  const waiters: { target: number; resolve: () => void }[] = [];
-  let delivered = 0;
-  const port = {
-    addEventListener: (_type: string, listener: (event: MessageEvent) => void) => {
-      listeners.push(listener);
-    },
-    start: () => undefined,
-    postMessage: (message: unknown): void => {
-      try {
-        posted(message);
-      } finally {
-        if (!isPing(message)) {
-          delivered += 1;
-          for (const waiter of waiters.filter(w => w.target <= delivered)) {
-            waiter.resolve();
-          }
-        }
-      }
-    },
-  } as unknown as MessagePort;
-  return {
-    posted,
-    port,
-    receive: data => {
-      for (const listener of listeners) {
-        listener({ data } as MessageEvent);
-      }
-    },
-    postedMore: (count = 1) =>
-      new Promise<void>(resolve => {
-        waiters.push({ target: delivered + count, resolve });
-      }),
-  };
-}
+const openPorts = new Set<MessagePort>();
+const tabs = new Set<ConsumerTransport>();
 
-/** Sends a tab's message and settles once the worker has answered it with `count` messages. */
-async function ask(port: FakePort, data: unknown, count = 1): Promise<void> {
-  const answered = port.postedMore(count);
-  port.receive(data);
-  await answered;
-}
+afterEach(() => {
+  const over = new Error('The spec is over');
+  for (const transport of tabs) {
+    transport.dispose(over);
+  }
+  tabs.clear();
+  for (const port of openPorts) {
+    port.close();
+  }
+  openPorts.clear();
+});
 
 type Presync = ReturnType<typeof deferred<undefined>>;
 
 /**
  * Ends a held pre-sync and settles once the worker has acted on it. The worker awaited that promise before the test
- * did, so its continuation, and every message it sends, has run by then.
+ * did, so its continuation has run by then.
  */
 async function endPresync(presync: Presync, failure?: Error): Promise<void> {
   if (failure === undefined) {
@@ -229,18 +207,38 @@ async function endPresync(presync: Presync, failure?: Error): Promise<void> {
 }
 
 interface Worker {
-  /** A tab's iframe connects, on a port the test may have rigged first. */
-  connect: (port?: FakePort) => FakePort;
+  /** A tab's iframe connects, telling the worker its page load. */
+  connect: (resolutionId?: string) => Tab;
+  /** A tab's port reaches the worker, and its iframe speaks once the returned function runs. */
+  attach: () => (resolutionId?: string) => Tab;
   /** One heartbeat interval passes, if the worker has not stopped its heartbeat. */
   beat: () => void;
-  /** One byte-report interval passes, if the worker reports bytes and has not stopped. */
+  /** Whether the worker's heartbeat runs. */
+  beating: () => boolean;
+  /** One byte-report interval passes for every running report. */
   tickNetBytes: () => void;
   close: Mock<() => void>;
   closed: Promise<void>;
   /** Settles one timer turn after the worker closes, so a second close scheduled alongside the first has run too. */
   closedOnce: Promise<void>;
   logs: LogLine[];
+  /** Settles once the worker has logged `message`. */
+  untilLog: (message: string) => Promise<void>;
   open: Mock<SpanOpen>;
+}
+
+/** The worker's end of a port, spying on each buffer it posts before the transfer detaches it. */
+function spiedPort(port: MessagePort, posted: ArrayBuffer[]): MessagePort {
+  return {
+    postMessage: (data: ArrayBuffer, transfer: Transferable[]) => {
+      posted.push(data);
+      port.postMessage(data, transfer);
+    },
+    addEventListener: port.addEventListener.bind(port),
+    removeEventListener: port.removeEventListener.bind(port),
+    start: port.start.bind(port),
+    close: port.close.bind(port),
+  } as unknown as MessagePort;
 }
 
 /**
@@ -253,26 +251,31 @@ async function bootWorker(
   flush: () => Promise<void> = () => Promise.resolve(),
   readNetBytes?: () => number,
 ): Promise<Worker> {
-  let beat: () => void = () => undefined;
+  let beat: (() => void) | null = null;
   const heartbeat: HeartbeatClock = {
     start: onBeat => {
       beat = onBeat;
       return () => {
-        beat = () => undefined;
+        beat = null;
       };
     },
   };
-  let tickNetBytes: () => void = () => undefined;
+  const ticks = new Set<() => void>();
   const netBytesTicker: Ticker = onTick => {
-    tickNetBytes = onTick;
+    ticks.add(onTick);
     return () => {
-      tickNetBytes = () => undefined;
+      ticks.delete(onTick);
     };
   };
   const logs: LogLine[] = [];
+  const logWaiters: { message: string; resolve: () => void }[] = [];
   bindLogSink({
-    emit: (level, message, attrs, args) => {
-      logs.push({ level, message, attrs, args });
+    emit: (level, message) => {
+      logs.push({ level, message });
+      for (const waiter of logWaiters.filter(w => w.message === message)) {
+        logWaiters.splice(logWaiters.indexOf(waiter), 1);
+        waiter.resolve();
+      }
     },
   });
   const connectListeners: ((event: MessageEvent) => void)[] = [];
@@ -304,35 +307,49 @@ async function bootWorker(
     ...(readNetBytes === undefined ? {} : { netBytes: { read: readNetBytes, ticker: netBytesTicker } }),
   });
   await light.presyncDone;
+  const attach = (): ((resolutionId?: string) => Tab) => {
+    const channel = new MessageChannel();
+    openPorts.add(channel.port1);
+    openPorts.add(channel.port2);
+    const posted: ArrayBuffer[] = [];
+    for (const listener of connectListeners) {
+      listener({ ports: [spiedPort(channel.port1, posted)] } as unknown as MessageEvent);
+    }
+    return resolutionId => {
+      const transport = createConsumerTransport(createPortProvider(channel.port2), {
+        side: 'frame',
+        count: () => 0,
+        ...(resolutionId === undefined ? {} : { resolutionId }),
+      });
+      transport.connect();
+      tabs.add(transport);
+      return { transport, status: record(transport, 'frameStatus', undefined), posted };
+    };
+  };
   return {
-    connect: (port = fakePort()) => {
-      for (const listener of connectListeners) {
-        listener({ ports: [port.port] } as unknown as MessageEvent);
-      }
-      return port;
-    },
+    connect: resolutionId => attach()(resolutionId),
+    attach,
     beat: () => {
-      beat();
+      beat?.();
     },
+    beating: () => beat !== null,
     tickNetBytes: () => {
-      tickNetBytes();
+      for (const tick of [...ticks]) {
+        tick();
+      }
     },
     close,
     closed: closing.promise,
     closedOnce: closing.promise.then(afterQueuedTimers),
     logs,
+    untilLog: message =>
+      logs.some(line => line.message === message)
+        ? Promise.resolve()
+        : new Promise(resolve => {
+            logWaiters.push({ message, resolve });
+          }),
     open,
   };
-}
-
-function chainConnect(id: string, connectionId: string): unknown {
-  return relayRequest({ id, method: 'chainConnect', payload: { genesisHash: '0xaa', connectionId } });
-}
-
-function failToDeliver(port: FakePort, name: 'DataCloneError' | 'InvalidStateError'): void {
-  port.posted.mockImplementationOnce(() => {
-    throw new DOMException('could not deliver', name);
-  });
 }
 
 /** Lets the heartbeat run until a silent port is let go. */
@@ -342,15 +359,6 @@ function outlastHeartbeat(worker: Worker): void {
   }
 }
 
-/** Answers each ping, as the iframe of a live tab does. */
-function answerPings(port: FakePort): void {
-  port.posted.mockImplementation(message => {
-    if (isPing(message)) {
-      port.receive({ type: 'pong' });
-    }
-  });
-}
-
 // The worker schedules its close on a zero-delay timer, and no message tells a test whether a second one is queued
 // behind it. A timer queued after the first runs once every timer queued before it has.
 const afterQueuedTimers = (): Promise<void> =>
@@ -358,46 +366,22 @@ const afterQueuedTimers = (): Promise<void> =>
     setTimeout(resolve, 0);
   });
 
-/** What a port was told, less the heartbeat's pings. */
-function heard(port: FakePort): unknown[] {
-  return port.posted.mock.calls.map(([message]) => message).filter(message => !isPing(message));
+/** Connects a chain on the tab and settles once the worker answered it is connected. */
+async function connectChain(tab: Tab, connectionId: string): Promise<Recording<'chainConnect'>> {
+  const chain = record(tab.transport, 'chainConnect', { genesisHash: '0xaa', connectionId });
+  await chain.until(1);
+  return chain;
 }
 
-function isPing(message: unknown): boolean {
-  return typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'ping';
-}
-
-function envelopes(port: FakePort, kind: string): unknown[] {
-  return heard(port)
-    .filter(
-      (message): message is { type: 'relay-response'; envelope: { kind: string } } =>
-        (message as { type?: unknown }).type === 'relay-response',
-    )
-    .map(message => message.envelope)
-    .filter(envelope => envelope.kind === kind);
-}
-
-function relayRequest(envelope: Partial<ProtocolRequestEnvelope>, resolutionId?: string): unknown {
-  return {
-    type: 'relay-request',
-    envelope: { namespace: 'dotli:protocol', kind: 'request', id: 'r1', payload: {}, ...envelope },
-    origin: 'https://dot.li',
-    ...(resolutionId !== undefined ? { resolutionId } : {}),
-  };
-}
-
-/** Whether the worker closed, and only after everything the port heard was posted. */
-function closedAfterTelling(worker: Worker, port: FakePort): boolean {
-  const closedAt = worker.close.mock.invocationCallOrder[0];
-  return closedAt !== undefined && port.posted.mock.invocationCallOrder.every(order => order < closedAt);
+/** The tab's status, once the worker said it is ready. */
+async function readyStatus(tab: Tab): Promise<Recording<'frameStatus'>> {
+  await tab.status.until(1);
+  return tab.status;
 }
 
 const FATAL = 'chain 0xaa connection failed: wasm trap';
 
-const fatalRelay = {
-  type: 'relay-response',
-  envelope: { namespace: 'dotli:protocol', kind: 'fatal', message: FATAL },
-};
+const fatalEnd = { name: 'ProtocolFatalError', message: FATAL };
 
 describe('protocol SharedWorker', () => {
   beforeEach(() => {
@@ -408,16 +392,15 @@ describe('protocol SharedWorker', () => {
     // Given a tab on a synced worker
     const light = fakeLightClient();
     const worker = await bootWorker(light);
-    const tab = worker.connect();
+    const status = await readyStatus(worker.connect());
 
     // When the light client cannot connect a chain, and the worker closes
     light.fatal(FATAL);
     await worker.closedOnce;
 
-    // Then the tab heard the cause first, and the worker closed once
-    expect(heard(tab)).toEqual([{ type: 'ready' }, fatalRelay]);
+    // Then the tab heard the cause, and the worker closed once
+    await expect(status.ended).resolves.toMatchObject(fatalEnd);
     expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(closedAfterTelling(worker, tab)).toBe(true);
   });
 
   it('As a dead shared worker, I send my buffered telemetry before I close', async () => {
@@ -456,16 +439,19 @@ describe('protocol SharedWorker', () => {
     // Given a tab waiting on a pre-sync still under way
     const presync = deferred<undefined>();
     const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
-    const waiting = worker.connect();
+    const status = worker.connect().status;
 
     // When pre-sync fails, and the worker closes
     presync.reject(new Error('chainHead follow stopped'));
     await worker.closedOnce;
 
-    // Then the tab heard the cause first, and the worker closed once
-    expect(heard(waiting)).toEqual([{ type: 'error', message: 'chainHead follow stopped' }]);
+    // Then the tab heard the cause as a failed init, and the worker closed once
+    await expect(status.ended).resolves.toMatchObject({
+      name: 'ProtocolInitFailedError',
+      message: 'chainHead follow stopped',
+    });
+    expect(status.events).toEqual([]);
     expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(closedAfterTelling(worker, waiting)).toBe(true);
   });
 
   it('As a dotli user on the shared light client, I wait on a pre-sync the light client dies under and the worker closes once', async () => {
@@ -473,7 +459,7 @@ describe('protocol SharedWorker', () => {
     const presync = deferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
-    const waiting = worker.connect();
+    const status = worker.connect().status;
 
     // When the light client cannot connect a chain, and pre-sync then fails for it
     light.fatal(FATAL);
@@ -481,84 +467,53 @@ describe('protocol SharedWorker', () => {
     await worker.closedOnce;
 
     // Then the tab heard only the fatal, and the worker closed once
-    expect(heard(waiting)).toEqual([fatalRelay]);
+    await expect(status.ended).resolves.toMatchObject(fatalEnd);
     expect(worker.close).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli user whose pre-sync failed, I hear the light client die before the worker closes and the worker closes once', async () => {
-    // Given a tab told that pre-sync failed, on a worker whose close is still to come
-    const presync = deferred<undefined>();
-    const light = fakeLightClient({ presync: () => presync.promise });
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    const told = new Promise<void>(resolve => {
-      tab.posted.mockImplementationOnce(() => {
-        resolve();
-      });
-    });
-    presync.reject(new Error('chainHead follow stopped'));
-    await told;
-
-    // When the light client dies before that close, and the worker closes
-    light.fatal(FATAL);
-    await worker.closedOnce;
-
-    // Then the tab heard both causes, and the worker closed once
-    expect(heard(tab)).toEqual([{ type: 'error', message: 'chainHead follow stopped' }, fatalRelay]);
-    expect(worker.close).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli user whose light client dies before my tab connected, I hear the failure at once and the worker then closes', async () => {
+  it('As a tab that connects after the light client died, I hear the fatal on subscribe', async () => {
     // Given a worker whose light client died before the tab that started it connected
+    const flushed = deferred<undefined>();
     const light = fakeLightClient({ presync: () => deferred<undefined>().promise });
-    const worker = await bootWorker(light);
+    const worker = await bootWorker(light, undefined, () => {
+      flushed.resolve(undefined);
+      return Promise.resolve();
+    });
     light.fatal(FATAL);
+    await afterQueuedTimers();
+    expect(worker.close).not.toHaveBeenCalled();
 
-    // When that tab connects, and the worker closes
-    const tab = worker.connect();
+    // When that tab's port connects, and its iframe speaks only after the worker flushed what it had to send
+    const speak = worker.attach();
+    await flushed.promise;
+    await afterQueuedTimers();
+    const tab = speak();
+
+    // Then it hears the fatal on subscribe, never ready, and the worker closes once after telling it
+    await expect(tab.status.ended).resolves.toMatchObject(fatalEnd);
+    expect(tab.status.events).toEqual([]);
     await worker.closedOnce;
-
-    // Then it heard the fatal the worker latched, and the worker closed only after telling it
-    expect(heard(tab)).toEqual([fatalRelay]);
     expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(closedAfterTelling(worker, tab)).toBe(true);
   });
 
-  it('As dotli users in two tabs whose light client dies before either connected, we both hear the failure and the worker then closes once', async () => {
-    // Given a worker whose light client died before any tab connected
-    const light = fakeLightClient({ presync: () => deferred<undefined>().promise });
-    const worker = await bootWorker(light);
-    light.fatal(FATAL);
-
-    // When two tabs whose connects were queued together connect, and the worker closes
-    const first = worker.connect();
-    const second = worker.connect();
-    await worker.closedOnce;
-
-    // Then both heard the fatal the worker latched, and the worker closed once after telling them
-    expect(heard(first)).toEqual([fatalRelay]);
-    expect(heard(second)).toEqual([fatalRelay]);
-    expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(closedAfterTelling(worker, first)).toBe(true);
-    expect(closedAfterTelling(worker, second)).toBe(true);
-  });
-
-  it('As a dotli user whose connect is queued when the light client dies under another tab, I hear the failure before the worker closes', async () => {
-    // Given a tab on a synced worker
+  it('As every open tab, I hear the fatal, each in my own buffer', async () => {
+    // Given three tabs on a synced worker
     const light = fakeLightClient();
     const worker = await bootWorker(light);
-    const live = worker.connect();
+    const open = [worker.connect(), worker.connect(), worker.connect()];
+    const statuses = await Promise.all(open.map(readyStatus));
 
-    // When the light client dies while another tab's connect is queued behind it
+    // When the light client dies
     light.fatal(FATAL);
-    const queued = worker.connect();
-    await worker.closedOnce;
 
-    // Then both tabs heard the cause, and the worker closed once after telling them
-    expect(heard(live)).toEqual([{ type: 'ready' }, fatalRelay]);
-    expect(heard(queued)).toEqual([fatalRelay]);
-    expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(closedAfterTelling(worker, queued)).toBe(true);
+    // Then each tab decoded the fatal from what the worker posted it
+    await Promise.all(statuses.map(status => expect(status.ended).resolves.toMatchObject(fatalEnd)));
+    // And no buffer was posted twice, to one tab or across them
+    const posted = open.flatMap(tab => tab.posted);
+    expect(new Set(posted).size).toBe(posted.length);
+    for (const tab of open) {
+      expect(tab.posted.length).toBeGreaterThan(0);
+    }
   });
 
   it('As a dotli user whose pre-sync fails before my tab connected, I hear why at once and the worker then closes', async () => {
@@ -568,13 +523,12 @@ describe('protocol SharedWorker', () => {
     await endPresync(presync, new Error('chainHead follow stopped'));
 
     // When that tab connects, and the worker closes
-    const tab = worker.connect();
+    const status = worker.connect().status;
     await worker.closedOnce;
 
-    // Then it heard why pre-sync failed, and the worker closed only after telling it
-    expect(heard(tab)).toEqual([{ type: 'error', message: 'chainHead follow stopped' }]);
+    // Then it heard why pre-sync failed, and the worker closed once
+    await expect(status.ended).resolves.toMatchObject({ message: 'chainHead follow stopped' });
     expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(closedAfterTelling(worker, tab)).toBe(true);
   });
 
   it('As a dotli user on the shared light client, I connect to a worker named for an unknown network and it stays up to tell me why', async () => {
@@ -582,10 +536,13 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(fakeLightClient(), 'dotli-protocol-nowhere');
 
     // When a tab connects
-    const tab = worker.connect();
+    const status = worker.connect().status;
 
     // Then it hears the cause, and the worker does not close, since a fresh one would fail the same way
-    expect(heard(tab)).toEqual([{ type: 'error', message: 'Unknown protocol network: "nowhere"' }]);
+    await expect(status.ended).resolves.toMatchObject({
+      name: 'ProtocolInitFailedError',
+      message: 'Unknown protocol network: "nowhere"',
+    });
     expect(worker.close).not.toHaveBeenCalled();
   });
 
@@ -606,30 +563,28 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(fakeLightClient(), 'dotli-protocol-previewnet');
 
     // When a tab connects
-    const tab = worker.connect();
+    const status = await readyStatus(worker.connect());
 
     // Then it is served, and the network this context reads is still its default
-    expect(heard(tab)).toEqual([{ type: 'ready' }]);
+    expect(status.events).toEqual([undefined]);
     expect(getNetwork()).toBe('paseo-next-v2');
   });
 
   it('As a dotli user on the shared light client, I hear the stored database of each chain as the light client reads it', async () => {
-    // Given a tab waiting on a pre-sync still under way
+    // Given a tab hearing telemetry while pre-sync is still under way
     const presync = deferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
     const tab = worker.connect();
+    const telemetry = record(tab.transport, 'telemetry', undefined);
+    await tab.transport.request('heartbeat', undefined);
 
     // When the light client reads the relay's database
     light.readDb('relay', 'miss');
 
     // Then the tab hears it
-    expect(heard(tab)).toEqual([
-      {
-        type: 'relay-response',
-        envelope: { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'miss' },
-      },
-    ]);
+    await telemetry.until(1);
+    expect(telemetry.events).toEqual([{ tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } }]);
   });
 
   it('As a dotli user on the shared light client, I join while it syncs and hear what it read of each database so far', async () => {
@@ -639,16 +594,12 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(light);
     light.readDb('relay', 'unavailable');
 
-    // When a tab connects
-    const tab = worker.connect();
+    // When a tab connects and hears telemetry
+    const telemetry = record(worker.connect().transport, 'telemetry', undefined);
+    await telemetry.until(1);
 
     // Then it hears the read as it was, since it waits on the same sync
-    expect(heard(tab)).toEqual([
-      {
-        type: 'relay-response',
-        envelope: { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'unavailable' },
-      },
-    ]);
+    expect(telemetry.events).toEqual([{ tag: 'smoldotDb', value: { chain: 'relay', outcome: 'unavailable' } }]);
   });
 
   it('As a dotli user on the shared light client, I join a synced worker and hear every database it read as a hit', async () => {
@@ -657,33 +608,12 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(light);
     light.readDb('relay', 'miss');
 
-    // When a tab connects
-    const tab = worker.connect();
+    // When a tab connects and hears telemetry
+    const telemetry = record(worker.connect().transport, 'telemetry', undefined);
+    await telemetry.until(1);
 
     // Then this tab paid no sync cost
-    expect(heard(tab)).toEqual([
-      { type: 'ready' },
-      {
-        type: 'relay-response',
-        envelope: { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'hit' },
-      },
-    ]);
-  });
-
-  it('As a dotli user on the shared light client, a tab that joins after the light client died hears why instead of ready', async () => {
-    // Given a tab on a synced worker whose light client then cannot connect a chain
-    const light = fakeLightClient();
-    const worker = await bootWorker(light);
-    const first = worker.connect();
-    expect(first.posted).toHaveBeenCalledWith({ type: 'ready' });
-    light.fatal(FATAL);
-
-    // When another tab, or the same one after its retry, connects
-    const later = worker.connect();
-
-    // Then it is told the light client is dead, and never that it is ready
-    expect(first.posted).toHaveBeenCalledWith(fatalRelay);
-    expect(later.posted.mock.calls).toEqual([[fatalRelay]]);
+    expect(telemetry.events).toEqual([{ tag: 'smoldotDb', value: { chain: 'relay', outcome: 'hit' } }]);
   });
 
   it('As a dotli user on the shared light client, a light client that dies while Asset Hub syncs never tells a waiting tab it is ready', async () => {
@@ -691,75 +621,37 @@ describe('protocol SharedWorker', () => {
     const presync = deferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
-    const waiting = worker.connect();
+    const waiting = worker.connect().status;
 
     // When the light client cannot connect a chain, and then Asset Hub syncs anyway
     light.fatal(FATAL);
     await endPresync(presync);
-    const later = worker.connect();
+    const later = worker.connect().status;
 
-    // Then the waiting tab heard only the fatal, and the engine never became ready
-    expect(heard(waiting)).toEqual([fatalRelay]);
-    expect(later.posted.mock.calls).toEqual([[fatalRelay]]);
+    // Then both tabs heard only the fatal, and the engine never became ready
+    await expect(waiting.ended).resolves.toMatchObject(fatalEnd);
+    await expect(later.ended).resolves.toMatchObject(fatalEnd);
+    expect([...waiting.events, ...later.events]).toEqual([]);
     expect(light.peopleWarms).toBe(0);
   });
 
-  it('As a dotli user on the shared light client, a tab waiting on pre-sync is told why the light client died, once', async () => {
-    // Given a tab waiting on a pre-sync still under way
-    const presync = deferred<undefined>();
-    const light = fakeLightClient({ presync: () => presync.promise });
-    const worker = await bootWorker(light);
-    const waiting = worker.connect();
-
-    // When the light client cannot connect a chain, and pre-sync then fails for it
-    light.fatal(FATAL);
-    presync.reject(new Error('chainHead follow stopped'));
-    await worker.closed;
-    const later = worker.connect();
-
-    // Then both tabs hear the cause, not its symptom, and the waiting one only once
-    expect(heard(waiting)).toEqual([fatalRelay]);
-    expect(later.posted.mock.calls).toEqual([[fatalRelay]]);
-  });
-
-  it('As a dotli user on the shared light client, a tab that closes while pre-sync runs is not told it finished', async () => {
-    // Given a tab waiting on a pre-sync still under way
-    const presync = deferred<undefined>();
-    const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
-    const leaving = worker.connect();
-    const staying = worker.connect();
-
-    // When the tab unloads, and pre-sync then completes
-    leaving.receive({ type: 'disconnect' });
-    await endPresync(presync);
-
-    // Then the closed port heard nothing, while the tab that stayed heard it is ready
-    expect(heard(staying)).toEqual([{ type: 'ready' }]);
-    expect(heard(leaving)).toEqual([]);
-  });
-
   it("As a dotli user on the shared light client, my tab's loading screen hears how the shared chains sync", async () => {
-    // Given a tab waiting on a pre-sync still under way
+    // Given a tab hearing telemetry while pre-sync is under way
     const light = fakeLightClient({ presync: () => new Promise<void>(() => undefined) });
     const worker = await bootWorker(light);
-    const waiting = worker.connect();
+    const tab = worker.connect();
+    const telemetry = record(tab.transport, 'telemetry', undefined);
+    await tab.transport.request('heartbeat', undefined);
 
     // When the relay reports its warp progress
-    const progress: ChainSyncEvent = { chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 };
     for (const listener of light.syncListeners) {
-      listener(progress);
+      listener({ chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 });
     }
 
-    // Then the tab hears it as the envelope direct mode sends
-    expect(envelopes(waiting, 'chain-sync')).toEqual([
-      {
-        namespace: 'dotli:protocol',
-        kind: 'chain-sync',
-        chain: 'relay',
-        syncKind: 'warpSyncProgress',
-        at: 10,
-        target: 100,
-      },
+    // Then the tab hears it as direct mode sends it
+    await telemetry.until(1);
+    expect(telemetry.events).toEqual([
+      { tag: 'chainSync', value: { chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 } },
     ]);
   });
 
@@ -806,34 +698,34 @@ describe('protocol SharedWorker', () => {
       }),
     );
 
-    // When another tab connects
-    const later = worker.connect();
+    // When another tab connects and hears telemetry
+    const telemetry = record(worker.connect().transport, 'telemetry', undefined);
+    await telemetry.until(2);
 
     // Then it hears the chain is up, and pays no sync cost for it
-    expect(envelopes(later, 'chain-sync')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-sync', chain: 'assethub', syncKind: 'bootstrapComplete' },
-    ]);
-    expect(envelopes(later, 'chain-detail')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-detail', chain: 'assethub', dbCache: 'hit' },
+    expect(telemetry.events).toEqual([
+      { tag: 'chainSync', value: { chain: 'assethub', kind: 'bootstrapComplete' } },
+      { tag: 'chainDetail', value: { chain: 'assethub', dbCache: 'hit' } },
     ]);
   });
 
   it('As a dotli user on the shared light client, a closed tab stops hearing chain sync', async () => {
-    // Given a tab on a synced worker
+    // Given two tabs hearing telemetry on a synced worker
     const light = fakeLightClient();
     const worker = await bootWorker(light);
     const leaving = worker.connect();
     const staying = worker.connect();
+    record(leaving.transport, 'telemetry', undefined);
+    record(staying.transport, 'telemetry', undefined);
+    await Promise.all([leaving, staying].map(tab => tab.transport.request('heartbeat', undefined)));
+    expect(light.syncListeners.size).toBe(2);
 
-    // When the tab unloads, and the relay then reports its warp progress
-    leaving.receive({ type: 'disconnect' });
-    for (const listener of light.syncListeners) {
-      listener({ chain: 'relay', kind: 'warpSyncProgress', at: 10, target: 100 });
-    }
+    // When the first tab leaves
+    leaving.transport.dispose(new Error('pagehide'));
 
-    // Then the tab that stayed heard it, and the one that left did not
-    expect(envelopes(staying, 'chain-sync')).toHaveLength(1);
-    expect(envelopes(leaving, 'chain-sync')).toEqual([]);
+    // Then only the tab that stayed still hears chain sync
+    await light.untilSyncListeners(1);
+    expect(light.syncListeners.size).toBe(1);
   });
 
   it('As a dotli maintainer, a failed request tells the host where it was thrown', async () => {
@@ -843,489 +735,166 @@ describe('protocol SharedWorker', () => {
     const tab = worker.connect();
 
     // When the tab asks to resolve a name
-    await ask(tab, relayRequest({ method: 'resolveDotName', payload: { label: 'doom' } }));
+    const resolution = record(tab.transport, 'resolveDotName', { label: 'doom' });
 
-    // Then the error response carries the failure's name and stack
-    expect(envelopes(tab, 'response')).toEqual([
-      {
-        namespace: 'dotli:protocol',
-        kind: 'response',
-        id: 'r1',
-        ok: false,
-        error: 'storage read failed',
-        errorName: 'Error',
-        errorStack: failure.stack?.slice(0, 2000),
-      },
-    ]);
+    // Then the end carries the failure's name and stack
+    await expect(resolution.ended).resolves.toMatchObject({
+      name: 'Error',
+      message: 'storage read failed',
+      remoteStack: failure.stack,
+    });
   });
 
   it("As a dotli maintainer, the worker's span for a request carries the page load of the tab that sent it", async () => {
-    // Given a tab on a synced worker
+    // Given two tabs on a synced worker, one with a malformed resolution id
     const worker = await bootWorker(fakeLightClient());
-    const tab = worker.connect();
+    const first = worker.connect('load-1');
+    const second = worker.connect('not a resolution id!');
 
-    // When it sends a request with a resolution id, and one with a malformed id
-    await ask(tab, relayRequest({ method: 'resolveDotName', payload: { label: 'doom' } }, 'load-1'));
-    await ask(tab, relayRequest({ id: 'r2', method: 'warmup' }, 'not a resolution id!'));
+    // When each sends a request, and the first a chain message and a heartbeat
+    await record(first.transport, 'resolveDotName', { label: 'doom' }).ended;
+    await second.transport.request('warmup', undefined);
+    await connectChain(first, 'c1');
+    await first.transport.request('chainSend', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' });
+    await first.transport.request('heartbeat', undefined);
 
-    // Then only a well-formed id is recorded, and only on that request's span
+    // Then only a well-formed id is recorded, only on that request's span, and a chain message or heartbeat has none
     expect(worker.open.mock.calls).toEqual([
       ['protocol.worker_request', { root: true, attributes: { method: 'resolveDotName', resolution_id: 'load-1' } }],
       ['protocol.worker_request', { root: true, attributes: { method: 'warmup' } }],
+      ['protocol.worker_request', { root: true, attributes: { method: 'chainConnect', resolution_id: 'load-1' } }],
     ]);
   });
 
-  it('As a dotli maintainer, a message the worker cannot deliver to a tab is reported, since the host never hears of it', async () => {
-    // Given a tab whose responses cannot be cloned
-    const worker = await bootWorker(fakeLightClient());
-    const tab = worker.connect();
-    const failure = new DOMException('could not be cloned', 'DataCloneError');
-    tab.posted.mockImplementation(message => {
-      if ((message as { type?: unknown }).type === 'relay-response') {
-        throw failure;
-      }
-    });
-
-    // When it sends a request
-    await ask(tab, relayRequest({ method: 'warmup' }));
-
-    // Then the failed send is captured with what it carried
-    expect(captures.exception).toHaveBeenCalledWith(failure, {
-      flow: 'protocol',
-      step: 'worker_port_send',
-      tags: { envelope_kind: 'response' },
-    });
-  });
-
-  it('As a dotli user with two tabs on one worker, a tab that closed cannot open connections, and the other tab keeps its own', async () => {
+  it('As a tab that left, my connections are freed at once', async () => {
     // Given two tabs that each hold a chain connection
     const light = fakeLightClient();
     const worker = await bootWorker(light);
     const leaving = worker.connect();
     const staying = worker.connect();
-    const connect = relayRequest({ method: 'chainConnect', payload: { genesisHash: '0xaa', connectionId: 'c1' } });
-    await Promise.all([ask(leaving, connect), ask(staying, connect)]);
+    await Promise.all([connectChain(leaving, 'c1'), connectChain(staying, 'c1')]);
 
-    // When the first tab closes, and a late request from it still arrives
-    leaving.receive({ type: 'disconnect' });
-    await ask(
-      leaving,
-      relayRequest({ id: 'r2', method: 'chainConnect', payload: { genesisHash: '0xaa', connectionId: 'c2' } }),
-    );
+    // When the first tab disposes its transport, as its page hides for good
+    leaving.transport.dispose(new Error('pagehide'));
 
-    // Then the late request is refused, and the shared chain stays up for the other tab
-    expect(envelopes(leaving, 'response')).toMatchObject([
-      { id: 'r1', ok: true },
-      { id: 'r2', ok: false },
-    ]);
-    // And neither the observed relay and Bulletin nor the tabs' shared chain is let go
-    expect(light.disconnects).toHaveLength(3);
+    // Then its connection is released before any heartbeat, and the shared chain stays up for the other tab
+    await worker.untilLog('Chain disconnected: c1 (1 remaining)');
+    expect(worker.beating()).toBe(true);
     for (const disconnect of light.disconnects) {
       expect(disconnect).not.toHaveBeenCalled();
     }
-
-    // And the other tab's connection still carries its requests
-    await ask(
-      staying,
-      relayRequest({ id: 'r3', method: 'chainSend', payload: { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' } }),
-    );
-    expect(envelopes(staying, 'response')).toMatchObject([
-      { id: 'r1', ok: true },
-      { id: 'r3', ok: true },
-    ]);
+    // And the other tab's connection still carries its messages
+    await expect(
+      staying.transport.request('chainSend', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
+    ).resolves.toBeUndefined();
   });
 
-  it('As a dotli user on the shared light client, a tab that stopped answering is let go and told its connections halted', async () => {
-    // Given a tab holding a chain connection
+  it('As a frozen tab, I hear my port was released when I thaw', async () => {
+    // Given a tab holding a chain connection on a synced worker
     const worker = await bootWorker(fakeLightClient());
     const tab = worker.connect();
-    await ask(tab, chainConnect('r1', 'c1'));
+    const status = await readyStatus(tab);
+    const chain = await connectChain(tab, 'c1');
 
-    // When it answers no ping for longer than the heartbeat allows
+    // When it is frozen, so it sends nothing for longer than the heartbeat allows
     outlastHeartbeat(worker);
 
-    // Then it is let go, and a tab that was only frozen hears its connection is gone
-    expect(envelopes(tab, 'chain-halt')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' },
-    ]);
+    // Then the worker freed its connection at the release
+    expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
+    // And once it thaws, its queued messages end its status and its chain with the release, not a halt
+    await expect(status.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
+    await expect(chain.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
   });
 
-  it('As a dotli user on the shared light client, a tab that answers every ping keeps its connections', async () => {
+  it('As a dotli user on the shared light client, a tab that keeps its heartbeat keeps its connections', async () => {
     // Given a live tab holding a chain connection
     const worker = await bootWorker(fakeLightClient());
     const tab = worker.connect();
-    await ask(tab, chainConnect('r1', 'c1'));
-    answerPings(tab);
+    const status = await readyStatus(tab);
+    await connectChain(tab, 'c1');
 
-    // When many heartbeats pass
+    // When many heartbeat intervals pass, each with the tab's heartbeat
     for (let i = 0; i < 3 * HEARTBEAT_MISSED_BEATS; i++) {
+      await tab.transport.request('heartbeat', undefined);
       worker.beat();
     }
 
     // Then it was never let go
-    expect(envelopes(tab, 'chain-halt')).toEqual([]);
+    await expect(
+      tab.transport.request('chainSend', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
+    ).resolves.toBeUndefined();
+    expect(worker.logs.map(line => line.message)).not.toContain('Chain disconnected: c1 (0 remaining)');
+    expect(status.events).toEqual([undefined]);
   });
 
-  it('As a dotli user on the shared light client, a frozen tab that wakes after it was let go is served again', async () => {
-    // Given a tab the heartbeat let go
-    const worker = await bootWorker(fakeLightClient());
-    const tab = worker.connect();
-    outlastHeartbeat(worker);
-
-    // When it wakes and connects a chain
-    await ask(tab, chainConnect('r2', 'c2'));
-
-    // Then it is served, and not told it is ready a second time
-    expect(envelopes(tab, 'response')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'response', id: 'r2', ok: true, result: true },
-    ]);
-    expect(heard(tab).filter(message => (message as { type?: unknown }).type === 'ready')).toHaveLength(1);
-  });
-
-  it('As a dotli user on the shared light client, a tab let go while pre-sync ran is told it is ready when it wakes after', async () => {
-    // Given a tab the heartbeat let go while pre-sync was still under way
-    const presync = deferred<undefined>();
-    const light = fakeLightClient({ presync: () => presync.promise });
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    outlastHeartbeat(worker);
-    await endPresync(presync);
-    expect(heard(tab)).toEqual([]);
-    expect(light.peopleWarms).toBe(1);
-
-    // When it wakes and answers the next ping
-    tab.receive({ type: 'pong' });
-
-    // Then it is served again, and hears the ready it missed, once
-    expect(heard(tab)).toEqual([{ type: 'ready' }]);
-  });
-
-  it('As a dotli user with a tab frozen during pre-sync, I wake and hear each chain database the light client read while I was gone, once', async () => {
-    // Given a tab that heard the relay's database, then was let go by the heartbeat while pre-sync ran
-    const presync = deferred<undefined>();
-    const light = fakeLightClient({ presync: () => presync.promise });
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    light.readDb('relay', 'hit');
-    outlastHeartbeat(worker);
-
-    // When the light client reads Asset Hub's database while the tab is gone, and the tab talks again
-    light.readDb('assethub', 'miss');
-    tab.receive({ type: 'pong' });
-
-    // Then the tab heard each database once, the one it missed with its real outcome
-    expect(envelopes(tab, 'smoldot-db')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'relay', outcome: 'hit' },
-      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'assethub', outcome: 'miss' },
-    ]);
-  });
-
-  it('As a dotli maintainer, a tab the fatal could not reach is reported once', async () => {
-    // Given a tab whose port fails every send with a clone error
-    const light = fakeLightClient();
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    tab.posted.mockImplementation(() => {
-      throw new DOMException('could not clone', 'DataCloneError');
-    });
-
-    // When the light client dies
-    light.fatal(FATAL);
-
-    // Then the fatal was tried on that tab once, and reported once
-    expect(heard(tab).filter(message => (message as { type?: unknown }).type === 'relay-response')).toEqual([
-      fatalRelay,
-    ]);
-    expect(captures.exception).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli maintainer, a waiting tab that pre-sync failure could not reach is tried once and reported once', async () => {
-    // Given a tab waiting on pre-sync whose port fails every send with a clone error
-    const presync = deferred<undefined>();
-    const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
-    const tab = worker.connect();
-    tab.posted.mockImplementation(() => {
-      throw new DOMException('could not clone', 'DataCloneError');
-    });
-
-    // When pre-sync fails
-    await endPresync(presync, new Error('chainHead follow stopped'));
-
-    // Then the cause was tried on that tab once, and the failed send reported once
-    expect(heard(tab)).toEqual([{ type: 'error', message: 'chainHead follow stopped' }]);
-    expect(captures.exception).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli user with a tab frozen during pre-sync, I wake after ready and hear the cold database and a chain detail that agrees with it', async () => {
-    // Given a tab let go by the heartbeat while pre-sync ran, and an Asset Hub found cold on disk while it was gone
-    const presync = deferred<undefined>();
-    const light = fakeLightClient({ presync: () => presync.promise });
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    outlastHeartbeat(worker);
-    light.readDb('assethub', 'miss');
-    light.detail.push({ chain: 'assethub', dbCache: 'miss' });
-    await endPresync(presync);
-
-    // When the tab talks again after the worker is ready
-    tab.receive({ type: 'pong' });
-
-    // Then it hears the miss it waited through, in the database outcome and the chain detail alike
-    expect(envelopes(tab, 'smoldot-db')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'smoldot-db', chain: 'assethub', outcome: 'miss' },
-    ]);
-    expect(envelopes(tab, 'chain-detail')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-detail', chain: 'assethub', dbCache: 'miss' },
-    ]);
-  });
-
-  it('As a dotli user on the shared light client, a tab the worker once failed to reach is served on its next request', async () => {
-    // Given a tab one response could not be delivered to
-    const worker = await bootWorker(fakeLightClient());
-    const tab = worker.connect();
-    failToDeliver(tab, 'DataCloneError');
-    await ask(tab, relayRequest({ method: 'warmup' }));
-
-    // When it sends another request
-    await ask(tab, chainConnect('r2', 'c2'));
-
-    // Then it is served
-    expect(envelopes(tab, 'response').at(-1)).toEqual({
-      namespace: 'dotli:protocol',
-      kind: 'response',
-      id: 'r2',
-      ok: true,
-      result: true,
-    });
-  });
-
-  it('As a dotli user on the shared light client, a tab that said it was leaving stays refused, and the refusal is no failure', async () => {
-    // Given a tab that unloaded
-    const light = fakeLightClient();
-    const services = getActiveServicesConfig();
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    tab.receive({ type: 'disconnect' });
-
-    // When a pong and a late request from it still arrive
-    tab.receive({ type: 'pong' });
-    await ask(tab, chainConnect('r2', 'c2'));
-
-    // Then it is refused without a request span or a warning, and opens nothing
-    expect(envelopes(tab, 'response')).toMatchObject([{ id: 'r2', ok: false, error: PROTOCOL_APP_ERRORS.PORT_CLOSED }]);
-    expect(worker.open).not.toHaveBeenCalled();
-    expect(worker.logs.filter(line => line.level === 'warn')).toEqual([]);
-    // Nothing past the two observed chains opened.
-    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
-  });
-
-  it('As a dotli user on the shared light client, a tab whose port closed stays refused', async () => {
-    // Given a tab whose port closed under a response
-    const light = fakeLightClient();
-    const services = getActiveServicesConfig();
-    const worker = await bootWorker(light);
-    const tab = worker.connect();
-    failToDeliver(tab, 'InvalidStateError');
-    await ask(tab, relayRequest({ method: 'warmup' }));
-
-    // When a late request from it still arrives
-    await ask(tab, chainConnect('r2', 'c2'));
-
-    // Then it is refused, and opens nothing
-    expect(envelopes(tab, 'response').at(-1)).toMatchObject({
-      id: 'r2',
-      ok: false,
-      error: PROTOCOL_APP_ERRORS.PORT_CLOSED,
-    });
-    // Nothing past the two observed chains opened.
-    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
-  });
-
-  it('As a dotli user with two tabs on one worker, a tab the worker cannot tell it is ready does not keep the other from hearing it', async () => {
-    // Given two tabs waiting on a pre-sync still under way, the first one unreachable
-    const presync = deferred<undefined>();
-    const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
-    const unreachable = worker.connect();
-    const waiting = worker.connect();
-    failToDeliver(unreachable, 'DataCloneError');
-
-    // When pre-sync completes
-    await endPresync(presync);
-
-    // Then the other tab hears it is ready, and the healthy worker stays up
-    expect(heard(waiting)).toEqual([{ type: 'ready' }]);
-    expect(worker.close).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli user on the shared light client, a tab whose chain replay could not be delivered is not told it is ready', async () => {
-    // Given a tab whose first chain-sync replay fails to deliver while pre-sync runs
-    const presync = deferred<undefined>();
-    const worker = await bootWorker(
-      fakeLightClient({ presync: () => presync.promise, sync: [{ chain: 'assethub', kind: 'bootstrapComplete' }] }),
-    );
-    const tab = fakePort();
-    failToDeliver(tab, 'DataCloneError');
-    worker.connect(tab);
-
-    // When pre-sync completes
-    await endPresync(presync);
-
-    // Then the port the worker let go hears nothing more
-    expect(tab.posted).not.toHaveBeenCalledWith({ type: 'ready' });
-  });
-
-  it('As a dotli user on the shared light client, a tab one response could not reach hears its connections halted', async () => {
+  it('As a dotli user on the shared light client, a busy tab that sends no heartbeat but talks keeps its port', async () => {
     // Given a tab holding a chain connection
     const worker = await bootWorker(fakeLightClient());
     const tab = worker.connect();
-    await ask(tab, chainConnect('r1', 'c1'));
+    await connectChain(tab, 'c1');
 
-    // When one response to it cannot be delivered
-    failToDeliver(tab, 'DataCloneError');
-    await ask(tab, relayRequest({ id: 'r2', method: 'warmup' }));
+    // When it sends a request every beat but no heartbeat
+    for (let i = 0; i < 3 * HEARTBEAT_MISSED_BEATS; i++) {
+      await tab.transport.request('warmup', undefined);
+      worker.beat();
+    }
 
-    // Then it hears its connection is gone, so it reconnects when it is served again
-    expect(envelopes(tab, 'chain-halt')).toEqual([
-      { namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' },
-    ]);
-  });
-
-  it('As a dotli user with a frozen tab, I hear that the light client died even after the heartbeat let me go, so my host rebuilds the frame when I thaw', async () => {
-    // Given a live tab, and a frozen one the heartbeat let go
-    const light = fakeLightClient();
-    const worker = await bootWorker(light);
-    const live = worker.connect();
-    answerPings(live);
-    const frozen = worker.connect();
-    outlastHeartbeat(worker);
-
-    // When the light client dies, and the worker closes
-    light.fatal(FATAL);
-    await worker.closed;
-
-    // Then both tabs heard the cause before the worker closed
-    expect(heard(live)).toEqual([{ type: 'ready' }, fatalRelay]);
-    expect(heard(frozen)).toEqual([{ type: 'ready' }, fatalRelay]);
-    expect(closedAfterTelling(worker, frozen)).toBe(true);
-  });
-
-  it('As a dotli user with a frozen tab, I hear why pre-sync failed even after the heartbeat let me go', async () => {
-    // Given a tab the heartbeat let go while pre-sync was still under way
-    const presync = deferred<undefined>();
-    const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
-    const frozen = worker.connect();
-    outlastHeartbeat(worker);
-
-    // When pre-sync fails, and the worker closes
-    presync.reject(new Error('chainHead follow stopped'));
-    await worker.closed;
-
-    // Then the tab heard the cause before the worker closed
-    expect(heard(frozen)).toEqual([{ type: 'error', message: 'chainHead follow stopped' }]);
-    expect(closedAfterTelling(worker, frozen)).toBe(true);
-  });
-
-  it('As a dotli user with a frozen tab, I say I am leaving after the heartbeat let me go and hear nothing more', async () => {
-    // Given a tab the heartbeat let go, which then unloads
-    const light = fakeLightClient();
-    const worker = await bootWorker(light);
-    const leaving = worker.connect();
-    outlastHeartbeat(worker);
-    leaving.receive({ type: 'disconnect' });
-
-    // When the light client dies
-    light.fatal(FATAL);
-
-    // Then the tab that left heard only the ready from before
-    expect(heard(leaving)).toEqual([{ type: 'ready' }]);
-  });
-
-  it('As a dotli user with a frozen tab, I say I am leaving after the heartbeat let me go and a late request of mine is refused', async () => {
-    // Given a tab the heartbeat let go, which then unloads
-    const light = fakeLightClient();
-    const services = getActiveServicesConfig();
-    const worker = await bootWorker(light);
-    const leaving = worker.connect();
-    outlastHeartbeat(worker);
-    leaving.receive({ type: 'disconnect' });
-
-    // When a late request from it still arrives
-    await ask(leaving, chainConnect('r2', 'c2'));
-
-    // Then it is refused, and opens nothing
-    expect(envelopes(leaving, 'response')).toMatchObject([
-      { id: 'r2', ok: false, error: PROTOCOL_APP_ERRORS.PORT_CLOSED },
-    ]);
-    // Nothing past the two observed chains opened.
-    expect(light.chains).toEqual([services.relay.genesis, services.bulletin.genesis]);
+    // Then its connection was never released, and a later request is served
+    await expect(
+      tab.transport.request('chainSend', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
+    ).resolves.toBeUndefined();
+    expect(worker.logs.map(line => line.message)).not.toContain('Chain disconnected: c1 (0 remaining)');
   });
 
   it('As a dotli user on the shared light client, a worker whose light client died stops its heartbeat', async () => {
     // Given a tab on a synced worker
     const light = fakeLightClient();
     const worker = await bootWorker(light);
-    const tab = worker.connect();
+    worker.connect();
 
     // When the light client dies and the worker closes
     light.fatal(FATAL);
     await worker.closedOnce;
-    tab.posted.mockClear();
-    outlastHeartbeat(worker);
 
     // Then no beat runs after the close
     expect(worker.close).toHaveBeenCalledTimes(1);
-    expect(tab.posted).not.toHaveBeenCalled();
+    expect(worker.beating()).toBe(false);
   });
 
   it('As a dotli user on the shared light client, my tab hears the light client byte total for its speed readout', async () => {
-    // Given a tab on a worker whose light client has received bytes
+    // Given a tab hearing telemetry on a worker whose light client has received bytes
     let total = 1_000;
     const worker = await bootWorker(fakeLightClient(), undefined, undefined, () => total);
-    const tab = worker.connect();
+    const telemetry = record(worker.connect().transport, 'telemetry', undefined);
+    await telemetry.until(1);
 
     // When the next report interval passes
     total = 4_000;
     worker.tickNetBytes();
 
-    // Then the tab hears the cumulative total
-    expect(envelopes(tab, 'net-bytes')).toEqual([{ namespace: 'dotli:protocol', kind: 'net-bytes', received: 4_000 }]);
+    // Then the tab hears the baseline, then the cumulative total
+    await telemetry.until(2);
+    expect(telemetry.events).toEqual([
+      { tag: 'netBytes', value: 1_000 },
+      { tag: 'netBytes', value: 4_000 },
+    ]);
   });
 
   it("As a dotli user on the shared light client, I hear no byte reports after the worker's light client dies", async () => {
-    // Given a tab on a worker that reports bytes, which heard one report
+    // Given a tab on a worker that reports bytes, which heard the baseline
     const light = fakeLightClient();
     const worker = await bootWorker(light, undefined, undefined, () => 1_000);
-    const tab = worker.connect();
-    worker.tickNetBytes();
-    const heardBefore = envelopes(tab, 'net-bytes').length;
+    const telemetry = record(worker.connect().transport, 'telemetry', undefined);
+    await telemetry.until(1);
 
     // When the light client dies, the worker closes, and an interval passes
     light.fatal(FATAL);
     await worker.closedOnce;
-    tab.posted.mockClear();
     worker.tickNetBytes();
 
-    // Then no byte report reached the tab after the close
-    expect(heardBefore).toBe(1);
-    expect(envelopes(tab, 'net-bytes')).toEqual([]);
-  });
-
-  it('As a dotli user on the shared light client, a busy tab that never answers a ping keeps its port', async () => {
-    // Given a tab holding a chain connection whose iframe does not answer pings
-    const worker = await bootWorker(fakeLightClient());
-    const tab = worker.connect();
-    await ask(tab, chainConnect('r0', 'c1'));
-
-    // When it sends a request every beat
-    for (let i = 1; i <= 3 * HEARTBEAT_MISSED_BEATS; i++) {
-      tab.receive(relayRequest({ id: `r${String(i)}`, method: 'warmup' }));
-      worker.beat();
-    }
-    await ask(tab, relayRequest({ id: 'last', method: 'warmup' }));
-
-    // Then its connection was never halted, and a later request is served
-    expect(envelopes(tab, 'chain-halt')).toEqual([]);
-    expect(envelopes(tab, 'response').at(-1)).toMatchObject({ id: 'last', ok: true });
+    // Then the telemetry ended with the fatal, and no byte report reached the tab after the baseline
+    await expect(telemetry.ended).resolves.toMatchObject(fatalEnd);
+    expect(telemetry.events).toEqual([{ tag: 'netBytes', value: 1_000 }]);
   });
 });
 

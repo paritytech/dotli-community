@@ -1,31 +1,36 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The protocol SharedWorker. Every tab's protocol iframe shares its one light client over a port, and each port gets
-// its own engine scope.
+// The protocol SharedWorker. Every tab's protocol iframe shares its one light client over a port. Each port has its
+// own serving transport, so what a tab hears is encoded for that port alone, and its own engine scope, so its chain
+// connections are its own.
 
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
 import { isValidNetwork, getActiveFixedServicesConfig, type Network } from '@dotli/config/fixed';
 import { m, captureException, spans as S, type SpanHandle } from '@dotli/metrics';
-import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '@dotli/protocol';
+import {
+  createPortProvider,
+  createServingTransport,
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  ProtocolPortReleasedError,
+  type RequestHandler,
+  type RequestMethod,
+  type ServingTransport,
+  type SubscriptionEvent,
+  type SubscriptionHandler,
+  type SubscriptionSink,
+} from '@dotli/protocol';
 import { errorName, log, serializeError } from '@dotli/shared';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
+import { createFrameStatus } from './frame-status.js';
 import { startLightClientService } from './light-client-service.js';
-import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
-import { errorResponse } from './error-response.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import type {
-  SWDisconnect,
-  SWError,
-  SWInbound,
-  SWOutbound,
-  SWPing,
-  SWReady,
-  SWRelayRequest,
-} from './worker-messages.js';
+import { createTelemetryHandler } from './telemetry-handler.js';
+import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-messages.js';
 
 /** The worker global, narrowed to what the worker uses. */
 export interface WorkerScope {
@@ -41,15 +46,6 @@ export type WorkerResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
 export interface HeartbeatClock {
   start: (beat: () => void) => () => void;
 }
-
-/**
- * A closed tab's port neither throws nor tells the worker, so the worker pings each port and lets go of one that
- * answered nothing for this many beats. Three beats of 20 s release a dead tab's connections within about a minute,
- * and leave an iframe stuck in a long task two beats of slack. Pongs are answered from a message event, which
- * background timer throttling does not delay.
- */
-const HEARTBEAT_INTERVAL_MS = 20_000;
-export const HEARTBEAT_MISSED_BEATS = 3;
 
 function intervalClock(intervalMs: number): HeartbeatClock {
   return {
@@ -82,39 +78,16 @@ export interface ProtocolWorkerDeps {
   flush: () => Promise<void>;
 }
 
-/**
- * The light client as every port sees it. `told` marks a failure the fatal broadcast already reported to the ports
- * that were connected, so they are not told twice.
- */
-type LightClientStatus =
-  { phase: 'syncing' } | { phase: 'ready' } | { phase: 'failed'; message: string; told: boolean };
-
-type SettledStatus = Exclude<LightClientStatus, { phase: 'syncing' }>;
-
 interface PortSession {
+  transport: ServingTransport;
+  /** Opened by the tab's first chain call. */
   scope: EngineScope | null;
-  stopSync: (() => void) | null;
-  stopWaiting: (() => void) | null;
   /** Heartbeats since the port last sent anything. */
   missed: number;
-  /** Carried across a rejoin, so a tab let go before it heard `ready` still hears it once. */
-  heardReady: boolean;
-  /** The chains whose stored database this tab heard, carried across a rejoin as `heardReady` is. */
-  heardDb: Set<Chains.SmoldotDbChain>;
-  /**
-   * Whether the tab first joined live chains and so paid no sync cost, carried across a rejoin. A tab that joined
-   * during the sync waited on it, so the database outcomes are its own.
-   */
-  joinedSynced: boolean;
-  /** Why the worker let go of the port, once it has. */
-  removedBy: PortRemoval | null;
 }
 
-type PortRemoval = 'closed' | 'disconnect' | 'stale' | 'send_failed';
-
-// A silent tab may only be frozen and a failed send may be one bad message, so these ports are served when they talk
-// again. A tab that said it was leaving, or whose port closed, is gone.
-const REJOINABLE: ReadonlySet<PortRemoval> = new Set(['stale', 'send_failed']);
+/** The requests a span follows. A chain message would swamp them, and a heartbeat says nothing of a load. */
+type TracedRequest = Exclude<RequestMethod, 'chainSend' | 'heartbeat'>;
 
 const TAG = '[dot.li SW]';
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
@@ -123,40 +96,6 @@ const RESOLUTION_ID_PATTERN = /^[\w-]{1,64}$/;
 
 function swEvent(message: string, data?: Record<string, unknown>): void {
   log.event(message, { flow: 'protocol', ...data });
-}
-
-/** The one status every port reads. A port that connects while syncing waits to be told once. */
-function createLightClientStatus(initial: LightClientStatus): {
-  readonly current: LightClientStatus;
-  whenSettled: (tell: (status: SettledStatus) => void) => () => void;
-  settle: (next: SettledStatus) => boolean;
-} {
-  let current = initial;
-  const waiting = new Set<(status: SettledStatus) => void>();
-  return {
-    get current() {
-      return current;
-    },
-    whenSettled(tell) {
-      waiting.add(tell);
-      return () => {
-        waiting.delete(tell);
-      };
-    },
-    // A failure is final, and a ready light client can still die.
-    settle(next) {
-      if (current.phase === 'failed' || (current.phase === 'ready' && next.phase === 'ready')) {
-        return false;
-      }
-      current = next;
-      const told = [...waiting];
-      waiting.clear();
-      for (const tell of told) {
-        tell(next);
-      }
-      return true;
-    },
-  };
 }
 
 /** The iframe names the worker for its network, since a worker's URL cannot carry it. */
@@ -177,93 +116,60 @@ export function workerNetwork(name: string): WorkerNetwork {
 export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const { scope, lightClient, resolver } = deps;
   const openSpan = deps.openSpan ?? m.open;
-  const sessions = new Map<MessagePort, PortSession>();
-  // A frozen page's port queues what it is sent until the page thaws, so a tab let go for a rejoinable reason still
-  // hears why the worker closes, and its host rebuilds the frame instead of talking to a closed worker.
-  const letGoPorts = new Set<MessagePort>();
+  const sessions = new Set<PortSession>();
   let engine: ProtocolEngine | null = null;
-  // What a tab that connects after the light client died hears, as the tabs connected then did.
-  let fatal: ProtocolEnvelope | null = null;
   // The tab that starts the worker connects in a later task, so a failure before then waits for it to close.
   let reached = false;
-  // Owned by `closeDeadWorker` alone, so however many failures ask for it the worker closes once.
-  let closing: 'none' | 'on_connect' | 'scheduled' = 'none';
+  // Owned by `closeDeadWorker` and `closeOnceHeard` alone, so however many failures ask for it the worker closes once.
+  let closing: 'none' | 'on_connect' | 'scheduled' | 'flushed' | 'closed' = 'none';
+  // Ports that connected and have not yet subscribed to their status.
+  const unheard = new Set<PortSession>();
+  // The first failure is the cause, and every later tab hears it on subscribe.
+  let phase: { name: 'syncing' | 'ready' } | { name: 'failed'; error: Error } = { name: 'syncing' };
+  // What every port hears through its `frameStatus` subscription, each on its own transport.
+  const status = createFrameStatus();
 
   const networkInitFailure = deps.network.ok ? null : deps.network.message;
-  const status = createLightClientStatus(
-    networkInitFailure === null ? { phase: 'syncing' } : { phase: 'failed', message: networkInitFailure, told: false },
-  );
+  if (networkInitFailure !== null) {
+    phase = { name: 'failed', error: new ProtocolInitFailedError(networkInitFailure) };
+    status.fail(phase.error);
+  }
   const stopHeartbeat = (deps.heartbeat ?? intervalClock(HEARTBEAT_INTERVAL_MS)).start(beat);
   // Only this worker can meter the light client every tab shares, so every tab hears its total.
   const netBytes = deps.netBytes;
-  const stopNetBytes =
-    netBytes === undefined
-      ? (): void => undefined
-      : reportNetBytes(netBytes.read, broadcastToPorts, netBytes.ticker ?? intervalTicker(NET_BYTES_INTERVAL_MS));
+  const telemetry = createTelemetryHandler({
+    onChainSync: resolver.onChainSync,
+    onChainDetail: resolver.onChainDetail,
+    dbOutcomes: () => lightClient.status().db,
+    onDbOutcome: listener =>
+      lightClient.subscribe(change => {
+        if (change.kind === 'db') {
+          listener(change.chain, change.outcome);
+        }
+      }),
+    netBytes: listener =>
+      netBytes === undefined
+        ? (): void => undefined
+        : reportNetBytes(netBytes.read, listener, netBytes.ticker ?? intervalTicker(NET_BYTES_INTERVAL_MS)),
+    // A tab that subscribes once the chains are synced paid no sync cost, so the reads before it are hits.
+    joinedSynced: () => phase.name === 'ready',
+  });
 
-  /** Lets go of a port its message cannot reach, so one bad port never stops the worker telling the others. */
-  function deliver(port: MessagePort, message: SWOutbound, tags: Record<string, string>): boolean {
-    try {
-      port.postMessage(message);
-      return true;
-    } catch (err: unknown) {
-      letGoPorts.delete(port);
-      // A closed port (tab navigation) is expected. Any other failure, such as a clone error, is a real bug.
-      if (errorName(err) === 'InvalidStateError') {
-        removePort(port, 'closed');
-        return false;
-      }
-      // The host never hears of this failure, so this is the only report.
-      captureException(err, { flow: 'protocol', step: 'worker_port_send', tags });
-      removePort(port, 'send_failed');
-      return false;
-    }
-  }
-
-  function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
-    deliver(port, { type: 'relay-response', envelope }, { envelope_kind: envelope.kind });
-  }
-
-  function broadcastToPorts(envelope: ProtocolEnvelope): void {
-    for (const port of [...sessions.keys()]) {
-      sendToPort(port, envelope);
-    }
-  }
-
-  /** `ports` defaults to those let go now. A caller that broadcast first passes the ones let go before it. */
-  function tellLetGoPorts(message: SWOutbound, tags: Record<string, string>, ports = [...letGoPorts]): void {
-    for (const port of ports) {
-      deliver(port, message, tags);
-    }
-  }
-
-  function tellDb(
-    port: MessagePort,
-    session: PortSession,
-    chain: Chains.SmoldotDbChain,
-    outcome: Chains.SmoldotDbOutcome,
-  ): void {
-    const envelope: ProtocolEnvelope = { namespace: 'dotli:protocol', kind: 'smoldot-db', chain, outcome };
-    if (deliver(port, { type: 'relay-response', envelope }, { envelope_kind: envelope.kind })) {
-      session.heardDb.add(chain);
-    }
-  }
-
-  function removePort(port: MessagePort, reason: PortRemoval): void {
-    const session = sessions.get(port);
-    if (session === undefined) {
+  /** Stops serving the port, once. Its transport goes first, so each open chain hears the release and not a halt. */
+  function release(session: PortSession, reason: Error): void {
+    if (!sessions.delete(session)) {
       return;
     }
-    sessions.delete(port);
-    session.removedBy = reason;
-    if (REJOINABLE.has(reason)) {
-      letGoPorts.add(port);
+    session.transport.dispose(reason);
+    session.scope?.close();
+    heard(session);
+  }
+
+  /** The port subscribed to its status, or is gone, so a close can no longer leave it waiting for why. */
+  function heard(session: PortSession): void {
+    if (unheard.delete(session)) {
+      closeOnceHeard();
     }
-    session.stopSync?.();
-    session.stopWaiting?.();
-    // A port served again must not keep connections the worker forgot, so it hears each one halted and reconnects.
-    const cleaned = session.scope?.close({ halt: REJOINABLE.has(reason) }) ?? 0;
-    swEvent('Port removed', { reason, connections: cleaned, ports: sessions.size });
   }
 
   /**
@@ -271,7 +177,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
    * name, so the host's next connect starts a fresh light client instead of hearing this failure again.
    */
   function closeDeadWorker(): void {
-    if (closing === 'scheduled') {
+    if (closing !== 'none' && closing !== 'on_connect') {
       return;
     }
     // Closed now, the first tab's queued connect would never be served and the tab would wait out its ready timeout.
@@ -280,220 +186,228 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       return;
     }
     closing = 'scheduled';
+    const flushed = (): void => {
+      closing = 'flushed';
+      closeOnceHeard();
+    };
     // A worker cannot see the connects queued for it, and a close drops them unserved. Closing in a later task lets
-    // each queued connect run first and hear the latched failure. A worker has no page-hide flush, so the telemetry
-    // of the failure goes out before the close drops it.
+    // each queued connect run first. A worker has no page-hide flush, so the telemetry of the failure goes out before
+    // the close drops it.
     setTimeout(() => {
-      const closeNow = (): void => {
-        swEvent('Worker closing', { ports: sessions.size });
-        stopHeartbeat();
-        stopNetBytes();
-        scope.close();
-      };
       // A flush that fails still closes, after it is reported.
-      void deps.flush().then(closeNow, (err: unknown) => {
+      void deps.flush().then(flushed, (err: unknown) => {
         captureException(err, { flow: 'protocol', step: 'worker_flush' });
         log.error(`${TAG} Telemetry flush failed`, err);
-        closeNow();
+        flushed();
       });
     }, 0);
   }
 
-  /** Forwards every chain's sync events to one tab, starting with a replay of where each chain stands. */
-  function forwardChainSync(port: MessagePort, session: PortSession): void {
-    let replaying = true;
-    const stopSync = resolver.onChainSync(event => {
-      sendToPort(port, chainSyncEnvelope(event));
-    });
-    const stopDetail = resolver.onChainDetail(detail => {
-      const reported =
-        replaying && session.joinedSynced && detail.dbCache !== undefined
-          ? { ...detail, dbCache: 'hit' as const }
-          : detail;
-      sendToPort(port, chainDetailEnvelope(reported));
-    });
-    replaying = false;
-    const stop = (): void => {
-      stopSync();
-      stopDetail();
-    };
-    // A failed send during the replay has already removed the port.
-    if (sessions.get(port) !== session) {
-      stop();
+  /**
+   * Closes a flushed dead worker once no port waits to subscribe to its status. A tab hears why only on subscribe, a
+   * round trip after it connects, and a closed worker answers nothing.
+   */
+  function closeOnceHeard(): void {
+    if (closing !== 'flushed' || unheard.size > 0 || phase.name !== 'failed') {
       return;
     }
-    session.stopSync = stop;
+    closing = 'closed';
+    swEvent('Worker closing', { ports: sessions.size });
+    stopHeartbeat();
+    // Each tab hears why everything still open on its port ended.
+    for (const session of [...sessions]) {
+      release(session, phase.error);
+    }
+    scope.close();
+  }
+
+  /** Latches the first failure, tells every port and closes the worker. A later failure is only its symptom. */
+  function fail(error: Error): void {
+    if (phase.name === 'failed') {
+      return;
+    }
+    phase = { name: 'failed', error };
+    status.fail(error);
+    closeDeadWorker();
+  }
+
+  function requireEngine(): ProtocolEngine {
+    if (engine === null) {
+      throw new Error(networkInitFailure ?? PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
+    }
+    return engine;
+  }
+
+  function scopeOf(session: PortSession): EngineScope {
+    session.scope ??= requireEngine().openScope();
+    return session.scope;
   }
 
   /** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
-  function openRequestSpan(envelope: ProtocolRequestEnvelope, resolutionId: unknown): SpanHandle | null {
-    // One per product JSON-RPC message would swamp the resolution requests.
-    if (envelope.method === 'chainSend') {
-      return null;
-    }
+  function openRequestSpan(method: TracedRequest | 'chainConnect' | 'resolveDotName', resolutionId: string | null) {
     return openSpan(S.PROTOCOL_WORKER_REQUEST, {
       root: true,
       attributes: {
-        method: envelope.method,
-        ...(typeof resolutionId === 'string' && RESOLUTION_ID_PATTERN.test(resolutionId)
-          ? { resolution_id: resolutionId }
-          : {}),
+        method,
+        ...(resolutionId !== null && RESOLUTION_ID_PATTERN.test(resolutionId) ? { resolution_id: resolutionId } : {}),
       },
     });
   }
 
-  function serve(port: MessagePort, session: PortSession, data: SWRelayRequest | SWDisconnect): void {
-    if (data.type === 'disconnect') {
-      removePort(port, 'disconnect');
-      return;
-    }
-    const { envelope, origin } = data;
-    // A removed port's scope is closed, and a request served on it would hold connections nothing ever releases. A
-    // closing tab's late request is expected, so it is no failure.
-    if (sessions.get(port) !== session) {
-      swEvent('Request refused', { method: envelope.method, reason: session.removedBy });
-      sendToPort(port, errorResponse(envelope.id, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED)));
-      return;
-    }
-    const span = openRequestSpan(envelope, data.resolutionId);
-    const handled =
-      session.scope === null
-        ? Promise.reject(new Error(networkInitFailure ?? PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED))
-        : session.scope.handleRequest(envelope, origin, response => {
-            sendToPort(port, response);
-          });
-    void handled
-      .then(
-        () => {
-          span?.setAttributes({ outcome: 'ok' });
+  function endSpan(span: SpanHandle, error: unknown): void {
+    span.setAttributes(
+      error === undefined ? { outcome: 'ok' } : { outcome: 'error', error_name: errorName(error) ?? 'NonError' },
+    );
+    span.end();
+  }
+
+  function traced<M extends TracedRequest>(method: M, handler: RequestHandler<M>): RequestHandler<M> {
+    return async (payload, context) => {
+      const span = openRequestSpan(method, context.resolutionId);
+      try {
+        const answer = await handler(payload, context);
+        endSpan(span, undefined);
+        return answer;
+      } catch (error) {
+        endSpan(span, error);
+        // The host rebuilds this failure from the answer and reports it.
+        log.warn(`${TAG} ${method} failed`, error);
+        throw error;
+      }
+    };
+  }
+
+  /** Spans a subscription until the event that answers it, or its end, or the tab stopping it first. */
+  function tracedSubscription<M extends 'chainConnect' | 'resolveDotName'>(
+    method: M,
+    answers: (event: SubscriptionEvent<M>) => boolean,
+    handler: SubscriptionHandler<M>,
+  ): SubscriptionHandler<M> {
+    return (payload, context, sink) => {
+      const span = openRequestSpan(method, context.resolutionId);
+      let open = true;
+      const settle = (error: unknown): void => {
+        if (!open) {
+          return;
+        }
+        open = false;
+        endSpan(span, error);
+        if (error !== undefined) {
+          log.warn(`${TAG} ${method} failed`, error);
+        }
+      };
+      const spanned: SubscriptionSink<M> = {
+        send: event => {
+          sink.send(event);
+          if (answers(event)) {
+            settle(undefined);
+          }
         },
-        (error: unknown) => {
-          span?.setAttributes({ outcome: 'error', error_name: errorName(error) ?? 'NonError' });
-          // The host rebuilds this failure from the response and reports it.
-          log.warn(`${TAG} ${envelope.method} failed`, error);
-          sendToPort(port, errorResponse(envelope.id, error));
+        end: error => {
+          settle(error);
+          sink.end(error);
         },
-      )
-      .finally(() => {
-        span?.end();
-      });
+      };
+      let stop: () => void;
+      try {
+        stop = handler(payload, context, spanned);
+      } catch (error) {
+        settle(error);
+        throw error;
+      }
+      return () => {
+        if (open) {
+          open = false;
+          span.setAttributes({ outcome: 'cancelled' });
+          span.end();
+        }
+        stop();
+      };
+    };
+  }
+
+  function serve(session: PortSession): void {
+    const { transport } = session;
+    transport.handleSubscription('frameStatus', (payload, context, sink) => {
+      // Ended at once if the worker already failed, and told of a later failure the moment it happens.
+      const stop = status.handler(payload, context, sink);
+      heard(session);
+      return stop;
+    });
+    transport.handleSubscription('telemetry', telemetry);
+    // Any message keeps the port, so the heartbeat itself needs no answer beyond its arrival.
+    transport.handleRequest('heartbeat', () => undefined);
+    transport.handleRequest(
+      'warmup',
+      traced('warmup', (payload, context) => requireEngine().warmup(payload, context)),
+    );
+    transport.handleRequest(
+      'resolveOwner',
+      traced('resolveOwner', (payload, context) => requireEngine().resolveOwner(payload, context)),
+    );
+    transport.handleRequest(
+      'resolveExecutableManifest',
+      traced('resolveExecutableManifest', (payload, context) =>
+        requireEngine().resolveExecutableManifest(payload, context),
+      ),
+    );
+    transport.handleRequest(
+      'resolveRootManifest',
+      traced('resolveRootManifest', (payload, context) => requireEngine().resolveRootManifest(payload, context)),
+    );
+    transport.handleSubscription(
+      'resolveDotName',
+      tracedSubscription(
+        'resolveDotName',
+        event => event.tag === 'resolved',
+        (payload, context, sink) => requireEngine().resolveDotName(payload, context, sink),
+      ),
+    );
+    transport.handleSubscription(
+      'chainConnect',
+      tracedSubscription(
+        'chainConnect',
+        event => event.tag === 'connected',
+        (payload, context, sink) => scopeOf(session).connect(payload, context, sink),
+      ),
+    );
+    transport.handleRequest('chainSend', (payload, context) => scopeOf(session).send(payload, context));
   }
 
   function beat(): void {
-    for (const [port, session] of [...sessions]) {
+    for (const session of [...sessions]) {
       if (session.missed >= HEARTBEAT_MISSED_BEATS) {
-        removePort(port, 'stale');
+        release(session, new ProtocolPortReleasedError(PROTOCOL_APP_ERRORS.PORT_RELEASED));
+        swEvent('Port released', { ports: sessions.size });
         continue;
       }
       session.missed += 1;
-      const ping: SWPing = { type: 'ping' };
-      deliver(port, ping, { message_type: 'ping' });
     }
-  }
-
-  function tellSettled(port: MessagePort, session: PortSession, settled: SettledStatus): void {
-    if (settled.phase === 'ready') {
-      const readyMsg: SWReady = { type: 'ready' };
-      session.heardReady = deliver(port, readyMsg, { message_type: 'ready' });
-      return;
-    }
-    // The fatal broadcast already told this port.
-    if (!settled.told) {
-      const errorMsg: SWError = { type: 'error', message: settled.message };
-      deliver(port, errorMsg, { message_type: 'error' });
-    }
-  }
-
-  /** A rejoining port is told only what it has not heard. */
-  function admit(port: MessagePort, previous: PortSession | null): PortSession {
-    const session: PortSession = {
-      scope: engine?.openScope() ?? null,
-      stopSync: null,
-      stopWaiting: null,
-      missed: 0,
-      heardReady: previous?.heardReady ?? false,
-      heardDb: previous?.heardDb ?? new Set(),
-      joinedSynced: previous?.joinedSynced ?? status.current.phase === 'ready',
-      removedBy: null,
-    };
-    sessions.set(port, session);
-    letGoPorts.delete(port);
-    const joined = status.current;
-    swEvent(previous === null ? 'Port connected' : 'Port rejoined', { ports: sessions.size, engine: joined.phase });
-    // A failed send lets go of the port, and nothing more is told to a port the worker let go.
-    const tracked = (): boolean => sessions.get(port) === session;
-    const replayDb = (): void => {
-      for (const [chain, read] of lightClient.status().db) {
-        if (tracked() && !session.heardDb.has(chain)) {
-          tellDb(port, session, chain, session.joinedSynced ? 'hit' : read);
-        }
-      }
-    };
-
-    if (joined.phase === 'failed') {
-      if (fatal !== null) {
-        sendToPort(port, fatal);
-        return session;
-      }
-      const errorMsg: SWError = { type: 'error', message: joined.message };
-      deliver(port, errorMsg, { message_type: 'error' });
-      return session;
-    }
-
-    // Before the ready signal, so the tab hears where the chains stand before resolving.
-    forwardChainSync(port, session);
-
-    if (joined.phase === 'ready') {
-      if (!session.heardReady && tracked()) {
-        tellSettled(port, session, joined);
-      }
-      replayDb();
-      return session;
-    }
-
-    // This port missed the record-time broadcast.
-    replayDb();
-    if (tracked()) {
-      session.stopWaiting = status.whenSettled(settled => {
-        session.stopWaiting = null;
-        tellSettled(port, session, settled);
-      });
-    }
-    return session;
   }
 
   function onConnect(port: MessagePort): void {
     reached = true;
-    let session = admit(port, null);
-    port.addEventListener('message', (event: MessageEvent) => {
-      const data = event.data as SWInbound | null;
-      if (data?.type !== 'disconnect' && data?.type !== 'relay-request' && data?.type !== 'pong') {
-        return;
-      }
-      const letGo = sessions.get(port) !== session;
-      if (letGo && data.type === 'disconnect') {
-        // A tab that is leaving is never served again, nor told why the worker closes.
-        letGoPorts.delete(port);
-        session.removedBy = 'disconnect';
-        return;
-      }
-      if (letGo && session.removedBy !== null && REJOINABLE.has(session.removedBy)) {
-        // The tab was frozen or missed one message, and it is talking again.
-        session = admit(port, session);
-      }
+    const provider = createPortProvider(port);
+    const session: PortSession = {
+      transport: createServingTransport(provider, { side: 'worker' }),
+      scope: null,
+      missed: 0,
+    };
+    // Any message shows the tab is alive, not only its heartbeat.
+    provider.subscribe(() => {
       session.missed = 0;
-      if (data.type !== 'pong') {
-        serve(port, session, data);
-      }
     });
-    port.start();
+    sessions.add(session);
+    unheard.add(session);
+    serve(session);
+    swEvent('Port connected', { ports: sessions.size, engine: phase.name });
     if (closing === 'on_connect') {
       closeDeadWorker();
     }
   }
 
-  // No retries by design. A failed pre-sync sends the cause to every port and closes the worker, so whether to try
-  // again stays with the host.
+  // No retries by design. A failed pre-sync tells every port and closes the worker, so whether to try again stays
+  // with the host.
   async function presync(): Promise<void> {
     const t0 = performance.now();
     swEvent('Pre-sync started');
@@ -512,12 +426,13 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       // The resolver records the `smoldot.presync` timing for this wait.
       await dotns.waitForAssetHubFinalized();
 
-      // The fatal broadcast already told the waiting ports, they must not hear ready.
-      if (status.current.phase === 'failed') {
+      // The fatal already ended every port's status, so no port may hear ready.
+      if (phase.name === 'failed') {
         return;
       }
       swEvent('Pre-sync complete', { ms: Math.round(performance.now() - t0) });
-      status.settle({ phase: 'ready' });
+      phase = { name: 'ready' };
+      status.ready();
 
       // Legacy-account auth reads People, which otherwise races its warp sync on a cold start. Resolution does not
       // need People, so this must not gate ready.
@@ -528,36 +443,22 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       const msg = serializeError(err);
       log.error(`${TAG} Pre-sync failed: ${msg}`, err);
       m.count(S.SMOLDOT_PRESYNC, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
-      // Taken first, since a waiting port the settle fails to reach joins the let-go ports and must not be tried again.
-      const letGoBefore = [...letGoPorts];
-      // A light client that died during pre-sync is the real cause, and the fatal handler already reported it and
-      // closed the worker.
-      if (status.settle({ phase: 'failed', message: msg, told: false })) {
-        const errorMsg: SWError = { type: 'error', message: msg };
-        tellLetGoPorts(errorMsg, { message_type: 'error' }, letGoBefore);
-        closeDeadWorker();
-      }
+      // A light client that died during pre-sync is the real cause, and the fatal already closed the worker.
+      // The message already carries the cause, which the error logged above keeps in full.
+      fail(new ProtocolInitFailedError(msg));
     }
   }
 
-  // A fatal lets every tab reject in-flight requests at once instead of timing out, and a port that connects before the
-  // close lands still gets the cause like a failed pre-sync. No chain opens before pre-sync, so no change came earlier.
+  // A fatal lets every tab end what it has open at once instead of timing out, and a port that connects before the
+  // close lands still hears the cause, as after a failed pre-sync. No chain opens before pre-sync, so no change came
+  // earlier.
   lightClient.subscribe(change => {
-    if (change.kind === 'db') {
-      for (const [port, session] of [...sessions]) {
-        tellDb(port, session, change.chain, change.outcome);
-      }
+    if (change.kind !== 'fatal') {
       return;
     }
     const { message } = change;
-    log.error(`${TAG} Light client died, broadcasting fatal to ${String(sessions.size)} port(s): ${message}`);
-    fatal = { namespace: 'dotli:protocol', kind: 'fatal', message };
-    // Taken first, since a port the broadcast fails to reach joins the let-go ports and must not be tried again.
-    const letGoBefore = [...letGoPorts];
-    broadcastToPorts(fatal);
-    tellLetGoPorts({ type: 'relay-response', envelope: fatal }, { envelope_kind: 'fatal' }, letGoBefore);
-    status.settle({ phase: 'failed', message, told: true });
-    closeDeadWorker();
+    log.error(`${TAG} Light client died, telling ${String(sessions.size)} port(s): ${message}`);
+    fail(new ProtocolFatalError(message));
   });
 
   scope.addEventListener('connect', event => {

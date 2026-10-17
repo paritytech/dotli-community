@@ -27,27 +27,33 @@ import {
 
 import {
   backendOfFrameMode,
+  createServingTransport,
+  createWindowProvider,
   isSharedAuthOriginAllowed,
-  type ProtocolEnvelope,
-  type ProtocolRequestEnvelope,
+  ProtocolFatalError,
+  ProtocolInitFailedError,
 } from '@dotli/protocol';
 import { DB_NAME } from '@dotli/storage';
 
-import type { SWRelayRequest } from './worker-messages.js';
 import { connectSharedWorker } from './shared-worker-link.js';
+import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
 import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
-import { chainDetailEnvelope, chainSyncEnvelope } from './envelopes.js';
-import { createEngine, type ResponseCallback } from './engine.js';
+import { createEngine, serveEngineScope } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
-import { handleLocalWalletRequest } from './local-wallet-handler.js';
+import { serveLocalWallet } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
-import { createFrameRouter } from './frame-router.js';
-import { createRefusalReporter } from './refusal-report.js';
+import { createRefusalReporter, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes } from './net-bytes.js';
+import { createFrameStatus } from './frame-status.js';
+import { createDeferredSubscription } from './deferred-subscription.js';
+import { createTelemetryHandler } from './telemetry-handler.js';
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
 // invisible to resource timing, so the speed readout needs this.
 installByteMeter();
+
+// What the host hears of this frame's boot, on subscribe, so a failure before the host asks is not lost.
+const frameStatus = createFrameStatus();
 
 // No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
 window.addEventListener('vite:preloadError', event => {
@@ -56,11 +62,7 @@ window.addEventListener('vite:preloadError', event => {
   log.error('[dot.li protocol] Asset failed to load', payload);
   // The browser's message names the chunk. Only Safari omits it.
   const msg = payload === undefined ? 'no detail from the loader' : serializeError(payload);
-  postToParent({
-    namespace: 'dotli:protocol',
-    kind: 'fatal',
-    message: `Protocol iframe asset failed to load: ${msg}`,
-  });
+  frameStatus.fail(new ProtocolFatalError(`Protocol iframe asset failed to load: ${msg}`, { cause: payload }));
 });
 
 initSentry('protocol');
@@ -84,53 +86,33 @@ function isAllowedOrigin(origin: string): boolean {
   return isSharedAuthOriginAllowed(origin);
 }
 
-// Only an allowed parent hears other tabs' auth writes. The referrer may be blank under strict referrer policies.
-function initialParentOriginFromReferrer(): string | null {
-  try {
-    const ref = document.referrer;
-    if (ref === '') {
-      return null;
-    }
-    const origin = new URL(ref).origin;
-    return isAllowedOrigin(origin) ? origin : null;
-  } catch {
-    return null;
-  }
-}
+// The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
+// speaks only when spoken to.
+const serving = createServingTransport(
+  createWindowProvider({
+    listen: window,
+    peer: () => window.parent,
+    origin: isAllowedOrigin,
+    // Only a host page of an earlier release sends objects. It never hears an answer and fails by its own timeout.
+    onNotBytes: () => {
+      m.count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'not_bytes', side: 'frame' });
+    },
+  }),
+  { side: 'frame' },
+);
+serving.handleSubscription('frameStatus', frameStatus.handler);
+// The host subscribes as soon as its handshake is answered, before a chain mode has loaded what feeds it. Only the
+// light client feeds it, so in the other modes a subscription waits for good.
+const telemetry = createDeferredSubscription<'telemetry'>();
+serving.handleSubscription('telemetry', telemetry.handler);
 
-const sharedStore = createSharedStoreHandler({
+// What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
+const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
+createSharedStoreHandler(served, {
   storage: () => localStorage,
   channel: typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SHARED_AUTH_CHANNEL) : null,
-  parent: window.parent !== window ? window.parent : null,
-  initialParentOrigin: initialParentOriginFromReferrer(),
 });
-
-async function serveLocalWallet(
-  request: ProtocolRequestEnvelope,
-  origin: string,
-  respond: ResponseCallback,
-): Promise<void> {
-  const result = await handleLocalWalletRequest(request, origin);
-  respond({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result });
-}
-
-const router = createFrameRouter({
-  target: window,
-  isAllowedOrigin,
-  routes: { auth: sharedStore.auth, mode: sharedStore.mode, wallet: serveLocalWallet },
-  onRefused: createRefusalReporter({ warn: log.warn, count: m.count }),
-});
-
-/** Every envelope this frame sends its parent, typed, so a shape change in the wire contract fails the build here. */
-function postToParent(envelope: ProtocolEnvelope): void {
-  if (window.parent !== window) {
-    window.parent.postMessage(envelope, '*');
-  }
-}
-
-function signalParent(kind: 'ready' | 'listening'): void {
-  postToParent({ namespace: 'dotli:protocol', kind });
-}
+serveLocalWallet(served);
 
 /** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
 async function purgeWorkerCaches(): Promise<void> {
@@ -140,9 +122,9 @@ async function purgeWorkerCaches(): Promise<void> {
 }
 
 /** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
-function failInit(message: string): void {
+function failInit(message: string, cause?: unknown): void {
   log.error(`[dot.li protocol] ${message}`);
-  signalError(message);
+  frameStatus.fail(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
 }
 
 async function init(): Promise<void> {
@@ -150,7 +132,7 @@ async function init(): Promise<void> {
   // No mode means an auth-only iframe.
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
-    signalParent('ready');
+    frameStatus.ready();
     return;
   }
   // An unknown mode errors instead of silently going auth-only.
@@ -174,9 +156,8 @@ async function init(): Promise<void> {
     try {
       await purgeWorkerCaches();
     } catch (err: unknown) {
-      const message = errorMessage(err);
       log.error('[dot.li protocol] purgeWorkerCaches failed:', err);
-      signalError(`Failed to reset chain DB: ${message}`);
+      failInit(`Failed to reset chain DB: ${errorMessage(err)}`, err);
       return;
     }
   }
@@ -213,38 +194,24 @@ async function init(): Promise<void> {
   }
 }
 
-function signalError(message: string): void {
-  // No `id`, since no request was in flight. The host rejects everything pending, drops this frame and builds a new one
-  // after a wait.
-  postToParent({ namespace: 'dotli:protocol', kind: 'init-failed', message });
-}
-
 async function initSharedWorkerMode(network: Network): Promise<void> {
   // Vite only rewrites a literal `new URL` argument, so the network travels in the worker name, not a query param.
   const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
     type: 'module',
     name: `dotli-protocol-${network}`,
   });
-  const port = await connectSharedWorker({
+  await connectSharedWorker({
     worker,
     window,
-    relay: postToParent,
+    resolutionId: getResolutionId(),
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
+    onOpen: link => {
+      // The worker reports what it refuses, so these calls skip this frame's refusal report.
+      registerWorkerRelay(serving, link, frameStatus);
+      telemetry.serve(relayTelemetry(link));
+    },
   });
-
-  router.setRoute('chain', (request, origin) => {
-    // Per request, since the worker serves every tab.
-    const resolutionId = getResolutionId();
-    const msg: SWRelayRequest = {
-      type: 'relay-request',
-      envelope: request,
-      origin,
-      ...(resolutionId !== null ? { resolutionId } : {}),
-    };
-    port.postMessage(msg);
-  });
-
-  signalParent('ready');
+  frameStatus.ready();
 }
 
 async function initDirectMode(): Promise<void> {
@@ -266,28 +233,27 @@ async function initDirectMode(): Promise<void> {
   lightClient.subscribe(change => {
     if (change.kind === 'fatal') {
       log.error(`[dot.li protocol] Light client died, signaling fatal: ${change.message}`);
+      frameStatus.fail(new ProtocolFatalError(change.message));
     }
-    if (change.kind === 'db') {
-      const { chain, outcome } = change;
-      postToParent({ namespace: 'dotli:protocol', kind: 'smoldot-db', chain, outcome });
-      return;
-    }
-    postToParent({ namespace: 'dotli:protocol', kind: 'fatal', message: change.message });
   });
 
-  provider.onChainSync(event => {
-    postToParent(chainSyncEnvelope(event));
-  });
-
-  // Telemetry only, attached by the host to the resolution it is tracing.
-  provider.onChainDetail(detail => {
-    postToParent(chainDetailEnvelope(detail));
-  });
-
-  if (window.parent !== window) {
-    const stopNetBytes = reportNetBytes(chainBytesReceived, postToParent, intervalTicker(NET_BYTES_INTERVAL_MS));
-    window.addEventListener('pagehide', stopNetBytes);
-  }
+  telemetry.serve(
+    createTelemetryHandler({
+      onChainSync: provider.onChainSync,
+      // Telemetry only, attached by the host to the resolution it is tracing.
+      onChainDetail: provider.onChainDetail,
+      dbOutcomes: () => lightClient.status().db,
+      onDbOutcome: listener =>
+        lightClient.subscribe(change => {
+          if (change.kind === 'db') {
+            listener(change.chain, change.outcome);
+          }
+        }),
+      netBytes: listener => reportNetBytes(chainBytesReceived, listener, intervalTicker(NET_BYTES_INTERVAL_MS)),
+      // This frame's light client is its own, so each database read is this tab's.
+      joinedSynced: () => false,
+    }),
+  );
 
   const engine = createEngine({
     pool: service.pool,
@@ -304,8 +270,8 @@ async function initDirectMode(): Promise<void> {
   });
 
   // The iframe serves its one parent, so one scope holds every connection.
-  router.setRoute('chain', engine.openScope().handleRequest);
-  signalParent('ready');
+  serveEngineScope(served, engine);
+  frameStatus.ready();
 
   window.addEventListener('beforeunload', () => {
     engine.cleanup();
@@ -318,17 +284,15 @@ async function initRpcMode(): Promise<void> {
   const engine = createEngine(openGatewayChains());
 
   // The iframe serves its one parent, so one scope holds every connection.
-  router.setRoute('chain', engine.openScope().handleRequest);
-  signalParent('ready');
+  serveEngineScope(served, engine);
+  frameStatus.ready();
 
   window.addEventListener('beforeunload', () => {
     engine.cleanup();
   });
 }
 
-signalParent('listening');
-
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);
-  signalError(serializeError(err));
+  frameStatus.fail(new ProtocolInitFailedError(serializeError(err), { cause: err }));
 });
