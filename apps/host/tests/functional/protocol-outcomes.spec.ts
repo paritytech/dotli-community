@@ -37,7 +37,9 @@ test('As a user on a per-tab light client that cannot start, I see the crash the
 
   // Then
   const status = await waitForProtocolMessage(page, { method: 'frameStatus', leg: 'end' }, 15_000);
-  expect(status.body).toMatchObject({ error: { message: expect.stringContaining('connection failed') } });
+  expect(status.body).toMatchObject({
+    error: { name: 'ProtocolFatalError', message: expect.stringContaining('connection failed') },
+  });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
 });
@@ -55,7 +57,9 @@ test('As a user on a shared light client that cannot start, I see the crash the 
 
   // Then
   const status = await waitForProtocolMessage(page, { method: 'frameStatus', leg: 'end' }, 15_000);
-  expect(status.body).toMatchObject({ error: { message: expect.stringContaining('connection failed') } });
+  expect(status.body).toMatchObject({
+    error: { name: 'ProtocolFatalError', message: expect.stringContaining('connection failed') },
+  });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
 });
