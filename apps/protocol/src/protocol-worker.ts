@@ -27,7 +27,7 @@ import { errorName, log, serializeError } from '@dotli/shared';
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
 import { createFrameStatus } from './frame-status.js';
 import { startLightClientService } from './light-client-service.js';
-import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes, type Ticker } from './net-bytes.js';
+import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
 import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
@@ -141,8 +141,11 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     status.fail(phase.error);
   }
   const stopHeartbeat = (deps.heartbeat ?? intervalClock(HEARTBEAT_INTERVAL_MS)).start(beat);
-  // Only this worker can meter the light client every tab shares, so every tab hears its total.
-  const netBytes = deps.netBytes;
+  // Only this worker can meter the light client every tab shares, so every tab hears its total from one meter.
+  const netBytes =
+    deps.netBytes === undefined
+      ? null
+      : shareNetBytes(deps.netBytes.read, deps.netBytes.ticker ?? intervalTicker(NET_BYTES_INTERVAL_MS));
   const telemetry = createTelemetryHandler({
     onChainSync: resolver.onChainSync,
     onChainDetail: resolver.onChainDetail,
@@ -153,10 +156,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
           listener(change.chain, change.outcome);
         }
       }),
-    netBytes: listener =>
-      netBytes === undefined
-        ? (): void => undefined
-        : reportNetBytes(netBytes.read, listener, netBytes.ticker ?? intervalTicker(NET_BYTES_INTERVAL_MS)),
+    netBytes: listener => (netBytes === null ? (): void => undefined : netBytes(listener)),
     // A tab that subscribes once the chains are synced paid no sync cost, so the reads before it are hits.
     joinedSynced: () => phase.name === 'ready',
   });

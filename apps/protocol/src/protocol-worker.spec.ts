@@ -224,6 +224,8 @@ interface Worker {
   beating: () => boolean;
   /** One byte-report interval passes for every running report. */
   tickNetBytes: () => void;
+  /** How many byte-report tickers run. */
+  netBytesTickers: () => number;
   close: Mock<() => void>;
   closed: Promise<void>;
   /** Settles one timer turn after the worker closes, so a second close scheduled alongside the first has run too. */
@@ -407,6 +409,7 @@ async function bootWorker(
         tick();
       }
     },
+    netBytesTickers: () => ticks.size,
     close,
     closed: closing.promise,
     closedOnce: closing.promise.then(afterQueuedTimers),
@@ -1060,6 +1063,34 @@ describe('protocol SharedWorker', () => {
       { tag: 'netBytes', value: 1_000 },
       { tag: 'netBytes', value: 4_000 },
     ]);
+  });
+
+  it('As a dotli user with many tabs on the shared light client, every tab hears the byte total from one meter', async () => {
+    // Given two tabs hearing telemetry on a worker that reports bytes
+    let total = 1_000;
+    const worker = await bootWorker(fakeLightClient(), undefined, undefined, () => total);
+    const first = worker.connect();
+    const second = worker.connect();
+    const heardFirst = record(first.transport, 'telemetry', undefined);
+    const heardSecond = record(second.transport, 'telemetry', undefined);
+    await Promise.all([heardFirst.until(1), heardSecond.until(1)]);
+
+    // When the next report interval passes
+    total = 4_000;
+    worker.tickNetBytes();
+    await Promise.all([heardFirst.until(2), heardSecond.until(2)]);
+
+    // Then one ticker served both tabs
+    expect(worker.netBytesTickers()).toBe(1);
+    expect(heardSecond.events.slice(-1)).toEqual([{ tag: 'netBytes', value: 4_000 }]);
+
+    // When both tabs stop listening, with a round trip after
+    heardFirst.unsubscribe();
+    heardSecond.unsubscribe();
+    await Promise.all([first, second].map(tab => tab.transport.request('heartbeat', undefined)));
+
+    // Then the ticker stopped
+    expect(worker.netBytesTickers()).toBe(0);
   });
 
   it("As a dotli user on the shared light client, I hear no byte reports after the worker's light client dies", async () => {

@@ -43,7 +43,7 @@ import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { serveLocalWallet } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createOriginRefusalReporter, createRefusalReporter, reportRefusals } from './refusal-report.js';
-import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes } from './net-bytes.js';
+import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
 import { createFrameStatus } from './frame-status.js';
 import { createDeferredSubscription } from './deferred-subscription.js';
 import { createTelemetryHandler, idleTelemetry } from './telemetry-handler.js';
@@ -256,7 +256,7 @@ async function initDirectMode(): Promise<void> {
             listener(change.chain, change.outcome);
           }
         }),
-      netBytes: listener => reportNetBytes(chainBytesReceived, listener, intervalTicker(NET_BYTES_INTERVAL_MS)),
+      netBytes: shareNetBytes(chainBytesReceived, intervalTicker(NET_BYTES_INTERVAL_MS)),
       // This frame's light client is its own, so each database read is this tab's.
       joinedSynced: () => false,
     }),
