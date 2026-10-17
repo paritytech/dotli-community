@@ -20,6 +20,8 @@ export class SandboxSilentError extends Error {
 export interface SandboxWatch {
   /** Settles once the sandbox has spoken, or rejects with `SandboxSilentError` when it stays silent for `ms` from now. */
   expectWithin: (ms?: number) => Promise<void>;
+  /** Stops listening, for a load that ended before it set the deadline. */
+  stop: () => void;
 }
 
 /**
@@ -43,5 +45,8 @@ export function watchSandbox(onHeard: (listener: () => void) => () => void, time
         stop();
         throw error;
       }),
+    stop: () => {
+      stop();
+    },
   };
 }

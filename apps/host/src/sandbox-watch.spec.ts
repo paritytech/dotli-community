@@ -70,4 +70,16 @@ describe('watchSandbox', () => {
     expect(await settled).toBeInstanceOf(SandboxSilentError);
     expect(messages.listening()).toBe(0);
   });
+
+  it('As a visitor whose load ended before the deadline was set, nothing is left listening to the app frame', () => {
+    // Given
+    const messages = sandboxMessages();
+    const watch = watchSandbox(messages.onHeard, manualTimers());
+
+    // When
+    watch.stop();
+
+    // Then
+    expect(messages.listening()).toBe(0);
+  });
 });

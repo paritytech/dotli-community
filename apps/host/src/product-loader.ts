@@ -32,6 +32,14 @@ import { startShieldAutoHide } from './shield-autohide.js';
 import { setVerificationShieldState, showProductPill, type ShieldState } from './state/url-pill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js';
 
+/** Ends the load from inside its render, once a failure the render heard was reported and shown. */
+class LoadEndedError extends Error {
+  constructor() {
+    super('The load ended during its render');
+    this.name = 'LoadEndedError';
+  }
+}
+
 /** The sandbox's one report on the content it was handed. */
 export type ContentOutcome = 'loaded' | 'failed';
 
@@ -176,12 +184,8 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
   };
 
   let resolveFailed = false;
-  /** Reports the failure and shows its screen, once per load. Throws what the screen threw. */
+  /** Reports the failure and shows its screen. Throws what the screen threw. */
   const failLoad = (err: unknown): void => {
-    // A failure the render heard ended the load already, and what the render then threw adds nothing.
-    if (resolveFailed) {
-      return;
-    }
     resolveFailed = true;
     // One verdict drives both the report and the error page, so `error_kind` counts exactly the screens shown.
     const error = describeError(err, backend !== 'rpc-gateway');
@@ -253,10 +257,6 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     settleOnContent();
     const sandbox = watchSandbox(frame.onSandboxHeard);
     await frame.render({ mode: 'subdomain', label, cid, base: options.base, chat, ...manifestFacts(manifests) });
-    // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
-    void sandbox.expectWithin().catch((err: unknown) => {
-      failAfterHandoff(err, 'a silent sandbox');
-    });
     // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
     // the app would sit there with no chain or store, so the reload screen replaces it.
     options.onProtocolVersionMismatch(err => {
@@ -264,8 +264,13 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     });
     // A refusal during the render was heard just now and ended the load, so nothing after the render runs.
     if (resolveFailed) {
-      throw new Error('The load ended during its render');
+      sandbox.stop();
+      throw new LoadEndedError();
     }
+    // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
+    void sandbox.expectWithin().catch((err: unknown) => {
+      failAfterHandoff(err, 'a silent sandbox');
+    });
   };
   const rendered = (manifests: ProductManifests): void => {
     options.failureScreen.forget();
@@ -427,6 +432,9 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     ready('slow');
   } catch (err) {
     performance.mark('dotli:main:end');
+    if (err instanceof LoadEndedError) {
+      return;
+    }
     failLoad(err);
   }
 }

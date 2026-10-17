@@ -40,30 +40,50 @@ function workerManifest(
 }
 
 /** The resolution span's attributes as the trace sets them, through a Sentry bound until `restore`. */
-function recordResolution(): { root: () => Record<string, unknown> | undefined; restore: () => void } {
+function recordResolution(): {
+  root: () => Record<string, unknown> | undefined;
+  /** How many times a resolution span ended. */
+  ends: () => number;
+  /** Each distribution recorded, as its name and attributes. */
+  distributions: { name: string; attributes: Record<string, string> | undefined }[];
+  restore: () => void;
+} {
   const roots: Record<string, unknown>[] = [];
+  const distributions: { name: string; attributes: Record<string, string> | undefined }[] = [];
+  let ends = 0;
   const inert = (): void => undefined;
   const sentry: unknown = {
     startInactiveSpan: (opts: { name: string; attributes?: Record<string, unknown> }) => {
       const attributes: Record<string, unknown> = { ...opts.attributes };
-      if (opts.name === 'dotli.resolution') {
+      const root = opts.name === 'dotli.resolution';
+      if (root) {
         roots.push(attributes);
       }
       return {
         setAttributes: (next: Record<string, unknown>) => {
           Object.assign(attributes, next);
         },
-        end: inert,
+        end: () => {
+          if (root) {
+            ends += 1;
+          }
+        },
       };
     },
     startSpan: <T>(_opts: unknown, fn: (span: undefined) => T): T => fn(undefined),
     setMeasurement: inert,
-    metrics: { count: inert, distribution: inert, gauge: inert },
+    metrics: {
+      count: inert,
+      distribution: (name: string, _value: number, opts?: { attributes?: Record<string, string> }) => {
+        distributions.push({ name, attributes: opts?.attributes });
+      },
+      gauge: inert,
+    },
     setTag: inert,
     addBreadcrumb: inert,
   };
   const restore = m.bind(sentry as Parameters<typeof m.bind>[0]);
-  return { root: () => roots.at(-1), restore };
+  return { root: () => roots.at(-1), ends: () => ends, distributions, restore };
 }
 
 interface Options {
@@ -91,6 +111,7 @@ function harness(options: Options = {}) {
   const recorded: string[] = [];
   let forgotten = 0;
   const mismatchListeners: ((error: ProtocolVersionMismatchError) => void)[] = [];
+  const sandboxListeners = new Set<() => void>();
   const published = options.published ?? {};
   const names: NameSource = {
     resolveProduct: vi.fn((label: string, onPhase?: (phase: ResolvePhase) => void) => {
@@ -111,10 +132,13 @@ function harness(options: Options = {}) {
     },
     onContentProgress: () => () => undefined,
     onSandboxHeard: listener => {
+      sandboxListeners.add(listener);
       if (options.silentSandbox !== true) {
         queueMicrotask(listener);
       }
-      return () => undefined;
+      return () => {
+        sandboxListeners.delete(listener);
+      };
     },
   } satisfies LoaderFrame;
   const cidCache = {
@@ -170,6 +194,8 @@ function harness(options: Options = {}) {
     revalidated,
     recorded,
     forgotten: () => forgotten,
+    /** How many listeners still hear the sandbox. */
+    sandboxListening: () => sandboxListeners.size,
     /** A protocol frame rebuilt from a newer release refusing this page's wire. */
     refuseWire: (error: ProtocolVersionMismatchError) => {
       for (const listener of mismatchListeners.splice(0)) {
@@ -189,6 +215,7 @@ describe('createProductLoader', () => {
   const debug: DotliDebugEvent[] = [];
   const undo: (() => void)[] = [];
   let resolution: () => Record<string, unknown> | undefined;
+  let recorded: ReturnType<typeof recordResolution>;
 
   const events = (): string[] => debug.map(event => `${event.layer}:${event.event}`);
 
@@ -212,9 +239,9 @@ describe('createProductLoader', () => {
         expected: () => undefined,
       }),
     );
-    const recorder = recordResolution();
-    undo.push(recorder.restore);
-    resolution = recorder.root;
+    recorded = recordResolution();
+    undo.push(recorded.restore);
+    resolution = recorded.root;
   });
 
   afterEach(() => {
@@ -439,9 +466,18 @@ describe('createProductLoader', () => {
     'As a visitor whose protocol frame refused this page during the render %s, I see the reload screen and the load ends there',
     async (_path, given) => {
       // Given
-      const { loader, frame, failures, recorded, forgotten, reportContent } = harness({
+      const {
+        loader,
+        frame,
+        failures,
+        recorded: recents,
+        forgotten,
+        sandboxListening,
+        reportContent,
+      } = harness({
         published: { doom: 'bafy-base' },
         latchedMismatch: new ProtocolVersionMismatchError('the frame speaks a newer wire'),
+        silentSandbox: true,
         ...given,
       });
 
@@ -453,9 +489,16 @@ describe('createProductLoader', () => {
       expect(failures.map(failure => failure.error.kind)).toEqual(['protocol-version-mismatch']);
       expect(frame.halt).toHaveBeenCalledTimes(1);
       expect(forgotten()).toBe(0);
-      expect(recorded).toEqual([]);
+      expect(recents).toEqual([]);
       expect(events()).not.toContain('boot:ready');
       expect(resolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
+      expect(recorded.ends()).toBe(1);
+      expect(
+        recorded.distributions.filter(
+          metric => metric.name === 'dotli.e2e.slow_path' && metric.attributes?.['outcome'] === 'ok',
+        ),
+      ).toEqual([]);
+      expect(sandboxListening()).toBe(0);
     },
   );
 
