@@ -40,6 +40,8 @@ interface FakeWorker {
   holdHeartbeats: () => void;
   /** Fails every heartbeat held so far. */
   failHeld: (error: Error) => void;
+  /** Settles once the tab's status subscription reached the worker. */
+  statusHeard: Promise<void>;
   /** Settles once the tab's status subscription on the worker stops. */
   statusStopped: Promise<void>;
   serving: ServingTransport;
@@ -63,7 +65,9 @@ function fakeWorker(): FakeWorker {
   const serving = createServingTransport(createPortProvider(channel.port1), { side: 'worker', count: () => 0 });
   const status = createFrameStatus();
   const stopped = deferred<undefined>();
+  const statusHeard = deferred<undefined>();
   serving.handleSubscription('frameStatus', (payload, context, sink) => {
+    statusHeard.resolve(undefined);
     const stop = status.handler(payload, context, sink);
     return () => {
       stop();
@@ -115,6 +119,7 @@ function fakeWorker(): FakeWorker {
     failHeld: error => {
       held.reject(error);
     },
+    statusHeard: statusHeard.promise,
     statusStopped: stopped.promise,
     serving,
     failToStart: message => {
@@ -240,6 +245,7 @@ describe('connectSharedWorker', () => {
         status.onEnd(handed.resolve);
       },
     }).catch((err: unknown) => err);
+    await worker.statusHeard;
 
     // When
     await timers.advance(READY_TIMEOUT_MS);
