@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A subscription the host holds on the frame for as long as it listens. The frame ends one only when it fails, so an
-// end on a frame that stays up is reported and the feed reopened on the same transport. The frame's loss ends it for
-// good, since whoever follows the frame opens the feed on the next one.
+// end on a frame that stays up through the wait that follows is reported and the feed reopened on the same transport.
+// The frame's loss ends it for good, since whoever follows the frame opens the feed on the next one.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, errorName, log, named, type Timers } from '@dotli/shared';
@@ -51,14 +51,21 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
       const run = new AbortController();
       held = run;
       const since = frame.losses();
-      const lost = (): boolean => frame.losses() !== since;
+      // Judged at the next attempt, once the wait gave the frame time to count a loss that ended the feed. A failed
+      // handshake or a dead SharedWorker ends the feed before the frame counts its loss.
+      let ended: Error | null = null;
       reopens
         .call(
           () =>
             new Promise<void>((resolve, reject) => {
-              if (lost()) {
+              // The loss is reported where the frame was dropped.
+              if (frame.losses() !== since) {
                 resolve();
                 return;
+              }
+              if (ended !== null) {
+                reportEnd(feed, ended);
+                ended = null;
               }
               const subscription = open();
               const onStop = (): void => {
@@ -68,14 +75,8 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
               run.signal.addEventListener('abort', onStop, { once: true });
               subscription.onEnd(error => {
                 run.signal.removeEventListener('abort', onStop);
-                // The loss is reported where the frame was dropped.
-                if (lost()) {
-                  resolve();
-                  return;
-                }
-                const reason = error ?? named(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
-                reportEnd(feed, reason);
-                reject(reason);
+                ended = error ?? named(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
+                reject(ended);
               });
             }),
           { signal: run.signal },

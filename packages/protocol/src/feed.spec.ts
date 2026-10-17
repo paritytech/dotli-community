@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { spans as S } from '@dotli/metrics';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { createFeedKeeper } from './feed.js';
@@ -52,12 +54,12 @@ describe('createFeedKeeper', () => {
     keeper.hold(open);
     const waits: number[] = [];
 
-    // When the frame ends each reopened feed at once
+    // When the frame ends each reopened feed at once, waiting at most one step past the cap for each reopen
     for (let ended = 0; ended < 7; ended++) {
       const before = opened.length;
       opened.at(-1)?.end(null);
       let waited = 0;
-      while (opened.length === before) {
+      while (opened.length === before && waited <= 30_000) {
         await timers.advance(1_000);
         waited += 1_000;
       }
@@ -87,19 +89,55 @@ describe('createFeedKeeper', () => {
     expect(opened[2]?.unsubscribed).toBe(false);
   });
 
-  it('As the host, a feed that ends once its frame is lost is neither reopened nor kept waiting', async () => {
-    // Given
-    let losses = 0;
-    const keeper = createFeedKeeper('telemetry', { losses: () => losses }, timers);
-    keeper.hold(open);
+  it.each([
+    ['the frame counts its loss before the feed ends', 'loss first'],
+    ['the feed ends before the frame counts its loss', 'end first'],
+  ] as const)(
+    'As the host, a feed ended by the loss of its frame is neither reported nor reopened when %s',
+    async (_order, order) => {
+      // Given
+      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+      const captured = recordCaptures({ onFinished: onTestFinished });
+      let losses = 0;
+      const keeper = createFeedKeeper('telemetry', { losses: () => losses }, timers);
+      keeper.hold(open);
 
-    // When
-    losses += 1;
-    opened[0]?.end(new Error('frame lost'));
-    await timers.advance(30_000);
+      // When
+      if (order === 'loss first') {
+        losses += 1;
+        opened[0]?.end(new Error('frame lost'));
+      } else {
+        opened[0]?.end(new Error('handshake refused'));
+        await timers.advance(0);
+        losses += 1;
+      }
+      await timers.advance(30_000);
+
+      // Then
+      expect(opened).toHaveLength(1);
+      expect(timers.pending()).toBe(0);
+      expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+      expect(captured).toEqual([]);
+    },
+  );
+
+  it('As the host, a feed the frame ended while it stayed up is reported once the wait shows the frame still up', async () => {
+    // Given a feed the frame ended
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);
+    keeper.hold(open);
+    opened[0]?.end(new TypeError('relay broke'));
+
+    // When the wait before the reopen passes
+    await timers.advance(999);
+    const countedDuringWait = metrics.counted(S.PROTOCOL_FEED_END).length;
+    await timers.advance(1);
 
     // Then
-    expect(opened).toHaveLength(1);
-    expect(timers.pending()).toBe(0);
+    expect(countedDuringWait).toBe(0);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([
+      { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
+    ]);
+    expect(opened).toHaveLength(2);
   });
 });

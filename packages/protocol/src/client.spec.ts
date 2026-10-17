@@ -257,6 +257,23 @@ describe('protocol iframe listening handshake', () => {
     expect(iframe.isConnected).toBe(false);
   });
 
+  it('As a returning user whose protocol iframe never answers its handshake, the loss is counted by the frame and no feed end is reported', async () => {
+    // Given a frame whose handshake goes unanswered, with my shared auth followed and its telemetry heard
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    host.client.subscribeSharedAuthStorage(() => undefined);
+    void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
+
+    // When the handshake times out, which ends both feeds before the frame counts its loss, and the first wait passes
+    await timers.advance(5_000);
+    await timers.advance(1_000);
+
+    // Then
+    expect(sentry.counted(S.PROTOCOL_IFRAME_READY)).toContainEqual(
+      expect.objectContaining({ outcome: 'error', reason: 'ProtocolHandshakeTimeoutError' }),
+    );
+    expect(sentry.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+  });
+
   it('As a returning user, I read my shared session and it goes out as soon as the iframe listens, before it is ready', async () => {
     // Given
     const read = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
