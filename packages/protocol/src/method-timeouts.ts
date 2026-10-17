@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Kept out of the client, which imports the config barrel, so the Playwright suite can read a budget from Node, where
-// that barrel cannot load.
+// How long the host waits on each method before it gives up.
 
 import type { RequestMethod, SubscriptionMethod } from './methods.js';
 

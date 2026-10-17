@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Builds the protocol's test entry into one classic script, which the fake protocol frame and the message recorder
-// load in a page, so both speak the real wire. UMD, not IIFE: Playwright runs an init script inside a function, where
-// an IIFE's top-level `var` stays local, and UMD assigns its global on `globalThis`.
+// load in a page, so both speak the real wire. UMD, not IIFE: Playwright wraps an init script in a function, which
+// keeps a top-level `var` local to it, and UMD assigns its global on `globalThis`.
 
 import { resolve } from 'node:path';
 import { build } from 'vite';

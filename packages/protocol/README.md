@@ -33,7 +33,7 @@ flowchart TB
   sent as a transferred `ArrayBuffer`. Codecs, the table and the framing never leave the package, so callers see only
   typed requests and subscriptions.
 - Every integer goes through a codec that throws on a value it cannot carry exactly, and a message that is truncated,
-  has trailing bytes or names an unknown variant fails to decode.
+  has trailing bytes, names an unknown variant or holds an option or bool byte other than 0 or 1 fails to decode.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
   and owns one provider and one transport per iframe. It rebuilds itself when lost, after a backoff that grows while
   rebuilds keep failing, and a request while it is down boots one at once. Boot is deduped with a task pool. It is
@@ -72,10 +72,11 @@ flowchart TB
 
 ### Refused messages
 
-A message that cannot be decoded, or fails a check of its method, is dropped and counted once with its reason
-(malformed, invalid or not bytes). Data that is not an `ArrayBuffer` is counted only by the frame's provider facing its
-parent. These are ignored without a count: an answer for a call that is no longer waiting, an unsubscribe for a
-subscription that already ended, and a repeat handshake answer.
+A message that cannot be decoded, or fails a check of its method, is dropped and counted once with its reason (malformed
+or invalid). Data that is not an `ArrayBuffer` is dropped too. The frame's provider facing its parent counts it as not
+bytes, since only a host page of an earlier release sends it there, while the other providers drop it without a count.
+These are ignored without a count: an answer for a call that is no longer waiting, an unsubscribe for a subscription
+that already ended, and a repeat handshake answer.
 
 ### Shared store and chains
 
