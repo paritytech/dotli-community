@@ -17,7 +17,7 @@ import {
   errorResolveResponse,
   fatalOnResolve,
   initFailed,
-  mockProtocolIframe,
+  fakeProtocol,
   nullResolveResponse,
   successfulResolveResponse,
 } from './helpers/fake-protocol.js';
@@ -42,7 +42,7 @@ test('As a user using smoldot directly, when the light client panics mid-resolut
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -61,7 +61,7 @@ test("As a user using smoldot in shared worker, when the browser can't create a 
 }) => {
   // Given
   await setBackend(page, 'smoldot-shared-worker');
-  await mockProtocolIframe(page, initFailed('SharedWorker is not available in this browser'));
+  await fakeProtocol(page, initFailed('SharedWorker is not available in this browser'));
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -80,7 +80,7 @@ test('As a user using smoldot in shared worker, when the worker dies silently, I
 }) => {
   // Given
   await setBackend(page, 'smoldot-shared-worker');
-  await mockProtocolIframe(page, initFailed('SharedWorker did not signal ready within timeout'));
+  await fakeProtocol(page, initFailed('SharedWorker did not signal ready within timeout'));
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -99,7 +99,7 @@ test('As a user using smoldot directly, when the sync times out (>45s) I see the
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(
+  await fakeProtocol(
     page,
     errorResolveResponse(
       'Sync to Asset Hub Paseo timed out after 45s. Unable to reach peers.',
@@ -169,7 +169,7 @@ test('As a user using smoldot directly, when smoldot rejects the chain spec, I s
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, initFailed('Chain spec rejected: invalid checkpoint'));
+  await fakeProtocol(page, initFailed('Chain spec rejected: invalid checkpoint'));
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -188,7 +188,7 @@ test('As a user, when I visit a domain that has no content set, I see the approp
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, nullResolveResponse);
+  await fakeProtocol(page, nullResolveResponse);
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -205,7 +205,7 @@ test("As a user, when the domain's contenthash is unsupported or malformed, I se
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, errorResolveResponse('Failed to decode contenthash for example: bad codec'));
+  await fakeProtocol(page, errorResolveResponse('Failed to decode contenthash for example: bad codec'));
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -223,7 +223,7 @@ test('As a user, when the same failure survives a reload, the error page escalat
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
@@ -248,7 +248,7 @@ test('As a user, when the same failure survives a reload, the error page escalat
 test('As a user, after a resolution failure, clicking retry switches backend', async ({ page }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
@@ -280,7 +280,7 @@ test('As a user, after a resolution failure, I can refresh instead of switching 
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
@@ -310,7 +310,7 @@ for (const [label, backend] of [
   test(`As a user using ${label}, the host shell spawns no light client of its own`, async ({ page }) => {
     // Given
     await setBackend(page, backend);
-    await mockProtocolIframe(page, successfulResolveResponse('bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa'));
+    await fakeProtocol(page, successfulResolveResponse('bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa'));
     const workerUrls: string[] = [];
     page.on('worker', worker => {
       workerUrls.push(worker.url());
@@ -337,7 +337,7 @@ test('As a user who opens Settings from a failure before the topbar is ready, I 
 }) => {
   // Given: the topbar's actions island cannot hydrate until the test lets its chunk through
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
   let releaseIsland = (): void => undefined;
   const islandReleased = new Promise<void>(resolve => {
     releaseIsland = resolve;
@@ -362,7 +362,7 @@ test('As a user who opens Settings from a failure before the topbar is ready, I 
 test('As a user who opens Settings from a failure once the topbar is ready, I see Settings open', async ({ page }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
+  await fakeProtocol(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   const openSettings = page.getByTestId('error-page').getByRole('button', { name: OPEN_SETTINGS_BTN_LABEL });
   await expect(openSettings).toBeVisible({ timeout: 10_000 });
