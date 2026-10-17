@@ -242,7 +242,7 @@ describe('createWindowProvider', () => {
     const heard = vi.fn();
 
     // When
-    provider.subscribe(heard)();
+    provider.subscribe(heard);
     listen.dispatchEvent(messageFrom(frame, 'https://p.dot.li', new ArrayBuffer(1)));
 
     // Then
@@ -379,23 +379,21 @@ describe('createProviderPair', () => {
     expect(sibling).not.toHaveBeenCalled();
   });
 
-  it('As a test, a listener added after its side is disposed hears nothing, as on a real provider', async () => {
+  it('As a test, a message posted before its sender closes arrives, and nothing reaches a closed receiver', async () => {
     // Given
     const { left, right } = createProviderPair();
     const heard = vi.fn();
-    const before = vi.fn();
-    left.subscribe(before);
+    const arrived = new Promise<ArrayBuffer>(resolve => right.subscribe(resolve));
     right.post(new ArrayBuffer(1));
+    left.post(new ArrayBuffer(2));
 
     // When
     left.dispose();
     left.subscribe(heard);
-    right.post(new ArrayBuffer(2));
-    await Promise.resolve();
 
-    // Then
+    // Then left's message arriving means right's earlier one has already reached the closed left
+    expect((await arrived).byteLength).toBe(2);
     expect(heard).not.toHaveBeenCalled();
-    expect(before).not.toHaveBeenCalled();
   });
 
   it('As a test, I get bytes in order on a microtask', async () => {
