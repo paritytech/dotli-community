@@ -4,6 +4,7 @@
 // Whether this frame can serve chains and names, as the host hears it through its `frameStatus` subscription. A host
 // that subscribes late hears where the frame stands at once, so nothing said before it subscribed is lost.
 
+import { reportListener } from '@dotli/metrics';
 import type { SubscriptionHandler, SubscriptionSink } from '@dotli/protocol';
 
 type State = { name: 'booting' | 'ready' } | { name: 'failed'; error: Error };
@@ -16,9 +17,25 @@ export interface FrameStatus {
   handler: SubscriptionHandler<'frameStatus'>;
 }
 
-export function createFrameStatus(): FrameStatus {
+/** `report` hears a sink that throws, so each other host still hears the frame. Captured by default. */
+export function createFrameStatus(
+  report: (error: unknown) => void = reportListener('protocol', 'protocol.frame_status'),
+): FrameStatus {
   let state: State = { name: 'booting' };
   const sinks = new Set<SubscriptionSink<'frameStatus'>>();
+
+  const tell = (
+    sinksToTell: SubscriptionSink<'frameStatus'>[],
+    say: (sink: SubscriptionSink<'frameStatus'>) => void,
+  ) => {
+    for (const sink of sinksToTell) {
+      try {
+        say(sink);
+      } catch (error) {
+        report(error);
+      }
+    }
+  };
 
   return {
     ready() {
@@ -26,9 +43,9 @@ export function createFrameStatus(): FrameStatus {
         return;
       }
       state = { name: 'ready' };
-      for (const sink of [...sinks]) {
+      tell([...sinks], sink => {
         sink.send(undefined);
-      }
+      });
     },
 
     fail(error) {
@@ -38,9 +55,9 @@ export function createFrameStatus(): FrameStatus {
       state = { name: 'failed', error };
       const ending = [...sinks];
       sinks.clear();
-      for (const sink of ending) {
+      tell(ending, sink => {
         sink.end(error);
-      }
+      });
     },
 
     handler: (_payload, _context, sink) => {

@@ -75,4 +75,32 @@ describe('the frame status', () => {
     const late = record(link.host, 'frameStatus', undefined);
     expect(await late.ended).toMatchObject({ name: 'ProtocolFatalError' });
   });
+
+  it('As one of two hosts, I hear my frame fail even when the other host cannot be told, and the failure is reported', () => {
+    // Given a status whose first host cannot be told anything
+    const reported: unknown[] = [];
+    const status = createFrameStatus(error => reported.push(error));
+    const broken = new Error('port is gone');
+    const ends: (Error | undefined)[] = [];
+    const context = { origin: null, deadlineMs: null, resolutionId: null };
+    const throwing = {
+      send: () => {
+        throw broken;
+      },
+      end: () => {
+        throw broken;
+      },
+    };
+    status.handler(undefined, context, throwing);
+    status.handler(undefined, context, { send: () => undefined, end: error => ends.push(error) });
+    const fatal = new ProtocolFatalError('Light client died');
+
+    // When
+    status.ready();
+    status.fail(fatal);
+
+    // Then the second host hears the end, and each throw is reported
+    expect(ends).toEqual([fatal]);
+    expect(reported).toEqual([broken, broken]);
+  });
 });
