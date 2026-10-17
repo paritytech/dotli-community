@@ -2,47 +2,52 @@ import type { Provider } from './provider.js';
 
 type Listener = (data: ArrayBuffer) => void;
 
-/** Two connected providers that deliver on a microtask, in order, and detach each buffer like a browser transfer. */
+interface Side {
+  listeners: Set<Listener>;
+  disposed: boolean;
+}
+
+/**
+ * Two connected providers that deliver on a microtask, in order, and detach each buffer like a browser transfer. As a
+ * browser port does, a message posted before its sender closes still arrives, and nothing reaches a closed receiver.
+ */
 export function createProviderPair(): { left: Provider; right: Provider; delivered: ArrayBuffer[] } {
   const delivered: ArrayBuffer[] = [];
-  const leftListeners = new Set<Listener>();
-  const rightListeners = new Set<Listener>();
+  const leftSide: Side = { listeners: new Set(), disposed: false };
+  const rightSide: Side = { listeners: new Set(), disposed: false };
 
-  const createSide = (own: Set<Listener>, peer: Set<Listener>): Provider => {
-    let disposed = false;
-    return {
-      post(data) {
-        if (disposed) {
-          throw new Error('The provider is disposed');
+  const createSide = (own: Side, peer: Side): Provider => ({
+    post(data) {
+      if (own.disposed) {
+        throw new Error('The provider is disposed');
+      }
+      const moved = structuredClone(data, { transfer: [data] });
+      queueMicrotask(() => {
+        if (peer.disposed) {
+          return;
         }
-        const moved = structuredClone(data, { transfer: [data] });
-        queueMicrotask(() => {
-          if (disposed) {
-            return;
-          }
-          delivered.push(moved);
-          for (const listener of [...peer]) {
-            listener(moved);
-          }
-        });
-      },
-      subscribe(listener) {
-        own.add(listener);
-        return () => {
-          own.delete(listener);
-        };
-      },
-      peerOrigin: () => null,
-      dispose() {
-        disposed = true;
-        own.clear();
-      },
-    };
-  };
+        delivered.push(moved);
+        for (const listener of [...peer.listeners]) {
+          listener(moved);
+        }
+      });
+    },
+    subscribe(listener) {
+      own.listeners.add(listener);
+      return () => {
+        own.listeners.delete(listener);
+      };
+    },
+    peerOrigin: () => null,
+    dispose() {
+      own.disposed = true;
+      own.listeners.clear();
+    },
+  });
 
   return {
-    left: createSide(leftListeners, rightListeners),
-    right: createSide(rightListeners, leftListeners),
+    left: createSide(leftSide, rightSide),
+    right: createSide(rightSide, leftSide),
     delivered,
   };
 }

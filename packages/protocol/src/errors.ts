@@ -15,6 +15,30 @@ export class ProtocolInitFailedError extends Error {
   }
 }
 
+/** The peer speaks another wire version. Rebuilding cannot fix it, and a reload loads the matching build. */
+export class ProtocolVersionMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProtocolVersionMismatchError';
+  }
+}
+
+/** The peer never answered the handshake while the page was running. */
+export class ProtocolHandshakeTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProtocolHandshakeTimeoutError';
+  }
+}
+
+/** The SharedWorker let go of a tab's port, so everything open on it ended. */
+export class ProtocolPortReleasedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProtocolPortReleasedError';
+  }
+}
+
 /**
  * A protocol request that failed across the iframe boundary, or never came back.
  *

@@ -22,7 +22,9 @@ export type MetricOutcome =
   // Cache revalidation
   | 'match'
   | 'update'
-  | 'cleared';
+  | 'cleared'
+  // Protocol wire
+  | 'refused';
 
 /** Dashboards slice on the named keys, so keep new attributes within them. */
 export type MetricAttributes = {
