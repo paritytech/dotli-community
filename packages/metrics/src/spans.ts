@@ -109,6 +109,12 @@ export const LISTENER_DELIVERY = 'listener.delivery';
 export const PROTOCOL_REQUEST = 'protocol.request';
 
 /**
+ * A protocol message dropped on receipt. Tagged `outcome` (refused), `reason` (malformed, invalid or not_bytes) and
+ * `side` (host, frame or worker). Only the iframe's provider facing its parent counts `not_bytes`.
+ */
+export const PROTOCOL_WIRE_REFUSED = 'protocol.wire_refused';
+
+/**
  * One request as the SharedWorker served it, tagged with the asking tab's `resolution_id`.
  * Apart from `PROTOCOL_REQUEST` because it excludes the postMessage hops.
  */
