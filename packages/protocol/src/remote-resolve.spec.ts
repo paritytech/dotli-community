@@ -6,7 +6,7 @@ import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remote-resolve.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ServingTransport, SubscriptionHandler } from './transport.js';
+import type { ServingTransport, SubscriptionHandler } from './transport-serving.js';
 
 /** A frame app that resolves names with `handler`. */
 function resolving(handler: SubscriptionHandler<'resolveDotName'>): (serving: ServingTransport) => void {

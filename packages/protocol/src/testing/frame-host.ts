@@ -10,7 +10,7 @@
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { createWindowProvider, type WindowLike } from '../provider.js';
-import { createServingTransport, type ServingTransport, type SubscriptionSink } from '../transport.js';
+import { createServingTransport, type ServingTransport, type SubscriptionSink } from '../transport-serving.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
 

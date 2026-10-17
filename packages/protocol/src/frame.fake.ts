@@ -8,12 +8,8 @@
 
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createProviderPair } from './provider.fake.js';
-import {
-  createConsumerTransport,
-  createServingTransport,
-  type ConsumerTransport,
-  type ServingTransport,
-} from './transport.js';
+import { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
+import { createServingTransport, type ServingTransport } from './transport-serving.js';
 
 export interface FakeFrame {
   frame: ProtocolFrame;

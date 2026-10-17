@@ -9,7 +9,7 @@ import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
 import type { Answer, LocalWalletIdentity, SharedAuthChange } from './methods.js';
 import type { FrameRpc } from './rpc.js';
-import type { ConsumerTransport, Subscription } from './transport.js';
+import type { ConsumerTransport, Subscription } from './transport-consumer.js';
 
 export type SharedAuthStorageChange = SharedAuthChange;
 

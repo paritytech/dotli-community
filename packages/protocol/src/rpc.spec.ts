@@ -8,7 +8,7 @@ import { PROTOCOL_ERRORS } from './errors.js';
 import type { Answer } from './methods.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { CallContext, ServingTransport } from './transport.js';
+import type { CallContext, ServingTransport } from './transport-serving.js';
 
 const settle = async (): Promise<void> => {
   await vi.advanceTimersByTimeAsync(0);

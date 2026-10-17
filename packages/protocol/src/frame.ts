@@ -26,7 +26,7 @@ import {
 } from './errors.js';
 import { protocolListeners } from './listeners.js';
 import { createWindowProvider, type WindowLike } from './provider.js';
-import { createConsumerTransport, type ConsumerTransport } from './transport.js';
+import { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
 
 /**
  * Where the protocol frame stands. `idle` before anything asked for it. `booting` while it loads. `listening` once it

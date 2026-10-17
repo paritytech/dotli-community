@@ -11,7 +11,7 @@ import type { ProtocolFrame } from './frame.js';
 import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
 import { isRemoteChainConnectable } from './remote-chain-support.js';
 import { callTimeoutError, createRequestId, startCallTrail, type FrameRpc } from './rpc.js';
-import type { ConsumerTransport, Subscription } from './transport.js';
+import type { ConsumerTransport, Subscription } from './transport-consumer.js';
 
 // A timed method, so the default is never taken.
 const CONNECT_BUDGET_MS = budgetOf('chainConnect') ?? DEFAULT_TIMEOUT_MS;

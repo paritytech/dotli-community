@@ -7,7 +7,7 @@ import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import type { TelemetryEvent } from './methods.js';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ServingTransport, SubscriptionSink } from './transport.js';
+import type { ServingTransport, SubscriptionSink } from './transport-serving.js';
 
 /** A frame app that reports telemetry to each subscriber, keeping its sink. */
 function reporting(sinks: SubscriptionSink<'telemetry'>[]): (serving: ServingTransport) => void {

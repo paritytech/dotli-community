@@ -5,92 +5,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindLogSink } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
-import {
-  ProtocolHandshakeTimeoutError,
-  ProtocolPortReleasedError,
-  ProtocolRequestError,
-  ProtocolVersionMismatchError,
-} from './errors.js';
-import { WIRE_VERSION, type SubscriptionEvent } from './methods.js';
+import { ProtocolHandshakeTimeoutError, ProtocolRequestError, ProtocolVersionMismatchError } from './errors.js';
+import type { SubscriptionEvent } from './methods.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
-import { createConsumerTransport, createServingTransport, type SubscriptionSink } from './transport.js';
-import { decodeWireMessage, encodeWireMessage, type WireMessage } from './wire-message.js';
-
-const RETRY_MS = 50;
-const TIMEOUT_MS = 5_000;
-
-/** A consumer on the left and a serving transport on the right, over one in-memory channel. */
-function rig(options: { resolutionId?: string } = {}) {
-  const { left, right, delivered } = createProviderPair();
-  const timers = manualTimers();
-  const count = vi.fn();
-  const serving = createServingTransport(right, { side: 'frame', count });
-  const consumer = createConsumerTransport(left, {
-    side: 'host',
-    timers,
-    count,
-    retryMs: RETRY_MS,
-    timeoutMs: TIMEOUT_MS,
-    ...options,
-  });
-  return { consumer, serving, timers, count, delivered, left };
-}
-
-/** A peer the test speaks for, message by message, in place of a transport. */
-function rawPeer(provider: Provider) {
-  const heard: WireMessage[] = [];
-  provider.subscribe(data => {
-    const decoded = decodeWireMessage(data);
-    if (decoded.ok) {
-      heard.push(decoded.message);
-    }
-  });
-  return {
-    heard,
-    send: (message: WireMessage) => {
-      provider.post(encodeWireMessage(message));
-    },
-    legs: () => heard.map(message => `${message.leg}:${message.method}`),
-  };
-}
-
-/** A consumer facing a raw peer, which answers nothing until the test says so. */
-function rawRig() {
-  const { left, right } = createProviderPair();
-  const timers = manualTimers();
-  const count = vi.fn();
-  const peer = rawPeer(right);
-  const consumer = createConsumerTransport(left, {
-    side: 'host',
-    timers,
-    count,
-    retryMs: RETRY_MS,
-    timeoutMs: TIMEOUT_MS,
-  });
-  const answerHandshake = (): void => {
-    const hello = peer.heard.find(message => message.method === 'handshake');
-    if (hello === undefined) {
-      throw new Error('no handshake heard yet');
-    }
-    peer.send({ leg: 'response', id: hello.id, method: 'handshake', outcome: { ok: true, answer: undefined } });
-  };
-  return { consumer, timers, count, peer, left, right, answerHandshake };
-}
-
-function decodedLegs(delivered: ArrayBuffer[]): string[] {
-  return delivered.map(data => {
-    const decoded = decodeWireMessage(data);
-    return decoded.ok ? `${decoded.message.leg}:${decoded.message.method}` : 'refused';
-  });
-}
-
-async function outcomeOf(promise: Promise<unknown>): Promise<unknown> {
-  return promise.then(
-    value => ({ value }),
-    (error: unknown) => error,
-  );
-}
+import { RETRY_MS, TIMEOUT_MS, outcomeOf, rawRig, rig } from './testing/transport-rig.js';
+import { createConsumerTransport } from './transport-consumer.js';
+import type { SubscriptionSink } from './transport-serving.js';
+import type { WireMessage } from './wire-message.js';
 
 describe('createConsumerTransport', () => {
   it('As a caller, my calls made before the handshake go out in call order', async () => {
@@ -741,91 +663,5 @@ describe('createConsumerTransport', () => {
 
     // Then
     expect(peer.legs().filter(leg => leg.startsWith('unsubscribe'))).toEqual(['unsubscribe:telemetry']);
-  });
-});
-
-describe('createServingTransport', () => {
-  it('As the frame, I refuse a handshake of another wire version', async () => {
-    // Given
-    const { left, right } = createProviderPair();
-    const timers = manualTimers();
-    createServingTransport(right, { side: 'frame', count: vi.fn() });
-    const peer = rawPeer(left);
-
-    // When
-    peer.send({
-      leg: 'request',
-      id: 1,
-      method: 'handshake',
-      deadlineMs: null,
-      payload: { version: WIRE_VERSION + 1, resolutionId: null },
-    });
-    await timers.advance(0);
-
-    // Then
-    expect(peer.heard).toHaveLength(1);
-    expect(peer.heard[0]).toMatchObject({
-      leg: 'response',
-      id: 1,
-      method: 'handshake',
-      outcome: { ok: false, error: { name: 'ProtocolVersionMismatchError' } },
-    });
-  });
-
-  it("As a handler, I read the caller's deadline, origin and resolution id", async () => {
-    // Given
-    const { consumer, serving, timers } = rig({ resolutionId: 'r1' });
-    const handler = vi.fn(() => undefined);
-    serving.handleRequest('heartbeat', handler);
-    consumer.connect();
-
-    // When
-    const call = consumer.request('heartbeat', undefined, { deadlineMs: 1_234 });
-    await timers.advance(0);
-    await call;
-
-    // Then
-    expect(handler).toHaveBeenCalledExactlyOnceWith(undefined, {
-      origin: null,
-      deadlineMs: 1_234,
-      resolutionId: 'r1',
-    });
-  });
-
-  it('As the worker, disposing my serving transport ends each open subscription with the reason', async () => {
-    // Given
-    const { left, right, delivered } = createProviderPair();
-    const timers = manualTimers();
-    const serving = createServingTransport(right, { side: 'worker', count: vi.fn() });
-    const consumer = createConsumerTransport(left, { side: 'frame', timers, count: vi.fn() });
-    const stops = [vi.fn(), vi.fn()];
-    let started = 0;
-    serving.handleSubscription('chainConnect', () => {
-      const stop = stops[started];
-      started += 1;
-      return stop ?? (() => undefined);
-    });
-    consumer.connect();
-    const ends = [vi.fn(), vi.fn()];
-    for (const [index, onEnd] of ends.entries()) {
-      consumer
-        .subscribe('chainConnect', { genesisHash: '0x1', connectionId: `c${String(index)}` }, () => undefined)
-        .onEnd(onEnd);
-    }
-    await timers.advance(0);
-
-    // When
-    serving.dispose(new ProtocolPortReleasedError('the worker let this tab go'));
-    await timers.advance(0);
-
-    // Then
-    for (const stop of stops) {
-      expect(stop).toHaveBeenCalledOnce();
-    }
-    for (const onEnd of ends) {
-      expect(onEnd).toHaveBeenCalledOnce();
-      expect(onEnd.mock.calls[0]?.[0]).toMatchObject({ name: 'ProtocolPortReleasedError' });
-    }
-    expect(decodedLegs(delivered).filter(leg => leg === 'end:chainConnect')).toHaveLength(2);
   });
 });

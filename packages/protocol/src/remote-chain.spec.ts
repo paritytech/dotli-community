@@ -20,7 +20,7 @@ import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js'
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame, type FakeFrame } from './frame.fake.js';
 import { createFrameHost, FRAME_CONFIG, type FrameHost, type FrameStatusServer } from './testing/frame-host.js';
-import type { ServingTransport, SubscriptionSink } from './transport.js';
+import type { ServingTransport, SubscriptionSink } from './transport-serving.js';
 
 // The consumer transport posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;

@@ -10,7 +10,7 @@ import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import { budgetOf } from './method-timeouts.js';
 import type { Answer, RequestMethod, RequestPayload, SubscriptionMethod } from './methods.js';
-import type { ConsumerTransport } from './transport.js';
+import type { ConsumerTransport } from './transport-consumer.js';
 
 type CalledMethod = RequestMethod | SubscriptionMethod;
 

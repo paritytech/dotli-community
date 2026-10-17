@@ -7,7 +7,7 @@ import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } fr
 import { log } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { ConsumerTransport } from './transport.js';
+import type { ConsumerTransport } from './transport-consumer.js';
 
 /** A frame that is booting or up has a transport to hear. */
 function hasFrame(status: ProtocolStatus): boolean {

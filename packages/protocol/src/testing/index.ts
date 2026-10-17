@@ -8,7 +8,7 @@ import { toHex } from '@dotli/shared';
 import { decodeWireMessage } from '../wire-message.js';
 
 export { createWindowProvider } from '../provider.js';
-export { createServingTransport } from '../transport.js';
+export { createServingTransport } from '../transport-serving.js';
 
 export interface DescribedWireMessage {
   method: string;

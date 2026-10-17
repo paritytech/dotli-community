@@ -7,7 +7,7 @@ import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createSharedStore, type SharedAuthStorageChange, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ServingTransport, SubscriptionSink } from './transport.js';
+import type { ServingTransport, SubscriptionSink } from './transport-serving.js';
 
 /** A frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is subscribed. */
 function relayingChanges(sinks: Set<SubscriptionSink<'sharedAuthChanges'>>): (serving: ServingTransport) => void {

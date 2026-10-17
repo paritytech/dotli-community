@@ -44,13 +44,12 @@ export type {
   TelemetryEvent,
 } from './methods.js';
 export { createPortProvider, createWindowProvider } from './provider.js';
+export { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
 export {
-  createConsumerTransport,
   createServingTransport,
   type CallContext,
-  type ConsumerTransport,
   type RequestHandler,
   type ServingTransport,
   type SubscriptionHandler,
   type SubscriptionSink,
-} from './transport.js';
+} from './transport-serving.js';
