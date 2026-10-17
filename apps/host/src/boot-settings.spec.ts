@@ -234,6 +234,23 @@ describe('bootSettings', () => {
     ]);
   });
 
+  it('As a visitor whose shared settings change the frame, the shared store is written after the frame is rebuilt on them', async () => {
+    // Given the shared store on trusted providers, which this origin does not run yet
+    const boot = deps('', memoryStorage(), Promise.resolve({ backend: 'rpc-gateway', cache: null }));
+
+    // When
+    await bootSettings(boot);
+
+    // Then
+    expect(boot.configureFrame.mock.calls.map(([settings]) => settings.backend)).toEqual([
+      'smoldot-direct',
+      'rpc-gateway',
+    ]);
+    expect(boot.writeShared.mock.invocationCallOrder[0]).toBeGreaterThan(
+      boot.configureFrame.mock.invocationCallOrder[1] ?? Infinity,
+    );
+  });
+
   it('As a returning visitor whose link resets my settings, the shared store is written on the frame that answered it and the reset reloads without rebuilding it', async () => {
     // Given this origin on the per-tab light client, the shared store on trusted providers, and a link to another network
     const local = memoryStorage({ [BACKEND_KEY]: 'smoldot-direct', [NETWORK_KEY]: 'paseo-next-v2' });

@@ -66,6 +66,14 @@ export async function bootSettings(deps: SettingsBootDeps): Promise<Settings> {
   const { settings: next, sharedWorkerFallback } = resolveSettings({ ...sources, shared, url });
   setSettings(next);
   writeLocalSettings(next, deps.local);
+  // A fresh origin has nothing stale, and a link that matches the saved settings changes nothing. The other two
+  // origins purge themselves on their next boot. The frame keeps its config through the reset, since a rebuild would
+  // hold the shared store writes until it listens and the reload could drop them.
+  const reset = returning && !sameSettings(next, prior);
+  // Before the write, so it waits for the rebuilt frame. A write begun first fails when the frame is rebuilt under it.
+  if (!reset) {
+    deps.configureFrame(next);
+  }
   if (shared !== null) {
     deps.writeShared(sharedSettingsOf(next));
   }
@@ -83,14 +91,9 @@ export async function bootSettings(deps: SettingsBootDeps): Promise<Settings> {
     });
   }
 
-  // A fresh origin has nothing stale, and a link that matches the saved settings changes nothing. The other two
-  // origins purge themselves on their next boot. The frame keeps its config through the reset, since a rebuild would
-  // hold the shared store writes until it listens and the reload could drop them.
-  if (returning && !sameSettings(next, prior)) {
+  if (reset) {
     await deps.actions.applyAndReset(next, prior, { forceFullWipe: true });
-    return next;
   }
-  deps.configureFrame(next);
   return next;
 }
 

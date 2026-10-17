@@ -90,8 +90,14 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
     );
   });
 
+  // A request whose wait settled before a loss resumes after it, so each loss is kept for the requests not posted yet.
+  let losses = 0;
+  let lastLoss: Error | undefined;
+
   // The frame that would answer is gone, so a request left to its timer would only fail later.
   frame.onLost(error => {
+    losses += 1;
+    lastLoss = error;
     replies.rejectAll(() => error);
   });
 
@@ -99,7 +105,13 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
     async request(method, payload, onProgress) {
       const sharedStore =
         isSharedAuthRequestMethod(method) || isSharedModeRequestMethod(method) || isSharedWalletRequestMethod(method);
+      const since = losses;
       await frame.whenUp(sharedStore ? 'listening' : 'ready');
+      // The frame it waited for was dropped in the same turn, and the one replacing it would drop a message posted
+      // before its page loads.
+      if (losses !== since && lastLoss !== undefined) {
+        throw lastLoss;
+      }
 
       const id = createRequestId();
       const timeoutMs = UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);

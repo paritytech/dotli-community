@@ -221,6 +221,21 @@ describe('createFrameRpc', () => {
     expect(metrics.counts).toEqual([]);
   });
 
+  it('As a dotli integrator, a request whose frame is dropped in the turn its wait settles fails with why, and is never posted', async () => {
+    // Given a write whose wait for the frame has already settled
+    const fake = createFakeFrame();
+    const rpc = createFrameRpc(fake.frame);
+    const write = failure(rpc.request('modeStorageWrite', { siteId: 'dotli', key: 'k', value: 'v' }));
+
+    // When the frame is dropped before the write resumes
+    fake.lose(new Error(PROTOCOL_ERRORS.FRAME_RESET));
+
+    // Then
+    expect((await write).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
+    expect(fake.posted).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('As a dotli integrator, a request the frame never answers times out on its budget and is counted', async () => {
     // Given
     const fake = createFakeFrame();

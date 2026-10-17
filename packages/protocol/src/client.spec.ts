@@ -362,6 +362,28 @@ describe('protocol iframe listening handshake', () => {
     );
   });
 
+  it('As a returning user, I write a setting and change the frame config in the same turn, and the write fails at once instead of going to a frame that cannot hear it', async () => {
+    // Given a listening frame
+    vi.useFakeTimers();
+    void host.client.readSharedModeStorage(SITE_ID, 'backend').catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    host.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
+    await vi.advanceTimersByTimeAsync(0);
+    const settled: string[] = [];
+
+    // When
+    void host.client.writeSharedModeStorage(SITE_ID, 'backend', 'rpc-gateway').then(
+      () => settled.push('resolved'),
+      (err: unknown) => settled.push(err instanceof Error ? err.message : String(err)),
+    );
+    host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then
+    expect(settled).toEqual([PROTOCOL_ERRORS.FRAME_RESET]);
+    expect(host.iframe().contentWindow?.posted).toEqual([]);
+  });
+
   it('As a returning user whose protocol frame dies, I see the shared store report it down and rebuild it unasked', async () => {
     // Given: a frame that listens
     vi.useFakeTimers();
