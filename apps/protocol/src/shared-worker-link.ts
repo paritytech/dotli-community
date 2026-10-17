@@ -5,8 +5,13 @@
 // ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { createConsumerTransport, createPortProvider, type ConsumerTransport } from '@dotli/protocol';
-import { log, realTimers, withTimeout, type Timers } from '@dotli/shared';
+import {
+  createConsumerTransport,
+  createPortProvider,
+  ProtocolInitFailedError,
+  type ConsumerTransport,
+} from '@dotli/protocol';
+import { log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { disposeOnPageHide } from './worker-port.js';
@@ -33,19 +38,23 @@ export interface SharedWorkerLinkDeps {
 }
 
 /**
- * Answers each of the worker's beats with a heartbeat. The beat arrives as a message event, which a page hidden for
- * long still handles at once, while its own timers are throttled to about one a minute.
+ * Answers each of the worker's beats with a heartbeat until the worker's status ends, since a worker that stopped
+ * serving this tab has nothing left to keep. The beat arrives as a message event, which a page hidden for long still
+ * handles at once, while its own timers are throttled to about one a minute.
  */
-function answerBeats(transport: ConsumerTransport): void {
+function answerBeats(transport: ConsumerTransport, status: WorkerStatus): void {
   let answering = true;
+  const stop = (): void => {
+    answering = false;
+    beats.unsubscribe();
+  };
   const beats = transport.subscribe('beat', undefined, () => {
     void transport.request('heartbeat', undefined).catch((error: unknown) => {
       // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
       if (!answering) {
         return;
       }
-      answering = false;
-      beats.unsubscribe();
+      stop();
       captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
       log.error('[dot.li protocol] Worker heartbeat failed', error);
     });
@@ -53,6 +62,7 @@ function answerBeats(transport: ConsumerTransport): void {
   beats.onEnd(() => {
     answering = false;
   });
+  status.onEnd(stop);
 }
 
 /** Resolves with the transport to the worker once the worker says it is ready, and rejects with why it never will be. */
@@ -74,7 +84,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
   // Fires only when the worker script cannot be fetched or evaluated.
   worker.addEventListener('error', event => {
     const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
-    const error = new Error(`SharedWorker failed to start${detail}`);
+    const error = new ProtocolInitFailedError(`SharedWorker failed to start${detail}`);
     log.error('[dot.li protocol] SharedWorker error event', error);
     if (failReadyWait !== null) {
       // Fails now with the cause instead of at the ready timeout. The host reports the resulting failed init.
@@ -87,8 +97,6 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
 
   // Before the ready wait, so a frame removed while the worker syncs still frees its port at once.
   disposeOnPageHide(deps.window, transport, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
-  // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
-  answerBeats(transport);
 
   // Why the wait failed, for the metric. A timeout carries none.
   let reason: string | undefined;
@@ -109,6 +117,8 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
   const status = transport.subscribe('frameStatus', undefined, () => {
     resolveReady();
   });
+  // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
+  answerBeats(transport, status);
 
   // Before the ready wait hears the end, so a worker that fails while it syncs ends the caller's calls first, and the
   // frame fails with the worker's own error rather than the failed boot that follows from it.
@@ -132,7 +142,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
     ready,
     readyTimeoutMs,
     () => {
-      timedOut = new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);
+      timedOut = new ProtocolInitFailedError(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);
       return timedOut;
     },
     timers,
@@ -143,6 +153,9 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
     },
     (error: unknown) => {
       record(error === timedOut ? 'timeout' : 'error');
+      // Nothing uses a link whose wait failed, so its status subscription, its beats and every listener on them go.
+      // Whoever was handed the status hears the same error, which keeps its class for the host.
+      transport.dispose(toError(error));
       throw error;
     },
   );

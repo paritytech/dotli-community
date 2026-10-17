@@ -4,7 +4,8 @@
 // The worker is a serving transport on the far end of a real port pair, so the link speaks to it over the wire.
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
+import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
   createPortProvider,
   createServingTransport,
@@ -35,6 +36,10 @@ interface FakeWorker {
   beatTab: () => void;
   /** Makes each later heartbeat fail on the worker. */
   refuseHeartbeats: () => void;
+  /** Leaves each later heartbeat unanswered until `failHeld`. */
+  holdHeartbeats: () => void;
+  /** Fails every heartbeat held so far. */
+  failHeld: (error: Error) => void;
   /** Settles once the tab's status subscription on the worker stops. */
   statusStopped: Promise<void>;
   serving: ServingTransport;
@@ -68,6 +73,8 @@ function fakeWorker(): FakeWorker {
   const heartbeats: (string | null)[] = [];
   let beat = deferred<undefined>();
   let refusing = false;
+  let holding = false;
+  const held = deferred<undefined>();
   serving.handleRequest('heartbeat', (_payload, context) => {
     heartbeats.push(context.resolutionId);
     beat.resolve(undefined);
@@ -75,7 +82,7 @@ function fakeWorker(): FakeWorker {
     if (refusing) {
       throw new Error('heartbeat refused');
     }
-    return undefined;
+    return holding ? held.promise : undefined;
   });
   const beatSinks = new Set<SubscriptionSink<'beat'>>();
   const beatsHeard = deferred<undefined>();
@@ -101,6 +108,12 @@ function fakeWorker(): FakeWorker {
     },
     refuseHeartbeats: () => {
       refusing = true;
+    },
+    holdHeartbeats: () => {
+      holding = true;
+    },
+    failHeld: error => {
+      held.reject(error);
     },
     statusStopped: stopped.promise,
     serving,
@@ -216,17 +229,73 @@ describe('connectSharedWorker', () => {
     await expect(failed).resolves.toMatchObject({ name: 'ProtocolFatalError', message: 'wasm trap' });
   });
 
-  it('As a tab whose worker never says ready, my frame fails after the ready wait', async () => {
-    // Given
+  it('As a tab whose worker never says ready, my frame fails after the ready wait and lets go of the worker', async () => {
+    // Given a link whose status the frame was handed
     const timers = manualTimers();
     const worker = fakeWorker();
-    const linked = link(worker, { timers }).catch((err: unknown) => err);
+    const handed = deferred<Error | null>();
+    const linked = link(worker, {
+      timers,
+      onOpen: (_transport, status) => {
+        status.onEnd(handed.resolve);
+      },
+    }).catch((err: unknown) => err);
 
     // When
     await timers.advance(READY_TIMEOUT_MS);
 
+    // Then the link fails as a failed init, the frame hears the same, and the worker hears the status subscription stop
+    const timeout = { name: 'ProtocolInitFailedError', message: PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT };
+    await expect(linked).resolves.toMatchObject(timeout);
+    await expect(handed.promise).resolves.toMatchObject(timeout);
+    await worker.statusStopped;
+  });
+
+  it.each([
+    {
+      case: 'is ready',
+      outcome: { outcome: 'ok' },
+      act: (worker: FakeWorker): Promise<void> => {
+        worker.status.ready();
+        return Promise.resolve();
+      },
+    },
+    {
+      case: 'never says ready',
+      outcome: { outcome: 'timeout' },
+      act: (_worker: FakeWorker, timers: ManualTimers): Promise<void> => timers.advance(READY_TIMEOUT_MS),
+    },
+    {
+      case: 'reports a failure',
+      outcome: { outcome: 'error', reason: 'worker_reported' },
+      act: (worker: FakeWorker): Promise<void> => {
+        worker.status.fail(new ProtocolInitFailedError('chainHead follow stopped'));
+        return Promise.resolve();
+      },
+    },
+    {
+      case: 'fails to load',
+      outcome: { outcome: 'error', reason: 'load_failed' },
+      act: (worker: FakeWorker): Promise<void> => {
+        worker.failToStart('script error');
+        return Promise.resolve();
+      },
+    },
+  ])('As a dotli operator, I see the ready wait of a worker that $case timed under its outcome', async row => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const timers = manualTimers();
+    const worker = fakeWorker();
+    const linked = link(worker, { timers }).catch(() => undefined);
+
+    // When
+    await row.act(worker, timers);
+    await linked;
+
     // Then
-    await expect(linked).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT });
+    expect(metrics.distributions.filter(d => d.name === `dotli.${S.PROTOCOL_SW_READY}`).map(d => d.attributes)).toEqual(
+      [row.outcome],
+    );
   });
 
   it('As a dotli maintainer, a SharedWorker that fails after it was ready is reported, since nothing waits on it', async () => {
@@ -334,5 +403,40 @@ describe('connectSharedWorker', () => {
     // Then its transport is closed, and the worker heard its subscription end
     await expect(transport.request('heartbeat', undefined)).rejects.toThrow(PROTOCOL_APP_ERRORS.PORT_CLOSED);
     await worker.statusStopped;
+  });
+
+  it('As a tab whose worker stopped serving it, I stop answering its beats and a heartbeat it then fails is not reported', async () => {
+    // Given a ready tab whose last heartbeat the worker holds
+    const exceptions: string[] = [];
+    onTestFinished(
+      bindCaptureSink({
+        exception: (_err, ctx) => {
+          exceptions.push(ctx.step);
+        },
+        expected: () => undefined,
+      }),
+    );
+    const worker = fakeWorker();
+    const linked = link(worker);
+    worker.status.ready();
+    const transport = await linked;
+    await worker.beatsHeard;
+    worker.holdHeartbeats();
+    const asked = worker.nextHeartbeat();
+    worker.beatTab();
+    await asked;
+
+    // When the worker ends my status, fails the held heartbeat and beats again, with round trips after each
+    worker.status.fail(new ProtocolFatalError('wasm trap'));
+    await transport.request('warmup', undefined).catch(() => undefined);
+    worker.failHeld(new Error('heartbeat dropped'));
+    await transport.request('warmup', undefined).catch(() => undefined);
+    worker.beatTab();
+    await transport.request('warmup', undefined).catch(() => undefined);
+    await transport.request('warmup', undefined).catch(() => undefined);
+
+    // Then the later beat went unanswered, and the failed heartbeat was not captured
+    expect(worker.heartbeats).toHaveLength(1);
+    expect(exceptions).toEqual([]);
   });
 });
