@@ -137,7 +137,7 @@ unsubscribe for a subscription that already ended, and a repeat handshake answer
 - Transport, for the frame app: `createConsumerTransport`, `createServingTransport` (with `onPeerIdle`),
   `ConsumerTransport`, `ServingTransport`, `CallContext`, `RequestHandler`, `SubscriptionHandler`, `SubscriptionSink`.
 - Providers: `createWindowProvider` (with `onNotBytes` and `onRefusedOrigin` for what it drops), `createPortProvider`.
-- Method names and their types: `RequestMethod`, `SubscriptionMethod`, `RequestPayload`, `SubscribePayload`, `Answer`,
+- Method names and their types: `RequestMethod`, `SubscriptionMethod`, `SubscribePayload`, `Answer`,
   `SubscriptionEvent`, `TelemetryEvent`.
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.

@@ -37,7 +37,6 @@ export type {
   Answer,
   LocalWalletIdentity,
   RequestMethod,
-  RequestPayload,
   SubscribePayload,
   SubscriptionEvent,
   SubscriptionMethod,
