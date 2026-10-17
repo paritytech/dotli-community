@@ -121,8 +121,11 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const openSpan = deps.openSpan ?? m.open;
   const sessions = new Set<PortSession>();
   // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
-  // it. So a released port stays open until its tab speaks again or the worker closes. Each maps to its close.
+  // it. So a released port stays open until the beat after its tab speaks again, or until the worker closes. Each maps
+  // to its close.
   const released = new Map<MessagePort, () => void>();
+  // Released ports whose tab spoke since the last beat, which the next beat closes.
+  const spoke = new Set<MessagePort>();
   let engine: ProtocolEngine | null = null;
   // The tab that starts the worker connects in a later task, so a failure before then waits for it to close.
   let reached = false;
@@ -172,15 +175,36 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     heard(session);
   }
 
-  /** Keeps a released port open until its tab sends anything, which it is no longer served for. */
+  /**
+   * Keeps a released port open until the beat after its tab sends anything, which it is no longer served for. A tab
+   * that speaks may have done so before the release reached it, so the ends posted at the release get a beat to arrive.
+   */
   function holdReleased(port: MessagePort): void {
-    const close = (): void => {
-      port.removeEventListener('message', close);
-      released.delete(port);
-      port.close();
+    const onMessage = (): void => {
+      spoke.add(port);
     };
-    released.set(port, close);
-    port.addEventListener('message', close);
+    released.set(port, () => {
+      port.removeEventListener('message', onMessage);
+      released.delete(port);
+      spoke.delete(port);
+      port.close();
+    });
+    port.addEventListener('message', onMessage);
+  }
+
+  /**
+   * Lets go of a port whose tab disposed its transport, so nothing it was sent is still waited for. Its port closes at
+   * once instead of being held for a release.
+   */
+  function forget(session: PortSession): void {
+    if (!sessions.delete(session)) {
+      return;
+    }
+    session.transport.dispose(new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
+    session.scope?.close();
+    session.port.close();
+    heard(session);
+    swEvent('Port closed', { ports: sessions.size });
   }
 
   /** The port subscribed to its status, or is gone, so a close can no longer leave it waiting for why. */
@@ -418,6 +442,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
 
   /** Beats each port from this worker's clock, and lets go of one that sent nothing for too many beats. */
   function beat(): void {
+    for (const port of [...spoke]) {
+      released.get(port)?.();
+    }
     for (const session of [...sessions]) {
       session.missed += 1;
       if (session.missed > HEARTBEAT_MISSED_BEATS) {
@@ -435,13 +462,14 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     reached = true;
     // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
     const provider = createPortProvider(port, { closeOnDispose: false });
-    const session: PortSession = {
-      port,
-      transport: createServingTransport(provider, { side: 'worker' }),
-      scope: null,
-      missed: 0,
-      beats: new Set(),
-    };
+    const transport = createServingTransport(provider, {
+      side: 'worker',
+      // The tab disposed its transport, as a page that left for good does, and would never speak to end a release.
+      onPeerIdle: () => {
+        forget(session);
+      },
+    });
+    const session: PortSession = { port, transport, scope: null, missed: 0, beats: new Set() };
     // Any message shows the tab is alive, not only its heartbeat.
     provider.subscribe(() => {
       session.missed = 0;

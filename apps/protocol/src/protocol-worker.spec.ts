@@ -933,7 +933,7 @@ describe('protocol SharedWorker', () => {
     expect(tab.closes()).toBe(0);
   });
 
-  it('As a thawed tab that speaks on a released port, the worker closes that port', async () => {
+  it('As a thawed tab that speaks on a released port, the worker closes that port on its next beat', async () => {
     // Given a tab whose port the worker released
     const worker = await bootWorker(fakeLightClient());
     const attached = worker.attach();
@@ -947,8 +947,64 @@ describe('protocol SharedWorker', () => {
     tab.transport.request('heartbeat', undefined).catch(() => undefined);
     await received;
 
+    // Then the port stays open, so the ends queued at the release still reach the tab
+    expect(tab.closes()).toBe(0);
+
+    // When the next beat comes, and another after it
+    worker.beat();
+    worker.beat();
+
     // Then the worker closed the port, once
     expect(tab.closes()).toBe(1);
+  });
+
+  it('As a tab that speaks while the worker releases it, I still hear the release before my port closes', async () => {
+    // Given a tab whose next message is on its way as the worker releases it
+    const worker = await bootWorker(fakeLightClient());
+    const attached = worker.attach();
+    const tab = attached.speak();
+    const status = await readyStatus(tab);
+    for (let i = 0; i < HEARTBEAT_MISSED_BEATS; i++) {
+      worker.beat();
+    }
+    const received = attached.nextReceived();
+    tab.transport.request('heartbeat', undefined).catch(() => undefined);
+
+    // When the worker releases it before that message arrives
+    worker.beat();
+    await received;
+
+    // Then the tab hears the release, and only then does a beat close the port
+    await expect(status.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
+    expect(tab.closes()).toBe(0);
+    worker.beat();
+    expect(tab.closes()).toBe(1);
+  });
+
+  it('As a tab that left for good, my port is closed at once and not held for a release', async () => {
+    // Given a ready tab holding a chain connection, and a tab that stays
+    const worker = await bootWorker(fakeLightClient());
+    const leaving = worker.connect();
+    const staying = worker.connect();
+    await readyStatus(leaving);
+    await connectChain(leaving, 'c1');
+    await readyStatus(staying);
+
+    // When the leaving tab disposes its transport, as its page hides for good
+    leaving.transport.dispose(new Error('pagehide'));
+    await worker.untilLog('Port closed');
+
+    // Then its port was closed at once, with no beat, and the other tab is still served
+    expect(leaving.closes()).toBe(1);
+    expect(worker.beating()).toBe(true);
+    await expect(staying.transport.request('heartbeat', undefined)).resolves.toBeUndefined();
+
+    // When the heartbeat outlasts both tabs
+    outlastHeartbeat(worker);
+
+    // Then only the tab that stayed is released, and the port that left is not closed again
+    expect(worker.logs.filter(line => line.message === 'Port released')).toHaveLength(1);
+    expect(leaving.closes()).toBe(1);
   });
 
   it('As a closing dead worker, I close the ports I released before', async () => {

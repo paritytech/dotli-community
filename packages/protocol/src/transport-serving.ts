@@ -77,6 +77,12 @@ interface ServingTransportOptions {
   /** Hears what a subscription's stop function throws. */
   report?: Report;
   side: 'frame' | 'worker';
+  /**
+   * Called when the peer has unsubscribed its last running subscription and no call of its is still in flight, which
+   * is how a consumer that disposes leaves. Not called for subscriptions this end ended, whose ends the peer may not
+   * have heard yet.
+   */
+  onPeerIdle?: () => void;
 }
 
 export function createServingTransport(provider: Provider, options: ServingTransportOptions): ServingTransport {
@@ -89,6 +95,19 @@ export function createServingTransport(provider: Provider, options: ServingTrans
   const running = new Map<number, Running>();
   let resolutionId: string | null = null;
   let disposed = false;
+  // Requests whose handler has not settled, and whether the peer's own unsubscribe left nothing running.
+  let inFlight = 0;
+  let peerLeft = false;
+
+  const checkIdle = (): void => {
+    if (disposed || !peerLeft || running.size > 0 || inFlight > 0) {
+      return;
+    }
+    peerLeft = false;
+    if (options.onPeerIdle !== undefined) {
+      guarded(report, options.onPeerIdle);
+    }
+  };
 
   const requestHandler = <M extends RequestMethod>(method: M): RequestHandler<M> | undefined =>
     requestHandlers.get(method) as RequestHandler<M> | undefined;
@@ -163,15 +182,22 @@ export function createServingTransport(provider: Provider, options: ServingTrans
       respond(id, method, { ok: false, error: unhandled(method) });
       return;
     }
+    inFlight += 1;
+    const settled = (): void => {
+      inFlight -= 1;
+      checkIdle();
+    };
     // A handler that throws at once answers like one that rejects.
     void new Promise<Answer<M>>(resolve => {
       resolve(handler(payload, contextOf(deadlineMs)));
     }).then(
       answer => {
         respond(id, method, { ok: true, answer });
+        settled();
       },
       (error: unknown) => {
         respond(id, method, { ok: false, error });
+        settled();
       },
     );
   };
@@ -192,6 +218,7 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     }
     const entry: Running = { method, stop: null };
     running.set(id, entry);
+    peerLeft = false;
     const isCurrent = (): boolean => running.get(id) === entry;
     const finish = (error: Error | null): void => {
       if (!isCurrent()) {
@@ -244,6 +271,10 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     running.delete(id);
     if (entry.stop !== null) {
       guarded(report, entry.stop);
+    }
+    if (running.size === 0) {
+      peerLeft = true;
+      checkIdle();
     }
   };
 

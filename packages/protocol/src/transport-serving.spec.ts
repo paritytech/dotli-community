@@ -144,6 +144,76 @@ describe('createServingTransport', () => {
     expect(decodedLegs(delivered).filter(leg => leg === 'end:chainConnect')).toHaveLength(2);
   });
 
+  it('As the worker, I hear that a disposed tab left once its last unsubscribe and its last call are done', async () => {
+    // Given a tab with two subscriptions and a call the worker still holds
+    const { left, right } = createProviderPair();
+    const timers = manualTimers();
+    const onPeerIdle = vi.fn();
+    const serving = createServingTransport(right, { side: 'worker', count: vi.fn(), onPeerIdle });
+    const consumer = createConsumerTransport(left, { side: 'frame', timers, count: vi.fn() });
+    serving.handleSubscription('frameStatus', () => () => undefined);
+    serving.handleSubscription('beat', () => () => undefined);
+    const held = deferred<null>();
+    serving.handleRequest('resolveOwner', () => held.promise);
+    consumer.connect();
+    consumer.subscribe('frameStatus', undefined, () => undefined);
+    consumer.subscribe('beat', undefined, () => undefined);
+    void consumer.request('resolveOwner', { label: 'doom' }).catch(() => undefined);
+    await timers.advance(0);
+
+    // When the tab disposes its transport
+    consumer.dispose(new Error('pagehide'));
+    await timers.advance(0);
+
+    // Then the call in flight holds the port
+    expect(onPeerIdle).not.toHaveBeenCalled();
+
+    // When the call settles
+    held.resolve(null);
+    await timers.advance(0);
+
+    // Then the tab is gone, once
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+  });
+
+  it('As the worker, I do not take a tab for gone when I ended its subscriptions myself', async () => {
+    // Given a tab with two subscriptions
+    const { left, right } = createProviderPair();
+    const timers = manualTimers();
+    const onPeerIdle = vi.fn();
+    const serving = createServingTransport(right, { side: 'worker', count: vi.fn(), onPeerIdle });
+    const consumer = createConsumerTransport(left, { side: 'frame', timers, count: vi.fn() });
+    const sinks: SubscriptionSink<'beat'>[] = [];
+    serving.handleSubscription('beat', (_payload, _context, sink) => {
+      sinks.push(sink);
+      return () => undefined;
+    });
+    consumer.connect();
+    const ends = vi.fn();
+    consumer.subscribe('beat', undefined, () => undefined).onEnd(ends);
+    consumer.subscribe('beat', undefined, () => undefined).onEnd(ends);
+    await timers.advance(0);
+
+    // When this end ends both
+    for (const sink of sinks) {
+      sink.end();
+    }
+    await timers.advance(0);
+
+    // Then the tab heard both ends and is not taken for gone
+    expect(ends).toHaveBeenCalledTimes(2);
+    expect(onPeerIdle).not.toHaveBeenCalled();
+
+    // When it subscribes again and leaves that one
+    const again = consumer.subscribe('beat', undefined, () => undefined);
+    await timers.advance(0);
+    again.unsubscribe();
+    await timers.advance(0);
+
+    // Then it is
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+  });
+
   it('As the frame, I refuse a second handler for one method', () => {
     // Given
     const { serving } = rig();
