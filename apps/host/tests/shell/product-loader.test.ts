@@ -42,32 +42,24 @@ function workerManifest(
 /** The resolution span's attributes as the trace sets them, through a Sentry bound until `restore`. */
 function recordResolution(): {
   root: () => Record<string, unknown> | undefined;
-  /** How many times a resolution span ended. */
-  ends: () => number;
   /** Each distribution recorded, as its name and attributes. */
   distributions: { name: string; attributes: Record<string, string> | undefined }[];
   restore: () => void;
 } {
   const roots: Record<string, unknown>[] = [];
   const distributions: { name: string; attributes: Record<string, string> | undefined }[] = [];
-  let ends = 0;
   const inert = (): void => undefined;
   const sentry: unknown = {
     startInactiveSpan: (opts: { name: string; attributes?: Record<string, unknown> }) => {
       const attributes: Record<string, unknown> = { ...opts.attributes };
-      const root = opts.name === 'dotli.resolution';
-      if (root) {
+      if (opts.name === 'dotli.resolution') {
         roots.push(attributes);
       }
       return {
         setAttributes: (next: Record<string, unknown>) => {
           Object.assign(attributes, next);
         },
-        end: () => {
-          if (root) {
-            ends += 1;
-          }
-        },
+        end: inert,
       };
     },
     startSpan: <T>(_opts: unknown, fn: (span: undefined) => T): T => fn(undefined),
@@ -83,7 +75,7 @@ function recordResolution(): {
     addBreadcrumb: inert,
   };
   const restore = m.bind(sentry as Parameters<typeof m.bind>[0]);
-  return { root: () => roots.at(-1), ends: () => ends, distributions, restore };
+  return { root: () => roots.at(-1), distributions, restore };
 }
 
 interface Options {
@@ -492,7 +484,7 @@ describe('createProductLoader', () => {
       expect(recents).toEqual([]);
       expect(events()).not.toContain('boot:ready');
       expect(resolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
-      expect(recorded.ends()).toBe(1);
+      expect(events().filter(event => event === 'boot:failed')).toEqual(['boot:failed']);
       expect(
         recorded.distributions.filter(
           metric => metric.name === 'dotli.e2e.slow_path' && metric.attributes?.['outcome'] === 'ok',
