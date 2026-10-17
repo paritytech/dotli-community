@@ -24,8 +24,8 @@ export function intervalTicker(intervalMs: number): Ticker {
 /**
  * One meter for every subscriber, so a worker that serves many tabs runs one ticker however many listen. The ticker
  * runs while anyone listens. Each subscriber hears the total at once, as the baseline a rate needs, then on every
- * tick. Cumulative, so the host owns the averaging and a dropped message only widens one window. `report` hears a
- * subscriber that throws, so the others still hear the tick.
+ * tick. Cumulative, so the host owns the averaging and a dropped message only widens one window. A subscribe that
+ * throws leaves nothing behind. `report` hears a subscriber or a tick's read that throws, so the ticker carries on.
  */
 export function shareNetBytes(
   read: () => number,
@@ -42,19 +42,35 @@ export function shareNetBytes(
     }
   };
   const tick = (): void => {
-    const total = read();
+    let total: number;
+    try {
+      total = read();
+    } catch (error) {
+      // Thrown from an interval, nothing above would hear it.
+      report(error);
+      return;
+    }
     for (const post of [...posts]) {
       tell(post, total);
     }
   };
   return post => {
+    // Read first, so a subscribe that throws leaves nothing behind.
+    const baseline = read();
     // Wrapped so one listener subscribed twice is two subscribers.
     const subscriber = (total: number): void => {
       post(total);
     };
     posts.add(subscriber);
-    stopTicker ??= ticker(tick);
-    tell(subscriber, read());
+    if (stopTicker === null) {
+      try {
+        stopTicker = ticker(tick);
+      } catch (error) {
+        posts.delete(subscriber);
+        throw error;
+      }
+    }
+    tell(subscriber, baseline);
     return () => {
       if (!posts.delete(subscriber) || posts.size > 0) {
         return;

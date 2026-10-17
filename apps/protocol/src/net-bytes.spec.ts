@@ -104,4 +104,73 @@ describe('shareNetBytes', () => {
     expect(heard).toEqual([3, 3]);
     expect(reported).toEqual([broken]);
   });
+
+  it('As a worker, a subscribe whose baseline read throws leaves no subscriber and no ticker behind', () => {
+    // Given
+    const clock = testTicker();
+    const broken = new Error('meter is gone');
+    const subscribe = shareNetBytes(() => {
+      throw broken;
+    }, clock.ticker);
+
+    // When / Then
+    expect(() => subscribe(() => undefined)).toThrow(broken);
+    expect(clock.running()).toBe(0);
+  });
+
+  it('As a worker, a subscribe whose ticker fails to start is rolled back, and the next one starts it', () => {
+    // Given a ticker that fails to start once
+    const clock = testTicker();
+    let failing = true;
+    const ticker: Ticker = onTick => {
+      if (failing) {
+        failing = false;
+        throw new Error('no timers');
+      }
+      return clock.ticker(onTick);
+    };
+    const subscribe = shareNetBytes(() => 5, ticker);
+    const lost: number[] = [];
+    const heard: number[] = [];
+
+    // When
+    expect(() => subscribe(total => lost.push(total))).toThrow('no timers');
+    subscribe(total => heard.push(total));
+    clock.tick();
+
+    // Then
+    expect(lost).toEqual([]);
+    expect(heard).toEqual([5, 5]);
+    expect(clock.running()).toBe(1);
+  });
+
+  it('As a dotli operator, a read that throws on a tick is reported and the next tick is heard', () => {
+    // Given
+    const clock = testTicker();
+    const reported: unknown[] = [];
+    const broken = new Error('meter is gone');
+    let total: number | null = 1;
+    const subscribe = shareNetBytes(
+      () => {
+        if (total === null) {
+          throw broken;
+        }
+        return total;
+      },
+      clock.ticker,
+      error => reported.push(error),
+    );
+    const heard: number[] = [];
+    subscribe(received => heard.push(received));
+
+    // When
+    total = null;
+    clock.tick();
+    total = 9;
+    clock.tick();
+
+    // Then
+    expect(reported).toEqual([broken]);
+    expect(heard).toEqual([1, 9]);
+  });
 });
