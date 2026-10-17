@@ -198,7 +198,7 @@ describe('createSharedStore', () => {
     expect(sinks.size).toBe(0);
   });
 
-  it('As a returning user, my shared auth subscription the frame ends while it stays up is reopened after a wait that doubles, and each end is reported', async () => {
+  it('As a returning user, my shared auth subscription the frame ends while it stays up is reopened after a wait that doubles, and each end is reported and captured once', async () => {
     // Given a subscription on a frame that stays up
     const timers = manualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -231,10 +231,7 @@ describe('createSharedStore', () => {
       { outcome: 'error', feed: 'shared_auth', reason: 'ProtocolFeedEndedError' },
       { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
     ]);
-    expect(captured).toEqual([
-      { flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } },
-      { flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } },
-    ]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } }]);
     expect(errors).toHaveLength(2);
   });
 

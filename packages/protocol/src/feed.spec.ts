@@ -70,6 +70,55 @@ describe('createFeedKeeper', () => {
     expect(waits).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]);
   });
 
+  it('As the host, a feed that stayed open for a while before it ended is reopened after the first wait again', async () => {
+    // Given a feed the frame ended at once twice, so the next wait would be 4 s
+    const keeper = createFeedKeeper('telemetry', { losses: () => 0 }, timers);
+    keeper.hold(open, 0);
+    opened.at(-1)?.end(null);
+    await timers.advance(1_000);
+    opened.at(-1)?.end(null);
+    await timers.advance(2_000);
+
+    // When the reopened feed stays open for 30 s, then ends
+    await timers.advance(30_000);
+    opened.at(-1)?.end(null);
+    await timers.advance(999);
+    const openedBeforeWait = opened.length;
+    await timers.advance(1);
+
+    // Then
+    expect([openedBeforeWait, opened.length]).toEqual([3, 4]);
+  });
+
+  it('As an operator, I see every end of a feed counted and logged, and captured once while it is held', async () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
+    const keeper = createFeedKeeper('telemetry', { losses: () => 0 }, timers);
+    keeper.hold(open, 0);
+
+    // When the frame ends the feed three times
+    for (const wait of [1_000, 2_000, 4_000]) {
+      opened.at(-1)?.end(null);
+      await timers.advance(wait);
+    }
+
+    // Then
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toHaveLength(3);
+    expect(errors).toHaveLength(3);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'telemetry' } }]);
+  });
+
   it('As the host, I hold a new feed and the one held before is unsubscribed, and its waiting reopen dropped', async () => {
     // Given one feed held, and another that ended and waits to be reopened
     const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);

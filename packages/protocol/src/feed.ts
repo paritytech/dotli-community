@@ -14,6 +14,8 @@ import type { Subscription } from './transport-consumer.js';
 const REOPEN_MS = 1_000;
 /** The longest wait before a reopen. */
 const MAX_REOPEN_MS = 30_000;
+/** A feed open this long before it ended had recovered, so the waits start over. */
+const STABLE_MS = 30_000;
 
 export type FeedName = 'shared_auth' | 'telemetry';
 
@@ -28,14 +30,21 @@ export interface FeedKeeper {
   stop(): void;
 }
 
-function reportEnd(feed: FeedName, error: Error): void {
-  captureException(error, { flow: 'protocol', step: 'feed_end', tags: { feed } });
+/**
+ * Each end is counted and logged. `capture` is set for the first end of a held feed only, so a frame that keeps ending
+ * it does not flood the error tracker.
+ */
+function reportEnd(feed: FeedName, error: Error, capture: boolean): void {
+  if (capture) {
+    captureException(error, { flow: 'protocol', step: 'feed_end', tags: { feed } });
+  }
   log.error(`[dot.li protocol] The frame ended the ${feed} feed, reopening it:`, error);
   m.count(S.PROTOCOL_FEED_END, { outcome: 'error', feed, reason: errorName(error) ?? 'unknown' });
 }
 
 export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'losses'>, timers: Timers): FeedKeeper {
-  // A held feed is one task, which fails on each end so the pool reopens it, and settles on the frame's loss.
+  // A held feed is one task at a time, retried after each end with a doubling wait, and replaced by a fresh one, whose
+  // waits start over, after an end that followed a stable span.
   const reopens = createAsyncTaskPool({
     poolSize: 1,
     retryCount: Number.POSITIVE_INFINITY,
@@ -57,39 +66,50 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
       // Judged at the next attempt, once the wait gave the frame time to count a loss that ended the feed. A failed
       // handshake or a dead SharedWorker ends the feed before the frame counts its loss.
       let ended: Error | null = null;
-      reopens
-        .call(
-          () =>
-            new Promise<void>((resolve, reject) => {
-              // The loss is reported where the frame was dropped.
-              if (frame.losses() !== since) {
-                resolve();
-                return;
-              }
-              if (ended !== null) {
-                reportEnd(feed, ended);
-                ended = null;
-              }
-              const subscription = open();
-              const onStop = (): void => {
-                subscription.unsubscribe();
-                resolve();
-              };
-              run.signal.addEventListener('abort', onStop, { once: true });
-              subscription.onEnd(error => {
-                run.signal.removeEventListener('abort', onStop);
-                ended = error ?? named(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
-                reject(ended);
-              });
-            }),
-          { signal: run.signal },
-        )
-        .then(
-          () => undefined,
+      let captured = false;
+      // Fails on an end so the pool reopens the feed after a wait, and settles on an end after a stable span.
+      const attempt = (): Promise<'stable' | 'done'> =>
+        new Promise((resolve, reject) => {
+          // The loss is reported where the frame was dropped.
+          if (frame.losses() !== since) {
+            resolve('done');
+            return;
+          }
+          if (ended !== null) {
+            reportEnd(feed, ended, !captured);
+            captured = true;
+            ended = null;
+          }
+          const subscription = open();
+          const openedAt = timers.now();
+          const onStop = (): void => {
+            subscription.unsubscribe();
+            resolve('done');
+          };
+          run.signal.addEventListener('abort', onStop, { once: true });
+          subscription.onEnd(error => {
+            run.signal.removeEventListener('abort', onStop);
+            ended = error ?? named(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
+            if (timers.now() - openedAt >= STABLE_MS) {
+              resolve('stable');
+            } else {
+              reject(ended);
+            }
+          });
+        });
+      const keep = (delay: number): void => {
+        reopens.call(attempt, { signal: run.signal, delay }).then(
+          outcome => {
+            if (outcome === 'stable') {
+              keep(REOPEN_MS);
+            }
+          },
           () => {
             // Only `stop` rejects the endless reopens, and it wants nothing more of this feed.
           },
         );
+      };
+      keep(0);
     },
     stop,
   };
