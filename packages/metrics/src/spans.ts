@@ -153,6 +153,12 @@ export const PROTOCOL_NET_BYTES_READ = 'protocol.net_bytes_read';
 export const PROTOCOL_WORKER_REQUEST = 'protocol.worker_request';
 
 /**
+ * A heartbeat the protocol frame could not send the SharedWorker, so it stops answering the worker's beats and the
+ * worker lets go of its port. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+export const PROTOCOL_WORKER_HEARTBEAT = 'protocol.worker_heartbeat';
+
+/**
  * A sandbox message handler on the host that threw. Tagged `outcome` (error) and `reason` (the error's name), as the
  * sandbox then gets no answer.
  */

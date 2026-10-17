@@ -56,7 +56,8 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   or closes it if it was released, at once. Where an engine never fires the event, the heartbeat release is the
   fallback.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
-  ends. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the
+  ends. A heartbeat it cannot send is captured, logged and counted, and the link stops answering, so the worker releases
+  the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the
   link's transport with that error, so the status subscription, the beats and the relay let go of the worker. The
   timeout and the load failure are init failures.
 - A fatal light client ends every port's frame status with the error, and a port that connects later hears it on

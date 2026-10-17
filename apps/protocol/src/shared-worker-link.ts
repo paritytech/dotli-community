@@ -11,7 +11,7 @@ import {
   ProtocolInitFailedError,
   type ConsumerTransport,
 } from '@dotli/protocol';
-import { log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { disposeOnPageHide } from './worker-port.js';
@@ -57,6 +57,7 @@ function answerBeats(transport: ConsumerTransport, status: WorkerStatus): void {
       stop();
       captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
       log.error('[dot.li protocol] Worker heartbeat failed', error);
+      m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
     });
   });
   beats.onEnd(() => {

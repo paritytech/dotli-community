@@ -358,6 +358,7 @@ describe('connectSharedWorker', () => {
         expected: () => undefined,
       }),
     );
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const worker = fakeWorker();
     const linked = link(worker);
     worker.status.ready();
@@ -375,8 +376,9 @@ describe('connectSharedWorker', () => {
     await transport.request('warmup', undefined).catch(() => undefined);
     await transport.request('warmup', undefined).catch(() => undefined);
 
-    // Then the refusal was captured once, and the second beat went unanswered
+    // Then the refusal was captured and counted once, and the second beat went unanswered
     expect(exceptions).toEqual(['worker_heartbeat']);
+    expect(metrics.counted(S.PROTOCOL_WORKER_HEARTBEAT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(worker.heartbeats).toHaveLength(1);
   });
 
