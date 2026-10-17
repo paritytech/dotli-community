@@ -45,7 +45,12 @@ const total = (points: readonly GaugePoint[]): number => points.reduce((sum, p) 
 /** Waits for the expected count, then holds for one Sentry flush. */
 async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
   await expect
-    .poll(async () => total(await readGauge(request)), { timeout: TIMEOUT_MS, intervals: [1_000] })
+    .poll(async () => total(await readGauge(request)), {
+      // A Sentry client with no DSN builds no transport, so nothing reaches the tunnel.
+      message: 'too few gauge points reached the Sentry tunnel. Was the build made with a VITE_SENTRY_DSN?',
+      timeout: TIMEOUT_MS,
+      intervals: [1_000],
+    })
     .toBeGreaterThanOrEqual(expected);
   // Proves a negative: no further report is on its way, and nothing marks that, so the wait is one Sentry flush.
   await page.waitForTimeout(SENTRY_FLUSH_HOLD_MS);

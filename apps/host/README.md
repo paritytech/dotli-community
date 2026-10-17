@@ -107,5 +107,7 @@ flowchart LR
 - The landing page, served for the bare host's root.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
-  local functional run needs `VITE_METRICS=true` in both the build and the run.
+  local functional run needs `VITE_METRICS=true` in both the build and the run, and a build with any `VITE_SENTRY_DSN`
+  (CI uses `http://publickey@127.0.0.1:5173/1`). Sentry sends nothing without a DSN, so the light client gauge never
+  reaches the preview server.
 - Its component stories and their visual checks run in the one Storybook at the repo root.
