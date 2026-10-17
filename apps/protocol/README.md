@@ -40,7 +40,8 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   wait.
 - Two handlers serve the shared stores and the local wallet under the shared-auth trust boundary: host and landing
   origins only, never product origins. The iframe's provider already admits no other origin, so the handlers' own check
-  holds the boundary on any transport they are served over. What they refuse is counted as bad input.
+  holds the boundary on any transport they are served over. What the stores refuse is counted as bad input, and what the
+  wallet refuses is logged.
 - In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
   through its own consumer transport, including the frame status and telemetry subscriptions.
 - The SharedWorker runs smoldot and serves each tab port with its own serving transport and engine scope, so no buffer
