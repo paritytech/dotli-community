@@ -20,7 +20,7 @@ import {
 } from './methods.js';
 import type { Provider } from './provider.js';
 import { defaultReport, guarded, postLeaving, receive, type Count, type Report } from './transport-shared.js';
-import { encodeWireMessage, type WireError, type WireMessage } from './wire-message.js';
+import { encodeWireMessage, type WireError } from './wire-message.js';
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -98,8 +98,8 @@ interface RequestCall {
   kind: 'request';
   id: number;
   method: RequestMethod;
-  payload: unknown;
-  deadlineMs: number | null;
+  /** Encodes the call's leg when it is sent, so a payload the wire refuses fails the call then. */
+  encode: () => ArrayBuffer;
   resolve: (answer: unknown) => void;
   reject: (error: Error) => void;
 }
@@ -108,8 +108,8 @@ interface SubscriptionCall {
   kind: 'subscription';
   id: number;
   method: SubscriptionMethod;
-  payload: unknown;
-  deadlineMs: number | null;
+  /** Encodes the call's leg when it is sent, so a payload the wire refuses ends the subscription then. */
+  encode: () => ArrayBuffer;
   onEvent: (event: unknown) => void;
   endListeners: ((error: Error | null) => void)[];
   /** Stops listening to the call's signal. */
@@ -178,16 +178,10 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
   };
 
   const send = (call: Call): void => {
-    const { id, method, payload, deadlineMs } = call;
+    const { id } = call;
     let data: ArrayBuffer;
     try {
-      data = encodeWireMessage({
-        leg: call.kind === 'request' ? 'request' : 'subscribe',
-        id,
-        method,
-        deadlineMs,
-        payload,
-      } as WireMessage);
+      data = call.encode();
     } catch (error) {
       if (call.kind === 'request') {
         call.reject(toError(error));
@@ -383,12 +377,13 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
           reject(closed);
           return;
         }
+        const id = nextId();
+        const deadlineMs = callOptions.deadlineMs ?? null;
         const call: RequestCall = {
           kind: 'request',
-          id: nextId(),
+          id,
           method,
-          payload,
-          deadlineMs: callOptions.deadlineMs ?? null,
+          encode: () => encodeWireMessage({ leg: 'request', id, method, deadlineMs, payload }),
           resolve: answer => {
             detach();
             resolve(answer as Answer<typeof method>);
@@ -410,13 +405,19 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       });
     },
 
-    subscribe(method, payload, onEvent, callOptions = {}) {
+    subscribe<M extends SubscriptionMethod>(
+      method: M,
+      payload: SubscribePayload<M>,
+      onEvent: (event: SubscriptionEvent<M>) => void,
+      callOptions: CallOptions = {},
+    ): Subscription {
+      const id = nextId();
+      const deadlineMs = callOptions.deadlineMs ?? null;
       const call: SubscriptionCall = {
         kind: 'subscription',
-        id: nextId(),
+        id,
         method,
-        payload,
-        deadlineMs: callOptions.deadlineMs ?? null,
+        encode: () => encodeWireMessage({ leg: 'subscribe', id, method, deadlineMs, payload }),
         onEvent: onEvent as (event: unknown) => void,
         endListeners: [],
         detach: () => undefined,

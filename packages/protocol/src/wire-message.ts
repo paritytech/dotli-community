@@ -40,7 +40,7 @@ export function toWireError(error: unknown): WireError {
   };
 }
 
-type Outcome<M extends Requestable> = { ok: true; answer: Answer<M> } | { ok: false; error: WireError };
+export type ResponseOutcome<M extends Requestable> = { ok: true; answer: Answer<M> } | { ok: false; error: WireError };
 
 // Each leg maps over its method parameter, so a message built for a generic method `M` is a `RequestMessage<M>`, and
 // the default parameter gives the union of every method's leg.
@@ -48,7 +48,7 @@ export type RequestMessage<M extends Requestable = Requestable> = {
   [P in M]: { leg: 'request'; id: number; method: P; deadlineMs: number | null; payload: RequestPayload<P> };
 }[M];
 export type ResponseMessage<M extends Requestable = Requestable> = {
-  [P in M]: { leg: 'response'; id: number; method: P; outcome: Outcome<P> };
+  [P in M]: { leg: 'response'; id: number; method: P; outcome: ResponseOutcome<P> };
 }[M];
 export type SubscribeMessage<M extends SubscriptionMethod = SubscriptionMethod> = {
   [P in M]: { leg: 'subscribe'; id: number; method: P; deadlineMs: number | null; payload: SubscribePayload<P> };
@@ -202,7 +202,7 @@ function decodeBody(leg: Leg, entry: LooseEntry, input: Uint8Array): Body {
  */
 export function encodeWireMessage<M extends Requestable>(message: RequestMessage<M> | ResponseMessage<M>): ArrayBuffer;
 export function encodeWireMessage<M extends SubscriptionMethod>(
-  message: SubscribeMessage<M> | EventMessage<M> | EndMessage | UnsubscribeMessage,
+  message: SubscribeMessage<M> | EventMessage<M>,
 ): ArrayBuffer;
 export function encodeWireMessage(message: WireMessage): ArrayBuffer;
 export function encodeWireMessage(message: WireHeader): ArrayBuffer {

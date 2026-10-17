@@ -19,7 +19,14 @@ import {
 } from './methods.js';
 import type { Provider } from './provider.js';
 import { defaultReport, guarded, postLeaving, receive, type Count, type Report } from './transport-shared.js';
-import { encodeWireMessage, toWireError, type WireMessage } from './wire-message.js';
+import {
+  encodeWireMessage,
+  toWireError,
+  type Requestable,
+  type RequestMessage,
+  type ResponseOutcome,
+  type SubscribeMessage,
+} from './wire-message.js';
 
 export interface CallContext {
   /** The peer's origin when the call arrived, or null when it has none. */
@@ -59,13 +66,6 @@ function unhandled(method: ProtocolMethod): Error {
   return new Error(`This end does not handle ${method}`);
 }
 
-type LooseRequestHandler = (payload: unknown, context: CallContext) => unknown;
-type LooseSubscriptionHandler = (
-  payload: unknown,
-  context: CallContext,
-  sink: { send(event: unknown): void; end(error?: Error): void },
-) => () => void;
-
 interface Running {
   method: SubscriptionMethod;
   /** Null until the handler returns it. */
@@ -83,11 +83,17 @@ export function createServingTransport(provider: Provider, options: ServingTrans
   const { side } = options;
   const count = options.count ?? m.count;
   const report = options.report ?? defaultReport;
-  const requestHandlers = new Map<RequestMethod, LooseRequestHandler>();
-  const subscriptionHandlers = new Map<SubscriptionMethod, LooseSubscriptionHandler>();
+  // Each handler is stored under the method it was registered for, which the typed lookups below rely on.
+  const requestHandlers = new Map<RequestMethod, unknown>();
+  const subscriptionHandlers = new Map<SubscriptionMethod, unknown>();
   const running = new Map<number, Running>();
   let resolutionId: string | null = null;
   let disposed = false;
+
+  const requestHandler = <M extends RequestMethod>(method: M): RequestHandler<M> | undefined =>
+    requestHandlers.get(method) as RequestHandler<M> | undefined;
+  const subscriptionHandler = <M extends SubscriptionMethod>(method: M): SubscriptionHandler<M> | undefined =>
+    subscriptionHandlers.get(method) as SubscriptionHandler<M> | undefined;
 
   const contextOf = (deadlineMs: number | null): CallContext => ({
     origin: provider.peerOrigin(),
@@ -95,10 +101,10 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     resolutionId,
   });
 
-  const respond = (
+  const respond = <M extends Requestable>(
     id: number,
-    method: RequestMethod | 'handshake',
-    outcome: { ok: true; answer: unknown } | { ok: false; error: unknown },
+    method: M,
+    outcome: { ok: true; answer: Answer<M> } | { ok: false; error: unknown },
   ): void => {
     if (disposed) {
       // A handler that settles after the dispose has no peer left to hear it.
@@ -110,8 +116,8 @@ export function createServingTransport(provider: Provider, options: ServingTrans
       });
       return;
     }
-    const answer = (wireOutcome: unknown): ArrayBuffer =>
-      encodeWireMessage({ leg: 'response', id, method, outcome: wireOutcome } as WireMessage);
+    const answer = (wireOutcome: ResponseOutcome<M>): ArrayBuffer =>
+      encodeWireMessage({ leg: 'response', id, method, outcome: wireOutcome });
     let data: ArrayBuffer;
     try {
       data = answer(outcome.ok ? outcome : { ok: false, error: toWireError(outcome.error) });
@@ -143,14 +149,14 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     respond(id, 'handshake', { ok: true, answer: undefined });
   };
 
-  const onRequest = (id: number, method: RequestMethod, deadlineMs: number | null, payload: unknown): void => {
-    const handler = requestHandlers.get(method);
+  const onRequest = <M extends RequestMethod>({ id, method, deadlineMs, payload }: RequestMessage<M>): void => {
+    const handler = requestHandler(method);
     if (handler === undefined) {
       respond(id, method, { ok: false, error: unhandled(method) });
       return;
     }
     // A handler that throws at once answers like one that rejects.
-    void new Promise<unknown>(resolve => {
+    void new Promise<Answer<M>>(resolve => {
       resolve(handler(payload, contextOf(deadlineMs)));
     }).then(
       answer => {
@@ -162,11 +168,16 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     );
   };
 
-  const onSubscribe = (id: number, method: SubscriptionMethod, deadlineMs: number | null, payload: unknown): void => {
+  const onSubscribe = <M extends SubscriptionMethod>({
+    id,
+    method,
+    deadlineMs,
+    payload,
+  }: SubscribeMessage<M>): void => {
     if (running.has(id)) {
       return;
     }
-    const handler = subscriptionHandlers.get(method);
+    const handler = subscriptionHandler(method);
     if (handler === undefined) {
       postEnd(id, method, unhandled(method));
       return;
@@ -184,21 +195,21 @@ export function createServingTransport(provider: Provider, options: ServingTrans
       }
       postEnd(id, method, error);
     };
-    const sink = {
-      send(event: unknown) {
+    const sink: SubscriptionSink<M> = {
+      send(event) {
         if (!isCurrent()) {
           return;
         }
         let data: ArrayBuffer;
         try {
-          data = encodeWireMessage({ leg: 'event', id, method, event } as WireMessage);
+          data = encodeWireMessage({ leg: 'event', id, method, event });
         } catch (error) {
           finish(toError(error));
           return;
         }
         provider.post(data);
       },
-      end(error?: Error) {
+      end(error) {
         finish(error ?? null);
       },
     };
@@ -238,11 +249,11 @@ export function createServingTransport(provider: Provider, options: ServingTrans
         if (message.method === 'handshake') {
           onHandshake(message.id, message.payload);
         } else {
-          onRequest(message.id, message.method, message.deadlineMs, message.payload);
+          onRequest(message);
         }
         return;
       case 'subscribe':
-        onSubscribe(message.id, message.method, message.deadlineMs, message.payload);
+        onSubscribe(message);
         return;
       case 'unsubscribe':
         onUnsubscribe(message.id, message.method);
@@ -262,10 +273,9 @@ export function createServingTransport(provider: Provider, options: ServingTrans
       if (requestHandlers.has(method)) {
         throw new Error(`${method} already has a handler`);
       }
-      const loose = handler as LooseRequestHandler;
-      requestHandlers.set(method, loose);
+      requestHandlers.set(method, handler);
       return () => {
-        if (requestHandlers.get(method) === loose) {
+        if (requestHandlers.get(method) === handler) {
           requestHandlers.delete(method);
         }
       };
@@ -275,10 +285,9 @@ export function createServingTransport(provider: Provider, options: ServingTrans
       if (subscriptionHandlers.has(method)) {
         throw new Error(`${method} already has a handler`);
       }
-      const loose = handler as unknown as LooseSubscriptionHandler;
-      subscriptionHandlers.set(method, loose);
+      subscriptionHandlers.set(method, handler);
       return () => {
-        if (subscriptionHandlers.get(method) === loose) {
+        if (subscriptionHandlers.get(method) === handler) {
           subscriptionHandlers.delete(method);
         }
       };

@@ -46,18 +46,18 @@ export function createProtocolClient(deps: ProtocolFrameDeps) {
     /** Called on each change only. Does not start a frame. */
     subscribeProtocolStatus: (listener: (status: ProtocolStatus) => void) => frame.subscribeStatus(listener),
     /**
+     * Hears once that a frame refused this page's wire version, at once if one already did. The frame stays down for
+     * good, since only a reload loads a matching page.
+     */
+    onProtocolVersionMismatch: (listener: (error: ProtocolVersionMismatchError) => void) =>
+      frame.onVersionMismatch(listener),
+    /**
      * Says what the frame is built with. Nothing boots before it, and requests made before the first config wait for
      * it up to a bound, so callers need not order themselves around the host's boot. The same config again does
      * nothing. A different one rebuilds a frame already asked for at once: its requests and ready waiters are rejected
      * and its chain connections halt as for a dead frame. A SharedWorker keeps its sync progress, only this tab's port
      * cycles.
      */
-    /**
-     * Hears once that a frame refused this page's wire version, at once if one already did. The frame stays down for
-     * good, since only a reload loads a matching page.
-     */
-    onProtocolVersionMismatch: (listener: (error: ProtocolVersionMismatchError) => void) =>
-      frame.onVersionMismatch(listener),
     configureProtocolFrame: (config: ProtocolFrameConfig): void => {
       frame.configure(config);
     },
