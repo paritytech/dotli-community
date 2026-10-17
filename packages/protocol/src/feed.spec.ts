@@ -119,6 +119,32 @@ describe('createFeedKeeper', () => {
     expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'telemetry' } }]);
   });
 
+  it.each([
+    ['the frame stays up', 0, 1],
+    ['the frame counted a loss meanwhile', 1, 0],
+  ] as const)(
+    'As an operator, a feed let go during the wait after an end is reported then unless the end was a loss, when %s',
+    async (_case, lossesMeanwhile, reported) => {
+      // Given a feed the frame ended, waiting to be reopened
+      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+      let losses = 0;
+      const keeper = createFeedKeeper('shared_auth', { losses: () => losses }, timers);
+      keeper.hold(open, 0);
+      opened[0]?.end(new TypeError('relay broke'));
+      await timers.advance(500);
+      losses += lossesMeanwhile;
+
+      // When the last listener leaves before the wait ends
+      keeper.stop();
+      await timers.advance(30_000);
+
+      // Then
+      expect(metrics.counted(S.PROTOCOL_FEED_END)).toHaveLength(reported);
+      expect(opened).toHaveLength(1);
+      expect(timers.pending()).toBe(0);
+    },
+  );
+
   it('As the host, I hold a new feed and the one held before is unsubscribed, and its waiting reopen dropped', async () => {
     // Given one feed held, and another that ended and waits to be reopened
     const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);

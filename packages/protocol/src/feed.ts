@@ -52,8 +52,12 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
     timers,
   });
   let held: AbortController | null = null;
+  // Judges the end the held feed kept for its next attempt, which a stop during the wait would drop.
+  let judgeKept: (() => void) | null = null;
 
   function stop(): void {
+    judgeKept?.();
+    judgeKept = null;
     held?.abort(new Error(`The ${feed} feed is no longer held`));
     held = null;
   }
@@ -67,19 +71,23 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
       // handshake or a dead SharedWorker ends the feed before the frame counts its loss.
       let ended: Error | null = null;
       let captured = false;
+      // The loss is reported where the frame was dropped, so only an end on a frame still up is.
+      const judge = (): void => {
+        if (ended !== null && frame.losses() === since) {
+          reportEnd(feed, ended, !captured);
+          captured = true;
+        }
+        ended = null;
+      };
+      judgeKept = judge;
       // Fails on an end so the pool reopens the feed after a wait, and settles on an end after a stable span.
       const attempt = (): Promise<'stable' | 'done'> =>
         new Promise((resolve, reject) => {
-          // The loss is reported where the frame was dropped.
           if (frame.losses() !== since) {
             resolve('done');
             return;
           }
-          if (ended !== null) {
-            reportEnd(feed, ended, !captured);
-            captured = true;
-            ended = null;
-          }
+          judge();
           const subscription = open();
           const openedAt = timers.now();
           const onStop = (): void => {
