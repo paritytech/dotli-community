@@ -19,7 +19,7 @@ import {
   type SubscriptionMethod,
 } from './methods.js';
 import type { Provider } from './provider.js';
-import { guarded, postLeaving, receive, type Count } from './transport-shared.js';
+import { defaultReport, guarded, postLeaving, receive, type Count, type Report } from './transport-shared.js';
 import { encodeWireMessage, type WireError, type WireMessage } from './wire-message.js';
 
 const DEFAULT_RETRY_MS = 50;
@@ -31,8 +31,9 @@ export interface CallOptions {
   /** When the caller stops waiting, in ms since the epoch. The serving handler reads it to size its own budget. */
   deadlineMs?: number;
   /**
-   * Gives up on the call: it rejects or ends with the signal's reason and a late answer is ignored. Nothing tells the
-   * serving side about a request, while an open subscription is unsubscribed.
+   * Gives up on the call: it rejects or ends with the signal's reason and a late answer is ignored. The reason is passed
+   * on as it is when it is an `Error`, a `DOMException` included, and wrapped in one as its `cause` otherwise. Nothing
+   * tells the serving side about a request, while an open subscription is unsubscribed.
    */
   signal?: AbortSignal;
 }
@@ -66,6 +67,8 @@ export interface ConsumerTransportOptions {
   timeoutMs?: number;
   timers?: Timers;
   count?: Count;
+  /** Hears what a subscription's event or end listener throws. */
+  report?: Report;
   side: 'host' | 'frame';
 }
 
@@ -125,6 +128,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const resolutionId = options.resolutionId ?? null;
+  const report = options.report ?? defaultReport;
 
   let phase: Phase = { name: 'idle' };
   let lastId = 0;
@@ -169,7 +173,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     call.detach();
     call.state = { name: 'ended', error };
     for (const listener of call.endListeners.splice(0)) {
-      guarded(listener, error);
+      guarded(report, listener, error);
     }
   };
 
@@ -301,7 +305,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       case 'event': {
         const call = open.get(message.id);
         if (call?.method === message.method) {
-          guarded(call.onEvent, message.event);
+          guarded(report, call.onEvent, message.event);
         }
         return;
       }
@@ -447,7 +451,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
         },
         onEnd(listener) {
           if (call.state.name === 'ended') {
-            guarded(listener, call.state.error);
+            guarded(report, listener, call.state.error);
           } else if (call.state.name !== 'unsubscribed') {
             call.endListeners.push(listener);
           }

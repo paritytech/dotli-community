@@ -19,16 +19,18 @@ export function rig(options: { resolutionId?: string } = {}) {
   const { left, right, delivered } = createProviderPair();
   const timers = manualTimers();
   const count = vi.fn();
-  const serving = createServingTransport(right, { side: 'frame', count });
+  const report = vi.fn();
+  const serving = createServingTransport(right, { side: 'frame', count, report });
   const consumer = createConsumerTransport(left, {
     side: 'host',
     timers,
     count,
+    report,
     retryMs: RETRY_MS,
     timeoutMs: TIMEOUT_MS,
     ...options,
   });
-  return { consumer, serving, timers, count, delivered, left };
+  return { consumer, serving, timers, count, report, delivered, left };
 }
 
 /** A peer the test speaks for, message by message, in place of a transport. */

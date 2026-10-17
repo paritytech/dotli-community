@@ -233,6 +233,50 @@ describe('createConsumerTransport', () => {
     ]);
   });
 
+  it('As a caller, a handshake answer after my handshake timed out changes nothing', async () => {
+    // Given
+    const { consumer, timers, peer, answerHandshake } = rawRig();
+    const call = outcomeOf(consumer.request('heartbeat', undefined));
+    consumer.connect();
+    await timers.advance(TIMEOUT_MS);
+    const timedOut = await outcomeOf(consumer.whenConnected());
+    expect(timedOut).toBeInstanceOf(ProtocolHandshakeTimeoutError);
+    const heard = peer.heard.length;
+
+    // When
+    answerHandshake();
+    await timers.advance(RETRY_MS * 10);
+
+    // Then
+    expect(await outcomeOf(consumer.whenConnected())).toBe(timedOut);
+    expect(await call).toBe(timedOut);
+    expect(await outcomeOf(consumer.request('heartbeat', undefined))).toBe(timedOut);
+    expect(peer.heard).toHaveLength(heard);
+  });
+
+  it('As a caller, my call gives up with the abort reason itself, and a reason that is no error is wrapped', async () => {
+    // Given
+    const { consumer, timers, answerHandshake } = rawRig();
+    consumer.connect();
+    await timers.advance(0);
+    answerHandshake();
+    await consumer.whenConnected();
+    const withDefault = new AbortController();
+    const withText = new AbortController();
+    const defaultCall = outcomeOf(consumer.request('heartbeat', undefined, { signal: withDefault.signal }));
+    const textCall = outcomeOf(consumer.request('heartbeat', undefined, { signal: withText.signal }));
+
+    // When
+    withDefault.abort();
+    withText.abort('left the page');
+
+    // Then
+    expect(await defaultCall).toBe(withDefault.signal.reason);
+    expect(await defaultCall).toBeInstanceOf(DOMException);
+    expect(await textCall).toBeInstanceOf(Error);
+    expect(await textCall).toMatchObject({ cause: 'left the page' });
+  });
+
   it('As a caller, a late answer to a call I gave up on is ignored', async () => {
     // Given
     const { consumer, timers, peer, count, answerHandshake } = rawRig();
@@ -460,9 +504,9 @@ describe('createConsumerTransport', () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
-  it('As a subscriber, a listener that throws does not stop the others', async () => {
+  it('As a subscriber, a listener that throws is reported and does not stop the others', async () => {
     // Given
-    const { consumer, serving, timers } = rig();
+    const { consumer, serving, timers, report } = rig();
     const sinks: SubscriptionSink<'sharedAuthChanges'>[] = [];
     serving.handleSubscription('sharedAuthChanges', (_payload, _context, sink) => {
       sinks.push(sink);
@@ -497,6 +541,11 @@ describe('createConsumerTransport', () => {
     expect(heard).toHaveBeenCalledTimes(2);
     expect(endThrowing).toHaveBeenCalledOnce();
     expect(endHeard).toHaveBeenCalledExactlyOnceWith(null);
+    expect(report.mock.calls.map(([error]: unknown[]) => (error as Error).message)).toEqual([
+      'listener bug',
+      'listener bug',
+      'end listener bug',
+    ]);
   });
 
   it('As a caller, a payload that cannot be encoded rejects my call and posts nothing', async () => {

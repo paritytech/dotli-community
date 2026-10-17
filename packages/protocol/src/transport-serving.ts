@@ -4,8 +4,8 @@
 // The serving end of a transport, one per provider for the provider's whole life. It answers the handshake itself and
 // runs the handler registered for each method.
 
-import { m } from '@dotli/metrics';
-import { toError } from '@dotli/shared';
+import { captureException, m } from '@dotli/metrics';
+import { log, toError } from '@dotli/shared';
 import { ProtocolVersionMismatchError } from './errors.js';
 import {
   WIRE_VERSION,
@@ -18,7 +18,7 @@ import {
   type SubscriptionMethod,
 } from './methods.js';
 import type { Provider } from './provider.js';
-import { guarded, postLeaving, receive, type Count } from './transport-shared.js';
+import { defaultReport, guarded, postLeaving, receive, type Count, type Report } from './transport-shared.js';
 import { encodeWireMessage, toWireError, type WireMessage } from './wire-message.js';
 
 export interface CallContext {
@@ -72,12 +72,17 @@ interface Running {
   stop: (() => void) | null;
 }
 
-export function createServingTransport(
-  provider: Provider,
-  options: { count?: Count; side: 'frame' | 'worker' },
-): ServingTransport {
+interface ServingTransportOptions {
+  count?: Count;
+  /** Hears what a subscription's stop function throws. */
+  report?: Report;
+  side: 'frame' | 'worker';
+}
+
+export function createServingTransport(provider: Provider, options: ServingTransportOptions): ServingTransport {
   const { side } = options;
   const count = options.count ?? m.count;
+  const report = options.report ?? defaultReport;
   const requestHandlers = new Map<RequestMethod, LooseRequestHandler>();
   const subscriptionHandlers = new Map<SubscriptionMethod, LooseSubscriptionHandler>();
   const running = new Map<number, Running>();
@@ -96,6 +101,13 @@ export function createServingTransport(
     outcome: { ok: true; answer: unknown } | { ok: false; error: unknown },
   ): void => {
     if (disposed) {
+      // A handler that settles after the dispose has no peer left to hear it.
+      log.event('protocol answer after dispose', {
+        flow: 'protocol',
+        method,
+        side,
+        outcome: outcome.ok ? 'ok' : 'error',
+      });
       return;
     }
     const answer = (wireOutcome: unknown): ArrayBuffer =>
@@ -106,7 +118,13 @@ export function createServingTransport(
     } catch (error) {
       data = answer({ ok: false, error: toWireError(error) });
     }
-    provider.post(data);
+    try {
+      provider.post(data);
+    } catch (error) {
+      // An answer settles outside any caller, so a post that throws is reported here or nowhere.
+      captureException(error, { flow: 'protocol', step: 'answer_post', tags: { method, side } });
+      log.error(`[dot.li] The ${method} answer could not be posted`, error);
+    }
   };
 
   const postEnd = (id: number, method: SubscriptionMethod, error: Error | null): void => {
@@ -162,7 +180,7 @@ export function createServingTransport(
       }
       running.delete(id);
       if (entry.stop !== null) {
-        guarded(entry.stop);
+        guarded(report, entry.stop);
       }
       postEnd(id, method, error);
     };
@@ -195,7 +213,7 @@ export function createServingTransport(
       entry.stop = stop;
     } else {
       // Ended, unsubscribed or disposed while the handler ran, before it could say how to stop.
-      guarded(stop);
+      guarded(report, stop);
     }
   };
 
@@ -206,7 +224,7 @@ export function createServingTransport(
     }
     running.delete(id);
     if (entry.stop !== null) {
-      guarded(entry.stop);
+      guarded(report, entry.stop);
     }
   };
 
@@ -275,7 +293,7 @@ export function createServingTransport(
       running.clear();
       for (const [id, entry] of entries) {
         if (entry.stop !== null) {
-          guarded(entry.stop);
+          guarded(report, entry.stop);
         }
         postLeaving(provider, { leg: 'end', id, method: entry.method, error: toWireError(reason) });
       }

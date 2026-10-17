@@ -14,10 +14,13 @@ const MAX_CAUSE_CHARS = 200;
 
 export type Count = typeof m.count;
 
-const report = reportListener('protocol', 'protocol.transport');
+/** Hears an error thrown by a callback the transport does not own. */
+export type Report = (error: unknown) => void;
+
+export const defaultReport: Report = reportListener('protocol', 'protocol.transport');
 
 /** Runs a callback the transport does not own, so one that throws is reported and the transport carries on. */
-export function guarded<A extends unknown[]>(callback: (...args: A) => void, ...args: A): void {
+export function guarded<A extends unknown[]>(report: Report, callback: (...args: A) => void, ...args: A): void {
   try {
     callback(...args);
   } catch (error) {
