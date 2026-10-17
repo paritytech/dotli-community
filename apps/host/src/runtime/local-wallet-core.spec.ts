@@ -50,6 +50,7 @@ describe('local wallet core identity', () => {
 
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const WALLET: LocalWalletBoot = {
+  status: 'ok',
   entropy: ENTROPY,
   identity: { identityAccountId: `0x${'11'.repeat(32)}`, liteUsername: 'alice.42' },
 };

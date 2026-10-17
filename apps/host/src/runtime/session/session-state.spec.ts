@@ -427,6 +427,7 @@ describe('session state', () => {
   it('As a local wallet user, I see my cached account at page load without a core', async () => {
     // Given
     wallet = {
+      status: 'ok',
       entropy: new Uint8Array(16),
       identity: { identityAccountId: `0x${'11'.repeat(32)}`, liteUsername: 'alice.42' },
     };
@@ -449,7 +450,7 @@ describe('session state', () => {
 
   it('As a local wallet user before the first network read, I am shown signed in without a name', async () => {
     // Given
-    wallet = { entropy: new Uint8Array(16), identity: null };
+    wallet = { status: 'ok', entropy: new Uint8Array(16), identity: null };
 
     // When
     await session.refresh();

@@ -18,7 +18,7 @@ export type { RemoteChainProvider } from './remote-chain.js';
 
 export type { ProtocolFrameConfig, ProtocolStatus } from './frame.js';
 
-export type { SharedStoreStatus } from './shared-store.js';
+export type { LocalWalletReadResult, SharedStoreStatus } from './shared-store.js';
 
 export function getProtocolOrigin(): string {
   if (isLocalhost) {

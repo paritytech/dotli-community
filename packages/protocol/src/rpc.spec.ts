@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, onTestFinish
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { PROTOCOL_ERRORS } from './errors.js';
-import type { LocalWalletReadResult } from './methods.js';
+import type { Answer } from './methods.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
 import type { CallContext, ServingTransport } from './transport.js';
@@ -36,7 +36,7 @@ function silentFrame(served: string[]): (serving: ServingTransport) => void {
     };
     serving.handleRequest('authStorageRead', () => hold<string | null>('authStorageRead'));
     serving.handleRequest('modeStorageWrite', () => hold<undefined>('modeStorageWrite'));
-    serving.handleRequest('localWalletRead', () => hold<LocalWalletReadResult>('localWalletRead'));
+    serving.handleRequest('localWalletRead', () => hold<Answer<'localWalletRead'>>('localWalletRead'));
     serving.handleRequest('resolveOwner', () => hold<string | null>('resolveOwner'));
   };
 }
@@ -52,7 +52,7 @@ describe('createFrameRpc', () => {
 
     // Then
     expectTypeOf(resolveOwner).returns.resolves.toEqualTypeOf<string | null>();
-    expectTypeOf(readWallet).returns.resolves.toEqualTypeOf<LocalWalletReadResult>();
+    expectTypeOf(readWallet).returns.resolves.toEqualTypeOf<Answer<'localWalletRead'>>();
   });
 
   beforeEach(() => {

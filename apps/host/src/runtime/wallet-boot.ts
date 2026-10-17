@@ -10,7 +10,7 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import { setWalletModeState, type WalletModeState } from './state/wallet-mode.js';
 
-export type LocalWalletBoot = Extract<LocalWalletReadResult, { tag: 'ok' }>['value'];
+export type LocalWalletBoot = Extract<LocalWalletReadResult, { status: 'ok' }>;
 
 const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
 const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot App';
@@ -61,15 +61,15 @@ export function createWalletBoot({ read, report }: WalletBootDeps): WalletBoot {
       report({ mode: 'app', failure: UNAVAILABLE });
       return null;
     }
-    if (result.tag === 'ok') {
+    if (result.status === 'ok') {
       report({ mode: 'local', failure: null });
-      answer = result.value;
+      answer = result;
       return answer;
     }
-    if (result.tag === 'unreadable') {
+    if (result.status === 'unreadable') {
       reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
     }
-    report({ mode: 'app', failure: result.tag === 'unreadable' ? UNREADABLE : null });
+    report({ mode: 'app', failure: result.status === 'unreadable' ? UNREADABLE : null });
     answer = null;
     return answer;
   };

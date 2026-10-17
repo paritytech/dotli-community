@@ -175,4 +175,37 @@ describe('createSharedStore', () => {
     expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: null }]);
     expect(sinks.size).toBe(0);
   });
+
+  it.each([
+    { tag: 'none' as const, read: { status: 'none' } },
+    { tag: 'unreadable' as const, read: { status: 'unreadable' } },
+  ])('As the host, I read a local wallet the frame answers $tag for as its status', async ({ tag, read }) => {
+    // Given a frame whose local wallet store answers `tag`
+    const fake = createFakeFrame(serving => {
+      serving.handleRequest('localWalletRead', () => ({ tag, value: undefined }));
+    });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+
+    // When
+    const result = await store.readSharedLocalWallet('dotli');
+
+    // Then
+    expect(result).toEqual(read);
+  });
+
+  it('As a local wallet user, I read my wallet with its entropy and identity', async () => {
+    // Given a frame that holds a wallet
+    const entropy = new Uint8Array([1, 2, 3]);
+    const identity = { identityAccountId: '5Grw', liteUsername: 'alice' };
+    const fake = createFakeFrame(serving => {
+      serving.handleRequest('localWalletRead', () => ({ tag: 'ok' as const, value: { entropy, identity } }));
+    });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+
+    // When
+    const result = await store.readSharedLocalWallet('dotli');
+
+    // Then
+    expect(result).toEqual({ status: 'ok', entropy, identity });
+  });
 });

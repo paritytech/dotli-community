@@ -7,8 +7,8 @@
 import {
   isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
+  type Answer,
   type CallContext,
-  type LocalWalletReadResult,
   type RequestHandler,
   type ServingTransport,
 } from '@dotli/protocol';
@@ -44,7 +44,7 @@ function admit(payload: { siteId: string }, context: CallContext): void {
 }
 
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
-async function read(store: LocalWalletStore): Promise<LocalWalletReadResult> {
+async function read(store: LocalWalletStore): Promise<Answer<'localWalletRead'>> {
   try {
     const wallet = await store.loadLocalWallet();
     return wallet === null

@@ -7,13 +7,30 @@ import type { SiteId } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { LocalWalletIdentity, SharedAuthChange } from './methods.js';
+import type { Answer, LocalWalletIdentity, SharedAuthChange } from './methods.js';
 import type { FrameRpc } from './rpc.js';
 import type { ConsumerTransport, Subscription } from './transport.js';
 
 export type SharedAuthStorageChange = SharedAuthChange;
 
 export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => void;
+
+/** `unreadable` means the frame found a record it could not decrypt, and has already deleted it. */
+export type LocalWalletReadResult =
+  | { status: 'none' }
+  | { status: 'unreadable' }
+  | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null };
+
+function localWalletReadResult(answer: Answer<'localWalletRead'>): LocalWalletReadResult {
+  switch (answer.tag) {
+    case 'none':
+      return { status: 'none' };
+    case 'unreadable':
+      return { status: 'unreadable' };
+    case 'ok':
+      return { status: 'ok', entropy: answer.value.entropy, identity: answer.value.identity };
+  }
+}
 
 /** Whether the shared store can answer. `connecting` until the first frame settles. */
 export type SharedStoreStatus = 'connecting' | 'available' | 'unavailable';
@@ -118,7 +135,9 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
       await rpc.request('modeStorageClear', { siteId, key });
     },
     /** The record lives on `host.<BASE_DOMAIN>`, so one import covers every app on the domain. */
-    readSharedLocalWallet: (siteId: SiteId) => rpc.request('localWalletRead', { siteId }),
+    async readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
+      return localWalletReadResult(await rpc.request('localWalletRead', { siteId }));
+    },
     async saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
       await rpc.request('localWalletSave', { siteId, entropy });
     },

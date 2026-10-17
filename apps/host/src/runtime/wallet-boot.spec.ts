@@ -28,8 +28,8 @@ beforeEach(() => {
 describe('wallet boot', () => {
   it('As a user with a local wallet, I boot in local mode with its entropy', async () => {
     // Given
-    const wallet = { entropy: ENTROPY, identity: null };
-    const { mode, walletBoot } = bootWith(() => Promise.resolve({ tag: 'ok' as const, value: wallet }));
+    const wallet = { status: 'ok' as const, entropy: ENTROPY, identity: null };
+    const { mode, walletBoot } = bootWith(() => Promise.resolve(wallet));
 
     // When
     const boot = await walletBoot.read();
@@ -41,7 +41,7 @@ describe('wallet boot', () => {
 
   it('As a Polkadot App user, I boot the pairing host', async () => {
     // Given
-    const { mode, walletBoot } = bootWith(() => Promise.resolve({ tag: 'none' as const, value: undefined }));
+    const { mode, walletBoot } = bootWith(() => Promise.resolve({ status: 'none' }));
 
     // When
     const boot = await walletBoot.read();
@@ -53,7 +53,7 @@ describe('wallet boot', () => {
 
   it('As a user whose wallet no longer decrypts, I boot the pairing host and am told why', async () => {
     // Given
-    const { mode, walletBoot } = bootWith(() => Promise.resolve({ tag: 'unreadable' as const, value: undefined }));
+    const { mode, walletBoot } = bootWith(() => Promise.resolve({ status: 'unreadable' }));
 
     // When
     const boot = await walletBoot.read();
@@ -90,7 +90,7 @@ describe('wallet boot', () => {
 
   it('As a page with several cores, I read the wallet once', async () => {
     // Given
-    const { read, walletBoot } = bootWith(() => Promise.resolve({ tag: 'none' as const, value: undefined }));
+    const { read, walletBoot } = bootWith(() => Promise.resolve({ status: 'none' }));
 
     // When
     await Promise.all([walletBoot.read(), walletBoot.read()]);
@@ -102,10 +102,10 @@ describe('wallet boot', () => {
 
   it('As a local wallet user whose shared store came back, the next read restores my local wallet', async () => {
     // Given: a first read the frame could not answer, then the frame back with the wallet
-    const wallet = { entropy: ENTROPY, identity: null };
+    const wallet = { status: 'ok' as const, entropy: ENTROPY, identity: null };
     let frameUp = false;
     const { read, mode, walletBoot } = bootWith(() =>
-      frameUp ? Promise.resolve({ tag: 'ok' as const, value: wallet }) : Promise.reject(new Error('frame unavailable')),
+      frameUp ? Promise.resolve(wallet) : Promise.reject(new Error('frame unavailable')),
     );
     expect(await walletBoot.read()).toBeNull();
     frameUp = true;
@@ -123,9 +123,7 @@ describe('wallet boot', () => {
     // Given
     let frameUp = false;
     const { mode, walletBoot } = bootWith(() =>
-      frameUp
-        ? Promise.resolve({ tag: 'none' as const, value: undefined })
-        : Promise.reject(new Error('frame unavailable')),
+      frameUp ? Promise.resolve({ status: 'none' }) : Promise.reject(new Error('frame unavailable')),
     );
     await walletBoot.read();
     frameUp = true;

@@ -25,6 +25,7 @@ function refreshWith(read: () => Promise<string | null>) {
 
 function wallet(liteUsername: string | null | undefined): LocalWalletBoot {
   return {
+    status: 'ok',
     entropy: ENTROPY,
     identity: liteUsername === undefined ? null : { identityAccountId: IDENTITY_ACCOUNT, liteUsername },
   };

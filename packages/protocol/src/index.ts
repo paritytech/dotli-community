@@ -22,6 +22,7 @@ export {
   type ProtocolClient,
   type ProtocolFrameConfig,
   type ProtocolStatus,
+  type LocalWalletReadResult,
   type RemoteChainProvider,
   type SharedStoreStatus,
 } from './client.js';
@@ -35,7 +36,6 @@ export {
 export type {
   Answer,
   LocalWalletIdentity,
-  LocalWalletReadResult,
   RequestMethod,
   RequestPayload,
   SubscribePayload,

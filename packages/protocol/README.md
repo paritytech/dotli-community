@@ -94,7 +94,8 @@ subscription that already ended, and a repeat handshake answer.
   `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the
   request guards `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, `isSharedAuthRequestMethod`,
   `isSharedModeRequestMethod`, `isSharedWalletRequestMethod`.
-- Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult`.
+- Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
+  the entropy and the cached identity).
 - Transport, for the frame app: `createConsumerTransport`, `createServingTransport`, `ConsumerTransport`,
   `ServingTransport`, `CallContext`, `RequestHandler`, `SubscriptionHandler`, `SubscriptionSink`.
 - Providers: `createWindowProvider`, `createPortProvider`.
