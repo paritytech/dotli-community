@@ -7,7 +7,7 @@
 // detached.
 
 import { m, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import { createAsyncTaskPool, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { ProtocolHandshakeTimeoutError, ProtocolRequestError, ProtocolVersionMismatchError } from './errors.js';
 import {
   WIRE_VERSION,
@@ -24,6 +24,8 @@ import { decodeWireMessage, encodeWireMessage, toWireError, type WireError, type
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 5_000;
+// A refused message's cause in the log, enough to tell decode failures apart.
+const MAX_CAUSE_CHARS = 200;
 // The largest id the wire's u32 carries. Ids wrap long after any call with an old one has settled.
 const MAX_ID = 0xffff_ffff;
 
@@ -129,7 +131,14 @@ function postLeaving(provider: Provider, message: WireMessage): void {
 function receive(data: ArrayBuffer, count: Count, side: 'host' | 'frame' | 'worker'): WireMessage | null {
   const decoded = decodeWireMessage(data);
   if (!decoded.ok) {
-    count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: decoded.reason, side });
+    const { reason, cause } = decoded;
+    count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason, side });
+    log.event('protocol message refused', {
+      flow: 'protocol',
+      reason,
+      side,
+      cause: `${cause.name}: ${cause.message}`.slice(0, MAX_CAUSE_CHARS),
+    });
     return null;
   }
   return decoded.message;

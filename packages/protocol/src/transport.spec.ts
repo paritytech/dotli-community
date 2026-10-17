@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { spans as S } from '@dotli/metrics';
+import { bindLogSink } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
 import {
   ProtocolHandshakeTimeoutError,
@@ -276,6 +277,38 @@ describe('createConsumerTransport', () => {
 
     // Then
     expect(settled).toBeInstanceOf(ProtocolHandshakeTimeoutError);
+  });
+
+  it('As a receiver, I log each refused message once with what failed', async () => {
+    // Given
+    const { consumer, timers, right } = rawRig();
+    const events: { message: string; attrs: Record<string, unknown> | undefined }[] = [];
+    const unbind = bindLogSink({
+      emit: (level, message, attrs) => {
+        if (level === 'info') {
+          events.push({ message, attrs });
+        }
+      },
+    });
+    consumer.connect();
+
+    // When
+    right.post(new Uint8Array([0xff, 0xff, 0xff]).buffer);
+    await timers.advance(0);
+    unbind();
+
+    // Then
+    expect(events).toEqual([
+      {
+        message: 'protocol message refused',
+        attrs: {
+          flow: 'protocol',
+          reason: 'malformed',
+          side: 'host',
+          cause: 'RangeError: Offset is outside the bounds of the DataView',
+        },
+      },
+    ]);
   });
 
   it('As a caller, a late answer to a call I gave up on is ignored', async () => {

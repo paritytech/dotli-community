@@ -20,7 +20,8 @@ import {
 /**
  * Sent in the handshake. A peer on another version is refused, since a codec change is a wire change. Any wire change
  * bumps it, except to what a peer of any release must read to tell the versions apart, which never changes: the message
- * header, `handshake` first in the table with its payload and empty answer, and the response and error layout.
+ * header, the request leg's body (the optional deadline, then the payload), `handshake` first in the table with its
+ * payload and empty answer, and the response and error layout.
  */
 export const WIRE_VERSION = 1;
 
