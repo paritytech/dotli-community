@@ -177,6 +177,8 @@ interface Tab {
   posted: ArrayBuffer[];
   /** How many times the worker closed its end of this tab's port. */
   closes: () => number;
+  /** The tab's end of the port closes without its transport saying goodbye, as when the renderer crashes. */
+  crash: () => void;
 }
 
 const openPorts = new Set<MessagePort>();
@@ -377,7 +379,15 @@ async function bootWorker(
         });
         transport.connect();
         tabs.add(transport);
-        return { transport, status: record(transport, 'frameStatus', undefined), posted, closes: () => closes };
+        return {
+          transport,
+          status: record(transport, 'frameStatus', undefined),
+          posted,
+          closes: () => closes,
+          crash: () => {
+            channel.port2.close();
+          },
+        };
       },
       link: async onOpen => {
         const transport = await connectSharedWorker({
@@ -977,6 +987,43 @@ describe('protocol SharedWorker', () => {
     // Then the tab hears the release, and only then does a beat close the port
     await expect(status.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
     expect(tab.closes()).toBe(0);
+    worker.beat();
+    expect(tab.closes()).toBe(1);
+  });
+
+  it('As a tab that crashed, my port is forgotten as soon as it closes', async () => {
+    // Given a ready tab holding a chain connection
+    const worker = await bootWorker(fakeLightClient());
+    const tab = worker.connect();
+    await readyStatus(tab);
+    await connectChain(tab, 'c1');
+
+    // When its end of the port closes with no unsubscribe sent
+    tab.crash();
+    await worker.untilLog('Port closed');
+
+    // Then its connection is freed and its port closed, with no beat
+    expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
+    expect(tab.closes()).toBe(1);
+    outlastHeartbeat(worker);
+    expect(worker.logs.map(line => line.message)).not.toContain('Port released');
+  });
+
+  it('As a released tab that crashed, my port is closed as soon as it closes, with no message from me', async () => {
+    // Given a tab whose port the worker released
+    const worker = await bootWorker(fakeLightClient());
+    const tab = worker.connect();
+    const status = await readyStatus(tab);
+    outlastHeartbeat(worker);
+    await status.ended;
+    const closed = worker.untilLog('Released port closed');
+
+    // When its end of the port closes
+    tab.crash();
+    await closed;
+
+    // Then the worker closed its end, once, before any beat
+    expect(tab.closes()).toBe(1);
     worker.beat();
     expect(tab.closes()).toBe(1);
   });

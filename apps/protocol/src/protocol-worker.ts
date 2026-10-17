@@ -87,6 +87,8 @@ interface PortSession {
   missed: number;
   /** The tab's open `beat` subscriptions, which each beat reaches. */
   beats: Set<SubscriptionSink<'beat'>>;
+  /** Stops hearing the port close. */
+  unwatch: () => void;
 }
 
 /** The requests a span follows. A chain message would swamp them, and a heartbeat says nothing of a load. */
@@ -171,7 +173,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     }
     session.transport.dispose(reason);
     session.scope?.close();
-    holdReleased(session.port);
+    holdReleased(session);
     heard(session);
   }
 
@@ -179,15 +181,17 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
    * Keeps a released port open until the beat after its tab sends anything, which it is no longer served for. A tab
    * that speaks may have done so before the release reached it, so the ends posted at the release get a beat to arrive.
    */
-  function holdReleased(port: MessagePort): void {
+  function holdReleased({ port, unwatch }: PortSession): void {
     const onMessage = (): void => {
       spoke.add(port);
     };
     released.set(port, () => {
       port.removeEventListener('message', onMessage);
+      unwatch();
       released.delete(port);
       spoke.delete(port);
       port.close();
+      swEvent('Released port closed', { released: released.size });
     });
     port.addEventListener('message', onMessage);
   }
@@ -200,6 +204,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     if (!sessions.delete(session)) {
       return;
     }
+    session.unwatch();
     session.transport.dispose(new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
     session.scope?.close();
     session.port.close();
@@ -470,7 +475,26 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         forget(session);
       },
     });
-    const session: PortSession = { port, transport, scope: null, missed: 0, beats: new Set() };
+    // The tab's end of the port closed, as when its page crashed or was evicted, which no unsubscribe or message tells.
+    // Engines that never fire the event fall back to the heartbeat release.
+    const onClosed = (): void => {
+      if (sessions.has(session)) {
+        forget(session);
+      } else {
+        released.get(port)?.();
+      }
+    };
+    port.addEventListener('close', onClosed);
+    const session: PortSession = {
+      port,
+      transport,
+      scope: null,
+      missed: 0,
+      beats: new Set(),
+      unwatch: () => {
+        port.removeEventListener('close', onClosed);
+      },
+    };
     // Any message shows the tab is alive, not only its heartbeat.
     provider.subscribe(() => {
       session.missed = 0;
