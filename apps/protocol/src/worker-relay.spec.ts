@@ -10,6 +10,7 @@ import {
   createPortProvider,
   createServingTransport,
   ProtocolPortReleasedError,
+  type Answer,
   type CallContext,
   type ConsumerTransport,
   type ServingTransport,
@@ -129,6 +130,45 @@ describe('the worker relay', () => {
     expect(telemetry.events).toEqual([{ tag: 'netBytes', value: 4_000 }]);
     expect(contexts.get('chainConnect')?.deadlineMs).toBe(deadlineMs);
     expect(contexts.get('resolveOwner')?.deadlineMs).toBe(deadlineMs);
+  });
+
+  it('As the host in shared-worker mode, my manifest reads reach the worker with my deadline and its answers reach me', async () => {
+    // Given a worker that serves both manifest reads
+    const deadlineMs = Date.now() + 60_000;
+    const executableAnswer: Answer<'resolveExecutableManifest'> = {
+      kind: 'ok',
+      value: { $v: 1, kind: 'worker', appVersion: [1, 0, 0], entrypoint: 'worker.js', includes: { chat: true } },
+      raw: '{"$v":1}',
+    };
+    const rootAnswer: Answer<'resolveRootManifest'> = { kind: 'unsupported', reason: 'no slot' };
+    const asked: unknown[] = [];
+    const { host, contexts } = linkHops((served, seen) => {
+      served.handleRequest('resolveExecutableManifest', (payload, context) => {
+        asked.push(payload);
+        seen.set('resolveExecutableManifest', context);
+        return executableAnswer;
+      });
+      served.handleRequest('resolveRootManifest', (payload, context) => {
+        asked.push(payload);
+        seen.set('resolveRootManifest', context);
+        return rootAnswer;
+      });
+    });
+
+    // When
+    const executable = await host.request(
+      'resolveExecutableManifest',
+      { label: 'doom', kind: 'worker' },
+      { deadlineMs },
+    );
+    const root = await host.request('resolveRootManifest', { label: 'doom' }, { deadlineMs });
+
+    // Then
+    expect(executable).toEqual(executableAnswer);
+    expect(root).toEqual(rootAnswer);
+    expect(asked).toEqual([{ label: 'doom', kind: 'worker' }, { label: 'doom' }]);
+    expect(contexts.get('resolveExecutableManifest')?.deadlineMs).toBe(deadlineMs);
+    expect(contexts.get('resolveRootManifest')?.deadlineMs).toBe(deadlineMs);
   });
 
   it('As the host, my disconnect reaches the worker', async () => {
