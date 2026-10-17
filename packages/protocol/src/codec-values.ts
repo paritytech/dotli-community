@@ -54,6 +54,20 @@ const RESOLVE_PHASES = Object.keys({
   'resolving-content': true,
 } satisfies Record<ResolvePhase, true>) as ResolvePhase[];
 
+type DbCache = NonNullable<ChainDetail['dbCache']>;
+
+const DB_CACHE_OUTCOMES = Object.keys({ hit: true, miss: true } satisfies Record<DbCache, true>) as DbCache[];
+
+/**
+ * The fields of a wire struct for a type owned elsewhere. Held to the type's keys with `satisfies`, so a field added
+ * to the type, optional ones included, fails the build until the wire carries it or names it in `Omitted`.
+ */
+type FieldsOf<T, Omitted extends keyof T = never> = Record<Exclude<keyof T, Omitted>, unknown>;
+
+type WidgetManifest = Extract<ExecutableManifest, { kind: 'widget' }>;
+type WorkerManifest = Extract<ExecutableManifest, { kind: 'worker' }>;
+type ManifestVariant<T, K extends ManifestResult<T>['kind']> = Extract<ManifestResult<T>, { kind: K }>;
+
 export const chainRoleCodec: Codec<ChainRole> = oneOf(CHAIN_ROLES);
 export const smoldotDbChainCodec: Codec<SmoldotDbChain> = oneOf(SMOLDOT_DB_CHAINS);
 export const smoldotDbOutcomeCodec: Codec<SmoldotDbOutcome> = oneOf(SMOLDOT_DB_OUTCOMES);
@@ -76,7 +90,7 @@ const chainSyncEventWire = Struct({
   at: strictOption(u32Exact),
   target: strictOption(u32Exact),
   finalized: strictOption(u32Exact),
-});
+} satisfies FieldsOf<ChainSyncEvent>);
 
 export const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
   chainSyncEventWire,
@@ -93,13 +107,17 @@ export const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
   wire => dropUndefined<ChainSyncEvent>(wire),
 );
 
-const chainPeerCodec: Codec<ChainPeer> = Struct({ peerId: str, roles: str, bestNumber: u32Exact });
+const chainPeerCodec: Codec<ChainPeer> = Struct({
+  peerId: str,
+  roles: str,
+  bestNumber: u32Exact,
+} satisfies FieldsOf<ChainPeer>);
 
 const chainDetailWire = Struct({
   chain: chainRoleCodec,
-  dbCache: strictOption(oneOf(['hit', 'miss'] as const)),
+  dbCache: strictOption(oneOf(DB_CACHE_OUTCOMES)),
   peers: strictOption(Vector(chainPeerCodec)),
-});
+} satisfies FieldsOf<ChainDetail>);
 
 export const chainDetailCodec: Codec<ChainDetail> = enhanceCodec(
   chainDetailWire,
@@ -110,9 +128,9 @@ export const chainDetailCodec: Codec<ChainDetail> = enhanceCodec(
 const rootManifestWire = Struct({
   displayName: str,
   description: str,
-  icon: Struct({ cid: str, format: str }),
+  icon: Struct({ cid: str, format: str } satisfies FieldsOf<RootManifest['icon']>),
   trustedProducts: strictOption(Vector(Tuple(str, Vector(str)))),
-});
+} satisfies FieldsOf<RootManifest, '$v'>);
 
 export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
   rootManifestWire,
@@ -140,26 +158,32 @@ export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
 
 const appVersionCodec = Tuple(f64, f64, f64, strictOption(str));
 
-const widgetDimensionsCodec = Struct({ height: Vector(f64), width: strictOption(f64) });
+const widgetDimensionsCodec = Struct({
+  height: Vector(f64),
+  width: strictOption(f64),
+} satisfies FieldsOf<WidgetManifest['dimensions']>);
 
 const workerIncludesCodec = Struct({
   chat: strictOption(strictBool),
   pocket: strictOption(strictBool),
   input: strictOption(strictBool),
-});
+} satisfies FieldsOf<WorkerManifest['includes']>);
 
 const executableManifestWire = Enum({
-  app: Struct({ appVersion: appVersionCodec }),
+  app: Struct({ appVersion: appVersionCodec } satisfies FieldsOf<
+    Extract<ExecutableManifest, { kind: 'app' }>,
+    '$v' | 'kind'
+  >),
   widget: Struct({
     appVersion: appVersionCodec,
     description: strictOption(str),
     dimensions: widgetDimensionsCodec,
-  }),
+  } satisfies FieldsOf<WidgetManifest, '$v' | 'kind'>),
   worker: Struct({
     appVersion: appVersionCodec,
     entrypoint: str,
     includes: workerIncludesCodec,
-  }),
+  } satisfies FieldsOf<WorkerManifest, '$v' | 'kind'>),
 });
 
 type WireAppVersion = [number, number, number, string | undefined];
@@ -240,11 +264,14 @@ const jsonTextCodec: Codec<unknown> = enhanceCodec(
 
 export function manifestResultCodec<T>(value: Codec<T>): Codec<ManifestResult<T>> {
   const wire = Enum({
-    ok: Struct({ value, raw: str }),
+    ok: Struct({ value, raw: str } satisfies FieldsOf<ManifestVariant<T, 'ok'>, 'kind'>),
     empty: _void,
-    unsupported: Struct({ reason: str }),
-    'unsupported-version': Struct({ version: jsonTextCodec, raw: str }),
-    invalid: Struct({ errors: Vector(str), raw: str }),
+    unsupported: Struct({ reason: str } satisfies FieldsOf<ManifestVariant<T, 'unsupported'>, 'kind'>),
+    'unsupported-version': Struct({
+      version: jsonTextCodec,
+      raw: str,
+    } satisfies FieldsOf<ManifestVariant<T, 'unsupported-version'>, 'kind'>),
+    invalid: Struct({ errors: Vector(str), raw: str } satisfies FieldsOf<ManifestVariant<T, 'invalid'>, 'kind'>),
   });
   return enhanceCodec(
     wire,
