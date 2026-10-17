@@ -74,6 +74,8 @@ export type WireMessage =
 
 type Leg = WireMessage['leg'];
 
+// The header (u32 id, u8 method index, u8 leg index), the response's outcome tag and the error layout never change, and
+// neither does the order of these legs, since a peer of any release reads them to tell the versions apart.
 const LEGS: readonly Leg[] = ['request', 'response', 'subscribe', 'event', 'end', 'unsubscribe'];
 
 const wireErrorCodec: Codec<WireError> = Struct({ message: str, name: nullable(str), stack: nullable(str) });

@@ -17,7 +17,11 @@ import {
   smoldotDbOutcomeCodec,
 } from './codec-values.js';
 
-/** Sent in the handshake. A peer on another version is refused, since a codec change is a wire change. */
+/**
+ * Sent in the handshake. A peer on another version is refused, since a codec change is a wire change. Any wire change
+ * bumps it, except to what a peer of any release must read to tell the versions apart, which never changes: the message
+ * header, `handshake` first in the table with its payload and empty answer, and the response and error layout.
+ */
 export const WIRE_VERSION = 1;
 
 interface RequestEntry<P, A> {
@@ -101,6 +105,7 @@ function isTelemetryEventValid(event: TelemetryEvent): boolean {
 }
 
 export const PROTOCOL_METHODS = {
+  // Never moved or changed, so a peer of any release can read the version it refuses.
   handshake: request(Struct({ version: u8, resolutionId: nullable(str) }), _void),
   heartbeat: request(_void, _void),
   warmup: request(_void, _void),
