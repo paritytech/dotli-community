@@ -297,7 +297,7 @@ const sentrySink: CaptureSink = {
   },
 };
 
-/** Origin facts the protocol client attaches to errors it rebuilds from a response envelope. */
+/** Origin facts the protocol client attaches to errors it rebuilds from a failed protocol answer. */
 function remoteFacts(err: unknown): { method?: string; remoteStack?: string } {
   if (typeof err !== 'object' || err === null) {
     return {};

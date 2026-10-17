@@ -174,7 +174,7 @@ export const WASM_LOAD = 'wasm.load';
 
 /**
  * Shared-storage request rejected before touching `localStorage`. Tagged `store` and `reason`,
- * because the error envelope the listener answers with is easy to miss.
+ * because the failed answer the caller receives is easy to miss.
  */
 export const SHARED_STORAGE_REJECTED = 'shared_storage.rejected';
 
