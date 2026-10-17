@@ -708,8 +708,11 @@ describe('createRemoteChainProvider halts', () => {
     await settle();
 
     // Then
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'remote_chain.message' } }]);
-    expect(errors).toEqual([bug]);
+    expect(captured).toEqual([
+      { flow: 'protocol', step: 'frame_lost' },
+      { flow: 'protocol', step: 'listener', tags: { owner: 'remote_chain.message' } },
+    ]);
+    expect(errors).toEqual([expect.any(ProtocolFatalError), bug]);
     expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'remote_chain.message' },
     ]);

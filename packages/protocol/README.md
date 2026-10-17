@@ -91,6 +91,9 @@ flowchart TB
   replace the open app with its reload screen.
 - A boot that fails is counted under the frame's ready metric with the step that failed, and logged. A fatal light
   client or a failed init ends the frame status subscription with that error.
+- A frame lost after it was ready is counted once under its own frame lost metric with the error's name, captured and
+  logged. A tab the SharedWorker let go of while it was frozen finds its port released when it thaws, which is expected,
+  so that loss is counted and left in the trail but not captured.
 
 ### Held feeds
 

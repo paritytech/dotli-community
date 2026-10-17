@@ -101,6 +101,12 @@ export const APP_RUN = 'app.run';
 export const PROTOCOL_IFRAME_READY = 'protocol.iframe_ready';
 
 /**
+ * A protocol frame lost after it was ready, so the host rebuilds it. Tagged `outcome` (error) and `reason` (the error's
+ * name, `ProtocolPortReleasedError` for a tab the SharedWorker let go of while it was frozen).
+ */
+export const PROTOCOL_FRAME_LOST = 'protocol.frame_lost';
+
+/**
  * A listener that threw, so it missed that delivery. Tagged `outcome` (error), `reason` (the error's name) and `owner`
  * (whose listeners, such as `chain_pool.status` or `debug_bus.replay`).
  */

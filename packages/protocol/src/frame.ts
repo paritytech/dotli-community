@@ -6,7 +6,7 @@
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
 import type { Backend, Network } from '@dotli/config';
-import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
+import { captureException, getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createStatusCell,
@@ -176,6 +176,22 @@ function reportBootFailure(phase: BootPhase, error: unknown, count: typeof m.cou
     phase === 'ready' ? '[dot.li protocol] Ready wait failed:' : '[dot.li protocol] Host iframe load failed:',
     error,
   );
+}
+
+/**
+ * Reports a frame lost after it was ready, once. A tab the SharedWorker let go of while it was frozen finds its port
+ * released when it thaws, which is expected, so that loss is counted and left in the trail but not captured.
+ */
+function reportFrameLost(error: Error, count: typeof m.count): void {
+  const reason = errorName(error) ?? 'unknown';
+  count(S.PROTOCOL_FRAME_LOST, { outcome: 'error', reason });
+  if (reason === 'ProtocolPortReleasedError') {
+    log.event('protocol frame released', { flow: 'protocol', reason });
+    return;
+  }
+  m.breadcrumb('protocol frame lost', { reason: serializeError(error) });
+  captureException(error, { flow: 'protocol', step: 'frame_lost' });
+  log.error(`[dot.li protocol] Frame lost: ${serializeError(error)}`);
 }
 
 /**
@@ -418,7 +434,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
         if (readyAt === null) {
           reportBootFailure(phase, error, count);
         } else {
-          log.error(`[dot.li protocol] Frame lost: ${serializeError(reason)}`);
+          reportFrameLost(reason, count);
         }
         if (reason instanceof ProtocolVersionMismatchError) {
           mismatch = reason;

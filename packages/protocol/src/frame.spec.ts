@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
@@ -14,6 +14,7 @@ import {
   ProtocolFatalError,
   ProtocolHandshakeTimeoutError,
   ProtocolInitFailedError,
+  ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
 } from './errors.js';
 import { backendOfFrameMode, createProtocolFrame } from './frame.js';
@@ -246,6 +247,45 @@ describe('createProtocolFrame', () => {
     expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
       { outcome: 'error', phase: 'ready', reason: 'ProtocolFatalError' },
     ]);
+  });
+
+  it('As the host, a ready frame I lose is counted once as lost and captured', async () => {
+    // Given a ready frame, and a reporting pipeline that records captures and counts
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom(undefined, { timers });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.whenUp('ready').catch(() => undefined);
+    const status = await bringUp(dom);
+
+    // When its light client dies
+    status.fail(new ProtocolFatalError('boom'));
+    await advance();
+
+    // Then
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'ProtocolFatalError' }]);
+    expect(metrics.counted(S.PROTOCOL_IFRAME_READY).filter(tags => tags?.['outcome'] === 'error')).toEqual([]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'frame_lost' }]);
+  });
+
+  it('As the host, a ready frame whose port the worker released is counted as lost and not captured', async () => {
+    // Given a ready frame, and a reporting pipeline that records captures and counts
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom(undefined, { timers });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.whenUp('ready').catch(() => undefined);
+    const status = await bringUp(dom);
+
+    // When the tab thaws and finds the SharedWorker let go of its port
+    status.fail(new ProtocolPortReleasedError('released'));
+    await advance();
+
+    // Then
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'ProtocolPortReleasedError' }]);
+    expect(captured).toEqual([]);
   });
 
   it('As the host, a late message from a dropped frame settles nothing on the new one', async () => {
