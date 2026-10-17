@@ -7,9 +7,19 @@ interface Side {
   disposed: boolean;
 }
 
+function deliver(side: Side, data: ArrayBuffer): void {
+  for (const listener of [...side.listeners]) {
+    if (side.disposed) {
+      return;
+    }
+    listener(data);
+  }
+}
+
 /**
  * Two connected providers that deliver on a microtask, in order, and detach each buffer like a browser transfer. As a
- * browser port does, a message posted before its sender closes still arrives, and nothing reaches a closed receiver.
+ * browser port does, a message posted before its sender closes still arrives, and nothing reaches a closed receiver,
+ * not even its other listeners once one of them closes it.
  */
 export function createProviderPair(): { left: Provider; right: Provider; delivered: ArrayBuffer[] } {
   const delivered: ArrayBuffer[] = [];
@@ -27,12 +37,13 @@ export function createProviderPair(): { left: Provider; right: Provider; deliver
           return;
         }
         delivered.push(moved);
-        for (const listener of [...peer.listeners]) {
-          listener(moved);
-        }
+        deliver(peer, moved);
       });
     },
     subscribe(listener) {
+      if (own.disposed) {
+        return () => undefined;
+      }
       own.listeners.add(listener);
       return () => {
         own.listeners.delete(listener);

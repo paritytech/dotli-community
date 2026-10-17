@@ -7,6 +7,10 @@ import type { MessageTarget } from './frame.js';
 export interface Provider {
   /** Transfers the buffer to the peer, so the caller must not reuse it. Throws after `dispose`. */
   post(data: ArrayBuffer): void;
+  /**
+   * Hears each message that arrives while the listener is subscribed. A provider holds nothing for a listener yet to
+   * come, so its owner subscribes in the turn that creates it. Does nothing after `dispose`.
+   */
   subscribe(listener: (data: ArrayBuffer) => void): () => void;
   /** The origin the peer is known by, or null when it has none or none is admitted yet. */
   peerOrigin(): string | null;
@@ -25,12 +29,13 @@ export type PortLike = Pick<
 export interface WindowProviderDeps {
   listen: MessageTarget;
   peer: () => WindowLike | null;
-  /** A fixed origin, or a predicate whose first admitted origin is locked for the rest of the provider's life. */
+  /** A fixed origin, or a predicate whose first origin to send bytes is locked for the rest of the provider's life. */
   origin: string | ((origin: string) => boolean);
   /** Called for data from the admitted peer that is not an `ArrayBuffer`. */
   onNotBytes?: () => void;
 }
 
+/** Hears its peer from the moment it is created, and delivers only to listeners subscribed by then. */
 export function createWindowProvider(deps: WindowProviderDeps): Provider {
   const { listen, peer, origin, onNotBytes } = deps;
   const listeners = new Set<(data: ArrayBuffer) => void>();
@@ -42,12 +47,8 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
     if (source === null || event.source !== source) {
       return;
     }
-    if (locked === null) {
-      if (typeof origin === 'string' || !origin(event.origin)) {
-        return;
-      }
-      locked = event.origin;
-    } else if (event.origin !== locked) {
+    const admitted = locked === null ? typeof origin !== 'string' && origin(event.origin) : event.origin === locked;
+    if (!admitted) {
       return;
     }
     const data: unknown = event.data;
@@ -55,7 +56,12 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
       onNotBytes?.();
       return;
     }
+    // Only bytes lock the origin, so an object from an allowed origin leaves the lock to the peer that speaks the wire.
+    locked ??= event.origin;
     for (const listener of [...listeners]) {
+      if (disposed) {
+        return;
+      }
       listener(data);
     }
   };
@@ -76,6 +82,9 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
       target.postMessage(data, locked, [data]);
     },
     subscribe(listener) {
+      if (disposed) {
+        return () => undefined;
+      }
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
@@ -98,6 +107,7 @@ interface PortProviderOptions {
   closeOnDispose?: boolean;
 }
 
+/** Starts the port, so it hears from the moment it is created and delivers only to listeners subscribed by then. */
 export function createPortProvider(port: PortLike, options: PortProviderOptions = {}): Provider {
   const closeOnDispose = options.closeOnDispose ?? true;
   const listeners = new Set<(data: ArrayBuffer) => void>();
@@ -109,6 +119,9 @@ export function createPortProvider(port: PortLike, options: PortProviderOptions 
       return;
     }
     for (const listener of [...listeners]) {
+      if (disposed) {
+        return;
+      }
       listener(data);
     }
   };
@@ -123,6 +136,9 @@ export function createPortProvider(port: PortLike, options: PortProviderOptions 
       port.postMessage(data, [data]);
     },
     subscribe(listener) {
+      if (disposed) {
+        return () => undefined;
+      }
       listeners.add(listener);
       return () => {
         listeners.delete(listener);

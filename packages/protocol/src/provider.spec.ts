@@ -89,6 +89,36 @@ describe('createWindowProvider', () => {
     expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://a.dot.li']);
   });
 
+  it('As the iframe, an object from an allowed origin does not lock me to that origin', () => {
+    // Given
+    const listen = createTarget();
+    const parent = createFakeWindow();
+    const onNotBytes = vi.fn();
+    const provider = createWindowProvider({
+      listen,
+      peer: () => parent,
+      origin: origin => origin.endsWith('.dot.li'),
+      onNotBytes,
+    });
+    const heard = vi.fn();
+    provider.subscribe(heard);
+    const bytes = new ArrayBuffer(1);
+
+    // When
+    listen.dispatchEvent(messageFrom(parent, 'https://a.dot.li', { type: 'hello' }));
+
+    // Then
+    expect(onNotBytes).toHaveBeenCalledOnce();
+    expect(provider.peerOrigin()).toBeNull();
+
+    // When
+    listen.dispatchEvent(messageFrom(parent, 'https://b.dot.li', bytes));
+
+    // Then
+    expect(heard).toHaveBeenCalledExactlyOnceWith(bytes);
+    expect(provider.peerOrigin()).toBe('https://b.dot.li');
+  });
+
   it('As the iframe, I refuse to post before any parent origin is admitted', () => {
     // Given
     const parent = createFakeWindow();
@@ -183,6 +213,42 @@ describe('createWindowProvider', () => {
     }).toThrow();
   });
 
+  it('As either side, a listener that disposes me stops the message reaching the others', () => {
+    // Given
+    const listen = createTarget();
+    const frame = createFakeWindow();
+    const provider = createWindowProvider({ listen, peer: () => frame, origin: 'https://p.dot.li' });
+    const disposing = vi.fn(() => {
+      provider.dispose();
+    });
+    const sibling = vi.fn();
+    provider.subscribe(disposing);
+    provider.subscribe(sibling);
+
+    // When
+    listen.dispatchEvent(messageFrom(frame, 'https://p.dot.li', new ArrayBuffer(1)));
+
+    // Then
+    expect(disposing).toHaveBeenCalledOnce();
+    expect(sibling).not.toHaveBeenCalled();
+  });
+
+  it('As either side, a listener I add after I dispose hears nothing', () => {
+    // Given
+    const listen = createTarget();
+    const frame = createFakeWindow();
+    const provider = createWindowProvider({ listen, peer: () => frame, origin: 'https://p.dot.li' });
+    provider.dispose();
+    const heard = vi.fn();
+
+    // When
+    provider.subscribe(heard)();
+    listen.dispatchEvent(messageFrom(frame, 'https://p.dot.li', new ArrayBuffer(1)));
+
+    // Then
+    expect(heard).not.toHaveBeenCalled();
+  });
+
   it('As either side, I stop hearing once I unsubscribe', () => {
     // Given
     const listen = createTarget();
@@ -219,6 +285,29 @@ describe('createPortProvider', () => {
 
     left.dispose();
     right.dispose();
+  });
+
+  it('As a worker, a listener that disposes me stops the message reaching the others', async () => {
+    // Given
+    const { port1, port2 } = new MessageChannel();
+    const provider = createPortProvider(port1);
+    const sender = createPortProvider(port2);
+    const sibling = vi.fn();
+    const disposed = new Promise<void>(resolve => {
+      provider.subscribe(() => {
+        provider.dispose();
+        resolve();
+      });
+    });
+    provider.subscribe(sibling);
+
+    // When
+    sender.post(new ArrayBuffer(1));
+    await disposed;
+
+    // Then
+    expect(sibling).not.toHaveBeenCalled();
+    sender.dispose();
   });
 
   it('As a worker, I cannot post after I dispose', () => {
@@ -268,6 +357,45 @@ describe('createProviderPair', () => {
     expect(() => {
       left.post(data);
     }).toThrow();
+  });
+
+  it('As a test, a listener that disposes its side stops the message reaching the others', async () => {
+    // Given
+    const { left, right } = createProviderPair();
+    const sibling = vi.fn();
+    const disposed = new Promise<void>(resolve => {
+      right.subscribe(() => {
+        right.dispose();
+        resolve();
+      });
+    });
+    right.subscribe(sibling);
+
+    // When
+    left.post(new ArrayBuffer(1));
+    await disposed;
+
+    // Then
+    expect(sibling).not.toHaveBeenCalled();
+  });
+
+  it('As a test, a listener added after its side is disposed hears nothing, as on a real provider', async () => {
+    // Given
+    const { left, right } = createProviderPair();
+    const heard = vi.fn();
+    const before = vi.fn();
+    left.subscribe(before);
+    right.post(new ArrayBuffer(1));
+
+    // When
+    left.dispose();
+    left.subscribe(heard);
+    right.post(new ArrayBuffer(2));
+    await Promise.resolve();
+
+    // Then
+    expect(heard).not.toHaveBeenCalled();
+    expect(before).not.toHaveBeenCalled();
   });
 
   it('As a test, I get bytes in order on a microtask', async () => {
