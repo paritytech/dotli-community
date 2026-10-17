@@ -613,13 +613,14 @@ describe('product frame app roots', () => {
 });
 
 describe('product frame halted', () => {
-  it('As a visitor whose app failed for good, the failure screen stays up and nothing rebuilds the app under it', async () => {
+  it('As a visitor whose app failed for good, it lets go of its core, the failure screen stays up and nothing rebuilds the app under it', async () => {
     // Given a product on screen, halted under the failure screen the page put up
     const fakes = harness();
     const rendered = fakes.frame.render(subdomainProduct('product'));
     const live = await answerConnection(fakes, 0);
     await rendered;
     fakes.frame.halt();
+    const connectionClosedOnHalt = live.dispose.mock.calls.length;
     const { disposeLoading, disposePage } = registerScreens();
 
     // When its sandbox asks to be rebuilt, a device permission changes, and its core goes down
@@ -627,7 +628,8 @@ describe('product frame halted', () => {
     fakes.announce({ label: 'product', permissions: ['Camera'] });
     crash(live);
 
-    // Then
+    // Then its connection to the core closed with the halt, and the screen stays
+    expect(connectionClosedOnHalt).toBe(1);
     expect(disposePage).not.toHaveBeenCalled();
     expect(disposeLoading).not.toHaveBeenCalled();
     expect(fakes.statuses()).toEqual(['connecting', 'connected', 'failed']);

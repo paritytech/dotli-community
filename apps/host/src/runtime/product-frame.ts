@@ -108,8 +108,8 @@ export interface ProductFrame {
   render(product: FrameProduct): Promise<void>;
   /**
    * Takes the product down for good under a failure screen the page shows: a render in flight is dropped, and the frame
-   * starts no render of its own again, so nothing it does clears that screen. The product stays mounted under it, and a
-   * render asked from above starts afresh.
+   * starts no render of its own again, so nothing it does clears that screen. The product stays mounted under it
+   * without its core, and a render asked from above starts afresh.
    */
   halt(): void;
 }
@@ -588,6 +588,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     // Every render the frame starts on its own reads the product from here.
     target = null;
     setStatus('failed');
+    // The product stays on screen under the failure, but nothing serves it again, so its connection and lease go.
+    mounted?.releaseCore();
   }
 
   return {
