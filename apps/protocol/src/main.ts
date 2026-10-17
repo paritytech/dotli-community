@@ -42,7 +42,7 @@ import { createEngine, serveEngineScope } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { serveLocalWallet } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
-import { createRefusalReporter, reportRefusals } from './refusal-report.js';
+import { createOriginRefusalReporter, createRefusalReporter, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes } from './net-bytes.js';
 import { createFrameStatus } from './frame-status.js';
 import { createDeferredSubscription } from './deferred-subscription.js';
@@ -97,6 +97,7 @@ const serving = createServingTransport(
     onNotBytes: () => {
       m.count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'not_bytes', side: 'frame' });
     },
+    onRefusedOrigin: createOriginRefusalReporter({ warn: log.warn, count: m.count }),
   }),
   { side: 'frame' },
 );

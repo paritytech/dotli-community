@@ -110,8 +110,9 @@ export const PROTOCOL_REQUEST = 'protocol.request';
 
 /**
  * A protocol message dropped on receipt. Tagged `outcome` (refused), `side` (host, frame or worker) and `reason`:
- * `malformed` for bytes that are no message, `invalid` for a message whose values its method refuses, and `not_bytes`
- * for data that is not an `ArrayBuffer`, which a host page of an earlier release sends.
+ * `malformed` for bytes that are no message, `invalid` for a message whose values its method refuses, `not_bytes` for
+ * data that is not an `ArrayBuffer`, which a host page of an earlier release sends, and `origin` for bytes from a page
+ * outside the frame's trust boundary.
  */
 export const PROTOCOL_WIRE_REFUSED = 'protocol.wire_refused';
 

@@ -21,8 +21,6 @@ import {
   type LocalWalletStore,
 } from '@dotli/storage';
 
-import { OriginDeniedError } from './errors.js';
-
 const pageWallet: LocalWalletStore = { forgetLocalWallet, loadLocalWallet, saveLocalWallet, updateLocalWalletIdentity };
 
 const ENTROPY_LENGTHS = new Set([16, 20, 24, 28, 32]);
@@ -33,10 +31,13 @@ function assertEntropy(value: Uint8Array): void {
   }
 }
 
-/** Checks a call's origin and site before it touches the wallet. */
+/**
+ * Checks a call's origin and site before it touches the wallet. The frame's provider admits no other origin, and this
+ * check holds the boundary on any transport the wallet is served over.
+ */
 function admit(payload: { siteId: string }, context: CallContext): void {
   if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
-    throw new OriginDeniedError('Local wallet', context.origin);
+    throw new Error(`Local wallet request denied from origin: ${context.origin ?? 'none'}`);
   }
   if (!isSharedAuthSiteId(payload.siteId)) {
     throw new Error(`Invalid siteId: ${String(payload.siteId)}`);

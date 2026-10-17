@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { memoryStorage } from '@dotli/shared/testing';
-import { createRefusalReporter, reportRefusals, type FrameRefusal, type FrameRoute } from './refusal-report.js';
+import {
+  createOriginRefusalReporter,
+  createRefusalReporter,
+  reportRefusals,
+  type FrameRefusal,
+  type FrameRoute,
+} from './refusal-report.js';
 import { createSharedStoreHandler } from './shared-store-handler.js';
 import { closeHostLinks, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
 
@@ -27,35 +33,13 @@ interface Row {
   counted: unknown[][];
 }
 
-const origin = (route: FrameRoute): FrameRefusal => ({ route, reason: 'origin', origin: STRANGER });
 const failed = (route: FrameRoute): FrameRefusal => ({
   route,
-  reason: 'failed',
   method: failedMethods[route],
   error: FAILURE,
 });
 
 const TABLE: Row[] = [
-  {
-    refusal: origin('auth'),
-    warned: [[`[dot.li protocol] Rejected shared-auth request from disallowed origin: ${STRANGER}`]],
-    counted: [[S.SHARED_STORAGE_REJECTED, { store: 'auth', reason: 'origin' }]],
-  },
-  {
-    refusal: origin('mode'),
-    warned: [[`[dot.li protocol] Rejected shared-mode request from disallowed origin: ${STRANGER}`]],
-    counted: [[S.SHARED_STORAGE_REJECTED, { store: 'mode', reason: 'origin' }]],
-  },
-  {
-    refusal: origin('wallet'),
-    warned: [[`[dot.li protocol] Rejected local wallet request from disallowed origin: ${STRANGER}`]],
-    counted: [[S.SHARED_STORAGE_REJECTED, { store: 'wallet', reason: 'origin' }]],
-  },
-  {
-    refusal: origin('chain'),
-    warned: [[`[dot.li protocol] Rejected request from disallowed origin: ${STRANGER}`]],
-    counted: [],
-  },
   {
     refusal: failed('auth'),
     warned: [],
@@ -71,28 +55,51 @@ const TABLE: Row[] = [
 ];
 
 describe('the protocol frame refusal report', () => {
-  it.each(TABLE)(
-    'As a dotli operator, I see the $refusal.route route refused for $refusal.reason logged and counted as it should be',
-    row => {
-      // Given a reporter on its own log and counter
-      const warned: unknown[][] = [];
-      const counted: unknown[][] = [];
-      const report = createRefusalReporter({
-        warn: (...args) => warned.push(args),
-        count: (name, attributes) => counted.push([name, attributes]),
-      });
+  it.each(TABLE)('As a dotli operator, I see a failed $refusal.route call logged and counted as it should be', row => {
+    // Given a reporter on its own log and counter
+    const warned: unknown[][] = [];
+    const counted: unknown[][] = [];
+    const report = createRefusalReporter({
+      warn: (...args) => warned.push(args),
+      count: (name, attributes) => counted.push([name, attributes]),
+    });
 
-      // When one call is refused
-      report(row.refusal);
+    // When one call is refused
+    report(row.refusal);
 
-      // Then it is logged and counted as the table says
-      expect({ warned, counted }).toEqual({ warned: row.warned, counted: row.counted });
-    },
-  );
+    // Then it is logged and counted as the table says
+    expect({ warned, counted }).toEqual({ warned: row.warned, counted: row.counted });
+  });
+});
+
+describe('the origin refusal report', () => {
+  it('As a dotli operator, I see every refused message counted and each refused origin logged once', () => {
+    // Given a reporter on its own log and counter
+    const warned: unknown[][] = [];
+    const counted: unknown[][] = [];
+    const report = createOriginRefusalReporter({
+      warn: (...args) => warned.push(args),
+      count: (name, attributes) => counted.push([name, attributes]),
+    });
+
+    // When a stranger keeps posting and a second one posts once
+    report(STRANGER);
+    report(STRANGER);
+    report(STRANGER);
+    report(PRODUCT_ORIGIN);
+
+    // Then each message is counted, and each origin is logged on its first refusal only
+    const refused = [S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' }];
+    expect(counted).toEqual([refused, refused, refused, refused]);
+    expect(warned).toEqual([
+      [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${STRANGER}`],
+      [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${PRODUCT_ORIGIN}`],
+    ]);
+  });
 });
 
 describe('the reporting serving transport', () => {
-  it('As a dotli operator, I see a store call refused for its origin reported as such, and the host still hears why', async () => {
+  it('As a dotli operator, I see a store call refused by its handler reported as failed, and the host still hears why', async () => {
     // Given
     const link = linkHost(PRODUCT_ORIGIN);
     const refusals: FrameRefusal[] = [];
@@ -107,7 +114,13 @@ describe('the reporting serving transport', () => {
 
     // Then
     await expect(read).rejects.toThrow(`Shared auth request denied from origin: ${PRODUCT_ORIGIN}`);
-    expect(refusals).toEqual([{ route: 'mode', reason: 'origin', origin: PRODUCT_ORIGIN }]);
+    expect(refusals).toEqual([
+      {
+        route: 'mode',
+        method: 'modeStorageRead',
+        error: new Error(`Shared auth request denied from origin: ${PRODUCT_ORIGIN}`),
+      },
+    ]);
   });
 
   it('As a dotli operator, I see a failed request, a refused subscription and one that ends in error reported under their methods', async () => {
@@ -134,9 +147,9 @@ describe('the reporting serving transport', () => {
 
     // Then
     expect(refusals).toEqual([
-      { route: 'wallet', reason: 'failed', method: 'localWalletRead', error: failure },
-      { route: 'chain', reason: 'failed', method: 'chainConnect', error: refused },
-      { route: 'chain', reason: 'failed', method: 'resolveDotName', error: ended },
+      { route: 'wallet', method: 'localWalletRead', error: failure },
+      { route: 'chain', method: 'chainConnect', error: refused },
+      { route: 'chain', method: 'resolveDotName', error: ended },
     ]);
   });
 

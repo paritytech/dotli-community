@@ -33,25 +33,33 @@ export interface WindowProviderDeps {
   origin: string | ((origin: string) => boolean);
   /** Called for data from the admitted peer that is not an `ArrayBuffer`. */
   onNotBytes?: () => void;
+  /**
+   * Called for bytes from any window at an origin this provider does not admit, so a page outside the trust boundary
+   * that tries to speak the wire is seen. Other data from such an origin is not the wire and goes unreported.
+   */
+  onRefusedOrigin?: (origin: string) => void;
 }
 
 /** Hears its peer from the moment it is created, and delivers only to listeners subscribed by then. */
 export function createWindowProvider(deps: WindowProviderDeps): Provider {
-  const { listen, peer, origin, onNotBytes } = deps;
+  const { listen, peer, origin, onNotBytes, onRefusedOrigin } = deps;
   const listeners = new Set<(data: ArrayBuffer) => void>();
   let locked: string | null = typeof origin === 'string' ? origin : null;
   let disposed = false;
 
   const onMessage = (event: MessageEvent): void => {
+    const data: unknown = event.data;
+    const admitted = locked === null ? typeof origin !== 'string' && origin(event.origin) : event.origin === locked;
+    if (!admitted) {
+      if (data instanceof ArrayBuffer) {
+        onRefusedOrigin?.(event.origin);
+      }
+      return;
+    }
     const source = peer();
     if (source === null || event.source !== source) {
       return;
     }
-    const admitted = locked === null ? typeof origin !== 'string' && origin(event.origin) : event.origin === locked;
-    if (!admitted) {
-      return;
-    }
-    const data: unknown = event.data;
     if (!(data instanceof ArrayBuffer)) {
       onNotBytes?.();
       return;

@@ -19,8 +19,6 @@ import {
   type SubscriptionSink,
 } from '@dotli/protocol';
 
-import { OriginDeniedError } from './errors.js';
-
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
 
@@ -64,9 +62,11 @@ function assertModeKey(value: string): void {
   }
 }
 
+// The frame's provider admits no other origin, so this refusal is reported as bad input. It holds the boundary on any
+// transport the stores are served over.
 function assertOrigin(context: CallContext): void {
   if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
-    throw new OriginDeniedError('Shared auth', context.origin);
+    throw new Error(`Shared auth request denied from origin: ${context.origin ?? 'none'}`);
   }
 }
 

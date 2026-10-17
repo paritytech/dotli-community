@@ -163,6 +163,59 @@ describe('createWindowProvider', () => {
     expect(onNotBytes).not.toHaveBeenCalled();
   });
 
+  it('As the iframe, I report bytes from any window at an origin I refuse, before or after my lock, and nothing else', () => {
+    // Given
+    const listen = createTarget();
+    const parent = createFakeWindow();
+    const onRefusedOrigin = vi.fn();
+    const provider = createWindowProvider({
+      listen,
+      peer: () => parent,
+      origin: origin => origin.endsWith('.dot.li'),
+      onRefusedOrigin,
+    });
+    const heard = vi.fn();
+    provider.subscribe(heard);
+
+    // When a stranger frame and the parent speak the wire from refused origins, and the parent sends an object
+    listen.dispatchEvent(messageFrom(createFakeWindow(), 'https://evil.example', new ArrayBuffer(1)));
+    listen.dispatchEvent(messageFrom(parent, 'https://evil.example', new ArrayBuffer(1)));
+    listen.dispatchEvent(messageFrom(parent, 'https://evil.example', { type: 'hello' }));
+
+    // Then only the bytes are reported, under their origin
+    expect(onRefusedOrigin.mock.calls).toEqual([['https://evil.example'], ['https://evil.example']]);
+
+    // When the parent locks the origin and another allowed origin speaks
+    listen.dispatchEvent(messageFrom(parent, 'https://a.dot.li', new ArrayBuffer(1)));
+    listen.dispatchEvent(messageFrom(parent, 'https://b.dot.li', new ArrayBuffer(1)));
+
+    // Then the second origin is refused as well, and only the locked one is heard
+    expect(onRefusedOrigin).toHaveBeenLastCalledWith('https://b.dot.li');
+    expect(onRefusedOrigin).toHaveBeenCalledTimes(3);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('As the iframe, I report nothing for a stranger window at an origin I admit', () => {
+    // Given
+    const listen = createTarget();
+    const onRefusedOrigin = vi.fn();
+    const provider = createWindowProvider({
+      listen,
+      peer: () => createFakeWindow(),
+      origin: () => true,
+      onRefusedOrigin,
+    });
+    const heard = vi.fn();
+    provider.subscribe(heard);
+
+    // When
+    listen.dispatchEvent(messageFrom(createFakeWindow(), 'https://a.dot.li', new ArrayBuffer(1)));
+
+    // Then
+    expect(onRefusedOrigin).not.toHaveBeenCalled();
+    expect(heard).not.toHaveBeenCalled();
+  });
+
   it('As the host, I cannot post to a frame whose window is gone', () => {
     // Given
     const provider = createWindowProvider({

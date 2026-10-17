@@ -14,14 +14,3 @@ export const PROTOCOL_APP_ERRORS = {
   PORT_RELEASED: 'The protocol worker let go of this tab after it went silent',
   WORKER_STATUS_ENDED: 'The protocol worker stopped reporting its status',
 } as const;
-
-/** A store call from outside the shared-auth trust boundary, so its refusal is reported apart from bad input. */
-export class OriginDeniedError extends Error {
-  readonly origin: string | null;
-
-  constructor(store: string, origin: string | null) {
-    super(`${store} request denied from origin: ${origin ?? 'none'}`);
-    this.name = 'OriginDeniedError';
-    this.origin = origin;
-  }
-}
