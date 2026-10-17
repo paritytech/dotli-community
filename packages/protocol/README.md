@@ -75,9 +75,10 @@ flowchart TB
   counted. An answer that settles after the serving side was disposed is logged and never posted. The ends it posts as
   it disposes go unreported, since the peer may already be gone.
 - The serving side's `onPeerIdle` hears a peer that left. A live peer keeps at least one subscription open, so when the
-  peer's own unsubscribe leaves nothing running and no call of its is in flight, the peer has disposed its transport. A
-  call the peer makes after that cancels it, and an end the serving side posted never counts, since the peer may not
-  have heard it.
+  peer's own unsubscribe leaves nothing running and no call of its is in flight, the peer has disposed its transport.
+  The serving side runs its request handlers in a task pool and waits for that pool to settle before it says so. A call
+  the peer makes after its unsubscribe cancels it, and an end the serving side posted never counts, since the peer may
+  not have heard it.
 
 ### Frame loss and version mismatch
 

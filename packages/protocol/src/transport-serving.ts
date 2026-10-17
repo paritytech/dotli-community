@@ -5,7 +5,7 @@
 // runs the handler registered for each method.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log, toError } from '@dotli/shared';
+import { createAsyncTaskPool, errorName, log, toError } from '@dotli/shared';
 import { ProtocolVersionMismatchError } from './errors.js';
 import {
   WIRE_VERSION,
@@ -96,18 +96,19 @@ export function createServingTransport(provider: Provider, options: ServingTrans
   const running = new Map<number, Running>();
   let resolutionId: string | null = null;
   let disposed = false;
-  // Requests whose handler has not settled, and whether the peer's own unsubscribe left nothing running.
-  let inFlight = 0;
-  let peerLeft = false;
+  // Runs the request handlers, so the wait for a peer that left is a wait for every call of its to settle.
+  const handlers = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
+  // How many requests and subscriptions the peer has made so far. It only grows, so a wait that read it can tell
+  // whether the peer called again since.
+  let peerCalls = 0;
 
-  const checkIdle = (): void => {
-    if (disposed || !peerLeft || running.size > 0 || inFlight > 0) {
+  /** Tells `onPeerIdle` once the peer's calls have settled, unless it called again meanwhile or this end is disposed. */
+  const whenPeerIdle = async (seen: number): Promise<void> => {
+    await handlers.settle();
+    if (disposed || peerCalls !== seen || options.onPeerIdle === undefined) {
       return;
     }
-    peerLeft = false;
-    if (options.onPeerIdle !== undefined) {
-      guarded(report, options.onPeerIdle);
-    }
+    guarded(report, options.onPeerIdle);
   };
 
   const requestHandler = <M extends RequestMethod>(method: M): RequestHandler<M> | undefined =>
@@ -179,30 +180,23 @@ export function createServingTransport(provider: Provider, options: ServingTrans
 
   const onRequest = <M extends RequestMethod>({ id, method, deadlineMs, payload }: RequestMessage<M>): void => {
     // A peer that calls is still here, whatever it unsubscribed before.
-    peerLeft = false;
+    peerCalls += 1;
     const handler = requestHandler(method);
     if (handler === undefined) {
       respond(id, method, { ok: false, error: unhandled(method) });
       return;
     }
-    inFlight += 1;
-    const settled = (): void => {
-      inFlight -= 1;
-      checkIdle();
-    };
-    // A handler that throws at once answers like one that rejects.
-    void new Promise<Answer<M>>(resolve => {
-      resolve(handler(payload, contextOf(deadlineMs)));
-    }).then(
-      answer => {
-        respond(id, method, { ok: true, answer });
-        settled();
-      },
-      (error: unknown) => {
-        respond(id, method, { ok: false, error });
-        settled();
-      },
-    );
+    // The pool answers a handler that throws at once like one that rejects.
+    void handlers
+      .call(() => handler(payload, contextOf(deadlineMs)))
+      .then(
+        answer => {
+          respond(id, method, { ok: true, answer });
+        },
+        (error: unknown) => {
+          respond(id, method, { ok: false, error });
+        },
+      );
   };
 
   const onSubscribe = <M extends SubscriptionMethod>({
@@ -221,7 +215,7 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     }
     const entry: Running = { method, stop: null };
     running.set(id, entry);
-    peerLeft = false;
+    peerCalls += 1;
     const isCurrent = (): boolean => running.get(id) === entry;
     const finish = (error: Error | null): void => {
       if (!isCurrent()) {
@@ -280,8 +274,7 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     // Only the peer unsubscribes, so its own leg has left nothing running even when this end ended that subscription
     // before the leg arrived.
     if (running.size === 0) {
-      peerLeft = true;
-      checkIdle();
+      void whenPeerIdle(peerCalls);
     }
   };
 
