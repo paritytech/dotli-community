@@ -40,7 +40,7 @@ export function createProtocolClient(deps: ProtocolFrameDeps) {
   const sharedStore = createSharedStore({ frame, rpc, timers });
   return {
     async ensureProtocolFrame(): Promise<void> {
-      await frame.whenUp('ready');
+      await frame.whenReady();
     },
     getProtocolStatus: (): ProtocolStatus => frame.getStatus(),
     /** Called on each change only. Does not start a frame. */

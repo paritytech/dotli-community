@@ -91,7 +91,7 @@ function startCallTrail(method: CalledMethod, budgetMs: number | null, now: () =
 }
 
 /** What requests need of the frame. */
-export type RpcFrame = Pick<ProtocolFrame, 'whenUp' | 'transport'>;
+export type RpcFrame = Pick<ProtocolFrame, 'whenReady' | 'transport'>;
 
 export interface FrameRpc {
   /**
@@ -167,7 +167,7 @@ export function createFrameRpc(
             }),
           );
         } else {
-          const transport = await frame.whenUp('ready');
+          const transport = await frame.whenReady();
           answer = await bounded(send(transport, deadlineFromNow()));
         }
         sent.trail?.settled('ok');

@@ -29,9 +29,9 @@ interface Built {
 
 /**
  * Up and ready unless `options.status` says otherwise, or the test moves it. `serve` sets up each frame's serving
- * transport as it is built, and each frame's transport waits on `options.timers`. A `whenUp` or `transport` on an idle
- * or failed frame builds one and starts it booting, as the frame does. A `whenUp` waits for the status the test sets,
- * and fails when the frame is then lost or goes idle.
+ * transport as it is built, and each frame's transport waits on `options.timers`. A `whenReady` or `transport` on an
+ * idle or failed frame builds one and starts it booting, as the frame does. A `whenReady` waits for the test to set
+ * `ready`, and fails when the frame is then lost or goes idle.
  */
 export function createFakeFrame(
   serve: (serving: ServingTransport) => void = () => undefined,
@@ -44,7 +44,6 @@ export function createFakeFrame(
   let builds = 0;
   let current: Built | null = null;
   const statusListeners = new Set<(status: ProtocolStatus) => void>();
-  const lostListeners = new Set<(error: Error) => void>();
   const subscribe =
     <T>(listeners: Set<(event: T) => void>) =>
     (listener: (event: T) => void): (() => void) => {
@@ -96,11 +95,11 @@ export function createFakeFrame(
       subscribeStatus: subscribe(statusListeners),
       configure: () => undefined,
       transport: () => Promise.resolve(boot().consumer),
-      whenUp(wanted) {
+      whenReady() {
         boot();
         return new Promise<ConsumerTransport>((resolve, reject) => {
           const settle = (next: ProtocolStatus): boolean => {
-            if (next === 'ready' || (wanted === 'listening' && next === 'listening')) {
+            if (next === 'ready') {
               if (current === null) {
                 reject(lostWith);
               } else {
@@ -124,7 +123,6 @@ export function createFakeFrame(
           });
         });
       },
-      onLost: subscribe(lostListeners),
       // The facades never read it, and this fake's frame speaks the host wire.
       onVersionMismatch: () => () => undefined,
       losses: () => losses,
@@ -138,9 +136,6 @@ export function createFakeFrame(
       setStatus('failed');
       lost?.consumer.dispose(error);
       lost?.serving.dispose(error);
-      for (const listener of [...lostListeners]) {
-        listener(error);
-      }
     },
     builds: () => builds,
   };

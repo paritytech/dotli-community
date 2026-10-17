@@ -17,7 +17,8 @@ import {
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import { backendOfFrameMode, createProtocolFrame } from './frame.js';
+import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame } from './frame.js';
+import type { ConsumerTransport } from './transport-consumer.js';
 import { decodeWireMessage, encodeWireMessage } from './wire-message.js';
 import {
   createFrameDom,
@@ -68,6 +69,13 @@ function sent(iframe: FakeIframe): string[] {
   });
 }
 
+/** The frame's transport once its handshake is done, which is how the shared store waits for a listening frame. */
+async function whenListening(frame: ProtocolFrame): Promise<ConsumerTransport> {
+  const transport = await frame.transport();
+  await transport.whenConnected();
+  return transport;
+}
+
 /** How a wait settled, read once it has, with its handler bound at once so a rejection is never unhandled. */
 function outcomeOf(wait: Promise<unknown>): Promise<string> {
   return wait.then(
@@ -82,7 +90,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('listening');
+    void frame.transport();
     const status = await listen(dom);
     const stranger = dom.stranger();
 
@@ -107,7 +115,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { mount: null, timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const up = frame.whenUp('listening');
+    const up = whenListening(frame);
     dom.status();
     await advance(1_000);
     const postedBeforeLoad = dom.iframe().window.posted.length;
@@ -128,8 +136,8 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const settled: string[] = [];
-    void frame.whenUp('listening').then(() => settled.push('listening'));
-    void frame.whenUp('ready').then(() => settled.push('ready'));
+    void whenListening(frame).then(() => settled.push('listening'));
+    void frame.whenReady().then(() => settled.push('ready'));
 
     // When
     const status = await listen(dom);
@@ -158,32 +166,46 @@ describe('createProtocolFrame', () => {
     expect(framesBeforeAsking).toBe(0);
     expect(dom.frames()).toBe(1);
     expect(second).toBe(first);
-    await expect(frame.whenUp('ready')).resolves.toBe(first);
+    await expect(frame.whenReady()).resolves.toBe(first);
   });
 
-  it('As a dotli integrator, I hear why a frame was dropped once its status says it is down', async () => {
-    // Given
+  it('As the host with an app open, I hear a version mismatch once the frame status says it is down', async () => {
+    // Given a frame waiting on its handshake, and a listener that reads the status when it hears the mismatch
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('ready').catch(() => undefined);
-    const status = await bringUp(dom);
-    const lost: { name: string; message: string; status: ProtocolStatus }[] = [];
-    frame.onLost(error => lost.push({ name: error.name, message: error.message, status: frame.getStatus() }));
+    void frame.whenReady().catch(() => undefined);
+    await advance();
+    const heard: { name: string; status: ProtocolStatus }[] = [];
+    frame.onVersionMismatch(error => heard.push({ name: error.name, status: frame.getStatus() }));
 
-    // When
-    status.fail(new ProtocolFatalError('boom'));
+    // When the frame refuses the host wire version
+    dom.deliverRaw(
+      encodeWireMessage({
+        leg: 'response',
+        id: 1,
+        method: 'handshake',
+        outcome: {
+          ok: false,
+          error: {
+            message: 'The peer speaks wire version 3 and this end 2',
+            name: 'ProtocolVersionMismatchError',
+            stack: null,
+          },
+        },
+      }),
+    );
     await advance();
 
     // Then
-    expect(lost).toEqual([{ name: 'ProtocolFatalError', message: 'boom', status: 'failed' }]);
+    expect(heard).toEqual([{ name: 'ProtocolVersionMismatchError', status: 'failed' }]);
   });
 
   it('As a dotli integrator, I wait on a frame before it is configured, and it boots and answers once configured', async () => {
     // Given
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
-    const up = frame.whenUp('listening');
+    const up = whenListening(frame);
     await advance();
     const framesBeforeConfig = dom.frames();
 
@@ -204,7 +226,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const up = frame.whenUp('ready').catch((err: unknown) => err);
+    const up = frame.whenReady().catch((err: unknown) => err);
     dom.status().fail(new ProtocolInitFailedError('no SharedWorker'));
 
     // When
@@ -230,7 +252,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('ready').catch(() => undefined);
+    void frame.whenReady().catch(() => undefined);
     const status = await listen(dom);
     dom.serve().handleRequest('resolveOwner', () => new Promise<null>(() => undefined));
     const transport = await frame.transport();
@@ -256,7 +278,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('ready').catch(() => undefined);
+    void frame.whenReady().catch(() => undefined);
     const status = await bringUp(dom);
 
     // When its light client dies
@@ -276,7 +298,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('ready').catch(() => undefined);
+    void frame.whenReady().catch(() => undefined);
     const status = await bringUp(dom);
 
     // When the tab thaws and finds the SharedWorker let go of its port
@@ -293,7 +315,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('ready').catch(() => undefined);
+    void frame.whenReady().catch(() => undefined);
     const first = dom.iframe();
     const held = deferred<string | null>();
     dom.serve(first).handleRequest('authStorageRead', () => held.promise);
@@ -334,7 +356,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const up = frame.whenUp('ready').catch((err: unknown) => err);
+    const up = frame.whenReady().catch((err: unknown) => err);
     await advance();
 
     // When
@@ -365,7 +387,7 @@ describe('createProtocolFrame', () => {
     expect(frame.getStatus()).toBe('failed');
     expect(framesAfterBackoff).toBe(0);
     expect(dom.frames()).toBe(0);
-    await expect(frame.whenUp('listening')).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
+    await expect(frame.whenReady()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
     await expect(frame.transport()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
     expect(dom.frames()).toBe(0);
     expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
@@ -378,7 +400,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    void frame.whenUp('ready').catch(() => undefined);
+    void frame.whenReady().catch(() => undefined);
     const status = await bringUp(dom);
     const heard: Error[] = [];
     frame.onVersionMismatch(error => heard.push(error));
@@ -419,7 +441,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const up = frame.whenUp('listening').catch((err: unknown) => err);
+    const up = whenListening(frame).catch((err: unknown) => err);
     const silent = dom.iframe();
 
     // When
@@ -446,7 +468,7 @@ describe('createProtocolFrame', () => {
     frame.configure(FRAME_CONFIG);
 
     // When
-    const up = outcomeOf(frame.whenUp('listening'));
+    const up = outcomeOf(whenListening(frame));
     await advance();
 
     // Then the wait fails, and only the rebuild's wait is pending
@@ -463,7 +485,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const up = frame.whenUp('ready');
+    const up = frame.whenReady();
     const status = await bringUp(dom);
     await up;
     status.fail(new ProtocolFatalError('boom'));
@@ -477,7 +499,7 @@ describe('createProtocolFrame', () => {
     const framesWhileDown = dom.frames();
 
     // When
-    const up = outcomeOf(frame.whenUp('ready'));
+    const up = outcomeOf(frame.whenReady());
     const framesAfterAsking = dom.frames();
     await bringUp(dom);
 
@@ -493,7 +515,7 @@ describe('createProtocolFrame', () => {
     const { dom, frame } = await frameDownAfterFatal();
 
     // When
-    const up = outcomeOf(frame.whenUp('ready'));
+    const up = outcomeOf(frame.whenReady());
     const status = await listen(dom);
     status.fail(new ProtocolInitFailedError('no SharedWorker'));
 
@@ -530,7 +552,7 @@ describe('createProtocolFrame', () => {
       },
     });
     frame.configure(FRAME_CONFIG);
-    const up = frame.whenUp('ready');
+    const up = frame.whenReady();
     const firstStatus = await bringUp(dom);
     await up;
     firstStatus.fail(new ProtocolFatalError('boom'));
@@ -538,8 +560,8 @@ describe('createProtocolFrame', () => {
     const buildsBeforeAsking = builds;
 
     // When
-    const first = outcomeOf(frame.whenUp('ready'));
-    const second = outcomeOf(frame.whenUp('listening'));
+    const first = outcomeOf(frame.whenReady());
+    const second = outcomeOf(whenListening(frame));
     const framesAfterAsking = dom.frames();
     const status = await listen(dom);
     const secondSettled = await second;
@@ -564,8 +586,8 @@ describe('createProtocolFrame', () => {
     const { dom, frame } = await frameDownAfterFatal();
 
     // When
-    const first = outcomeOf(frame.whenUp('ready'));
-    const second = outcomeOf(frame.whenUp('listening'));
+    const first = outcomeOf(frame.whenReady());
+    const second = outcomeOf(whenListening(frame));
     const rebuilt = dom.iframe();
     const framesAfterAsking = dom.frames();
     await bringUp(dom);

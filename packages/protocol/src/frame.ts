@@ -124,17 +124,12 @@ export interface ProtocolFrame {
    */
   transport(): Promise<ConsumerTransport>;
   /**
-   * The transport of the frame that reached `wanted`, booting one if none was asked for yet, once it is configured. A
-   * call while the frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a
-   * boot under way join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame,
-   * so no caller is left to its own timeout.
+   * The transport of the ready frame, booting one if none was asked for yet, once it is configured. A call while the
+   * frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a boot under way
+   * join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame, so no caller is
+   * left to its own timeout.
    */
-  whenUp(wanted: 'listening' | 'ready'): Promise<ConsumerTransport>;
-  /**
-   * Hears why each frame was dropped, after the status changed, so a listener that asks again finds it down and boots a
-   * new frame at once.
-   */
-  onLost(listener: (error: Error) => void): () => void;
+  whenReady(): Promise<ConsumerTransport>;
   /**
    * Hears the version mismatch that left the frame down for good, once, and at once if it already did. A frame rebuilt
    * while an app is open can come from a newer release, and only a reload fixes that.
@@ -142,7 +137,7 @@ export interface ProtocolFrame {
   onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
   /**
    * How many frames were dropped so far. Counted before the status changes, so work a status listener starts on the
-   * drop can tell itself apart from the work `onLost` is about.
+   * drop can tell itself apart from work begun on the frame that was dropped.
    */
   losses(): number;
 }
@@ -487,12 +482,12 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     return withTimeout(configured, timeouts.configureMs, () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED), timers);
   }
 
-  function whenUp(wanted: 'listening' | 'ready'): Promise<ConsumerTransport> {
+  function whenReady(): Promise<ConsumerTransport> {
     if (mismatch !== null) {
       return Promise.reject(mismatch);
     }
     if (frameConfig === null) {
-      return untilConfigured().then(() => whenUp(wanted));
+      return untilConfigured().then(whenReady);
     }
     // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
     // before this call is what the boot answers, so it does not fail the wait.
@@ -501,7 +496,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     // Read when the status is reached, since the frame can be dropped before the wait's continuation runs.
     let reached: ConsumerTransport | null = null;
     return untilStatus(next => {
-      if (next === 'ready' || (wanted === 'listening' && next === 'listening')) {
+      if (next === 'ready') {
         reached = slot?.transport ?? null;
         return reached !== null || downReason;
       }
@@ -555,8 +550,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       askForFrame(frameConfig);
     },
     transport,
-    whenUp,
-    onLost: lostListeners.subscribe,
+    whenReady,
     onVersionMismatch(listener) {
       if (mismatch !== null) {
         listener(mismatch);

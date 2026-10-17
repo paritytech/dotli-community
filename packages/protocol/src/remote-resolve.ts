@@ -14,7 +14,7 @@ import { asCallError, callTimeoutError, type FrameRpc } from './rpc.js';
 const RESOLVE_BUDGET_MS = budgetOf('resolveDotName') ?? DEFAULT_TIMEOUT_MS;
 
 export interface RemoteResolveDeps {
-  frame: Pick<ProtocolFrame, 'whenUp'>;
+  frame: Pick<ProtocolFrame, 'whenReady'>;
   rpc: FrameRpc;
   timers?: Timers;
 }
@@ -25,7 +25,7 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
    * is ready, and a resolution that outlives it is unsubscribed, so the frame stops it.
    */
   async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
-    const transport = await frame.whenUp('ready');
+    const transport = await frame.whenReady();
     const giveUp = new AbortController();
     const trail = rpc.trail('resolveDotName', RESOLVE_BUDGET_MS);
     let timedOut: Error | undefined;

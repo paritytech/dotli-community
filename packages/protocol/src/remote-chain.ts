@@ -80,7 +80,7 @@ export type RemoteChainProvider = (
 ) => JsonRpcConnection;
 
 export interface RemoteChainsDeps {
-  frame: Pick<ProtocolFrame, 'whenUp'>;
+  frame: Pick<ProtocolFrame, 'whenReady'>;
   rpc: FrameRpc;
   timers?: Timers;
 }
@@ -226,7 +226,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
       chainConnections.set(connectionId, remote);
       let stopConnect = (): void => undefined;
 
-      void frame.whenUp('ready').then(
+      void frame.whenReady().then(
         transport => {
           // Disconnected before the frame was up: the frame never hears of it.
           if (isOpen(connectionId, remote)) {
