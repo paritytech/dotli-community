@@ -28,17 +28,18 @@ export interface RefusalReportDeps {
 }
 
 /**
- * Reports wire bytes the frame's provider refused for their origin, before any call is read from them. Each one is
- * counted, and only the first from an origin is logged, so a hostile page that keeps posting cannot flood the log.
+ * Reports wire bytes the frame's provider refused for their origin, before any call is read from them. Only the first
+ * from an origin is counted and logged, so the metric reads as "this origin tried the wire" and a hostile page that
+ * keeps posting floods neither the log nor the metrics.
  */
 export function createOriginRefusalReporter({ warn, count }: RefusalReportDeps): (origin: string) => void {
-  const logged = new Set<string>();
+  const reported = new Set<string>();
   return origin => {
-    count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' });
-    if (logged.has(origin)) {
+    if (reported.has(origin)) {
       return;
     }
-    logged.add(origin);
+    reported.add(origin);
+    count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' });
     warn(`[dot.li protocol] Rejected protocol messages from disallowed origin: ${origin}`);
   };
 }

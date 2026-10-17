@@ -73,7 +73,7 @@ describe('the protocol frame refusal report', () => {
 });
 
 describe('the origin refusal report', () => {
-  it('As a dotli operator, I see every refused message counted and each refused origin logged once', () => {
+  it('As a dotli operator, I see each refused origin counted and logged once, however often it posts', () => {
     // Given a reporter on its own log and counter
     const warned: unknown[][] = [];
     const counted: unknown[][] = [];
@@ -88,9 +88,9 @@ describe('the origin refusal report', () => {
     report(STRANGER);
     report(PRODUCT_ORIGIN);
 
-    // Then each message is counted, and each origin is logged on its first refusal only
+    // Then each origin is counted and logged on its first refusal only
     const refused = [S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' }];
-    expect(counted).toEqual([refused, refused, refused, refused]);
+    expect(counted).toEqual([refused, refused]);
     expect(warned).toEqual([
       [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${STRANGER}`],
       [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${PRODUCT_ORIGIN}`],
