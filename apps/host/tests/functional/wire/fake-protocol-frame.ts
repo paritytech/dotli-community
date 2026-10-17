@@ -5,8 +5,14 @@
 // fake frame's document loads this script, which answers the host through the real serving transport with the
 // options its own script tag carries as JSON.
 
-import { ProtocolFatalError, ProtocolInitFailedError, type Answer, type SubscriptionSink } from '@dotli/protocol';
-import { createServingTransport, createWindowProvider } from '@dotli/protocol/testing';
+import {
+  createServingTransport,
+  createWindowProvider,
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  type Answer,
+  type SubscriptionSink,
+} from '@dotli/protocol';
 
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';

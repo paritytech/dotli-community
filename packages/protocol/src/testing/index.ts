@@ -1,14 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What a functional test needs to fake the protocol frame and read its traffic in a real page. Never imported by
-// shipped code.
+// What a functional test needs to read the protocol frame's traffic in a real page. Never imported by shipped code.
 
 import { toHex } from '@dotli/shared';
 import { decodeWireMessage } from '../wire-message.js';
-
-export { createWindowProvider } from '../provider.js';
-export { createServingTransport } from '../transport-serving.js';
 
 export interface DescribedWireMessage {
   method: string;

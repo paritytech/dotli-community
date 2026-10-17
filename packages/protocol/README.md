@@ -54,8 +54,8 @@ flowchart TB
   is an error, and wraps any other reason.
 - A request has a budget per method. A shared store request's budget runs from the call. A chain or resolve request's
   runs once the frame is ready, since it also waits for the light client.
-- A request is timed and counted from when it goes out after the handshake, on a monotonic clock. A boot that fails is
-  counted once, as the frame's, and not again for each call that waited on it.
+- A request is timed and counted from when it goes out after the handshake, on a monotonic clock. One whose budget runs
+  out before it goes out is counted as a timeout. A boot that fails is otherwise counted once, as the frame's.
 - A listener's error, for an event or an end the consumer hears or a stop function the serving side runs, goes to the
   transport's `report` option, so the others still run.
 
@@ -70,7 +70,8 @@ flowchart TB
   is frozen. When it fails, every queued call rejects and every queued subscription ends with the reason.
 - The serving side answers a call for a method it does not handle with an error at once.
 - The serving side never throws into a handler. An answer, event or end its provider cannot post is captured, logged and
-  counted. An answer that settles after the serving side was disposed is logged and never posted.
+  counted. An answer that settles after the serving side was disposed is logged and never posted. The ends it posts as
+  it disposes go unreported, since the peer may already be gone.
 - The serving side's `onPeerIdle` hears a peer that left. A live peer keeps at least one subscription open, so when the
   peer's own unsubscribe leaves nothing running and no call of its is in flight, the peer has disposed its transport. A
   call the peer makes after that cancels it, and an end the serving side posted never counts, since the peer may not
@@ -86,8 +87,8 @@ flowchart TB
 - A frame rebuilt while an app is open can come from a newer release and refuse the page's wire. The client's
   `onProtocolVersionMismatch` hears that once, and at once for a listener that subscribes after it, so the host can
   replace the open app with its reload screen.
-- The frame's failures are reported with `captureException` and outcome metrics. A fatal light client or a failed init
-  ends the frame status subscription with that error.
+- A boot that fails is counted under the frame's ready metric with the step that failed, and logged. A fatal light
+  client or a failed init ends the frame status subscription with that error.
 
 ### Held feeds
 
@@ -138,10 +139,8 @@ unsubscribe for a subscription that already ended, and a repeat handshake answer
 
 ### `@dotli/protocol/testing`
 
-Test-only, for functional tests that fake the protocol frame and read its traffic in a real page. Never imported by
-shipped code.
+Test-only, for functional tests that read the protocol frame's traffic in a real page. Never imported by shipped code.
 
 - `describeWireMessage`: a wire message as its method, leg, id and body, with bytes as hex, or null for data that does
   not decode as one.
 - `DescribedWireMessage`: the type of what `describeWireMessage` returns.
-- `createServingTransport` and `createWindowProvider`, so a page-side test bundle serves the host from this one entry.

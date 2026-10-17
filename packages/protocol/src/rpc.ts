@@ -98,8 +98,9 @@ export interface FrameRpc {
    * Sends once the frame can answer: listening for the shared store, ready for everything else. A shared store
    * request's budget runs from the call, so it also bounds the wait for a frame that never loads. Any other budget runs
    * from when the frame is ready, since such a request also waits for the light client, which has deadlines of its
-   * own. Rejects when the frame goes down before the answer. A call is timed and counted from when it goes out, so a
-   * frame that fails its boot is counted once, by the frame, not once per call that waited on it.
+   * own. Rejects when the frame goes down before the answer. A call is timed and counted from when it goes out. One
+   * whose budget runs out before it goes out is counted as a timeout. A boot that fails is otherwise counted once, by
+   * the frame.
    */
   request<M extends RequestMethod>(method: M, payload: RequestPayload<M>): Promise<Answer<M>>;
   /** Starts the trail of a call made on the transport itself, timed on the same clock as every request. */
