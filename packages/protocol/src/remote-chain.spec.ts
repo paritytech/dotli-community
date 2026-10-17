@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
@@ -12,7 +12,7 @@ import {
   type RecordingSentry,
 } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
-import { deferred } from '@dotli/shared/testing';
+import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { ProtocolFatalError } from './errors.js';
 import type { SubscribePayload } from './methods.js';
@@ -26,10 +26,11 @@ import type { ServingTransport, SubscriptionSink } from './transport-serving.js'
 const HANDSHAKE_RETRY_MS = 50;
 const CONNECT_BUDGET_MS = 30_000;
 
+/** The clock and timers each test moves by hand. */
+let timers: ManualTimers;
+
 /** Lets queued waits and answers settle. */
-const settle = async (ms = 0): Promise<void> => {
-  await vi.advanceTimersByTimeAsync(ms);
-};
+const settle = (ms = 0): Promise<void> => timers.advance(ms);
 
 interface ServedConnect {
   payload: SubscribePayload<'chainConnect'>;
@@ -129,22 +130,20 @@ describe('createRemoteChains', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    timers = manualTimers();
     servers = [];
-    fake = createFakeFrame(serving => {
-      servers.push(serveChains(serving));
-    });
-    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+    fake = createFakeFrame(
+      serving => {
+        servers.push(serveChains(serving));
+      },
+      { timers },
+    );
+    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
     const provider = chains.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
     if (provider === null) {
       throw new Error('People is not remote-connectable');
     }
     people = provider;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
   });
 
   it('As a product, my sends wait for connected and go out in order', async () => {
@@ -431,13 +430,8 @@ async function connectRemote(onHalt?: (reason: RemoteChainHalt) => void): Promis
 
 describe('createRemoteChainProvider halts', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    host = createFrameHost();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    timers = manualTimers();
+    host = createFrameHost(undefined, FRAME_CONFIG, timers);
   });
 
   it('As a dotli integrator, a chain halt tells the connection once and closes it', async () => {

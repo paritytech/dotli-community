@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
+import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { TelemetryEvent } from './methods.js';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
@@ -19,12 +20,11 @@ function reporting(sinks: SubscriptionSink<'telemetry'>[]): (serving: ServingTra
   };
 }
 
-const settle = async (): Promise<void> => {
-  await vi.advanceTimersByTimeAsync(0);
-};
-
 describe('createFrameTelemetry', () => {
   let sinks: SubscriptionSink<'telemetry'>[];
+  let timers: ManualTimers;
+
+  const settle = (): Promise<void> => timers.advance(0);
 
   /** The frame up now reporting `event`. */
   const report = (event: TelemetryEvent): void => {
@@ -32,17 +32,13 @@ describe('createFrameTelemetry', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    timers = manualTimers();
     sinks = [];
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("As the network panel, I drop a byte total that goes back and start a rebuilt frame's count over", async () => {
     // Given
-    const fake = createFakeFrame(reporting(sinks));
+    const fake = createFakeFrame(reporting(sinks), { timers });
     const telemetry = createFrameTelemetry(fake.frame);
     const totals: number[] = [];
     telemetry.onProtocolNetBytes(event => totals.push(event.received));
@@ -66,7 +62,7 @@ describe('createFrameTelemetry', () => {
 
   it('As the network panel, I hear chain sync and chain detail as the frame reports them', async () => {
     // Given
-    const fake = createFakeFrame(reporting(sinks));
+    const fake = createFakeFrame(reporting(sinks), { timers });
     const telemetry = createFrameTelemetry(fake.frame);
     const syncs: ChainSyncEvent[] = [];
     const details: ChainDetail[] = [];
@@ -86,7 +82,7 @@ describe('createFrameTelemetry', () => {
 
   it('As a dotli integrator, a new frame forgets the smoldot DB outcomes of the last one', async () => {
     // Given
-    const fake = createFakeFrame(reporting(sinks));
+    const fake = createFakeFrame(reporting(sinks), { timers });
     const telemetry = createFrameTelemetry(fake.frame);
     await settle();
 
@@ -106,7 +102,7 @@ describe('createFrameTelemetry', () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const fake = createFakeFrame(reporting(sinks));
+    const fake = createFakeFrame(reporting(sinks), { timers });
     const telemetry = createFrameTelemetry(fake.frame);
     telemetry.onProtocolNetBytes(() => {
       throw new TypeError('panel broke');

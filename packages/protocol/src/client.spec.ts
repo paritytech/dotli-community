@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
@@ -21,10 +22,17 @@ import {
 // The consumer transport posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
 
+/** The clock and timers each test moves by hand. */
+let timers: ManualTimers;
+
+beforeEach(() => {
+  timers = manualTimers();
+});
+
 /** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
 async function listen(dom: FrameDom): Promise<void> {
   dom.status();
-  await vi.advanceTimersByTimeAsync(HANDSHAKE_RETRY_MS);
+  await timers.advance(HANDSHAKE_RETRY_MS);
 }
 
 /** What the host sent `iframe`, as `leg:method`, its handshakes and status left out. */
@@ -38,21 +46,16 @@ function sent(iframe: FakeIframe): string[] {
 }
 
 describe('createProtocolClient', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('As a dotli integrator, I build a client on my own document and origin, and it mounts its frame there only when asked', async () => {
     // Given
-    vi.useFakeTimers();
-    const host = createFrameHost();
-    const other = createFrameHost();
-    await vi.advanceTimersByTimeAsync(0);
+    const host = createFrameHost(undefined, FRAME_CONFIG, timers);
+    const other = createFrameHost(undefined, FRAME_CONFIG, timers);
+    await timers.advance(0);
     const framesBeforeAsking = host.frames();
 
     // When
     void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(framesBeforeAsking).toBe(0);
@@ -63,8 +66,7 @@ describe('createProtocolClient', () => {
 
   it('As a dotli integrator, I give the client shorter frame timeouts, and a frame that never gets ready fails within them', async () => {
     // Given
-    vi.useFakeTimers();
-    const host = createFrameHost({ readyMs: 1_000 });
+    const host = createFrameHost({ readyMs: 1_000 }, FRAME_CONFIG, timers);
     const outcome = host.client.warmupProtocol().then(
       () => 'resolved',
       (err: unknown) => (err instanceof Error ? err.message : String(err)),
@@ -72,7 +74,7 @@ describe('createProtocolClient', () => {
     await listen(host);
 
     // When
-    await vi.advanceTimersByTimeAsync(1_000);
+    await timers.advance(1_000);
 
     // Then
     expect(await outcome).toBe(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT);
@@ -85,18 +87,9 @@ function frameParams(iframe: FakeIframe): Record<string, string> {
 }
 
 describe('configureProtocolFrame', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
-  });
-
   it('As the host, I configure the frame before anything asks for it, and only the first request boots it, with that config', async () => {
     // Given
-    const host = createFrameHost(undefined, null);
+    const host = createFrameHost(undefined, null, timers);
 
     // When
     host.client.configureProtocolFrame({
@@ -104,10 +97,10 @@ describe('configureProtocolFrame', () => {
       network: 'previewnet',
       skipWorkerCache: true,
     });
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     const framesBeforeAsking = host.frames();
     void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(framesBeforeAsking).toBe(0);
@@ -120,7 +113,7 @@ describe('configureProtocolFrame', () => {
 
   it('As a dotli integrator, I request before the frame is configured and nothing mounts while the host has time to configure it', async () => {
     // Given
-    const host = createFrameHost({ configureMs: 30_000 }, null);
+    const host = createFrameHost({ configureMs: 30_000 }, null, timers);
     let settled = false;
 
     // When
@@ -132,7 +125,7 @@ describe('configureProtocolFrame', () => {
         settled = true;
       },
     );
-    await vi.advanceTimersByTimeAsync(29_999);
+    await timers.advance(29_999);
 
     // Then
     expect(host.frames()).toBe(0);
@@ -142,11 +135,11 @@ describe('configureProtocolFrame', () => {
 
   it('As a dotli integrator on a page that never configures the frame, my request fails after the configure wait and names why', async () => {
     // Given
-    const host = createFrameHost({ configureMs: 30_000 }, null);
+    const host = createFrameHost({ configureMs: 30_000 }, null, timers);
 
     // When
     const read = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch((err: unknown) => err);
-    await vi.advanceTimersByTimeAsync(30_000);
+    await timers.advance(30_000);
 
     // Then
     await expect(read).resolves.toMatchObject({ message: PROTOCOL_ERRORS.FRAME_UNCONFIGURED });
@@ -156,14 +149,14 @@ describe('configureProtocolFrame', () => {
 
   it('As a dotli integrator, I request before the frame is configured and my requests go through once the host configures it, on one frame', async () => {
     // Given
-    const host = createFrameHost(undefined, null);
+    const host = createFrameHost(undefined, null, timers);
     const first = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     const second = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // When
     host.client.configureProtocolFrame(FRAME_CONFIG);
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     const served: string[] = [];
     host.serve().handleRequest('authStorageRead', ({ key }) => {
       served.push(key);
@@ -180,7 +173,7 @@ describe('configureProtocolFrame', () => {
 
   it('As the host, I configure the same frame again and nothing is rebuilt', async () => {
     // Given
-    const host = createFrameHost();
+    const host = createFrameHost(undefined, FRAME_CONFIG, timers);
     void host.client.ensureProtocolFrame();
     const frame = host.iframe();
     host.status().ready();
@@ -190,7 +183,7 @@ describe('configureProtocolFrame', () => {
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG });
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(host.iframe()).toBe(frame);
@@ -200,14 +193,14 @@ describe('configureProtocolFrame', () => {
 
   it('As the host, I change the config of a booted frame, and it is rebuilt at once with the new one', async () => {
     // Given
-    const host = createFrameHost();
+    const host = createFrameHost(undefined, FRAME_CONFIG, timers);
     const warmup = host.client.warmupProtocol().catch((err: unknown) => (err as Error).message);
     const old = host.iframe();
     await listen(host);
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(await warmup).toBe(PROTOCOL_ERRORS.FRAME_RESET);
@@ -218,13 +211,13 @@ describe('configureProtocolFrame', () => {
 
   it('As the host, I take a pending reset that asks for a clean chain database, and a frame booted without it is rebuilt with it', async () => {
     // Given: the shared store's first read booted the frame before the reset was known.
-    const host = createFrameHost();
+    const host = createFrameHost(undefined, FRAME_CONFIG, timers);
     void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
     await listen(host);
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, skipWorkerCache: true });
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(frameParams(host.iframe())['skipWorkerCache']).toBe('1');
@@ -232,11 +225,11 @@ describe('configureProtocolFrame', () => {
 
   it('As the host, I change the config of a frame nobody asked for yet, and nothing boots', async () => {
     // Given
-    const host = createFrameHost();
+    const host = createFrameHost(undefined, FRAME_CONFIG, timers);
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, network: 'previewnet' });
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(host.frames()).toBe(0);
@@ -248,22 +241,16 @@ describe('protocol iframe listening handshake', () => {
   let host: FrameHost;
 
   beforeEach(() => {
-    host = createFrameHost();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    host = createFrameHost(undefined, FRAME_CONFIG, timers);
   });
 
   it('As a returning user whose protocol iframe script never runs, I read my shared session and it fails within seconds', async () => {
     // Given
-    vi.useFakeTimers();
     const outcome = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch((err: unknown) => err);
     const iframe = host.iframe();
 
     // When
-    await vi.advanceTimersByTimeAsync(5_000);
+    await timers.advance(5_000);
 
     // Then
     expect(await outcome).toBeInstanceOf(ProtocolHandshakeTimeoutError);
@@ -272,7 +259,6 @@ describe('protocol iframe listening handshake', () => {
 
   it('As a returning user, I read my shared session and it goes out as soon as the iframe listens, before it is ready', async () => {
     // Given
-    vi.useFakeTimers();
     const read = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
 
     // When
@@ -286,15 +272,14 @@ describe('protocol iframe listening handshake', () => {
 
   it('As a returning user whose protocol iframe died, I find the shared store rebuilt it unasked and available again', async () => {
     // Given
-    vi.useFakeTimers();
     const statuses: SharedStoreStatus[] = [];
     const unsubscribe = host.client.subscribeSharedStoreStatus(status => statuses.push(status));
     const failed = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => 'failed');
     const dead = host.iframe();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await timers.advance(5_000);
 
     // When with no request waiting, the store builds a new frame 2 s later, which listens
-    await vi.advanceTimersByTimeAsync(2_000);
+    await timers.advance(2_000);
     const rebuilt = host.iframe();
     await listen(host);
 
@@ -308,18 +293,17 @@ describe('protocol iframe listening handshake', () => {
 
   it('As a returning user whose protocol iframe keeps dying, I see a new one tried after a wait that doubles each time', async () => {
     // Given the first frame never answers its handshake, though its document loads
-    vi.useFakeTimers();
     const failed = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => 'failed');
-    await vi.advanceTimersByTimeAsync(5_000);
+    await timers.advance(5_000);
 
     // When the first rebuild comes 2 s later and fails 5 s after that, then the store waits 4 s
-    await vi.advanceTimersByTimeAsync(1_999);
+    await timers.advance(1_999);
     const framesBeforeFirstWait = host.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await timers.advance(1);
     const framesAfterFirstWait = host.frames();
-    await vi.advanceTimersByTimeAsync(5_000 + 3_999);
+    await timers.advance(5_000 + 3_999);
     const framesBeforeSecondWait = host.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await timers.advance(1);
 
     // Then
     expect(await failed).toBe('failed');
@@ -331,7 +315,6 @@ describe('protocol iframe listening handshake', () => {
 
   it('As a returning user, I change the frame config mid-read and my shared session read fails at once, not at its timeout', async () => {
     // Given a read the listening frame has not answered yet
-    vi.useFakeTimers();
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const settled: string[] = [];
     void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).then(
@@ -343,9 +326,9 @@ describe('protocol iframe listening handshake', () => {
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     const settledAtReset = [...settled];
-    await vi.advanceTimersByTimeAsync(30_000);
+    await timers.advance(30_000);
 
     // Then
     expect(settledAtReset).toEqual([PROTOCOL_ERRORS.FRAME_RESET]);
@@ -360,7 +343,6 @@ describe('protocol iframe listening handshake', () => {
 
   it('As a returning user, I write a setting and change the frame config in the same turn, and the write fails at once instead of going to a frame that cannot hear it', async () => {
     // Given a listening frame
-    vi.useFakeTimers();
     void host.client.readSharedModeStorage(SITE_ID, 'backend').catch(() => undefined);
     host.serve().handleRequest('modeStorageRead', () => null);
     await listen(host);
@@ -381,7 +363,6 @@ describe('protocol iframe listening handshake', () => {
 
   it('As a returning user whose protocol frame dies, I see the shared store report it down and rebuild it unasked', async () => {
     // Given a frame that listens
-    vi.useFakeTimers();
     const statuses: SharedStoreStatus[] = [];
     const unsubscribeStatus = host.client.subscribeSharedStoreStatus(status => statuses.push(status));
     const unsubscribeAuth = host.client.subscribeSharedAuthStorage(() => undefined);
@@ -391,10 +372,10 @@ describe('protocol iframe listening handshake', () => {
 
     // When it dies, and with no request waiting the store builds a new frame 2 s later, which listens
     status.fail(new ProtocolFatalError('boom'));
-    await vi.advanceTimersByTimeAsync(1_999);
+    await timers.advance(1_999);
     const statusAfterFatal = host.client.getSharedStoreStatus();
     const framesBeforeInterval = host.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await timers.advance(1);
     const rebuilt = host.iframe();
     await listen(host);
 

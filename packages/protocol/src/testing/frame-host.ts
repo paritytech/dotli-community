@@ -7,6 +7,7 @@
 // asks. Its window delivers on a microtask and moves each transferred buffer, as a browser does, and a test answers
 // the host through a real serving transport on it.
 
+import type { Timers } from '@dotli/shared';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { createWindowProvider, type WindowLike } from '../provider.js';
@@ -218,10 +219,13 @@ export interface FrameDom {
   deliverRaw(data: unknown, iframe?: FakeIframe, origin?: string): void;
 }
 
-/** `options.mount` `'error'` makes each protocol iframe fail as it mounts, and null leaves its `load` to the test. */
+/**
+ * `options.mount` `'error'` makes each protocol iframe fail as it mounts, and null leaves its `load` to the test. The
+ * frame waits on `options.timers`.
+ */
 export function createFrameDom(
   timeouts?: Partial<ProtocolFrameTimeouts>,
-  options: { mount?: MountEvent } = {},
+  options: { mount?: MountEvent; timers?: Timers | undefined } = {},
 ): FrameDom {
   const listeners = new Set<Listener>();
   const messages: MessageTarget = {
@@ -262,6 +266,7 @@ export function createFrameDom(
       },
       window: messages,
       timeouts,
+      timers: options.timers,
     },
     iframe,
     frames: () => mount.iframes.size,
@@ -282,12 +287,16 @@ export interface FrameHost extends FrameDom {
   client: ProtocolClient;
 }
 
-/** `config` null leaves the client unconfigured, as before the host's boot says how to build the frame. */
+/**
+ * `config` null leaves the client unconfigured, as before the host's boot says how to build the frame. The client waits
+ * on `timers`.
+ */
 export function createFrameHost(
   timeouts?: Partial<ProtocolFrameTimeouts>,
   config: ProtocolFrameConfig | null = FRAME_CONFIG,
+  timers?: Timers,
 ): FrameHost {
-  const dom = createFrameDom(timeouts);
+  const dom = createFrameDom(timeouts, { timers });
   const client = createProtocolClient(dom.deps);
   if (config !== null) {
     client.configureProtocolFrame(config);

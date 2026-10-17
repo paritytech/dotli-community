@@ -6,6 +6,7 @@
 // up and when it is lost. A frame's handshake is answered only once the test says it listens, so calls made while it
 // boots wait in the transport's queue as they would on a real frame.
 
+import { realTimers, type Timers } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createProviderPair } from './provider.fake.js';
 import { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
@@ -28,13 +29,15 @@ interface Built {
 
 /**
  * Up and ready unless `options.status` says otherwise, or the test moves it. `serve` sets up each frame's serving
- * transport as it is built. A `whenUp` or `transport` on an idle or failed frame builds one and starts it booting, as
- * the frame does. A `whenUp` waits for the status the test sets, and fails when the frame is then lost or goes idle.
+ * transport as it is built, and each frame's transport waits on `options.timers`. A `whenUp` or `transport` on an idle
+ * or failed frame builds one and starts it booting, as the frame does. A `whenUp` waits for the status the test sets,
+ * and fails when the frame is then lost or goes idle.
  */
 export function createFakeFrame(
   serve: (serving: ServingTransport) => void = () => undefined,
-  options: { status?: ProtocolStatus } = {},
+  options: { status?: ProtocolStatus; timers?: Timers } = {},
 ): FakeFrame {
+  const timers = options.timers ?? realTimers;
   let status: ProtocolStatus = options.status ?? 'ready';
   let lostWith: Error = new Error('lost');
   let losses = 0;
@@ -56,7 +59,7 @@ export function createFakeFrame(
     const { left, right } = createProviderPair();
     const serving = createServingTransport(right, { side: 'frame' });
     serve(serving);
-    return { consumer: createConsumerTransport(left, { side: 'host' }), serving };
+    return { consumer: createConsumerTransport(left, { side: 'host', timers }), serving };
   };
 
   const setStatus = (next: ProtocolStatus): void => {

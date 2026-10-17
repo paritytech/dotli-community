@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remote-resolve.js';
 import { createFrameRpc } from './rpc.js';
@@ -15,18 +16,16 @@ function resolving(handler: SubscriptionHandler<'resolveDotName'>): (serving: Se
   };
 }
 
-function resolveOver(serve: (serving: ServingTransport) => void) {
-  const fake = createFakeFrame(serve);
-  return createRemoteResolve({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
-}
-
 describe('createRemoteResolve', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+  let timers: ManualTimers;
 
-  afterEach(() => {
-    vi.useRealTimers();
+  function resolveOver(serve: (serving: ServingTransport) => void) {
+    const fake = createFakeFrame(serve, { timers });
+    return createRemoteResolve({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+  }
+
+  beforeEach(() => {
+    timers = manualTimers();
   });
 
   it('As the host, I hear each phase, then the resolved name', async () => {
@@ -46,7 +45,7 @@ describe('createRemoteResolve', () => {
 
     // When
     const cid = resolve.resolveDotNameRemote('doom', phase => phases.push(phase));
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     await expect(cid).resolves.toBe('0xcid');
@@ -69,7 +68,7 @@ describe('createRemoteResolve', () => {
       () => new Error('the resolution succeeded'),
       (err: unknown) => err as Error,
     );
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect((await cid).message).toBe(PROTOCOL_ERRORS.RESOLUTION_ENDED);
@@ -87,12 +86,12 @@ describe('createRemoteResolve', () => {
       () => new Error('the resolution succeeded'),
       (err: unknown) => err as Error,
     );
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // When
-    await vi.advanceTimersByTimeAsync(89_999);
+    await timers.advance(89_999);
     const stoppedBeforeBudget = stopped;
-    await vi.advanceTimersByTimeAsync(1);
+    await timers.advance(1);
 
     // Then
     expect(stoppedBeforeBudget).toBe(false);

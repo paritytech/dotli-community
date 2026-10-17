@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { deferred } from '@dotli/shared/testing';
+import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
@@ -33,9 +33,14 @@ const HANDSHAKE_RETRY_MS = 50;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const READY_TIMEOUT_MS = 240_000;
 
-const advance = async (ms = 0): Promise<void> => {
-  await vi.advanceTimersByTimeAsync(ms);
-};
+/** The clock and timers each test moves by hand. */
+let timers: ManualTimers;
+
+beforeEach(() => {
+  timers = manualTimers();
+});
+
+const advance = (ms = 0): Promise<void> => timers.advance(ms);
 
 /** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
 async function listen(dom: FrameDom): Promise<FrameStatusServer> {
@@ -71,18 +76,9 @@ function outcomeOf(wait: Promise<unknown>): Promise<string> {
 }
 
 describe('createProtocolFrame', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
-  });
-
   it('As a dotli integrator, I hear only what the current frame sends from its origin', async () => {
     // Given a listening frame, and another iframe on the page
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('listening');
@@ -107,7 +103,7 @@ describe('createProtocolFrame', () => {
 
   it('As the host, I start my handshake on the frame load', async () => {
     // Given a frame whose document has not loaded yet
-    const dom = createFrameDom(undefined, { mount: null });
+    const dom = createFrameDom(undefined, { mount: null, timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('listening');
@@ -127,7 +123,7 @@ describe('createProtocolFrame', () => {
 
   it('As a dotli integrator, I wait for a listening frame without waiting for its light client', async () => {
     // Given
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const settled: string[] = [];
@@ -147,7 +143,7 @@ describe('createProtocolFrame', () => {
 
   it('As a dotli integrator, I ask for the transport and get the current frame one, booting a frame if there is none', async () => {
     // Given
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const framesBeforeAsking = dom.frames();
@@ -166,7 +162,7 @@ describe('createProtocolFrame', () => {
 
   it('As a dotli integrator, I hear why a frame was dropped once its status says it is down', async () => {
     // Given
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('ready').catch(() => undefined);
@@ -184,7 +180,7 @@ describe('createProtocolFrame', () => {
 
   it('As a dotli integrator, I wait on a frame before it is configured, and it boots and answers once configured', async () => {
     // Given
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     const up = frame.whenUp('listening');
     await advance();
@@ -204,7 +200,7 @@ describe('createProtocolFrame', () => {
   it('As the host, a frame that already failed fails my boot when I subscribe its status, and is rebuilt after the first wait', async () => {
     // Given a frame app whose light client failed before the host subscribed its status
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('ready').catch((err: unknown) => err);
@@ -230,7 +226,7 @@ describe('createProtocolFrame', () => {
   it('As the host, one frame loss is counted once', async () => {
     // Given a frame that listens, waiting for its light client, with a request out on its transport
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('ready').catch(() => undefined);
@@ -254,7 +250,7 @@ describe('createProtocolFrame', () => {
 
   it('As the host, a late message from a dropped frame settles nothing on the new one', async () => {
     // Given a read the first frame holds while it is dropped
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('ready').catch(() => undefined);
@@ -295,7 +291,7 @@ describe('createProtocolFrame', () => {
   it('As the host, a version mismatch is final', async () => {
     // Given a frame of another release, which refuses the host wire version
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('ready').catch((err: unknown) => err);
@@ -339,7 +335,7 @@ describe('createProtocolFrame', () => {
 
   it('As the host with an app open, a frame rebuilt from a newer release refuses my wire and I hear it once, also when I ask late', async () => {
     // Given a ready frame, and a listener for a mismatch
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('ready').catch(() => undefined);
@@ -380,7 +376,7 @@ describe('createProtocolFrame', () => {
   it('As the host, a frame that never answers my handshake fails my boot and rebuilds with backoff', async () => {
     // Given a frame of an earlier release, which loads and never answers
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('listening').catch((err: unknown) => err);
@@ -405,7 +401,7 @@ describe('createProtocolFrame', () => {
 
   it('As a dotli integrator, I lose a frame that fails the moment it is mounted and it leaves no load timer behind', async () => {
     // Given a page where the frame fails as it is mounted
-    const dom = createFrameDom(undefined, { mount: 'error' });
+    const dom = createFrameDom(undefined, { mount: 'error', timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
 
@@ -416,7 +412,7 @@ describe('createProtocolFrame', () => {
     // Then the wait fails, and only the rebuild's wait is pending
     expect(await up).toContain(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED);
     expect(frame.getStatus()).toBe('failed');
-    expect(vi.getTimerCount()).toBe(1);
+    expect(timers.pending()).toBe(1);
   });
 
   /** A configured frame that came up ready and then died with a fatal, so its keeper waits to rebuild it. */
@@ -424,7 +420,7 @@ describe('createProtocolFrame', () => {
     dom: FrameDom;
     frame: ReturnType<typeof createProtocolFrame>;
   }> {
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('ready');
@@ -481,7 +477,7 @@ describe('createProtocolFrame', () => {
 
   it('As two products asking while the frame is down, we hear the failure of the one boot we share, and one rebuild follows after the backoff', async () => {
     // Given
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     let builds = 0;
     const frame = createProtocolFrame({
       ...dom.deps,
@@ -548,13 +544,7 @@ describe('protocol status', () => {
   let host: FrameHost;
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    host = createFrameHost();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    host = createFrameHost(undefined, FRAME_CONFIG, timers);
   });
 
   function settledWith(promise: Promise<unknown>): { outcome: string | null } {
@@ -799,7 +789,7 @@ describe('protocol status', () => {
   it('As a dotli user whose frame cannot be built, I see the real error on each request, each request that finds it down builds one, and one keeper retries', async () => {
     // Given
     let builds = 0;
-    const dom = createFrameDom();
+    const dom = createFrameDom(undefined, { timers });
     const failing = createProtocolClient({
       ...dom.deps,
       document: {
@@ -839,7 +829,7 @@ describe('protocol status', () => {
     async ({ thrown, reason }) => {
       // Given a frame whose iframe cannot be built, and a recording metrics pipeline
       const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-      const dom = createFrameDom();
+      const dom = createFrameDom(undefined, { timers });
       const failing = createProtocolClient({
         ...dom.deps,
         document: {

@@ -12,6 +12,8 @@ export interface ManualTimers extends Timers {
    * `advance`.
    */
   freeze: (ms: number) => void;
+  /** How many timers are scheduled and have neither fired nor been cleared. */
+  pending: () => number;
 }
 
 interface Scheduled {
@@ -71,5 +73,6 @@ export function manualTimers(start = 0): ManualTimers {
     freeze: ms => {
       now += ms;
     },
+    pending: () => scheduled.size,
   };
 }

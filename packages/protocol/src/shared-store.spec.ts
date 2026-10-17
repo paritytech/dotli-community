@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindLogSink, createStatusCell } from '@dotli/shared';
+import { manualTimers } from '@dotli/shared/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createSharedStore, type SharedAuthStorageChange, type SharedStoreStatus } from './shared-store.js';
@@ -106,10 +107,7 @@ describe('createSharedStore', () => {
 
   it("As a returning user, another tab's shared auth write reaches me, and my subscription waits only for a listening frame", async () => {
     // Given a frame still booting, and a subscription made while it boots
-    vi.useFakeTimers();
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
+    const timers = manualTimers();
     const warnings: string[] = [];
     onTestFinished(
       bindLogSink({
@@ -121,22 +119,22 @@ describe('createSharedStore', () => {
       }),
     );
     const sinks = new Set<SubscriptionSink<'sharedAuthChanges'>>();
-    const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting' });
-    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+    const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting', timers });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
     const changes: SharedAuthStorageChange[] = [];
     store.subscribeSharedAuthStorage(change => changes.push(change));
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     const subscribedWhileBooting = sinks.size;
 
     // When the frame listens, a sibling tab writes, and the frame is dropped before it is ready
     fake.setStatus('listening');
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     for (const sink of sinks) {
       sink.send({ siteId: 'dotli', key: 'k', value: 'v' });
     }
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     fake.setStatus('idle');
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then the write reached me, and the listening frame met the subscription's wait, so the drop is no failure
     expect(subscribedWhileBooting).toBe(0);
@@ -146,29 +144,26 @@ describe('createSharedStore', () => {
 
   it('As a returning user, my shared auth subscription follows each new frame and stops in the frame once I leave', async () => {
     // Given a subscription on a frame that is then lost and rebuilt
-    vi.useFakeTimers();
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
+    const timers = manualTimers();
     const sinks = new Set<SubscriptionSink<'sharedAuthChanges'>>();
-    const fake = createFakeFrame(relayingChanges(sinks));
-    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+    const fake = createFakeFrame(relayingChanges(sinks), { timers });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
     const changes: SharedAuthStorageChange[] = [];
     const unsubscribe = store.subscribeSharedAuthStorage(change => changes.push(change));
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     fake.lose(new Error('boom'));
     fake.setStatus('booting');
     fake.setStatus('listening');
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     const subscribedOnRebuilt = sinks.size;
 
     // When a sibling tab writes, and then I leave
     for (const sink of sinks) {
       sink.send({ siteId: 'dotli', key: 'k', value: null });
     }
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
     unsubscribe();
-    await vi.advanceTimersByTimeAsync(0);
+    await timers.advance(0);
 
     // Then
     expect(subscribedOnRebuilt).toBe(1);
