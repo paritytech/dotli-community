@@ -9,4 +9,5 @@ export const SANDBOX_ERRORS = {
   SW_NOT_AVAILABLE: `Service Worker not available after ${String(SANDBOX_TIMEOUTS.SW_READY / 1000)}s`,
   SW_ARCHIVE_NOT_ACKNOWLEDGED: `Service worker did not acknowledge archive within ${String(SANDBOX_TIMEOUTS.SW_ARCHIVE_ACK / 1000)}s`,
   SW_ARCHIVE_NOT_SENT: 'Service worker could not be handed the archive',
+  SW_NOT_CONTROLLING: 'No service worker controls the page, so the archive cannot be served',
 } as const;

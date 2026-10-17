@@ -3,7 +3,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { registerAppServiceWorker, type AppServiceWorker } from './service-worker.js';
+import { SANDBOX_ERRORS } from './errors.js';
+import { registerAppServiceWorker, storeArchiveInSW, type AppServiceWorker } from './service-worker.js';
 
 /** A worker that answers the version check with `version`. */
 function workerAt(version: string): ServiceWorker {
@@ -90,5 +91,19 @@ describe('registerAppServiceWorker', () => {
 
     // Then
     expect(container.listening).toBe(0);
+  });
+});
+
+describe('storeArchiveInSW', () => {
+  it('As a visitor whose service worker could not start, the load fails instead of writing a page with no files', async () => {
+    // Given a page no service worker controls
+    const container = { controller: null } as unknown as ServiceWorkerContainer;
+    const files = { 'index.html': new Uint8Array([60]), 'app.js': new Uint8Array([59]) };
+
+    // When
+    const stored = storeArchiveInSW(container, files, '/');
+
+    // Then
+    await expect(stored).rejects.toThrow(SANDBOX_ERRORS.SW_NOT_CONTROLLING);
   });
 });

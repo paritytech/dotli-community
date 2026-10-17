@@ -146,6 +146,8 @@ export async function registerAppServiceWorker(
 
     void ensureFreshServiceWorker(app, container, registration);
   } catch (err) {
+    // A worker from an earlier visit may still control the page and serve the archive. Without one the archive
+    // handoff fails the load.
     contentLog.warn('[dot.li app] Service worker registration failed; continuing without one:', err);
     captureException(err, { flow: 'content', step: 'sw_register', tags: { surface: 'sandbox_main' } });
   }
@@ -177,7 +179,8 @@ export function listenForArchiveFailures(container: ServiceWorkerContainer | nul
 
 /**
  * Before document.write(), or sub-resource requests fall through to nginx's HTML fallback. `pagePath` is the path the
- * page is written at.
+ * page is written at. Rejects when no worker controls the page, since the page written without one cannot load its
+ * files.
  */
 export async function storeArchiveInSW(
   container: ServiceWorkerContainer | null,
@@ -186,10 +189,7 @@ export async function storeArchiveInSW(
 ): Promise<void> {
   const sw = container?.controller ?? null;
   if (!sw) {
-    contentLog.warn(
-      `[dot.li app] No Service Worker controls the page; ${String(Object.keys(files).length)} archive files will not be served`,
-    );
-    return;
+    throw new Error(SANDBOX_ERRORS.SW_NOT_CONTROLLING);
   }
 
   // The page-wide channel too, for one release, since a worker from the previous deploy ignores the port.
