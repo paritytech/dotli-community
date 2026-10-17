@@ -185,17 +185,22 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     }
   };
 
+  /** Settles a call with why it ends. Settling one already settled changes nothing. */
+  const fail = (call: Call, error: Error): void => {
+    if (call.kind === 'request') {
+      call.reject(error);
+    } else {
+      end(call, error);
+    }
+  };
+
   const send = (call: Call): void => {
     const { id } = call;
     let data: ArrayBuffer;
     try {
       data = call.encode();
     } catch (error) {
-      if (call.kind === 'request') {
-        call.reject(toError(error));
-      } else {
-        end(call, toError(error));
-      }
+      fail(call, toError(error));
       return;
     }
     if (call.kind === 'request') {
@@ -207,21 +212,8 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     try {
       provider.post(data);
     } catch (error) {
-      if (call.kind === 'request') {
-        waiting.delete(id);
-        call.reject(toError(error));
-      } else {
-        end(call, toError(error));
-      }
-    }
-  };
-
-  /** Settles a call with why it ends. Settling one already settled changes nothing. */
-  const fail = (call: Call, error: Error): void => {
-    if (call.kind === 'request') {
-      call.reject(error);
-    } else {
-      end(call, error);
+      waiting.delete(id);
+      fail(call, toError(error));
     }
   };
 
