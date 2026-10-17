@@ -46,8 +46,7 @@ const total = (points: readonly GaugePoint[]): number => points.reduce((sum, p) 
 async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
   await expect
     .poll(async () => total(await readGauge(request)), {
-      // A Sentry client with no DSN builds no transport, so nothing reaches the tunnel.
-      message: 'too few gauge points reached the Sentry tunnel. Was the build made with a VITE_SENTRY_DSN?',
+      message: 'too few gauge points reached the Sentry tunnel. Build with npm run build:test',
       timeout: TIMEOUT_MS,
       intervals: [1_000],
     })
@@ -65,8 +64,6 @@ for (const [label, backend, expected] of [
     context,
     request,
   }) => {
-    // Without a metrics build the gauge is a no-op and reads zero, so a run without the flag fails here, not unseen.
-    expect(process.env['VITE_METRICS'], 'needs a VITE_METRICS=true build and run').toBe('true');
     test.setTimeout(TIMEOUT_MS * 4);
 
     // Given

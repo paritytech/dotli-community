@@ -56,15 +56,9 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
+      # The networks, metrics on, and a dummy Sentry DSN, never dialled, as `tunnel: "/t"` keeps envelopes same-origin.
       - name: Build
-        env:
-          # Required, or the host throws on boot and every test times out.
-          VITE_NETWORKS: paseo-next-v2,previewnet
-          # As deployed. network-transport.spec.ts fails without it.
-          VITE_METRICS: 'true'
-          # Sentry no-ops without a DSN. Never dialled, as `tunnel: "/t"` keeps envelopes same-origin.
-          VITE_SENTRY_DSN: http://publickey@127.0.0.1:5173/1
-        run: npm run build
+        run: npm run build:test
 
       - name: Upload the builds
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -97,8 +91,6 @@ jobs:
 
       - name: Run functional tests
         working-directory: apps/host
-        env:
-          VITE_METRICS: 'true'
         run: npm run test:functional
 
   # host-playground product tests, with pairing and signing handled headlessly by the truapi-host CLI.
