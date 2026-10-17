@@ -172,6 +172,8 @@ interface Tab {
   status: Recording<'frameStatus'>;
   /** Every buffer the worker posted to this tab, as it was before the transfer detached it. */
   posted: ArrayBuffer[];
+  /** How many times the worker closed its end of this tab's port. */
+  closes: () => number;
 }
 
 const openPorts = new Set<MessagePort>();
@@ -232,7 +234,7 @@ interface Worker {
  * The worker's end of a port, spying on each buffer it posts before the transfer detaches it, and calling `received`
  * after the worker handled each message the tab sent.
  */
-function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => void): MessagePort {
+function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => void, closed: () => void): MessagePort {
   const wrapped = new Map<EventListener, EventListener>();
   return {
     postMessage: (data: ArrayBuffer, transfer: Transferable[]) => {
@@ -251,7 +253,10 @@ function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => voi
       port.removeEventListener(type, wrapped.get(listener) ?? listener);
     },
     start: port.start.bind(port),
-    close: port.close.bind(port),
+    close: () => {
+      closed();
+      port.close();
+    },
   } as unknown as MessagePort;
 }
 
@@ -336,6 +341,7 @@ async function bootWorker(
     openPorts.add(channel.port1);
     openPorts.add(channel.port2);
     const posted: ArrayBuffer[] = [];
+    let closes = 0;
     let waiting: (() => void)[] = [];
     const received = (): void => {
       const due = waiting;
@@ -345,7 +351,13 @@ async function bootWorker(
       }
     };
     for (const listener of connectListeners) {
-      listener({ ports: [spiedPort(channel.port1, posted, received)] } as unknown as MessageEvent);
+      listener({
+        ports: [
+          spiedPort(channel.port1, posted, received, () => {
+            closes += 1;
+          }),
+        ],
+      } as unknown as MessageEvent);
     }
     return {
       speak: resolutionId => {
@@ -356,7 +368,7 @@ async function bootWorker(
         });
         transport.connect();
         tabs.add(transport);
-        return { transport, status: record(transport, 'frameStatus', undefined), posted };
+        return { transport, status: record(transport, 'frameStatus', undefined), posted, closes: () => closes };
       },
       link: async () => {
         const transport = await connectSharedWorker({
@@ -853,6 +865,57 @@ describe('protocol SharedWorker', () => {
     // And once it thaws, its queued messages end its status and its chain with the release, not a halt
     await expect(status.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
     await expect(chain.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
+  });
+
+  it('As a frozen tab, my released port stays open so I hear the release whenever I thaw', async () => {
+    // Given a tab on a synced worker
+    const worker = await bootWorker(fakeLightClient());
+    const tab = worker.connect();
+    const status = await readyStatus(tab);
+
+    // When it sends nothing for longer than the heartbeat allows
+    outlastHeartbeat(worker);
+
+    // Then the worker let it go without closing its port
+    await expect(status.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
+    expect(tab.closes()).toBe(0);
+  });
+
+  it('As a thawed tab that speaks on a released port, the worker closes that port', async () => {
+    // Given a tab whose port the worker released
+    const worker = await bootWorker(fakeLightClient());
+    const attached = worker.attach();
+    const tab = attached.speak();
+    const status = await readyStatus(tab);
+    outlastHeartbeat(worker);
+    await status.ended;
+
+    // When the thawed tab sends a message the worker no longer serves
+    const received = attached.nextReceived();
+    tab.transport.request('heartbeat', undefined).catch(() => undefined);
+    await received;
+
+    // Then the worker closed the port, once
+    expect(tab.closes()).toBe(1);
+  });
+
+  it('As a closing dead worker, I close the ports I released before', async () => {
+    // Given a tab whose port the worker released, and a tab still served
+    const light = fakeLightClient();
+    const worker = await bootWorker(light);
+    const frozen = worker.connect();
+    const frozenStatus = await readyStatus(frozen);
+    outlastHeartbeat(worker);
+    await frozenStatus.ended;
+    const live = worker.connect();
+    await readyStatus(live);
+
+    // When the light client dies and the worker closes
+    light.fatal(FATAL);
+    await worker.closedOnce;
+
+    // Then the released port is closed too
+    expect(frozen.closes()).toBe(1);
   });
 
   it("As a long-hidden tab, I keep my port by answering the worker's beats", async () => {

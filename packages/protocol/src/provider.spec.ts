@@ -235,6 +235,24 @@ describe('createPortProvider', () => {
       provider.post(new ArrayBuffer(1));
     }).toThrow();
   });
+
+  it('As a worker, I dispose a provider and keep its port open when I own the close', () => {
+    // Given a port provider that leaves closing to its owner, and one that does not
+    const { port1, port2 } = new MessageChannel();
+    const close1 = vi.spyOn(port1, 'close');
+    const close2 = vi.spyOn(port2, 'close');
+    const kept = createPortProvider(port1, { closeOnDispose: false });
+    const closed = createPortProvider(port2);
+
+    // When both are disposed
+    kept.dispose();
+    closed.dispose();
+
+    // Then only the default one closed its port
+    expect(close1).not.toHaveBeenCalled();
+    expect(close2).toHaveBeenCalledTimes(1);
+    port1.close();
+  });
 });
 
 describe('createProviderPair', () => {

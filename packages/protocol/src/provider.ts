@@ -93,7 +93,13 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
   };
 }
 
-export function createPortProvider(port: PortLike): Provider {
+interface PortProviderOptions {
+  /** Unset or true, `dispose` closes the port. False leaves the port open for its owner to close. */
+  closeOnDispose?: boolean;
+}
+
+export function createPortProvider(port: PortLike, options: PortProviderOptions = {}): Provider {
+  const closeOnDispose = options.closeOnDispose ?? true;
   const listeners = new Set<(data: ArrayBuffer) => void>();
   let disposed = false;
 
@@ -130,7 +136,9 @@ export function createPortProvider(port: PortLike): Provider {
       disposed = true;
       listeners.clear();
       port.removeEventListener('message', onMessage);
-      port.close();
+      if (closeOnDispose) {
+        port.close();
+      }
     },
   };
 }

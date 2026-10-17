@@ -23,7 +23,8 @@ flowchart TB
 ```
 
 - The provider moves bytes and nothing else. The window provider admits only `ArrayBuffer` data from one window and one
-  origin, and posts to that window at that origin. The port provider wraps a `MessagePort`.
+  origin, and posts to that window at that origin. The port provider wraps a `MessagePort`, and closes it on dispose
+  unless its owner keeps that for itself.
 - The transport owns the framing, the request and subscription ids, the handshake, the queue and the matching of answers
   and events. One transport is bound to one provider for its whole life, and disposing it ends everything on it. Both
   ends use the same module: a consumer side that calls and a serving side that handles.

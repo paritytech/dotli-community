@@ -30,8 +30,9 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 - The SharedWorker runs smoldot and serves each tab port with its own serving transport and engine scope, so no buffer
   is shared between ports. It drives the heartbeat: it sends a beat event to each port on its own clock, the iframe
   answers each with a heartbeat request, and a port that misses too many beats is released. A release ends that port's
-  subscriptions with an error, so a thawed tab rebuilds its frame and opens a new port. A tab that leaves ends its
-  subscriptions, which frees its connections at once.
+  subscriptions with an error, so a thawed tab rebuilds its frame and opens a new port. A released port stays open, so a
+  frozen tab still hears its release when it thaws, until its tab sends anything or the worker closes. A tab that leaves
+  ends its subscriptions, which frees its connections at once.
 - A fatal light client ends every port's frame status with the error, and a port that connects later hears it on
   subscribe. The worker closes once every connected port has heard it.
 - One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, a watcher

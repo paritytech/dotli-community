@@ -79,6 +79,7 @@ export interface ProtocolWorkerDeps {
 }
 
 interface PortSession {
+  port: MessagePort;
   transport: ServingTransport;
   /** Opened by the tab's first chain call. */
   scope: EngineScope | null;
@@ -119,6 +120,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const { scope, lightClient, resolver } = deps;
   const openSpan = deps.openSpan ?? m.open;
   const sessions = new Set<PortSession>();
+  // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
+  // it. So a released port stays open until its tab speaks again or the worker closes. Each maps to its close.
+  const released = new Map<MessagePort, () => void>();
   let engine: ProtocolEngine | null = null;
   // The tab that starts the worker connects in a later task, so a failure before then waits for it to close.
   let reached = false;
@@ -164,7 +168,19 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     }
     session.transport.dispose(reason);
     session.scope?.close();
+    holdReleased(session.port);
     heard(session);
+  }
+
+  /** Keeps a released port open until its tab sends anything, which it is no longer served for. */
+  function holdReleased(port: MessagePort): void {
+    const close = (): void => {
+      port.removeEventListener('message', close);
+      released.delete(port);
+      port.close();
+    };
+    released.set(port, close);
+    port.addEventListener('message', close);
   }
 
   /** The port subscribed to its status, or is gone, so a close can no longer leave it waiting for why. */
@@ -219,6 +235,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     // Each tab hears why everything still open on its port ended.
     for (const session of [...sessions]) {
       release(session, phase.error);
+    }
+    for (const close of [...released.values()]) {
+      close();
     }
     scope.close();
   }
@@ -399,8 +418,10 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
 
   function onConnect(port: MessagePort): void {
     reached = true;
-    const provider = createPortProvider(port);
+    // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
+    const provider = createPortProvider(port, { closeOnDispose: false });
     const session: PortSession = {
+      port,
       transport: createServingTransport(provider, { side: 'worker' }),
       scope: null,
       missed: 0,
