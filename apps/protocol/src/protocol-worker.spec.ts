@@ -218,8 +218,11 @@ async function endPresync(presync: Presync, failure?: Error): Promise<void> {
 interface Worker {
   /** A tab's iframe connects, telling the worker its page load. */
   connect: (resolutionId?: string) => Tab;
-  /** A tab's port reaches the worker, and its iframe speaks once the test says so. */
-  attach: () => Attached;
+  /**
+   * A tab's port reaches the worker, and its iframe speaks once the test says so. With `closeEvent` false the port
+   * never tells the worker it closed, as on an engine without the event.
+   */
+  attach: (options?: { closeEvent?: boolean }) => Attached;
   /** One heartbeat interval passes, if the worker has not stopped its heartbeat. */
   beat: () => void;
   /** Whether the worker's heartbeat runs. */
@@ -240,9 +243,15 @@ interface Worker {
 
 /**
  * The worker's end of a port, spying on each buffer it posts before the transfer detaches it, and calling `received`
- * after the worker handled each message the tab sent.
+ * after the worker handled each message the tab sent. Without `closeEvent` it never fires `close`.
  */
-function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => void, closed: () => void): MessagePort {
+function spiedPort(
+  port: MessagePort,
+  posted: ArrayBuffer[],
+  received: () => void,
+  closed: () => void,
+  closeEvent: boolean,
+): MessagePort {
   const wrapped = new Map<EventListener, EventListener>();
   return {
     postMessage: (data: ArrayBuffer, transfer: Transferable[]) => {
@@ -250,6 +259,9 @@ function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => voi
       port.postMessage(data, transfer);
     },
     addEventListener: (type: string, listener: EventListener) => {
+      if (type === 'close' && !closeEvent) {
+        return;
+      }
       const wrapper: EventListener = event => {
         listener(event);
         received();
@@ -347,7 +359,7 @@ async function bootWorker(
     ...(readNetBytes === undefined ? {} : { netBytes: { read: readNetBytes, ticker: netBytesTicker } }),
   });
   await light.presyncDone;
-  const attach = (): Attached => {
+  const attach = ({ closeEvent = true }: { closeEvent?: boolean } = {}): Attached => {
     const channel = new MessageChannel();
     openPorts.add(channel.port1);
     openPorts.add(channel.port2);
@@ -364,9 +376,15 @@ async function bootWorker(
     for (const listener of connectListeners) {
       listener({
         ports: [
-          spiedPort(channel.port1, posted, received, () => {
-            closes += 1;
-          }),
+          spiedPort(
+            channel.port1,
+            posted,
+            received,
+            () => {
+              closes += 1;
+            },
+            closeEvent,
+          ),
         ],
       } as unknown as MessageEvent);
     }
@@ -889,19 +907,22 @@ describe('protocol SharedWorker', () => {
     ]);
   });
 
-  it('As a tab that left, my connections are freed at once', async () => {
-    // Given two tabs that each hold a chain connection
+  it('As a tab that left, my connections and my port are freed at once', async () => {
+    // Given two tabs that each hold a chain connection, the leaving one on an engine whose ports never say they closed
     const light = fakeLightClient();
     const worker = await bootWorker(light);
-    const leaving = worker.connect();
+    const leaving = worker.attach({ closeEvent: false }).speak();
     const staying = worker.connect();
     await Promise.all([connectChain(leaving, 'c1'), connectChain(staying, 'c1')]);
 
     // When the first tab disposes its transport, as its page hides for good
     leaving.transport.dispose(new Error('pagehide'));
 
-    // Then its connection is released before any heartbeat, and the shared chain stays up for the other tab
+    // Then its connection and its port are released before any heartbeat, and the shared chain stays up for the other
+    // tab
     await worker.untilLog('Chain disconnected: c1 (1 remaining)');
+    await worker.untilLog('Port closed');
+    expect(leaving.closes()).toBe(1);
     expect(worker.beating()).toBe(true);
     for (const disconnect of light.disconnects) {
       expect(disconnect).not.toHaveBeenCalled();
@@ -1029,9 +1050,9 @@ describe('protocol SharedWorker', () => {
   });
 
   it('As a tab that left for good, my port is closed at once and not held for a release', async () => {
-    // Given a ready tab holding a chain connection, and a tab that stays
+    // Given a ready tab holding a chain connection, on an engine whose ports never say they closed, and a tab that stays
     const worker = await bootWorker(fakeLightClient());
-    const leaving = worker.connect();
+    const leaving = worker.attach({ closeEvent: false }).speak();
     const staying = worker.connect();
     await readyStatus(leaving);
     await connectChain(leaving, 'c1');
