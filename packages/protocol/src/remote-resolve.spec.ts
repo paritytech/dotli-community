@@ -53,6 +53,27 @@ describe('createRemoteResolve', () => {
     expect(phases).toEqual(['asset-hub-syncing', 'resolving-content']);
   });
 
+  it('As the host, I stop a resolution in the frame once I have its result, even if the frame does not end it', async () => {
+    // Given a frame app that sends the result and leaves the subscription open
+    let stopped = false;
+    const resolve = resolveOver(
+      resolving((_payload, _context, sink) => {
+        sink.send({ tag: 'resolved', value: '0xcid' });
+        return () => {
+          stopped = true;
+        };
+      }),
+    );
+
+    // When
+    const cid = resolve.resolveDotNameRemote('doom');
+    await timers.advance(0);
+
+    // Then
+    await expect(cid).resolves.toBe('0xcid');
+    expect(stopped).toBe(true);
+  });
+
   it('As the host, a resolution that ends before its result rejects', async () => {
     // Given a frame app that stops after a phase
     const resolve = resolveOver(

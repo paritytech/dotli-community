@@ -21,8 +21,8 @@ export interface RemoteResolveDeps {
 
 export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteResolveDeps) {
   /**
-   * Hears the frame's resolve phases, then its result. The budget runs once the frame is ready, and a resolution that
-   * outlives it is unsubscribed, so the frame stops it.
+   * Hears the frame's resolve phases, then its result, and unsubscribes on the result. The budget runs once the frame
+   * is ready, and a resolution that outlives it is unsubscribed, so the frame stops it.
    */
   async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
     const transport = await frame.whenUp('ready');
@@ -41,10 +41,12 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
           }
           answered = true;
           resolve(event.value);
+          // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
+          resolution.unsubscribe();
         },
         { deadlineMs: timers.now() + RESOLVE_BUDGET_MS, signal: giveUp.signal },
       );
-      // The frame ends a resolution cleanly once it sent the result, and an end before it is a failure.
+      // An end before the result is a failure.
       resolution.onEnd(error => {
         if (!answered) {
           reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
