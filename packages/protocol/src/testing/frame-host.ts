@@ -4,13 +4,18 @@
 // One protocol frame or client per test, on its own message target and mount, so one left behind by an earlier test
 // hears nothing and builds nothing a later test sees. The iframe is a fake with only what the frame touches, so the
 // frame's lifecycle runs under Node. A mounted fake fires `load` as a page that loads would, or `error` when the test
-// asks.
+// asks. Its window delivers on a microtask and moves each transferred buffer, as a browser does, and a test answers
+// the host through a real serving transport on it.
 
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
-import type { ProtocolEnvelope } from '../messages.js';
+import { createWindowProvider, type WindowLike } from '../provider.js';
+import { createServingTransport, type ServingTransport, type SubscriptionSink } from '../transport.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
+
+/** The host page's origin, as the frame's window knows it. */
+const HOST_ORIGIN = 'https://dot.li';
 
 export const FRAME_CONFIG: ProtocolFrameConfig = {
   backend: 'smoldot-direct',
@@ -18,11 +23,64 @@ export const FRAME_CONFIG: ProtocolFrameConfig = {
   skipWorkerCache: false,
 };
 
-/** The frame's window as the host sees it: something to post to, which keeps what it was sent. */
-export interface FakeFrameWindow {
-  postMessage: (message: unknown, targetOrigin: string) => void;
-  /** Every message posted, in order. */
-  readonly posted: unknown[];
+type Listener = (event: MessageEvent) => void;
+
+/** What a mounted iframe fires on its own. */
+type MountEvent = 'load' | 'error' | null;
+
+function messageEvent(data: unknown, origin: string, source: unknown): MessageEvent {
+  // The frame reads only these, and Node's MessageEvent refuses a source that is not a port.
+  return { data, origin, source } as unknown as MessageEvent;
+}
+
+/** What a transfer leaves the receiver. The sender's buffer is detached, so posting it again fails as in a browser. */
+function moved(data: unknown, transfer: Transferable[] | undefined): unknown {
+  return transfer === undefined || transfer.length === 0 ? data : structuredClone(data, { transfer });
+}
+
+/** The frame's window: the host posts to it, and the frame listens on it and posts to its parent. */
+export class FakeFrameWindow implements MessageTarget {
+  /** Everything the host posted, in order, as the frame received it. */
+  readonly posted: unknown[] = [];
+  /** The host page as the frame sees it. A post reaches the host's listeners with this window as the source. */
+  readonly parent: WindowLike;
+  readonly #listeners = new Set<Listener>();
+
+  constructor(toHost: Listener) {
+    this.parent = {
+      postMessage: (message, targetOrigin, transfer) => {
+        if (targetOrigin !== HOST_ORIGIN) {
+          return;
+        }
+        const data = moved(message, transfer);
+        queueMicrotask(() => {
+          toHost(messageEvent(data, FRAME_ORIGIN, this));
+        });
+      },
+    };
+  }
+
+  postMessage(message: unknown, targetOrigin: string, transfer?: Transferable[]): void {
+    const data = moved(message, transfer);
+    this.posted.push(data);
+    // A browser drops a message whose target origin is not the window's.
+    if (targetOrigin !== FRAME_ORIGIN) {
+      return;
+    }
+    queueMicrotask(() => {
+      for (const listener of [...this.#listeners]) {
+        listener(messageEvent(data, HOST_ORIGIN, this.parent));
+      }
+    });
+  }
+
+  addEventListener(_type: 'message', listener: Listener): void {
+    this.#listeners.add(listener);
+  }
+
+  removeEventListener(_type: 'message', listener: Listener): void {
+    this.#listeners.delete(listener);
+  }
 }
 
 /** What the protocol frame reads and calls on its iframe. */
@@ -34,23 +92,36 @@ export class FakeIframe extends EventTarget {
   /** Null until mounted and again once removed, as in a browser. */
   contentWindow: FakeFrameWindow | null = null;
   isConnected = false;
+  readonly #toHost: Listener;
+  #window: FakeFrameWindow | null = null;
   #onRemove: (() => void) | null = null;
+
+  constructor(toHost: Listener) {
+    super();
+    this.#toHost = toHost;
+  }
+
+  /** The window it was mounted with, kept after removal, since a message it sent before still names it as source. */
+  get window(): FakeFrameWindow {
+    if (this.#window === null) {
+      throw new Error('the iframe was never mounted');
+    }
+    return this.#window;
+  }
 
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
   }
 
-  /** Called by the mount it is appended to. */
-  mount(onRemove: () => void, fires: 'load' | 'error' = 'load'): void {
+  /** Called by the mount it is appended to. `fires` null leaves `load` to the test. */
+  mount(onRemove: () => void, fires: MountEvent): void {
     this.isConnected = true;
-    const posted: unknown[] = [];
-    this.contentWindow = {
-      posted,
-      postMessage: message => {
-        posted.push(message);
-      },
-    };
+    this.#window ??= new FakeFrameWindow(this.#toHost);
+    this.contentWindow = this.#window;
     this.#onRemove = onRemove;
+    if (fires === null) {
+      return;
+    }
     queueMicrotask(() => {
       if (this.isConnected) {
         this.dispatchEvent(new Event(fires));
@@ -72,7 +143,7 @@ interface FakeMount {
   readonly iframes: ReadonlySet<FakeIframe>;
 }
 
-function createMount(fires: 'load' | 'error'): FakeMount {
+function createMount(fires: MountEvent): FakeMount {
   const iframes = new Set<FakeIframe>();
   return {
     iframes,
@@ -87,6 +158,46 @@ function createMount(fires: 'load' | 'error'): FakeMount {
   };
 }
 
+/** The frame's status as a frame app serves it: told at once to a late subscriber, as the real one is. */
+export interface FrameStatusServer {
+  /** The light client is ready, which every subscriber hears, now and later. */
+  ready(): void;
+  /** The frame failed, which ends every subscription with `error`, now and later. */
+  fail(error: Error): void;
+}
+
+function serveFrameStatus(serving: ServingTransport): FrameStatusServer {
+  const sinks = new Set<SubscriptionSink<'frameStatus'>>();
+  let state: 'booting' | 'ready' | Error = 'booting';
+  serving.handleSubscription('frameStatus', (_payload, _context, sink) => {
+    if (state instanceof Error) {
+      sink.end(state);
+      return () => undefined;
+    }
+    if (state === 'ready') {
+      sink.send(undefined);
+    }
+    sinks.add(sink);
+    return () => {
+      sinks.delete(sink);
+    };
+  });
+  return {
+    ready() {
+      state = 'ready';
+      for (const sink of [...sinks]) {
+        sink.send(undefined);
+      }
+    },
+    fail(error) {
+      state = error;
+      for (const sink of [...sinks]) {
+        sink.end(error);
+      }
+    },
+  };
+}
+
 export interface FrameDom {
   /** What a frame or client is built on. */
   deps: ProtocolFrameDeps;
@@ -96,22 +207,35 @@ export interface FrameDom {
   frames(): number;
   /** An iframe mounted elsewhere on the page, which is not the protocol frame. */
   stranger(): FakeIframe;
-  /** A message sent by `iframe` (the current one by default), from the frame's origin unless told otherwise. */
-  deliver(envelope: ProtocolEnvelope, iframe?: FakeIframe, origin?: string): void;
+  /**
+   * A serving transport on `iframe`'s window (the current one by default), so a spec answers the host as the frame
+   * app would. The same iframe gives the same transport.
+   */
+  serve(iframe?: FakeIframe): ServingTransport;
+  /** The frame status `iframe` (the current one by default) serves, on its serving transport. */
+  status(iframe?: FakeIframe): FrameStatusServer;
+  /** Data sent by `iframe` (the current one by default) as it is, from the frame's origin unless told otherwise. */
+  deliverRaw(data: unknown, iframe?: FakeIframe, origin?: string): void;
 }
 
-/** `options.mount` `'error'` makes each protocol iframe fail as it mounts. */
+/** `options.mount` `'error'` makes each protocol iframe fail as it mounts, and null leaves its `load` to the test. */
 export function createFrameDom(
   timeouts?: Partial<ProtocolFrameTimeouts>,
-  options: { mount?: 'load' | 'error' } = {},
+  options: { mount?: MountEvent } = {},
 ): FrameDom {
-  const listeners = new Set<(event: MessageEvent) => void>();
+  const listeners = new Set<Listener>();
   const messages: MessageTarget = {
     addEventListener: (_type, listener) => listeners.add(listener),
     removeEventListener: (_type, listener) => listeners.delete(listener),
   };
-  const mount = createMount(options.mount ?? 'load');
+  const toHost: Listener = event => {
+    for (const listener of [...listeners]) {
+      listener(event);
+    }
+  };
+  const mount = createMount(options.mount === undefined ? 'load' : options.mount);
   const elsewhere = createMount('load');
+  const served = new Map<FakeIframe, { serving: ServingTransport; status: FrameStatusServer | null }>();
   const iframe = (): FakeIframe => {
     const [found] = mount.iframes;
     if (found === undefined) {
@@ -119,11 +243,21 @@ export function createFrameDom(
     }
     return found;
   };
+  const servedOn = (target: FakeIframe): { serving: ServingTransport; status: FrameStatusServer | null } => {
+    let entry = served.get(target);
+    if (entry === undefined) {
+      const window = target.window;
+      const provider = createWindowProvider({ listen: window, peer: () => window.parent, origin: HOST_ORIGIN });
+      entry = { serving: createServingTransport(provider, { side: 'frame' }), status: null };
+      served.set(target, entry);
+    }
+    return entry;
+  };
   return {
     deps: {
       origin: FRAME_ORIGIN,
       document: {
-        createElement: () => new FakeIframe() as unknown as HTMLIFrameElement,
+        createElement: () => new FakeIframe(toHost) as unknown as HTMLIFrameElement,
         body: mount as unknown as HTMLElement,
       },
       window: messages,
@@ -131,13 +265,15 @@ export function createFrameDom(
     },
     iframe,
     frames: () => mount.iframes.size,
-    stranger: () => elsewhere.appendChild(new FakeIframe()),
-    deliver(envelope, from = iframe(), origin = FRAME_ORIGIN) {
-      // The frame reads only these, and Node's MessageEvent refuses a source that is not a port.
-      const event = { data: envelope, origin, source: from.contentWindow } as unknown as MessageEvent;
-      for (const listener of [...listeners]) {
-        listener(event);
-      }
+    stranger: () => elsewhere.appendChild(new FakeIframe(toHost)),
+    serve: (target = iframe()) => servedOn(target).serving,
+    status(target = iframe()) {
+      const entry = servedOn(target);
+      entry.status ??= serveFrameStatus(entry.serving);
+      return entry.status;
+    },
+    deliverRaw(data, from = iframe(), origin = FRAME_ORIGIN) {
+      toHost(messageEvent(data, origin, from.window));
     },
   };
 }

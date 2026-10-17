@@ -7,12 +7,24 @@ import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createSharedStore, type SharedAuthStorageChange, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
+import type { ServingTransport, SubscriptionSink } from './transport.js';
+
+/** A frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is subscribed. */
+function relayingChanges(sinks: Set<SubscriptionSink<'sharedAuthChanges'>>): (serving: ServingTransport) => void {
+  return serving => {
+    serving.handleSubscription('sharedAuthChanges', (_payload, _context, sink) => {
+      sinks.add(sink);
+      return () => {
+        sinks.delete(sink);
+      };
+    });
+  };
+}
 
 describe('createSharedStore', () => {
   it('As a returning user, my shared store connects until a first frame listens, then is down from each loss until a frame listens again', () => {
     // Given
-    const fake = createFakeFrame();
-    fake.setStatus('idle');
+    const fake = createFakeFrame(undefined, { status: 'idle' });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
     const statuses: SharedStoreStatus[] = [];
     store.subscribeSharedStoreStatus(status => statuses.push(status));
@@ -40,8 +52,7 @@ describe('createSharedStore', () => {
 
   it('As a dotli integrator, a frame status listener built before the shared store reads it available the moment the frame listens', () => {
     // Given a frame status listener registered before the shared store, which reads the store on each change
-    const fake = createFakeFrame();
-    fake.setStatus('idle');
+    const fake = createFakeFrame(undefined, { status: 'idle' });
     let store: ReturnType<typeof createSharedStore> | null = null;
     const read: (SharedStoreStatus | undefined)[] = [];
     fake.frame.subscribeStatus(() => {
@@ -109,20 +120,59 @@ describe('createSharedStore', () => {
         },
       }),
     );
-    const fake = createFakeFrame();
-    fake.setStatus('booting');
+    const sinks = new Set<SubscriptionSink<'sharedAuthChanges'>>();
+    const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting' });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
     const changes: SharedAuthStorageChange[] = [];
     store.subscribeSharedAuthStorage(change => changes.push(change));
+    await vi.advanceTimersByTimeAsync(0);
+    const subscribedWhileBooting = sinks.size;
 
     // When the frame listens, a sibling tab writes, and the frame is dropped before it is ready
     fake.setStatus('listening');
-    fake.send({ namespace: 'dotli:protocol', kind: 'auth-storage-changed', siteId: 'dotli', key: 'k', value: 'v' });
+    await vi.advanceTimersByTimeAsync(0);
+    for (const sink of sinks) {
+      sink.send({ siteId: 'dotli', key: 'k', value: 'v' });
+    }
+    await vi.advanceTimersByTimeAsync(0);
     fake.setStatus('idle');
     await vi.advanceTimersByTimeAsync(0);
 
     // Then the write reached me, and the listening frame met the subscription's wait, so the drop is no failure
+    expect(subscribedWhileBooting).toBe(0);
     expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: 'v' }]);
     expect(warnings).toEqual([]);
+  });
+
+  it('As a returning user, my shared auth subscription follows each new frame and stops in the frame once I leave', async () => {
+    // Given a subscription on a frame that is then lost and rebuilt
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const sinks = new Set<SubscriptionSink<'sharedAuthChanges'>>();
+    const fake = createFakeFrame(relayingChanges(sinks));
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+    const changes: SharedAuthStorageChange[] = [];
+    const unsubscribe = store.subscribeSharedAuthStorage(change => changes.push(change));
+    await vi.advanceTimersByTimeAsync(0);
+    fake.lose(new Error('boom'));
+    fake.setStatus('booting');
+    fake.setStatus('listening');
+    await vi.advanceTimersByTimeAsync(0);
+    const subscribedOnRebuilt = sinks.size;
+
+    // When a sibling tab writes, and then I leave
+    for (const sink of sinks) {
+      sink.send({ siteId: 'dotli', key: 'k', value: null });
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then
+    expect(subscribedOnRebuilt).toBe(1);
+    expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: null }]);
+    expect(sinks.size).toBe(0);
   });
 });

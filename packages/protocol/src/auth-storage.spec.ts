@@ -88,6 +88,6 @@ describe('shared auth storage helpers', () => {
     // Then
     expect(routed).toEqual([true, true, true, true]);
     expect(isSharedWalletRequestMethod('authStorageRead')).toBe(false);
-    expect(isSharedWalletRequestMethod('resolveDotName')).toBe(false);
+    expect(isSharedWalletRequestMethod('resolveOwner')).toBe(false);
   });
 });

@@ -5,13 +5,70 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type M
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
+import { deferred } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
+import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
-import { PROTOCOL_ERRORS } from './errors.js';
+import {
+  PROTOCOL_ERRORS,
+  ProtocolFatalError,
+  ProtocolHandshakeTimeoutError,
+  ProtocolInitFailedError,
+  ProtocolVersionMismatchError,
+} from './errors.js';
 import { backendOfFrameMode, createProtocolFrame } from './frame.js';
-import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
-import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-host.js';
+import { decodeWireMessage, encodeWireMessage } from './wire-message.js';
+import {
+  createFrameDom,
+  createFrameHost,
+  FRAME_CONFIG,
+  type FakeIframe,
+  type FrameDom,
+  type FrameHost,
+  type FrameStatusServer,
+} from './testing/frame-host.js';
+
+// The consumer transport posts its handshake again this often until it is answered.
+const HANDSHAKE_RETRY_MS = 50;
+const HANDSHAKE_TIMEOUT_MS = 5_000;
+const READY_TIMEOUT_MS = 240_000;
+
+const advance = async (ms = 0): Promise<void> => {
+  await vi.advanceTimersByTimeAsync(ms);
+};
+
+/** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
+async function listen(dom: FrameDom): Promise<FrameStatusServer> {
+  const status = dom.status();
+  await advance(HANDSHAKE_RETRY_MS);
+  return status;
+}
+
+/** Answers the current iframe and reports its light client ready. */
+async function bringUp(dom: FrameDom): Promise<FrameStatusServer> {
+  const status = await listen(dom);
+  status.ready();
+  await advance();
+  return status;
+}
+
+/** What the host sent `iframe`, as `leg:method`, its handshakes left out. */
+function sent(iframe: FakeIframe): string[] {
+  return iframe.window.posted.flatMap(data => {
+    const decoded = decodeWireMessage(data as ArrayBuffer);
+    return decoded.ok && decoded.message.method !== 'handshake'
+      ? [`${decoded.message.leg}:${decoded.message.method}`]
+      : [];
+  });
+}
+
+/** How a wait settled, read once it has, with its handler bound at once so a rejection is never unhandled. */
+function outcomeOf(wait: Promise<unknown>): Promise<string> {
+  return wait.then(
+    () => 'resolved',
+    (err: unknown) => (err instanceof Error ? err.message : String(err)),
+  );
+}
 
 describe('createProtocolFrame', () => {
   beforeEach(() => {
@@ -24,23 +81,47 @@ describe('createProtocolFrame', () => {
   });
 
   it('As a dotli integrator, I hear only what the current frame sends from its origin', async () => {
-    // Given
+    // Given a listening frame, and another iframe on the page
     const dom = createFrameDom();
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const heard: ProtocolEnvelope['kind'][] = [];
-    frame.onEnvelope(envelope => heard.push(envelope.kind));
     void frame.whenUp('listening');
-    await vi.advanceTimersByTimeAsync(0);
+    const status = await listen(dom);
     const stranger = dom.stranger();
 
-    // When
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' }, stranger);
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' }, dom.iframe(), 'https://evil.example');
+    // When the other iframe, and the frame from another origin, say the light client is ready
+    for (let id = 1; id <= 8; id++) {
+      const ready = (): ArrayBuffer => encodeWireMessage({ leg: 'event', id, method: 'frameStatus', event: undefined });
+      dom.deliverRaw(ready(), stranger);
+      dom.deliverRaw(ready(), dom.iframe(), 'https://evil.example');
+    }
+    await advance();
+    const afterStrangers = frame.getStatus();
+    status.ready();
+    await advance();
 
     // Then
-    expect(heard).toEqual(['listening']);
+    expect(afterStrangers).toBe('listening');
+    expect(frame.getStatus()).toBe('ready');
+  });
+
+  it('As the host, I start my handshake on the frame load', async () => {
+    // Given a frame whose document has not loaded yet
+    const dom = createFrameDom(undefined, { mount: null });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    const up = frame.whenUp('listening');
+    dom.status();
+    await advance(1_000);
+    const postedBeforeLoad = dom.iframe().window.posted.length;
+
+    // When
+    dom.iframe().dispatchEvent(new Event('load'));
+    await advance();
+
+    // Then
+    expect(postedBeforeLoad).toBe(0);
+    await expect(up).resolves.toBe(await frame.transport());
     expect(frame.getStatus()).toBe('listening');
   });
 
@@ -52,18 +133,35 @@ describe('createProtocolFrame', () => {
     const settled: string[] = [];
     void frame.whenUp('listening').then(() => settled.push('listening'));
     void frame.whenUp('ready').then(() => settled.push('ready'));
-    await vi.advanceTimersByTimeAsync(0);
 
     // When
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    await vi.advanceTimersByTimeAsync(0);
+    const status = await listen(dom);
     const afterListening = [...settled];
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' });
-    await vi.advanceTimersByTimeAsync(0);
+    status.ready();
+    await advance();
 
     // Then
     expect(afterListening).toEqual(['listening']);
     expect(settled).toEqual(['listening', 'ready']);
+  });
+
+  it('As a dotli integrator, I ask for the transport and get the current frame one, booting a frame if there is none', async () => {
+    // Given
+    const dom = createFrameDom();
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    const framesBeforeAsking = dom.frames();
+
+    // When
+    const first = await frame.transport();
+    const second = await frame.transport();
+    await bringUp(dom);
+
+    // Then
+    expect(framesBeforeAsking).toBe(0);
+    expect(dom.frames()).toBe(1);
+    expect(second).toBe(first);
+    await expect(frame.whenUp('ready')).resolves.toBe(first);
   });
 
   it('As a dotli integrator, I hear why a frame was dropped once its status says it is down', async () => {
@@ -72,30 +170,16 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('ready').catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(0);
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' });
-    const lost: { message: string; status: ProtocolStatus }[] = [];
-    frame.onLost(error => lost.push({ message: error.message, status: frame.getStatus() }));
+    const status = await bringUp(dom);
+    const lost: { name: string; message: string; status: ProtocolStatus }[] = [];
+    frame.onLost(error => lost.push({ name: error.name, message: error.message, status: frame.getStatus() }));
 
     // When
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    status.fail(new ProtocolFatalError('boom'));
+    await advance();
 
     // Then
-    expect(lost).toEqual([{ message: 'Fatal: boom', status: 'failed' }]);
-  });
-
-  it('As a dotli integrator, I post with no frame and it fails at once', () => {
-    // Given
-    const frame = createProtocolFrame(createFrameDom().deps);
-    frame.configure(FRAME_CONFIG);
-
-    // When
-    const post = (): void => {
-      frame.post({ namespace: 'dotli:protocol', kind: 'request' });
-    };
-
-    // Then
-    expect(post).toThrow(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
+    expect(lost).toEqual([{ name: 'ProtocolFatalError', message: 'boom', status: 'failed' }]);
   });
 
   it('As a dotli integrator, I wait on a frame before it is configured, and it boots and answers once configured', async () => {
@@ -103,36 +187,180 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom();
     const frame = createProtocolFrame(dom.deps);
     const up = frame.whenUp('listening');
-    await vi.advanceTimersByTimeAsync(0);
+    await advance();
     const framesBeforeConfig = dom.frames();
 
     // When
     frame.configure(FRAME_CONFIG);
-    await vi.advanceTimersByTimeAsync(0);
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
+    await advance();
+    await listen(dom);
 
     // Then
     expect(framesBeforeConfig).toBe(0);
-    await expect(up).resolves.toBeUndefined();
+    await expect(up).resolves.toBe(await frame.transport());
     expect(dom.frames()).toBe(1);
   });
 
-  it('As a dotli user whose frame dies in the turn it starts listening, I get a rebuild after the first wait, not after the ready timeout', async () => {
-    // Given: the keeper's ready wait begins on a frame already lost.
+  it('As the host, a frame that already failed fails my boot when I subscribe its status, and is rebuilt after the first wait', async () => {
+    // Given a frame app whose light client failed before the host subscribed its status
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom();
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    const up = frame.whenUp('ready').catch((err: unknown) => err);
+    dom.status().fail(new ProtocolInitFailedError('no SharedWorker'));
+
+    // When
+    await advance(HANDSHAKE_RETRY_MS);
+    const failure = await up;
+    const statusAfterFailure = frame.getStatus();
+    await advance(2_000);
+
+    // Then
+    expect(failure).toBeInstanceOf(ProtocolInitFailedError);
+    expect((failure as Error).message).toBe('no SharedWorker');
+    expect(statusAfterFailure).toBe('failed');
+    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+      { outcome: 'error', phase: 'ready', reason: 'ProtocolInitFailedError' },
+    ]);
+    expect(dom.frames()).toBe(1);
+    expect(frame.getStatus()).toBe('booting');
+  });
+
+  it('As the host, one frame loss is counted once', async () => {
+    // Given a frame that listens, waiting for its light client, with a request out on its transport
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const dom = createFrameDom();
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenUp('ready').catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(0);
+    const status = await listen(dom);
+    dom.serve().handleRequest('resolveOwner', () => new Promise<null>(() => undefined));
+    const transport = await frame.transport();
+    const owner = transport.request('resolveOwner', { label: 'doom' }).catch((err: unknown) => err);
+    await advance();
 
-    // When
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(2_000);
+    // When its light client dies, which ends its status, and the loss disposes its transport
+    status.fail(new ProtocolFatalError('boom'));
+    await advance();
 
     // Then
+    expect(await owner).toBeInstanceOf(ProtocolFatalError);
+    expect(frame.losses()).toBe(1);
+    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+      { outcome: 'error', phase: 'ready', reason: 'ProtocolFatalError' },
+    ]);
+  });
+
+  it('As the host, a late message from a dropped frame settles nothing on the new one', async () => {
+    // Given a read the first frame holds while it is dropped
+    const dom = createFrameDom();
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.whenUp('ready').catch(() => undefined);
+    const first = dom.iframe();
+    const held = deferred<string | null>();
+    dom.serve(first).handleRequest('authStorageRead', () => held.promise);
+    const firstStatus = await bringUp(dom);
+    const oldRead = (await frame.transport()).request('authStorageRead', { siteId: SITE_ID, key: 'k' });
+    void oldRead.catch(() => undefined);
+    await advance();
+    firstStatus.fail(new ProtocolFatalError('boom'));
+    await advance();
+
+    // And a read on the rebuilt frame, which it never answers
+    const rebuilt = await frame.transport();
+    dom.serve().handleRequest('authStorageRead', () => new Promise<null>(() => undefined));
+    await bringUp(dom);
+    const answered: (string | null)[] = [];
+    void rebuilt.request('authStorageRead', { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer));
+    await advance();
+
+    // When the dropped frame answers late, and answers for every id arrive from its window
+    held.resolve('stale');
+    for (let id = 1; id <= 16; id++) {
+      dom.deliverRaw(
+        encodeWireMessage({ leg: 'response', id, method: 'authStorageRead', outcome: { ok: true, answer: 'stale' } }),
+        first,
+      );
+    }
+    await advance();
+
+    // Then
+    expect(answered).toEqual([]);
+    await expect(oldRead).rejects.toThrow('boom');
+    expect(frame.getStatus()).toBe('ready');
+  });
+
+  it('As the host, a version mismatch is final', async () => {
+    // Given a frame of another release, which refuses the host wire version
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom();
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    const up = frame.whenUp('ready').catch((err: unknown) => err);
+    await advance();
+
+    // When
+    dom.deliverRaw(
+      encodeWireMessage({
+        leg: 'response',
+        id: 1,
+        method: 'handshake',
+        outcome: {
+          ok: false,
+          error: {
+            message: 'The peer speaks wire version 1 and this end 2',
+            name: 'ProtocolVersionMismatchError',
+            stack: null,
+          },
+        },
+      }),
+    );
+    await advance();
+    const failure = await up;
+    await advance(60_000);
+    const framesAfterBackoff = dom.frames();
+    frame.configure({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
+    await advance(60_000);
+
+    // Then
+    expect(failure).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(frame.getStatus()).toBe('failed');
+    expect(framesAfterBackoff).toBe(0);
+    expect(dom.frames()).toBe(0);
+    await expect(frame.whenUp('listening')).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
+    await expect(frame.transport()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(dom.frames()).toBe(0);
+    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+      { outcome: 'error', phase: 'listen', reason: 'ProtocolVersionMismatchError' },
+    ]);
+  });
+
+  it('As the host, a frame that never answers my handshake fails my boot and rebuilds with backoff', async () => {
+    // Given a frame of an earlier release, which loads and never answers
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom();
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    const up = frame.whenUp('listening').catch((err: unknown) => err);
+    const silent = dom.iframe();
+
+    // When
+    await advance(HANDSHAKE_TIMEOUT_MS);
+    const failure = await up;
+    await advance(1_999);
+    const framesBeforeBackoff = dom.frames();
+    await advance(1);
+
+    // Then
+    expect(failure).toBeInstanceOf(ProtocolHandshakeTimeoutError);
+    expect(silent.isConnected).toBe(false);
+    expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
+      { outcome: 'error', phase: 'listen', reason: 'ProtocolHandshakeTimeoutError' },
+    ]);
+    expect(framesBeforeBackoff).toBe(0);
     expect(dom.frames()).toBe(1);
-    expect(frame.getStatus()).toBe('booting');
   });
 
   it('As a dotli integrator, I lose a frame that fails the moment it is mounted and it leaves no load timer behind', async () => {
@@ -142,42 +370,29 @@ describe('createProtocolFrame', () => {
     frame.configure(FRAME_CONFIG);
 
     // When
-    const up = frame.whenUp('listening').then(
-      () => null,
-      (err: unknown) => err as Error,
-    );
-    await vi.advanceTimersByTimeAsync(0);
+    const up = outcomeOf(frame.whenUp('listening'));
+    await advance();
 
     // Then the wait fails, and only the rebuild's wait is pending
-    expect((await up)?.message).toContain(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED);
+    expect(await up).toContain(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED);
     expect(frame.getStatus()).toBe('failed');
     expect(vi.getTimerCount()).toBe(1);
   });
 
   /** A configured frame that came up ready and then died with a fatal, so its keeper waits to rebuild it. */
   async function frameDownAfterFatal(): Promise<{
-    dom: ReturnType<typeof createFrameDom>;
+    dom: FrameDom;
     frame: ReturnType<typeof createProtocolFrame>;
   }> {
     const dom = createFrameDom();
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('ready');
-    await vi.advanceTimersByTimeAsync(0);
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' });
+    const status = await bringUp(dom);
     await up;
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(0);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance();
     return { dom, frame };
-  }
-
-  /** How a wait settled, read once it has, with its handler bound at once so a rejection is never unhandled. */
-  function outcomeOf(wait: Promise<void>): Promise<string> {
-    return wait.then(
-      () => 'resolved',
-      (err: unknown) => (err instanceof Error ? err.message : String(err)),
-    );
   }
 
   it('As a product, I ask for the chain while the frame waits to rebuild after a fatal, and a new frame boots at once and answers', async () => {
@@ -187,10 +402,8 @@ describe('createProtocolFrame', () => {
 
     // When
     const up = outcomeOf(frame.whenUp('ready'));
-    await vi.advanceTimersByTimeAsync(0);
     const framesAfterAsking = dom.frames();
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' });
+    await bringUp(dom);
 
     // Then
     expect(framesWhileDown).toBe(0);
@@ -205,11 +418,11 @@ describe('createProtocolFrame', () => {
 
     // When
     const up = outcomeOf(frame.whenUp('ready'));
-    await vi.advanceTimersByTimeAsync(0);
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'init-failed', message: 'no SharedWorker' });
+    const status = await listen(dom);
+    status.fail(new ProtocolInitFailedError('no SharedWorker'));
 
     // Then
-    expect(await up).toBe('Init failed: no SharedWorker');
+    expect(await up).toBe('no SharedWorker');
   });
 
   it('As a host with no caller waiting, I lose the frame and it rebuilds on its own after the backoff', async () => {
@@ -217,9 +430,9 @@ describe('createProtocolFrame', () => {
     const { dom } = await frameDownAfterFatal();
 
     // When
-    await vi.advanceTimersByTimeAsync(1_999);
+    await advance(1_999);
     const framesBeforeBackoff = dom.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await advance(1);
 
     // Then
     expect(framesBeforeBackoff).toBe(0);
@@ -242,28 +455,27 @@ describe('createProtocolFrame', () => {
     });
     frame.configure(FRAME_CONFIG);
     const up = frame.whenUp('ready');
-    await vi.advanceTimersByTimeAsync(0);
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' });
+    const firstStatus = await bringUp(dom);
     await up;
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(0);
+    firstStatus.fail(new ProtocolFatalError('boom'));
+    await advance();
     const buildsBeforeAsking = builds;
 
     // When
     const first = outcomeOf(frame.whenUp('ready'));
     const second = outcomeOf(frame.whenUp('listening'));
-    await vi.advanceTimersByTimeAsync(0);
     const framesAfterAsking = dom.frames();
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'init-failed', message: 'no SharedWorker' });
-    const outcomes = [await first, await second];
+    const status = await listen(dom);
+    const secondSettled = await second;
+    status.fail(new ProtocolInitFailedError('no SharedWorker'));
+    const outcomes = [await first, secondSettled];
     const buildsForUs = builds - buildsBeforeAsking;
-    await vi.advanceTimersByTimeAsync(1_999);
+    await advance(1_999);
     const framesBeforeBackoff = dom.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await advance(1);
 
     // Then
-    expect(outcomes).toEqual(['Init failed: no SharedWorker', 'Init failed: no SharedWorker']);
+    expect(outcomes).toEqual(['no SharedWorker', 'resolved']);
     expect(framesAfterAsking).toBe(1);
     expect(buildsForUs).toBe(1);
     expect(framesBeforeBackoff).toBe(0);
@@ -278,12 +490,10 @@ describe('createProtocolFrame', () => {
     // When
     const first = outcomeOf(frame.whenUp('ready'));
     const second = outcomeOf(frame.whenUp('listening'));
-    await vi.advanceTimersByTimeAsync(0);
     const rebuilt = dom.iframe();
     const framesAfterAsking = dom.frames();
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    dom.deliver({ namespace: 'dotli:protocol', kind: 'ready' });
-    await vi.advanceTimersByTimeAsync(2_000);
+    await bringUp(dom);
+    await advance(2_000);
 
     // Then
     expect(framesAfterAsking).toBe(1);
@@ -293,8 +503,6 @@ describe('createProtocolFrame', () => {
     expect(dom.iframe()).toBe(rebuilt);
   });
 });
-
-const READY_TIMEOUT_MS = 240_000;
 
 describe('protocol status', () => {
   let host: FrameHost;
@@ -308,20 +516,6 @@ describe('protocol status', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
-
-  /** Lets the frame say `kinds` in turn, and returns everything posted to the current frame's window. */
-  async function frameSays(...kinds: ('listening' | 'ready')[]): Promise<ProtocolRequestEnvelope[]> {
-    await vi.advanceTimersByTimeAsync(0);
-    const frameWindow = host.iframe().contentWindow;
-    if (frameWindow === null) {
-      throw new Error('protocol iframe has no window');
-    }
-    for (const kind of kinds) {
-      host.deliver({ namespace: 'dotli:protocol', kind });
-    }
-    await vi.advanceTimersByTimeAsync(0);
-    return frameWindow.posted as ProtocolRequestEnvelope[];
-  }
 
   function settledWith(promise: Promise<unknown>): { outcome: string | null } {
     const result = { outcome: null as string | null };
@@ -340,12 +534,12 @@ describe('protocol status', () => {
     // Given
     const statuses: ProtocolStatus[] = [];
     host.client.subscribeProtocolStatus(status => statuses.push(status));
-    await vi.advanceTimersByTimeAsync(0);
+    await advance();
     const framesBeforeAsking = host.frames();
 
     // When
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    await bringUp(host);
 
     // Then
     expect(framesBeforeAsking).toBe(0);
@@ -356,14 +550,15 @@ describe('protocol status', () => {
   it('As a dotli user whose protocol frame fails its init, I see it reported failed and then rebuilt', async () => {
     // Given
     void host.client.ensureProtocolFrame().catch(() => undefined);
-    await frameSays('listening');
+    const status = await listen(host);
     const dead = host.iframe();
 
     // When
-    host.deliver({ namespace: 'dotli:protocol', kind: 'init-failed', message: 'no SharedWorker' });
+    status.fail(new ProtocolInitFailedError('no SharedWorker'));
+    await advance();
     const statusAfterFailure = host.client.getProtocolStatus();
-    await vi.advanceTimersByTimeAsync(2_000);
-    await frameSays('listening', 'ready');
+    await advance(2_000);
+    await bringUp(host);
 
     // Then
     expect(statusAfterFailure).toBe('failed');
@@ -375,16 +570,16 @@ describe('protocol status', () => {
   it('As a dotli user, I make a request while the protocol frame boots and it waits, then fails as soon as that boot fails', async () => {
     // Given
     const warmup = settledWith(host.client.warmupProtocol());
-    await frameSays('listening');
+    const status = await listen(host);
     const waitingWhileBooting = warmup.outcome;
 
     // When
-    host.deliver({ namespace: 'dotli:protocol', kind: 'init-failed', message: 'bad network' });
-    await vi.advanceTimersByTimeAsync(0);
+    status.fail(new ProtocolInitFailedError('bad network'));
+    await advance();
 
     // Then
     expect(waitingWhileBooting).toBeNull();
-    expect(warmup.outcome).toBe('Init failed: bad network');
+    expect(warmup.outcome).toBe('bad network');
   });
 
   it('As a returning user whose protocol frame never reports ready, I get a rebuilt frame and my shared store back', async () => {
@@ -392,13 +587,13 @@ describe('protocol status', () => {
     const statuses: SharedStoreStatus[] = [];
     host.client.subscribeSharedStoreStatus(status => statuses.push(status));
     const warmup = settledWith(host.client.warmupProtocol());
-    await frameSays('listening');
+    await listen(host);
     const dead = host.iframe();
 
     // When
-    await vi.advanceTimersByTimeAsync(READY_TIMEOUT_MS);
-    await vi.advanceTimersByTimeAsync(2_000);
-    await frameSays('listening');
+    await advance(READY_TIMEOUT_MS);
+    await advance(2_000);
+    await listen(host);
 
     // Then
     expect(warmup.outcome).toBe(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT);
@@ -407,22 +602,23 @@ describe('protocol status', () => {
   });
 
   it('As a dotli user whose light client dies soon after each rebuild, I wait longer before each new frame', async () => {
-    // Given: a frame that comes up and dies at once.
+    // Given a frame that comes up and dies at once
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    let status = await bringUp(host);
     const rebuildsAfter: number[] = [];
 
-    // When: each rebuild comes up and dies at once too.
+    // When each rebuild comes up and dies at once too
     for (let i = 0; i < 3; i++) {
-      host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+      status.fail(new ProtocolFatalError('boom'));
+      await advance();
       let waited = 0;
       while (host.frames() === 0 && waited < 60_000) {
-        await vi.advanceTimersByTimeAsync(1_000);
+        await advance(1_000);
         waited += 1_000;
       }
       expect(host.frames()).toBe(1);
       rebuildsAfter.push(waited);
-      await frameSays('listening', 'ready');
+      status = await bringUp(host);
     }
 
     // Then
@@ -430,22 +626,22 @@ describe('protocol status', () => {
   });
 
   it('As a dotli user whose protocol frame stayed up past 30 s, I get its rebuild after 2 s again', async () => {
-    // Given: two quick deaths grew the wait, then a frame stayed up 30 s.
+    // Given two quick deaths grew the wait, then a frame stayed up 30 s
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(2_000);
-    await frameSays('listening', 'ready');
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(4_000);
-    await frameSays('listening', 'ready');
-    await vi.advanceTimersByTimeAsync(30_000);
+    let status = await bringUp(host);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(2_000);
+    status = await bringUp(host);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(4_000);
+    status = await bringUp(host);
+    await advance(30_000);
 
     // When
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(1_999);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(1_999);
     const framesBeforeWait = host.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await advance(1);
 
     // Then
     expect(framesBeforeWait).toBe(0);
@@ -455,33 +651,31 @@ describe('protocol status', () => {
   it('As a returning user, I change the frame config during my session and see the shared store down, then available', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    await bringUp(host);
     const statuses: SharedStoreStatus[] = [];
     host.client.subscribeSharedStoreStatus(status => statuses.push(status));
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await frameSays('listening');
+    await listen(host);
 
     // Then
     expect(statuses).toEqual(['unavailable', 'available']);
   });
 
   it('As a dotli integrator, I change the frame config and the chain connections of the dropped frame halt', async () => {
-    // Given
+    // Given a chain connection the frame accepted
     const provider = host.client.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
     if (provider === null) {
       throw new Error('People is not remote-connectable');
     }
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     provider(() => undefined, onHalt);
-    const posted = await frameSays('listening', 'ready');
-    const connect = posted.find(envelope => envelope.method === 'chainConnect');
-    if (connect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
-    host.deliver({ namespace: 'dotli:protocol', kind: 'response', id: connect.id, ok: true, result: true });
-    await vi.advanceTimersByTimeAsync(0);
+    host.serve().handleSubscription('chainConnect', (_payload, _context, sink) => {
+      sink.send({ tag: 'connected', value: undefined });
+      return () => undefined;
+    });
+    await bringUp(host);
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
@@ -492,32 +686,31 @@ describe('protocol status', () => {
   });
 
   it('As a dotli user, I change the frame config and a late fatal from the dropped frame does not fail the rebuild', async () => {
-    // Given: the dropped frame's fatal lands while the client has no frame.
+    // Given the dropped frame's fatal is sent while the client has no frame
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
-    const dead = host.iframe();
+    const deadStatus = await bringUp(host);
     host.client.subscribeProtocolStatus(next => {
       if (next === 'idle') {
-        host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'late' }, dead);
+        deadStatus.fail(new ProtocolFatalError('late'));
       }
     });
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const read = settledWith(host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY));
-    await frameSays('listening');
-    const posted = await frameSays();
+    host.serve().handleRequest('authStorageRead', () => new Promise<null>(() => undefined));
+    await listen(host);
 
     // Then
     expect(host.client.getProtocolStatus()).toBe('listening');
     expect(read.outcome).toBeNull();
-    expect(posted.map(envelope => envelope.method)).toEqual(['authStorageRead']);
+    expect(sent(host.iframe())).toEqual(['subscribe:frameStatus', 'subscribe:telemetry', 'request:authStorageRead']);
   });
 
   it('As a dotli integrator, I request from a status listener after a config change and see the statuses in order', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    await bringUp(host);
     const heard: ProtocolStatus[][] = [[], []];
     let request: Promise<void> | null = null;
     host.client.subscribeProtocolStatus(next => {
@@ -531,7 +724,7 @@ describe('protocol status', () => {
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const framesAfterChange = host.frames();
-    await frameSays('listening', 'ready');
+    await bringUp(host);
 
     // Then
     expect(framesAfterChange).toBe(1);
@@ -541,22 +734,22 @@ describe('protocol status', () => {
   });
 
   it('As a dotli integrator, I request from an idle listener during a config change and the frame keeps one keeper', async () => {
-    // Given: a second keeper would wait behind the first and rebuild the next lost frame at once.
+    // Given a second keeper would wait behind the first and rebuild the next lost frame at once
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    await bringUp(host);
     host.client.subscribeProtocolStatus(next => {
       if (next === 'idle') {
         void host.client.ensureProtocolFrame().catch(() => undefined);
       }
     });
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await frameSays('listening', 'ready');
+    const status = await bringUp(host);
 
     // When
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(1_999);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(1_999);
     const framesBeforeWait = host.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await advance(1);
 
     // Then
     expect(framesBeforeWait).toBe(0);
@@ -579,13 +772,13 @@ describe('protocol status', () => {
     });
     failing.configureProtocolFrame(FRAME_CONFIG);
 
-    // When: the first build fails in the turn it is asked for, so the second request finds the frame down and boots
-    // its own.
+    // When the first build fails in the turn it is asked for, so the second request finds the frame down and boots
+    // its own
     const first = settledWith(failing.ensureProtocolFrame());
     const second = settledWith(failing.ensureProtocolFrame());
-    await vi.advanceTimersByTimeAsync(0);
+    await advance();
     const buildsAfterRequests = builds;
-    await vi.advanceTimersByTimeAsync(2_000);
+    await advance(2_000);
 
     // Then
     expect(first.outcome).toBe('no iframe here');
@@ -621,7 +814,7 @@ describe('protocol status', () => {
 
       // When the first build fails
       void settledWith(failing.ensureProtocolFrame());
-      await vi.advanceTimersByTimeAsync(0);
+      await advance();
 
       // Then the failure is counted with the reason of the thrown value
       expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toContainEqual({ outcome: 'error', phase: 'load', reason });
@@ -629,20 +822,20 @@ describe('protocol status', () => {
   );
 
   it('As a dotli user, I change the config during the wait before a rebuild and get a frame at once, and the dropped wait leaves no second rebuild', async () => {
-    // Given: a retry left over from the dropped wait would rebuild the next lost frame at once.
+    // Given a retry left over from the dropped wait would rebuild the next lost frame at once
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(1_000);
+    let status = await bringUp(host);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(1_000);
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const mode = new URL(host.iframe().src).searchParams.get('mode');
-    await frameSays('listening', 'ready');
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(1_999);
+    status = await bringUp(host);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(1_999);
     const framesBeforeWait = host.frames();
-    await vi.advanceTimersByTimeAsync(1);
+    await advance(1);
 
     // Then
     expect(mode).toBe('rpc');
@@ -653,7 +846,7 @@ describe('protocol status', () => {
   it('As a dotli integrator, I change the config and request from a failed listener and the request resolves', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    const status = await bringUp(host);
     let request: Promise<void> | null = null;
     host.client.subscribeProtocolStatus(next => {
       if (next === 'failed' && request === null) {
@@ -663,8 +856,9 @@ describe('protocol status', () => {
     });
 
     // When
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await frameSays('listening', 'ready');
+    status.fail(new ProtocolFatalError('boom'));
+    await advance();
+    await bringUp(host);
 
     // Then
     await expect(request).resolves.toBeUndefined();
@@ -683,11 +877,10 @@ describe('protocol status', () => {
 
     // When
     void host.client.ensureProtocolFrame().catch(() => undefined);
-    await vi.advanceTimersByTimeAsync(0);
     const framesAfterChange = host.frames();
     const mode = new URL(host.iframe().src).searchParams.get('mode');
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    await bringUp(host);
 
     // Then
     expect(framesAfterChange).toBe(1);
@@ -715,7 +908,7 @@ describe('protocol status', () => {
 
     // When
     void host.client.ensureProtocolFrame();
-    await frameSays('listening');
+    await listen(host);
 
     // Then the next listener heard each change, and each throw was captured once and counted once
     expect(heard).toEqual(['booting', 'listening']);
@@ -732,7 +925,7 @@ describe('protocol status', () => {
   it('As a dotli integrator, I unsubscribe a listener from another listener and it hears nothing after that', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    await frameSays('listening', 'ready');
+    const status = await bringUp(host);
     const heard: ProtocolStatus[] = [];
     let unsubscribe: (() => void) | null = null;
     host.client.subscribeProtocolStatus(next => {
@@ -744,8 +937,8 @@ describe('protocol status', () => {
     unsubscribe = host.client.subscribeProtocolStatus(next => heard.push(next));
 
     // When
-    host.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(0);
+    status.fail(new ProtocolFatalError('boom'));
+    await advance();
 
     // Then
     expect(heard).toEqual(['failed']);

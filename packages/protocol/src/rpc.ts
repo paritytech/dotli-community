@@ -1,34 +1,24 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Requests to the protocol frame and their answers.
+// Requests to the protocol frame, each on its own budget, with the metrics and trail every call to the frame shares.
 
 import { m, spans as S } from '@dotli/metrics';
-import type { ResolvePhase } from '@dotli/resolver';
-import { createPendingReplies, errorName, log, toError, withTimeout } from '@dotli/shared';
+import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { isSharedAuthRequestMethod, isSharedModeRequestMethod, isSharedWalletRequestMethod } from './auth-storage.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
-import {
-  isProgressPayloadValid,
-  type ProtocolRequestEnvelope,
-  type ProtocolRequestMap,
-  type ProtocolRequestMethod,
-  type ProtocolResponseMap,
-} from './messages.js';
-import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
+import { budgetOf } from './method-timeouts.js';
+import type { Answer, RequestMethod, RequestPayload, SubscriptionMethod } from './methods.js';
+import type { ConsumerTransport } from './transport.js';
 
-/** What a request leaves with its wait, for the answer and its progress. */
-interface RequestMeta {
-  method: ProtocolRequestMethod;
-  onProgress?: ((phase: ResolvePhase) => void) | undefined;
-}
+type CalledMethod = RequestMethod | SubscriptionMethod;
 
 /**
  * Page load steps, breadcrumbed when sent and settled so a failed load's trail names what it waited on.
  * Storage and chain traffic is per product call and would crowd them out.
  */
-const TRAILED_METHODS: ReadonlySet<ProtocolRequestMethod> = new Set<ProtocolRequestMethod>([
+const TRAILED_METHODS: ReadonlySet<CalledMethod> = new Set<CalledMethod>([
   'warmup',
   'chainConnect',
   'resolveDotName',
@@ -41,163 +31,136 @@ export function createRequestId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** The error a call that outlived its budget fails with. */
+export function callTimeoutError(method: CalledMethod, budgetMs: number): ProtocolRequestError {
+  return new ProtocolRequestError(
+    `Protocol request "${method}" timed out after ${String(budgetMs)}ms`,
+    'ProtocolTimeoutError',
+    method,
+  );
+}
+
+/**
+ * A remote failure as callers see it. A bare `"Error"` carries nothing, and would cost the "crossed the protocol
+ * boundary" signal dashboards filter on.
+ */
+export function asCallError(error: unknown): Error {
+  const err = toError(error);
+  return err instanceof ProtocolRequestError && err.name === 'Error'
+    ? new ProtocolRequestError(err.message, 'ProtocolResponseError', err.method, err.remoteStack)
+    : err;
+}
+
+export type CallOutcome = 'ok' | 'error' | 'timeout';
+
+/** Measures one call from when it is handed to the transport, and settles once. */
+export interface CallTrail {
+  settled(outcome: CallOutcome, error?: Error): void;
+}
+
+export function startCallTrail(method: CalledMethod, budgetMs: number | null): CallTrail {
+  // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
+  // round trips this span measures.
+  const stop = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST);
+  const trailed = TRAILED_METHODS.has(method);
+  const sentAt = performance.now();
+  if (trailed) {
+    log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });
+  }
+  let done = false;
+  return {
+    settled(outcome, error) {
+      if (done) {
+        return;
+      }
+      done = true;
+      stop();
+      if (outcome !== 'ok') {
+        m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: errorName(error) ?? 'unknown' });
+      }
+      if (trailed) {
+        log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
+          flow: 'protocol',
+          ms: Math.round(performance.now() - sentAt),
+          ...(error !== undefined ? { error: `${error.name}: ${error.message}`.slice(0, 200) } : {}),
+        });
+      }
+    },
+  };
+}
+
 /** What requests need of the frame. */
-export type RpcFrame = Pick<ProtocolFrame, 'whenUp' | 'post' | 'onEnvelope' | 'onLost'>;
+export type RpcFrame = Pick<ProtocolFrame, 'whenUp' | 'transport'>;
 
 export interface FrameRpc {
   /**
-   * Posts once the frame can answer: listening for the shared store, ready for everything else. A shared store
+   * Sends once the frame can answer: listening for the shared store, ready for everything else. A shared store
    * request's budget runs from the call, so it also bounds the wait for a frame that never loads. Any other budget runs
-   * from the post, since such a request also waits for the light client, which has deadlines of its own. Rejects when
-   * the frame goes down before the answer.
+   * from when the frame is ready, since such a request also waits for the light client, which has deadlines of its
+   * own. Rejects when the frame goes down before the answer.
    */
-  request<M extends ProtocolRequestMethod>(
-    method: M,
-    payload: ProtocolRequestMap[M],
-    onProgress?: (phase: ResolvePhase) => void,
-  ): Promise<ProtocolResponseMap[M]>;
+  request<M extends RequestMethod>(method: M, payload: RequestPayload<M>): Promise<Answer<M>>;
 }
 
-export function createFrameRpc(frame: RpcFrame): FrameRpc {
-  const replies = createPendingReplies<string, unknown, RequestMeta>();
+function isSharedStoreMethod(method: RequestMethod): boolean {
+  return isSharedAuthRequestMethod(method) || isSharedModeRequestMethod(method) || isSharedWalletRequestMethod(method);
+}
 
-  frame.onEnvelope(msg => {
-    if (msg.kind === 'progress') {
-      if (isProgressPayloadValid(msg)) {
-        replies.meta(msg.id)?.onProgress?.(msg.phase);
-      }
-      return;
-    }
-    if (msg.kind !== 'response') {
-      return;
-    }
-    const meta = replies.meta(msg.id);
-    if (meta === undefined) {
-      return;
-    }
-    if (msg.ok) {
-      replies.resolve(msg.id, msg.result);
-      return;
-    }
-    replies.reject(
-      msg.id,
-      new ProtocolRequestError(
-        msg.error || 'Unknown protocol error',
-        // A bare `"Error"` carries nothing, and would cost us the
-        // "crossed the protocol boundary" signal dashboards filter on.
-        msg.errorName !== undefined && msg.errorName !== 'Error' ? msg.errorName : 'ProtocolResponseError',
-        meta.method,
-        typeof msg.errorStack === 'string' ? msg.errorStack : undefined,
-      ),
-    );
-  });
-
-  // A request whose wait settled before a loss resumes after it, so each loss is kept for the requests not posted yet.
-  let losses = 0;
-  let lastLoss: Error | undefined;
-
-  // The frame that would answer is gone, so a request left to its timer would only fail later.
-  frame.onLost(error => {
-    losses += 1;
-    lastLoss = error;
-    replies.rejectAll(() => error);
-  });
-
+export function createFrameRpc(frame: RpcFrame, timers: Timers = realTimers): FrameRpc {
   return {
-    async request(method, payload, onProgress) {
-      const sharedStore =
-        isSharedAuthRequestMethod(method) || isSharedModeRequestMethod(method) || isSharedWalletRequestMethod(method);
-      const timeoutMs = UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
-      const timeoutError = (): ProtocolRequestError =>
-        new ProtocolRequestError(
-          `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
-          'ProtocolTimeoutError',
-          method,
-        );
-      const since = losses;
-      const askedAt = performance.now();
-      const up = frame.whenUp(sharedStore ? 'listening' : 'ready');
-      if (sharedStore && timeoutMs !== null) {
-        let waitTimedOut: Error | undefined;
-        try {
-          await withTimeout(up, timeoutMs, () => {
-            waitTimedOut = timeoutError();
-            return waitTimedOut;
-          });
-        } catch (reason: unknown) {
-          if (reason === waitTimedOut) {
-            m.count(S.PROTOCOL_REQUEST, { outcome: 'timeout', method, reason: errorName(reason) ?? 'unknown' });
-          }
-          throw reason;
+    async request<M extends RequestMethod>(method: M, payload: RequestPayload<M>): Promise<Answer<M>> {
+      const budgetMs = budgetOf(method);
+      // Ends the call on its budget. The transport drops it, and a late answer is ignored.
+      const giveUp = new AbortController();
+      let timedOut: Error | undefined;
+      // Set once the call is handed to the transport, which the frame wait may never reach.
+      const sent: { trail: CallTrail | null } = { trail: null };
+      const bounded = <T>(work: Promise<T>): Promise<T> =>
+        budgetMs === null
+          ? work
+          : withTimeout(
+              work,
+              budgetMs,
+              () => {
+                timedOut = callTimeoutError(method, budgetMs);
+                giveUp.abort(timedOut);
+                return timedOut;
+              },
+              timers,
+            );
+      const send = (transport: ConsumerTransport, deadlineMs: number | null): Promise<Answer<M>> => {
+        // The budget ran out while the frame was asked for, so nothing goes out.
+        if (giveUp.signal.aborted) {
+          return Promise.reject(toError(giveUp.signal.reason));
         }
-      } else {
-        await up;
-      }
-      // The frame it waited for was dropped in the same turn, and the one replacing it would drop a message posted
-      // before its page loads.
-      if (losses !== since && lastLoss !== undefined) {
-        throw lastLoss;
-      }
-      // What the wait for the frame left of a shared store budget.
-      const budgetMs =
-        timeoutMs === null || !sharedStore
-          ? timeoutMs
-          : Math.max(1, Math.round(timeoutMs - (performance.now() - askedAt)));
-
-      const id = createRequestId();
-      const envelope: ProtocolRequestEnvelope<typeof method> = {
-        namespace: 'dotli:protocol',
-        kind: 'request',
-        id,
-        method,
-        payload,
-        ...(budgetMs === null ? {} : { deadlineMs: Date.now() + budgetMs }),
+        sent.trail = startCallTrail(method, budgetMs);
+        return transport.request(method, payload, {
+          signal: giveUp.signal,
+          ...(deadlineMs === null ? {} : { deadlineMs }),
+        });
       };
-      // Throws when the frame vanished since the wait, before anything is counted for the request.
-      frame.post(envelope);
-      // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it
-      // would swamp the resolution and connect round trips this span measures.
-      const stopReq = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST);
-      const trailed = TRAILED_METHODS.has(method);
-      const sentAt = performance.now();
-      const settled = (outcome: 'ok' | 'error' | 'timeout', err?: Error): void => {
-        stopReq();
-        if (outcome !== 'ok') {
+      const deadlineFromNow = (): number | null => (budgetMs === null ? null : timers.now() + budgetMs);
+
+      try {
+        let answer: Answer<M>;
+        if (isSharedStoreMethod(method)) {
+          const deadlineMs = deadlineFromNow();
+          answer = await bounded(frame.transport().then(transport => send(transport, deadlineMs)));
+        } else {
+          const transport = await frame.whenUp('ready');
+          answer = await bounded(send(transport, deadlineFromNow()));
+        }
+        sent.trail?.settled('ok');
+        return answer;
+      } catch (reason: unknown) {
+        const err = asCallError(reason);
+        const outcome: CallOutcome = reason === timedOut ? 'timeout' : 'error';
+        if (sent.trail !== null) {
+          sent.trail.settled(outcome, err);
+        } else if (outcome === 'timeout') {
+          // Never sent, since the frame did not come up within the budget.
           m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: errorName(err) ?? 'unknown' });
         }
-        if (trailed) {
-          log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
-            flow: 'protocol',
-            ms: Math.round(performance.now() - sentAt),
-            ...(err !== undefined ? { error: `${err.name}: ${err.message}`.slice(0, 200) } : {}),
-          });
-        }
-      };
-      if (trailed) {
-        log.event(`${method} sent`, {
-          flow: 'protocol',
-          ...(timeoutMs === null ? {} : { timeout_ms: timeoutMs }),
-        });
-      }
-
-      const reply = replies.wait(id, { method, onProgress });
-      let timedOut: Error | undefined;
-      const answered =
-        budgetMs === null
-          ? reply
-          : withTimeout(reply, budgetMs, () => {
-              timedOut = timeoutError();
-              replies.reject(id, timedOut);
-              return timedOut;
-            });
-      try {
-        const value = await answered;
-        settled('ok');
-        // The one place an answer gets its type: it crossed postMessage untyped, so the map is only as right as the specs.
-        return value as ProtocolResponseMap[typeof method];
-      } catch (reason: unknown) {
-        const err = toError(reason);
-        settled(err === timedOut ? 'timeout' : 'error', err);
         throw err;
       }
     },

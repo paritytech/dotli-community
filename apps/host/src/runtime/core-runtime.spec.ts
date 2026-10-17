@@ -14,7 +14,6 @@ import type { BootLocalWalletCore } from './local-wallet-core.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
 
 const WALLET: LocalWalletBoot = {
-  status: 'ok',
   entropy: Uint8Array.from({ length: 16 }, (_, i) => i + 1),
   identity: null,
 };

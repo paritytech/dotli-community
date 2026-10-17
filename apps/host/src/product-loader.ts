@@ -144,7 +144,11 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     trace.step(next);
   };
   const events: LoadEvents = {
-    onChainSync: protocol.onProtocolChainSync,
+    // The load trace reads a sync event's kind as `syncKind`.
+    onChainSync: listener =>
+      protocol.onProtocolChainSync(({ kind, ...facts }) => {
+        listener({ ...facts, syncKind: kind });
+      }),
     onChainDetail: protocol.onProtocolChainDetail,
     onNetBytes: protocol.onProtocolNetBytes,
     onContentProgress: frame.onContentProgress,

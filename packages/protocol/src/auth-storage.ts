@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
-import type { ProtocolRequestMethod } from './messages.js';
+import type { RequestMethod } from './methods.js';
 
 export type SharedAuthRequestMethod = 'authStorageRead' | 'authStorageWrite' | 'authStorageClear';
 
@@ -11,28 +11,28 @@ export type SharedModeRequestMethod = 'modeStorageRead' | 'modeStorageWrite' | '
 export const SHARED_CORE_SESSION_KEY = 'session';
 
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>(['authStorageRead', 'authStorageWrite', 'authStorageClear']);
-const SHARED_MODE_METHODS = new Set<ProtocolRequestMethod>(['modeStorageRead', 'modeStorageWrite', 'modeStorageClear']);
+const SHARED_AUTH_METHODS = new Set<RequestMethod>(['authStorageRead', 'authStorageWrite', 'authStorageClear']);
+const SHARED_MODE_METHODS = new Set<RequestMethod>(['modeStorageRead', 'modeStorageWrite', 'modeStorageClear']);
 
-export function isSharedAuthRequestMethod(method: ProtocolRequestMethod): method is SharedAuthRequestMethod {
+export function isSharedAuthRequestMethod(method: RequestMethod): method is SharedAuthRequestMethod {
   return SHARED_AUTH_METHODS.has(method);
 }
 
-export function isSharedModeRequestMethod(method: ProtocolRequestMethod): method is SharedModeRequestMethod {
+export function isSharedModeRequestMethod(method: RequestMethod): method is SharedModeRequestMethod {
   return SHARED_MODE_METHODS.has(method);
 }
 
 export type SharedWalletRequestMethod =
   'localWalletRead' | 'localWalletSave' | 'localWalletIdentity' | 'localWalletForget';
 
-const SHARED_WALLET_METHODS = new Set<ProtocolRequestMethod>([
+const SHARED_WALLET_METHODS = new Set<RequestMethod>([
   'localWalletRead',
   'localWalletSave',
   'localWalletIdentity',
   'localWalletForget',
 ]);
 
-export function isSharedWalletRequestMethod(method: ProtocolRequestMethod): method is SharedWalletRequestMethod {
+export function isSharedWalletRequestMethod(method: RequestMethod): method is SharedWalletRequestMethod {
   return SHARED_WALLET_METHODS.has(method);
 }
 

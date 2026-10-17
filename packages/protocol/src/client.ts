@@ -4,6 +4,7 @@
 // The host page's protocol client: the frame and the facades built on it, and the page's one instance.
 
 import { BASE_DOMAIN, DEV_PROTOCOL_PORT, isLocalhost } from '@dotli/config';
+import { realTimers } from '@dotli/shared';
 import { createProtocolFrame, type ProtocolFrameConfig, type ProtocolFrameDeps, type ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createRemoteChains } from './remote-chain.js';
@@ -31,13 +32,15 @@ export function getProtocolOrigin(): string {
 
 /** The host page's side of the protocol frame, on `deps`. The page builds one, and a spec builds one per test. */
 export function createProtocolClient(deps: ProtocolFrameDeps) {
-  // In this order, so a lost frame fails rpc requests before chains halt, and a halt carries that trail.
   const frame = createProtocolFrame(deps);
-  const rpc = createFrameRpc(frame);
-  const chains = createRemoteChains({ frame, rpc });
+  const timers = deps.timers ?? realTimers;
+  const rpc = createFrameRpc(frame, timers);
+  const chains = createRemoteChains({ frame, rpc, timers });
   const sharedStore = createSharedStore({ frame, rpc });
   return {
-    ensureProtocolFrame: (): Promise<void> => frame.whenUp('ready'),
+    async ensureProtocolFrame(): Promise<void> {
+      await frame.whenUp('ready');
+    },
     getProtocolStatus: (): ProtocolStatus => frame.getStatus(),
     /** Called on each change only. Does not start a frame. */
     subscribeProtocolStatus: (listener: (status: ProtocolStatus) => void) => frame.subscribeStatus(listener),
@@ -52,7 +55,7 @@ export function createProtocolClient(deps: ProtocolFrameDeps) {
       frame.configure(config);
     },
     ...sharedStore,
-    ...createRemoteResolve(rpc),
+    ...createRemoteResolve({ frame, rpc, timers }),
     ...createFrameTelemetry(frame),
     ...chains,
   };

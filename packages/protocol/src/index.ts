@@ -26,15 +26,31 @@ export {
   type SharedStoreStatus,
 } from './client.js';
 export { backendOfFrameMode } from './frame.js';
-export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 export {
-  getRequestSyncTimeoutMs,
-  isProtocolEnvelope,
-  type LocalWalletIdentity,
-  type LocalWalletReadResult,
-  type ProtocolEnvelope,
-  type ProtocolRequestEnvelope,
-  type ProtocolRequestMap,
-  type SmoldotDbChain,
-  type SmoldotDbOutcome,
-} from './messages.js';
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  ProtocolPortReleasedError,
+  ProtocolVersionMismatchError,
+} from './errors.js';
+export type {
+  Answer,
+  LocalWalletIdentity,
+  LocalWalletReadResult,
+  RequestMethod,
+  RequestPayload,
+  SubscribePayload,
+  SubscriptionEvent,
+  SubscriptionMethod,
+  TelemetryEvent,
+} from './methods.js';
+export { createPortProvider, createWindowProvider } from './provider.js';
+export {
+  createConsumerTransport,
+  createServingTransport,
+  type CallContext,
+  type ConsumerTransport,
+  type RequestHandler,
+  type ServingTransport,
+  type SubscriptionHandler,
+  type SubscriptionSink,
+} from './transport.js';

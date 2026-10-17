@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, onTestFinish
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { PROTOCOL_ERRORS } from './errors.js';
-import type { LocalWalletReadResult, ProtocolEnvelope } from './messages.js';
+import type { LocalWalletReadResult } from './methods.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
+import type { CallContext, ServingTransport } from './transport.js';
 
-/** Lets the request's wait for the frame settle, so it is posted. */
-const posted = async (): Promise<void> => {
+const settle = async (): Promise<void> => {
   await vi.advanceTimersByTimeAsync(0);
 };
 
@@ -27,17 +27,31 @@ function failure(request: Promise<unknown>): Promise<Error> {
   );
 }
 
+/** A frame app that takes the store read and owner calls and never answers them, recording what it was asked. */
+function silentFrame(served: string[]): (serving: ServingTransport) => void {
+  return serving => {
+    const hold = <T>(method: string): Promise<T> => {
+      served.push(method);
+      return new Promise<T>(() => undefined);
+    };
+    serving.handleRequest('authStorageRead', () => hold<string | null>('authStorageRead'));
+    serving.handleRequest('modeStorageWrite', () => hold<undefined>('modeStorageWrite'));
+    serving.handleRequest('localWalletRead', () => hold<LocalWalletReadResult>('localWalletRead'));
+    serving.handleRequest('resolveOwner', () => hold<string | null>('resolveOwner'));
+  };
+}
+
 describe('createFrameRpc', () => {
   it('As a dotli integrator, a request resolves with the type its method answers, so no caller casts', () => {
     // Given
     const rpc = createFrameRpc(createFakeFrame().frame);
 
     // When
-    const resolveName = () => rpc.request('resolveDotName', { label: 'doom' });
+    const resolveOwner = () => rpc.request('resolveOwner', { label: 'doom' });
     const readWallet = () => rpc.request('localWalletRead', { siteId: 'dot.li' });
 
     // Then
-    expectTypeOf(resolveName).returns.resolves.toEqualTypeOf<string | null>();
+    expectTypeOf(resolveOwner).returns.resolves.toEqualTypeOf<string | null>();
     expectTypeOf(readWallet).returns.resolves.toEqualTypeOf<LocalWalletReadResult>();
   });
 
@@ -53,95 +67,64 @@ describe('createFrameRpc', () => {
 
   it('As a dotli integrator, a shared store request waits only for a listening frame, and any other for a ready one', async () => {
     // Given a frame still booting, with a shared store request and another waiting on it
-    const fake = createFakeFrame();
-    fake.setStatus('booting');
+    const served: string[] = [];
+    const fake = createFakeFrame(silentFrame(served), { status: 'booting' });
     const rpc = createFrameRpc(fake.frame);
     void rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' });
     void rpc.request('resolveOwner', { label: 'doom' });
 
     // When the frame listens
     fake.setStatus('listening');
-    await posted();
+    await settle();
 
-    // Then only the shared store request is posted
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['authStorageRead']);
+    // Then only the shared store request reaches it
+    expect(served).toEqual(['authStorageRead']);
 
     // When the frame is ready
     fake.setStatus('ready');
-    await posted();
+    await settle();
 
     // Then the other follows
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['authStorageRead', 'resolveOwner']);
+    expect(served).toEqual(['authStorageRead', 'resolveOwner']);
   });
 
-  it('As a dotli integrator, an answer settles its own request, and progress reaches it before', async () => {
+  it('As a dotli integrator, a request resolves with what the frame answers, and the frame reads its deadline', async () => {
     // Given
-    const fake = createFakeFrame();
+    const contexts: CallContext[] = [];
+    const fake = createFakeFrame(serving => {
+      serving.handleRequest('resolveOwner', ({ label }, context) => {
+        contexts.push(context);
+        return label === 'doom' ? '5Grw' : null;
+      });
+    });
     const rpc = createFrameRpc(fake.frame);
-    const progress: string[] = [];
-    const resolved = rpc.request('resolveDotName', { label: 'doom' }, phase => progress.push(phase));
-    await posted();
-    const id = fake.posted[0]?.id ?? '';
 
     // When
-    fake.send({ namespace: 'dotli:protocol', kind: 'progress', id, phase: 'asset-hub-syncing' });
-    fake.send({ namespace: 'dotli:protocol', kind: 'response', id: 'someone-else', ok: true, result: 'nope' });
-    fake.send({ namespace: 'dotli:protocol', kind: 'response', id, ok: true, result: '0xcid' });
+    const owner = rpc.request('resolveOwner', { label: 'doom' });
+    const askedAt = Date.now();
+    await settle();
 
     // Then
-    await expect(resolved).resolves.toBe('0xcid');
-    expect(progress).toEqual(['asset-hub-syncing']);
-  });
-
-  it('As a dotli integrator, a progress whose phase the resolver never reports does not reach the request', async () => {
-    // Given
-    const fake = createFakeFrame();
-    const rpc = createFrameRpc(fake.frame);
-    const progress: string[] = [];
-    const resolved = rpc.request('resolveDotName', { label: 'doom' }, phase => progress.push(phase));
-    await posted();
-    const id = fake.posted[0]?.id ?? '';
-
-    // When
-    fake.send({
-      namespace: 'dotli:protocol',
-      kind: 'progress',
-      id,
-      phase: 'Syncing #42',
-    } as unknown as ProtocolEnvelope);
-    fake.send({ namespace: 'dotli:protocol', kind: 'response', id, ok: true, result: '0xcid' });
-
-    // Then
-    await expect(resolved).resolves.toBe('0xcid');
-    expect(progress).toEqual([]);
+    await expect(owner).resolves.toBe('5Grw');
+    expect(contexts.map(context => context.deadlineMs)).toEqual([askedAt + 90_000]);
   });
 
   it('As a dotli integrator, a failed answer keeps the name it crossed with, and a bare Error becomes a protocol response error', async () => {
     // Given
-    const fake = createFakeFrame();
+    class DotNsError extends Error {
+      override name = 'DotNsError';
+    }
+    const fake = createFakeFrame(serving => {
+      serving.handleRequest('resolveOwner', ({ label }) => {
+        throw label === 'a' ? new DotNsError('no') : new Error('no');
+      });
+    });
     const rpc = createFrameRpc(fake.frame);
-    const named = failure(rpc.request('resolveOwner', { label: 'a' }));
-    const bare = failure(rpc.request('resolveOwner', { label: 'b' }));
-    await posted();
 
     // When
-    const [first, second] = fake.posted;
-    fake.send({
-      namespace: 'dotli:protocol',
-      kind: 'response',
-      id: first?.id ?? '',
-      ok: false,
-      error: 'no',
-      errorName: 'DotNsError',
-    });
-    fake.send({
-      namespace: 'dotli:protocol',
-      kind: 'response',
-      id: second?.id ?? '',
-      ok: false,
-      error: 'no',
-      errorName: 'Error',
-    });
+    const named = failure(rpc.request('resolveOwner', { label: 'a' }));
+    const bare = failure(rpc.request('resolveOwner', { label: 'b' }));
+    await settle();
 
     // Then
     expect((await named).name).toBe('DotNsError');
@@ -150,44 +133,44 @@ describe('createFrameRpc', () => {
 
   it('As a dotli integrator, a request still out when the frame is lost fails at once with why', async () => {
     // Given
-    const fake = createFakeFrame();
+    const fake = createFakeFrame(silentFrame([]));
     const rpc = createFrameRpc(fake.frame);
     const read = rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' });
-    await posted();
+    await settle();
 
     // When
-    fake.lose(new Error('Fatal: boom'));
+    fake.lose(new Error('boom'));
 
     // Then
-    await expect(read).rejects.toThrow('Fatal: boom');
+    await expect(read).rejects.toThrow('boom');
   });
 
   it('As a dotli integrator, a request on an idle frame asks for the frame and goes out once it is ready', async () => {
     // Given a frame nobody has asked for yet
-    const fake = createFakeFrame();
-    fake.setStatus('idle');
+    const served: string[] = [];
+    const fake = createFakeFrame(silentFrame(served), { status: 'idle' });
     const rpc = createFrameRpc(fake.frame);
 
     // When a request is made, and the frame then comes up
     void rpc.request('resolveOwner', { label: 'doom' });
-    await posted();
+    await settle();
     const statusWhileWaiting = fake.frame.getStatus();
-    const postedWhileWaiting = fake.posted.length;
+    const servedWhileWaiting = [...served];
     fake.setStatus('ready');
-    await posted();
+    await settle();
 
     // Then the frame boots, and the request waits for it instead of failing
     expect(statusWhileWaiting).toBe('booting');
-    expect(postedWhileWaiting).toBe(0);
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['resolveOwner']);
+    expect(servedWhileWaiting).toEqual([]);
+    expect(served).toEqual(['resolveOwner']);
   });
 
   it.each(['idle', 'failed'] as const)(
     'As a dotli integrator, a request waiting on a frame that goes %s fails instead of waiting forever',
     async down => {
       // Given a frame still booting
-      const fake = createFakeFrame();
-      fake.setStatus('booting');
+      const served: string[] = [];
+      const fake = createFakeFrame(silentFrame(served), { status: 'booting' });
       const rpc = createFrameRpc(fake.frame);
       const request = rpc.request('resolveOwner', { label: 'doom' });
 
@@ -200,48 +183,33 @@ describe('createFrameRpc', () => {
 
       // Then
       await expect(request).rejects.toThrow(down === 'failed' ? 'frame lost' : 'frame went idle');
-      expect(fake.posted).toEqual([]);
+      expect(served).toEqual([]);
     },
   );
 
-  it('As a dotli integrator, a request whose frame vanished before the post fails with why, and leaves no timer or count behind', async () => {
+  it('As a dotli integrator, a request whose frame is dropped in the turn it is made fails with why, is never served, and is not counted as a timeout', async () => {
     // Given
-    const fake = createFakeFrame();
-    fake.frame.post = () => {
-      throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
-    };
-    const rpc = createFrameRpc(fake.frame);
-
-    // When
-    const read = failure(rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' }));
-
-    // Then
-    expect((await read).message).toBe(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
-    expect(vi.getTimerCount()).toBe(0);
-    expect(metrics.counts).toEqual([]);
-  });
-
-  it('As a dotli integrator, a request whose frame is dropped in the turn its wait settles fails with why, and is never posted', async () => {
-    // Given a write whose wait for the frame has already settled
-    const fake = createFakeFrame();
+    const served: string[] = [];
+    const fake = createFakeFrame(silentFrame(served));
     const rpc = createFrameRpc(fake.frame);
     const write = failure(rpc.request('modeStorageWrite', { siteId: 'dotli', key: 'k', value: 'v' }));
 
-    // When the frame is dropped before the write resumes
+    // When the frame is dropped before the write goes out
     fake.lose(new Error(PROTOCOL_ERRORS.FRAME_RESET));
+    await vi.advanceTimersByTimeAsync(30_000);
 
     // Then
     expect((await write).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
-    expect(fake.posted).toEqual([]);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(served).toEqual([]);
+    expect(metrics.counted(S.PROTOCOL_REQUEST)).not.toContainEqual(expect.objectContaining({ outcome: 'timeout' }));
   });
 
   it('As a dotli integrator, a request the frame never answers times out on its budget and is counted', async () => {
     // Given
-    const fake = createFakeFrame();
+    const fake = createFakeFrame(silentFrame([]));
     const rpc = createFrameRpc(fake.frame);
     const read = failure(rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' }));
-    await posted();
+    await settle();
 
     // When
     await vi.advanceTimersByTimeAsync(30_000);
@@ -255,31 +223,32 @@ describe('createFrameRpc', () => {
     });
   });
 
-  it('As a dotli integrator, I send a chain request while the frame comes up and its timer starts only once the frame is up', async () => {
-    // Given a frame still coming up
-    const fake = createFakeFrame();
-    fake.setStatus('booting');
+  it('As a dotli integrator, I make a chain request while the frame comes up and its budget starts only once the frame is up', async () => {
+    // Given a frame still coming up, with a request made 10 s before it is ready
+    const fake = createFakeFrame(silentFrame([]), { status: 'booting' });
     const rpc = createFrameRpc(fake.frame);
-
-    // When a request is made, and the frame then comes up
-    void rpc.request('resolveOwner', { label: 'doom' });
-    await posted();
-    const timersWhileWaiting = vi.getTimerCount();
-    const postedWhileWaiting = fake.posted.length;
+    let settled = false;
+    const owner = failure(rpc.request('resolveOwner', { label: 'doom' })).finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
     fake.setStatus('ready');
-    await posted();
+    await settle();
 
-    // Then nothing was posted or timed while it waited, and the budget starts once the request is posted
-    expect(timersWhileWaiting).toBe(0);
-    expect(postedWhileWaiting).toBe(0);
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['resolveOwner']);
-    expect(vi.getTimerCount()).toBe(1);
+    // When
+    await vi.advanceTimersByTimeAsync(89_999);
+    const settledBeforeBudget = settled;
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Then
+    expect(settledBeforeBudget).toBe(false);
+    expect((await owner).name).toBe('ProtocolTimeoutError');
   });
 
-  it('As the host booting, my wallet read fails on its budget while the frame never loads, and is never posted', async () => {
+  it('As the host booting, my wallet read fails on its budget while the frame never loads, and is never served', async () => {
     // Given a frame that stays booting
-    const fake = createFakeFrame();
-    fake.setStatus('booting');
+    const served: string[] = [];
+    const fake = createFakeFrame(silentFrame(served), { status: 'booting' });
     const rpc = createFrameRpc(fake.frame);
     const read = failure(rpc.request('localWalletRead', { siteId: 'dotli' }));
 
@@ -288,7 +257,7 @@ describe('createFrameRpc', () => {
 
     // Then
     expect((await read).name).toBe('ProtocolTimeoutError');
-    expect(fake.posted).toEqual([]);
+    expect(served).toEqual([]);
     expect(metrics.counted(S.PROTOCOL_REQUEST)).toContainEqual({
       outcome: 'timeout',
       method: 'localWalletRead',
@@ -298,22 +267,25 @@ describe('createFrameRpc', () => {
 
   it('As the host booting, my wallet read keeps only what the wait for the frame left of its budget', async () => {
     // Given a wallet read made while the frame boots, which listens 3 s later
-    const fake = createFakeFrame();
-    fake.setStatus('booting');
+    const served: string[] = [];
+    const fake = createFakeFrame(silentFrame(served), { status: 'booting' });
     const rpc = createFrameRpc(fake.frame);
-    const read = failure(rpc.request('localWalletRead', { siteId: 'dotli' }));
+    let settled = false;
+    const read = failure(rpc.request('localWalletRead', { siteId: 'dotli' })).finally(() => {
+      settled = true;
+    });
     await vi.advanceTimersByTimeAsync(3_000);
     fake.setStatus('listening');
-    await posted();
+    await settle();
 
     // When the frame never answers
     await vi.advanceTimersByTimeAsync(1_999);
-    const pendingBeforeBudget = vi.getTimerCount();
+    const settledBeforeBudget = settled;
     await vi.advanceTimersByTimeAsync(1);
 
-    // Then it was posted, and fails 5 s after it was made
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['localWalletRead']);
-    expect(pendingBeforeBudget).toBe(1);
+    // Then it reached the frame, and fails 5 s after it was made
+    expect(served).toEqual(['localWalletRead']);
+    expect(settledBeforeBudget).toBe(false);
     expect((await read).name).toBe('ProtocolTimeoutError');
   });
 });

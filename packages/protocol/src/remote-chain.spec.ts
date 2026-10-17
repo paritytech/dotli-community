@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import {
@@ -12,166 +12,72 @@ import {
   type RecordingSentry,
 } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
+import { deferred } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
-import type { ProtocolEnvelope, ProtocolRequestEnvelope } from './messages.js';
+import { ProtocolFatalError } from './errors.js';
+import type { SubscribePayload } from './methods.js';
 import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame, type FakeFrame } from './frame.fake.js';
-import { createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-host.js';
+import { createFrameHost, FRAME_CONFIG, type FrameHost, type FrameStatusServer } from './testing/frame-host.js';
+import type { ServingTransport, SubscriptionSink } from './transport.js';
+
+// The consumer transport posts its handshake again this often until it is answered.
+const HANDSHAKE_RETRY_MS = 50;
+const CONNECT_BUDGET_MS = 30_000;
 
 /** Lets queued waits and answers settle. */
-const settle = async (): Promise<void> => {
-  await vi.advanceTimersByTimeAsync(0);
+const settle = async (ms = 0): Promise<void> => {
+  await vi.advanceTimersByTimeAsync(ms);
 };
 
-describe('createRemoteChains', () => {
-  let fake: FakeFrame;
-  let people: RemoteChainProvider;
+interface ServedConnect {
+  payload: SubscribePayload<'chainConnect'>;
+  sink: SubscriptionSink<'chainConnect'>;
+  /** The host unsubscribed, which is its disconnect. */
+  stopped: boolean;
+}
 
-  beforeEach(() => {
-    vi.useFakeTimers();
-    fake = createFakeFrame();
-    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
-    const provider = chains.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
-    if (provider === null) {
-      throw new Error('People is not remote-connectable');
-    }
-    people = provider;
+interface ServedSend {
+  connectionId: string;
+  message: string;
+  answer: { resolve: (value: undefined) => void; reject: (reason: unknown) => void };
+}
+
+/** A frame app's side of chain connections: what it was asked, and the sinks and answers to reply with. */
+interface ChainServer {
+  connects: ServedConnect[];
+  sends: ServedSend[];
+}
+
+function serveChains(serving: ServingTransport): ChainServer {
+  const server: ChainServer = { connects: [], sends: [] };
+  serving.handleSubscription('chainConnect', (payload, _context, sink) => {
+    const connect: ServedConnect = { payload, sink, stopped: false };
+    server.connects.push(connect);
+    return () => {
+      connect.stopped = true;
+    };
   });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+  serving.handleRequest('chainSend', ({ connectionId, message }) => {
+    const answer = deferred<undefined>();
+    server.sends.push({ connectionId, message, answer });
+    return answer.promise;
   });
+  return server;
+}
 
-  /** The frame accepting every connect posted so far, returning their connection ids in order. */
-  function acceptConnects(): string[] {
-    const connects = fake.posted.filter(envelope => envelope.method === 'chainConnect');
-    for (const connect of connects) {
-      fake.send({ namespace: 'dotli:protocol', kind: 'response', id: connect.id, ok: true, result: true });
-    }
-    return connects.map(connect => (connect.payload as { connectionId: string }).connectionId);
+function accept(connect: ServedConnect | undefined): void {
+  if (connect === undefined) {
+    throw new Error('no chainConnect reached the frame');
   }
+  connect.sink.send({ tag: 'connected', value: undefined });
+}
 
-  it('As a dotli integrator, I disconnect a connection and a chain message still on its way is dropped without a warning', async () => {
-    // Given a connection the frame accepted, then closed
-    const warnings: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'warn') {
-            warnings.push(message);
-          }
-        },
-      }),
-    );
-    const received: JsonRpcMessage[] = [];
-    const connection = people(message => received.push(message));
-    await settle();
-    const [connectionId] = acceptConnects();
-    await settle();
-    connection.disconnect();
-
-    // When a message for it still arrives
-    fake.send({
-      namespace: 'dotli:protocol',
-      kind: 'chain-message',
-      connectionId: connectionId ?? '',
-      message: JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }),
-    });
-
-    // Then
-    expect(received).toEqual([]);
-    expect(warnings).toEqual([]);
-  });
-
-  it('As a dotli integrator, I receive a malformed chain message and it is reported as a failure while the consumer hears nothing', async () => {
-    // Given a live connection and a recorder of captured exceptions and logged errors
-    const errors: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'error') {
-            errors.push(message);
-          }
-        },
-      }),
-    );
-    const captures = recordCaptures({ onFinished: onTestFinished });
-    const received: JsonRpcMessage[] = [];
-    people(message => received.push(message));
-    await settle();
-    const [connectionId] = acceptConnects();
-    await settle();
-
-    // When the frame sends a message that is not JSON
-    fake.send({ namespace: 'dotli:protocol', kind: 'chain-message', connectionId: connectionId ?? '', message: '{' });
-
-    // Then
-    expect(received).toEqual([]);
-    expect(captures).toEqual([{ flow: 'protocol', step: 'chain_message_parse', tags: undefined }]);
-    expect(errors).toEqual([expect.stringMatching(/chain-message JSON parse failed/) as string]);
-  });
-
-  it('As a product, I connect while the frame is down, the connection waits for the boot it asked for, and halts as a dead frame if that boot fails', async () => {
-    // Given
-    fake.lose(new Error('Fatal: boom'));
-    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-
-    // When
-    people(() => undefined, onHalt);
-    await settle();
-    const statusWhileWaiting = fake.frame.getStatus();
-    const haltsWhileWaiting = onHalt.mock.calls.length;
-    fake.lose(new Error('Init failed: again'));
-    await settle();
-
-    // Then
-    expect(statusWhileWaiting).toBe('booting');
-    expect(haltsWhileWaiting).toBe(0);
-    expect(onHalt.mock.calls).toEqual([['frame']]);
-    expect(fake.posted).toEqual([]);
-  });
-
-  it('As a dotli integrator, what a connection sends before the frame accepts it goes out once it does', async () => {
-    // Given
-    const connection = people(() => undefined);
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
-    await settle();
-
-    // When
-    acceptConnects();
-    await settle();
-
-    // Then
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['chainConnect', 'chainSend']);
-  });
-
-  it('As a dotli integrator, a chain halt closes only its own connection, and a lost frame closes the rest once', async () => {
-    // Given
-    const chainHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const frameHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const received: JsonRpcMessage[] = [];
-    people(() => undefined, chainHalt);
-    const survivor = people(message => received.push(message), frameHalt);
-    await settle();
-    const [first] = acceptConnects();
-    await settle();
-
-    // When
-    fake.send({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: first ?? '' });
-    fake.lose(new Error('Fatal: boom'));
-    fake.lose(new Error('Fatal: again'));
-    survivor.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
-
-    // Then
-    expect(chainHalt.mock.calls).toEqual([['chain']]);
-    expect(frameHalt.mock.calls).toEqual([['frame']]);
-    expect(received).toEqual([
-      { jsonrpc: '2.0', id: 2, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
-  });
-});
+/** The JSON-RPC ids of the sends that reached the frame, in order. */
+function sentIds(server: ChainServer): unknown[] {
+  return server.sends.map(send => (JSON.parse(send.message) as { id: unknown }).id);
+}
 
 /** The arguments of every `log.error` call in this test. */
 function recordLoggedErrors(): unknown[][] {
@@ -195,14 +101,266 @@ function recordReports(): { captured: RecordedCapture[]; errors: unknown[]; metr
   return { captured, errors, metrics: bindRecordingSentry({ onFinished: onTestFinished }) };
 }
 
-interface Frame {
-  posted: ProtocolRequestEnvelope[];
-  deliver: (envelope: ProtocolEnvelope) => void;
-}
+const genesisRequest = (id: number): JsonRpcRequest => ({
+  jsonrpc: '2.0',
+  id,
+  method: 'chainSpec_v1_genesisHash',
+  params: [],
+});
 
-const flush = async (): Promise<void> => {
-  await vi.advanceTimersByTimeAsync(0);
-};
+const closed = (id: number): JsonRpcMessage => ({
+  jsonrpc: '2.0',
+  id,
+  error: { code: -32603, message: 'Chain connection is closed' },
+});
+
+describe('createRemoteChains', () => {
+  let fake: FakeFrame;
+  let servers: ChainServer[];
+  let people: RemoteChainProvider;
+
+  /** The chain server of the frame up now. */
+  const server = (): ChainServer => {
+    const current = servers.at(-1);
+    if (current === undefined) {
+      throw new Error('no frame was built');
+    }
+    return current;
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    servers = [];
+    fake = createFakeFrame(serving => {
+      servers.push(serveChains(serving));
+    });
+    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
+    const provider = chains.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    people = provider;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('As a product, my sends wait for connected and go out in order', async () => {
+    // Given a connection the frame has not accepted yet, with sends made meanwhile
+    const connection = people(() => undefined);
+    connection.send(genesisRequest(1));
+    connection.send(genesisRequest(2));
+    await settle();
+    const sentBeforeConnected = sentIds(server());
+    connection.send(genesisRequest(3));
+
+    // When
+    accept(server().connects[0]);
+    await settle();
+    connection.send(genesisRequest(4));
+    await settle();
+
+    // Then
+    expect(sentBeforeConnected).toEqual([]);
+    expect(sentIds(server())).toEqual([1, 2, 3, 4]);
+    expect(server().connects.map(connect => connect.payload.genesisHash)).toEqual([
+      getActiveServicesConfig().people.genesis,
+    ]);
+    expect(new Set(server().sends.map(send => send.connectionId))).toEqual(
+      new Set([server().connects[0]?.payload.connectionId]),
+    );
+  });
+
+  it('As a product, I hear the chain messages of my connection', async () => {
+    // Given
+    const received: JsonRpcMessage[] = [];
+    people(message => received.push(message));
+    await settle();
+    accept(server().connects[0]);
+
+    // When
+    server().connects[0]?.sink.send({ tag: 'message', value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x' }) });
+    await settle();
+
+    // Then
+    expect(received).toEqual([{ jsonrpc: '2.0', id: 1, result: '0x' }]);
+  });
+
+  it('As a dotli integrator, I disconnect a connection and a chain message still on its way is dropped without a warning', async () => {
+    // Given a connection the frame accepted
+    const warnings: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'warn') {
+            warnings.push(message);
+          }
+        },
+      }),
+    );
+    const received: JsonRpcMessage[] = [];
+    const connection = people(message => received.push(message));
+    await settle();
+    accept(server().connects[0]);
+    await settle();
+
+    // When it is closed while the frame sends a message for it
+    connection.disconnect();
+    server().connects[0]?.sink.send({ tag: 'message', value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }) });
+    await settle();
+
+    // Then
+    expect(received).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(server().connects[0]?.stopped).toBe(true);
+  });
+
+  it('As a dotli integrator, I receive a malformed chain message and it is reported as a failure while the consumer hears nothing', async () => {
+    // Given a live connection and a recorder of captured exceptions and logged errors
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
+    const captures = recordCaptures({ onFinished: onTestFinished });
+    const received: JsonRpcMessage[] = [];
+    people(message => received.push(message));
+    await settle();
+    accept(server().connects[0]);
+
+    // When the frame sends a message that is not JSON
+    server().connects[0]?.sink.send({ tag: 'message', value: '{' });
+    await settle();
+
+    // Then
+    expect(received).toEqual([]);
+    expect(captures).toEqual([{ flow: 'protocol', step: 'chain_message_parse', tags: undefined }]);
+    expect(errors).toEqual([expect.stringMatching(/chain-message JSON parse failed/) as string]);
+  });
+
+  it('As a product, I connect while the frame is down, the connection waits for the boot it asked for, and halts as a dead frame if that boot fails', async () => {
+    // Given
+    fake.lose(new ProtocolFatalError('boom'));
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+
+    // When
+    people(() => undefined, onHalt);
+    await settle();
+    const statusWhileWaiting = fake.frame.getStatus();
+    const haltsWhileWaiting = onHalt.mock.calls.length;
+    fake.lose(new Error('again'));
+    await settle();
+
+    // Then
+    expect(statusWhileWaiting).toBe('booting');
+    expect(haltsWhileWaiting).toBe(0);
+    expect(onHalt.mock.calls).toEqual([['frame']]);
+    expect(servers.flatMap(each => each.connects)).toEqual([]);
+  });
+
+  it('As a dotli integrator, a chain halt closes only its own connection, and a lost frame closes the rest once', async () => {
+    // Given
+    const chainHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const frameHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const received: JsonRpcMessage[] = [];
+    people(() => undefined, chainHalt);
+    const survivor = people(message => received.push(message), frameHalt);
+    await settle();
+    for (const connect of server().connects) {
+      accept(connect);
+    }
+    await settle();
+
+    // When
+    server().connects[0]?.sink.end();
+    await settle();
+    fake.lose(new ProtocolFatalError('boom'));
+    survivor.send(genesisRequest(2));
+
+    // Then
+    expect(chainHalt.mock.calls).toEqual([['chain']]);
+    expect(frameHalt.mock.calls).toEqual([['frame']]);
+    expect(received).toEqual([closed(2)]);
+  });
+
+  it('As a product, a chain accepted after my connect budget is disconnected', async () => {
+    // Given a frame too busy to accept a connect within its budget
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const received: JsonRpcMessage[] = [];
+    const connection = people(message => received.push(message), onHalt);
+    await settle();
+    const connect = server().connects[0];
+
+    // When the budget runs out, and the frame accepts it afterwards
+    await settle(CONNECT_BUDGET_MS);
+    connect?.sink.send({ tag: 'connected', value: undefined });
+    await settle();
+    connection.send(genesisRequest(1));
+
+    // Then the unsubscribe reached the frame, the late accept opened nothing, and the connection halted once
+    expect(connect?.stopped).toBe(true);
+    expect(onHalt.mock.calls).toEqual([['frame']]);
+    expect(received).toEqual([closed(1)]);
+    expect(server().sends).toEqual([]);
+  });
+
+  it('As a product, a refused send for a chain that just halted is ignored', async () => {
+    // Given a send the frame has not answered yet
+    const logError = recordLoggedErrors();
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const received: JsonRpcMessage[] = [];
+    const connection = people(message => received.push(message), onHalt);
+    await settle();
+    accept(server().connects[0]);
+    await settle();
+    connection.send({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] });
+    await settle();
+
+    // When the chain halts, then the frame refuses the send for a connection it forgot
+    server().connects[0]?.sink.end();
+    await settle();
+    server().sends[0]?.answer.reject(new Error('Unknown chain connection'));
+    await settle();
+
+    // Then
+    expect(onHalt.mock.calls).toEqual([['chain']]);
+    expect(received).toEqual([]);
+    expect(logError).toEqual([]);
+  });
+
+  it("As a dotli integrator, a chain connection's sends are not timed as protocol requests, while its connect is", async () => {
+    // Given
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const timedRequests = (): number =>
+      sentry.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).length;
+    const connection = people(() => undefined);
+    await settle();
+    accept(server().connects[0]);
+    await settle();
+    const afterConnect = timedRequests();
+
+    // When the sends go out and the frame acknowledges each
+    connection.send(genesisRequest(1));
+    connection.send(genesisRequest(2));
+    await settle();
+    for (const send of server().sends) {
+      send.answer.resolve(undefined);
+    }
+    await settle();
+
+    // Then
+    expect(server().sends).toHaveLength(2);
+    expect(afterConnect).toBe(1);
+    expect(timedRequests()).toBe(1);
+  });
+});
 
 // The client's wait before it rebuilds a frame that died.
 const FRAME_REBUILD_INTERVAL_MS = 2_000;
@@ -218,61 +376,55 @@ function peopleProvider(): RemoteChainProvider {
   return provider;
 }
 
-/** Boots the client's protocol iframe and returns a way to talk as it. */
+interface Frame {
+  status: FrameStatusServer;
+  chains: ChainServer;
+}
+
+/** Serves the client's current protocol iframe and reports it ready. */
 async function bootFrame(): Promise<Frame> {
-  await flush();
-  const iframe = host.iframe();
-  const frameWindow = iframe.contentWindow;
-  if (frameWindow === null) {
-    throw new Error('protocol iframe has no window');
-  }
-  const deliver = (envelope: ProtocolEnvelope): void => {
-    host.deliver(envelope, iframe);
-  };
-  iframe.dispatchEvent(new Event('load'));
-  await flush();
-  deliver({ namespace: 'dotli:protocol', kind: 'ready' });
-  await flush();
-  return { posted: frameWindow.posted as ProtocolRequestEnvelope[], deliver };
+  const status = host.status();
+  const chains = serveChains(host.serve());
+  await settle(HANDSHAKE_RETRY_MS);
+  status.ready();
+  await settle();
+  return { status, chains };
 }
 
 interface Remote {
   frame: Frame;
   received: JsonRpcMessage[];
   connection: JsonRpcConnection;
-  connectionId: string;
+  connect: ServedConnect;
 }
 
-/** Opens another connection against a frame that is already booted. */
+/** Opens another connection against a frame that is already up, and the frame accepts it. */
 async function connectMore(frame: Frame, onHalt?: (reason: RemoteChainHalt) => void): Promise<Remote> {
-  const provider = peopleProvider();
   const received: JsonRpcMessage[] = [];
-  const known = frame.posted.length;
-  const connection = provider(message => received.push(message), onHalt);
-  await flush();
-  const request = frame.posted.slice(known).find(envelope => envelope.method === 'chainConnect');
-  if (request === undefined) {
-    throw new Error('no chainConnect posted');
+  const known = frame.chains.connects.length;
+  const connection = peopleProvider()(message => received.push(message), onHalt);
+  await settle();
+  const connect = frame.chains.connects[known];
+  accept(connect);
+  await settle();
+  if (connect === undefined) {
+    throw new Error('no chainConnect reached the frame');
   }
-  frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result: true });
-  await flush();
-  const { connectionId } = request.payload as { connectionId: string };
-  return { frame, received, connection, connectionId };
+  return { frame, received, connection, connect };
 }
 
+/** Opens a connection, which boots the frame, and the frame accepts it. */
 async function connectRemote(onHalt?: (reason: RemoteChainHalt) => void): Promise<Remote> {
-  const provider = peopleProvider();
   const received: JsonRpcMessage[] = [];
-  const connection = provider(message => received.push(message), onHalt);
+  const connection = peopleProvider()(message => received.push(message), onHalt);
   const frame = await bootFrame();
-  const request = frame.posted.find(envelope => envelope.method === 'chainConnect');
-  if (request === undefined) {
-    throw new Error('no chainConnect posted');
+  const connect = frame.chains.connects[0];
+  accept(connect);
+  await settle();
+  if (connect === undefined) {
+    throw new Error('no chainConnect reached the frame');
   }
-  frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result: true });
-  await flush();
-  const { connectionId } = request.payload as { connectionId: string };
-  return { frame, received, connection, connectionId };
+  return { frame, received, connection, connect };
 }
 
 describe('createRemoteChainProvider halts', () => {
@@ -286,40 +438,32 @@ describe('createRemoteChainProvider halts', () => {
     vi.useRealTimers();
   });
 
-  it('As a dotli integrator, a chain-halt tells the connection once and closes it', async () => {
+  it('As a dotli integrator, a chain halt tells the connection once and closes it', async () => {
     // Given
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const { frame, received, connection, connectionId } = await connectRemote(onHalt);
+    const { received, connection, connect } = await connectRemote(onHalt);
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
-    connection.send({ jsonrpc: '2.0', id: 7, method: 'chainSpec_v1_genesisHash', params: [] });
+    connect.sink.end();
+    await settle();
+    connection.send(genesisRequest(7));
 
     // Then
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(onHalt).toHaveBeenCalledWith('chain');
-    expect(received).toEqual([
-      { jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
+    expect(onHalt.mock.calls).toEqual([['chain']]);
+    expect(received).toEqual([closed(7)]);
   });
 
-  it('As a dotli integrator, a chain-halt answers what a connection had not sent yet with a halt it can retry', async () => {
+  it('As a dotli integrator, a chain halt answers what a connection had not sent yet with a halt it can retry', async () => {
     // Given
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const provider = peopleProvider();
     const received: JsonRpcMessage[] = [];
-    const connection = provider(message => received.push(message), onHalt);
-    connection.send({ jsonrpc: '2.0', id: 4, method: 'chainSpec_v1_genesisHash', params: [] });
+    const connection = peopleProvider()(message => received.push(message), onHalt);
+    connection.send(genesisRequest(4));
     const frame = await bootFrame();
-    const request = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (request === undefined) {
-      throw new Error('no chainConnect posted');
-    }
-    const { connectionId } = request.payload as { connectionId: string };
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
+    frame.chains.connects[0]?.sink.end();
+    await settle();
 
     // Then
     expect(received).toEqual([
@@ -329,21 +473,21 @@ describe('createRemoteChainProvider halts', () => {
         error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
       },
     ]);
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(onHalt).toHaveBeenCalledWith('chain');
+    expect(onHalt.mock.calls).toEqual([['chain']]);
   });
 
   it('As a dotli integrator, a halt listener that throws is reported and the connection still closes', async () => {
     // Given
     const { captured, errors, metrics } = recordReports();
     const bug = new Error('listener bug');
-    const { frame, received, connection, connectionId } = await connectRemote(() => {
+    const { received, connection, connect } = await connectRemote(() => {
       throw bug;
     });
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
-    connection.send({ jsonrpc: '2.0', id: 9, method: 'chainSpec_v1_genesisHash', params: [] });
+    connect.sink.end();
+    await settle();
+    connection.send(genesisRequest(9));
 
     // Then
     expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'remote_chain.halt' } }]);
@@ -351,34 +495,27 @@ describe('createRemoteChainProvider halts', () => {
     expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'remote_chain.halt' },
     ]);
-    expect(received).toEqual([
-      { jsonrpc: '2.0', id: 9, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
+    expect(received).toEqual([closed(9)]);
   });
 
   it('As a dotli integrator, a connection closed before its chain halts hears nothing, while an open one still does', async () => {
     // Given
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const openHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const closed = await connectRemote(onHalt);
-    const open = await connectMore(closed.frame, openHalt);
-    closed.connection.disconnect();
-    await flush();
-    const disconnect = closed.frame.posted.find(envelope => envelope.method === 'chainDisconnect');
-    if (disconnect === undefined) {
-      throw new Error('no chainDisconnect posted');
-    }
-    closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: disconnect.id, ok: true, result: true });
-    await flush();
+    const closedRemote = await connectRemote(onHalt);
+    const open = await connectMore(closedRemote.frame, openHalt);
+    closedRemote.connection.disconnect();
+    await settle();
 
     // When
-    closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: closed.connectionId });
-    closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: open.connectionId });
+    closedRemote.connect.sink.end();
+    open.connect.sink.end();
+    await settle();
 
     // Then
+    expect(closedRemote.connect.stopped).toBe(true);
     expect(onHalt).not.toHaveBeenCalled();
-    expect(openHalt).toHaveBeenCalledTimes(1);
-    expect(openHalt).toHaveBeenCalledWith('chain');
+    expect(openHalt.mock.calls).toEqual([['chain']]);
   });
 
   it("As a dotli integrator, I open a chain from a status listener on a config change's idle edge and it carries requests on the rebuilt frame", async () => {
@@ -401,7 +538,7 @@ describe('createRemoteChainProvider halts', () => {
     expect(dialled).not.toBeNull();
     expect(onHalt).not.toHaveBeenCalled();
     expect(received).toEqual([]);
-    expect(rebuilt.posted.filter(envelope => envelope.method === 'chainConnect')).toHaveLength(1);
+    expect(rebuilt.chains.connects).toHaveLength(1);
   });
 
   it('As a dotli integrator, a dead protocol frame halts every open chain connection once', async () => {
@@ -412,42 +549,33 @@ describe('createRemoteChainProvider halts', () => {
     const second = await connectMore(first.frame, secondHalt);
 
     // When
-    first.frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    first.connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
-    second.connection.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
+    first.frame.status.fail(new ProtocolFatalError('boom'));
+    await settle();
+    first.connection.send(genesisRequest(1));
+    second.connection.send(genesisRequest(2));
 
     // Then
-    expect(firstHalt).toHaveBeenCalledTimes(1);
-    expect(firstHalt).toHaveBeenCalledWith('frame');
-    expect(secondHalt).toHaveBeenCalledTimes(1);
-    expect(secondHalt).toHaveBeenCalledWith('frame');
-    expect(first.received).toEqual([
-      { jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
-    expect(second.received).toEqual([
-      { jsonrpc: '2.0', id: 2, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
+    expect(firstHalt.mock.calls).toEqual([['frame']]);
+    expect(secondHalt.mock.calls).toEqual([['frame']]);
+    expect(first.received).toEqual([closed(1)]);
+    expect(second.received).toEqual([closed(2)]);
   });
 
   it('As a dotli integrator, a dead protocol frame closes what a connection had not sent yet', async () => {
     // Given
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const provider = peopleProvider();
     const received: JsonRpcMessage[] = [];
-    const connection = provider(message => received.push(message), onHalt);
-    connection.send({ jsonrpc: '2.0', id: 5, method: 'chainSpec_v1_genesisHash', params: [] });
+    const connection = peopleProvider()(message => received.push(message), onHalt);
+    connection.send(genesisRequest(5));
     const frame = await bootFrame();
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await flush();
+    frame.status.fail(new ProtocolFatalError('boom'));
+    await settle();
 
     // Then
-    expect(received).toEqual([
-      { jsonrpc: '2.0', id: 5, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(onHalt).toHaveBeenCalledWith('frame');
+    expect(received).toEqual([closed(5)]);
+    expect(onHalt.mock.calls).toEqual([['frame']]);
   });
 
   it('As a dotli integrator, I hear each time the protocol frame comes up, without starting one', async () => {
@@ -460,7 +588,7 @@ describe('createRemoteChainProvider halts', () => {
         readies();
       }
     });
-    await flush();
+    await settle();
 
     // Then
     expect(host.frames()).toBe(0);
@@ -473,8 +601,8 @@ describe('createRemoteChainProvider halts', () => {
     expect(readies).toHaveBeenCalledTimes(1);
 
     // When
-    first.frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(FRAME_REBUILD_INTERVAL_MS);
+    first.frame.status.fail(new ProtocolFatalError('boom'));
+    await settle(FRAME_REBUILD_INTERVAL_MS);
     await connectRemote();
 
     // Then
@@ -497,14 +625,14 @@ describe('createRemoteChainProvider halts', () => {
     expect(host.client.getProtocolStatus()).toBe('idle');
     expect(host.frames()).toBe(0);
 
-    // When: a connection starts a frame, and another connects while it boots.
+    // When a connection starts a frame, and another connects while it boots
     provider(() => undefined);
-    await flush();
+    await settle();
     const booting = host.client.getProtocolStatus();
     provider(() => undefined);
-    await flush();
+    await settle();
 
-    // Then: both wait on the one frame.
+    // Then both wait on the one frame
     expect(booting).toBe('booting');
     expect(host.frames()).toBe(1);
 
@@ -513,15 +641,15 @@ describe('createRemoteChainProvider halts', () => {
 
     // Then
     expect(host.client.getProtocolStatus()).toBe('ready');
-    expect(frame.posted.filter(envelope => envelope.method === 'chainConnect')).toHaveLength(2);
+    expect(frame.chains.connects).toHaveLength(2);
 
-    // When: it dies, and the shared store starts rebuilding it after its interval.
+    // When it dies, and the frame starts rebuilding it after its interval
     const dead = host.iframe();
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await vi.advanceTimersByTimeAsync(FRAME_REBUILD_INTERVAL_MS - 1);
+    frame.status.fail(new ProtocolFatalError('boom'));
+    await settle(FRAME_REBUILD_INTERVAL_MS - 1);
     const framesBeforeInterval = host.frames();
     const statusBeforeInterval = host.client.getProtocolStatus();
-    await vi.advanceTimersByTimeAsync(1);
+    await settle(1);
 
     // Then
     expect(dead.isConnected).toBe(false);
@@ -532,22 +660,19 @@ describe('createRemoteChainProvider halts', () => {
   });
 
   it('As a dotli integrator, a frame whose ready wait gave up reports failed and halts the connection waiting on it', async () => {
-    // Given: a connection starts a frame, which loads but never reports ready.
-    const provider = peopleProvider();
+    // Given a connection starts a frame, which listens but never reports ready
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    provider(() => undefined, onHalt);
-    await vi.advanceTimersByTimeAsync(0);
-    host.iframe().dispatchEvent(new Event('load'));
-    host.deliver({ namespace: 'dotli:protocol', kind: 'listening' });
-    await vi.advanceTimersByTimeAsync(0);
+    peopleProvider()(() => undefined, onHalt);
+    host.status();
+    await settle(HANDSHAKE_RETRY_MS);
     const booting = host.client.getProtocolStatus();
 
-    // When: its ready wait times out.
-    await vi.advanceTimersByTimeAsync(240_000);
+    // When its ready wait times out
+    await settle(240_000);
 
     // Then
     expect(booting).toBe('listening');
-    expect(onHalt).toHaveBeenCalledWith('frame');
+    expect(onHalt.mock.calls).toEqual([['frame']]);
     expect(host.client.getProtocolStatus()).toBe('failed');
   });
 
@@ -555,24 +680,19 @@ describe('createRemoteChainProvider halts', () => {
     // Given
     const { captured, errors, metrics } = recordReports();
     const bug = new Error('consumer bug');
-    const provider = peopleProvider();
-    const throwing = provider(() => {
+    const throwing = peopleProvider()(() => {
       throw bug;
     });
-    throwing.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    throwing.send(genesisRequest(1));
     const frame = await bootFrame();
     const dead = host.iframe();
-    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (chainConnect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
     const secondHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     peopleProvider()(() => undefined, secondHalt);
-    await flush();
+    await settle();
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await flush();
+    frame.status.fail(new ProtocolFatalError('boom'));
+    await settle();
 
     // Then
     expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'remote_chain.message' } }]);
@@ -580,38 +700,8 @@ describe('createRemoteChainProvider halts', () => {
     expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
       { outcome: 'error', reason: 'Error', owner: 'remote_chain.message' },
     ]);
-    expect(secondHalt).toHaveBeenCalledTimes(1);
-    expect(secondHalt).toHaveBeenCalledWith('frame');
+    expect(secondHalt.mock.calls).toEqual([['frame']]);
     expect(dead.isConnected).toBe(false);
-  });
-
-  it('As a dotli integrator, a send the frame refuses after its chain halted is neither logged nor answered', async () => {
-    // Given: a re-follow sent while the halt was on its way
-    const logError = recordLoggedErrors();
-    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const { frame, received, connection, connectionId } = await connectRemote(onHalt);
-    connection.send({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] });
-    await flush();
-    const chainSend = frame.posted.find(envelope => envelope.method === 'chainSend');
-    if (chainSend === undefined) {
-      throw new Error('no chainSend posted');
-    }
-
-    // When: the halt arrives, then the frame refuses the send for a connection it forgot
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
-    frame.deliver({
-      namespace: 'dotli:protocol',
-      kind: 'response',
-      id: chainSend.id,
-      ok: false,
-      error: 'Unknown chain connection',
-    });
-    await flush();
-
-    // Then
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(received).toEqual([]);
-    expect(logError).toEqual([]);
   });
 
   it('As a dotli integrator, a send still unacknowledged when the frame dies is neither logged nor answered', async () => {
@@ -619,195 +709,88 @@ describe('createRemoteChainProvider halts', () => {
     const logError = recordLoggedErrors();
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const { frame, received, connection } = await connectRemote(onHalt);
-    connection.send({ jsonrpc: '2.0', id: 3, method: 'chainSpec_v1_genesisHash', params: [] });
-    await flush();
+    connection.send(genesisRequest(3));
+    await settle();
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
-    await flush();
+    frame.status.fail(new ProtocolFatalError('boom'));
+    await settle();
 
-    // Then the frame's own fatal is the one error logged. The line carries no error object, as a failed send's would
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(onHalt).toHaveBeenCalledWith('frame');
+    // Then the frame's own loss is the one error logged. The line carries no error object, as a failed send's would
+    expect(onHalt.mock.calls).toEqual([['frame']]);
     expect(received).toEqual([]);
     expect(logError).toHaveLength(1);
     expect(logError.flat().filter(arg => arg instanceof Error)).toEqual([]);
   });
 
-  it("As a dotli integrator, a chain connection's sends are not timed as protocol requests, while its connect is", async () => {
-    // Given
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const { frame, connection } = await connectRemote();
-    const timedRequests = (): number =>
-      sentry.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).length;
-    const afterConnect = timedRequests();
-
-    // When the sends are posted and the frame acknowledges each
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
-    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
-    await flush();
-    const sends = frame.posted.filter(envelope => envelope.method === 'chainSend');
-    for (const send of sends) {
-      frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: send.id, ok: true, result: true });
-    }
-    await flush();
-
-    // Then
-    expect(sends).toHaveLength(2);
-    expect(afterConnect).toBe(1);
-    expect(timedRequests()).toBe(1);
-  });
-
   it('As a dotli integrator, a connection closed while its frame boots never reaches the frame', async () => {
-    // Given: a connection with a send queued, closed before its frame is up.
-    const provider = peopleProvider();
+    // Given a connection with a send queued, closed before its frame is up
     const received: JsonRpcMessage[] = [];
-    const connection = provider(message => received.push(message));
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    const connection = peopleProvider()(message => received.push(message));
+    connection.send(genesisRequest(1));
     connection.disconnect();
 
-    // When: the frame comes up.
+    // When the frame comes up
     const frame = await bootFrame();
-    await flush();
+    await settle();
 
-    // Then: nothing was posted for it, not even its connect.
-    expect(frame.posted).toEqual([]);
+    // Then nothing reached it, not even its connect
+    expect(frame.chains.connects).toEqual([]);
+    expect(frame.chains.sends).toEqual([]);
     expect(received).toEqual([]);
   });
 
-  it('As a dotli integrator, a connection closed after its connect was posted is closed in the frame once the frame accepts it, and sends nothing', async () => {
-    // Given: a connection with a send queued, whose connect the frame has not answered yet.
-    const provider = peopleProvider();
+  it('As a dotli integrator, a connection closed before the frame accepts it is closed in the frame, and sends nothing', async () => {
+    // Given a connection with a send queued, whose connect the frame has not accepted yet
     const received: JsonRpcMessage[] = [];
-    const connection = provider(message => received.push(message));
-    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    const connection = peopleProvider()(message => received.push(message));
+    connection.send(genesisRequest(1));
     const frame = await bootFrame();
-    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (chainConnect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
+    const connect = frame.chains.connects[0];
 
-    // When: it is closed, and then the frame accepts the connection.
+    // When it is closed, and the frame accepts it all the same
     connection.disconnect();
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: chainConnect.id, ok: true, result: true });
-    await flush();
+    connect?.sink.send({ tag: 'connected', value: undefined });
+    await settle();
 
     // Then
-    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect', 'chainDisconnect']);
-    expect(frame.posted.map(envelope => (envelope.payload as { connectionId: string }).connectionId)).toEqual([
-      (chainConnect.payload as { connectionId: string }).connectionId,
-      (chainConnect.payload as { connectionId: string }).connectionId,
-    ]);
+    expect(connect?.stopped).toBe(true);
+    expect(frame.chains.sends).toEqual([]);
     expect(received).toEqual([]);
   });
 
-  it('As a dotli integrator, a connection closed after its connect was posted, which the frame then refuses, posts nothing more', async () => {
+  it('As a dotli integrator, a connection closed before the frame refuses it posts nothing more and logs nothing', async () => {
     // Given
     const logError = recordLoggedErrors();
-    const provider = peopleProvider();
-    const connection = provider(() => undefined);
+    const connection = peopleProvider()(() => undefined);
     const frame = await bootFrame();
-    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (chainConnect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
+    const connect = frame.chains.connects[0];
 
     // When
     connection.disconnect();
-    frame.deliver({
-      namespace: 'dotli:protocol',
-      kind: 'response',
-      id: chainConnect.id,
-      ok: false,
-      error: 'Too many chain connections',
-    });
-    await flush();
+    connect?.sink.end(new Error('Too many chain connections'));
+    await settle();
 
     // Then
-    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect']);
+    expect(frame.chains.sends).toEqual([]);
     expect(logError).toEqual([]);
   });
 
   it('As a dotli integrator, a connection the frame refuses to open halts as a dead frame', async () => {
-    // Given: a send queued before the frame answers the connect
+    // Given a send queued before the frame answers the connect
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const provider = peopleProvider();
     const received: JsonRpcMessage[] = [];
-    const connection = provider(message => received.push(message), onHalt);
-    connection.send({ jsonrpc: '2.0', id: 6, method: 'chainSpec_v1_genesisHash', params: [] });
+    const connection = peopleProvider()(message => received.push(message), onHalt);
+    connection.send(genesisRequest(6));
     const frame = await bootFrame();
-    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (chainConnect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
 
     // When
-    frame.deliver({
-      namespace: 'dotli:protocol',
-      kind: 'response',
-      id: chainConnect.id,
-      ok: false,
-      error: 'Too many chain connections',
-    });
-    await flush();
-    connection.send({ jsonrpc: '2.0', id: 7, method: 'chainSpec_v1_genesisHash', params: [] });
+    frame.chains.connects[0]?.sink.end(new Error('Too many chain connections'));
+    await settle();
+    connection.send(genesisRequest(7));
 
     // Then
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(onHalt).toHaveBeenCalledWith('frame');
-    expect(received).toEqual([
-      { jsonrpc: '2.0', id: 6, error: { code: -32603, message: 'Chain connection is closed' } },
-      { jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Chain connection is closed' } },
-    ]);
-  });
-
-  it('As a dotli integrator, a connection whose connect timed out is closed in the frame, so a late accept cannot hold a slot', async () => {
-    // Given: a frame too busy to answer a connect within its budget
-    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
-    const provider = peopleProvider();
-    provider(() => undefined, onHalt);
-    const frame = await bootFrame();
-    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (chainConnect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
-    const { connectionId } = chainConnect.payload as { connectionId: string };
-
-    // When: the connect times out, and the frame accepts it afterwards
-    await vi.advanceTimersByTimeAsync(30_000);
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: chainConnect.id, ok: true, result: true });
-    await flush();
-
-    // Then
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(onHalt).toHaveBeenCalledWith('frame');
-    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect', 'chainDisconnect']);
-    expect(frame.posted.map(envelope => (envelope.payload as { connectionId: string }).connectionId)).toEqual([
-      connectionId,
-      connectionId,
-    ]);
-  });
-
-  it('As a dotli integrator, I disconnect while the connect is in flight and, once it times out, the frame is told to close it', async () => {
-    // Given: a frame too busy to answer a connect within its budget
-    const provider = peopleProvider();
-    const connection = provider(() => undefined);
-    const frame = await bootFrame();
-    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
-    if (chainConnect === undefined) {
-      throw new Error('no chainConnect posted');
-    }
-    const { connectionId } = chainConnect.payload as { connectionId: string };
-
-    // When: the consumer disconnects, and then the connect times out
-    connection.disconnect();
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    // Then
-    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect', 'chainDisconnect']);
-    expect(frame.posted.map(envelope => (envelope.payload as { connectionId: string }).connectionId)).toEqual([
-      connectionId,
-      connectionId,
-    ]);
+    expect(onHalt.mock.calls).toEqual([['frame']]);
+    expect(received).toEqual([closed(6), closed(7)]);
   });
 });

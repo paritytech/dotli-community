@@ -7,8 +7,9 @@ import type { SiteId } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { LocalWalletIdentity } from './messages.js';
+import type { LocalWalletIdentity } from './methods.js';
 import type { FrameRpc } from './rpc.js';
+import type { ConsumerTransport, Subscription } from './transport.js';
 
 export interface SharedAuthStorageChange {
   siteId: SiteId;
@@ -38,7 +39,7 @@ function sharedStoreStatusOf(status: ProtocolStatus, settledOnce: boolean): Shar
 }
 
 export interface SharedStoreDeps {
-  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'whenUp' | 'onEnvelope'>;
+  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>;
   rpc: FrameRpc;
 }
 
@@ -55,6 +56,38 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
     return sharedStoreStatusOf(frame.getStatus(), settledOnce);
   }
 
+  // The sibling tabs' auth changes, heard on the frame there is now while anyone listens.
+  let changes: { transport: ConsumerTransport; subscription: Subscription } | null = null;
+  // Each ask for a frame's transport, so an answer a later ask overtook is not followed.
+  let asks = 0;
+
+  function follow(transport: ConsumerTransport): void {
+    if (sharedAuthListeners.size === 0 || changes?.transport === transport) {
+      return;
+    }
+    changes?.subscription.unsubscribe();
+    const subscription = transport.subscribe('sharedAuthChanges', undefined, change => {
+      sharedAuthListeners.emit(change);
+    });
+    changes = { transport, subscription };
+  }
+
+  /** Follows the frame's transport. Asking for it boots a frame that is down, as a listener needs one. */
+  function followFrame(): void {
+    asks += 1;
+    const ask = asks;
+    void frame.transport().then(
+      transport => {
+        if (ask === asks) {
+          follow(transport);
+        }
+      },
+      (error: unknown) => {
+        log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);
+      },
+    );
+  }
+
   let announced = getStatus();
   frame.subscribeStatus(next => {
     settledOnce ||= hasSettled(next);
@@ -63,11 +96,9 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
       announced = store;
       statusListeners.emit(store);
     }
-  });
-
-  frame.onEnvelope(msg => {
-    if (msg.kind === 'auth-storage-changed') {
-      sharedAuthListeners.emit({ siteId: msg.siteId, key: msg.key, value: msg.value });
+    // A new frame relays nothing to a subscription on the one it replaces.
+    if (next === 'booting' && sharedAuthListeners.size > 0) {
+      followFrame();
     }
   });
 
@@ -108,10 +139,14 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
     subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
       const unsubscribe = sharedAuthListeners.subscribe(listener);
       // Not awaited, since subscribe is synchronous. A frame that fails rebuilds itself.
-      void frame.whenUp('listening').catch((error: unknown) => {
-        log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);
-      });
-      return unsubscribe;
+      followFrame();
+      return () => {
+        unsubscribe();
+        if (sharedAuthListeners.size === 0) {
+          changes?.subscription.unsubscribe();
+          changes = null;
+        }
+      };
     },
   };
 }

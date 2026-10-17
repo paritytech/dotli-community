@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { ProtocolInitFailedError } from '@dotli/protocol';
+import { ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
 
 import { HOST_ERRORS } from './error-copy.js';
 import { describeError } from './errors.js';
@@ -43,6 +43,21 @@ describe('host error classification', () => {
       });
     },
   );
+
+  it('As a user on an outdated page, I am told dot.li was updated and asked to reload', () => {
+    // Given
+    const mismatch = new ProtocolVersionMismatchError('The peer speaks wire version 2 and this end 1');
+
+    // When
+    const error = describeError(mismatch, true);
+
+    // Then
+    expect({ kind: error.kind, message: error.message, recovery: error.recovery }).toEqual({
+      kind: 'protocol-version-mismatch',
+      message: HOST_ERRORS.PROTOCOL_UPDATED,
+      recovery: 'reload',
+    });
+  });
 
   describe('a light client that failed to start', () => {
     const failed = (): ProtocolInitFailedError =>
