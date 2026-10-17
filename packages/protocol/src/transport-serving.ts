@@ -78,9 +78,10 @@ interface ServingTransportOptions {
   report?: Report;
   side: 'frame' | 'worker';
   /**
-   * Called when the peer has unsubscribed its last running subscription and no call of its is still in flight, which
-   * is how a consumer that disposes leaves. Not called for subscriptions this end ended, whose ends the peer may not
-   * have heard yet.
+   * Called when the peer's own unsubscribe leaves nothing running and no call of its is still in flight, which is how a
+   * consumer that disposes leaves. A live peer keeps at least one subscription open, so dropping to none is taken as
+   * leaving. A call the peer makes after that cancels it. Ends this side posted never count, since the peer may not
+   * have heard them yet.
    */
   onPeerIdle?: () => void;
 }
@@ -177,6 +178,8 @@ export function createServingTransport(provider: Provider, options: ServingTrans
   };
 
   const onRequest = <M extends RequestMethod>({ id, method, deadlineMs, payload }: RequestMessage<M>): void => {
+    // A peer that calls is still here, whatever it unsubscribed before.
+    peerLeft = false;
     const handler = requestHandler(method);
     if (handler === undefined) {
       respond(id, method, { ok: false, error: unhandled(method) });
@@ -265,13 +268,17 @@ export function createServingTransport(provider: Provider, options: ServingTrans
 
   const onUnsubscribe = (id: number, method: SubscriptionMethod): void => {
     const entry = running.get(id);
-    if (entry?.method !== method) {
-      return;
+    if (entry !== undefined) {
+      if (entry.method !== method) {
+        return;
+      }
+      running.delete(id);
+      if (entry.stop !== null) {
+        guarded(report, entry.stop);
+      }
     }
-    running.delete(id);
-    if (entry.stop !== null) {
-      guarded(report, entry.stop);
-    }
+    // Only the peer unsubscribes, so its own leg has left nothing running even when this end ended that subscription
+    // before the leg arrived.
     if (running.size === 0) {
       peerLeft = true;
       checkIdle();

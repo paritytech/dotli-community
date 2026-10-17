@@ -464,7 +464,8 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     const provider = createPortProvider(port, { closeOnDispose: false });
     const transport = createServingTransport(provider, {
       side: 'worker',
-      // The tab disposed its transport, as a page that left for good does, and would never speak to end a release.
+      // A live tab always holds a subscription, so a tab that left none disposed its transport, as a page that left for
+      // good does, and would never speak to end a release.
       onPeerIdle: () => {
         forget(session);
       },
