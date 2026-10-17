@@ -1,10 +1,12 @@
-import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider, WorkerDemandChange } from "../index.js";
+import type { ProductRuntimeConfig, LogLevel, NativeChatContactsSnapshot, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider, WorkerDemandChange } from "../index.js";
 import type { HostRole, LocalIdentity, LocalIdentityProgress } from "../worker-protocol.js";
 import { type WalletAllowanceSnapshot } from "../wallet-allowances.js";
 export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "executionKind">;
 export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
     /** Bare dotNS network suffix (`dot`, `paseo`, or `testnet`). */
     networkSuffix: string;
+    /** Trusted u32 asset instance, required for instance-scoped Coinage runtimes. */
+    coinageInstanceId?: number;
 };
 export interface WorkerPairingHostRuntime {
     /**
@@ -29,6 +31,8 @@ export interface WorkerPairingHostRuntime {
      * removed or blocked, so a contact handle the core cached stops resolving.
      */
     notifyContactsChanged(): void;
+    /** Host-only native roster. Pairing hosts reject as unsupported. */
+    getNativeChatContacts(): Promise<NativeChatContactsSnapshot>;
     /**
      * Restore the session persisted in the core's `AuthSession` slot. Resolves
      * once product frames may use it, so a host can await this at boot before

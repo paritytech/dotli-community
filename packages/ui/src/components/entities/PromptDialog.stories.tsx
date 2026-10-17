@@ -159,6 +159,98 @@ export const SignMessage: Story = {
   },
 };
 
+export const ChatAuthority: Story = {
+  args: {
+    entry: entry({
+      icon: iconMarkup(PERMISSION_ICONS.ChatAuthority),
+      title: 'Chat Identity Authority',
+      fields: [
+        { label: 'Requesting product', value: 'echat.paseo' },
+        {
+          label: 'Permission',
+          value: 'Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data',
+        },
+      ],
+      buttons: [
+        { label: 'Deny', variant: 'danger', result: 'rejected' },
+        { label: 'Always allow', variant: 'secondary', result: 'always' },
+        { label: 'Allow once', variant: 'primary', result: 'once' },
+      ],
+      dismissOnBackdrop: true,
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
+    }),
+  },
+};
+
+export const MainPurseChatPayment: Story = {
+  args: {
+    entry: entry({
+      icon: iconMarkup(PERMISSION_ICONS.ChainSubmit),
+      title: 'Send Main-Purse Payment',
+      fields: [
+        { label: 'Requesting product', value: 'echat.paseo' },
+        { label: 'Recipient', value: 'recipient.paseo' },
+        { label: 'Recipient identity', value: `0x${'07'.repeat(32)}`, mono: true },
+        { label: 'Recipient amount', value: '12.50 pUSD' },
+        { label: 'Maximum purse debit (including fees)', value: '12.52 pUSD' },
+        { label: 'Chain genesis', value: `0x${'4a2b5b73'.repeat(8)}`, mono: true },
+        { label: 'Coinage asset instance', value: '0' },
+        { label: 'Payment operation', value: `0x${'09'.repeat(32)}`, mono: true },
+        {
+          label: 'One-time payment',
+          value:
+            'Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.',
+          warning: true,
+        },
+      ],
+      buttons: [
+        { label: 'Reject', variant: 'danger', result: 'rejected' },
+        { label: 'Send payment', variant: 'primary', result: 'accepted' },
+      ],
+      dismissOnBackdrop: true,
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
+    }),
+  },
+};
+
+// The host's Chat contact picker: one answer per contact, apart from Cancel.
+const CONTACT_PICKER = entry({
+  title: 'Choose a contact',
+  fields: [
+    { label: 'Requesting product', value: 'echat.paseo' },
+    { label: 'Shared with the app', value: "Only the chosen contact's account. The list stays in this picker." },
+  ],
+  choices: [
+    { label: 'alice.paseo', result: 'alice' },
+    { label: 'bob.paseo', result: 'bob' },
+    { label: 'a-contact-with-a-rather-long-verified-username.paseo', result: 'long' },
+    { label: 'Chat contact', result: 'unnamed' },
+  ],
+  buttons: [{ label: 'Cancel', variant: 'cancel', result: 'dismissed' }],
+  dismissOnBackdrop: true,
+  dismissResult: 'dismissed',
+  fallbackResult: 'dismissed',
+});
+
+export const ContactPicker: Story = {
+  args: { entry: CONTACT_PICKER },
+  play: async ({ step }) => {
+    await step('Then the first contact has the focus', async () => {
+      const choices = within(document.body).getAllByTestId('prompt-choice');
+      await expect(choices).toHaveLength(4);
+      await expect(choices[0]).toHaveFocus();
+    });
+  },
+};
+
+export const ContactPickerPhone: Story = {
+  tags: ['!autodocs'],
+  args: { entry: CONTACT_PICKER },
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};
+
 export const Phone: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],

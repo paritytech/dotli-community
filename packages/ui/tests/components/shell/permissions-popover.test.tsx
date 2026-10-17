@@ -41,6 +41,8 @@ function nameOf(request: PermissionAuthorizationRequest): string {
       return request.value.permission.tag;
     case 'IdentityDisclosure':
     case 'AccountAccess':
+    case 'ChatAuthority':
+    case 'StatementStoreAllowance':
     case 'CrossProductSignature':
       return request.tag;
   }
@@ -134,7 +136,10 @@ const GROUPS: readonly { label: string; names: readonly string[] }[] = [
     label: 'Device',
     names: ['Notifications', 'Camera', 'Microphone', 'Location', 'Bluetooth', 'NFC', 'Clipboard', 'Biometrics'],
   },
-  { label: 'Account and chain', names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'] },
+  {
+    label: 'Account and chain',
+    names: ['ChatAuthority', 'IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'],
+  },
 ];
 
 function row(name: string): HTMLElement {

@@ -51,6 +51,7 @@ export {
   onProtocolReady,
   readSharedAuthStorage,
   readSharedModeStorage,
+  requestCoreCustody,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -65,6 +66,12 @@ export {
   writeSharedAuthStorage,
   writeSharedModeStorage,
 } from './client.js';
+export {
+  CORE_CUSTODY_BUSY_ERROR,
+  isCoreCustodyOperation,
+  localWalletCustodyId,
+  type CoreCustodyOperation,
+} from './core-custody.js';
 export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 export {
   getRequestSyncTimeoutMs,

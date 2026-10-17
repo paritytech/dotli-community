@@ -46,6 +46,10 @@ export class WasmPairingHostRuntime {
      */
     disconnectSession(): Promise<void>;
     /**
+     * Pairing hosts cannot expose the signing host's private Chat roster.
+     */
+    getNativeChatContacts(): Promise<any>;
+    /**
      * Build a shared runtime from host-level platform callbacks and host config.
      */
     constructor(callbacks: any, host_config: any);
@@ -248,6 +252,10 @@ export class WasmSigningHostRuntime {
      */
     disconnectSession(): Promise<void>;
     /**
+     * Read the active signing wallet's trusted native Chat directory for host UI.
+     */
+    getNativeChatContacts(): Promise<any>;
+    /**
      * Read finalized allowance state for this activation; never allocate or sign.
      */
     getWalletAllowanceSnapshot(activation_id: string, product_ids: string[]): Promise<any>;
@@ -444,6 +452,7 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_deviceEncryptionKey: (a: number) => number;
     readonly wasmpairinghostruntime_deviceStatementKey: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_disconnectSession: (a: number) => number;
+    readonly wasmpairinghostruntime_getNativeChatContacts: (a: number) => number;
     readonly wasmpairinghostruntime_new: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_notifyContactsChanged: (a: number) => void;
     readonly wasmpairinghostruntime_notifySessionStoreChanged: (a: number) => void;
@@ -474,6 +483,7 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_clearProductState: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_deviceEncryptionKey: (a: number) => number;
     readonly wasmsigninghostruntime_disconnectSession: (a: number) => number;
+    readonly wasmsigninghostruntime_getNativeChatContacts: (a: number) => number;
     readonly wasmsigninghostruntime_getWalletAllowanceSnapshot: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmsigninghostruntime_localIdentityAuthProof: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly wasmsigninghostruntime_localIdentityContext: (a: number, b: number) => void;
@@ -492,12 +502,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_7149: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_7207: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_3103: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_3096: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_7029: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_3100: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9772: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9830: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4487: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4480: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_9653: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4484: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -4,11 +4,17 @@
 // The page's one refcounted TrUAPI core, under its product's label. The core goes with its last lease,
 // and a faulted one is never handed out again.
 
-import type { ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider } from '@parity/truapi-host';
+import type {
+  ContactsPlatform,
+  ProductExecutionKind,
+  RequiredHostCallbacks,
+  TrUApiProductProvider,
+} from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { log } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { loadLocalWalletCore } from './lazy.js';
+import type { LocalWalletChat } from './local-wallet-chat.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
@@ -134,8 +140,10 @@ function createCore(product: PageProduct): Core {
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let unsubscribeStore: (() => void) | null = null;
   let coreCallbacks: RequiredHostCallbacks | null = null;
+  // Native Chat runs only beside the local signer; a Polkadot App session leaves Chat on the phone.
+  let chat: LocalWalletChat | null = null;
   const connectionDisposers = new Set<() => void>();
-  const callbacksFor = (local: boolean): RequiredHostCallbacks => {
+  const callbacksFor = (local: boolean, contacts?: Required<ContactsPlatform>): RequiredHostCallbacks => {
     coreCallbacks = createHostCallbacks({
       label: product.label,
       pairingLabel: product.pairing?.label,
@@ -143,6 +151,7 @@ function createCore(product: PageProduct): Core {
       pairingHostGlobal: product.pairing?.hostGlobal,
       blockingModalScope,
       local,
+      contacts,
     });
     return coreCallbacks;
   };
@@ -154,14 +163,24 @@ function createCore(product: PageProduct): Core {
     import('@parity/truapi-host/worker-runtime?worker'),
   ]).then(async ([wallet, { createWebWorkerPairingHostRuntime }, { default: HostWorker }]) => {
     if (wallet !== null) {
-      const { bootLocalWalletCore } = await loadLocalWalletCore();
-      const booted = await bootLocalWalletCore(
-        createWebWorkerPairingHostRuntime,
-        callbacksFor(true),
-        hostConfig,
-        wallet,
-        () => cores.has(core),
+      const { bootLocalWalletCore, createLocalWalletChat } = await loadLocalWalletCore();
+      if (!cores.has(core)) {
+        throw new Error('Page core retired before the local wallet booted');
+      }
+      const localChat = createLocalWalletChat(wallet, () => cores.has(core));
+      chat = localChat;
+      const callbacks = callbacksFor(true, localChat.openContacts(blockingModalScope).callbacks);
+      callbacks.coreStorage = localChat.coreStorage(callbacks.coreStorage);
+      callbacks.nativeChatFiles = localChat.nativeChatFiles;
+      const presentAuth = callbacks.auth.authStateChanged;
+      callbacks.auth.authStateChanged = state => {
+        localChat.authStateChanged(state);
+        presentAuth(state);
+      };
+      const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
+        cores.has(core),
       );
+      localChat.activated(booted);
       log.event('wallet core booted', { flow: 'wallet', local: true });
       return booted;
     }
@@ -191,8 +210,13 @@ function createCore(product: PageProduct): Core {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const callbacks = createHostCallbacks({ label: product.label, blockingModalScope: scope });
-      // Authentication and session storage stay core-owned; interactive
+      const contacts = chat?.openContacts(scope);
+      const callbacks = createHostCallbacks({
+        label: product.label,
+        blockingModalScope: scope,
+        contacts: contacts?.callbacks,
+      });
+      // Authentication, session storage and Chat custody stay core-owned; interactive
       // product prompts cannot outlive the connection that requested them.
       let closed = false;
       callbacks.auth = {
@@ -203,12 +227,16 @@ function createCore(product: PageProduct): Core {
         },
       };
       callbacks.coreStorage = shared.coreStorage;
+      if (shared.nativeChatFiles !== undefined) {
+        callbacks.nativeChatFiles = shared.nativeChatFiles;
+      }
       const dispose = (): void => {
         if (closed) {
           return;
         }
         closed = true;
         connectionDisposers.delete(dispose);
+        contacts?.dispose();
         scope.dispose();
       };
       connectionDisposers.add(dispose);
@@ -227,6 +255,8 @@ function createCore(product: PageProduct): Core {
         dispose();
       }
       blockingModalScope.dispose();
+      // Ends Chat custody; writes the stopping signer still makes are refused, never interleaved with a successor's.
+      chat?.dispose();
       runtime.then(
         booted => {
           booted.dispose();

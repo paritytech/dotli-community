@@ -76,6 +76,7 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 import { errorResponse } from './error-response.js';
+import { CORE_CUSTODY_DB_NAME } from './core-custody.js';
 import { handleLocalWalletRequest } from './local-wallet-handler.js';
 
 initSentry('protocol');
@@ -289,7 +290,7 @@ function getRequestedNetwork(): RequestedNetwork {
 /** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
 async function purgeWorkerCaches(): Promise<void> {
   // Throws rather than continuing, which would boot smoldot against the stale DB.
-  const KEEP = new Set(['dotli', 'dotli-sw']);
+  const KEEP = new Set(['dotli', 'dotli-sw', CORE_CUSTODY_DB_NAME]);
   if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
     throw new Error(
       'Browser does not expose indexedDB.databases() — cannot fully purge worker caches. ' +

@@ -29,6 +29,7 @@ export function createTruapiRuntimeConfig(
     productId,
     host: {
       name: 'Polkadot Web',
+      platform: 'Web',
       ...(typeof __DOTLI_VERSION__ === 'string' ? { version: __DOTLI_VERSION__ } : {}),
     },
     platform: {

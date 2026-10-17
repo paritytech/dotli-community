@@ -16,6 +16,7 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   NFC: 'Read and write nearby NFC tags',
   Clipboard: 'Read text and data from your clipboard',
   Biometrics: 'Authenticate with a platform passkey or biometric prompt',
+  ChatAuthority: "Bind this app's device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
   ChainSubmit: 'Sign and submit network transactions on your behalf',
   PreimageSubmit: 'Store preimage data on the Bulletin network',

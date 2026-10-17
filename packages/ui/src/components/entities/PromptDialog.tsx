@@ -26,13 +26,21 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
   primary: 'signing-btn-sign',
 };
 
-/** A queued app prompt (permission, password, preimage, signing) drawn as a Modal. */
+/**
+ * Every queued app prompt (a permission request, the password prompt, a
+ * preimage submit, a transaction or message to sign, a host-owned pick such
+ * as a Chat contact) drawn as a Modal: its head, a well of fields, the
+ * notice, the host's choices, the password input, and the answers.
+ * The close button (or a swipe) answers as the scrim does, and on a prompt
+ * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
+ */
 export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- keyed entry, read once
   const { id, view } = props.entry;
   const titleId = `overlay-modal-title-${String(id)}`;
   const [password, setPassword] = createSignal('');
   let input: HTMLInputElement | undefined;
+  let firstChoice: HTMLButtonElement | undefined;
 
   const needsPassword = (button: ModalButton<string>): boolean =>
     view.input !== undefined && button.variant === 'primary';
@@ -85,7 +93,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       }}
       title={view.title}
       labelledBy={titleId}
-      initialFocus={() => input}
+      initialFocus={() => input ?? firstChoice}
       testId="signing-modal"
     >
       <Modal.Head titleId={titleId} title={view.title} icon={view.icon} iconTestId="permission-modal-icon" />
@@ -113,6 +121,29 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
             <Callout icon={<ReloadIcon />} testId="permission-modal-notice">
               {notice()}
             </Callout>
+          )}
+        </Show>
+        <Show when={view.choices}>
+          {choices => (
+            <div class={s['choices']} data-testid="prompt-choices">
+              <For each={choices()}>
+                {choice => (
+                  <Button
+                    ref={el => {
+                      firstChoice ??= el;
+                    }}
+                    block
+                    class={s['choice']}
+                    testId="prompt-choice"
+                    onClick={() => {
+                      settleModal(id, choice.result);
+                    }}
+                  >
+                    {choice.label}
+                  </Button>
+                )}
+              </For>
+            </div>
           )}
         </Show>
         <Show when={view.input}>

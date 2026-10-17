@@ -8,6 +8,7 @@ import type {
   createWebWorkerPairingHostRuntime,
   WebWorkerHostCallbacks,
   WebWorkerHostConfig,
+  WebWorkerSigningHostConfig,
   WorkerPairingHostRuntime,
 } from '@parity/truapi-host/web';
 import { getActiveServicesConfig } from '@dotli/config';
@@ -16,6 +17,8 @@ import { log } from '@dotli/shared';
 import { loadSigningWorker } from './lazy.js';
 import { refreshLiteUsername } from './local-wallet-identity.js';
 import { reportLocalWalletFailure, type LocalWalletBoot } from './wallet-boot.js';
+
+export { createLocalWalletChat } from './local-wallet-chat.js';
 
 type CreateRuntime = typeof createWebWorkerPairingHostRuntime;
 
@@ -29,10 +32,12 @@ export async function bootLocalWalletCore(
   let runtime: WorkerPairingHostRuntime;
   try {
     const { default: SigningWorker } = await loadSigningWorker();
-    runtime = await create(new SigningWorker(), callbacks, {
-      hostConfig: { ...hostConfig, networkSuffix: getActiveServicesConfig().dotns.TLD },
-      role: 'signing',
-    });
+    const { dotns, coinage } = getActiveServicesConfig();
+    const signingConfig: WebWorkerSigningHostConfig = { ...hostConfig, networkSuffix: dotns.TLD };
+    if (coinage !== undefined) {
+      signingConfig.coinageInstanceId = coinage.instanceId;
+    }
+    runtime = await create(new SigningWorker(), callbacks, { hostConfig: signingConfig, role: 'signing' });
   } catch (error) {
     reportLocalWalletFailure(error, 'boot');
     throw new Error('Local wallet core failed to boot', { cause: error });

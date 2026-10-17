@@ -28,6 +28,12 @@
 // transferables: the sender keeps using its buffer (the worker side posts
 // views into WASM memory) and frames are small, so the copy is the simpler
 // safe choice.
+/** Shared cap includes connections still opening or closing during an open. */
+export const MAX_JSON_RPC_CONNECTIONS = 64;
+/** Wallet custody belongs to the runtime, never a product-specific callback bundle. */
+export const COINAGE_WALLET_CALLBACKS = {
+    nativeCoinage: true,
+};
 /**
  * Is `url` a `ws://` URL on a loopback host? The tap forwards every frame
  * verbatim, key material included, and redacts nothing, so loopback is the whole

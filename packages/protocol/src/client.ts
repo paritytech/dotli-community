@@ -19,6 +19,7 @@ import {
 
 import { createAsyncTaskPool, log, serializeError } from '@dotli/shared';
 import { getResolutionId, m, spans as S } from '@dotli/metrics';
+import type { CoreCustodyOperation } from './core-custody.js';
 import type { LocalWalletIdentity, LocalWalletReadResult, SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
 import {
   isChainDetailPayloadValid,
@@ -796,6 +797,23 @@ export async function updateSharedLocalWalletIdentity(siteId: SiteId, identity: 
 
 export async function forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
   await postRequest('localWalletForget', { siteId });
+}
+
+/** Private host-shell custody channel; no product API forwards this method. */
+export async function requestCoreCustody(
+  siteId: SiteId,
+  operation: CoreCustodyOperation,
+): Promise<string | Uint8Array | Blob | undefined> {
+  const result = await postRequest('coreCustody', { siteId, operation });
+  if (
+    result !== undefined &&
+    typeof result !== 'string' &&
+    !(result instanceof Uint8Array) &&
+    !(result instanceof Blob)
+  ) {
+    throw new Error('Invalid private custody response');
+  }
+  return result;
 }
 
 /**

@@ -1,7 +1,7 @@
 // Each callback lives in its own file so dotli's UI and storage behaviour stays outside the Rust core.
 // Product storage keys are opaque because the core owns product namespacing.
 
-import { localizeTimestamps, type RequiredHostCallbacks } from '@parity/truapi-host';
+import { localizeTimestamps, type ContactsPlatform, type RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './OpenUrl.js';
 import { createNotificationAdapters } from './PushNotification.js';
 import { createPromptPermission } from './PromptPermission.js';
@@ -13,7 +13,7 @@ import {
 } from './LocalStorage.js';
 import { createProductOperations } from './ProductOperations.js';
 import { createPreimageAdapters } from './Preimage.js';
-import { createChainConnect } from './Chain.js';
+import { createChainConnect, createHopProvider } from './Chain.js';
 import { createFeatureSupported } from './FeatureSupported.js';
 import { createSupportedChains } from './SupportedChains.js';
 import { createThemeSubscribe } from './Theme.js';
@@ -33,6 +33,8 @@ export interface CreateHostCallbacksOptions {
   blockingModalScope?: BlockingModalScope;
   /** For a local wallet core, whose storage must not touch the paired session. */
   local?: boolean | undefined;
+  /** Served only beside the local signer, from the native Chat directory. */
+  contacts?: Required<ContactsPlatform> | undefined;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -43,6 +45,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
     local,
+    contacts,
   } = options;
   const presentAuth = createAuthStateChanged(pairingLabel ?? label, {
     dotSuffix: pairingDotSuffix,
@@ -75,7 +78,9 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     locale: { subscribeLocale: createLocaleSubscribe(), localizeTimestamps },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
+    hop: createHopProvider(),
     // Always served, since the core denies chat calls on non-Chat executions and without a session.
     chat: createChatPlatform(),
+    ...(contacts === undefined ? {} : { contacts }),
   };
 }

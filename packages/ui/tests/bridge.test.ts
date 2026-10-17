@@ -100,6 +100,7 @@ vi.mock('@parity/truapi-host', async importOriginal => ({
 }));
 
 vi.mock('@parity/truapi-host/web', () => ({
+  createBrowserNativeChatFilesHost: vi.fn(),
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));

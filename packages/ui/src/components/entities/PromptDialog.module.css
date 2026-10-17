@@ -1,7 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The password prompt's parts. floating/Modal.module.css draws the modal around them. */
+/* The password prompt's parts: its caption, its error and the board's
+   password .input, and a host-owned pick's list of .choices.
+   floating/Modal.module.css draws the modal around them.
+   Desktop sizes by default, the boards' in the phone block. */
 
 .caption {
   margin: 0;
@@ -42,10 +45,31 @@
   outline-offset: 0;
 }
 
-/* PHONE_QUERY in phone-viewport.ts. */
+/* A host-owned pick (a Chat contact): one full-width answer per choice, apart
+   from the footer's answers. A long name wraps inside its button. */
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.choice {
+  justify-content: flex-start;
+  height: auto;
+  min-height: var(--h-control-sm);
+  padding-block: var(--sp-2);
+  line-height: var(--lh-body);
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+/* PHONE_QUERY in phone-viewport.ts: the boards' 44 px input and choices. */
 @media (max-width: 560px) {
   .input {
     height: var(--h-control);
     padding: 0 var(--sp-5);
+  }
+  .choice {
+    min-height: var(--h-control);
   }
 }

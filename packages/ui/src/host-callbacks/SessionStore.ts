@@ -327,6 +327,11 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     // Per product, so one product's revoked grant expires without touching the others.
     case 'ProductManifest':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
+    case 'MainPurseCoinage':
+    case 'NativeChatDevice':
+    case 'NativeChatFileChunk':
+    case 'NativeChatProducts':
+      throw new Error('Native Chat custody requires the local signing wallet');
   }
 }
 

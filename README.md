@@ -347,10 +347,34 @@ resetting that preference.
 
 Custom messages (`ChatMessageContent::Custom`) render live: when a custom message cell scrolls into view, the panel asks
 the product to draw it through the Renderer service (`renderer.render`, with a `ChatMessage` render context) and renders
-the streamed tree with the host's own design system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
-layouts and design tokens, so a product can never inject markup, styles, or URLs. Button taps and text-field edits
-inside a rendered tree flow back on `renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
-`ActionTriggered` chat actions.
+the streamed tree with the host's Solid components (`packages/ui/src/components/chat/CustomMessage.tsx` and
+`CustomNode.tsx`). The tree is a closed vocabulary of layouts and design tokens, so a product can never inject markup,
+styles, or URLs. Button taps and text-field edits inside a rendered tree flow back on `renderer.action_subscribe`; taps
+on `Actions`-content buttons flow back as `ActionTriggered` chat actions. Replacing a streamed tree aborts its image
+loads and revokes its object URLs; scrolling a message out of view or closing the panel releases its render subscription
+and tree resources.
+
+### Native Chat with the local wallet
+
+Native Chat (the method-12 `account.deviceChat` actor, its main purse and payments) runs only while the debug panel's
+local wallet is the active signer. With a Polkadot App session the phone holds Chat, so the browser serves none of its
+private slots and offers no contacts.
+
+The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
+origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Records are authenticated-encrypted with a
+non-extractable key; immutable attachment source Blobs are host-private but not encrypted at rest. They never enter
+product storage or the product RPC interface. Each core takes a custody lease for the wallet it booted, named by a
+domain-separated hash of the wallet's entropy, and every operation rechecks the stored wallet, so forgetting or
+replacing it ends the lease's authority. A Web Lock admits one holder per browser profile: a replacement core of the
+same page waits for its predecessor to release, and a core in another tab is refused after a bounded wait, so its Chat
+operations fail while the tab's other products keep working. There is no handover between tabs at this layer. Closing a
+product connection does not stop receiving while the page core remains alive.
+
+Each payment requires a new host review of the authenticated product and recipient, exact amount, maximum debit
+including fees, selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve
+spending. Contacts are read from the active native wallet and People-chain binding, never from a product-provided
+roster. The picker shows verified contact names, with a generic label for unnamed contacts, cancels when its connection
+closes or the session, roster or network changes, and revalidates a selection before returning a contact handle.
 
 ### App iframe model
 
@@ -386,8 +410,12 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-The TrUAPI packages are installed from their published `@parity` packages. To iterate against a local truapi checkout
-instead, run:
+This branch vendors the Chat TrUAPI 0.24.0 SDK from source `a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in
+`vendor/truapi-host.lock.json`. Both Wasm bundles come from upstream's standard `build-wasm.mjs`: `wasm/web` is the
+pairing-only production host, and `wasm/testing` backs the local wallet's signing worker. The recorded archive hashes
+precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
+notification activation sit above the generic PolkaVM runtime; Profile and Jam remain separate feature layers. Install
+the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi
@@ -647,6 +675,11 @@ localhost); **Settings → Experimental → PolkaVM apps** overrides the site de
 scenarios exercise a fresh visit without opting in. On production `dot.li`, the smoke explicitly enables the toggle with
 **Save & Apply** first. An existing saved choice, including an opt-out on a testnet, remains authoritative. The site
 default applies only when no valid preference has been saved.
+
+The `echat` smoke stays signed out: it cancels the initial sign-in request, uses the guest's Retry button to open a
+fresh host prompt, cancels again, and checks redraw and resize. Each cancellation checks for a redraw relative to the
+pre-click frame count: a demand-driven UI may finish that redraw before its host response is observed and need not
+publish another frame while idle. The game scenarios retain their continuous rendering, audio, and input checks.
 
 ```bash
 cd apps/host

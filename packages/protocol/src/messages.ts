@@ -4,6 +4,7 @@
 import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 // Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from '@dotli/config';
+import type { CoreCustodyOperation } from './core-custody.js';
 
 /** Wire shape of the local wallet's cached identity. */
 export interface LocalWalletIdentity {
@@ -36,6 +37,7 @@ export interface ProtocolRequestMap {
   localWalletSave: { siteId: string; entropy: Uint8Array };
   localWalletIdentity: { siteId: string; identity: LocalWalletIdentity };
   localWalletForget: { siteId: string };
+  coreCustody: { siteId: string; operation: CoreCustodyOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };

@@ -59,8 +59,10 @@ outbound license. The shipped \`@parity/polkavm-browser-runtime\` artifacts rema
 dependency notices, per-file hashes and source provenance are served beside the runtime. Build-time-only tooling under
 source-available FSL-1.1-MIT terms is not redistributed as part of the application.
 
-The vendored \`@parity/truapi\` and \`@parity/truapi-host\` packages are MIT-licensed. Their license texts are retained
-in \`vendor/truapi/LICENSE\` and \`vendor/truapi-host/LICENSE\`, including the production web Wasm distribution.
+The vendored \`@parity/truapi\` client is MIT-licensed. The \`@parity/truapi-host\` distribution is
+\`MIT AND AGPL-3.0-only\`: its signing runtime includes the native Chat, HOP and Coinage implementations.
+License texts and attribution are retained in \`vendor/truapi/LICENSE\`, \`vendor/truapi-host/LICENSE\`,
+\`vendor/truapi-host/LICENSE-AGPL-3.0\` and \`vendor/truapi-host/NOTICE\`.
 Exact source revision, package versions and artifact hashes are recorded in \`vendor/truapi-host.lock.json\`.`;
 
 interface LockEntry {

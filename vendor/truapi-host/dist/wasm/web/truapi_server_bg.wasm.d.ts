@@ -18,6 +18,7 @@ export const wasmpairinghostruntime_clearProductState: (a: number, b: number, c:
 export const wasmpairinghostruntime_deviceEncryptionKey: (a: number) => number;
 export const wasmpairinghostruntime_deviceStatementKey: (a: number, b: number) => void;
 export const wasmpairinghostruntime_disconnectSession: (a: number) => number;
+export const wasmpairinghostruntime_getNativeChatContacts: (a: number) => number;
 export const wasmpairinghostruntime_new: (a: number, b: number, c: number) => void;
 export const wasmpairinghostruntime_notifyContactsChanged: (a: number) => void;
 export const wasmpairinghostruntime_notifySessionStoreChanged: (a: number) => void;
@@ -42,12 +43,12 @@ export const wasmproductruntime_render: (a: number, b: number, c: number, d: num
 export const wasmproductruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
 export const wasmrenderersubscription_cancel: (a: number) => void;
 export const wireSchemaHash: (a: number) => void;
-export const __wasm_bindgen_func_elem_6260: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_6318: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_2656: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_2649: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_6141: (a: number, b: number) => void;
-export const __wasm_bindgen_func_elem_2653: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_6512: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_6570: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_2754: (a: number, b: number, c: number) => void;
+export const __wasm_bindgen_func_elem_2747: (a: number, b: number, c: number) => void;
+export const __wasm_bindgen_func_elem_6393: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_2751: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_export3: (a: number) => void;

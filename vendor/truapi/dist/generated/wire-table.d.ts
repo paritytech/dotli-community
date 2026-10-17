@@ -78,6 +78,11 @@ export declare const ACCOUNT_RING_VRF_SIGN: {
     readonly method: 10;
     readonly kind: "request";
 };
+export declare const ACCOUNT_PRODUCT_DEVICE_CHAT: {
+    readonly trait: 2;
+    readonly method: 12;
+    readonly kind: "request";
+};
 export declare const CHAIN_FOLLOW_HEAD_SUBSCRIBE: {
     readonly trait: 3;
     readonly method: 0;

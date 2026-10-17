@@ -5,6 +5,7 @@
 // root domain only, never product origins.
 
 import {
+  isCoreCustodyOperation,
   isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
   isSharedWalletRequestMethod,
@@ -20,6 +21,7 @@ import {
   saveLocalWallet,
   updateLocalWalletIdentity,
 } from '@dotli/storage';
+import { handleCoreCustody } from './core-custody.js';
 
 const ENTROPY_LENGTHS = new Set([16, 20, 24, 28, 32]);
 
@@ -85,5 +87,12 @@ export async function handleLocalWalletRequest(request: ProtocolRequestEnvelope,
     case 'localWalletForget':
       await forgetLocalWallet();
       return true;
+    case 'coreCustody': {
+      const { operation } = request.payload as { operation?: unknown };
+      if (!isCoreCustodyOperation(operation)) {
+        throw new Error('Invalid private custody operation');
+      }
+      return handleCoreCustody(operation, request.deadlineMs);
+    }
   }
 }

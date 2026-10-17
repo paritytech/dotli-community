@@ -17,7 +17,7 @@ interface ProductSmoke {
   clickPosition?: { readonly x: number; readonly y: number };
   audio: boolean;
   nonzeroAudio: boolean;
-  interaction?: 'gameplay-pointer-capture' | 'pointer-motion' | 'host-frame-handshake';
+  interaction?: 'gameplay-pointer-capture' | 'pointer-motion' | 'host-frame-handshake' | 'host-sign-in';
 }
 
 const products: readonly ProductSmoke[] = [
@@ -44,6 +44,17 @@ const products: readonly ProductSmoke[] = [
     audio: true,
     nonzeroAudio: true,
     interaction: 'gameplay-pointer-capture',
+  },
+  {
+    label: 'echat',
+    profile: 'tri2d',
+    keys: [],
+    scheduling: 'demand-driven',
+    // The signed-out guest's Retry button reopens the host sign-in prompt.
+    clickPosition: { x: 880, y: 132 },
+    audio: false,
+    nonzeroAudio: false,
+    interaction: 'host-sign-in',
   },
   {
     label: 'egui-app-lab',
@@ -115,6 +126,19 @@ async function waitForRuntimeReady(page: Page, body: Locator, canvas: Locator, l
     await page.waitForTimeout(250);
   }
   throw new Error(`${label}: runtime did not become ready within 180s\n${lastText}`);
+}
+
+async function cancelSignIn(page: Page, canvas: Locator): Promise<void> {
+  const signIn = page.locator('#auth-modal-backdrop');
+  await expect(signIn).toBeVisible({ timeout: 30_000 });
+  const responsesBefore = await counter(canvas, 'data-polkavm-host-frame-responses');
+  const framesBefore = await counter(canvas, 'data-polkavm-frames');
+  await signIn.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(signIn).toBeHidden();
+  await expect
+    .poll(() => counter(canvas, 'data-polkavm-host-frame-responses'), { timeout: 30_000 })
+    .toBeGreaterThan(responsesBefore);
+  await expect.poll(() => counter(canvas, 'data-polkavm-frames'), { timeout: 30_000 }).toBeGreaterThan(framesBefore);
 }
 
 async function assertHandshake(canvas: Locator, workerId: number, wireStart: number): Promise<void> {
@@ -223,6 +247,9 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
   if (product.profile === 'webgpu-raster') {
     await expect(canvas).toHaveAttribute('data-polkavm-gpu', 'ready');
   }
+  if (product.interaction === 'host-sign-in') {
+    await cancelSignIn(page, canvas);
+  }
 
   // Readiness alone precedes the first rendered UI and the host loader dismissal.
   await expect.poll(() => counter(canvas, 'data-polkavm-frames'), { timeout: 30_000 }).toBeGreaterThan(0);
@@ -298,6 +325,9 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
       throw new Error('Handshake runtime worker was not observed before input');
     }
     await assertHandshake(canvas, handshakeWorker.id, handshakeWorker.wire.length);
+  } else if (product.interaction === 'host-sign-in') {
+    // A fresh prompt proves the guest handled input after cancellation.
+    await cancelSignIn(page, canvas);
   }
 
   if (product.scheduling === 'demand-driven') {
