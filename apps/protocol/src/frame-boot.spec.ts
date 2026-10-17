@@ -1,0 +1,121 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, describe, expect, it } from 'vitest';
+import { ProtocolInitFailedError, type SubscriptionHandler } from '@dotli/protocol';
+import { createFrameBoot, type FrameBoot } from './frame-boot.js';
+import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
+
+afterEach(closeHostLinks);
+
+/** A host linked to a booting frame, subscribed to its status and telemetry at once, as the host does. */
+function setup(): { boot: FrameBoot; link: HostLink } {
+  const boot = createFrameBoot();
+  const link = linkHost();
+  link.serving.handleSubscription('frameStatus', boot.frameStatus);
+  link.serving.handleSubscription('telemetry', boot.telemetry);
+  return { boot, link };
+}
+
+/** A call the frame does not serve, whose answer means every leg sent before it has come back. */
+async function roundTrip(link: HostLink): Promise<void> {
+  await expect(link.host.request('warmup', undefined)).rejects.toThrow('This end does not handle warmup');
+}
+
+/** Whether the recorded subscription has ended by now. */
+function endedYet(ended: Promise<Error | null>): () => boolean {
+  let over = false;
+  void ended.then(() => {
+    over = true;
+  });
+  return () => over;
+}
+
+const bytes: SubscriptionHandler<'telemetry'> = (_payload, _context, sink) => {
+  sink.send({ tag: 'netBytes', value: 4_096 });
+  return () => undefined;
+};
+
+describe('the frame boot', () => {
+  it('As the host of a frame with no light client of its own, my telemetry opens silent once the frame is ready', async () => {
+    // Given a host that subscribed while the frame booted
+    const { boot, link } = setup();
+    const status = record(link.host, 'frameStatus', undefined);
+    const telemetry = record(link.host, 'telemetry', undefined);
+    const over = endedYet(telemetry.ended);
+    await roundTrip(link);
+
+    // When an auth-only or gateway frame becomes ready without a telemetry source
+    boot.ready();
+    await status.until(1);
+    await roundTrip(link);
+
+    // Then the telemetry is open and silent
+    expect(over()).toBe(false);
+    expect(telemetry.events).toEqual([]);
+
+    // When the frame later stops for good
+    boot.fail(new Error('frame stopped'));
+    await status.ended;
+    await roundTrip(link);
+
+    // Then the telemetry was served, not left waiting, so it stays open
+    expect(over()).toBe(false);
+  });
+
+  it('As the host of a light client frame, I hear the telemetry its mode serves, before and after ready', async () => {
+    // Given
+    const { boot, link } = setup();
+    const early = record(link.host, 'telemetry', undefined);
+    await roundTrip(link);
+
+    // When the mode serves its feed while it syncs, then becomes ready
+    boot.serveTelemetry(bytes);
+    boot.ready();
+    const late = record(link.host, 'telemetry', undefined);
+
+    // Then both subscriptions hear the feed
+    await early.until(1);
+    await late.until(1);
+    expect(early.events).toEqual([{ tag: 'netBytes', value: 4_096 }]);
+    expect(late.events).toEqual([{ tag: 'netBytes', value: 4_096 }]);
+  });
+
+  it('As the host of a frame whose boot failed, my status and telemetry end with the failure, and so does a later one', async () => {
+    // Given
+    const { boot, link } = setup();
+    const status = record(link.host, 'frameStatus', undefined);
+    const early = record(link.host, 'telemetry', undefined);
+    await roundTrip(link);
+
+    // When
+    boot.fail(new ProtocolInitFailedError('Unknown protocol mode: "nope"'));
+    const late = record(link.host, 'telemetry', undefined);
+
+    // Then
+    const failure = { name: 'ProtocolInitFailedError', message: 'Unknown protocol mode: "nope"' };
+    expect(await status.ended).toMatchObject(failure);
+    expect(await early.ended).toMatchObject(failure);
+    expect(await late.ended).toMatchObject(failure);
+  });
+
+  it('As the host of a ready frame that later dies, my status ends and my telemetry keeps its source', async () => {
+    // Given
+    const { boot, link } = setup();
+    boot.serveTelemetry(bytes);
+    boot.ready();
+    const status = record(link.host, 'frameStatus', undefined);
+    const telemetry = record(link.host, 'telemetry', undefined);
+    await status.until(1);
+    await telemetry.until(1);
+    const over = endedYet(telemetry.ended);
+
+    // When
+    boot.fail(new Error('light client died'));
+    await roundTrip(link);
+
+    // Then
+    expect(await status.ended).toMatchObject({ message: 'light client died' });
+    expect(over()).toBe(false);
+  });
+});

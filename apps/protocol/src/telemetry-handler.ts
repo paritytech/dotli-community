@@ -27,9 +27,6 @@ export interface TelemetryDeps {
   joinedSynced: () => boolean;
 }
 
-/** A feed that opens and reports nothing, for a frame that runs no light client of its own. */
-export const idleTelemetry: SubscriptionHandler<'telemetry'> = () => () => undefined;
-
 export function createTelemetryHandler(deps: TelemetryDeps): SubscriptionHandler<'telemetry'> {
   return (_payload, _context, sink) => {
     const stops: (() => void)[] = [];

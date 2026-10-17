@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { deferred } from '@dotli/shared/testing';
-import { createTelemetryHandler, idleTelemetry, type TelemetryDeps } from './telemetry-handler.js';
+import { createTelemetryHandler, type TelemetryDeps } from './telemetry-handler.js';
 import { closeHostLinks, linkHost, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
@@ -166,23 +166,5 @@ describe('the telemetry handler', () => {
     // Then
     expect(await heard.ended).toMatchObject({ message: 'byte meter is gone' });
     await expect(stopped).resolves.toBeUndefined();
-  });
-
-  it('As the host of a frame with no light client of its own, my subscription opens and hears nothing', async () => {
-    // Given
-    const link = linkHost();
-    link.serving.handleSubscription('telemetry', idleTelemetry);
-
-    // When I subscribe, and a later call's answer shows every leg before it has come back
-    const heard = record(link.host, 'telemetry', undefined);
-    let ended = false;
-    void heard.ended.then(() => {
-      ended = true;
-    });
-    await expect(link.host.request('warmup', undefined)).rejects.toThrow('This end does not handle warmup');
-
-    // Then the subscription is open and silent
-    expect(ended).toBe(false);
-    expect(heard.events).toEqual([]);
   });
 });

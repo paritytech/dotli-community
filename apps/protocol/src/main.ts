@@ -44,24 +44,15 @@ import { serveLocalWallet } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createOriginRefusalReporter, createRefusalReporter, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
-import { createFrameStatus } from './frame-status.js';
-import { createDeferredSubscription } from './deferred-subscription.js';
-import { createTelemetryHandler, idleTelemetry } from './telemetry-handler.js';
+import { createFrameBoot } from './frame-boot.js';
+import { createTelemetryHandler } from './telemetry-handler.js';
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
 // invisible to resource timing, so the speed readout needs this.
 installByteMeter();
 
 // What the host hears of this frame's boot, on subscribe, so a failure before the host asks is not lost.
-const frameStatus = createFrameStatus();
-// The host subscribes as soon as its handshake is answered, before the chain mode has loaded what feeds it.
-const telemetry = createDeferredSubscription<'telemetry'>();
-
-/** The frame will never serve. A telemetry subscription still waiting on a chain mode ends with the same error. */
-function failFrame(error: Error): void {
-  frameStatus.fail(error);
-  telemetry.fail(error);
-}
+const boot = createFrameBoot();
 
 // No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
 window.addEventListener('vite:preloadError', event => {
@@ -70,7 +61,7 @@ window.addEventListener('vite:preloadError', event => {
   log.error('[dot.li protocol] Asset failed to load', payload);
   // The browser's message names the chunk. Only Safari omits it.
   const msg = payload === undefined ? 'no detail from the loader' : serializeError(payload);
-  failFrame(new ProtocolFatalError(`Protocol iframe asset failed to load: ${msg}`, { cause: payload }));
+  boot.fail(new ProtocolFatalError(`Protocol iframe asset failed to load: ${msg}`, { cause: payload }));
 });
 
 initSentry('protocol');
@@ -109,8 +100,8 @@ const serving = createServingTransport(
   }),
   { side: 'frame' },
 );
-serving.handleSubscription('frameStatus', frameStatus.handler);
-serving.handleSubscription('telemetry', telemetry.handler);
+serving.handleSubscription('frameStatus', boot.frameStatus);
+serving.handleSubscription('telemetry', boot.telemetry);
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
@@ -130,7 +121,7 @@ async function purgeWorkerCaches(): Promise<void> {
 /** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
 function failInit(message: string, cause?: unknown): void {
   log.error(`[dot.li protocol] ${message}`);
-  failFrame(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
+  boot.fail(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
 }
 
 async function init(): Promise<void> {
@@ -138,8 +129,7 @@ async function init(): Promise<void> {
   // No mode means an auth-only iframe.
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
-    telemetry.serve(idleTelemetry);
-    frameStatus.ready();
+    boot.ready();
     return;
   }
   // An unknown mode errors instead of silently going auth-only.
@@ -214,11 +204,11 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
     onOpen: (link, workerStatus) => {
       // The worker reports what it refuses, so these calls skip this frame's refusal report.
-      registerWorkerRelay(serving, link, workerStatus, frameStatus);
-      telemetry.serve(relayTelemetry(link));
+      registerWorkerRelay(serving, link, workerStatus, boot);
+      boot.serveTelemetry(relayTelemetry(link));
     },
   });
-  frameStatus.ready();
+  boot.ready();
 }
 
 async function initDirectMode(): Promise<void> {
@@ -240,11 +230,11 @@ async function initDirectMode(): Promise<void> {
   lightClient.subscribe(change => {
     if (change.kind === 'fatal') {
       log.error(`[dot.li protocol] Light client died, signaling fatal: ${change.message}`);
-      frameStatus.fail(new ProtocolFatalError(change.message));
+      boot.fail(new ProtocolFatalError(change.message));
     }
   });
 
-  telemetry.serve(
+  boot.serveTelemetry(
     createTelemetryHandler({
       onChainSync: provider.onChainSync,
       // Telemetry only, attached by the host to the resolution it is tracing.
@@ -278,7 +268,7 @@ async function initDirectMode(): Promise<void> {
 
   // The iframe serves its one parent, so one scope holds every connection.
   serveEngineScope(served, engine);
-  frameStatus.ready();
+  boot.ready();
 
   window.addEventListener('beforeunload', () => {
     engine.cleanup();
@@ -289,12 +279,10 @@ async function initDirectMode(): Promise<void> {
 async function initRpcMode(): Promise<void> {
   const { openGatewayChains } = await loadGatewayChains();
   const engine = createEngine(openGatewayChains());
-  // Trusted RPC runs no light client, so there is nothing to report.
-  telemetry.serve(idleTelemetry);
 
   // The iframe serves its one parent, so one scope holds every connection.
   serveEngineScope(served, engine);
-  frameStatus.ready();
+  boot.ready();
 
   window.addEventListener('beforeunload', () => {
     engine.cleanup();
@@ -303,5 +291,5 @@ async function initRpcMode(): Promise<void> {
 
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);
-  failFrame(new ProtocolInitFailedError(serializeError(err), { cause: err }));
+  boot.fail(new ProtocolInitFailedError(serializeError(err), { cause: err }));
 });
