@@ -7,6 +7,11 @@ import type { Timers } from '../timers.js';
 export interface ManualTimers extends Timers {
   /** Moves the clock `ms` on, firing each timer as it falls due, in order, and letting the work it starts settle. */
   advance: (ms: number) => Promise<void>;
+  /**
+   * The page frozen for `ms`: the clock moves on and nothing fires, so each timer due meanwhile fires late on the next
+   * `advance`.
+   */
+  freeze: (ms: number) => void;
 }
 
 interface Scheduled {
@@ -56,11 +61,15 @@ export function manualTimers(start = 0): ManualTimers {
       for (let due = nextDue(until); due !== undefined; due = nextDue(until)) {
         const [handle, { at, callback }] = due;
         scheduled.delete(handle);
-        now = at;
+        // A timer that fell due while frozen fires now, late, as a page that wakes up fires it.
+        now = Math.max(now, at);
         callback();
         await settle();
       }
       now = until;
+    },
+    freeze: ms => {
+      now += ms;
     },
   };
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { manualTimers } from './testing/manual-timers.js';
 import { withTimeout } from './with-timeout.js';
 
 class SlowError extends Error {}
@@ -96,5 +97,70 @@ describe('withTimeout', () => {
 
     // Then
     await settled;
+  });
+});
+
+describe('withTimeout on a page that freezes', () => {
+  beforeEach(() => {
+    // The manual timers move time themselves and settle on the real event loop.
+    vi.useRealTimers();
+  });
+
+  /** Work that settles only when the test says, with what the timed wait has heard so far. */
+  function timedWork(budgetMs: number, timers: ReturnType<typeof manualTimers>) {
+    let finish: (value: number) => void = () => undefined;
+    const work = new Promise<number>(resolve => {
+      finish = resolve;
+    });
+    const heard: string[] = [];
+    void withTimeout(work, budgetMs, () => new SlowError('too slow'), timers).then(
+      value => heard.push(`value ${String(value)}`),
+      (err: unknown) => heard.push(err instanceof SlowError ? 'timeout' : 'other'),
+    );
+    return { finish, heard };
+  }
+
+  it('As a visitor whose phone suspended the tab, the frozen minutes do not count and the work still gets its whole budget', async () => {
+    // Given work with a 90 s budget
+    const timers = manualTimers();
+    const { finish, heard } = timedWork(90_000, timers);
+
+    // When the page is frozen for five minutes, wakes up, and the work answers 80 s later
+    timers.freeze(300_000);
+    await timers.advance(80_000);
+    finish(7);
+    await timers.advance(0);
+
+    // Then
+    expect(heard).toEqual(['value 7']);
+  });
+
+  it('As a visitor whose phone suspended the tab, work that still does not answer fails one budget after the page wakes', async () => {
+    // Given
+    const timers = manualTimers();
+    const { heard } = timedWork(90_000, timers);
+
+    // When
+    timers.freeze(300_000);
+    await timers.advance(89_999);
+    const beforeBudget = [...heard];
+    await timers.advance(1);
+
+    // Then
+    expect(beforeBudget).toEqual([]);
+    expect(heard).toEqual(['timeout']);
+  });
+
+  it('As a visitor in a throttled background tab, a timer a second late still times out', async () => {
+    // Given
+    const timers = manualTimers();
+    const { heard } = timedWork(90_000, timers);
+
+    // When the timer fires a second after it was due
+    timers.freeze(91_000);
+    await timers.advance(0);
+
+    // Then
+    expect(heard).toEqual(['timeout']);
   });
 });

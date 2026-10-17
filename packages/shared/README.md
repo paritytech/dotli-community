@@ -36,6 +36,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
   that ran it and is not kept, so the next caller loads again, and only the first failure is passed to the caller's
   report hook.
 - A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
+- A timeout counts only time the page runs. A timer that fires seconds after it was due means the page was frozen, as a
+  backgrounded phone tab is, and the work with it, so the wait starts its budget again.
 - The logger writes to the console only in debug builds, read from the `VITE_APP_DEBUG` build flag at load so the first
   log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`.
 - Error helpers turn any thrown value into a string or a chain for wire formats, logs and Sentry.
