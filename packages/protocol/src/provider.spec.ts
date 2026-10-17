@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, expect, it, vi } from 'vitest';
 import type { MessageTarget } from './frame.js';
 import { createProviderPair } from './provider.fake.js';

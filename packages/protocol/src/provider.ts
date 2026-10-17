@@ -1,7 +1,9 @@
-/**
- * Providers move bytes between two contexts and know nothing about their meaning. The transport above them frames,
- * encodes and decodes.
- */
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Providers move bytes between two contexts and know nothing about their meaning. The transport above them frames,
+// encodes and decodes.
+
 import type { MessageTarget } from './frame.js';
 
 export interface Provider {
