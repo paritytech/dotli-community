@@ -838,6 +838,23 @@ describe('protocol SharedWorker', () => {
     });
   });
 
+  it('As a dotli maintainer, a chain message the worker refuses is logged there as other failed requests are', async () => {
+    // Given a tab on a synced worker
+    const worker = await bootWorker(fakeLightClient());
+    const tab = worker.connect();
+    await readyStatus(tab);
+
+    // When the tab sends on a connection the worker does not hold
+    const sent = tab.transport.request('chainSend', { connectionId: 'gone', message: '{"jsonrpc":"2.0"}' });
+
+    // Then the tab hears the refusal, and the worker logged it
+    await expect(sent).rejects.toThrow();
+    expect(worker.logs).toContainEqual({
+      level: 'warn',
+      message: expect.stringContaining('[dot.li SW] chainSend failed') as string,
+    });
+  });
+
   it("As a dotli maintainer, the worker's span for a request carries the page load of the tab that sent it", async () => {
     // Given two tabs on a synced worker, one with a malformed resolution id
     const worker = await bootWorker(fakeLightClient());

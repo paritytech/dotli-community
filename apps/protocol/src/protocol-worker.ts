@@ -298,6 +298,18 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     };
   }
 
+  /** A chain message gets no span, which would swamp the request spans, but its failure is logged as theirs are. */
+  function loggedChainSend(handler: RequestHandler<'chainSend'>): RequestHandler<'chainSend'> {
+    return async (payload, context) => {
+      try {
+        await handler(payload, context);
+      } catch (error) {
+        log.warn(`${TAG} chainSend failed`, error);
+        throw error;
+      }
+    };
+  }
+
   /** Spans a subscription until the event that answers it, or its end, or the tab stopping it first. */
   function tracedSubscription<M extends 'chainConnect' | 'resolveDotName'>(
     method: M,
@@ -398,7 +410,10 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         (payload, context, sink) => scopeOf(session).connect(payload, context, sink),
       ),
     );
-    transport.handleRequest('chainSend', (payload, context) => scopeOf(session).send(payload, context));
+    transport.handleRequest(
+      'chainSend',
+      loggedChainSend((payload, context) => scopeOf(session).send(payload, context)),
+    );
   }
 
   /** Beats each port from this worker's clock, and lets go of one that sent nothing for too many beats. */

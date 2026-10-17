@@ -109,8 +109,9 @@ export const LISTENER_DELIVERY = 'listener.delivery';
 export const PROTOCOL_REQUEST = 'protocol.request';
 
 /**
- * A protocol message dropped on receipt. Tagged `outcome` (refused), `reason` (malformed, invalid or not_bytes) and
- * `side` (host, frame or worker). Only the iframe's provider facing its parent counts `not_bytes`.
+ * A protocol message dropped on receipt. Tagged `outcome` (refused), `side` (host, frame or worker) and `reason`:
+ * `malformed` for bytes that are no message, `invalid` for a message whose values its method refuses, and `not_bytes`
+ * for data that is not an `ArrayBuffer`, which a host page of an earlier release sends.
  */
 export const PROTOCOL_WIRE_REFUSED = 'protocol.wire_refused';
 
