@@ -4,7 +4,7 @@
 // Wire codecs for the chain, resolver and manifest values the frame carries. An absent optional field stays absent
 // after decoding, and a manifest's `$v` is not sent because only version 1 is carried.
 
-import { Enum, Option, Struct, Tuple, Vector, _void, bool, enhanceCodec, str, type Codec } from 'scale-ts';
+import { Enum, Struct, Tuple, Vector, _void, enhanceCodec, str, type Codec } from 'scale-ts';
 import type {
   ChainDetail,
   ChainPeer,
@@ -15,7 +15,7 @@ import type {
 } from '@dotli/chains';
 import type { ChainRole } from '@dotli/config';
 import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-import { f64, oneOf, u32Exact } from './codec-primitives.js';
+import { f64, oneOf, strictBool, strictOption, u32Exact } from './codec-primitives.js';
 
 const CHAIN_ROLES = Object.keys({
   relay: true,
@@ -70,12 +70,12 @@ function dropUndefined<T>(wire: object): T {
 const chainSyncEventWire = Struct({
   chain: chainRoleCodec,
   kind: chainSyncKindCodec,
-  reason: Option(str),
-  peers: Option(u32Exact),
-  isSyncing: Option(bool),
-  at: Option(u32Exact),
-  target: Option(u32Exact),
-  finalized: Option(u32Exact),
+  reason: strictOption(str),
+  peers: strictOption(u32Exact),
+  isSyncing: strictOption(strictBool),
+  at: strictOption(u32Exact),
+  target: strictOption(u32Exact),
+  finalized: strictOption(u32Exact),
 });
 
 export const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
@@ -97,8 +97,8 @@ const chainPeerCodec: Codec<ChainPeer> = Struct({ peerId: str, roles: str, bestN
 
 const chainDetailWire = Struct({
   chain: chainRoleCodec,
-  dbCache: Option(oneOf(['hit', 'miss'] as const)),
-  peers: Option(Vector(chainPeerCodec)),
+  dbCache: strictOption(oneOf(['hit', 'miss'] as const)),
+  peers: strictOption(Vector(chainPeerCodec)),
 });
 
 export const chainDetailCodec: Codec<ChainDetail> = enhanceCodec(
@@ -111,7 +111,7 @@ const rootManifestWire = Struct({
   displayName: str,
   description: str,
   icon: Struct({ cid: str, format: str }),
-  trustedProducts: Option(Vector(Tuple(str, Vector(str)))),
+  trustedProducts: strictOption(Vector(Tuple(str, Vector(str)))),
 });
 
 export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
@@ -138,17 +138,21 @@ export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
   },
 );
 
-const appVersionCodec = Tuple(f64, f64, f64, Option(str));
+const appVersionCodec = Tuple(f64, f64, f64, strictOption(str));
 
-const widgetDimensionsCodec = Struct({ height: Vector(f64), width: Option(f64) });
+const widgetDimensionsCodec = Struct({ height: Vector(f64), width: strictOption(f64) });
 
-const workerIncludesCodec = Struct({ chat: Option(bool), pocket: Option(bool), input: Option(bool) });
+const workerIncludesCodec = Struct({
+  chat: strictOption(strictBool),
+  pocket: strictOption(strictBool),
+  input: strictOption(strictBool),
+});
 
 const executableManifestWire = Enum({
   app: Struct({ appVersion: appVersionCodec }),
   widget: Struct({
     appVersion: appVersionCodec,
-    description: Option(str),
+    description: strictOption(str),
     dimensions: widgetDimensionsCodec,
   }),
   worker: Struct({

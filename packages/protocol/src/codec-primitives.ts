@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// scale-ts integer encoders write through DataView and silently wrap or truncate, and its decoders read from a
-// view's whole buffer. These wrappers refuse what the wire cannot carry exactly.
+// scale-ts integer encoders write through DataView and silently wrap or truncate, its decoders read from a view's whole
+// buffer, and its `Option` and `bool` read any non-zero byte as present or true. These wrappers refuse what the wire
+// cannot carry exactly.
 
 import { Option, createCodec, createDecoder, enhanceCodec, u32, u64, u8, type Codec, type Decoder } from 'scale-ts';
 
@@ -58,10 +59,39 @@ export const f64: Codec<number> = createCodec(
   }),
 );
 
-/** `Option` on the wire, `null` for none. */
+/** `bool` on the wire, throws `RangeError` on a byte other than 0 or 1. */
+export const strictBool: Codec<boolean> = enhanceCodec(
+  u8,
+  (value: boolean) => (value ? 1 : 0),
+  (byte: number) => {
+    if (byte > 1) {
+      throw new RangeError(`${String(byte)} is not a bool`);
+    }
+    return byte === 1;
+  },
+);
+
+/** `Option` on the wire, throws `RangeError` on a tag other than 0 or 1. */
+export function strictOption<T>(inner: Codec<T>): Codec<T | undefined> {
+  return createCodec(
+    Option(inner).enc,
+    createDecoder(input => {
+      const tag = u8.dec(input);
+      if (tag === 0) {
+        return undefined;
+      }
+      if (tag !== 1) {
+        throw new RangeError(`${String(tag)} is not an option tag`);
+      }
+      return inner.dec(input);
+    }),
+  );
+}
+
+/** A strict `Option` on the wire, `null` for none. */
 export function nullable<T>(inner: Codec<T>): Codec<T | null> {
   return enhanceCodec<T | undefined, T | null>(
-    Option(inner),
+    strictOption(inner),
     (value: T | null) => value ?? undefined,
     (value: T | undefined) => value ?? null,
   );

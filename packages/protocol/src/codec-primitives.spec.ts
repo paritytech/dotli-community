@@ -1,9 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Bytes, Struct, str } from 'scale-ts';
+import { Bytes, Struct, str, type Decoder } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { decodeExact, f64, nullable, oneOf, safeInteger, u32Exact } from './codec-primitives.js';
+import {
+  decodeExact,
+  f64,
+  nullable,
+  oneOf,
+  safeInteger,
+  strictBool,
+  strictOption,
+  u32Exact,
+} from './codec-primitives.js';
 
 function toBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.slice().buffer;
@@ -67,6 +76,29 @@ describe('codec primitives', () => {
 
     // Then
     expect(received).toEqual([null, 'x']);
+  });
+
+  it('As a receiver, I refuse an option, a nullable or a bool whose tag is neither 0 nor 1', () => {
+    // Given
+    const decoders: Decoder<unknown>[] = [strictOption(str).dec, nullable(str).dec, strictBool.dec];
+
+    // When / Then
+    for (const decoder of decoders) {
+      expect(() => decodeExact(decoder, toBuffer(new Uint8Array([2])))).toThrow(RangeError);
+    }
+  });
+
+  it('As a sender, I send options and bools and they arrive as sent', () => {
+    // Given
+    const option = strictOption(str);
+
+    // When
+    const options = [undefined, 'x'].map(value => decodeExact(option.dec, toBuffer(option.enc(value))));
+    const bools = [true, false].map(value => decodeExact(strictBool.dec, toBuffer(strictBool.enc(value))));
+
+    // Then
+    expect(options).toEqual([undefined, 'x']);
+    expect(bools).toEqual([true, false]);
   });
 
   it('As a receiver, I refuse a truncated value', () => {
