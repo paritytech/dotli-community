@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { chainDetailTelemetry, chainSyncTelemetry, smoldotDbTelemetry } from './envelopes.js';
+import { chainDetailTelemetry, chainSyncTelemetry, smoldotDbTelemetry } from './telemetry-events.js';
 
 describe('telemetry events', () => {
   it('As the host, I hear a chain sync event with every fact kept', () => {

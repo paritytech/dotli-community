@@ -8,7 +8,7 @@ import { expect } from '@playwright/test';
 import { ERROR_TITLES, HOST_ERRORS } from '../../src/error-copy.js';
 import { PORT } from '../env.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
-import { recordProtocolMessages, waitForProtocolMessage, type MessageMatch } from './helpers/envelopes.js';
+import { recordProtocolMessages, waitForProtocolMessage, type MessageMatch } from './helpers/wire-recorder.js';
 import { test } from './helpers/shared-mode-reset.js';
 import { BLOCK_PROVIDER_WASM, PROTOCOL_SHARED_WORKER, prependToWorker } from './helpers/worker-prelude.js';
 

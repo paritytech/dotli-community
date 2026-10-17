@@ -26,7 +26,7 @@ import { createFrameStatus } from './frame-status.js';
 import { connectSharedWorker, type SharedWorkerLinkDeps } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 import { registerWorkerRelay } from './worker-relay.js';
-import { HEARTBEAT_MISSED_BEATS } from './worker-messages.js';
+import { HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
 type ChainDetail = Parameters<Parameters<WorkerResolver['onChainDetail']>[0]>[0];

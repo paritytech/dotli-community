@@ -9,7 +9,7 @@ import { createConsumerTransport, createPortProvider, type ConsumerTransport } f
 import { log, realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { disposeOnPageHide } from './worker-messages.js';
+import { disposeOnPageHide } from './worker-port.js';
 
 /** The one `frameStatus` subscription to the worker. */
 export interface WorkerStatus {

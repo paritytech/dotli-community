@@ -30,7 +30,7 @@ import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
-import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-messages.js';
+import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
 /** The worker global, narrowed to what the worker uses. */
 export interface WorkerScope {

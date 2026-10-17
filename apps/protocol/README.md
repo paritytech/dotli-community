@@ -44,9 +44,9 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 
 ```mermaid
 flowchart LR
-  host[host page] -- postMessage --> router[serving transport]
-  router --> stores["shared stores, local wallet"]
-  router --> engine --> pool[chain pool]
+  host[host page] -- postMessage --> serving[serving transport]
+  serving --> stores["shared stores, local wallet"]
+  serving --> engine --> pool[chain pool]
   pool --> smoldot["smoldot, in the iframe or a SharedWorker"]
   pool --> gateway[WSS gateway]
 ```

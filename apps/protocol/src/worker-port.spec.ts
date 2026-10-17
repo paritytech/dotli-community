@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { disposeOnPageHide } from './worker-messages.js';
+import { disposeOnPageHide } from './worker-port.js';
 
 /** The iframe's page, which hides when the host removes the frame, the tab navigates or the page enters the cache. */
 function iframePage(): { target: EventTarget; hide: (persisted: boolean) => void } {

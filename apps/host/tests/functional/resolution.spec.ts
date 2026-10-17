@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { chromium, expect, type Page } from '@playwright/test';
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from '../env.js';
 import { setupTest } from './helpers/context.js';
-import { recordProtocolMessages, waitForProtocolMessage } from './helpers/envelopes.js';
+import { recordProtocolMessages, waitForProtocolMessage } from './helpers/wire-recorder.js';
 import { waitForResolutionOutcome } from '../product-frame.js';
 import { BACKENDS, seedSettings } from './fixtures/settings.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from './fixtures/permissions.js';

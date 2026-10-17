@@ -7,7 +7,7 @@
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import type { SubscriptionHandler } from '@dotli/protocol';
 
-import { chainDetailTelemetry, chainSyncTelemetry, netBytesTelemetry, smoldotDbTelemetry } from './envelopes.js';
+import { chainDetailTelemetry, chainSyncTelemetry, netBytesTelemetry, smoldotDbTelemetry } from './telemetry-events.js';
 
 export interface TelemetryDeps {
   /** Replays each chain's latest state to a new listener, then hears each change. */
