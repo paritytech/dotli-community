@@ -64,8 +64,10 @@ flowchart TB
 - The consumer sends a handshake with its wire version and repeats it on a short interval until the serving side
   answers. The first answer wins and a repeat is harmless. The handshake starts when the iframe has loaded, and
   `listening` is a completed handshake.
-- A call made before the handshake succeeds is queued as a value and sent in call order once it does. Every post encodes
-  a fresh buffer, since a transferred buffer is detached. A subscription unsubscribed while queued is never sent.
+- A call made before the handshake succeeds waits in a task pool and is sent once it does, in call order and ahead of
+  any call made after. The pool is unbounded, so calls run side by side once the handshake is done. Every post encodes a
+  fresh buffer, since a transferred buffer is detached. A call given up, or a subscription unsubscribed, while it waits
+  is never sent.
 - A handshake that does not succeed in time fails with a timeout, measured on a clock that does not run while the page
   is frozen. When it fails, every queued call rejects and every queued subscription ends with the reason.
 - The serving side answers a call for a method it does not handle with an error at once.

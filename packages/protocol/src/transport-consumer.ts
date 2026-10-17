@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The consumer end of a transport, one per provider for the provider's whole life. It handshakes, holds calls until
-// the handshake is answered, and matches answers and legs to its calls by id. Every post encodes a fresh buffer, since
-// a transferred one is detached.
+// The consumer end of a transport, one per provider for the provider's whole life. It handshakes, holds calls in a task
+// pool until the handshake is over, and matches answers and legs to its calls by id. Every post encodes a fresh
+// buffer, since a transferred one is detached.
 
 import { m } from '@dotli/metrics';
 import { createAsyncTaskPool, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
@@ -100,6 +100,8 @@ interface RequestCall {
   method: RequestMethod;
   /** Encodes the call's leg when it is sent, so a payload the wire refuses fails the call then. */
   encode: () => ArrayBuffer;
+  /** Aborted when the call settles, so a call settled while it waits leaves the pool and never goes out. */
+  stop: AbortController;
   resolve: (answer: unknown) => void;
   reject: (error: Error) => void;
 }
@@ -110,6 +112,8 @@ interface SubscriptionCall {
   method: SubscriptionMethod;
   /** Encodes the call's leg when it is sent, so a payload the wire refuses ends the subscription then. */
   encode: () => ArrayBuffer;
+  /** Aborted when the subscription ends or is unsubscribed, so one that waits leaves the pool and never goes out. */
+  stop: AbortController;
   onEvent: (event: unknown) => void;
   endListeners: ((error: Error | null) => void)[];
   /** Stops listening to the call's signal. */
@@ -132,10 +136,17 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
 
   let phase: Phase = { name: 'idle' };
   let lastId = 0;
-  const queue: Call[] = [];
   const waiting = new Map<number, RequestCall>();
   const open = new Map<number, SubscriptionCall>();
-  const connectWaiters: { resolve: () => void; reject: (error: Error) => void }[] = [];
+  let endHandshake = (): void => undefined;
+  // Settles once the handshake succeeds or fails, or the transport is disposed. The phase says which.
+  const handshakeOver = new Promise<void>(resolve => {
+    endHandshake = resolve;
+  });
+  // Every call waits in this pool for the handshake to be over. It is unbounded, so calls run side by side once it is.
+  // Each call is posted one step after it was made or after the handshake ended, whichever is later, so calls go out in
+  // call order across the handshake, and a call made while the queue flushes goes out behind it.
+  const calls = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
   const handshakePool = createAsyncTaskPool({
     poolSize: 1,
     retryCount: Number.POSITIVE_INFINITY,
@@ -153,12 +164,9 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
 
   const closedBy = (): Error | null => (phase.name === 'failed' || phase.name === 'disposed' ? phase.error : null);
 
-  /** Takes a subscription out of the queue and the open map, wherever it still is. */
+  /** Takes a subscription out of the pool and the open map, wherever it still is. */
   const forget = (call: SubscriptionCall): void => {
-    const index = queue.indexOf(call);
-    if (index >= 0) {
-      queue.splice(index, 1);
-    }
+    call.stop.abort();
     if (open.get(call.id) === call) {
       open.delete(call.id);
     }
@@ -208,13 +216,37 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     }
   };
 
-  /** Sends now when connected, else waits in the queue. */
-  const place = (call: Call): void => {
-    if (phase.name === 'connected') {
-      send(call);
+  /** Settles a call with why it ends. Settling one already settled changes nothing. */
+  const fail = (call: Call, error: Error): void => {
+    if (call.kind === 'request') {
+      call.reject(error);
     } else {
-      queue.push(call);
+      end(call, error);
     }
+  };
+
+  /** Sends the call once the handshake is over, or fails it with why the transport closed. */
+  const place = (call: Call): void => {
+    const { signal } = call.stop;
+    calls
+      .call(
+        async () => {
+          await handshakeOver;
+          // The pool has already rejected a call stopped while it waited, and whatever stopped it settled it.
+          if (signal.aborted) {
+            return;
+          }
+          const closed = closedBy();
+          if (closed !== null) {
+            throw closed;
+          }
+          send(call);
+        },
+        { signal },
+      )
+      .catch((error: unknown) => {
+        fail(call, toError(error));
+      });
   };
 
   const onConnected = (): void => {
@@ -222,31 +254,8 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     if (phase.name !== 'connecting') {
       return;
     }
-    // The phase stays `connecting` until the queue is empty, so a call made from a listener meanwhile queues behind.
-    for (let call = queue.shift(); call !== undefined; call = queue.shift()) {
-      send(call);
-    }
-    if (closedBy() !== null) {
-      return;
-    }
     phase = { name: 'connected' };
-    for (const waiter of connectWaiters.splice(0)) {
-      waiter.resolve();
-    }
-  };
-
-  /** Settles calls that have already left the queue and the maps, once the phase says why they end. */
-  const settle = (calls: Call[], error: Error): void => {
-    for (const waiter of connectWaiters.splice(0)) {
-      waiter.reject(error);
-    }
-    for (const call of calls) {
-      if (call.kind === 'request') {
-        call.reject(toError(error));
-      } else {
-        end(call, error);
-      }
-    }
+    endHandshake();
   };
 
   const onHandshakeFailed = (error: unknown): void => {
@@ -254,9 +263,8 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     if (phase.name !== 'connecting') {
       return;
     }
-    const reason = toError(error);
-    phase = { name: 'failed', error: reason };
-    settle(queue.splice(0), reason);
+    phase = { name: 'failed', error: toError(error) };
+    endHandshake();
   };
 
   const postHandshake = (): void => {
@@ -356,17 +364,12 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       ).then(onConnected, onHandshakeFailed);
     },
 
-    whenConnected() {
+    async whenConnected() {
+      await handshakeOver;
       const closed = closedBy();
       if (closed !== null) {
-        return Promise.reject(closed);
+        throw closed;
       }
-      if (phase.name === 'connected') {
-        return Promise.resolve();
-      }
-      return new Promise((resolve, reject) => {
-        connectWaiters.push({ resolve, reject });
-      });
     },
 
     request(method, payload, callOptions = {}) {
@@ -379,25 +382,25 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
         }
         const id = nextId();
         const deadlineMs = callOptions.deadlineMs ?? null;
+        const stop = new AbortController();
         const call: RequestCall = {
           kind: 'request',
           id,
           method,
           encode: () => encodeWireMessage({ leg: 'request', id, method, deadlineMs, payload }),
+          stop,
           resolve: answer => {
             detach();
+            stop.abort();
             resolve(answer as Answer<typeof method>);
           },
           reject: error => {
             detach();
+            stop.abort();
             reject(error);
           },
         };
         const detach = onAborted(signal, () => {
-          const index = queue.indexOf(call);
-          if (index >= 0) {
-            queue.splice(index, 1);
-          }
           waiting.delete(call.id);
           call.reject(toError(signal?.reason));
         });
@@ -418,6 +421,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
         id,
         method,
         encode: () => encodeWireMessage({ leg: 'subscribe', id, method, deadlineMs, payload }),
+        stop: new AbortController(),
         onEvent: onEvent as (event: unknown) => void,
         endListeners: [],
         detach: () => undefined,
@@ -466,8 +470,10 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       }
       phase = { name: 'disposed', error: reason };
       stopHandshake.abort(reason);
+      // A call still in the pool finds the transport closed once the handshake is over.
+      endHandshake();
       const subscriptions = [...open.values()];
-      const calls = [...queue.splice(0), ...waiting.values(), ...subscriptions];
+      const sent = [...waiting.values(), ...subscriptions];
       waiting.clear();
       open.clear();
       for (const call of subscriptions) {
@@ -475,7 +481,9 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       }
       unsubscribeProvider();
       provider.dispose();
-      settle(calls, reason);
+      for (const call of sent) {
+        fail(call, reason);
+      }
     },
   };
 }

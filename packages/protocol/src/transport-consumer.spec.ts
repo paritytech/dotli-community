@@ -64,6 +64,38 @@ describe('createConsumerTransport', () => {
     expect(seen).toEqual(['1', '2', '3']);
   });
 
+  it('As a caller, my calls and subscriptions go out in call order across the handshake', async () => {
+    // Given
+    const { consumer, timers, peer, answerHandshake } = rawRig();
+    // Registered first, so it hears the handshake end before any queued call does.
+    const connected = consumer.whenConnected().then(() => {
+      consumer.subscribe('frameStatus', undefined, () => undefined);
+      void consumer.request('resolveOwner', { label: 'a' });
+    });
+    void consumer.request('heartbeat', undefined);
+    consumer.subscribe('telemetry', undefined, () => undefined);
+    consumer.connect();
+    await timers.advance(0);
+    void consumer.request('warmup', undefined);
+
+    // When
+    answerHandshake();
+    consumer.subscribe('sharedAuthChanges', undefined, () => undefined);
+    await connected;
+    await timers.advance(0);
+
+    // Then
+    expect(peer.legs()).toEqual([
+      'request:handshake',
+      'request:heartbeat',
+      'subscribe:telemetry',
+      'request:warmup',
+      'subscribe:sharedAuthChanges',
+      'subscribe:frameStatus',
+      'request:resolveOwner',
+    ]);
+  });
+
   it("As a caller, my call answers with the frame's typed answer", async () => {
     // Given
     const { consumer, serving, timers } = rig();
@@ -141,6 +173,8 @@ describe('createConsumerTransport', () => {
     const { consumer, timers, peer } = rawRig();
     consumer.connect();
     const call = outcomeOf(consumer.request('heartbeat', undefined));
+    const onEnd = vi.fn();
+    consumer.subscribe('telemetry', undefined, () => undefined).onEnd(onEnd);
     await timers.advance(0);
     const [hello] = peer.heard;
     if (hello === undefined) {
@@ -159,6 +193,9 @@ describe('createConsumerTransport', () => {
     // Then
     await expect(consumer.whenConnected()).rejects.toBeInstanceOf(ProtocolVersionMismatchError);
     expect(await call).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(onEnd.mock.calls[0]?.[0]).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(peer.legs()).not.toContain('subscribe:telemetry');
     const heard = peer.heard.length;
     await timers.advance(RETRY_MS * 10);
     expect(peer.heard).toHaveLength(heard);
