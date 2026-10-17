@@ -12,6 +12,7 @@ import {
   strictBool,
   strictOption,
   u32Exact,
+  u8Exact,
 } from './codec-primitives.js';
 
 function toBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -36,6 +37,7 @@ describe('codec primitives', () => {
     // Given
     const distorted = [1.5, -1, 2 ** 53];
     const outsideU32 = [2 ** 32, 0.5, -1, Number.NaN];
+    const outsideU8 = [256, -1, 1.5];
 
     // When / Then
     for (const value of distorted) {
@@ -43,6 +45,9 @@ describe('codec primitives', () => {
     }
     for (const value of outsideU32) {
       expect(() => u32Exact.enc(value)).toThrow(RangeError);
+    }
+    for (const value of outsideU8) {
+      expect(() => u8Exact.enc(value)).toThrow(RangeError);
     }
   });
 

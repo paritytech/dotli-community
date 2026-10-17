@@ -3,9 +3,9 @@
 
 // The method table is the whole protocol: a method's position is its wire id, so new methods go at the end.
 
-import { Bytes, Enum, Struct, _void, str, u8, type Codec, type CodecType } from 'scale-ts';
+import { Bytes, Enum, Struct, _void, str, type Codec, type CodecType } from 'scale-ts';
 import type { ExecutableManifest, RootManifest } from '@dotli/resolver';
-import { nullable, oneOf, safeInteger } from './codec-primitives.js';
+import { nullable, oneOf, safeInteger, u8Exact } from './codec-primitives.js';
 import {
   chainDetailCodec,
   chainSyncEventCodec,
@@ -107,7 +107,7 @@ function isTelemetryEventValid(event: TelemetryEvent): boolean {
 
 export const PROTOCOL_METHODS = {
   // Never moved or changed, so a peer of any release can read the version it refuses.
-  handshake: request(Struct({ version: u8, resolutionId: nullable(str) }), _void),
+  handshake: request(Struct({ version: u8Exact, resolutionId: nullable(str) }), _void),
   heartbeat: request(_void, _void),
   warmup: request(_void, _void),
   resolveOwner: request(label, nullable(str)),

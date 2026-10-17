@@ -44,6 +44,18 @@ export const u32Exact: Codec<number> = enhanceCodec(
   (value: number) => value,
 );
 
+/** `u8` on the wire, throws `RangeError` outside the integers `0..255`. */
+export const u8Exact: Codec<number> = enhanceCodec(
+  u8,
+  (value: number) => {
+    if (!Number.isInteger(value) || value < 0 || value > 0xff) {
+      throw new RangeError(`${String(value)} is not a u8`);
+    }
+    return value;
+  },
+  (value: number) => value,
+);
+
 /** Eight bytes little-endian. */
 export const f64: Codec<number> = createCodec(
   (value: number) => {

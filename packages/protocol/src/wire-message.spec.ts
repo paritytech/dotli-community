@@ -234,13 +234,18 @@ describe('wire message', () => {
     expect(long).toMatchObject({ ok: false, reason: 'malformed' });
   });
 
-  it('As a sender, I cannot encode an id or deadline the wire would distort', () => {
+  it('As a sender, I cannot encode an id, deadline, handshake version or method the wire would distort', () => {
     // Given
     const base = { leg: 'request', method: 'warmup', payload: undefined } as const;
+    const hello = { leg: 'request', id: 1, method: 'handshake', deadlineMs: null } as const;
 
     // When / Then
     expect(() => encodeWireMessage({ ...base, id: 1, deadlineMs: 1.5 })).toThrow(RangeError);
     expect(() => encodeWireMessage({ ...base, id: 2 ** 32, deadlineMs: null })).toThrow(RangeError);
+    expect(() => encodeWireMessage({ ...hello, payload: { version: 256, resolutionId: null } })).toThrow(RangeError);
+    expect(() => encodeWireMessage({ ...base, id: 1, deadlineMs: null, method: 'nope' as 'warmup' })).toThrow(
+      RangeError,
+    );
   });
 
   it('As a sender, I keep at most 2000 characters of a stack', () => {

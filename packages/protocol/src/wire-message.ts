@@ -3,9 +3,9 @@
 
 // One message is a header (id, method index, leg) followed by the leg's codec from the method table.
 
-import { Struct, createDecoder, str, u8, type Codec } from 'scale-ts';
+import { Struct, createDecoder, str, type Codec } from 'scale-ts';
 import { errorName, serializeError, toError } from '@dotli/shared';
-import { decodeExact, nullable, safeInteger, u32Exact } from './codec-primitives.js';
+import { decodeExact, nullable, safeInteger, u32Exact, u8Exact } from './codec-primitives.js';
 import {
   METHOD_NAMES,
   PROTOCOL_METHODS,
@@ -147,8 +147,8 @@ function encodeBody(m: LooseMessage, entry: LooseEntry): Uint8Array[] {
       expectKind(entry, 'request');
       const outcome = m.outcome;
       return outcome.ok
-        ? [u8.enc(0), required(entry.answer).enc(outcome.answer)]
-        : [u8.enc(1), wireErrorCodec.enc(outcome.error)];
+        ? [u8Exact.enc(0), required(entry.answer).enc(outcome.answer)]
+        : [u8Exact.enc(1), wireErrorCodec.enc(outcome.error)];
     }
     case 'subscribe':
       expectKind(entry, 'subscription');
@@ -172,7 +172,7 @@ function decodeBody(leg: Leg, entry: LooseEntry, input: Uint8Array): Body {
       return { deadlineMs: deadlineCodec.dec(input), payload: entry.payload.dec(input) };
     case 'response': {
       expectKind(entry, 'request');
-      const tag = u8.dec(input);
+      const tag = u8Exact.dec(input);
       if (tag === 0) {
         return { outcome: { ok: true, answer: required(entry.answer).dec(input) } };
       }
@@ -210,8 +210,8 @@ export function encodeWireMessage(message: WireHeader): ArrayBuffer {
   const loose = message as LooseMessage;
   return concat([
     u32Exact.enc(loose.id),
-    u8.enc(METHOD_NAMES.indexOf(loose.method)),
-    u8.enc(LEGS.indexOf(loose.leg)),
+    u8Exact.enc(METHOD_NAMES.indexOf(loose.method)),
+    u8Exact.enc(LEGS.indexOf(loose.leg)),
     ...encodeBody(loose, entryOf(loose.method)),
   ]);
 }
@@ -229,8 +229,8 @@ export function decodeWireMessage(data: ArrayBuffer): DecodedWireMessage {
     message = decodeExact(
       createDecoder(input => {
         const id = u32Exact.dec(input);
-        const methodIndex = u8.dec(input);
-        const legIndex = u8.dec(input);
+        const methodIndex = u8Exact.dec(input);
+        const legIndex = u8Exact.dec(input);
         const method = METHOD_NAMES[methodIndex];
         const leg = LEGS[legIndex];
         if (method === undefined || leg === undefined) {
