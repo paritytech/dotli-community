@@ -2,15 +2,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Stands in for the protocol iframe, so a test drives the real host and sandbox with no chain and no network. The
-// fake runs in the frame's own origin and answers the host over the same `dotli:protocol` envelopes.
+// fake runs in the frame's own origin and answers the host through the real serving transport, which the wire bundle
+// gives it.
 
+import { readFile } from 'node:fs/promises';
 import { expect, type Frame, type Page } from '@playwright/test';
+import type { Answer, SubscriptionSink } from '@dotli/protocol';
 import { PORT } from '../../env.js';
+import { WIRE_BUNDLE_PATH } from '../global-setup.js';
+import type * as Wire from '../wire/protocol-wire.js';
 
 const PROTOCOL_HOST = `host.localhost:${PORT}`;
 
-/** Serves `script` as the protocol iframe's document. Registered on the page, so every rebuild of the frame gets it. */
+/**
+ * Serves `script` as the protocol iframe's document, after the wire bundle that gives it the global `dotliWire`.
+ * Registered on the page, so every rebuild of the frame gets it.
+ */
 export async function mockProtocolIframe(page: Page, script: string): Promise<void> {
+  const wire = await readFile(WIRE_BUNDLE_PATH, 'utf8');
+  // The HTML parser ends a script at this text wherever it stands, even inside a string.
+  if (/<\/script/i.test(wire)) {
+    throw new Error(`${WIRE_BUNDLE_PATH} holds "</script", which would end its inline tag early`);
+  }
   await page.route('**', async route => {
     const isProtocolDoc =
       route.request().url().includes(PROTOCOL_HOST) && route.request().resourceType() === 'document';
@@ -20,109 +33,35 @@ export async function mockProtocolIframe(page: Page, script: string): Promise<vo
     }
     await route.fulfill({
       contentType: 'text/html',
-      body: `<!DOCTYPE html><html><body><script>${script}</script></body></html>`,
+      body: `<!DOCTYPE html><html><body><script>${wire}</script><script>${script}</script></body></html>`,
     });
   });
 }
 
-const READY = `window.parent.postMessage({namespace:"dotli:protocol",kind:"ready"},"*");`;
-
-// Retried until the parent blanks the iframe, since a single post can land before any waiter is queued.
-export const initFailed = (message: string): string => `
-  window.addEventListener("load", function() {
-    var msg = {
-      namespace: "dotli:protocol",
-      kind: "init-failed",
-      message: ${JSON.stringify(message)},
-    };
-    var delay = 20;
-    var attempts = 0;
-    function post() {
-      if (attempts++ >= 12) return;
-      try { window.parent.postMessage(msg, "*"); } catch (e) { return; }
-      delay = Math.min(delay * 2, 500);
-      setTimeout(post, delay);
-    }
-    post();
-  });
-`;
-
-export const fatalOnResolve = (message: string): string => `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      window.parent.postMessage({
-        namespace: "dotli:protocol",
-        kind: "fatal",
-        message: ${JSON.stringify(message)},
-      }, "*");
-    }
-  });
-`;
-
-export const errorResolveResponse = (error: string, delayMs = 0, errorName?: string): string => `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      var id = e.data.id;
-      setTimeout(function() {
-        window.parent.postMessage({
-          namespace: "dotli:protocol",
-          kind: "response",
-          id: id,
-          ok: false,
-          error: ${JSON.stringify(error)},
-          errorName: ${errorName === undefined ? 'undefined' : JSON.stringify(errorName)},
-        }, "*");
-      }, ${String(delayMs)});
-    }
-  });
-`;
-
-export const nullResolveResponse = `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      window.parent.postMessage({
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: e.data.id,
-        ok: true,
-        result: null,
-      }, "*");
-    }
-  });
-`;
-
-export const successfulResolveResponse = (cid: string): string => `
-  ${READY}
-  window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
-      window.parent.postMessage({
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: e.data.id,
-        ok: true,
-        result: ${JSON.stringify(cid)},
-      }, "*");
-    }
-  });
-`;
-
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';
 
-/** What the fake answers `resolveDotName` with. */
-export type FakeResolve = { kind: 'cid'; cid: string } | { kind: 'fatal'; message: string };
+/**
+ * What the fake answers `resolveDotName` with. `none` is a name with no content, `error` ends the resolution with an
+ * error of that name after `delayMs`, and `fatal` ends the frame's status as a crash.
+ */
+export type FakeResolve =
+  | { kind: 'cid'; cid: string }
+  | { kind: 'none' }
+  | { kind: 'error'; message: string; name?: string; delayMs?: number }
+  | { kind: 'fatal'; message: string };
 
 export interface FakeProtocolOptions {
-  resolve: FakeResolve;
+  /** Unset, a resolution is never answered. */
+  resolve?: FakeResolve;
+  /** Ends the frame's status as a boot that cannot start, with this message, so the frame is never ready. */
+  initFailed?: string;
   /** Hex of each block the fake can serve, by CID. */
   blocks?: Record<string, string>;
   /** Per CID. A CID with no mode is served. */
   modes?: Record<string, BlockMode>;
-  /** What `resolveRootManifest` answers, as the protocol frame sends it. None published by default. */
-  rootManifest?: unknown;
+  /** What `resolveRootManifest` answers. None published by default. */
+  rootManifest?: Answer<'resolveRootManifest'>;
 }
 
 /** What a test reads and steers in the fake, through `window.__fakeProtocol` in the protocol frame. */
@@ -134,29 +73,48 @@ export interface FakeProtocolControl {
   release: (cid: string) => void;
 }
 
-// Serialized into the frame, so it uses nothing from its module scope and answers in the frame's own words.
+// Serialized into the frame, so it uses nothing from its module scope but types, and reaches the wire through the
+// bundle's global.
 function runFakeProtocol(options: FakeProtocolOptions): void {
+  const wire = (window as unknown as { dotliWire: typeof Wire }).dotliWire;
   const blocks = options.blocks ?? {};
   const modes: Record<string, BlockMode> = { ...options.modes };
   const gets: Record<string, number> = {};
   const held: { cid: string; connectionId: string; rpcId: unknown }[] = [];
-  const post = (message: Record<string, unknown>): void => {
-    window.parent.postMessage({ namespace: 'dotli:protocol', ...message }, '*');
-  };
-  const respond = (id: unknown, result: unknown): void => {
-    post({ kind: 'response', id, ok: true, result });
+  const connections = new Map<string, SubscriptionSink<'chainConnect'>>();
+  const statuses = new Set<SubscriptionSink<'frameStatus'>>();
+  const stopNothing = (): void => undefined;
+
+  const reply = (connectionId: string, message: unknown): void => {
+    connections.get(connectionId)?.send({ tag: 'message', value: JSON.stringify(message) });
   };
   const answerBlock = (connectionId: string, rpcId: unknown, cid: string): void => {
     const hex = blocks[cid];
-    const message =
+    reply(
+      connectionId,
       hex === undefined
         ? { jsonrpc: '2.0', id: rpcId, error: { code: -32000, message: `no block ${cid}` } }
-        : { jsonrpc: '2.0', id: rpcId, result: `0x${hex}` };
-    post({ kind: 'chain-message', connectionId, message: JSON.stringify(message) });
+        : { jsonrpc: '2.0', id: rpcId, result: `0x${hex}` },
+    );
   };
   const failBlock = (connectionId: string, rpcId: unknown, cid: string): void => {
-    const message = { jsonrpc: '2.0', id: rpcId, error: { code: -32000, message: `e2e: ${cid} refused` } };
-    post({ kind: 'chain-message', connectionId, message: JSON.stringify(message) });
+    reply(connectionId, { jsonrpc: '2.0', id: rpcId, error: { code: -32000, message: `e2e: ${cid} refused` } });
+  };
+  const askBlock = (connectionId: string, text: string): void => {
+    const rpc = JSON.parse(text) as { id?: unknown; method?: string; params?: string[] };
+    const cid = rpc.params?.[0];
+    if (rpc.method !== 'bitswap_v1_get' || cid === undefined) {
+      return;
+    }
+    gets[cid] = (gets[cid] ?? 0) + 1;
+    const mode = modes[cid] ?? 'serve';
+    if (mode === 'fail') {
+      failBlock(connectionId, rpc.id, cid);
+    } else if (mode === 'hold' || (mode === 'hold-first' && gets[cid] === 1)) {
+      held.push({ cid, connectionId, rpcId: rpc.id });
+    } else {
+      answerBlock(connectionId, rpc.id, cid);
+    }
   };
   const control: FakeProtocolControl = {
     gets,
@@ -173,60 +131,116 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   };
   Object.defineProperty(window, '__fakeProtocol', { value: control });
 
-  window.addEventListener('message', event => {
-    const data = event.data as {
-      namespace?: string;
-      kind?: string;
-      id?: unknown;
-      method?: string;
-      payload?: { connectionId?: string; message?: string };
-    } | null;
-    if (data?.namespace !== 'dotli:protocol' || data.kind !== 'request') {
-      return;
+  const serving = wire.createServingTransport(
+    wire.createWindowProvider({ listen: window, peer: () => window.parent, origin: () => true }),
+    { side: 'frame', count: () => undefined },
+  );
+
+  serving.handleSubscription('frameStatus', (_payload, _context, sink) => {
+    if (options.initFailed !== undefined) {
+      sink.end(new wire.ProtocolInitFailedError(options.initFailed));
+      return stopNothing;
     }
-    const method = data.method;
-    if (method === 'resolveDotName') {
-      if (options.resolve.kind === 'fatal') {
-        post({ kind: 'fatal', message: options.resolve.message });
-      } else {
-        respond(data.id, options.resolve.cid);
+    sink.send(undefined);
+    statuses.add(sink);
+    return () => {
+      statuses.delete(sink);
+    };
+  });
+  // The fake has no light client to report on and no other tab signing in.
+  serving.handleSubscription('telemetry', () => stopNothing);
+  serving.handleSubscription('sharedAuthChanges', () => stopNothing);
+
+  serving.handleSubscription('resolveDotName', (_payload, _context, sink) => {
+    const resolve = options.resolve;
+    if (resolve === undefined) {
+      return stopNothing;
+    }
+    switch (resolve.kind) {
+      case 'cid':
+      case 'none':
+        sink.send({ tag: 'resolved', value: resolve.kind === 'cid' ? resolve.cid : null });
+        sink.end();
+        return stopNothing;
+      case 'fatal':
+        for (const status of [...statuses]) {
+          status.end(new wire.ProtocolFatalError(resolve.message));
+        }
+        return stopNothing;
+      case 'error': {
+        const timer = setTimeout(() => {
+          const error = new Error(resolve.message);
+          if (resolve.name !== undefined) {
+            error.name = resolve.name;
+          }
+          sink.end(error);
+        }, resolve.delayMs ?? 0);
+        return () => {
+          clearTimeout(timer);
+        };
       }
-    } else if (method === 'resolveRootManifest') {
-      respond(data.id, options.rootManifest ?? { kind: 'empty' });
-    } else if (method === 'resolveExecutableManifest') {
-      respond(data.id, { kind: 'empty' });
-    } else if (method === 'localWalletRead') {
-      respond(data.id, { status: 'none' });
-    } else if (method === 'chainSend') {
-      respond(data.id, null);
-      const connectionId = data.payload?.connectionId ?? '';
-      const rpc = JSON.parse(data.payload?.message ?? '{}') as { id?: unknown; method?: string; params?: string[] };
-      const cid = rpc.params?.[0];
-      if (rpc.method !== 'bitswap_v1_get' || cid === undefined) {
-        return;
-      }
-      gets[cid] = (gets[cid] ?? 0) + 1;
-      const mode = modes[cid] ?? 'serve';
-      if (mode === 'fail') {
-        failBlock(connectionId, rpc.id, cid);
-      } else if (mode === 'hold' || (mode === 'hold-first' && gets[cid] === 1)) {
-        held.push({ cid, connectionId, rpcId: rpc.id });
-      } else {
-        answerBlock(connectionId, rpc.id, cid);
-      }
-    } else {
-      // Storage reads find nothing, and writes, connects and the warmup succeed.
-      respond(data.id, null);
     }
   });
-  post({ kind: 'listening' });
-  post({ kind: 'ready' });
+  serving.handleRequest('resolveRootManifest', () => options.rootManifest ?? { kind: 'empty' as const });
+  serving.handleRequest('resolveExecutableManifest', () => ({ kind: 'empty' as const }));
+  serving.handleRequest('localWalletRead', () => ({ tag: 'none' as const, value: undefined }));
+
+  serving.handleSubscription('chainConnect', ({ connectionId }, _context, sink) => {
+    connections.set(connectionId, sink);
+    sink.send({ tag: 'connected', value: undefined });
+    return () => {
+      connections.delete(connectionId);
+    };
+  });
+  serving.handleRequest('chainSend', ({ connectionId, message }): undefined => {
+    // After the send's own answer, as a light client's reply comes.
+    setTimeout(() => {
+      askBlock(connectionId, message);
+    }, 0);
+  });
+
+  // Storage reads and the owner lookup find nothing, and writes and the warmup succeed.
+  for (const method of ['resolveOwner', 'authStorageRead', 'modeStorageRead'] as const) {
+    serving.handleRequest(method, () => null);
+  }
+  for (const method of [
+    'warmup',
+    'authStorageWrite',
+    'authStorageClear',
+    'modeStorageWrite',
+    'modeStorageClear',
+    'localWalletSave',
+    'localWalletIdentity',
+    'localWalletForget',
+  ] as const) {
+    serving.handleRequest(method, () => undefined);
+  }
+}
+
+/** The fake frame's script for `options`, for `mockProtocolIframe`. */
+function fakeScript(options: FakeProtocolOptions): string {
+  return `(${runFakeProtocol.toString()})(${JSON.stringify(options)});`;
 }
 
 /** Serves the fake protocol frame for every protocol frame the page builds. */
 export async function fakeProtocol(page: Page, options: FakeProtocolOptions): Promise<void> {
-  await mockProtocolIframe(page, `(${runFakeProtocol.toString()})(${JSON.stringify(options)});`);
+  await mockProtocolIframe(page, fakeScript(options));
 }
+
+/** A frame whose boot cannot start. */
+export const initFailed = (message: string): string => fakeScript({ initFailed: message });
+
+/** A frame whose light client crashes once a name is asked for. */
+export const fatalOnResolve = (message: string): string => fakeScript({ resolve: { kind: 'fatal', message } });
+
+export const errorResolveResponse = (message: string, delayMs = 0, name?: string): string =>
+  fakeScript({
+    resolve: name === undefined ? { kind: 'error', message, delayMs } : { kind: 'error', message, delayMs, name },
+  });
+
+export const nullResolveResponse = fakeScript({ resolve: { kind: 'none' } });
+
+export const successfulResolveResponse = (cid: string): string => fakeScript({ resolve: { kind: 'cid', cid } });
 
 /** The protocol frame the page has now, waited for. */
 async function protocolFrame(page: Page): Promise<Frame> {

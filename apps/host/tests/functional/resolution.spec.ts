@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { chromium, expect, type Page } from '@playwright/test';
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from '../env.js';
 import { setupTest } from './helpers/context.js';
+import { recordProtocolMessages, waitForProtocolMessage } from './helpers/envelopes.js';
 import { waitForResolutionOutcome } from '../product-frame.js';
 import { BACKENDS, seedSettings } from './fixtures/settings.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from './fixtures/permissions.js';
@@ -49,43 +50,20 @@ test.describe('Resolution across chain backends', () => {
     });
 
     try {
-      // The rendered figure can change faster than a poll catches, so the envelope is the reliable signal.
-      await page.addInitScript(() => {
-        const seen: unknown[] = [];
-        (window as unknown as { __dotliPeerCounts: unknown[] }).__dotliPeerCounts = seen;
-        window.addEventListener('message', (event: MessageEvent) => {
-          const data = event.data as {
-            namespace?: string;
-            kind?: string;
-            syncKind?: string;
-            peers?: number;
-          } | null;
-          if (
-            data !== null &&
-            typeof data === 'object' &&
-            data.namespace === 'dotli:protocol' &&
-            data.kind === 'chain-sync' &&
-            data.syncKind === 'peers' &&
-            typeof data.peers === 'number'
-          ) {
-            seen.push(data);
-          }
-        });
-      });
+      // The rendered figure can change faster than a poll catches, so the recorded message is the reliable signal.
+      await recordProtocolMessages(page);
 
       // When
       await page.goto(BASE_URL, { waitUntil: 'commit' });
 
       // Then
-      const sawPeers = page.waitForFunction(
-        () => {
-          const seen = (window as unknown as { __dotliPeerCounts?: unknown[] }).__dotliPeerCounts;
-          return seen !== undefined && seen.length > 0;
-        },
-        undefined,
-        { timeout: TIMEOUT_MS },
+      const sawPeers = waitForProtocolMessage(
+        page,
+        { method: 'telemetry', leg: 'event', body: { event: { tag: 'chainSync', value: { kind: 'peers' } } } },
+        TIMEOUT_MS,
       );
-      await Promise.all([sawPeers, waitForResolutionOutcome(page, TIMEOUT_MS, 'smoldot-direct')]);
+      const [peers] = await Promise.all([sawPeers, waitForResolutionOutcome(page, TIMEOUT_MS, 'smoldot-direct')]);
+      expect(peers.body).toMatchObject({ event: { value: { peers: expect.any(Number) } } });
     } finally {
       await context.close();
     }

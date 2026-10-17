@@ -41,6 +41,8 @@ test-results/
 playwright-report/
 **/results.json
 apps/host/**/.auth/
+# Built by the functional suite's global setup.
+apps/host/tests/functional/.wire/
 # Machine-local cold-start runs. CI keeps its baseline as an artifact.
 apps/host/tests/performance/results/
 

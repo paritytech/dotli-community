@@ -55,4 +55,11 @@ flowchart LR
 - Wire and errors: `isProtocolEnvelope`, `ProtocolEnvelope`, `ProtocolRequestEnvelope`, `ProtocolRequestMap`,
   `getRequestSyncTimeoutMs`, `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`.
 
-There is no `testing` export.
+### `@dotli/protocol/testing`
+
+Test-only, for functional tests that fake the protocol frame and read its traffic in a real page. Never imported by
+shipped code.
+
+- `describeWireMessage`: a wire message as its method, leg, id and body, with bytes as hex, or null for data that does
+  not decode as one.
+- `createServingTransport` and `createWindowProvider`, so a page-side test bundle serves the host from this one entry.

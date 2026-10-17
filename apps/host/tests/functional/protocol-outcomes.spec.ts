@@ -8,11 +8,18 @@ import { expect } from '@playwright/test';
 import { ERROR_TITLES, HOST_ERRORS } from '../../src/error-copy.js';
 import { PORT } from '../env.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
-import { recordProtocolEnvelopes, waitForEnvelope } from './helpers/envelopes.js';
+import { recordProtocolMessages, waitForProtocolMessage, type MessageMatch } from './helpers/envelopes.js';
 import { test } from './helpers/shared-mode-reset.js';
 import { BLOCK_PROVIDER_WASM, PROTOCOL_SHARED_WORKER, prependToWorker } from './helpers/worker-prelude.js';
 
 const HOST_URL = `http://host-playground.localhost:${PORT}/`;
+
+/** The telemetry event that tells how `chain` started from its stored database. */
+const smoldotDb = (chain: string): MessageMatch => ({
+  method: 'telemetry',
+  leg: 'event',
+  body: { event: { tag: 'smoldotDb', value: { chain } } },
+});
 
 const isProviderWasm = (url: URL): boolean =>
   url.hostname === 'host.localhost' && url.pathname.includes('truapi_provider_bg');
@@ -22,15 +29,15 @@ test('As a user on a per-tab light client that cannot start, I see the crash the
 }) => {
   // Given
   await seedBackend(page, 'smoldot-direct');
-  await recordProtocolEnvelopes(page);
+  await recordProtocolMessages(page);
   await page.route(isProviderWasm, route => route.abort());
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  const fatal = await waitForEnvelope(page, 'fatal', 15_000);
-  expect(fatal['message']).toEqual(expect.stringContaining('connection failed'));
+  const status = await waitForProtocolMessage(page, { method: 'frameStatus', leg: 'end' }, 15_000);
+  expect(status.body).toMatchObject({ error: { message: expect.stringContaining('connection failed') } });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
 });
@@ -40,15 +47,15 @@ test('As a user on a shared light client that cannot start, I see the crash the 
 }) => {
   // Given
   await seedBackend(page, 'smoldot-shared-worker');
-  await recordProtocolEnvelopes(page);
+  await recordProtocolMessages(page);
   await prependToWorker(page.context(), PROTOCOL_SHARED_WORKER, BLOCK_PROVIDER_WASM);
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  const fatal = await waitForEnvelope(page, 'fatal', 15_000);
-  expect(fatal['message']).toEqual(expect.stringContaining('connection failed'));
+  const status = await waitForProtocolMessage(page, { method: 'frameStatus', leg: 'end' }, 15_000);
+  expect(status.body).toMatchObject({ error: { message: expect.stringContaining('connection failed') } });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
 });
@@ -62,15 +69,18 @@ for (const [label, backend] of [
   }) => {
     // Given: a fresh profile, and no peer to reach
     await seedBackend(page, backend);
-    await recordProtocolEnvelopes(page);
+    await recordProtocolMessages(page);
     await page.context().routeWebSocket(/^wss?:\/\//, socket => socket.close());
 
     // When
     await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
     // Then
-    const relay = await waitForEnvelope(page, 'smoldot-db', 15_000, { chain: 'relay' });
-    const hub = await waitForEnvelope(page, 'smoldot-db', 15_000, { chain: 'assethub' });
-    expect([relay['outcome'], hub['outcome']]).toEqual(['miss', 'miss']);
+    const relay = await waitForProtocolMessage(page, smoldotDb('relay'), 15_000);
+    const hub = await waitForProtocolMessage(page, smoldotDb('assethub'), 15_000);
+    expect([relay.body, hub.body]).toEqual([
+      { event: { tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } } },
+      { event: { tag: 'smoldotDb', value: { chain: 'assethub', outcome: 'miss' } } },
+    ]);
   });
 }

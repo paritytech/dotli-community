@@ -5,6 +5,7 @@
 // fake protocol frame publishes the manifest and serves the product's page and icon blocks.
 
 import { expect } from '@playwright/test';
+import type { RootManifest } from '@dotli/resolver';
 import { PORT } from '../env.js';
 import { seedBackend } from './fixtures/settings.js';
 import { productPage, rawBlock } from './helpers/blocks.js';
@@ -26,7 +27,7 @@ test('As a dApp user opening a product, I see its published name and icon in the
   // Given: a product whose root manifest names it and points at its icon
   const product = await rawBlock(productPage('branded'));
   const icon = await rawBlock(new Uint8Array(ICON_PNG));
-  const root = {
+  const root: RootManifest = {
     $v: 1,
     displayName: DISPLAY_NAME,
     description: 'Branded in the tab',

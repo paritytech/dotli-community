@@ -3,11 +3,13 @@
 
 /// <reference types="node" />
 
-import { defineConfig } from 'eslint/config';
+import { defineConfig, globalIgnores } from 'eslint/config';
 import { config } from '@config/eslint/astro';
 
 export default defineConfig([
   ...config,
+  // The functional suite's global setup builds the wire bundle here.
+  globalIgnores(['tests/functional/.wire/']),
   {
     languageOptions: {
       parserOptions: {
