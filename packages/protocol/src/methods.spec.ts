@@ -18,4 +18,15 @@ describe('protocol methods', () => {
     expect(names.length).toBeLessThanOrEqual(256);
     expect(names[0]).toBe('handshake');
   });
+
+  it("As a peer of an earlier build, I keep each method's wire id, since the worker's beat came last", () => {
+    // Given
+    const names = METHOD_NAMES;
+
+    // When
+    const added = names.slice(names.indexOf('resolveDotName') + 1);
+
+    // Then
+    expect(added).toEqual(['beat']);
+  });
 });

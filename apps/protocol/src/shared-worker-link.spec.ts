@@ -12,12 +12,12 @@ import {
   ProtocolInitFailedError,
   type ConsumerTransport,
   type ServingTransport,
+  type SubscriptionSink,
 } from '@dotli/protocol';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createFrameStatus, type FrameStatus } from './frame-status.js';
 import { connectSharedWorker } from './shared-worker-link.js';
-import { HEARTBEAT_INTERVAL_MS } from './worker-messages.js';
 
 const READY_TIMEOUT_MS = 30_000;
 
@@ -29,6 +29,12 @@ interface FakeWorker {
   heartbeats: (string | null)[];
   /** Settles on the next heartbeat the worker hears. */
   nextHeartbeat: () => Promise<void>;
+  /** Settles once the tab subscribed to the worker's beats. */
+  beatsHeard: Promise<void>;
+  /** The worker's heartbeat clock ticks, so it beats on every open beat subscription. */
+  beatTab: () => void;
+  /** Makes each later heartbeat fail on the worker. */
+  refuseHeartbeats: () => void;
   /** Settles once the tab's status subscription on the worker stops. */
   statusStopped: Promise<void>;
   serving: ServingTransport;
@@ -61,11 +67,24 @@ function fakeWorker(): FakeWorker {
   });
   const heartbeats: (string | null)[] = [];
   let beat = deferred<undefined>();
+  let refusing = false;
   serving.handleRequest('heartbeat', (_payload, context) => {
     heartbeats.push(context.resolutionId);
     beat.resolve(undefined);
     beat = deferred<undefined>();
+    if (refusing) {
+      throw new Error('heartbeat refused');
+    }
     return undefined;
+  });
+  const beatSinks = new Set<SubscriptionSink<'beat'>>();
+  const beatsHeard = deferred<undefined>();
+  serving.handleSubscription('beat', (_payload, _context, sink) => {
+    beatSinks.add(sink);
+    beatsHeard.resolve(undefined);
+    return () => {
+      beatSinks.delete(sink);
+    };
   });
   const workerTarget = new EventTarget();
   const worker = Object.assign(workerTarget, { port: channel.port2 });
@@ -74,6 +93,15 @@ function fakeWorker(): FakeWorker {
     status,
     heartbeats,
     nextHeartbeat: () => beat.promise,
+    beatsHeard: beatsHeard.promise,
+    beatTab: () => {
+      for (const sink of [...beatSinks]) {
+        sink.send(undefined);
+      }
+    },
+    refuseHeartbeats: () => {
+      refusing = true;
+    },
     statusStopped: stopped.promise,
     serving,
     failToStart: message => {
@@ -226,24 +254,57 @@ describe('connectSharedWorker', () => {
     expect(exceptions).toEqual(['shared_worker_error']);
   });
 
-  it('As a tab on the shared light client, I tell the worker my page load and that I am alive on every heartbeat', async () => {
-    // Given a tab linked while the worker still syncs
-    const timers = manualTimers();
+  it('As a tab on the shared light client, I answer each beat of the worker with a heartbeat from my page load', async () => {
+    // Given a tab linked while the worker still syncs, whose timers never run
     const worker = fakeWorker();
-    const linked = link(worker, { timers, resolutionId: 'load-1' });
+    const linked = link(worker, { resolutionId: 'load-1' });
+    await worker.beatsHeard;
 
-    // When a heartbeat interval passes while the worker syncs, and another once it is ready
+    // When the worker beats while it syncs, and again once it is ready
     const first = worker.nextHeartbeat();
-    await timers.advance(HEARTBEAT_INTERVAL_MS);
+    worker.beatTab();
     await first;
     worker.status.ready();
     await linked;
     const second = worker.nextHeartbeat();
-    await timers.advance(HEARTBEAT_INTERVAL_MS);
+    worker.beatTab();
     await second;
 
-    // Then the worker heard a heartbeat for each, from this page load
+    // Then the worker heard a heartbeat for each beat, from this page load
     expect(worker.heartbeats).toEqual(['load-1', 'load-1']);
+  });
+
+  it('As a dotli maintainer, a heartbeat the worker refuses is reported once, and the tab stops answering', async () => {
+    // Given a tab on a ready worker that refuses heartbeats
+    const exceptions: string[] = [];
+    onTestFinished(
+      bindCaptureSink({
+        exception: (_err, ctx) => {
+          exceptions.push(ctx.step);
+        },
+        expected: () => undefined,
+      }),
+    );
+    const worker = fakeWorker();
+    const linked = link(worker);
+    worker.status.ready();
+    const transport = await linked;
+    await worker.beatsHeard;
+    worker.refuseHeartbeats();
+
+    // When the worker beats twice, with a round trip after each
+    const refused = worker.nextHeartbeat();
+    worker.beatTab();
+    await refused;
+    await transport.request('warmup', undefined).catch(() => undefined);
+    worker.beatTab();
+    // A heartbeat answering the second beat would reach the worker within these two round trips.
+    await transport.request('warmup', undefined).catch(() => undefined);
+    await transport.request('warmup', undefined).catch(() => undefined);
+
+    // Then the refusal was captured once, and the second beat went unanswered
+    expect(exceptions).toEqual(['worker_heartbeat']);
+    expect(worker.heartbeats).toHaveLength(1);
   });
 
   it('As a tab kept in the back-forward cache, I keep my worker transport', async () => {

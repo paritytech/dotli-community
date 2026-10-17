@@ -6,7 +6,7 @@
 // drives it.
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { deferred, must } from '@dotli/shared/testing';
+import { deferred, manualTimers, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, type m } from '@dotli/metrics';
@@ -21,6 +21,7 @@ import {
   type WorkerResolver,
   type WorkerScope,
 } from './protocol-worker.js';
+import { connectSharedWorker } from './shared-worker-link.js';
 import { record, type Recording } from './testing/host-link.js';
 import { HEARTBEAT_MISSED_BEATS } from './worker-messages.js';
 
@@ -209,8 +210,8 @@ async function endPresync(presync: Presync, failure?: Error): Promise<void> {
 interface Worker {
   /** A tab's iframe connects, telling the worker its page load. */
   connect: (resolutionId?: string) => Tab;
-  /** A tab's port reaches the worker, and its iframe speaks once the returned function runs. */
-  attach: () => (resolutionId?: string) => Tab;
+  /** A tab's port reaches the worker, and its iframe speaks once the test says so. */
+  attach: () => Attached;
   /** One heartbeat interval passes, if the worker has not stopped its heartbeat. */
   beat: () => void;
   /** Whether the worker's heartbeat runs. */
@@ -227,18 +228,41 @@ interface Worker {
   open: Mock<SpanOpen>;
 }
 
-/** The worker's end of a port, spying on each buffer it posts before the transfer detaches it. */
-function spiedPort(port: MessagePort, posted: ArrayBuffer[]): MessagePort {
+/**
+ * The worker's end of a port, spying on each buffer it posts before the transfer detaches it, and calling `received`
+ * after the worker handled each message the tab sent.
+ */
+function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => void): MessagePort {
+  const wrapped = new Map<EventListener, EventListener>();
   return {
     postMessage: (data: ArrayBuffer, transfer: Transferable[]) => {
       posted.push(data);
       port.postMessage(data, transfer);
     },
-    addEventListener: port.addEventListener.bind(port),
-    removeEventListener: port.removeEventListener.bind(port),
+    addEventListener: (type: string, listener: EventListener) => {
+      const wrapper: EventListener = event => {
+        listener(event);
+        received();
+      };
+      wrapped.set(listener, wrapper);
+      port.addEventListener(type, wrapper);
+    },
+    removeEventListener: (type: string, listener: EventListener) => {
+      port.removeEventListener(type, wrapped.get(listener) ?? listener);
+    },
     start: port.start.bind(port),
     close: port.close.bind(port),
   } as unknown as MessagePort;
+}
+
+/** A tab's port that reached the worker, before its iframe speaks. */
+interface Attached {
+  /** The iframe speaks through a bare transport, as the specs drive it. */
+  speak: (resolutionId?: string) => Tab;
+  /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
+  link: () => Promise<ConsumerTransport>;
+  /** Settles once the worker handled the next message from this tab. */
+  nextReceived: () => Promise<void>;
 }
 
 /**
@@ -307,27 +331,52 @@ async function bootWorker(
     ...(readNetBytes === undefined ? {} : { netBytes: { read: readNetBytes, ticker: netBytesTicker } }),
   });
   await light.presyncDone;
-  const attach = (): ((resolutionId?: string) => Tab) => {
+  const attach = (): Attached => {
     const channel = new MessageChannel();
     openPorts.add(channel.port1);
     openPorts.add(channel.port2);
     const posted: ArrayBuffer[] = [];
+    let waiting: (() => void)[] = [];
+    const received = (): void => {
+      const due = waiting;
+      waiting = [];
+      for (const resolve of due) {
+        resolve();
+      }
+    };
     for (const listener of connectListeners) {
-      listener({ ports: [spiedPort(channel.port1, posted)] } as unknown as MessageEvent);
+      listener({ ports: [spiedPort(channel.port1, posted, received)] } as unknown as MessageEvent);
     }
-    return resolutionId => {
-      const transport = createConsumerTransport(createPortProvider(channel.port2), {
-        side: 'frame',
-        count: () => 0,
-        ...(resolutionId === undefined ? {} : { resolutionId }),
-      });
-      transport.connect();
-      tabs.add(transport);
-      return { transport, status: record(transport, 'frameStatus', undefined), posted };
+    return {
+      speak: resolutionId => {
+        const transport = createConsumerTransport(createPortProvider(channel.port2), {
+          side: 'frame',
+          count: () => 0,
+          ...(resolutionId === undefined ? {} : { resolutionId }),
+        });
+        transport.connect();
+        tabs.add(transport);
+        return { transport, status: record(transport, 'frameStatus', undefined), posted };
+      },
+      link: async () => {
+        const transport = await connectSharedWorker({
+          worker: { port: channel.port2, addEventListener: () => undefined },
+          window: new EventTarget(),
+          resolutionId: null,
+          readyTimeoutMs: 30_000,
+          timers: manualTimers(),
+        });
+        tabs.add(transport);
+        return transport;
+      },
+      nextReceived: () =>
+        new Promise(resolve => {
+          waiting.push(resolve);
+        }),
     };
   };
   return {
-    connect: resolutionId => attach()(resolutionId),
+    connect: resolutionId => attach().speak(resolutionId),
     attach,
     beat: () => {
       beat?.();
@@ -484,10 +533,10 @@ describe('protocol SharedWorker', () => {
     expect(worker.close).not.toHaveBeenCalled();
 
     // When that tab's port connects, and its iframe speaks only after the worker flushed what it had to send
-    const speak = worker.attach();
+    const attached = worker.attach();
     await flushed.promise;
     await afterQueuedTimers();
-    const tab = speak();
+    const tab = attached.speak();
 
     // Then it hears the fatal on subscribe, never ready, and the worker closes once after telling it
     await expect(tab.status.ended).resolves.toMatchObject(fatalEnd);
@@ -806,25 +855,46 @@ describe('protocol SharedWorker', () => {
     await expect(chain.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
   });
 
-  it('As a dotli user on the shared light client, a tab that keeps its heartbeat keeps its connections', async () => {
-    // Given a live tab holding a chain connection
+  it("As a long-hidden tab, I keep my port by answering the worker's beats", async () => {
+    // Given a tab linked through the iframe's real link, whose timers never run, holding a chain connection
     const worker = await bootWorker(fakeLightClient());
-    const tab = worker.connect();
-    const status = await readyStatus(tab);
-    await connectChain(tab, 'c1');
+    const attached = worker.attach();
+    const transport = await attached.link();
+    const chain = record(transport, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    await chain.until(1);
 
-    // When many heartbeat intervals pass, each with the tab's heartbeat
+    // When the worker beats many times, and the tab answers each beat as it arrives
     for (let i = 0; i < 3 * HEARTBEAT_MISSED_BEATS; i++) {
-      await tab.transport.request('heartbeat', undefined);
+      const answered = attached.nextReceived();
       worker.beat();
+      await answered;
     }
 
-    // Then it was never let go
+    // Then its port was never released, and its connection still carries its messages
+    expect(worker.logs.map(line => line.message)).not.toContain('Port released');
     await expect(
-      tab.transport.request('chainSend', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
+      transport.request('chainSend', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
     ).resolves.toBeUndefined();
-    expect(worker.logs.map(line => line.message)).not.toContain('Chain disconnected: c1 (0 remaining)');
-    expect(status.events).toEqual([undefined]);
+  });
+
+  it('As a frozen tab, I am released after the missed beats', async () => {
+    // Given a tab that hears the worker's beats but, frozen, answers none of them
+    const worker = await bootWorker(fakeLightClient());
+    const tab = worker.connect();
+    const beats = record(tab.transport, 'beat', undefined);
+    await tab.transport.request('heartbeat', undefined);
+
+    // When the worker beats as many times as it allows
+    for (let i = 0; i < HEARTBEAT_MISSED_BEATS; i++) {
+      worker.beat();
+    }
+    await beats.until(HEARTBEAT_MISSED_BEATS);
+
+    // Then it still holds the port, and lets it go on the next beat
+    expect(worker.logs.map(line => line.message)).not.toContain('Port released');
+    worker.beat();
+    await expect(beats.ended).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
+    expect(worker.logs.map(line => line.message)).toContain('Port released');
   });
 
   it('As a dotli user on the shared light client, a busy tab that sends no heartbeat but talks keeps its port', async () => {

@@ -126,6 +126,9 @@ export const PROTOCOL_METHODS = {
   sharedAuthChanges: subscription(_void, sharedAuthChangeCodec),
   chainConnect: subscription(Struct({ genesisHash: str, connectionId: str }), Enum({ connected: _void, message: str })),
   resolveDotName: subscription(label, Enum({ phase: resolvePhaseCodec, resolved: nullable(str) })),
+  // Last, so the wire ids of the methods before it never move. The SharedWorker sends each beat from its own clock,
+  // and a tab answers from the event, which a hidden page's timer throttling does not delay.
+  beat: subscription(_void, _void),
 };
 
 export type ProtocolMethod = keyof typeof PROTOCOL_METHODS;

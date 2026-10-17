@@ -82,8 +82,10 @@ interface PortSession {
   transport: ServingTransport;
   /** Opened by the tab's first chain call. */
   scope: EngineScope | null;
-  /** Heartbeats since the port last sent anything. */
+  /** Beats since the port last sent anything. */
   missed: number;
+  /** The tab's open `beat` subscriptions, which each beat reaches. */
+  beats: Set<SubscriptionSink<'beat'>>;
 }
 
 /** The requests a span follows. A chain message would swamp them, and a heartbeat says nothing of a load. */
@@ -335,7 +337,13 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       return stop;
     });
     transport.handleSubscription('telemetry', telemetry);
-    // Any message keeps the port, so the heartbeat itself needs no answer beyond its arrival.
+    transport.handleSubscription('beat', (_payload, _context, sink) => {
+      session.beats.add(sink);
+      return () => {
+        session.beats.delete(sink);
+      };
+    });
+    // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
     transport.handleRequest('heartbeat', () => undefined);
     transport.handleRequest(
       'warmup',
@@ -374,14 +382,18 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     transport.handleRequest('chainSend', (payload, context) => scopeOf(session).send(payload, context));
   }
 
+  /** Beats each port from this worker's clock, and lets go of one that sent nothing for too many beats. */
   function beat(): void {
     for (const session of [...sessions]) {
-      if (session.missed >= HEARTBEAT_MISSED_BEATS) {
+      session.missed += 1;
+      if (session.missed > HEARTBEAT_MISSED_BEATS) {
         release(session, new ProtocolPortReleasedError(PROTOCOL_APP_ERRORS.PORT_RELEASED));
         swEvent('Port released', { ports: sessions.size });
         continue;
       }
-      session.missed += 1;
+      for (const sink of [...session.beats]) {
+        sink.send(undefined);
+      }
     }
   }
 
@@ -392,6 +404,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       transport: createServingTransport(provider, { side: 'worker' }),
       scope: null,
       missed: 0,
+      beats: new Set(),
     };
     // Any message shows the tab is alive, not only its heartbeat.
     provider.subscribe(() => {

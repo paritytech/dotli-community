@@ -46,6 +46,7 @@ const subscriptionSamples: Record<string, { payload: unknown; event: unknown }> 
     event: { tag: 'message', value: 'hello' },
   },
   resolveDotName: { payload: { label: 'a' }, event: { tag: 'phase', value: 'resolving-content' } },
+  beat: { payload: undefined, event: undefined },
 };
 
 function roundTrip(message: WireMessage): WireMessage {

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The iframe's link to the protocol SharedWorker: a transport on the worker's port that waits until the worker is
-// ready, tells the worker the tab is alive, and lets go of the port when the tab leaves.
+// ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createConsumerTransport, createPortProvider, type ConsumerTransport } from '@dotli/protocol';
 import { log, realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { disposeOnPageHide, HEARTBEAT_INTERVAL_MS } from './worker-messages.js';
+import { disposeOnPageHide } from './worker-messages.js';
 
 export interface SharedWorkerLinkDeps {
   worker: Pick<SharedWorker, 'port' | 'addEventListener'>;
@@ -26,30 +26,27 @@ export interface SharedWorkerLinkDeps {
   onOpen?: (transport: ConsumerTransport) => void;
 }
 
-/** Sends a heartbeat on every interval until the returned stop runs. */
-function startHeartbeat(transport: ConsumerTransport, timers: Timers): () => void {
-  let stopped = false;
-  let timer: unknown;
-  const stop = (): void => {
-    stopped = true;
-    timers.clearTimeout(timer);
-  };
-  const schedule = (): void => {
-    timer = timers.setTimeout(() => {
-      schedule();
-      void transport.request('heartbeat', undefined).catch((error: unknown) => {
-        // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
-        if (stopped) {
-          return;
-        }
-        stop();
-        captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
-        log.error('[dot.li protocol] Worker heartbeat failed', error);
-      });
-    }, HEARTBEAT_INTERVAL_MS);
-  };
-  schedule();
-  return stop;
+/**
+ * Answers each of the worker's beats with a heartbeat. The beat arrives as a message event, which a page hidden for
+ * long still handles at once, while its own timers are throttled to about one a minute.
+ */
+function answerBeats(transport: ConsumerTransport): void {
+  let answering = true;
+  const beats = transport.subscribe('beat', undefined, () => {
+    void transport.request('heartbeat', undefined).catch((error: unknown) => {
+      // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
+      if (!answering) {
+        return;
+      }
+      answering = false;
+      beats.unsubscribe();
+      captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
+      log.error('[dot.li protocol] Worker heartbeat failed', error);
+    });
+  });
+  beats.onEnd(() => {
+    answering = false;
+  });
 }
 
 /** Resolves with the transport to the worker once the worker says it is ready, and rejects with why it never will be. */
@@ -85,7 +82,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
   // Before the ready wait, so a frame removed while the worker syncs still frees its port at once.
   disposeOnPageHide(deps.window, transport, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
   // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
-  const stopHeartbeat = startHeartbeat(transport, timers);
+  answerBeats(transport);
 
   // Before the ready wait subscribes, so a worker that fails while it syncs ends the caller's calls first, and the frame
   // fails with the worker's own error rather than the failed boot that follows from it.
@@ -109,9 +106,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
       failReadyWait = null;
       resolve(transport);
     });
-    // The worker's status ends only when it stops serving this tab, so the heartbeat has nothing left to keep.
     status.onEnd(error => {
-      stopHeartbeat();
       fail(error ?? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED), 'worker_reported');
     });
   });

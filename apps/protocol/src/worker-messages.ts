@@ -5,9 +5,9 @@
 // pace, and when the iframe lets go of its end.
 
 /**
- * A closed tab's port neither throws nor tells the worker, so the iframe sends a heartbeat on this interval and the
- * worker lets go of a port it heard nothing from for this many beats. Three beats of 20 s release a dead tab's
- * connections within about a minute, and leave an iframe stuck in a long task two beats of slack.
+ * A closed tab's port neither throws nor tells the worker, so the worker beats each port on this interval, the iframe
+ * answers each beat, and the worker lets go of a port it heard nothing from for this many beats. Three beats of 20 s
+ * release a dead tab's connections within about a minute, and leave an iframe stuck in a long task two beats of slack.
  */
 export const HEARTBEAT_INTERVAL_MS = 20_000;
 export const HEARTBEAT_MISSED_BEATS = 3;
