@@ -136,6 +136,11 @@ export interface ProtocolFrame {
    */
   onLost(listener: (error: Error) => void): () => void;
   /**
+   * Hears the version mismatch that left the frame down for good, once, and at once if it already did. A frame rebuilt
+   * while an app is open can come from a newer release, and only a reload fixes that.
+   */
+  onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
+  /**
    * How many frames were dropped so far. Counted before the status changes, so work a status listener starts on the
    * drop can tell itself apart from the work `onLost` is about.
    */
@@ -536,6 +541,18 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     transport,
     whenUp,
     onLost: lostListeners.subscribe,
+    onVersionMismatch(listener) {
+      if (mismatch !== null) {
+        listener(mismatch);
+        return () => undefined;
+      }
+      // A mismatch is final, so the loss that latches it is the last one.
+      return lostListeners.subscribe(error => {
+        if (error instanceof ProtocolVersionMismatchError) {
+          listener(error);
+        }
+      });
+    },
     losses: () => losses,
   };
 }

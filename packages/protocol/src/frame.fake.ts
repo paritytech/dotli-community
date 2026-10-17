@@ -126,6 +126,8 @@ export function createFakeFrame(
         });
       },
       onLost: subscribe(lostListeners),
+      // The facades never read it, and this fake's frame speaks the host wire.
+      onVersionMismatch: () => () => undefined,
       losses: () => losses,
     },
     setStatus,

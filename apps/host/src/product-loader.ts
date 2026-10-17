@@ -238,6 +238,19 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
         log.error('[dot.li] The failure screen for a silent sandbox failed:', screenError);
       }
     });
+    // A protocol frame rebuilt while the app is open can come from a newer release. It refuses this page for good, and
+    // the app would sit there with no chain or store, so the reload screen replaces it.
+    protocol.onProtocolVersionMismatch(err => {
+      if (resolveFailed) {
+        return;
+      }
+      try {
+        failLoad(err);
+      } catch (screenError: unknown) {
+        captureException(screenError, { flow: 'resolve', step: 'failure_screen' });
+        log.error('[dot.li] The failure screen for a protocol version mismatch failed:', screenError);
+      }
+    });
   };
   const rendered = (manifests: ProductManifests): void => {
     options.failureScreen.forget();

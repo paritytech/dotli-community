@@ -337,6 +337,46 @@ describe('createProtocolFrame', () => {
     ]);
   });
 
+  it('As the host with an app open, a frame rebuilt from a newer release refuses my wire and I hear it once, also when I ask late', async () => {
+    // Given a ready frame, and a listener for a mismatch
+    const dom = createFrameDom();
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.whenUp('ready').catch(() => undefined);
+    const status = await bringUp(dom);
+    const heard: Error[] = [];
+    frame.onVersionMismatch(error => heard.push(error));
+
+    // When the frame is lost, and the frame rebuilt after the backoff refuses the host wire version
+    status.fail(new ProtocolFatalError('boom'));
+    await advance(2_000);
+    dom.deliverRaw(
+      encodeWireMessage({
+        leg: 'response',
+        id: 1,
+        method: 'handshake',
+        outcome: {
+          ok: false,
+          error: {
+            message: 'The peer speaks wire version 3 and this end 2',
+            name: 'ProtocolVersionMismatchError',
+            stack: null,
+          },
+        },
+      }),
+    );
+    await advance(60_000);
+    const late: Error[] = [];
+    frame.onVersionMismatch(error => late.push(error));
+
+    // Then the mismatch is final and each listener heard it once
+    expect(frame.getStatus()).toBe('failed');
+    expect(dom.frames()).toBe(0);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(late).toEqual(heard);
+  });
+
   it('As the host, a frame that never answers my handshake fails my boot and rebuilds with backoff', async () => {
     // Given a frame of an earlier release, which loads and never answers
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });

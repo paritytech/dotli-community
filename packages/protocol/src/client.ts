@@ -5,6 +5,7 @@
 
 import { BASE_DOMAIN, DEV_PROTOCOL_PORT, isLocalhost } from '@dotli/config';
 import { realTimers } from '@dotli/shared';
+import type { ProtocolVersionMismatchError } from './errors.js';
 import { createProtocolFrame, type ProtocolFrameConfig, type ProtocolFrameDeps, type ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createRemoteChains } from './remote-chain.js';
@@ -51,6 +52,12 @@ export function createProtocolClient(deps: ProtocolFrameDeps) {
      * and its chain connections halt as for a dead frame. A SharedWorker keeps its sync progress, only this tab's port
      * cycles.
      */
+    /**
+     * Hears once that a frame refused this page's wire version, at once if one already did. The frame stays down for
+     * good, since only a reload loads a matching page.
+     */
+    onProtocolVersionMismatch: (listener: (error: ProtocolVersionMismatchError) => void) =>
+      frame.onVersionMismatch(listener),
     configureProtocolFrame: (config: ProtocolFrameConfig): void => {
       frame.configure(config);
     },

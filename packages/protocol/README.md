@@ -64,6 +64,9 @@ flowchart TB
 - A call made while the frame is down waits for the next transport.
 - A version mismatch is final. A rebuild cannot fix it and a reload can, so the frame moves to `failed`, stops
   rebuilding, and rejects every waiting and later call with `ProtocolVersionMismatchError`.
+- A frame rebuilt while an app is open can come from a newer release and refuse the page's wire. The client's
+  `onProtocolVersionMismatch` hears that once, and at once for a listener that subscribes after it, so the host can
+  replace the open app with its reload screen.
 - The frame's failures are reported with `captureException` and outcome metrics. A fatal light client or a failed init
   ends the frame status subscription with that error.
 

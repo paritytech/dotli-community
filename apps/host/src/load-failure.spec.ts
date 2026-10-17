@@ -3,10 +3,13 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Backend } from '@dotli/config';
+import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import { bindLogSink } from '@dotli/shared';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import type { ErrorPageContent } from '@dotli/ui';
+import { HOST_ERRORS } from './error-copy.js';
 import {
+  describeError,
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
   OPEN_SETTINGS_BTN_LABEL,
@@ -112,6 +115,24 @@ describe('presentLoadFailure', () => {
     click(RELOAD_BTN_LABEL);
 
     // Then
+    expect(labels(shown())).toEqual([RELOAD_BTN_LABEL]);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor whose open app lost its protocol frame to a newer release, I see the update screen with Reload alone', () => {
+    // Given
+    const error = describeError(
+      new ProtocolVersionMismatchError('The peer speaks wire version 3 and this end 2'),
+      true,
+    );
+
+    // When
+    const { shown, click, reload } = present(error, 'smoldot-shared-worker');
+    click(RELOAD_BTN_LABEL);
+
+    // Then
+    expect(error.kind).toBe('protocol-version-mismatch');
+    expect(shown()).toMatchObject({ detail: HOST_ERRORS.PROTOCOL_UPDATED });
     expect(labels(shown())).toEqual([RELOAD_BTN_LABEL]);
     expect(reload).toHaveBeenCalledTimes(1);
   });
