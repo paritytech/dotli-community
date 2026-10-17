@@ -51,7 +51,7 @@ describe('createFeedKeeper', () => {
   it('As the host, a feed the frame keeps ending waits twice as long before each reopen, and never more than 30 s', async () => {
     // Given
     const keeper = createFeedKeeper('telemetry', { losses: () => 0 }, timers);
-    keeper.hold(open);
+    keeper.hold(open, 0);
     const waits: number[] = [];
 
     // When the frame ends each reopened feed at once, waiting at most one step past the cap for each reopen
@@ -73,14 +73,14 @@ describe('createFeedKeeper', () => {
   it('As the host, I hold a new feed and the one held before is unsubscribed, and its waiting reopen dropped', async () => {
     // Given one feed held, and another that ended and waits to be reopened
     const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);
-    keeper.hold(open);
+    keeper.hold(open, 0);
     const first = opened[0];
-    keeper.hold(open);
+    keeper.hold(open, 0);
     const second = opened[1];
     second?.end(new Error('relay broke'));
 
     // When
-    keeper.hold(open);
+    keeper.hold(open, 0);
     await timers.advance(30_000);
 
     // Then
@@ -100,7 +100,7 @@ describe('createFeedKeeper', () => {
       const captured = recordCaptures({ onFinished: onTestFinished });
       let losses = 0;
       const keeper = createFeedKeeper('telemetry', { losses: () => losses }, timers);
-      keeper.hold(open);
+      keeper.hold(open, 0);
 
       // When
       if (order === 'loss first') {
@@ -125,7 +125,7 @@ describe('createFeedKeeper', () => {
     // Given a feed the frame ended
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);
-    keeper.hold(open);
+    keeper.hold(open, 0);
     opened[0]?.end(new TypeError('relay broke'));
 
     // When the wait before the reopen passes

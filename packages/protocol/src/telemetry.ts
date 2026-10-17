@@ -28,43 +28,58 @@ export function createFrameTelemetry(
   const reports = createFeedKeeper('telemetry', frame, timers);
   let heard: ConsumerTransport | null = null;
 
+  // Each ask for a frame's transport, so an answer a later ask overtook is not heard.
+  let asks = 0;
+
   /** Hears one frame's reports until the frame is lost. */
-  function hear(transport: ConsumerTransport): void {
+  function hear(transport: ConsumerTransport, since: number): void {
     if (heard === transport) {
       return;
     }
     heard = transport;
     // Each frame's byte meter starts at zero, and a reopened feed reads on from the same meter.
     let lastNetBytesTotal = 0;
-    reports.hold(() =>
-      transport.subscribe('telemetry', undefined, event => {
-        switch (event.tag) {
-          case 'chainSync':
-            chainSyncListeners.emit(event.value);
-            return;
-          case 'chainDetail':
-            chainDetailListeners.emit(event.value);
-            return;
-          case 'netBytes':
-            // Cumulative, so a total below the last one is corrupt traffic and would feed a negative rate into the
-            // network panel.
-            if (event.value >= lastNetBytesTotal) {
-              lastNetBytesTotal = event.value;
-              netBytesListeners.emit({ received: event.value });
-            }
-            return;
-          case 'smoldotDb':
-            smoldotDbOutcomes.set(event.value.chain, event.value.outcome);
-            return;
-        }
-      }),
+    reports.hold(
+      () =>
+        transport.subscribe('telemetry', undefined, event => {
+          switch (event.tag) {
+            case 'chainSync':
+              chainSyncListeners.emit(event.value);
+              return;
+            case 'chainDetail':
+              chainDetailListeners.emit(event.value);
+              return;
+            case 'netBytes':
+              // Cumulative, so a total below the last one is corrupt traffic and would feed a negative rate into the
+              // network panel.
+              if (event.value >= lastNetBytesTotal) {
+                lastNetBytesTotal = event.value;
+                netBytesListeners.emit({ received: event.value });
+              }
+              return;
+            case 'smoldotDb':
+              smoldotDbOutcomes.set(event.value.chain, event.value.outcome);
+              return;
+          }
+        }),
+      since,
     );
   }
 
   function hearFrame(): void {
-    void frame.transport().then(hear, (error: unknown) => {
-      log.warn('[dot.li protocol] Failed to hear the protocol frame telemetry:', error);
-    });
+    asks += 1;
+    const ask = asks;
+    const since = frame.losses();
+    void frame.transport().then(
+      transport => {
+        if (ask === asks) {
+          hear(transport, since);
+        }
+      },
+      (error: unknown) => {
+        log.warn('[dot.li protocol] Failed to hear the protocol frame telemetry:', error);
+      },
+    );
   }
 
   // Cleared when a new frame boots, not when one is lost, which happens before the host's pending rejection and

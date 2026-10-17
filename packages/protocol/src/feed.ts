@@ -18,8 +18,12 @@ const MAX_REOPEN_MS = 30_000;
 export type FeedName = 'shared_auth' | 'telemetry';
 
 export interface FeedKeeper {
-  /** Holds the subscription `open` makes, in place of the one held before, until `stop` or the frame's loss. */
-  hold(open: () => Subscription): void;
+  /**
+   * Holds the subscription `open` makes, in place of the one held before, until `stop` or the frame's loss. `since` is
+   * the frame's loss count when the transport `open` subscribes on was asked for, so a loss before it was handed over
+   * counts.
+   */
+  hold(open: () => Subscription, since: number): void;
   /** Unsubscribes the held subscription, and drops a reopen that waits. */
   stop(): void;
 }
@@ -46,11 +50,10 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
   }
 
   return {
-    hold(open) {
+    hold(open, since) {
       stop();
       const run = new AbortController();
       held = run;
-      const since = frame.losses();
       // Judged at the next attempt, once the wait gave the frame time to count a loss that ended the feed. A failed
       // handshake or a dead SharedWorker ends the feed before the frame counts its loss.
       let ended: Error | null = null;

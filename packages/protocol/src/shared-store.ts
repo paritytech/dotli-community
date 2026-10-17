@@ -79,15 +79,17 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
   // Each ask for a frame's transport, so an answer a later ask overtook is not followed.
   let asks = 0;
 
-  function follow(transport: ConsumerTransport): void {
+  function follow(transport: ConsumerTransport, since: number): void {
     if (sharedAuthListeners.size === 0 || heard === transport) {
       return;
     }
     heard = transport;
-    changes.hold(() =>
-      transport.subscribe('sharedAuthChanges', undefined, change => {
-        sharedAuthListeners.emit(change);
-      }),
+    changes.hold(
+      () =>
+        transport.subscribe('sharedAuthChanges', undefined, change => {
+          sharedAuthListeners.emit(change);
+        }),
+      since,
     );
   }
 
@@ -95,10 +97,11 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
   function followFrame(): void {
     asks += 1;
     const ask = asks;
+    const since = frame.losses();
     void frame.transport().then(
       transport => {
         if (ask === asks) {
-          follow(transport);
+          follow(transport, since);
         }
       },
       (error: unknown) => {

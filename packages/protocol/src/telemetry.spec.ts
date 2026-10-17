@@ -105,6 +105,22 @@ describe('createFrameTelemetry', () => {
     expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
   });
 
+  it('As the network panel, a frame lost while its telemetry is asked for is neither reported nor heard again', async () => {
+    // Given a frame that boots and is dropped in the same turn, before its transport is handed over
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const fake = createFakeFrame(reporting(sinks), { status: 'idle', timers });
+    createFrameTelemetry(fake.frame, timers);
+
+    // When
+    fake.setStatus('booting');
+    fake.lose(new Error('dropped'));
+    await timers.advance(30_000);
+
+    // Then
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(timers.pending()).toBe(0);
+  });
+
   it('As the network panel, I hear chain sync and chain detail as the frame reports them', async () => {
     // Given
     const fake = createFakeFrame(reporting(sinks), { timers });

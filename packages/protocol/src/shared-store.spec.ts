@@ -257,6 +257,24 @@ describe('createSharedStore', () => {
     expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
   });
 
+  it('As a returning user, a frame lost while my shared auth subscription asks for it is neither reported nor followed', async () => {
+    // Given a subscription on a frame that is dropped in the turn the subscription asks for it
+    const timers = manualTimers();
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const fake = createFakeFrame(openingChanges(opened), { timers });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+
+    // When
+    store.subscribeSharedAuthStorage(() => undefined);
+    fake.lose(new Error('dropped'));
+    await timers.advance(30_000);
+
+    // Then
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(timers.pending()).toBe(0);
+  });
+
   it('As a returning user, I leave while my ended shared auth subscription waits to be reopened, and it is not reopened', async () => {
     // Given a subscription the frame ended
     const timers = manualTimers();
