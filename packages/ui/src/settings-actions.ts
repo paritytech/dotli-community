@@ -29,6 +29,7 @@ import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
 import { getProductState } from './state/product.js';
 import { THEME_KEY } from './theme-controller.js';
 import { flushSharedModeWrites } from './shared-mode.js';
+import { revokeReceivingOnLogout } from './receiving.js';
 
 /** Nothing is persisted until Save & Apply, and closing the popover discards the draft. */
 export interface ModeDraft {
@@ -47,9 +48,15 @@ export async function applyAndReset(
   prior: ModeDraft,
   { forceFullWipe = false }: { forceFullWipe?: boolean } = {},
 ): Promise<void> {
+  // Fence the previous network locally before replacing its selected scope.
+  if (draft.network !== prior.network) {
+    await revokeReceivingOnLogout();
+  }
+  if (forceFullWipe) {
+    await wipeOriginState();
+  }
   try {
     if (forceFullWipe) {
-      await wipeOriginState();
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
@@ -107,6 +114,7 @@ export const PRESERVED_KEYS: readonly string[] = [THEME_KEY];
 
 /** Best-effort, since Firefox and older Safari lack `indexedDB.databases()`. */
 export async function wipeOriginState(): Promise<void> {
+  await revokeReceivingOnLogout();
   await Promise.allSettled([deleteAllIndexedDBs(), deleteAllCacheStorage()]);
   await unregisterAllServiceWorkers();
   try {
@@ -139,7 +147,9 @@ async function deleteAllIndexedDBs(): Promise<void> {
       dbs.map(
         db =>
           new Promise<void>(resolve => {
-            if (db.name === undefined || db.name === '') {
+            // Keep durable receiver revocation tombstones for the next worker
+            // to synchronize. Erasing them would lose the remote deletion intent.
+            if (db.name === undefined || db.name === '' || db.name === 'truapi-browser-receiving') {
               resolve();
               return;
             }

@@ -6,6 +6,7 @@
 import { SITE_ID } from '@dotli/config';
 import { forgetSharedLocalWallet, saveSharedLocalWallet } from '@dotli/protocol';
 import { log } from '@dotli/shared';
+import { revokeReceivingOnLogout } from './receiving.js';
 
 function reloadPage(): void {
   window.location.reload();
@@ -22,6 +23,12 @@ export async function switchToLocalWallet(entropy: Uint8Array, reload: () => voi
 }
 
 export async function switchToPolkadotApp(reload: () => void = reloadPage): Promise<void> {
+  // Forgetting the local wallet logs its account out; its retained receiving registrations go first.
+  try {
+    await revokeReceivingOnLogout();
+  } catch (error) {
+    throw new Error('Background receiving could not be revoked; the local wallet was kept', { cause: error });
+  }
   try {
     await forgetSharedLocalWallet(SITE_ID);
   } catch (error) {

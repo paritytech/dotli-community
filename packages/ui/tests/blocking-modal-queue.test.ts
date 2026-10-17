@@ -114,7 +114,6 @@ describe('blocking modal queue', () => {
     scope.dispose();
     unregister();
   });
-
   it('As a dotli integrator, the host removes a disposed host modal and advances to the next host', async () => {
     // Given
     const coordinator = createBlockingModalCoordinator();

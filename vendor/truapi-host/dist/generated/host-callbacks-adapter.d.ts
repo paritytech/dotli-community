@@ -7,7 +7,7 @@ import type { ChainConnect, HopConnect } from "../runtime.js";
  * the core then answers the matching product calls with `Unsupported`.
  */
 export interface RawCallbacks {
-    authStateChanged(state: Uint8Array): void;
+    authStateChanged?(state: Uint8Array): void;
     chainConnect: ChainConnect;
     createChatRoom?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     registerChatBot?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
@@ -26,11 +26,11 @@ export interface RawCallbacks {
     supportedChains(): Promise<Uint8Array>;
     scheduleGameReminder?(product: Uint8Array, startsAt: bigint): Promise<void>;
     cancelGameReminder?(product: Uint8Array): Promise<void>;
-    allowedHopEndpoints(bulletinGenesisHash: Uint8Array): Promise<Uint8Array>;
-    hopConnect: HopConnect;
+    allowedHopEndpoints?(bulletinGenesisHash: Uint8Array): Promise<Uint8Array>;
+    hopConnect?: HopConnect;
     identityUsernameCandidates?(username: string, peopleChainGenesisHash: Uint8Array): Promise<Uint8Array>;
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
-    localizeTimestamps(request: Uint8Array): Promise<Uint8Array>;
+    localizeTimestamps?(request: Uint8Array): Promise<Uint8Array>;
     pickChatFiles(request: Uint8Array): Promise<Uint8Array>;
     readChatFile(sourceId: string, offset: bigint, length: number): Promise<Uint8Array>;
     releaseChatFile(sourceId: string): Promise<void>;
@@ -40,7 +40,13 @@ export interface RawCallbacks {
     cancelChatFileExport(exportId: string): Promise<void>;
     navigateTo(url: string): Promise<void>;
     pushNotification(notification: Uint8Array): Promise<Uint8Array>;
-    cancelNotification(id: number): Promise<void>;
+    cancelNotification?(id: number): Promise<void>;
+    receiverAuthority?(productId: string): Promise<Uint8Array | null | undefined>;
+    receiverConsent?(authority: Uint8Array, watches: Uint8Array): Promise<boolean>;
+    receiverChanged?(): Promise<void>;
+    receiverCommand?(productId: string, action: number, payload: Uint8Array): Promise<Uint8Array | null | undefined>;
+    activationEvents?(): Promise<Uint8Array>;
+    acknowledgeActivation?(request: Uint8Array): Promise<void>;
     devicePermissionStatus?(request: Uint8Array): Promise<Uint8Array>;
     devicePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     remotePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
@@ -58,7 +64,7 @@ export interface RawCallbacks {
     placeContactAvatars?(product: Uint8Array, placed: Uint8Array): Promise<void>;
     scanCode?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
-    confirmPermission(review: Uint8Array): Promise<Uint8Array>;
+    confirmPermission?(review: Uint8Array): Promise<Uint8Array>;
     confirmUserAction(review: Uint8Array): Promise<boolean>;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the

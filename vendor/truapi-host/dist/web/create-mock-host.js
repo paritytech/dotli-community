@@ -608,6 +608,16 @@ export function createMockHost(config = {}) {
                 if (entry)
                     entry.cancelled = true;
             },
+            async receiverAuthority() { return undefined; },
+            async receiverConsent() { throw new Error("background receiving unsupported"); },
+            async receiverChanged() { throw new Error("background receiving unsupported"); },
+            async receiverCommand() { return undefined; },
+            async activationEvents() {
+                throw new Error("notification activation is unsupported");
+            },
+            async acknowledgeActivation() {
+                throw new Error("notification activation is unsupported");
+            },
         },
         game: {
             async scheduleGameReminder() { },

@@ -1,0 +1,31 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Settings' background receiving section: the status row's dot and text,
+   the status detail and error captions, and the enable and revoke actions
+   side by side (stacked when the column is narrow). */
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.detail,
+.error {
+  margin: 0;
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.detail {
+  color: var(--chrome-text-muted);
+}
+.error {
+  color: var(--chrome-err-text);
+  font-weight: var(--fw-medium);
+}
+.actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-2);
+}

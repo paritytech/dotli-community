@@ -143,6 +143,7 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+    include /etc/nginx/snippets/dotli-receiving-proxy.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";

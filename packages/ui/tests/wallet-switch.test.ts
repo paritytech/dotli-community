@@ -9,6 +9,8 @@ const protocol = vi.hoisted(() => ({
   forgetSharedLocalWallet: vi.fn(),
 }));
 vi.mock('@dotli/protocol', () => protocol);
+const receiving = vi.hoisted(() => ({ revokeReceivingOnLogout: vi.fn() }));
+vi.mock('../src/receiving.js', () => receiving);
 
 import { switchToLocalWallet, switchToPolkadotApp } from '../src/wallet-switch.js';
 
@@ -54,7 +56,22 @@ describe('wallet switch', () => {
     await switchToPolkadotApp(reload);
 
     // Then
+    expect(receiving.revokeReceivingOnLogout).toHaveBeenCalledTimes(1);
     expect(protocol.forgetSharedLocalWallet).toHaveBeenCalledWith(SITE_ID);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user whose receiving revocation failed, I keep my local wallet', async () => {
+    // Given
+    receiving.revokeReceivingOnLogout.mockRejectedValueOnce(new Error('relay unavailable'));
+    const reload = vi.fn();
+
+    // When
+    const result = switchToPolkadotApp(reload);
+
+    // Then
+    await expect(result).rejects.toThrow(/receiving could not be revoked/);
+    expect(protocol.forgetSharedLocalWallet).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
   });
 });

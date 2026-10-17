@@ -1,12 +1,15 @@
 // The core authorizes `Notifications` before calling here, so this adapter must not re-check:
 // a second check would find a consumed "Allow once" gone and prompt the user again.
 
+import type { NotificationActivation } from '@parity/truapi';
 import type { Notifications } from '@parity/truapi-host';
 import { log } from '@dotli/shared';
 import {
   retainNotification,
   findNotification,
   cancelNotificationActivation,
+  pendingNotificationActivations,
+  acknowledgeNotificationActivation,
   validNotificationRoute,
 } from '@dotli/storage/notification-activations';
 import { cancelNotification, scheduleNotification } from '../scheduled-notifications.js';
@@ -77,5 +80,41 @@ export function createNotificationAdapters(label: string): Required<Notification
   return {
     pushNotification,
     cancelNotification: cancelPushNotification,
+    // Browser enrollment belongs to the service-worker receiver, never this
+    // resident wallet core. Each verified product connection installs its
+    // immutable execution bridge in receiverCommand before opening a provider.
+    receiverAuthority: () => Promise.resolve(undefined),
+    receiverConsent: () => Promise.reject(new Error('Browser receiving consent requires the service-worker receiver')),
+    receiverChanged: () => Promise.reject(new Error('Browser receiving state belongs to the service-worker receiver')),
+    receiverCommand: () => Promise.resolve(undefined),
+    activationEvents: async () => {
+      // A click focuses one tab; background siblings must not route the same event.
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+        return { events: [] };
+      }
+      const { scope } = notificationContext(label);
+      const records = await pendingNotificationActivations(scope);
+      if (!notificationContextIsCurrent(scope)) {
+        return { events: [] };
+      }
+      const events: NotificationActivation[] = [];
+      for (const record of records) {
+        if (record.route !== null) {
+          events.push({
+            sequence: BigInt(record.sequence),
+            notificationId: record.notificationId,
+            route: record.route,
+          });
+        }
+      }
+      return { events };
+    },
+    acknowledgeActivation: async ({ sequence }) => {
+      if (sequence < 0n || sequence > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error('Invalid activation sequence');
+      }
+      const { scope } = notificationContext(label);
+      await acknowledgeNotificationActivation(scope, Number(sequence));
+    },
   };
 }

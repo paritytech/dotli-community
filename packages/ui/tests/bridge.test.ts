@@ -19,7 +19,7 @@ import {
   scale,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
-import type { AuthState, RequiredHostCallbacks } from '@parity/truapi-host';
+import type { AuthState, PermissionAuthorizationRequest, RequiredHostCallbacks } from '@parity/truapi-host';
 import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -279,6 +279,7 @@ describe('bridge render lifecycle', () => {
       (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        iframe.allow = args.allow;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -304,6 +305,142 @@ describe('bridge render lifecycle', () => {
     spy.mockRestore();
   });
 
+  it.each(['account change', 'disconnect', 'logout'] as const)(
+    'preserves unchanged session notification authority until %s',
+    async transition => {
+      const { renderAppSubdomain } = await import('../src/bridge.js');
+      const { notificationContext, notificationContextIsCurrent } = await import('../src/notification-activation.js');
+      const { findNotification } = await import('@dotli/storage/notification-activations');
+      const render = renderAppSubdomain('verified-cid', 'myapp');
+      await waitForProviderRequests(1);
+      const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      callbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      });
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      await render;
+      const originalScope = notificationContext('myapp').scope;
+      window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
+      const refreshed = await callbacks.notifications.pushNotification({ text: 'After unchanged refresh' });
+      expect((await findNotification('myapp', refreshed.id))?.scope).toEqual(originalScope);
+
+      if (transition === 'account change') {
+        callbacks.auth.authStateChanged({
+          tag: 'Connected',
+          value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'33'.repeat(32)}` },
+        });
+      } else if (transition === 'disconnect') {
+        callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+      } else {
+        window.dispatchEvent(new Event('dotli:logged-out'));
+      }
+      expect(notificationContextIsCurrent(originalScope)).toBe(false);
+      await expect(callbacks.notifications.pushNotification({ text: 'After auth invalidation' })).rejects.toThrow(
+        'authenticated account',
+      );
+    },
+    10_000,
+  );
+
+  it('keeps notification grants in place and reloads only a changed committed iframe policy', async () => {
+    const { renderIframe } = await import('../src/bridge.js');
+    const { labelToProductId } = await import('../src/runtime-config.js');
+    let locationGranted = false;
+    const provider = makeProvider();
+    provider.getPermissionAuthorizationStatuses.mockImplementation((requests: PermissionAuthorizationRequest[]) =>
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' &&
+          (request.value === 'Notifications' || (request.value === 'Location' && locationGranted))
+            ? 'Authorized'
+            : 'NotDetermined',
+        ),
+      ),
+    );
+    const initial = renderIframe('https://preview.example/app', 'committed-policy');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
+    await initial;
+    const first = nth(mocks.iframeHosts, 0);
+    const notify = async (): Promise<void> => {
+      vi.useFakeTimers({ toFake: ['setTimeout'] });
+      try {
+        window.dispatchEvent(
+          new CustomEvent('dotli:permission-changed', {
+            detail: { productId: labelToProductId('committed-policy') },
+          }),
+        );
+        await vi.runAllTimersAsync();
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    await notify();
+    expect(first.iframe.isConnected).toBe(true);
+    expect(mocks.iframeHosts).toHaveLength(1);
+
+    locationGranted = true;
+    await notify();
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(provider);
+    await vi.waitFor(() => {
+      expect(first.iframe.isConnected).toBe(false);
+      expect(nth(mocks.iframeHosts, 1).iframe.allow.split('; ')).toContain('geolocation');
+    });
+    await notify();
+    expect(nth(mocks.iframeHosts, 1).iframe.isConnected).toBe(true);
+    expect(mocks.iframeHosts).toHaveLength(2);
+  });
+
+  it('delivers direct-frame notifications without carrying activations into a replacement execution', async ({
+    onTestFinished,
+  }) => {
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    onTestFinished(() => {
+      focus.mockRestore();
+    });
+    const { renderIframe } = await import('../src/bridge.js');
+    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
+    const { setNotificationAccount } = await import('../src/notification-activation.js');
+    const { findNotification } = await import('@dotli/storage/notification-activations');
+    const label = 'preview-notifications';
+    window.history.replaceState(null, '', '/__preview?url=https%3A%2F%2Fpreview.example%2Fapp');
+    const first = renderIframe('https://preview.example/app', label);
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await first;
+    setNotificationAccount(label, '11'.repeat(32));
+
+    const api = createNotificationAdapters(label);
+    const pushed = await api.pushNotification({ text: 'Preview notification', deeplink: '/message/1' });
+    const record = await findNotification(label, pushed.id);
+    assert.isDefined(record);
+    expect(record.entryUrl).toBe(window.location.href);
+    await overlaysReady();
+    const notification = document.querySelector<HTMLButtonElement>('[data-testid="notif-body"]');
+    expect(notification?.textContent).toBe('Preview notification');
+    notification?.click();
+    await vi.waitFor(async () => {
+      expect((await api.activationEvents()).events).toEqual([
+        { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/message/1' },
+      ]);
+    });
+
+    const replacement = renderIframe('https://preview.example/app', label);
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await replacement;
+    setNotificationAccount(label, '11'.repeat(32));
+    expect((await api.activationEvents()).events).toEqual([]);
+    const next = await api.pushNotification({ text: 'New execution', deeplink: '/message/2' });
+    const nextRecord = await findNotification(label, next.id);
+    assert.isDefined(nextRecord);
+    expect(nextRecord.scope.artifact).not.toBe(record.scope.artifact);
+
+    window.dispatchEvent(new Event('dotli:logged-out'));
+    await expect(api.pushNotification({ text: 'After logout' })).rejects.toThrow('authenticated account');
+  }, 10_000);
   it('As a dotli integrator, the host disposes a host that resolves after a newer render has started', async () => {
     // Given
     const { renderIframe } = await import('../src/bridge.js');
@@ -1006,6 +1143,48 @@ describe('bridge render lifecycle', () => {
       }),
     );
     expect(updateRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows browser requirements only for an authenticated unsupported JAM transport signal', async () => {
+    vi.stubGlobal('WebTransport', undefined);
+    // Import after the per-test reset to isolate bridge singleton state and its listener.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const notification = await import('../src/notification.js');
+    const showNotification = vi.spyOn(notification, 'showNotification').mockImplementation(() => () => undefined);
+    const render = renderAppSubdomain('manifest-cid', 'jam-app');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const targetWindow = nth(mocks.iframeHosts, 0).iframe.contentWindow;
+    if (targetWindow === null) {
+      throw new Error('app frame has no content window');
+    }
+    const appOrigin = new URL(nth(mocks.iframeHosts, 0).iframeUrl).origin;
+    const signal = (origin: string, source: Window): void => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'dotli:jam-peer-transport-unavailable' },
+          origin,
+          source,
+        }),
+      );
+    };
+    signal('https://evil.example', targetWindow);
+    signal(appOrigin, window);
+    expect(showNotification).not.toHaveBeenCalled();
+
+    vi.stubGlobal('WebTransport', vi.fn());
+    signal(appOrigin, targetWindow);
+    expect(showNotification).not.toHaveBeenCalled();
+
+    vi.stubGlobal('WebTransport', undefined);
+    signal(appOrigin, targetWindow);
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    const notificationCall = showNotification.mock.calls[0]?.[0];
+    expect(notificationCall?.dismissMs).toBe(0);
+    expect(notificationCall?.browserNotification).toBe(false);
+    showNotification.mockRestore();
   });
 
   it.each(['/x.dot@evil.com/pay', '/foo.dotify/pay'])(

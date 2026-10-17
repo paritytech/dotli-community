@@ -34,6 +34,9 @@ function SlidersIcon(): JSX.Element {
 /**
  * The settings button and its popover.
  *
+ * SettingsContent is its own chunk. Network, transport, cache and runtime settings stay a draft across categories
+ * until Save and apply; closing discards them. Theme and background receiving controls apply immediately.
+ *
  * Saved settings come only from settingsStore, which boot may seed after this island mounts. Never read
  * @dotli/config here: a read can rewrite a setting (getBackend drops a shared worker choice the browser
  * cannot run), and boot's URL settings step must see the saved value first.

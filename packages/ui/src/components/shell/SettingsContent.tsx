@@ -16,6 +16,7 @@ import { Switch } from '../primitives/Switch.js';
 import { SegmentedControl, type SegmentOption } from '../primitives/SegmentedControl.js';
 import { Row, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
+import { ReceivingContent } from './ReceivingContent.js';
 import { usePopover } from '../floating/Popover.js';
 import { AppearancePicker } from './Appearance.js';
 import s from './SettingsContent.module.css';
@@ -97,8 +98,8 @@ function openInDebugMode(): void {
 }
 
 /**
- * One opening's panel, on General each time. Network and cache changes stay a draft across categories until Save and
- * apply, and closing drops the draft. The theme applies at once.
+ * One opening's panel, on General each time. Network, transport, cache and runtime changes stay a draft across
+ * categories until Save and apply, and closing drops the draft. Theme and receiving controls apply immediately.
  */
 function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const popover = usePopover();
@@ -116,6 +117,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const [category, setCategory] = createSignal<Category>('general');
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
+  const [resetError, setResetError] = createSignal('');
 
   const dirty = createMemo(() => {
     const draft = cache();
@@ -128,19 +130,27 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   });
 
   const clearAll = (): void => {
-    if (untrack(clearing)) {
+    if (untrack(clearing) || untrack(applying)) {
       return;
     }
     setClearing(true);
-    // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
-    void applyAndReset(persisted, persisted, { forceFullWipe: true });
+    setResetError('');
+    // Reset all origins regardless of cache toggles, retaining receiving
+    // revocation tombstones until remote deletion is acknowledged.
+    void applyAndReset(persisted, persisted, { forceFullWipe: true }).catch(() => {
+      setClearing(false);
+      setResetError(
+        'Could not clear all caches. Background receiving revocation must be saved before reset. Try again.',
+      );
+    });
   };
 
   const apply = (): void => {
-    if (!untrack(dirty) || untrack(applying)) {
+    if (!untrack(dirty) || untrack(applying) || untrack(clearing)) {
       return;
     }
     setApplying(true);
+    setResetError('');
     void applyAndReset(
       {
         chain: untrack(chain),
@@ -149,7 +159,12 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         polkaVmAppsEnabled: untrack(polkaVmAppsEnabled),
       },
       persisted,
-    );
+    ).catch(() => {
+      setApplying(false);
+      setResetError(
+        'Could not apply settings. Background receiving revocation must be saved before changing networks. Try again.',
+      );
+    });
   };
 
   const networks = saved.enabledNetworks;
@@ -255,8 +270,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               <Button
                 block
                 onClick={clearAll}
-                title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-                disabled={clearing()}
+                title="Clear caches and reset app data across all origins. Receiving revocation records remain until remote deletion is acknowledged. The app will reload."
+                disabled={clearing() || applying()}
               >
                 <TrashIcon />
                 {clearing() ? 'Clearing…' : 'Clear all caches'}
@@ -271,6 +286,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               </Row>
             </Well>
           </Stack>
+          <ReceivingContent />
           <Show when={!isTruapiDebugEnabled()}>
             <div data-testid="mode-debug-row">
               <Button block onClick={openInDebugMode} title="Reload this tab with the debug panel and its diagnostics">
@@ -289,10 +305,20 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         }
       >
         <div class={s['apply']} data-testid="mode-apply-row">
-          <Button variant="primary" block={popover.sheet()} onClick={apply} disabled={!dirty() || applying()}>
+          <Button
+            variant="primary"
+            block={popover.sheet()}
+            onClick={apply}
+            disabled={!dirty() || applying() || clearing()}
+          >
             {applying() ? 'Resetting…' : 'Save and apply'}
           </Button>
         </div>
+        <Show when={resetError()}>
+          <p class={s['error']} role="alert" data-testid="mode-reset-error">
+            {resetError()}
+          </p>
+        </Show>
       </SurfaceFoot>
     </Surface>
   );

@@ -139,6 +139,38 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/jam-peer-transport-on-seity`.
+JAM peer transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission
+through the product's authenticated port to the shared page core. The host's Solid permission dialog shows the full
+genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
+are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
+signing, storage, or arbitrary web access. Peer access permits sending and receiving messages; it is not a read-only
+network permission. JAM permission callbacks return the decision without an administrative permission write, leaving the
+canonical Rust core to persist it against the pending product/genesis request. Administrative settings changes remain a
+separate operation that deliberately invalidates stale consent.
+
+The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
+the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
+the app can continue with its verified snapshot. Supported versions are Chrome or Edge 100+, Firefox 125+, and
+Safari/iOS 26.4+.
+
+The canonical session uses WebTransport to app-selected peers, with at most eight pending or established connections,
+sixteen streams per connection, and 1 MiB messages. Permission waits consume a connection slot before prompting. Each
+execution remembers at most eight distinct genesis decisions, including pending, refused, and dismissed decisions. A new
+ninth genesis returns `Limit`; existing decisions are not evicted or re-prompted. Cancellation releases its pending dial
+slot but retains the bounded network decision. Received data remains unverified until the guest checks it. The runtime
+menu's **Network access** section lists this execution's grants. Network updates continue while its display/audio menu
+is paused. Stop, replacement, and runtime failure close the session and refuse outstanding permission requests; a
+replacement guest cannot consume old replies. Ordinary host frames retain their 1 MiB bound and still use the shared
+page core; only peer frames use the larger bound needed for message framing. The session's ten-second dial deadline
+includes the permission prompt: a late decision does not resurrect an expired dial, though a retry can use the
+remembered decision.
+
+The full genesis scopes permission decisions, but the browser WebTransport handshake does not bind the peer to that
+genesis. The current PolkaJAM HTTP/3 CONNECT endpoint does not negotiate a genesis. TLS pins an app-supplied peer key;
+it does not prove validator membership. The guest must verify chain data. Browser support is retained with this explicit
+limitation; no manifest declaration or invented URL/protocol parameter substitutes for verification.
+
 App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and bounded capability negotiation; TrUAPI,
 MotionSample v1, text, IME, focus, and wheel input use the same pinned browser runtime as native Hosts. UI output v1
 applies cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S) navigation cross an origin-checked parent
@@ -304,6 +336,16 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
+### Permission decision ownership
+
+Core-initiated permission callbacks return the user's decision without writing the grant. The canonical core commits
+that decision against the permission revision it captured before prompting; an adapter-side write would invalidate the
+pending request. Host-initiated mediated-device prompts still persist their own durable decisions.
+
+After a committed permission change, the bridge matches the canonical product identity and refreshes the active iframe's
+Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
+requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
+
 A fresh product-document handshake retires the previous native execution before attaching its replacement. Pending
 permission prompts and execution-local grants cannot cross that boundary; repeated readiness messages with the same
 connection identifier remain idempotent. Connection creation is single-flight, and a superseded result is closed rather
@@ -322,6 +364,10 @@ activation feed, which belongs to the separate generic notification feature. The
 to the product execution, authenticated account, network and artifact, and another product, account, network or artifact
 cannot read them.
 
+Notification authority follows live native auth transitions, not the UI-state cache or shared-session storage hints. An
+unchanged stored-session reload emits no new auth transition and leaves ordinary notifications usable. A native account
+change, disconnection or explicit logout invalidates the previous scope.
+
 Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
 URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
 replacing a direct iframe cannot inherit an earlier execution's notification activations.
@@ -332,6 +378,12 @@ is bounded to 256 records; a full queue never evicts an unacknowledged clicked e
 In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
 window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
 supply one.
+
+### Background receiving activation
+
+Startup republication of unchanged, already-enabled watches in the current authorized receiver scope preserves its
+revision, retained events, display receipts and transport synchronization state. A cold notification click therefore
+survives product startup. Genuine watch changes still advance the revision and reject clicks from the previous policy.
 
 ### Product chat
 
@@ -422,14 +474,15 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the Profile TrUAPI 0.25.0 SDK from source `d164d8e96ded05ea039c3b7927e645bdc65a4c89`, recorded in
+This branch vendors the integrated TrUAPI 0.24.0 SDK from source `e48777643c52278769a6bac724c7f6577cb87197`, recorded in
 `vendor/truapi-host.lock.json`. Both Wasm bundles come from upstream's standard `build-wasm.mjs`: `wasm/web` is the
-pairing-only production host, and `wasm/testing` backs the local wallet's signing worker. The recorded archive hashes
-precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority and custody sit above the generic
-PolkaVM runtime. Profile disclosure, contacts and presentation fences are added here; contact names and avatars read the
-native Chat contacts beside the local wallet. Jam remains a separate feature layer. Replacing a product document retires
-its execution and clears its avatars and labels immediately; the new execution receives fresh Profile callbacks. Install
-the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
+pairing-only production host with background receiving, and `wasm/testing` backs the local wallet's signing worker. The
+recorded archive hashes precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody
+and account-bound notification activation sit above the generic PolkaVM runtime. This integration combines Profile
+disclosure, contacts and presentation fences with the separate JamPeerTransport layer and background receiving.
+Replacing a product document retires its execution, receiving registration, avatars and labels immediately; the new
+execution receives fresh capability callbacks. Install the tree in `package-lock.json` with `npm ci`. To iterate against
+a matching local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

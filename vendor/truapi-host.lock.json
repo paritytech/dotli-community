@@ -1,32 +1,32 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/chat-seity-profile",
-  "upstreamRevision": "9d759050b4d50dd1ce98008ef42a6d62c42a559d",
+  "upstreamBranch": "feat/jam-peer-transport-on-seity",
+  "upstreamRevision": "4f7a19c24b353c73468776ecf4c19cc44699eb78",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.25.0",
-      "sourceArchiveSha256": "89ed0e6a01eba02d977adb6b484eb18714f7a7894c3b2a7ebac670559f7a4518",
-      "clientSha256": "27afbef577e538f6302774fb877c1e4d399637ade87fe7dff34044b77467f971"
+      "sourceArchiveSha256": "4008598c5b130ce33811306f029858af6f0881d6b379856aebe5427d5b0b1837",
+      "clientSha256": "d17ab623273faf2ec5f1cc41b94654bf1b0f13d9b403c0cfe100f671c2e735b6"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.25.0",
-      "sourceArchiveSha256": "a56ca4418e3853f9c97adfaeee50cc4cc626979f470702371d338201385ce175",
+      "sourceArchiveSha256": "74c75323d65be1d0323151c24268d669b2fcd7de8f7232524497831a6a4ae54b",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "37e450f4716a4038e16b3b6e9f79eed9b786d3388c6a47a1dd2a5f831debd29d",
+          "sha256": "08668b3ce50db4ceadf2cdc18f36e0f1d0eeefbf6bcd04368c99903ec0319e53",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "b704032b53b1e36ec6874553c5d5f190657e1bc71847f4556c2ceb7378a38e8f",
+          "sha256": "44452facf449d75ec841cca4675e4500e9621350c70994be503e7206377e6872",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "9d759050b4d50dd1ce98008ef42a6d62c42a559d",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1001"
+  "wasmUpstreamRevision": "4f7a19c24b353c73468776ecf4c19cc44699eb78",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011"
 }

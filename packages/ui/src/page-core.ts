@@ -20,14 +20,17 @@ import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { getWalletMode } from './state/wallet-mode.js';
 import { readWalletBoot } from './wallet-boot.js';
-import { setNotificationAccount } from './notification-activation.js';
 import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
 import type { ContactLabelOverlay } from './contacts/label-overlay.js';
+import { setReceivingAccount } from './receiving.js';
+import { createReceivingExecution, type ReceivingExecution } from './receiving-execution.js';
 
 /** The product frame's host-drawn layers a connection paints Profile avatars and contact names on. */
 export interface CoreConnectionOptions {
   contactAvatars?: ContactAvatarOverlay;
   contactLabels?: ContactLabelOverlay;
+  archiveCid?: string | undefined;
+  isCurrentExecution?: () => boolean;
 }
 
 export interface PageProduct {
@@ -42,6 +45,7 @@ export interface PageProduct {
 export interface CoreConnection {
   provider: TrUApiProductProvider;
   productId: string;
+  receiving: ReceivingExecution;
   close(): void;
 }
 
@@ -182,6 +186,9 @@ function createCore(product: PageProduct): Core {
         profileAccount = profileSession;
         invalidateProfiles();
       }
+      if (isPageProduct(core) && state.tag === 'Connected') {
+        setReceivingAccount(state.value.identityAccountId);
+      }
       presentAuth(state);
     };
     return coreCallbacks;
@@ -219,8 +226,7 @@ function createCore(product: PageProduct): Core {
     log.event('wallet core booted', { flow: 'wallet' });
     // Other tabs' logins land in the shared session store. Once now too, for a session stored before boot.
     unsubscribeStore = onStoredSessionChanged(() => {
-      // Fence both local and cross-tab changes before the worker reloads auth.
-      setNotificationAccount(product.label, undefined);
+      // Hints can reload an unchanged session; only native auth transitions change notification authority.
       invalidateProfiles();
       booted.notifySessionStoreChanged();
     });
@@ -330,11 +336,15 @@ async function connect(
 ): Promise<CoreConnection> {
   const productId = productIdOf(core.product);
   const callbacks = core.openCallbacks(options);
+  const receiving = createReceivingExecution(productId, options.archiveCid, options.isCurrentExecution);
+  callbacks.callbacks.notifications.receiverCommand = (product, action, payload) =>
+    receiving.command(product, action, payload);
   let provider: TrUApiProductProvider;
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
   } catch (error) {
     log.warn('[dot.li page-core] wallet core refused a connection:', error);
+    receiving.close();
     callbacks.dispose();
     core.faulted = true;
     throw error;
@@ -342,6 +352,7 @@ async function connect(
   let closing = false;
   // A deliberate close also fires close listeners. Any other close is the core going down.
   provider.subscribeClose?.(() => {
+    receiving.close();
     callbacks.dispose();
     if (!closing) {
       log.event('wallet core went down under a connection', { flow: 'wallet' });
@@ -351,8 +362,10 @@ async function connect(
   return {
     provider,
     productId,
+    receiving,
     close() {
       closing = true;
+      receiving.close();
       callbacks.dispose();
       provider.dispose();
     },

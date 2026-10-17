@@ -411,6 +411,12 @@ test.describe('dot.li > host-playground.dot', () => {
 
       // Then
       expect(status).toBe('success');
+
+      // A same-session storage hint produces no new native AuthState transition.
+      await pairedPage.evaluate(() => {
+        window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
+      });
+      await runTestExpectSuccess(productFrame, 'push-notification');
     });
   });
 

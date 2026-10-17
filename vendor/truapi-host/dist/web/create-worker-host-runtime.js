@@ -418,7 +418,7 @@ async function handleChainConnectStart(state, msg) {
     };
     try {
         const conn = await (msg.kind === "hopConnectStart"
-            ? state.rawCallbacks.hopConnect(msg.genesisHash, msg.endpoint, onResponse, onClosed)
+            ? state.rawCallbacks.hopConnect?.(msg.genesisHash, msg.endpoint, onResponse, onClosed)
             : state.rawCallbacks.chainConnect(msg.genesisHash, onResponse, onClosed));
         if (state.disposed || entry.closed) {
             state.chainConnections.delete(msg.connId);
