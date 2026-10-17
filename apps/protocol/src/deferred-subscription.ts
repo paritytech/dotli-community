@@ -26,8 +26,10 @@ interface Waiting<M extends SubscriptionMethod> {
 export interface DeferredSubscription<M extends SubscriptionMethod> {
   /** Registered at once. Each subscription waits until `serve`, and one that stops first never starts. */
   handler: SubscriptionHandler<M>;
-  /** Starts every waiting subscription on `real`, and every later one at once. Only the first call counts. */
+  /** Starts every waiting subscription on `real`, and every later one at once. Only the first `serve` or `fail` counts. */
   serve(real: SubscriptionHandler<M>): void;
+  /** Ends every waiting subscription with `error`, and every later one at once, for a source that will never come. */
+  fail(error: Error): void;
 }
 
 export function createDeferredSubscription<M extends SubscriptionMethod>(): DeferredSubscription<M> {
@@ -40,6 +42,23 @@ export function createDeferredSubscription<M extends SubscriptionMethod>(): Defe
       stop();
     } else {
       entry.stop = stop;
+    }
+  };
+
+  const serve = (handler: SubscriptionHandler<M>): void => {
+    if (real !== null) {
+      return;
+    }
+    real = handler;
+    const started = [...waiting];
+    waiting.clear();
+    for (const entry of started) {
+      try {
+        start(entry, handler);
+      } catch (error) {
+        // A handler that throws refuses that subscription, as the transport does with one it runs itself.
+        entry.sink.end(toError(error));
+      }
     }
   };
 
@@ -58,21 +77,13 @@ export function createDeferredSubscription<M extends SubscriptionMethod>(): Defe
       };
     },
 
-    serve(handler) {
-      if (real !== null) {
-        return;
-      }
-      real = handler;
-      const started = [...waiting];
-      waiting.clear();
-      for (const entry of started) {
-        try {
-          start(entry, handler);
-        } catch (error) {
-          // A handler that throws refuses that subscription, as the transport does with one it runs itself.
-          entry.sink.end(toError(error));
-        }
-      }
+    serve,
+
+    fail(error) {
+      serve((_payload, _context, sink) => {
+        sink.end(error);
+        return () => undefined;
+      });
     },
   };
 }

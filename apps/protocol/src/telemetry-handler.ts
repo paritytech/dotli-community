@@ -27,33 +27,52 @@ export interface TelemetryDeps {
   joinedSynced: () => boolean;
 }
 
+/** A feed that opens and reports nothing, for a frame that runs no light client of its own. */
+export const idleTelemetry: SubscriptionHandler<'telemetry'> = () => () => undefined;
+
 export function createTelemetryHandler(deps: TelemetryDeps): SubscriptionHandler<'telemetry'> {
   return (_payload, _context, sink) => {
-    const synced = deps.joinedSynced();
-    let replaying = true;
-    const stopSync = deps.onChainSync(event => {
-      sink.send(chainSyncTelemetry(event));
-    });
-    const stopDetail = deps.onChainDetail(detail => {
-      const reported =
-        replaying && synced && detail.dbCache !== undefined ? { ...detail, dbCache: 'hit' as const } : detail;
-      sink.send(chainDetailTelemetry(reported));
-    });
-    replaying = false;
-    for (const [chain, outcome] of deps.dbOutcomes()) {
-      sink.send(smoldotDbTelemetry(chain, synced ? 'hit' : outcome));
-    }
-    const stopDb = deps.onDbOutcome((chain, outcome) => {
-      sink.send(smoldotDbTelemetry(chain, outcome));
-    });
-    const stopNetBytes = deps.netBytes(total => {
-      sink.send(netBytesTelemetry(total));
-    });
-    return () => {
-      stopSync();
-      stopDetail();
-      stopDb();
-      stopNetBytes();
+    const stops: (() => void)[] = [];
+    const stopAll = (): void => {
+      for (const stop of stops.splice(0).reverse()) {
+        stop();
+      }
     };
+    try {
+      const synced = deps.joinedSynced();
+      let replaying = true;
+      stops.push(
+        deps.onChainSync(event => {
+          sink.send(chainSyncTelemetry(event));
+        }),
+      );
+      stops.push(
+        deps.onChainDetail(detail => {
+          const reported =
+            replaying && synced && detail.dbCache !== undefined ? { ...detail, dbCache: 'hit' as const } : detail;
+          sink.send(chainDetailTelemetry(reported));
+        }),
+      );
+      replaying = false;
+      for (const [chain, outcome] of deps.dbOutcomes()) {
+        sink.send(smoldotDbTelemetry(chain, synced ? 'hit' : outcome));
+      }
+      stops.push(
+        deps.onDbOutcome((chain, outcome) => {
+          sink.send(smoldotDbTelemetry(chain, outcome));
+        }),
+      );
+      stops.push(
+        deps.netBytes(total => {
+          sink.send(netBytesTelemetry(total));
+        }),
+      );
+    } catch (error) {
+      // The transport refuses the subscription with this error and never gets a stop, so the feeds started are
+      // stopped here.
+      stopAll();
+      throw error;
+    }
+    return stopAll;
   };
 }

@@ -86,4 +86,25 @@ describe('a subscription served before its source exists', () => {
     // Then
     await expect(fed.stopped).resolves.toBeUndefined();
   });
+
+  it('As the host, a subscription waiting on a source that failed ends with its error, and so does a later one', async () => {
+    // Given
+    const link = linkHost();
+    const telemetry = createDeferredSubscription<'telemetry'>();
+    link.serving.handleSubscription('telemetry', telemetry.handler);
+    const early = record(link.host, 'telemetry', undefined);
+    await roundTrip(link);
+
+    // When
+    telemetry.fail(new Error('Unknown protocol mode: "nope"'));
+    const fed = source();
+    telemetry.serve(fed.handler);
+    const late = record(link.host, 'telemetry', undefined);
+
+    // Then the failure holds, and the source served after it is never started
+    expect(await early.ended).toMatchObject({ message: 'Unknown protocol mode: "nope"' });
+    expect(await late.ended).toMatchObject({ message: 'Unknown protocol mode: "nope"' });
+    expect(early.events).toEqual([]);
+    expect(fed.started()).toBe(0);
+  });
 });

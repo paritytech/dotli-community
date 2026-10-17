@@ -46,7 +46,7 @@ import { createOriginRefusalReporter, createRefusalReporter, reportRefusals } fr
 import { intervalTicker, NET_BYTES_INTERVAL_MS, reportNetBytes } from './net-bytes.js';
 import { createFrameStatus } from './frame-status.js';
 import { createDeferredSubscription } from './deferred-subscription.js';
-import { createTelemetryHandler } from './telemetry-handler.js';
+import { createTelemetryHandler, idleTelemetry } from './telemetry-handler.js';
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
 // invisible to resource timing, so the speed readout needs this.
@@ -54,6 +54,14 @@ installByteMeter();
 
 // What the host hears of this frame's boot, on subscribe, so a failure before the host asks is not lost.
 const frameStatus = createFrameStatus();
+// The host subscribes as soon as its handshake is answered, before the chain mode has loaded what feeds it.
+const telemetry = createDeferredSubscription<'telemetry'>();
+
+/** The frame will never serve. A telemetry subscription still waiting on a chain mode ends with the same error. */
+function failFrame(error: Error): void {
+  frameStatus.fail(error);
+  telemetry.fail(error);
+}
 
 // No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
 window.addEventListener('vite:preloadError', event => {
@@ -62,7 +70,7 @@ window.addEventListener('vite:preloadError', event => {
   log.error('[dot.li protocol] Asset failed to load', payload);
   // The browser's message names the chunk. Only Safari omits it.
   const msg = payload === undefined ? 'no detail from the loader' : serializeError(payload);
-  frameStatus.fail(new ProtocolFatalError(`Protocol iframe asset failed to load: ${msg}`, { cause: payload }));
+  failFrame(new ProtocolFatalError(`Protocol iframe asset failed to load: ${msg}`, { cause: payload }));
 });
 
 initSentry('protocol');
@@ -102,9 +110,6 @@ const serving = createServingTransport(
   { side: 'frame' },
 );
 serving.handleSubscription('frameStatus', frameStatus.handler);
-// The host subscribes as soon as its handshake is answered, before a chain mode has loaded what feeds it. Only the
-// light client feeds it, so in the other modes a subscription waits for good.
-const telemetry = createDeferredSubscription<'telemetry'>();
 serving.handleSubscription('telemetry', telemetry.handler);
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
@@ -125,7 +130,7 @@ async function purgeWorkerCaches(): Promise<void> {
 /** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
 function failInit(message: string, cause?: unknown): void {
   log.error(`[dot.li protocol] ${message}`);
-  frameStatus.fail(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
+  failFrame(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
 }
 
 async function init(): Promise<void> {
@@ -133,6 +138,7 @@ async function init(): Promise<void> {
   // No mode means an auth-only iframe.
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
+    telemetry.serve(idleTelemetry);
     frameStatus.ready();
     return;
   }
@@ -283,6 +289,8 @@ async function initDirectMode(): Promise<void> {
 async function initRpcMode(): Promise<void> {
   const { openGatewayChains } = await loadGatewayChains();
   const engine = createEngine(openGatewayChains());
+  // Trusted RPC runs no light client, so there is nothing to report.
+  telemetry.serve(idleTelemetry);
 
   // The iframe serves its one parent, so one scope holds every connection.
   serveEngineScope(served, engine);
@@ -295,5 +303,5 @@ async function initRpcMode(): Promise<void> {
 
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);
-  frameStatus.fail(new ProtocolInitFailedError(serializeError(err), { cause: err }));
+  failFrame(new ProtocolInitFailedError(serializeError(err), { cause: err }));
 });
