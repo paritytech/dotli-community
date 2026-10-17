@@ -71,11 +71,19 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 
 ```mermaid
 flowchart LR
-  host[host page] -- postMessage --> serving[serving transport]
-  serving --> stores["shared stores, local wallet"]
-  serving --> engine --> pool[chain pool]
-  pool --> smoldot["smoldot, in the iframe or a SharedWorker"]
+  host[host page] -- postMessage --> serving
+  subgraph frame[protocol iframe]
+    serving[serving transport] --> stores["shared stores, local wallet"]
+    serving -- direct or gateway --> engine --> pool[chain pool]
+    pool --> smoldot
+    serving -- shared worker --> relay["relay, over its own consumer transport"]
+  end
   pool --> gateway[WSS gateway]
+  relay -- port --> portServing
+  subgraph worker[SharedWorker]
+    portServing[serving transport per port] --> scope[engine scope per port] --> workerPool[chain pool]
+    workerPool --> workerSmoldot[smoldot]
+  end
 ```
 
 ## Entry points
