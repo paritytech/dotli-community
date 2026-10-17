@@ -22,7 +22,9 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   reported and shown. It refuses to run as a top-level page.
 - One load fetches and verifies the content, hands an archive to the service worker and writes the page. It never
   throws, so the caller learns which step failed.
-- Blocks come from the host parent through a bridge. Progress and completion go back to the host the same way.
+- Blocks come from the host parent through a bridge. Progress and completion go back to the host the same way. The
+  sandbox tells the host it is starting as soon as its params check out, since the host fails a sandbox that stays
+  silent.
 - The service worker serves the archive's files byte for byte and keeps the archive in IndexedDB for restarts.
   Navigations go to the network, since the page writes the product's index.html into its own window. A page written at a
   deep link resolves its relative URLs under its own directory. The handoff names the directory the page is written at,

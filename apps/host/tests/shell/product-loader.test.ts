@@ -76,6 +76,8 @@ interface Options {
   resolveError?: Error;
   /** Thrown as the failure screen shows. */
   failToShow?: Error;
+  /** The sandbox never says anything. It speaks at once without it. */
+  silentSandbox?: boolean;
 }
 
 function harness(options: Options = {}) {
@@ -103,6 +105,12 @@ function harness(options: Options = {}) {
       contentDone.push(callback);
     },
     onContentProgress: () => () => undefined,
+    onSandboxHeard: listener => {
+      if (options.silentSandbox !== true) {
+        queueMicrotask(listener);
+      }
+      return () => undefined;
+    },
   } satisfies LoaderFrame;
   const cidCache = {
     get: vi.fn<LoaderCidCache['get']>(() => Promise.resolve(options.cached ?? null)),
@@ -382,6 +390,23 @@ describe('createProductLoader', () => {
     // Then
     expect(beginAttempt('doom').attemptNumber).toBe(2);
     expect(resolution()).toMatchObject({ outcome: 'content_error', failed_step: 'archive_fetch' });
+  });
+
+  it('As a visitor whose app frame never starts, I see the failure screen after its deadline instead of a loading bar for good', async () => {
+    // Given
+    vi.useFakeTimers();
+    const { loader, failures, reportContent } = harness({ published: { doom: 'bafy-base' }, silentSandbox: true });
+    await loader.load('doom');
+
+    // When
+    await vi.advanceTimersByTimeAsync(30_000);
+    reportContent('loaded');
+    vi.useRealTimers();
+
+    // Then
+    expect(failures.map(failure => failure.error.kind)).toEqual(['sandbox-silent']);
+    expect(captured).toContainEqual(expect.objectContaining({ step: 'content' }));
+    expect(resolution()).toMatchObject({ outcome: 'error', error_kind: 'sandbox-silent' });
   });
 
   it('As a visitor on a gateway, I am shown the app as trusted', async () => {

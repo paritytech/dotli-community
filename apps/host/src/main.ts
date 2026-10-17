@@ -227,6 +227,7 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
       render: product => shell.productFrame.render(product),
       onContentDone: onSandboxDone,
       onContentProgress: listener => relay.onProgress(listener),
+      onSandboxHeard: listener => shell.sandboxChannel.on('dotli:loading-status', listener),
     },
     cidCache: pageCidCache(names),
     recents: { record: recordRecentLabel },
