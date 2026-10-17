@@ -174,19 +174,23 @@ function reportBootFailure(phase: BootPhase, error: unknown, count: typeof m.cou
 }
 
 /**
- * Reports a frame lost after it was ready, once. A tab the SharedWorker let go of while it was frozen finds its port
- * released when it thaws, which is expected, so that loss is counted and left in the trail but not captured.
+ * Reports a frame lost after it was ready, once, and captures it when `capture` says so. Returns whether it captured. A
+ * tab the SharedWorker let go of while it was frozen finds its port released when it thaws, which is expected, so that
+ * loss is counted and left in the trail but never captured.
  */
-function reportFrameLost(error: Error, count: typeof m.count): void {
+function reportFrameLost(error: Error, count: typeof m.count, capture: boolean): boolean {
   const reason = errorName(error) ?? 'unknown';
   count(S.PROTOCOL_FRAME_LOST, { outcome: 'error', reason });
   if (reason === 'ProtocolPortReleasedError') {
     log.event('protocol frame released', { flow: 'protocol', reason });
-    return;
+    return false;
   }
   m.breadcrumb('protocol frame lost', { reason: serializeError(error) });
-  captureException(error, { flow: 'protocol', step: 'frame_lost' });
+  if (capture) {
+    captureException(error, { flow: 'protocol', step: 'frame_lost' });
+  }
   log.error(`[dot.li protocol] Frame lost: ${serializeError(error)}`);
+  return capture;
 }
 
 /**
@@ -223,6 +227,9 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   // Stops the keeper when the host drops the frame on purpose.
   let keeper: AbortController | null = null;
   let losses = 0;
+  // Whether a ready frame's loss was captured since the last frame that stayed ready for `stableMs`. A frame that keeps
+  // dying soon after ready is counted every time but captured once, so a rebuild loop does not flood the error tracker.
+  let lossCapturedSinceStable = false;
   // A frame that refused the host's wire version. Rebuilding cannot fix it and a reload can, so it is final.
   let mismatch: ProtocolVersionMismatchError | null = null;
 
@@ -429,7 +436,10 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
         if (readyAt === null) {
           reportBootFailure(phase, error, count);
         } else {
-          reportFrameLost(reason, count);
+          const stable = timers.now() - readyAt >= timeouts.stableMs;
+          if (reportFrameLost(reason, count, stable || !lossCapturedSinceStable)) {
+            lossCapturedSinceStable = true;
+          }
         }
         if (reason instanceof ProtocolVersionMismatchError) {
           mismatch = reason;

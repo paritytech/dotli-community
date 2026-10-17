@@ -291,6 +291,41 @@ describe('createProtocolFrame', () => {
     expect(captured).toEqual([{ flow: 'protocol', step: 'frame_lost' }]);
   });
 
+  it('As the host, ready frames that keep dying are each counted, captured once, and captured again after a stable one', async () => {
+    // Given a ready frame, and a reporting pipeline that records captures and counts
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom(undefined, { timers });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.whenReady().catch(() => undefined);
+    const first = await bringUp(dom);
+
+    // When it dies soon after ready, and so does the frame rebuilt after the backoff
+    first.fail(new ProtocolFatalError('boom'));
+    await advance(2_000);
+    const second = await bringUp(dom);
+    second.fail(new ProtocolFatalError('boom'));
+    await advance(4_000);
+
+    // Then both losses are counted and only the first is captured
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toHaveLength(2);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'frame_lost' }]);
+
+    // When the next frame stays ready for the stable span before it dies
+    const third = await bringUp(dom);
+    await advance(30_000);
+    third.fail(new ProtocolFatalError('boom'));
+    await advance();
+
+    // Then its loss is counted and captured again
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toHaveLength(3);
+    expect(captured).toEqual([
+      { flow: 'protocol', step: 'frame_lost' },
+      { flow: 'protocol', step: 'frame_lost' },
+    ]);
+  });
+
   it('As the host, a ready frame whose port the worker released is counted as lost and not captured', async () => {
     // Given a ready frame, and a reporting pipeline that records captures and counts
     const captured = recordCaptures({ onFinished: onTestFinished });
