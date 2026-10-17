@@ -5,7 +5,7 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { errorName, log, realTimers, serializeError, toError, withTimeout, type Timers } from '@dotli/shared';
+import { errorName, log, named, realTimers, serializeError, toError, withTimeout, type Timers } from '@dotli/shared';
 import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolFrame } from './frame.js';
 import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
@@ -194,10 +194,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
       timers,
     ).then(
       () => {
-        // Also settled by a consumer that disconnected first, which is no connect to measure.
-        if (remote.connected) {
-          trail.settled('ok');
-        }
+        trail.settled('ok');
       },
       (error: unknown) => {
         const err = toError(error);
@@ -205,8 +202,9 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
         giveUp.abort(err);
       },
     );
+    // A consumer that leaves before `connected` settles the connect as a disconnect, so its trail still ends.
     return () => {
-      settleConnect(null);
+      settleConnect(named(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError'));
     };
   }
 

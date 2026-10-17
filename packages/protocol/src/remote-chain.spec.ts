@@ -216,6 +216,23 @@ describe('createRemoteChains', () => {
     expect(server().connects[0]?.stopped).toBe(true);
   });
 
+  it('As a product, I disconnect before the frame accepts my connect, and the connect is settled once as a disconnect', async () => {
+    // Given a connect the frame has not accepted yet
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const connection = people(() => undefined);
+    await settle();
+
+    // When I disconnect, and the connect budget runs out afterwards
+    connection.disconnect();
+    await settle(CONNECT_BUDGET_MS);
+
+    // Then
+    expect(sentry.counted(S.PROTOCOL_REQUEST)).toEqual([
+      { outcome: 'error', method: 'chainConnect', reason: 'ChainDisconnectedError' },
+    ]);
+    expect(sentry.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`)).toHaveLength(1);
+  });
+
   it('As a dotli integrator, I receive a malformed chain message and it is reported and counted as a failure while the consumer hears nothing', async () => {
     // Given a live connection and a recorder of captured exceptions and logged errors
     const errors: string[] = [];
