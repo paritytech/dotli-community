@@ -7,7 +7,7 @@
 import { realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 /** How long the sandbox has to speak once it was handed the content. */
-export const SANDBOX_SILENCE_MS = 30_000;
+const SANDBOX_SILENCE_MS = 30_000;
 
 /** The sandbox frame said nothing within its deadline. */
 export class SandboxSilentError extends Error {
