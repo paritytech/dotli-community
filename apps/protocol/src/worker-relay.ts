@@ -16,6 +16,7 @@ import type {
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import type { FrameStatus } from './frame-status.js';
+import type { WorkerStatus } from './shared-worker-link.js';
 
 function callOptions(context: CallContext): { deadlineMs?: number } {
   return context.deadlineMs === null ? {} : { deadlineMs: context.deadlineMs };
@@ -61,12 +62,14 @@ export function relayTelemetry(worker: ConsumerTransport): SubscriptionHandler<'
 }
 
 /**
- * Serves the chain and name methods on `serving` through `worker`. When the worker stops serving this tab, `status`
- * fails with the worker's error, so the host's frame status ends with it and the host rebuilds the frame.
+ * Serves the chain and name methods on `serving` through `worker`. When the worker stops serving this tab, its calls
+ * still waiting fail and `status` fails with the worker's error, so the host's frame status ends with it and the host
+ * rebuilds the frame.
  */
 export function registerWorkerRelay(
   serving: ServingTransport,
   worker: ConsumerTransport,
+  workerStatus: WorkerStatus,
   status: Pick<FrameStatus, 'fail'>,
 ): void {
   serving.handleRequest('warmup', relayRequest(worker, 'warmup'));
@@ -76,9 +79,10 @@ export function registerWorkerRelay(
   serving.handleRequest('chainSend', relayRequest(worker, 'chainSend'));
   serving.handleSubscription('chainConnect', relaySubscription(worker, 'chainConnect'));
   serving.handleSubscription('resolveDotName', relaySubscription(worker, 'resolveDotName'));
-  worker
-    .subscribe('frameStatus', undefined, () => undefined)
-    .onEnd(error => {
-      status.fail(error === null ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED) : asThrownByWorker(error));
-    });
+  workerStatus.onEnd(error => {
+    const reason = error === null ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED) : asThrownByWorker(error);
+    // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
+    worker.dispose(reason);
+    status.fail(reason);
+  });
 }

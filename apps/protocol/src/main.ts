@@ -205,9 +205,9 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     window,
     resolutionId: getResolutionId(),
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
-    onOpen: link => {
+    onOpen: (link, workerStatus) => {
       // The worker reports what it refuses, so these calls skip this frame's refusal report.
-      registerWorkerRelay(serving, link, frameStatus);
+      registerWorkerRelay(serving, link, workerStatus, frameStatus);
       telemetry.serve(relayTelemetry(link));
     },
   });

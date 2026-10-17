@@ -5,11 +5,12 @@
 // Each tab is a real consumer transport on its own port pair, so the worker is driven over the wire as an iframe
 // drives it.
 
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { deferred, manualTimers, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
-import { bindCaptureSink, type m } from '@dotli/metrics';
+import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createConsumerTransport, createPortProvider, type ConsumerTransport } from '@dotli/protocol';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
@@ -21,8 +22,10 @@ import {
   type WorkerResolver,
   type WorkerScope,
 } from './protocol-worker.js';
-import { connectSharedWorker } from './shared-worker-link.js';
-import { record, type Recording } from './testing/host-link.js';
+import { createFrameStatus } from './frame-status.js';
+import { connectSharedWorker, type SharedWorkerLinkDeps } from './shared-worker-link.js';
+import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
+import { registerWorkerRelay } from './worker-relay.js';
 import { HEARTBEAT_MISSED_BEATS } from './worker-messages.js';
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
@@ -185,6 +188,7 @@ afterEach(() => {
     transport.dispose(over);
   }
   tabs.clear();
+  closeHostLinks();
   for (const port of openPorts) {
     port.close();
   }
@@ -264,8 +268,11 @@ function spiedPort(port: MessagePort, posted: ArrayBuffer[], received: () => voi
 interface Attached {
   /** The iframe speaks through a bare transport, as the specs drive it. */
   speak: (resolutionId?: string) => Tab;
-  /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
-  link: () => Promise<ConsumerTransport>;
+  /**
+   * The iframe speaks through its real link, whose timers never run, as in a page hidden for long. Given `onOpen`, the
+   * link hands it the transport and the worker status, as the iframe's relay takes them.
+   */
+  link: (onOpen?: SharedWorkerLinkDeps['onOpen']) => Promise<ConsumerTransport>;
   /** Settles once the worker handled the next message from this tab. */
   nextReceived: () => Promise<void>;
 }
@@ -370,13 +377,14 @@ async function bootWorker(
         tabs.add(transport);
         return { transport, status: record(transport, 'frameStatus', undefined), posted, closes: () => closes };
       },
-      link: async () => {
+      link: async onOpen => {
         const transport = await connectSharedWorker({
           worker: { port: channel.port2, addEventListener: () => undefined },
           window: new EventTarget(),
           resolutionId: null,
           readyTimeoutMs: 30_000,
           timers: manualTimers(),
+          ...(onOpen === undefined ? {} : { onOpen }),
         });
         tabs.add(transport);
         return transport;
@@ -555,6 +563,30 @@ describe('protocol SharedWorker', () => {
     expect(tab.status.events).toEqual([]);
     await worker.closedOnce;
     expect(worker.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a tab that joins a dead worker through the relay, my ready wait fails with what the worker reported', async () => {
+    // Given a worker whose light client died before this tab linked, and whose telemetry flush has run
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const light = fakeLightClient();
+    const worker = await bootWorker(light);
+    light.fatal(FATAL);
+    const attached = worker.attach();
+    await afterQueuedTimers();
+
+    // When the tab's iframe links, its relay sharing the link's status subscription as the iframe's does
+    const frame = linkHost();
+    const linked = attached.link((transport, status) => {
+      registerWorkerRelay(frame.serving, transport, status, createFrameStatus());
+    });
+
+    // Then the ready wait fails with the fatal, measured as the worker's report
+    await expect(linked).rejects.toMatchObject(fatalEnd);
+    expect(
+      metrics.distributions
+        .filter(metric => metric.name === `dotli.${S.PROTOCOL_SW_READY}`)
+        .map(metric => metric.attributes),
+    ).toEqual([{ outcome: 'error', reason: 'worker_reported' }]);
   });
 
   it('As every open tab, I hear the fatal, each in my own buffer', async () => {

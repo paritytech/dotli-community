@@ -17,7 +17,7 @@ import {
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createFrameStatus, type FrameStatus } from './frame-status.js';
-import { connectSharedWorker } from './shared-worker-link.js';
+import { connectSharedWorker, type WorkerStatus } from './shared-worker-link.js';
 
 const READY_TIMEOUT_MS = 30_000;
 
@@ -127,7 +127,7 @@ function link(
     page?: ReturnType<typeof framePage>;
     timers?: ManualTimers;
     resolutionId?: string | null;
-    onOpen?: (transport: ConsumerTransport) => void;
+    onOpen?: (transport: ConsumerTransport, status: WorkerStatus) => void;
   } = {},
 ): ReturnType<typeof connectSharedWorker> {
   return connectSharedWorker({
@@ -193,18 +193,16 @@ describe('connectSharedWorker', () => {
   });
 
   it("As a tab whose worker died while it synced, my frame fails with the worker's fatal and not a failed boot", async () => {
-    // Given a frame that hears the worker's status through the transport it is handed, and fails its boot when the
+    // Given a frame that hears the worker's status through the subscription it is handed, and fails its boot when the
     // link fails
     const worker = fakeWorker();
     const frame = createFrameStatus();
     const failed = firstFailure(frame);
     const linked = link(worker, {
-      onOpen: transport => {
-        transport
-          .subscribe('frameStatus', undefined, () => undefined)
-          .onEnd(error => {
-            frame.fail(error ?? new Error('ended'));
-          });
+      onOpen: (_transport, status) => {
+        status.onEnd(error => {
+          frame.fail(error ?? new Error('ended'));
+        });
       },
     });
     void linked.catch((error: unknown) => {

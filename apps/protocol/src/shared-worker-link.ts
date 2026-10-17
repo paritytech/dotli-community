@@ -11,6 +11,12 @@ import { log, realTimers, withTimeout, type Timers } from '@dotli/shared';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { disposeOnPageHide } from './worker-messages.js';
 
+/** The one `frameStatus` subscription to the worker. */
+export interface WorkerStatus {
+  /** Hears its one end: null when the worker ended it cleanly, else why. Called at once if it has ended. */
+  onEnd(listener: (error: Error | null) => void): void;
+}
+
 export interface SharedWorkerLinkDeps {
   worker: Pick<SharedWorker, 'port' | 'addEventListener'>;
   /** The iframe's page, whose `pagehide` lets go of the worker. */
@@ -20,10 +26,10 @@ export interface SharedWorkerLinkDeps {
   readyTimeoutMs: number;
   timers?: Timers;
   /**
-   * Hands over the transport before the ready wait, so what the worker reports while it syncs reaches the host live,
-   * and a worker that fails while it syncs ends the frame with its own error.
+   * Hands over the transport and the worker's status before the ready wait, so what the worker reports while it syncs
+   * reaches the host live, and a worker that fails while it syncs ends the frame with its own error.
    */
-  onOpen?: (transport: ConsumerTransport) => void;
+  onOpen?: (transport: ConsumerTransport, status: WorkerStatus) => void;
 }
 
 /**
@@ -63,7 +69,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
     timeoutMs: readyTimeoutMs,
     ...(deps.resolutionId === null ? {} : { resolutionId: deps.resolutionId }),
   });
-  let failReadyWait: ((error: Error) => void) | null = null;
+  let failReadyWait: ((error: Error, why: string) => void) | null = null;
 
   // Fires only when the worker script cannot be fetched or evaluated.
   worker.addEventListener('error', event => {
@@ -72,7 +78,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
     log.error('[dot.li protocol] SharedWorker error event', error);
     if (failReadyWait !== null) {
       // Fails now with the cause instead of at the ready timeout. The host reports the resulting failed init.
-      failReadyWait(error);
+      failReadyWait(error, 'load_failed');
       return;
     }
     // After ready nothing waits on the worker's start, so the host would never hear of it.
@@ -84,31 +90,31 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
   // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
   answerBeats(transport);
 
-  // Before the ready wait subscribes, so a worker that fails while it syncs ends the caller's calls first, and the frame
-  // fails with the worker's own error rather than the failed boot that follows from it.
-  deps.onOpen?.(transport);
-
   // Why the wait failed, for the metric. A timeout carries none.
   let reason: string | undefined;
+  let resolveReady: () => void = () => undefined;
   const ready = new Promise<ConsumerTransport>((resolve, reject) => {
-    const fail = (error: Error, why: string): void => {
-      if (failReadyWait === null) {
-        return;
-      }
+    resolveReady = () => {
+      failReadyWait = null;
+      resolve(transport);
+    };
+    failReadyWait = (error, why) => {
       failReadyWait = null;
       reason = why;
       reject(error);
     };
-    failReadyWait = error => {
-      fail(error, 'load_failed');
-    };
-    const status = transport.subscribe('frameStatus', undefined, () => {
-      failReadyWait = null;
-      resolve(transport);
-    });
-    status.onEnd(error => {
-      fail(error ?? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED), 'worker_reported');
-    });
+  });
+  // One subscription serves the ready wait and the caller alike, since a dead worker may close once this tab first
+  // heard why, and would never answer a second.
+  const status = transport.subscribe('frameStatus', undefined, () => {
+    resolveReady();
+  });
+
+  // Before the ready wait hears the end, so a worker that fails while it syncs ends the caller's calls first, and the
+  // frame fails with the worker's own error rather than the failed boot that follows from it.
+  deps.onOpen?.(transport, status);
+  status.onEnd(error => {
+    failReadyWait?.(error ?? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED), 'worker_reported');
   });
 
   let timedOut: Error | undefined;

@@ -14,6 +14,7 @@ import {
   type ConsumerTransport,
   type ServingTransport,
 } from '@dotli/protocol';
+import { deferred } from '@dotli/shared/testing';
 import { createFrameStatus } from './frame-status.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
@@ -24,6 +25,8 @@ interface Hops {
   worker: ServingTransport;
   /** Each call context the worker saw, by method. */
   contexts: Map<string, CallContext>;
+  /** Settles once the iframe's status subscription reached the worker, which reports itself ready. */
+  workerStatusHeard: Promise<void>;
 }
 
 const closers = new Set<() => void>();
@@ -50,12 +53,26 @@ function linkHops(serveWorker: (worker: ServingTransport, contexts: Map<string, 
   });
   const contexts = new Map<string, CallContext>();
   serveWorker(worker, contexts);
+  const workerStatus = createFrameStatus();
+  const heard = deferred<undefined>();
+  worker.handleSubscription('frameStatus', (payload, context, sink) => {
+    const stop = workerStatus.handler(payload, context, sink);
+    heard.resolve(undefined);
+    return stop;
+  });
+  workerStatus.ready();
   const status = createFrameStatus();
   frame.serving.handleSubscription('frameStatus', status.handler);
   frame.serving.handleSubscription('telemetry', relayTelemetry(toWorker));
-  registerWorkerRelay(frame.serving, toWorker, status);
+  // The iframe's link holds the one status subscription to the worker and shares it with the relay.
+  registerWorkerRelay(
+    frame.serving,
+    toWorker,
+    toWorker.subscribe('frameStatus', undefined, () => undefined),
+    status,
+  );
   status.ready();
-  return { host: frame.host, worker, contexts };
+  return { host: frame.host, worker, contexts, workerStatusHeard: heard.promise.then(() => undefined) };
 }
 
 describe('the worker relay', () => {
@@ -158,21 +175,9 @@ describe('the worker relay', () => {
 
   it('As the host, I hear my frame failed when the worker released my port', async () => {
     // Given a host that heard its frame is ready, on an iframe whose status subscription the worker holds
-    let held: () => void = () => undefined;
-    const relayHeld = new Promise<void>(resolve => {
-      held = resolve;
-    });
-    const { host, worker } = linkHops(served => {
-      const workerStatus = createFrameStatus();
-      served.handleSubscription('frameStatus', (payload, context, sink) => {
-        const stop = workerStatus.handler(payload, context, sink);
-        held();
-        return stop;
-      });
-      workerStatus.ready();
-    });
+    const { host, worker, workerStatusHeard } = linkHops(() => undefined);
     const status = record(host, 'frameStatus', undefined);
-    await Promise.all([status.until(1), relayHeld]);
+    await Promise.all([status.until(1), workerStatusHeard]);
 
     // When the worker releases the iframe's port
     worker.dispose(new ProtocolPortReleasedError('The worker released this tab'));
@@ -182,5 +187,24 @@ describe('the worker relay', () => {
       name: 'ProtocolPortReleasedError',
       message: 'The worker released this tab',
     });
+  });
+
+  it('As the host, a call the worker holds when it releases my port fails with the release', async () => {
+    // Given a worker that holds an owner read
+    const asked = deferred<undefined>();
+    const { host, worker, workerStatusHeard } = linkHops(served => {
+      served.handleRequest('resolveOwner', () => {
+        asked.resolve(undefined);
+        return new Promise<null>(() => undefined);
+      });
+    });
+    const owner = host.request('resolveOwner', { label: 'doom' }).catch((err: unknown) => err);
+    await Promise.all([asked.promise, workerStatusHeard]);
+
+    // When the worker releases the iframe's port
+    worker.dispose(new ProtocolPortReleasedError('The worker released this tab'));
+
+    // Then the host's call fails with the release instead of waiting for good
+    await expect(owner).resolves.toMatchObject({ name: 'ProtocolPortReleasedError' });
   });
 });
