@@ -32,6 +32,11 @@ type Count = typeof m.count;
 export interface CallOptions {
   /** When the caller stops waiting, in ms since the epoch. The serving handler reads it to size its own budget. */
   deadlineMs?: number;
+  /**
+   * Gives up on the call: it rejects or ends with the signal's reason and a late answer is ignored. Nothing tells the
+   * serving side about a request, while an open subscription is unsubscribed.
+   */
+  signal?: AbortSignal;
 }
 
 export interface Subscription {
@@ -138,6 +143,20 @@ function fromWire(error: WireError, method: ProtocolMethod): Error {
   return new ProtocolRequestError(error.message, error.name ?? 'Error', method, error.stack ?? undefined);
 }
 
+/** Fails a handshake attempt so the pool tries again. Any other failure ends the handshake. */
+class HandshakeUnansweredError extends Error {}
+
+/** Calls `onAbort` once the signal aborts, until the returned detach runs. */
+function onAborted(signal: AbortSignal | undefined, onAbort: () => void): () => void {
+  if (signal === undefined) {
+    return () => undefined;
+  }
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => {
+    signal.removeEventListener('abort', onAbort);
+  };
+}
+
 function unhandled(method: ProtocolMethod): Error {
   return new Error(`This end does not handle ${method}`);
 }
@@ -149,7 +168,7 @@ interface RequestCall {
   payload: unknown;
   deadlineMs: number | null;
   resolve: (answer: unknown) => void;
-  reject: (error: unknown) => void;
+  reject: (error: Error) => void;
 }
 
 interface SubscriptionCall {
@@ -160,6 +179,8 @@ interface SubscriptionCall {
   deadlineMs: number | null;
   onEvent: (event: unknown) => void;
   endListeners: ((error: Error | null) => void)[];
+  /** Stops listening to the call's signal. */
+  detach: () => void;
   state: { name: 'queued' | 'open' | 'unsubscribed' } | { name: 'ended'; error: Error | null };
 }
 
@@ -185,6 +206,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     poolSize: 1,
     retryCount: Number.POSITIVE_INFINITY,
     retryDelay: retryMs,
+    retryIf: error => error instanceof HandshakeUnansweredError,
     timers,
   });
   const stopHandshake = new AbortController();
@@ -214,6 +236,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       return;
     }
     forget(call);
+    call.detach();
     call.state = { name: 'ended', error };
     for (const listener of call.endListeners.splice(0)) {
       guarded(listener, error);
@@ -233,7 +256,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       } as WireMessage);
     } catch (error) {
       if (call.kind === 'request') {
-        call.reject(error);
+        call.reject(toError(error));
       } else {
         end(call, toError(error));
       }
@@ -250,7 +273,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     } catch (error) {
       if (call.kind === 'request') {
         waiting.delete(id);
-        call.reject(error);
+        call.reject(toError(error));
       } else {
         end(call, toError(error));
       }
@@ -291,7 +314,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
     }
     for (const call of calls) {
       if (call.kind === 'request') {
-        call.reject(error);
+        call.reject(toError(error));
       } else {
         end(call, error);
       }
@@ -388,8 +411,12 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
       // stopped. It settles only when stopped, which the race below has outlived or reports.
       const retrying = handshakePool.call<never>(
         () => {
-          postHandshake();
-          throw new Error('The handshake is not answered yet');
+          try {
+            postHandshake();
+          } catch (error) {
+            throw new Error('The handshake could not be posted', { cause: error });
+          }
+          throw new HandshakeUnansweredError('The handshake is not answered yet');
         },
         { signal: stopHandshake.signal },
       );
@@ -416,20 +443,36 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
 
     request(method, payload, callOptions = {}) {
       return new Promise((resolve, reject) => {
-        const closed = closedBy();
+        const { signal } = callOptions;
+        const closed = signal?.aborted === true ? toError(signal.reason) : closedBy();
         if (closed !== null) {
           reject(closed);
           return;
         }
-        place({
+        const call: RequestCall = {
           kind: 'request',
           id: nextId(),
           method,
           payload,
           deadlineMs: callOptions.deadlineMs ?? null,
-          resolve: resolve as (answer: unknown) => void,
-          reject,
+          resolve: answer => {
+            detach();
+            resolve(answer as Answer<typeof method>);
+          },
+          reject: error => {
+            detach();
+            reject(error);
+          },
+        };
+        const detach = onAborted(signal, () => {
+          const index = queue.indexOf(call);
+          if (index >= 0) {
+            queue.splice(index, 1);
+          }
+          waiting.delete(call.id);
+          call.reject(toError(signal?.reason));
         });
+        place(call);
       });
     },
 
@@ -442,13 +485,21 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
         deadlineMs: callOptions.deadlineMs ?? null,
         onEvent: onEvent as (event: unknown) => void,
         endListeners: [],
+        detach: () => undefined,
         state: { name: 'queued' },
       };
-      const closed = closedBy();
-      if (closed === null) {
-        place(call);
-      } else {
+      const { signal } = callOptions;
+      const closed = signal?.aborted === true ? toError(signal.reason) : closedBy();
+      if (closed !== null) {
         call.state = { name: 'ended', error: closed };
+      } else {
+        call.detach = onAborted(signal, () => {
+          if (call.state.name === 'open') {
+            postLeaving(provider, { leg: 'unsubscribe', id: call.id, method: call.method });
+          }
+          end(call, toError(signal?.reason));
+        });
+        place(call);
       }
       return {
         unsubscribe() {
@@ -457,6 +508,7 @@ export function createConsumerTransport(provider: Provider, options: ConsumerTra
             return;
           }
           forget(call);
+          call.detach();
           call.state = { name: 'unsubscribed' };
           call.endListeners.length = 0;
           if (was === 'open') {

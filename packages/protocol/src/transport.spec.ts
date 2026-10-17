@@ -3,7 +3,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { spans as S } from '@dotli/metrics';
-import { withTimeout } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
 import {
   ProtocolHandshakeTimeoutError,
@@ -154,13 +153,16 @@ describe('createConsumerTransport', () => {
     };
     serving.handleRequest('localWalletRead', () => answer);
     consumer.connect();
+    const { signal } = new AbortController();
+    const detach = vi.spyOn(signal, 'removeEventListener');
 
     // When
-    const call = consumer.request('localWalletRead', { siteId: 's' });
+    const call = consumer.request('localWalletRead', { siteId: 's' }, { signal });
     await timers.advance(0);
 
     // Then
     await expect(call).resolves.toEqual(answer);
+    expect(detach).toHaveBeenCalledOnce();
   });
 
   it("As a caller, my call rejects with the frame's error, its name and stack kept", async () => {
@@ -283,36 +285,103 @@ describe('createConsumerTransport', () => {
     await timers.advance(0);
     answerHandshake();
     await consumer.whenConnected();
-    const gaveUp = new Error('budget ran out');
-    const call = outcomeOf(withTimeout(consumer.request('resolveOwner', { label: 'a' }), 100, () => gaveUp, timers));
-    await timers.advance(100);
-    expect(await call).toBe(gaveUp);
+    const giveUp = new AbortController();
+    const detach = vi.spyOn(giveUp.signal, 'removeEventListener');
+    const call = outcomeOf(consumer.request('resolveOwner', { label: 'a' }, { signal: giveUp.signal }));
+    await timers.advance(0);
     const asked = peer.heard.find(message => message.leg === 'request' && message.method === 'resolveOwner');
     if (asked === undefined) {
       throw new Error('no call heard');
     }
+    const gaveUp = new Error('budget ran out');
+
+    // When
+    giveUp.abort(gaveUp);
     const late: WireMessage = {
       leg: 'response',
       id: asked.id,
       method: 'resolveOwner',
       outcome: { ok: true, answer: '5Grw' },
     };
-
-    // When
     peer.send(late);
     peer.send(late);
     await timers.advance(0);
 
     // Then
+    expect(await call).toBe(gaveUp);
     expect(count).not.toHaveBeenCalled();
-    const next = consumer.request('heartbeat', undefined);
+    expect(peer.legs()).toEqual(['request:handshake', 'request:resolveOwner']);
+    expect(detach).toHaveBeenCalledOnce();
+    // A call still waiting would be settled again by the dispose, and detach its listener a second time.
+    consumer.dispose(new Error('done'));
+    expect(detach).toHaveBeenCalledOnce();
+  });
+
+  it('As a caller, aborting my queued calls before the handshake sends nothing for them', async () => {
+    // Given
+    const { consumer, timers, peer, answerHandshake } = rawRig();
+    const giveUp = new AbortController();
+    const call = outcomeOf(consumer.request('heartbeat', undefined, { signal: giveUp.signal }));
+    const onEnd = vi.fn();
+    consumer.subscribe('telemetry', undefined, () => undefined, { signal: giveUp.signal }).onEnd(onEnd);
+    consumer.connect();
     await timers.advance(0);
-    const beat = peer.heard.find(message => message.leg === 'request' && message.method === 'heartbeat');
-    if (beat === undefined) {
-      throw new Error('no heartbeat heard');
-    }
-    peer.send({ leg: 'response', id: beat.id, method: 'heartbeat', outcome: { ok: true, answer: undefined } });
-    await expect(next).resolves.toBeUndefined();
+    const reason = new Error('left the page');
+
+    // When
+    giveUp.abort(reason);
+    answerHandshake();
+    await consumer.whenConnected();
+    await timers.advance(0);
+
+    // Then
+    expect(await call).toBe(reason);
+    expect(onEnd).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(peer.legs()).toEqual(['request:handshake']);
+  });
+
+  it('As a caller, a call with an already aborted signal rejects at once and posts nothing', async () => {
+    // Given
+    const { consumer, timers, peer, answerHandshake } = rawRig();
+    consumer.connect();
+    await timers.advance(0);
+    answerHandshake();
+    await consumer.whenConnected();
+    const reason = new Error('already gone');
+    const signal = AbortSignal.abort(reason);
+    const onEnd = vi.fn();
+
+    // When
+    const call = outcomeOf(consumer.request('heartbeat', undefined, { signal }));
+    consumer.subscribe('telemetry', undefined, () => undefined, { signal }).onEnd(onEnd);
+    await timers.advance(0);
+
+    // Then
+    expect(await call).toBe(reason);
+    expect(onEnd).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(peer.legs()).toEqual(['request:handshake']);
+  });
+
+  it('As a caller, a provider that cannot post fails my handshake at once with why', async () => {
+    // Given
+    const { left } = createProviderPair();
+    const broken = new Error('port closed');
+    const provider: Provider = {
+      ...left,
+      post: () => {
+        throw broken;
+      },
+    };
+    const timers = manualTimers();
+    const consumer = createConsumerTransport(provider, { side: 'frame', timers, count: vi.fn() });
+
+    // When
+    consumer.connect();
+    const outcome = outcomeOf(consumer.whenConnected());
+    await timers.advance(0);
+
+    // Then
+    expect(await outcome).toMatchObject({ cause: broken });
   });
 
   it('As either side, an unsubscribe crossing an end is ignored by both', async () => {
