@@ -136,7 +136,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
     remote: RemoteChainConnection,
   ) {
     const giveUp = new AbortController();
-    const trail = startCallTrail('chainConnect', CONNECT_BUDGET_MS);
+    const trail = startCallTrail('chainConnect', CONNECT_BUDGET_MS, timers);
     let timedOut: Error | undefined;
     let settleConnect: (error: Error | null) => void = () => undefined;
     const connected = new Promise<void>((resolve, reject) => {

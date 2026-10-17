@@ -58,12 +58,13 @@ export interface CallTrail {
   settled(outcome: CallOutcome, error?: Error): void;
 }
 
-export function startCallTrail(method: CalledMethod, budgetMs: number | null): CallTrail {
+/** Measured on `timers`, so a spec that moves time by hand reads the span it moved. */
+export function startCallTrail(method: CalledMethod, budgetMs: number | null, timers: Timers): CallTrail {
   // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
   // round trips this span measures.
-  const stop = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST);
+  const timed = method !== 'chainSend';
   const trailed = TRAILED_METHODS.has(method);
-  const sentAt = performance.now();
+  const sentAt = timers.now();
   if (trailed) {
     log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });
   }
@@ -74,14 +75,18 @@ export function startCallTrail(method: CalledMethod, budgetMs: number | null): C
         return;
       }
       done = true;
-      stop();
+      const ms = timers.now() - sentAt;
+      if (timed) {
+        m.measure(S.PROTOCOL_REQUEST, ms);
+        m.distribution(S.PROTOCOL_REQUEST, ms);
+      }
       if (outcome !== 'ok') {
         m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: errorName(error) ?? 'unknown' });
       }
       if (trailed) {
         log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
           flow: 'protocol',
-          ms: Math.round(performance.now() - sentAt),
+          ms: Math.round(ms),
           ...(error !== undefined ? { error: `${error.name}: ${error.message}`.slice(0, 200) } : {}),
         });
       }
@@ -97,7 +102,8 @@ export interface FrameRpc {
    * Sends once the frame can answer: listening for the shared store, ready for everything else. A shared store
    * request's budget runs from the call, so it also bounds the wait for a frame that never loads. Any other budget runs
    * from when the frame is ready, since such a request also waits for the light client, which has deadlines of its
-   * own. Rejects when the frame goes down before the answer.
+   * own. Rejects when the frame goes down before the answer. A call is timed and counted from when it goes out, so a
+   * frame that fails its boot is counted once, by the frame, not once per call that waited on it.
    */
   request<M extends RequestMethod>(method: M, payload: RequestPayload<M>): Promise<Answer<M>>;
 }
@@ -113,7 +119,7 @@ export function createFrameRpc(frame: RpcFrame, timers: Timers = realTimers): Fr
       // Ends the call on its budget. The transport drops it, and a late answer is ignored.
       const giveUp = new AbortController();
       let timedOut: Error | undefined;
-      // Set once the call is handed to the transport, which the frame wait may never reach.
+      // Set once the call is handed to a connected transport, which the frame wait may never reach.
       const sent: { trail: CallTrail | null } = { trail: null };
       const bounded = <T>(work: Promise<T>): Promise<T> =>
         budgetMs === null
@@ -133,7 +139,7 @@ export function createFrameRpc(frame: RpcFrame, timers: Timers = realTimers): Fr
         if (giveUp.signal.aborted) {
           return Promise.reject(toError(giveUp.signal.reason));
         }
-        sent.trail = startCallTrail(method, budgetMs);
+        sent.trail = startCallTrail(method, budgetMs, timers);
         return transport.request(method, payload, {
           signal: giveUp.signal,
           ...(deadlineMs === null ? {} : { deadlineMs }),
@@ -145,7 +151,13 @@ export function createFrameRpc(frame: RpcFrame, timers: Timers = realTimers): Fr
         let answer: Answer<M>;
         if (isSharedStoreMethod(method)) {
           const deadlineMs = deadlineFromNow();
-          answer = await bounded(frame.transport().then(transport => send(transport, deadlineMs)));
+          // The transport queues a call until its handshake, and the wait for it is the boot's, not the call's.
+          answer = await bounded(
+            frame.transport().then(async transport => {
+              await transport.whenConnected();
+              return send(transport, deadlineMs);
+            }),
+          );
         } else {
           const transport = await frame.whenUp('ready');
           answer = await bounded(send(transport, deadlineFromNow()));

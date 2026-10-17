@@ -267,6 +267,48 @@ describe('createFrameRpc', () => {
     });
   });
 
+  it('As the host booting, my shared store call is timed from when it goes out after the handshake, not from the boot', async () => {
+    // Given a wallet read made while the frame boots, on a frame that answers at once
+    const fake = createFakeFrame(
+      serving => {
+        serving.handleRequest('localWalletRead', () => ({ tag: 'none' as const, value: undefined }));
+      },
+      { status: 'booting', timers },
+    );
+    const rpc = createFrameRpc(fake.frame, timers);
+    const read = rpc.request('localWalletRead', { siteId: 'dotli' });
+
+    // When the frame listens 3 s later
+    await timers.advance(3_000);
+    fake.setStatus('listening');
+    await settle();
+
+    // Then
+    await expect(read).resolves.toEqual({ tag: 'none', value: undefined });
+    expect(
+      metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).map(metric => metric.value),
+    ).toEqual([0]);
+  });
+
+  it('As the host booting, my shared store calls queued on a frame whose boot fails fail with why and count nothing', async () => {
+    // Given two shared store calls made while the frame boots
+    const fake = createFakeFrame(silentFrame([]), { status: 'booting', timers });
+    const rpc = createFrameRpc(fake.frame, timers);
+    const read = failure(rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' }));
+    const write = failure(rpc.request('modeStorageWrite', { siteId: 'dotli', key: 'k', value: 'v' }));
+    await settle();
+
+    // When the boot fails
+    fake.lose(new Error('boot failed'));
+    await settle();
+
+    // Then the frame counts its own boot failure, so the calls add nothing
+    expect((await read).message).toBe('boot failed');
+    expect((await write).message).toBe('boot failed');
+    expect(metrics.counted(S.PROTOCOL_REQUEST)).toEqual([]);
+    expect(metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`)).toEqual([]);
+  });
+
   it('As the host booting, my wallet read keeps only what the wait for the frame left of its budget', async () => {
     // Given a wallet read made while the frame boots, which listens 3 s later
     const served: string[] = [];

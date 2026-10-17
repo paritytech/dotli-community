@@ -27,7 +27,7 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
   async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
     const transport = await frame.whenUp('ready');
     const giveUp = new AbortController();
-    const trail = startCallTrail('resolveDotName', RESOLVE_BUDGET_MS);
+    const trail = startCallTrail('resolveDotName', RESOLVE_BUDGET_MS, timers);
     let timedOut: Error | undefined;
     const resolved = new Promise<string | null>((resolve, reject) => {
       let answered = false;
