@@ -113,8 +113,27 @@ through a Service Worker that acts as a virtual file system.
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
-The protocol client retries a resolver request once when its chainHead follow stopped, and both resolution backends
-rebuild their client after a stop rather than reading through a dead follow.
+Both resolution backends retry a stopped chain generation once at the resolver boundary, using a fresh client and the
+remaining original sync budget. A second stop is returned to the caller; protocol callers do not add another retry.
+
+The browser regression injects a stop into a real RPC storage read; replacing the whole resolver would bypass this
+recovery boundary.
+
+The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
+and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement
+subscriptions. Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than
+resubmitting a transaction. The provider's heartbeat owns reconnection; there is no second health-request keepalive.
+Smoldot terminal loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before
+notifying each lease. The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived
+chain pools. The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing
+dropped legacy-extrinsic case (see ADR 0002). The other temporary trusted-RPC use is the Media advertisement lookup (see
+[Protected browser Media](#protected-browser-media)).
+
+The native connection stays open across a halt: queued requests receive terminal errors, existing follows stop, and the
+same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
+retires its URL generation under a shared-origin Web Lock before the iframe reports fatal. Tabs in the same storage
+partition share the replacement generation; late callbacks cannot retire it. Recovery does not require closing other
+tabs.
 
 ## How multi-file SPAs work
 
@@ -384,6 +403,61 @@ use the top-level product's shared Rust core/provider context rather than separa
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
+### Protected browser Media
+
+The bridge installs `@parity/truapi-host/web`'s `createBrowserMediaBackend` for each cross-origin HTML and PolkaVM
+product connection, App and Worker alike. The Media service (prototype wire trait 218) needs the matching vendored
+client, host callbacks, worker bridge and WASM from the native Media layer; updating a single vendored file is unsafe.
+
+A protected product iframe has no camera, microphone, display-capture, fullscreen or picture-in-picture permission and
+no popups or top navigation; its other device grants still apply. Capture grants authorize the trusted host, not raw
+iframe capture: a raw camera or microphone request fails with an error rather than a denial, so it never records a
+durable device denial that would block host Media. Host video planes are siblings of the product inside an isolated
+compositor that takes the frame's layout; neither product DOM/canvas readback nor the product's own RTC connections
+reach host tracks, peers, SDP, ICE or decoded pictures. Host UI that paints above the compositor's stacking context
+(toasts, popovers, modals) covers the planes while pictures keep rendering; any other visible host element over the
+product, or one whose stacking order cannot be established, blanks them. Viewport edges and the call bar clip the
+planes, scaled, rotated or skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls
+stay above the product.
+
+Calling consent shows the exact product, sr25519 account and network genesis. Each prompt is cancelled with its
+operation, never reloads the product, and persists nothing in browser UI code: the core owns scoped authorization. The
+permissions menu lists the Calling scopes the core used and revokes them; withdrawing Calling, microphone or camera
+authority ends active calls. Runtime replacement, navigation, identity changes and teardown fence pending consent and
+capture.
+
+Core storage implements exact-byte compare-exchange. Browser slots serialize per physical slot on cross-document Web
+Locks, the shared auth session on its protocol-origin slot lock, and test-wallet custody in the protocol frame's custody
+lock. An explicit policy change queues its scoped notification with the successful commit; unanswered Ask initialization
+stays silent. Cores sharing that storage refresh authorization through a host-private, acknowledged BroadcastChannel,
+and the settings setter returns only after that fan-out. Without Web Locks, compare-exchange and unavailable
+synchronization fail closed; plain slot reads, writes and clears continue.
+
+Products needing legacy raw capture can select **Use legacy raw capture** in the permissions menu. This ends protected
+calls and reloads into an execution where Media is unsupported and existing device grants govern raw capture. **Use
+protected host Media** reloads back. The choice is execution-local, not a remembered consent. Same-origin frames never
+advertise Media.
+
+ICE is relay-only: the host Media backend gathers relay candidates alone, so calls need a TURN relay. When a call opens
+a peer, the shell fetches short-lived Cloudflare TURN credentials from its own origin at `/__dotli-media/turn`
+(`nginx/snippets/dotli-media-turn.conf`); the Cloudflare API token stays on the server. Only credentialed
+`turn:`/`turns:` URLs off port 53 are used. Credentials are reused for two thirds of their 12-hour lifetime, so a call
+keeps its relay for at least four hours. A failed or unconfigured route (503) leaves the peer without a relay: it fails
+with `Media:NoTurnRelay` in the console, and the next peer retries. Products never supply ICE settings. The local dev
+and preview servers do not serve the route. See [DEPLOYMENT.md](DEPLOYMENT.md#media-turn-credentials).
+
+Calls find the callee's endpoint through its signed advertisement in the People chain's Statement Store. The light
+client (smoldot, `@parity/truapi-provider` 0.3.1) answers a statement subscription with no stored statements, only later
+gossip, so on the light client backends the host TEMPORARILY sends these advertisement lookups, and nothing else, to the
+People chain's trusted RPC node (`packages/ui/src/host-callbacks/media-advertisement-lookup.ts`). The core opens a
+separate connection per lookup and marks its requests with the id prefix `truapi:media-advertisement-lookup:`; only
+statement subscribe/unsubscribe requests carrying it leave the light client. Chat, product statement subscriptions, live
+call signaling and the chain itself stay on the light client. **Privacy:** the RPC operator sees which callee
+advertisement topics are looked up and when (the topic derives from the callee's account and product), and can withhold
+advertisements; it cannot forge one, since the core verifies each statement proof and advertisement signature. Remove
+the module and its single use in `Chain.ts` once the light client serves stored statements. On Trusted Providers every
+request already uses RPC.
+
 ## Development
 
 ### Prerequisites
@@ -406,16 +480,11 @@ npm run dev              # Dev servers with hot reload on localhost:4321
 npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
 ```
 
-`npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
-protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
-such as the shell's offline service worker.
-
-This branch vendors the Chat TrUAPI 0.24.0 SDK from source `a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in
-`vendor/truapi-host.lock.json`. Both Wasm bundles come from upstream's standard `build-wasm.mjs`: `wasm/web` is the
-pairing-only production host, and `wasm/testing` backs the local wallet's signing worker. The recorded archive hashes
-precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
-notification activation sit above the generic PolkaVM runtime; Profile and Jam remain separate feature layers. Install
-the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
+This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the native Media layer
+(`host-rust-core#1258`, `feat/media-sessions`: Chat #709 plus the Media service). `vendor/truapi-host.lock.json` records
+the source revision, archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests. The
+browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the dependency tree recorded in
+`package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

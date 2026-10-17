@@ -17,9 +17,10 @@ import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } fro
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
 import { ERRORS } from '../errors.js';
 import { recordPermissionChange } from '../state/permissions.js';
+import { mediaOwnsCapture } from '../media-host.js';
 
-// WebRtc is gated by the iframe `allow` attribute and `Remote` (HTTP/WS) cannot be intercepted
-// reliably from the sandbox, so both are auto-granted.
+// Legacy HTML products have no host interception point for independent HTTP/WS/RTC.
+// Protected Media containers separately deny all product-side raw capture.
 function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
@@ -28,6 +29,7 @@ function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePer
       return tag;
     case 'Remote':
     case 'WebRtc':
+    case 'Calling':
       return null;
   }
 }
@@ -38,7 +40,14 @@ export function createPromptPermission(
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
-    // OpenUrl has no host-side enforcement point, so a deny button could not block it.
+    // A protected Media container never receives raw capture; the host owns it.
+    // Refuse by error, never `Deny`: the core would persist a durable device
+    // denial on the same key host Media consent reads, disabling calls.
+    if (mediaOwnsCapture(label) && (tag === 'Camera' || tag === 'Microphone')) {
+      throw new Error(ERRORS.MEDIA_RAW_CAPTURE_REFUSED);
+    }
+    // OpenUrl has no host-side enforcement point; auto-grant rather than show
+    // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
@@ -46,6 +55,10 @@ export function createPromptPermission(
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
+    // Calling consent is operation-scoped through the host Media backend.
+    if (request.permission.tag === 'Calling') {
+      return 'Deny';
+    }
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
       return 'AllowOnce';

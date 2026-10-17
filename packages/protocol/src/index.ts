@@ -31,6 +31,7 @@ export {
 } from './chain-pool.js';
 export {
   clearSharedAuthStorage,
+  compareExchangeSharedAuthStorage,
   clearSharedModeStorage,
   forgetSharedLocalWallet,
   readSharedLocalWallet,

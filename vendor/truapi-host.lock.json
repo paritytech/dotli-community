@@ -1,32 +1,32 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/chat-v2-product-authority",
-  "upstreamRevision": "37d2755c068a4c938f793d2e9cec72678f3cbaac",
+  "upstreamBranch": "feat/media-sessions",
+  "upstreamRevision": "22bcf3f3114a00b2d33a807d92ce6318dc035cca",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.25.0",
-      "sourceArchiveSha256": "c21044db6482a328fd1ec56bdf451811f280e88bd62e9def5f552fb6f239f851",
-      "clientSha256": "10d32df3301e1cbc86c0d7c5beb2e3cc7d8668ea052d638a562c653c5635ff16"
+      "sourceArchiveSha256": "6378034896dcfd52d6e43e862adb0e403dcbb609dbd1e8f98e2483a5b58450ad",
+      "clientSha256": "62b4c7d555f2606f461c751abfd5c0926ceb2fbad68c37f35bc1de8d48641940"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.25.0",
-      "sourceArchiveSha256": "b75ac0e8923585e30a00bb46cec9fefaab7e5d9bfb05712fb0c4f8122da721ba",
+      "sourceArchiveSha256": "3981856c5777a46aa987c9bb8513a2866a0b1528f0b2f4afcda617b14cdea1a8",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "662834af0bc96404815825cd0355d725b225de82226c9efcc3f109984256bb5a",
+          "sha256": "7d1eedb345af309a10d3ad3f1fb64791c9f23280ec122522d864af6f81b05324",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "5f0c11432136b64bf034ad59e9f392469d10b6188599a00bd54f47be7184e58b",
+          "sha256": "83ffe656afc7dec1df9ae6287f9498fb2484e8366f3d021ae929160846d3a5a9",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "37d2755c068a4c938f793d2e9cec72678f3cbaac",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/709"
+  "wasmUpstreamRevision": "22bcf3f3114a00b2d33a807d92ce6318dc035cca",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1258"
 }
