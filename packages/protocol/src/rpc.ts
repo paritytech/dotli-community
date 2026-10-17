@@ -46,8 +46,10 @@ export type RpcFrame = Pick<ProtocolFrame, 'whenUp' | 'post' | 'onEnvelope' | 'o
 
 export interface FrameRpc {
   /**
-   * Posts once the frame can answer: listening for the shared store, ready for everything else. Rejects at once when
-   * the frame is down or goes down before the answer.
+   * Posts once the frame can answer: listening for the shared store, ready for everything else. A shared store
+   * request's budget runs from the call, so it also bounds the wait for a frame that never loads. Any other budget runs
+   * from the post, since such a request also waits for the light client, which has deadlines of its own. Rejects when
+   * the frame goes down before the answer.
    */
   request<M extends ProtocolRequestMethod>(
     method: M,
@@ -105,23 +107,51 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
     async request(method, payload, onProgress) {
       const sharedStore =
         isSharedAuthRequestMethod(method) || isSharedModeRequestMethod(method) || isSharedWalletRequestMethod(method);
+      const timeoutMs = UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
+      const timeoutError = (): ProtocolRequestError =>
+        new ProtocolRequestError(
+          `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
+          'ProtocolTimeoutError',
+          method,
+        );
       const since = losses;
-      await frame.whenUp(sharedStore ? 'listening' : 'ready');
+      const askedAt = performance.now();
+      const up = frame.whenUp(sharedStore ? 'listening' : 'ready');
+      if (sharedStore && timeoutMs !== null) {
+        let waitTimedOut: Error | undefined;
+        try {
+          await withTimeout(up, timeoutMs, () => {
+            waitTimedOut = timeoutError();
+            return waitTimedOut;
+          });
+        } catch (reason: unknown) {
+          if (reason === waitTimedOut) {
+            m.count(S.PROTOCOL_REQUEST, { outcome: 'timeout', method, reason: errorName(reason) ?? 'unknown' });
+          }
+          throw reason;
+        }
+      } else {
+        await up;
+      }
       // The frame it waited for was dropped in the same turn, and the one replacing it would drop a message posted
       // before its page loads.
       if (losses !== since && lastLoss !== undefined) {
         throw lastLoss;
       }
+      // What the wait for the frame left of a shared store budget.
+      const budgetMs =
+        timeoutMs === null || !sharedStore
+          ? timeoutMs
+          : Math.max(1, Math.round(timeoutMs - (performance.now() - askedAt)));
 
       const id = createRequestId();
-      const timeoutMs = UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
       const envelope: ProtocolRequestEnvelope<typeof method> = {
         namespace: 'dotli:protocol',
         kind: 'request',
         id,
         method,
         payload,
-        ...(timeoutMs === null ? {} : { deadlineMs: Date.now() + timeoutMs }),
+        ...(budgetMs === null ? {} : { deadlineMs: Date.now() + budgetMs }),
       };
       // Throws when the frame vanished since the wait, before anything is counted for the request.
       frame.post(envelope);
@@ -153,14 +183,10 @@ export function createFrameRpc(frame: RpcFrame): FrameRpc {
       const reply = replies.wait(id, { method, onProgress });
       let timedOut: Error | undefined;
       const answered =
-        timeoutMs === null
+        budgetMs === null
           ? reply
-          : withTimeout(reply, timeoutMs, () => {
-              timedOut = new ProtocolRequestError(
-                `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
-                'ProtocolTimeoutError',
-                method,
-              );
+          : withTimeout(reply, budgetMs, () => {
+              timedOut = timeoutError();
               replies.reject(id, timedOut);
               return timedOut;
             });

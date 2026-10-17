@@ -25,7 +25,9 @@ flowchart LR
   with the backend, and names it in its URL in the frame's own words, which a host page of an earlier release still
   sends.
 - The wire contract holds the envelope guards. Events pass an origin and source check, then a payload check.
-- The rpc layer sends requests and matches answers, with a timeout per method.
+- The rpc layer sends requests and matches answers, with a timeout per method. A shared store request's timeout also
+  bounds its wait for the frame, since the store answers at once. A chain request's runs from the post, since it also
+  waits for the light client.
 - The client factory builds the frame, the rpc layer and the parts over them (resolution, remote chains, the shared
   store and telemetry) and returns them as one object. Its type is what the factory returns, so each request is declared
   once. The page's instance is `protocolClient()`, built on first use, and callers reach every request through it.

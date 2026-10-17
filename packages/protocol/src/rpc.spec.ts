@@ -255,14 +255,14 @@ describe('createFrameRpc', () => {
     });
   });
 
-  it('As a dotli integrator, I send a request while the frame comes up and its timer starts only once the frame is up', async () => {
+  it('As a dotli integrator, I send a chain request while the frame comes up and its timer starts only once the frame is up', async () => {
     // Given a frame still coming up
     const fake = createFakeFrame();
     fake.setStatus('booting');
     const rpc = createFrameRpc(fake.frame);
 
     // When a request is made, and the frame then comes up
-    void rpc.request('authStorageRead', { siteId: 'dotli', key: 'k' });
+    void rpc.request('resolveOwner', { label: 'doom' });
     await posted();
     const timersWhileWaiting = vi.getTimerCount();
     const postedWhileWaiting = fake.posted.length;
@@ -272,7 +272,48 @@ describe('createFrameRpc', () => {
     // Then nothing was posted or timed while it waited, and the budget starts once the request is posted
     expect(timersWhileWaiting).toBe(0);
     expect(postedWhileWaiting).toBe(0);
-    expect(fake.posted.map(envelope => envelope.method)).toEqual(['authStorageRead']);
+    expect(fake.posted.map(envelope => envelope.method)).toEqual(['resolveOwner']);
     expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('As the host booting, my wallet read fails on its budget while the frame never loads, and is never posted', async () => {
+    // Given a frame that stays booting
+    const fake = createFakeFrame();
+    fake.setStatus('booting');
+    const rpc = createFrameRpc(fake.frame);
+    const read = failure(rpc.request('localWalletRead', { siteId: 'dotli' }));
+
+    // When
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // Then
+    expect((await read).name).toBe('ProtocolTimeoutError');
+    expect(fake.posted).toEqual([]);
+    expect(metrics.counted(S.PROTOCOL_REQUEST)).toContainEqual({
+      outcome: 'timeout',
+      method: 'localWalletRead',
+      reason: 'ProtocolTimeoutError',
+    });
+  });
+
+  it('As the host booting, my wallet read keeps only what the wait for the frame left of its budget', async () => {
+    // Given a wallet read made while the frame boots, which listens 3 s later
+    const fake = createFakeFrame();
+    fake.setStatus('booting');
+    const rpc = createFrameRpc(fake.frame);
+    const read = failure(rpc.request('localWalletRead', { siteId: 'dotli' }));
+    await vi.advanceTimersByTimeAsync(3_000);
+    fake.setStatus('listening');
+    await posted();
+
+    // When the frame never answers
+    await vi.advanceTimersByTimeAsync(1_999);
+    const pendingBeforeBudget = vi.getTimerCount();
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Then it was posted, and fails 5 s after it was made
+    expect(fake.posted.map(envelope => envelope.method)).toEqual(['localWalletRead']);
+    expect(pendingBeforeBudget).toBe(1);
+    expect((await read).name).toBe('ProtocolTimeoutError');
   });
 });
