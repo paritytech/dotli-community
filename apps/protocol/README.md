@@ -18,14 +18,22 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   meter is installed where the light client runs, in the iframe or the SharedWorker, before it starts, and either one
   posts the light client's byte total for the host's speed readout. Startup reports failures to the parent without a
   reload.
-- One window listener is the iframe's router. It admits requests from allowed host pages and sends each to the store or
-  engine that serves its method. A handler's failure is answered as an error response.
+- The iframe serves through one serving transport on a window provider that admits only its parent at an allowed origin.
+  It sends nothing unsolicited: its readiness and failures reach the host as events on the frame status subscription,
+  which a late subscriber hears on subscribe. A handler's failure is answered as an error response.
 - One engine dispatches for every mode. A scope holds one tab's chain connections and budget, while the chains are
   shared by every scope of the engine.
 - Two handlers serve the shared stores and the local wallet under the shared-auth trust boundary: host and landing
   origins only, never product origins.
-- The SharedWorker runs smoldot and serves each tab port with its own engine scope. The iframe reaches it through a link
-  with typed messages.
+- In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
+  through its own consumer transport, including the frame status and telemetry subscriptions.
+- The SharedWorker runs smoldot and serves each tab port with its own serving transport and engine scope, so no buffer
+  is shared between ports. It drives the heartbeat: it sends a beat event to each port on its own clock, the iframe
+  answers each with a heartbeat request, and a port that misses too many beats is released. A release ends that port's
+  subscriptions with an error, so a thawed tab rebuilds its frame and opens a new port. A tab that leaves ends its
+  subscriptions, which frees its connections at once.
+- A fatal light client ends every port's frame status with the error, and a port that connects later hears it on
+  subscribe. The worker closes once every connected port has heard it.
 - One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, a watcher
   that takes a halted chain again after a short wait, and the name resolver, for the iframe and the SharedWorker alike.
   Each keeps its own transport. Both build the telemetry they send the host with one typed builder, so a change to the
@@ -35,7 +43,7 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 
 ```mermaid
 flowchart LR
-  host[host page] -- postMessage --> router
+  host[host page] -- postMessage --> router[serving transport]
   router --> stores["shared stores, local wallet"]
   router --> engine --> pool[chain pool]
   pool --> smoldot["smoldot, in the iframe or a SharedWorker"]
