@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
@@ -39,7 +40,7 @@ describe('createFrameTelemetry', () => {
   it("As the network panel, I drop a byte total that goes back and start a rebuilt frame's count over", async () => {
     // Given
     const fake = createFakeFrame(reporting(sinks), { timers });
-    const telemetry = createFrameTelemetry(fake.frame);
+    const telemetry = createFrameTelemetry(fake.frame, timers);
     const totals: number[] = [];
     telemetry.onProtocolNetBytes(event => totals.push(event.received));
     await settle();
@@ -60,10 +61,54 @@ describe('createFrameTelemetry', () => {
     expect(totals).toEqual([100, 10]);
   });
 
+  it('As the network panel, a telemetry feed the frame ends while it stays up is reopened after a wait, reported, and heard again', async () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const fake = createFakeFrame(reporting(sinks), { timers });
+    const telemetry = createFrameTelemetry(fake.frame, timers);
+    const totals: number[] = [];
+    telemetry.onProtocolNetBytes(event => totals.push(event.received));
+    await settle();
+    report({ tag: 'netBytes', value: 100 });
+
+    // When the frame ends the feed, and the reopened one reports a later total
+    sinks.at(-1)?.end();
+    await timers.advance(999);
+    const openedBeforeWait = sinks.length;
+    await timers.advance(1);
+    report({ tag: 'netBytes', value: 150 });
+    await settle();
+
+    // Then
+    expect([openedBeforeWait, sinks.length]).toEqual([1, 2]);
+    expect(totals).toEqual([100, 150]);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([
+      { outcome: 'error', feed: 'telemetry', reason: 'ProtocolFeedEndedError' },
+    ]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'telemetry' } }]);
+  });
+
+  it('As the network panel, a telemetry feed ended by the loss of its frame is not reopened there and not reported', async () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const fake = createFakeFrame(reporting(sinks), { timers });
+    createFrameTelemetry(fake.frame, timers);
+    await settle();
+
+    // When
+    fake.lose(new Error('boom'));
+    await timers.advance(30_000);
+
+    // Then
+    expect(sinks).toHaveLength(1);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+  });
+
   it('As the network panel, I hear chain sync and chain detail as the frame reports them', async () => {
     // Given
     const fake = createFakeFrame(reporting(sinks), { timers });
-    const telemetry = createFrameTelemetry(fake.frame);
+    const telemetry = createFrameTelemetry(fake.frame, timers);
     const syncs: ChainSyncEvent[] = [];
     const details: ChainDetail[] = [];
     telemetry.onProtocolChainSync(event => syncs.push(event));
@@ -83,7 +128,7 @@ describe('createFrameTelemetry', () => {
   it('As a dotli integrator, a new frame forgets the smoldot DB outcomes of the last one', async () => {
     // Given
     const fake = createFakeFrame(reporting(sinks), { timers });
-    const telemetry = createFrameTelemetry(fake.frame);
+    const telemetry = createFrameTelemetry(fake.frame, timers);
     await settle();
 
     // When
@@ -103,7 +148,7 @@ describe('createFrameTelemetry', () => {
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const fake = createFakeFrame(reporting(sinks), { timers });
-    const telemetry = createFrameTelemetry(fake.frame);
+    const telemetry = createFrameTelemetry(fake.frame, timers);
     telemetry.onProtocolNetBytes(() => {
       throw new TypeError('panel broke');
     });

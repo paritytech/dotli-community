@@ -4,7 +4,8 @@
 // What the protocol frame reports about its light client, for the network panel and telemetry tags.
 
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import { log } from '@dotli/shared';
+import { log, realTimers, type Timers } from '@dotli/shared';
+import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
 import type { ConsumerTransport } from './transport-consumer.js';
@@ -14,43 +15,50 @@ function hasFrame(status: ProtocolStatus): boolean {
   return status === 'booting' || status === 'listening' || status === 'ready';
 }
 
-export function createFrameTelemetry(frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>) {
+/** A feed the frame ends while it stays up is reopened after a wait on `timers`. */
+export function createFrameTelemetry(
+  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport' | 'losses'>,
+  timers: Timers = realTimers,
+) {
   const chainSyncListeners = protocolListeners<ChainSyncEvent>('chain_sync');
   const chainDetailListeners = protocolListeners<ChainDetail>('chain_detail');
   const netBytesListeners = protocolListeners<{ received: number }>('net_bytes');
   // A chain stays "unknown" on the gateway path, which runs no light client, and until its store answers.
   const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+  const reports = createFeedKeeper('telemetry', frame, timers);
   let heard: ConsumerTransport | null = null;
 
-  /** Hears one frame's reports, which end with it. */
+  /** Hears one frame's reports until the frame is lost. */
   function hear(transport: ConsumerTransport): void {
     if (heard === transport) {
       return;
     }
     heard = transport;
-    // Each frame's byte meter starts at zero.
+    // Each frame's byte meter starts at zero, and a reopened feed reads on from the same meter.
     let lastNetBytesTotal = 0;
-    transport.subscribe('telemetry', undefined, event => {
-      switch (event.tag) {
-        case 'chainSync':
-          chainSyncListeners.emit(event.value);
-          return;
-        case 'chainDetail':
-          chainDetailListeners.emit(event.value);
-          return;
-        case 'netBytes':
-          // Cumulative, so a total below the last one is corrupt traffic and would feed a negative rate into the
-          // network panel.
-          if (event.value >= lastNetBytesTotal) {
-            lastNetBytesTotal = event.value;
-            netBytesListeners.emit({ received: event.value });
-          }
-          return;
-        case 'smoldotDb':
-          smoldotDbOutcomes.set(event.value.chain, event.value.outcome);
-          return;
-      }
-    });
+    reports.hold(() =>
+      transport.subscribe('telemetry', undefined, event => {
+        switch (event.tag) {
+          case 'chainSync':
+            chainSyncListeners.emit(event.value);
+            return;
+          case 'chainDetail':
+            chainDetailListeners.emit(event.value);
+            return;
+          case 'netBytes':
+            // Cumulative, so a total below the last one is corrupt traffic and would feed a negative rate into the
+            // network panel.
+            if (event.value >= lastNetBytesTotal) {
+              lastNetBytesTotal = event.value;
+              netBytesListeners.emit({ received: event.value });
+            }
+            return;
+          case 'smoldotDb':
+            smoldotDbOutcomes.set(event.value.chain, event.value.outcome);
+            return;
+        }
+      }),
+    );
   }
 
   function hearFrame(): void {

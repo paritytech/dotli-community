@@ -37,7 +37,7 @@ export function createProtocolClient(deps: ProtocolFrameDeps) {
   const timers = deps.timers ?? realTimers;
   const rpc = createFrameRpc(frame, timers);
   const chains = createRemoteChains({ frame, rpc, timers });
-  const sharedStore = createSharedStore({ frame, rpc });
+  const sharedStore = createSharedStore({ frame, rpc, timers });
   return {
     async ensureProtocolFrame(): Promise<void> {
       await frame.whenUp('ready');
@@ -63,7 +63,7 @@ export function createProtocolClient(deps: ProtocolFrameDeps) {
     },
     ...sharedStore,
     ...createRemoteResolve({ frame, rpc, timers }),
-    ...createFrameTelemetry(frame),
+    ...createFrameTelemetry(frame, timers),
     ...chains,
   };
 }

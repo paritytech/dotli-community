@@ -128,6 +128,12 @@ export const PROTOCOL_SERVE_POST = 'protocol.serve_post';
 export const PROTOCOL_CHAIN_MESSAGE = 'protocol.chain_message';
 
 /**
+ * A feed the protocol frame ended while it stayed up, so the host reopens it after a backoff. Tagged `outcome` (error),
+ * `feed` (shared_auth or telemetry) and `reason` (the error's name, `ProtocolFeedEndedError` for an end without one).
+ */
+export const PROTOCOL_FEED_END = 'protocol.feed_end';
+
+/**
  * One request as the SharedWorker served it, tagged with the asking tab's `resolution_id`.
  * Apart from `PROTOCOL_REQUEST` because it excludes the postMessage hops.
  */

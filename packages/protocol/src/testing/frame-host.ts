@@ -252,7 +252,11 @@ export function createFrameDom(
     if (entry === undefined) {
       const window = target.window;
       const provider = createWindowProvider({ listen: window, peer: () => window.parent, origin: HOST_ORIGIN });
-      entry = { serving: createServingTransport(provider, { side: 'frame' }), status: null };
+      const serving = createServingTransport(provider, { side: 'frame' });
+      // A frame app always serves the client's feeds, and these frames have nothing to report on them.
+      serving.handleSubscription('telemetry', () => () => undefined);
+      serving.handleSubscription('sharedAuthChanges', () => () => undefined);
+      entry = { serving, status: null };
       served.set(target, entry);
     }
     return entry;

@@ -4,12 +4,13 @@
 // The shared store on `host.<BASE_DOMAIN>`: auth, mode preferences and the local wallet, one for every subdomain.
 
 import type { SiteId } from '@dotli/config';
-import { log } from '@dotli/shared';
+import { log, realTimers, type Timers } from '@dotli/shared';
+import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
 import type { Answer, LocalWalletIdentity, SharedAuthChange } from './methods.js';
 import type { FrameRpc } from './rpc.js';
-import type { ConsumerTransport, Subscription } from './transport-consumer.js';
+import type { ConsumerTransport } from './transport-consumer.js';
 
 export type SharedAuthStorageChange = SharedAuthChange;
 
@@ -52,11 +53,13 @@ function sharedStoreStatusOf(status: ProtocolStatus, settledOnce: boolean): Shar
 }
 
 export interface SharedStoreDeps {
-  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>;
+  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport' | 'losses'>;
   rpc: FrameRpc;
+  /** What a reopen of the auth change feed waits on. */
+  timers?: Timers;
 }
 
-export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
+export function createSharedStore({ frame, rpc, timers = realTimers }: SharedStoreDeps) {
   const sharedAuthListeners = protocolListeners<SharedAuthStorageChange>('shared_auth');
   const statusListeners = protocolListeners<SharedStoreStatus>('shared_store_status');
   // Latched from each status the frame publishes, since a listener ahead of this store's own can move the frame on
@@ -70,19 +73,22 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
   }
 
   // The sibling tabs' auth changes, heard on the frame there is now while anyone listens.
-  let changes: { transport: ConsumerTransport; subscription: Subscription } | null = null;
+  const changes = createFeedKeeper('shared_auth', frame, timers);
+  // The transport the changes are heard on, null while nobody listens.
+  let heard: ConsumerTransport | null = null;
   // Each ask for a frame's transport, so an answer a later ask overtook is not followed.
   let asks = 0;
 
   function follow(transport: ConsumerTransport): void {
-    if (sharedAuthListeners.size === 0 || changes?.transport === transport) {
+    if (sharedAuthListeners.size === 0 || heard === transport) {
       return;
     }
-    changes?.subscription.unsubscribe();
-    const subscription = transport.subscribe('sharedAuthChanges', undefined, change => {
-      sharedAuthListeners.emit(change);
-    });
-    changes = { transport, subscription };
+    heard = transport;
+    changes.hold(() =>
+      transport.subscribe('sharedAuthChanges', undefined, change => {
+        sharedAuthListeners.emit(change);
+      }),
+    );
   }
 
   /** Follows the frame's transport. Asking for it boots a frame that is down, as a listener needs one. */
@@ -158,8 +164,8 @@ export function createSharedStore({ frame, rpc }: SharedStoreDeps) {
       return () => {
         unsubscribe();
         if (sharedAuthListeners.size === 0) {
-          changes?.subscription.unsubscribe();
-          changes = null;
+          changes.stop();
+          heard = null;
         }
       };
     },

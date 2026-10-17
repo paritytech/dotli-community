@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
+import { spans as S } from '@dotli/metrics';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink, createStatusCell } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
@@ -20,6 +22,31 @@ function relayingChanges(sinks: Set<SubscriptionSink<'sharedAuthChanges'>>): (se
       };
     });
   };
+}
+
+/** A frame app that keeps the sink of every auth change subscription it was asked for, in order. */
+function openingChanges(opened: SubscriptionSink<'sharedAuthChanges'>[]): (serving: ServingTransport) => void {
+  return serving => {
+    serving.handleSubscription('sharedAuthChanges', (_payload, _context, sink) => {
+      opened.push(sink);
+      return () => undefined;
+    });
+  };
+}
+
+/** The `log.error` messages of this test. */
+function recordLoggedErrors(): string[] {
+  const errors: string[] = [];
+  onTestFinished(
+    bindLogSink({
+      emit: (level, message) => {
+        if (level === 'error') {
+          errors.push(message);
+        }
+      },
+    }),
+  );
+  return errors;
 }
 
 describe('createSharedStore', () => {
@@ -169,6 +196,85 @@ describe('createSharedStore', () => {
     expect(subscribedOnRebuilt).toBe(1);
     expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: null }]);
     expect(sinks.size).toBe(0);
+  });
+
+  it('As a returning user, my shared auth subscription the frame ends while it stays up is reopened after a wait that doubles, and each end is reported', async () => {
+    // Given a subscription on a frame that stays up
+    const timers = manualTimers();
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const errors = recordLoggedErrors();
+    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const fake = createFakeFrame(openingChanges(opened), { timers });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+    const changes: SharedAuthStorageChange[] = [];
+    store.subscribeSharedAuthStorage(change => changes.push(change));
+    await timers.advance(0);
+
+    // When the frame ends it cleanly, and then ends the reopened one with an error
+    opened[0]?.end();
+    await timers.advance(999);
+    const openedBeforeFirstWait = opened.length;
+    await timers.advance(1);
+    const openedAfterFirstWait = opened.length;
+    opened[1]?.end(new TypeError('relay broke'));
+    await timers.advance(1_999);
+    const openedBeforeSecondWait = opened.length;
+    await timers.advance(1);
+    opened[2]?.send({ siteId: 'dotli', key: 'k', value: 'v' });
+    await timers.advance(0);
+
+    // Then
+    expect([openedBeforeFirstWait, openedAfterFirstWait, openedBeforeSecondWait, opened.length]).toEqual([1, 2, 2, 3]);
+    expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: 'v' }]);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([
+      { outcome: 'error', feed: 'shared_auth', reason: 'ProtocolFeedEndedError' },
+      { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
+    ]);
+    expect(captured).toEqual([
+      { flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } },
+      { flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } },
+    ]);
+    expect(errors).toHaveLength(2);
+  });
+
+  it('As a returning user, my shared auth subscription ended by the loss of its frame is not reopened there and not reported', async () => {
+    // Given a subscription on a frame that is up
+    const timers = manualTimers();
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const fake = createFakeFrame(openingChanges(opened), { timers });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+    store.subscribeSharedAuthStorage(() => undefined);
+    await timers.advance(0);
+
+    // When the frame is lost
+    fake.lose(new Error('boom'));
+    await timers.advance(30_000);
+
+    // Then
+    expect(opened).toHaveLength(1);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+  });
+
+  it('As a returning user, I leave while my ended shared auth subscription waits to be reopened, and it is not reopened', async () => {
+    // Given a subscription the frame ended
+    const timers = manualTimers();
+    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const fake = createFakeFrame(openingChanges(opened), { timers });
+    const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+    const unsubscribe = store.subscribeSharedAuthStorage(() => undefined);
+    await timers.advance(0);
+    opened[0]?.end();
+    await timers.advance(0);
+
+    // When
+    unsubscribe();
+    await timers.advance(30_000);
+
+    // Then
+    expect(opened).toHaveLength(1);
+    expect(timers.pending()).toBe(0);
   });
 
   it.each([
