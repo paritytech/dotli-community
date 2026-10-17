@@ -86,15 +86,18 @@ describe('codec values', () => {
       entrypoint: 'worker.js',
       includes: { chat: true },
     };
+    const wideWidget: ExecutableManifest = { ...widget, dimensions: { height: [1], width: 300 } };
 
     // When
-    const decoded = [app, widget, worker].map(value => roundTrip(executableManifestCodec, value));
+    const decoded = [app, widget, worker, wideWidget].map(value => roundTrip(executableManifestCodec, value));
 
     // Then
-    expect(decoded).toEqual([app, widget, worker]);
-    const decodedWidget = decoded[1];
-    expect(decodedWidget !== undefined && 'width' in (decodedWidget as { dimensions: object }).dimensions).toBe(false);
-    const decodedWorker = decoded[2] as { includes: object };
+    expect(decoded).toEqual([app, widget, worker, wideWidget]);
+    const [, decodedWidget, decodedWorker] = decoded;
+    if (decodedWidget?.kind !== 'widget' || decodedWorker?.kind !== 'worker') {
+      throw new Error('a manifest arrived as another kind');
+    }
+    expect('width' in decodedWidget.dimensions).toBe(false);
     expect('pocket' in decodedWorker.includes).toBe(false);
   });
 

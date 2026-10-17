@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Bytes, Struct, str, type Decoder } from 'scale-ts';
+import { Bytes, Struct, str, u64, u8, type Decoder } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 import {
   decodeExact,
@@ -48,7 +48,7 @@ describe('codec primitives', () => {
 
   it('As a receiver, I refuse a u64 beyond the safe integers', () => {
     // Given
-    const tooLarge = new Uint8Array(8).fill(0xff);
+    const tooLarge = u64.enc(BigInt(Number.MAX_SAFE_INTEGER) + 1n);
 
     // When / Then
     expect(() => decodeExact(safeInteger.dec, toBuffer(tooLarge))).toThrow(RangeError);
@@ -84,7 +84,7 @@ describe('codec primitives', () => {
 
     // When / Then
     for (const decoder of decoders) {
-      expect(() => decodeExact(decoder, toBuffer(new Uint8Array([2])))).toThrow(RangeError);
+      expect(() => decodeExact(decoder, toBuffer(u8.enc(2)))).toThrow(RangeError);
     }
   });
 
@@ -126,6 +126,6 @@ describe('codec primitives', () => {
     const codec = oneOf(['a', 'b']);
 
     // When / Then
-    expect(() => decodeExact(codec.dec, new Uint8Array([5]).buffer)).toThrow();
+    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow(RangeError);
   });
 });

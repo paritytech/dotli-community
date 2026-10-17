@@ -158,10 +158,13 @@ export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
 
 const appVersionCodec = Tuple(f64, f64, f64, strictOption(str));
 
-const widgetDimensionsCodec = Struct({
-  height: Vector(f64),
-  width: strictOption(f64),
-} satisfies FieldsOf<WidgetManifest['dimensions']>);
+type WidgetDimensions = WidgetManifest['dimensions'];
+
+const widgetDimensionsCodec: Codec<WidgetDimensions> = enhanceCodec(
+  Struct({ height: Vector(f64), width: strictOption(f64) } satisfies FieldsOf<WidgetDimensions>),
+  (dimensions: WidgetDimensions) => ({ height: [...dimensions.height], width: dimensions.width }),
+  ({ height, width }): WidgetDimensions => (width === undefined ? { height } : { height, width }),
+);
 
 const workerIncludesCodec = Struct({
   chat: strictOption(strictBool),
@@ -209,10 +212,7 @@ export const executableManifestCodec: Codec<ExecutableManifest> = enhanceCodec(
           value: {
             appVersion,
             description: manifest.description,
-            dimensions: {
-              height: [...manifest.dimensions.height],
-              width: manifest.dimensions.width,
-            },
+            dimensions: manifest.dimensions,
           },
         };
       case 'worker':
@@ -241,7 +241,7 @@ export const executableManifestCodec: Codec<ExecutableManifest> = enhanceCodec(
           kind: 'widget',
           appVersion,
           ...dropUndefined<{ description?: string }>({ description: wire.value.description }),
-          dimensions: dropUndefined({ ...wire.value.dimensions }),
+          dimensions: wire.value.dimensions,
         };
       case 'worker':
         return {
