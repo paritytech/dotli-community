@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { must } from '@dotli/shared/testing';
+import { deferred, must } from '@dotli/shared/testing';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -164,6 +164,17 @@ describe('createEngine chain connections', () => {
     await expect(send).rejects.toThrow('Unknown chain connection: nope');
   });
 
+  it('As a product, a send under an empty connection id is refused as bad input', async () => {
+    // Given
+    const { tab } = setup();
+
+    // When
+    const send = tab.send('', '{}');
+
+    // Then
+    await expect(send).rejects.toThrow('Invalid connectionId: expected non-empty string');
+  });
+
   it('As a dotli user, an unsupported chain is refused', async () => {
     // Given
     const { tab } = setup({ isChainSupported: () => false });
@@ -285,6 +296,54 @@ describe('createEngine name reads', () => {
 
     // Then
     expect(await read.ended).toMatchObject({ name: 'TypeError', message: 'bad label' });
+  });
+
+  it('As a dotli operator, a sink that throws on the name is reported and the read still ends with that error', async () => {
+    // Given a sink that throws on the resolved name
+    const reported: unknown[] = [];
+    const { engine } = setup({
+      resolver: resolverOf(() => Promise.resolve('bafy-doom')),
+      report: error => reported.push(error),
+    });
+    const broken = new Error('sink is broken');
+    const ended = deferred<Error | undefined>();
+    const sink = {
+      send: () => {
+        throw broken;
+      },
+      end: (error?: Error) => {
+        ended.resolve(error);
+      },
+    };
+
+    // When
+    engine.resolveDotName({ label: 'doom' }, { origin: null, deadlineMs: null, resolutionId: null }, sink);
+
+    // Then
+    expect(await ended.promise).toBe(broken);
+    expect(reported).toEqual([broken]);
+  });
+
+  it('As a dotli operator, a sink that throws on the end of a failed read is reported, not left unhandled', async () => {
+    // Given a sink whose end throws
+    const reported = deferred<unknown>();
+    const { engine } = setup({
+      resolver: resolverOf(() => Promise.reject(new Error('Asset Hub did not sync'))),
+      report: reported.resolve,
+    });
+    const broken = new Error('sink is broken');
+    const sink = {
+      send: () => undefined,
+      end: () => {
+        throw broken;
+      },
+    };
+
+    // When
+    engine.resolveDotName({ label: 'doom' }, { origin: null, deadlineMs: null, resolutionId: null }, sink);
+
+    // Then
+    expect(await reported.promise).toBe(broken);
   });
 
   it('As the host in gateway mode, every name read is refused at once', async () => {

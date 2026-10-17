@@ -6,6 +6,7 @@
 
 import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
+import { reportListener } from '@dotli/metrics';
 import type { DotnsResolver } from '@dotli/resolver';
 import type {
   CallContext,
@@ -60,6 +61,8 @@ export interface EngineOptions {
   syncBudgetCapMs?: number | undefined;
   /** The clock a call's deadline is read against. Defaults to `realTimers`. */
   timers?: Pick<Timers, 'now'>;
+  /** Hears a sink that throws as a name read settles, which no caller is left to catch. Captured by default. */
+  report?: (error: unknown) => void;
 }
 
 export type EngineResolver = Pick<
@@ -111,6 +114,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
   const { pool } = options;
   const note = options.log ?? ((): void => undefined);
   const timers = options.timers ?? realTimers;
+  const report = options.report ?? reportListener('protocol', 'protocol.engine');
 
   const scopes = new Set<Map<string, Connection>>();
   let scopeCount = 0;
@@ -190,6 +194,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     };
 
     const send: EngineScope['send'] = ({ connectionId, message }) => {
+      assertStr(connectionId, 'connectionId');
       assertStr(message, 'message');
       const held = connections.get(connectionId);
       if (held === undefined) {
@@ -247,6 +252,13 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     resolveDotName: ({ label }, context, sink) => {
       const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
       assertStr(label, 'label');
+      const end = (error?: Error): void => {
+        try {
+          sink.end(error);
+        } catch (endError) {
+          report(endError);
+        }
+      };
       void resolver
         .resolveDotName(label, {
           onPhase: phase => {
@@ -256,11 +268,18 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         })
         .then(
           resolved => {
-            sink.send({ tag: 'resolved', value: resolved });
-            sink.end();
+            try {
+              sink.send({ tag: 'resolved', value: resolved });
+            } catch (error) {
+              report(error);
+              // The host hears a failure instead of waiting on a read that is over.
+              end(toError(error));
+              return;
+            }
+            end();
           },
           (error: unknown) => {
-            sink.end(toError(error));
+            end(toError(error));
           },
         );
       // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.
