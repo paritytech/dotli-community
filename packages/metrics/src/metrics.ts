@@ -316,13 +316,14 @@ function breadcrumb(message: string, data?: Record<string, unknown>): void {
   });
 }
 
-function timer(name: string): () => number {
+/** Measures from now until the returned stop, on `now`, a monotonic clock by default. */
+function timer(name: string, now: () => number = () => performance.now()): () => number {
   if (!ENABLED) {
     return () => 0;
   }
-  const t0 = performance.now();
+  const t0 = now();
   return () => {
-    const ms = performance.now() - t0;
+    const ms = now() - t0;
     measure(name, ms);
     distribution(name, ms);
     return ms;

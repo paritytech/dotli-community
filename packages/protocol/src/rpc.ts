@@ -58,13 +58,13 @@ export interface CallTrail {
   settled(outcome: CallOutcome, error?: Error): void;
 }
 
-/** Measured on `timers`, so a spec that moves time by hand reads the span it moved. */
-export function startCallTrail(method: CalledMethod, budgetMs: number | null, timers: Timers): CallTrail {
+/** Measured on `now`, a monotonic clock apart from the deadline clock, which a spec moves by hand. */
+function startCallTrail(method: CalledMethod, budgetMs: number | null, now: () => number): CallTrail {
   // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
   // round trips this span measures.
-  const timed = method !== 'chainSend';
+  const stop = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST, now);
   const trailed = TRAILED_METHODS.has(method);
-  const sentAt = timers.now();
+  const sentAt = now();
   if (trailed) {
     log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });
   }
@@ -75,18 +75,14 @@ export function startCallTrail(method: CalledMethod, budgetMs: number | null, ti
         return;
       }
       done = true;
-      const ms = timers.now() - sentAt;
-      if (timed) {
-        m.measure(S.PROTOCOL_REQUEST, ms);
-        m.distribution(S.PROTOCOL_REQUEST, ms);
-      }
+      stop();
       if (outcome !== 'ok') {
         m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: errorName(error) ?? 'unknown' });
       }
       if (trailed) {
         log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
           flow: 'protocol',
-          ms: Math.round(ms),
+          ms: Math.round(now() - sentAt),
           ...(error !== undefined ? { error: `${error.name}: ${error.message}`.slice(0, 200) } : {}),
         });
       }
@@ -106,14 +102,25 @@ export interface FrameRpc {
    * frame that fails its boot is counted once, by the frame, not once per call that waited on it.
    */
   request<M extends RequestMethod>(method: M, payload: RequestPayload<M>): Promise<Answer<M>>;
+  /** Starts the trail of a call made on the transport itself, timed on the same clock as every request. */
+  trail(method: CalledMethod, budgetMs: number | null): CallTrail;
 }
 
 function isSharedStoreMethod(method: RequestMethod): boolean {
   return isSharedAuthRequestMethod(method) || isSharedModeRequestMethod(method) || isSharedWalletRequestMethod(method);
 }
 
-export function createFrameRpc(frame: RpcFrame, timers: Timers = realTimers): FrameRpc {
+/**
+ * Deadlines read `timers`, which cross to the frame, and call trails `now`, a monotonic clock that a spec may set to
+ * its own timers.
+ */
+export function createFrameRpc(
+  frame: RpcFrame,
+  timers: Timers = realTimers,
+  now: () => number = () => performance.now(),
+): FrameRpc {
   return {
+    trail: (method, budgetMs) => startCallTrail(method, budgetMs, now),
     async request<M extends RequestMethod>(method: M, payload: RequestPayload<M>): Promise<Answer<M>> {
       const budgetMs = budgetOf(method);
       // Ends the call on its budget. The transport drops it, and a late answer is ignored.
@@ -139,7 +146,7 @@ export function createFrameRpc(frame: RpcFrame, timers: Timers = realTimers): Fr
         if (giveUp.signal.aborted) {
           return Promise.reject(toError(giveUp.signal.reason));
         }
-        sent.trail = startCallTrail(method, budgetMs, timers);
+        sent.trail = startCallTrail(method, budgetMs, now);
         return transport.request(method, payload, {
           signal: giveUp.signal,
           ...(deadlineMs === null ? {} : { deadlineMs }),

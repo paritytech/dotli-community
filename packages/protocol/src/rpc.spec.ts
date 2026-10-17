@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { PROTOCOL_ERRORS } from './errors.js';
 import type { Answer } from './methods.js';
 import { createFrameRpc } from './rpc.js';
@@ -275,7 +275,7 @@ describe('createFrameRpc', () => {
       },
       { status: 'booting', timers },
     );
-    const rpc = createFrameRpc(fake.frame, timers);
+    const rpc = createFrameRpc(fake.frame, timers, () => timers.now());
     const read = rpc.request('localWalletRead', { siteId: 'dotli' });
 
     // When the frame listens 3 s later
@@ -288,6 +288,33 @@ describe('createFrameRpc', () => {
     expect(
       metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).map(metric => metric.value),
     ).toEqual([0]);
+  });
+
+  it('As a dotli integrator, a request is timed on the clock I give it, apart from the timers its deadline reads', async () => {
+    // Given a frame that answers once the test says, and a clock apart from the timers
+    const answer = deferred<string | null>();
+    const fake = createFakeFrame(
+      serving => {
+        serving.handleRequest('resolveOwner', () => answer.promise);
+      },
+      { timers },
+    );
+    let clock = 0;
+    const rpc = createFrameRpc(fake.frame, timers, () => clock);
+    const owner = rpc.request('resolveOwner', { label: 'doom' });
+    await settle();
+
+    // When the clock moves 40 ms and the timers 5 s before the answer
+    clock = 40;
+    await timers.advance(5_000);
+    answer.resolve('5Grw');
+    await settle();
+
+    // Then
+    await expect(owner).resolves.toBe('5Grw');
+    expect(
+      metrics.distributions.filter(metric => metric.name === `dotli.${S.PROTOCOL_REQUEST}`).map(metric => metric.value),
+    ).toEqual([40]);
   });
 
   it('As the host booting, my shared store calls queued on a frame whose boot fails fail with why and count nothing', async () => {

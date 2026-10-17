@@ -8,7 +8,7 @@ import { realTimers, withTimeout, type Timers } from '@dotli/shared';
 import { PROTOCOL_ERRORS } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
-import { asCallError, callTimeoutError, startCallTrail, type FrameRpc } from './rpc.js';
+import { asCallError, callTimeoutError, type FrameRpc } from './rpc.js';
 
 // A timed method, so the default is never taken.
 const RESOLVE_BUDGET_MS = budgetOf('resolveDotName') ?? DEFAULT_TIMEOUT_MS;
@@ -27,7 +27,7 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
   async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
     const transport = await frame.whenUp('ready');
     const giveUp = new AbortController();
-    const trail = startCallTrail('resolveDotName', RESOLVE_BUDGET_MS, timers);
+    const trail = rpc.trail('resolveDotName', RESOLVE_BUDGET_MS);
     let timedOut: Error | undefined;
     const resolved = new Promise<string | null>((resolve, reject) => {
       let answered = false;

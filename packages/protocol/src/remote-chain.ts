@@ -10,7 +10,7 @@ import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/cha
 import type { ProtocolFrame } from './frame.js';
 import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
 import { isRemoteChainConnectable } from './remote-chain-support.js';
-import { callTimeoutError, createRequestId, startCallTrail, type FrameRpc } from './rpc.js';
+import { callTimeoutError, createRequestId, type FrameRpc } from './rpc.js';
 import type { ConsumerTransport, Subscription } from './transport-consumer.js';
 
 // A timed method, so the default is never taken.
@@ -136,7 +136,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
     remote: RemoteChainConnection,
   ) {
     const giveUp = new AbortController();
-    const trail = startCallTrail('chainConnect', CONNECT_BUDGET_MS, timers);
+    const trail = rpc.trail('chainConnect', CONNECT_BUDGET_MS);
     let timedOut: Error | undefined;
     let settleConnect: (error: Error | null) => void = () => undefined;
     const connected = new Promise<void>((resolve, reject) => {

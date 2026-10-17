@@ -24,3 +24,21 @@ describe('resolution id', () => {
     });
   });
 });
+
+describe('timer', () => {
+  it('As a dotli integrator, I time a step on the clock I pass, and the span is measured and distributed once', () => {
+    // Given a clock the test moves by hand
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    let now = 100;
+    const stop = m.timer('test.step', () => now);
+
+    // When
+    now = 350;
+    const ms = stop();
+
+    // Then
+    expect(ms).toBe(250);
+    expect(metrics.distributions.map(metric => [metric.name, metric.value])).toEqual([['dotli.test.step', 250]]);
+    expect(metrics.measurements).toEqual([{ name: 'dotli.test.step', value: 250, unit: 'millisecond' }]);
+  });
+});
