@@ -62,6 +62,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
-- `resetAllStoresForTests`, `deferred`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand),
-  `FakePage` (a page with a document and a window, each firing the events the browser fires on it).
+- `resetAllStoresForTests`, `deferred`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand,
+  which count the timers still pending), `FakePage` (a page with a document and a window, each firing the events the
+  browser fires on it).
 - `untilDom` waits on the page for functional tests. It reads the DOM, so only they call it.
