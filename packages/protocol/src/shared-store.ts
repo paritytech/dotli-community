@@ -7,15 +7,11 @@ import type { SiteId } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { LocalWalletIdentity } from './methods.js';
+import type { LocalWalletIdentity, SharedAuthChange } from './methods.js';
 import type { FrameRpc } from './rpc.js';
 import type { ConsumerTransport, Subscription } from './transport.js';
 
-export interface SharedAuthStorageChange {
-  siteId: SiteId;
-  key: string;
-  value: string | null;
-}
+export type SharedAuthStorageChange = SharedAuthChange;
 
 export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => void;
 
