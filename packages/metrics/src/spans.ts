@@ -135,6 +135,12 @@ export const PROTOCOL_CHAIN_MESSAGE = 'protocol.chain_message';
 export const PROTOCOL_FEED_END = 'protocol.feed_end';
 
 /**
+ * The light client's byte meter could not be read on a tick, so the speed readout misses that reading. Counted once per
+ * run of failed reads. Tagged `outcome` (error) and `reason` (the error's name).
+ */
+export const PROTOCOL_NET_BYTES_READ = 'protocol.net_bytes_read';
+
+/**
  * One request as the SharedWorker served it, tagged with the asking tab's `resolution_id`.
  * Apart from `PROTOCOL_REQUEST` because it excludes the postMessage hops.
  */

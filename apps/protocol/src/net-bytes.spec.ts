@@ -81,11 +81,7 @@ describe('shareNetBytes', () => {
     // Given
     const clock = testTicker();
     const reported: unknown[] = [];
-    const subscribe = shareNetBytes(
-      () => 3,
-      clock.ticker,
-      error => reported.push(error),
-    );
+    const subscribe = shareNetBytes(() => 3, clock.ticker, { report: error => reported.push(error) });
     const broken = new Error('port is gone');
     let throwing = false;
     subscribe(() => {
@@ -144,10 +140,11 @@ describe('shareNetBytes', () => {
     expect(clock.running()).toBe(1);
   });
 
-  it('As a dotli operator, a read that throws on a tick is reported and the next tick is heard', () => {
-    // Given
+  it('As a dotli operator, a meter that fails tick after tick is reported once per run of failures, as the meter', () => {
+    // Given a meter whose reads I break and mend
     const clock = testTicker();
-    const reported: unknown[] = [];
+    const readFailures: unknown[] = [];
+    const listenerFailures: unknown[] = [];
     const broken = new Error('meter is gone');
     let total: number | null = 1;
     const subscribe = shareNetBytes(
@@ -158,19 +155,23 @@ describe('shareNetBytes', () => {
         return total;
       },
       clock.ticker,
-      error => reported.push(error),
+      { report: error => listenerFailures.push(error), reportRead: error => readFailures.push(error) },
     );
     const heard: number[] = [];
     subscribe(received => heard.push(received));
 
-    // When
+    // When the read fails on two ticks in a row, works on the next, then fails again
     total = null;
+    clock.tick();
     clock.tick();
     total = 9;
     clock.tick();
+    total = null;
+    clock.tick();
 
-    // Then
-    expect(reported).toEqual([broken]);
+    // Then each run of failures was reported once, as the meter's, and the good tick was heard
+    expect(readFailures).toEqual([broken, broken]);
+    expect(listenerFailures).toEqual([]);
     expect(heard).toEqual([1, 9]);
   });
 });
