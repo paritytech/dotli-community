@@ -32,8 +32,8 @@ function assertEntropy(value: Uint8Array): void {
 }
 
 /**
- * Checks a call's origin and site before it touches the wallet. The frame's provider admits no other origin, and this
- * check holds the boundary on any transport the wallet is served over.
+ * Checks a call's origin and site before it touches the wallet. Holds the shared-auth trust boundary on any transport
+ * the wallet is served over.
  */
 function admit(payload: { siteId: string }, context: CallContext): void {
   if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {

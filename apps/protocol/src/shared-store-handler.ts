@@ -62,8 +62,7 @@ function assertModeKey(value: string): void {
   }
 }
 
-// The frame's provider admits no other origin, so this refusal is reported as bad input. It holds the boundary on any
-// transport the stores are served over.
+// Holds the shared-auth trust boundary on any transport these stores are served over.
 function assertOrigin(context: CallContext): void {
   if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
     throw new Error(`Shared auth request denied from origin: ${context.origin ?? 'none'}`);
