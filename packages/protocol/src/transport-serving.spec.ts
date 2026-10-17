@@ -1,18 +1,63 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
-import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindCaptureSink, spans as S, type CaptureContext } from '@dotli/metrics';
 import { bindLogSink } from '@dotli/shared';
 import { deferred, manualTimers } from '@dotli/shared/testing';
-import { ProtocolPortReleasedError } from './errors.js';
+import { ProtocolPortReleasedError, ProtocolRequestError } from './errors.js';
 import { WIRE_VERSION } from './methods.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { decodedLegs, outcomeOf, rawPeer, rig } from './testing/transport-rig.js';
 import { createConsumerTransport } from './transport-consumer.js';
-import { createServingTransport } from './transport-serving.js';
-import { ProtocolRequestError } from './errors.js';
+import { createServingTransport, type SubscriptionSink } from './transport-serving.js';
+
+/** A serving transport facing a raw peer, over a provider whose posts throw once the test breaks it. */
+function brokenPostRig() {
+  const { left, right } = createProviderPair();
+  const timers = manualTimers();
+  const count = vi.fn();
+  const broken = new Error('the peer window is gone');
+  let posting = true;
+  const provider: Provider = {
+    ...right,
+    post: data => {
+      if (!posting) {
+        throw broken;
+      }
+      right.post(data);
+    },
+  };
+  const serving = createServingTransport(provider, { side: 'frame', count });
+  const reports = { captured: [] as { error: unknown; context: CaptureContext }[], errors: [] as string[] };
+  onTestFinished(
+    bindCaptureSink({
+      exception: (error, context) => reports.captured.push({ error, context }),
+      expected: () => undefined,
+    }),
+  );
+  onTestFinished(
+    bindLogSink({
+      emit: (level, _message, _attrs, args = []) => {
+        if (level === 'error') {
+          reports.errors.push(String(args[0]));
+        }
+      },
+    }),
+  );
+  return {
+    serving,
+    peer: rawPeer(left),
+    timers,
+    count,
+    reports,
+    broken,
+    breakPosts: () => {
+      posting = false;
+    },
+  };
+}
 
 describe('createServingTransport', () => {
   it('As the frame, I refuse a handshake of another wire version', async () => {
@@ -177,43 +222,64 @@ describe('createServingTransport', () => {
 
   it('As the frame, an answer my provider cannot post is reported and never left unhandled', async () => {
     // Given
-    const { left, right } = createProviderPair();
-    const timers = manualTimers();
-    const broken = new Error('the peer window is gone');
+    const { serving, peer, timers, count, reports, breakPosts, broken } = brokenPostRig();
     const answer = deferred<undefined>();
-    let posting = true;
-    const provider: Provider = {
-      ...right,
-      post: data => {
-        if (!posting) {
-          throw broken;
-        }
-        right.post(data);
-      },
-    };
-    const serving = createServingTransport(provider, { side: 'frame', count: vi.fn() });
     serving.handleRequest('heartbeat', () => answer.promise);
-    const peer = rawPeer(left);
-    const captured: { error: unknown; context: CaptureContext }[] = [];
-    const unbind = bindCaptureSink({
-      exception: (error, context) => captured.push({ error, context }),
-      expected: () => undefined,
-    });
     peer.send({ leg: 'request', id: 1, method: 'heartbeat', deadlineMs: null, payload: undefined });
     await timers.advance(0);
 
     // When
-    posting = false;
+    breakPosts();
     answer.resolve(undefined);
     await timers.advance(0);
-    unbind();
 
     // Then
-    expect(captured).toEqual([
+    expect(reports.captured).toEqual([
       {
         error: broken,
-        context: { flow: 'protocol', step: 'answer_post', tags: { method: 'heartbeat', side: 'frame' } },
+        context: { flow: 'protocol', step: 'serve_post', tags: { method: 'heartbeat', side: 'frame' } },
       },
+    ]);
+    expect(reports.errors).toEqual(['[dot.li] A heartbeat message could not be posted']);
+    expect(count).toHaveBeenCalledExactlyOnceWith(S.PROTOCOL_SERVE_POST, {
+      outcome: 'error',
+      reason: 'Error',
+      side: 'frame',
+    });
+  });
+
+  it('As a handler, an event or end my provider cannot post is reported and never thrown into my call', async () => {
+    // Given
+    const { serving, peer, timers, count, reports, breakPosts, broken } = brokenPostRig();
+    let sink: SubscriptionSink<'sharedAuthChanges'> | undefined;
+    serving.handleSubscription('sharedAuthChanges', (_payload, _context, given) => {
+      sink = given;
+      return () => undefined;
+    });
+    peer.send({ leg: 'subscribe', id: 1, method: 'sharedAuthChanges', deadlineMs: null, payload: undefined });
+    await timers.advance(0);
+    breakPosts();
+
+    // When
+    const send = (): void => {
+      sink?.send({ siteId: 's', key: 'k', value: null });
+    };
+    const end = (): void => {
+      sink?.end();
+    };
+
+    // Then
+    expect(send).not.toThrow();
+    expect(end).not.toThrow();
+    const reported = {
+      error: broken,
+      context: { flow: 'protocol', step: 'serve_post', tags: { method: 'sharedAuthChanges', side: 'frame' } },
+    };
+    expect(reports.captured).toEqual([reported, reported]);
+    expect(reports.errors).toHaveLength(2);
+    expect(count.mock.calls).toEqual([
+      [S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: 'Error', side: 'frame' }],
+      [S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: 'Error', side: 'frame' }],
     ]);
   });
 
@@ -244,5 +310,49 @@ describe('createServingTransport', () => {
     // Then
     expect(stops[1]).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledExactlyOnceWith(bug);
+  });
+  it('As a handler, my send and end after the subscription stopped do nothing', async () => {
+    // Given
+    const { consumer, serving, timers, delivered } = rig();
+    let sink: SubscriptionSink<'sharedAuthChanges'> | undefined;
+    const stop = vi.fn();
+    serving.handleSubscription('sharedAuthChanges', (_payload, _context, given) => {
+      sink = given;
+      return stop;
+    });
+    consumer.connect();
+    consumer.subscribe('sharedAuthChanges', undefined, () => undefined).unsubscribe();
+    const subscription = consumer.subscribe('sharedAuthChanges', undefined, () => undefined);
+    await timers.advance(0);
+    subscription.unsubscribe();
+    await timers.advance(0);
+    expect(stop).toHaveBeenCalledOnce();
+    const posted = delivered.length;
+
+    // When
+    sink?.send({ siteId: 's', key: 'k', value: null });
+    sink?.end();
+    sink?.end(new Error('again'));
+    await timers.advance(0);
+
+    // Then
+    expect(delivered).toHaveLength(posted);
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('As a handler, an answer that cannot be encoded answers the call with the encode error', async () => {
+    // Given
+    const { consumer, serving, timers } = rig();
+    serving.handleRequest('resolveExecutableManifest', () => ({ kind: 'nope' }) as never);
+    consumer.connect();
+
+    // When
+    const call = outcomeOf(consumer.request('resolveExecutableManifest', { label: 'a', kind: 'app' }));
+    await timers.advance(0);
+
+    // Then
+    const error = await call;
+    expect(error).toBeInstanceOf(ProtocolRequestError);
+    expect(error).toMatchObject({ name: 'TypeError', method: 'resolveExecutableManifest' });
   });
 });

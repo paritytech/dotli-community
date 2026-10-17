@@ -4,8 +4,8 @@
 // JSON-RPC connections to the chains the protocol frame runs.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { captureException, reportListener } from '@dotli/metrics';
-import { log, realTimers, serializeError, toError, withTimeout, type Timers } from '@dotli/shared';
+import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { errorName, log, realTimers, serializeError, toError, withTimeout, type Timers } from '@dotli/shared';
 import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolFrame } from './frame.js';
 import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
@@ -96,6 +96,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
     } catch (err: unknown) {
       captureException(err, { flow: 'protocol', step: 'chain_message_parse' });
       log.error(`[dot.li protocol] chain-message JSON parse failed (conn=${connectionId.slice(-8)}):`, err);
+      m.count(S.PROTOCOL_CHAIN_MESSAGE, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
       return;
     }
     guardConsumer('message', () => {

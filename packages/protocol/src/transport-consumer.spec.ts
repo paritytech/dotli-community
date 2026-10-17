@@ -475,35 +475,6 @@ describe('createConsumerTransport', () => {
     expect(onEnd).not.toHaveBeenCalled();
   });
 
-  it('As a handler, my send and end after the subscription stopped do nothing', async () => {
-    // Given
-    const { consumer, serving, timers, delivered } = rig();
-    let sink: SubscriptionSink<'sharedAuthChanges'> | undefined;
-    const stop = vi.fn();
-    serving.handleSubscription('sharedAuthChanges', (_payload, _context, given) => {
-      sink = given;
-      return stop;
-    });
-    consumer.connect();
-    consumer.subscribe('sharedAuthChanges', undefined, () => undefined).unsubscribe();
-    const subscription = consumer.subscribe('sharedAuthChanges', undefined, () => undefined);
-    await timers.advance(0);
-    subscription.unsubscribe();
-    await timers.advance(0);
-    expect(stop).toHaveBeenCalledOnce();
-    const posted = delivered.length;
-
-    // When
-    sink?.send({ siteId: 's', key: 'k', value: null });
-    sink?.end();
-    sink?.end(new Error('again'));
-    await timers.advance(0);
-
-    // Then
-    expect(delivered).toHaveLength(posted);
-    expect(stop).toHaveBeenCalledOnce();
-  });
-
   it('As a subscriber, a listener that throws is reported and does not stop the others', async () => {
     // Given
     const { consumer, serving, timers, report } = rig();
@@ -567,22 +538,6 @@ describe('createConsumerTransport', () => {
     // Then
     expect(await bad).toBeInstanceOf(RangeError);
     expect(delivered).toHaveLength(posted);
-  });
-
-  it('As a handler, an answer that cannot be encoded answers the call with the encode error', async () => {
-    // Given
-    const { consumer, serving, timers } = rig();
-    serving.handleRequest('resolveExecutableManifest', () => ({ kind: 'nope' }) as never);
-    consumer.connect();
-
-    // When
-    const call = outcomeOf(consumer.request('resolveExecutableManifest', { label: 'a', kind: 'app' }));
-    await timers.advance(0);
-
-    // Then
-    const error = await call;
-    expect(error).toBeInstanceOf(ProtocolRequestError);
-    expect(error).toMatchObject({ name: 'TypeError', method: 'resolveExecutableManifest' });
   });
 
   it('As a caller, a method the frame does not handle yet answers with an error at once', async () => {

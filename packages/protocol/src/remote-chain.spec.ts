@@ -217,7 +217,7 @@ describe('createRemoteChains', () => {
     expect(server().connects[0]?.stopped).toBe(true);
   });
 
-  it('As a dotli integrator, I receive a malformed chain message and it is reported as a failure while the consumer hears nothing', async () => {
+  it('As a dotli integrator, I receive a malformed chain message and it is reported and counted as a failure while the consumer hears nothing', async () => {
     // Given a live connection and a recorder of captured exceptions and logged errors
     const errors: string[] = [];
     onTestFinished(
@@ -230,6 +230,7 @@ describe('createRemoteChains', () => {
       }),
     );
     const captures = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const received: JsonRpcMessage[] = [];
     people(message => received.push(message));
     await settle();
@@ -243,6 +244,7 @@ describe('createRemoteChains', () => {
     expect(received).toEqual([]);
     expect(captures).toEqual([{ flow: 'protocol', step: 'chain_message_parse', tags: undefined }]);
     expect(errors).toEqual([expect.stringMatching(/chain-message JSON parse failed/) as string]);
+    expect(metrics.counted(S.PROTOCOL_CHAIN_MESSAGE)).toEqual([{ outcome: 'error', reason: 'SyntaxError' }]);
   });
 
   it('As a product, I connect while the frame is down, the connection waits for the boot it asked for, and halts as a dead frame if that boot fails', async () => {

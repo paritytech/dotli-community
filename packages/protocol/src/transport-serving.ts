@@ -4,8 +4,8 @@
 // The serving end of a transport, one per provider for the provider's whole life. It answers the handshake itself and
 // runs the handler registered for each method.
 
-import { captureException, m } from '@dotli/metrics';
-import { log, toError } from '@dotli/shared';
+import { captureException, m, spans as S } from '@dotli/metrics';
+import { errorName, log, toError } from '@dotli/shared';
 import { ProtocolVersionMismatchError } from './errors.js';
 import {
   WIRE_VERSION,
@@ -101,6 +101,20 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     resolutionId,
   });
 
+  /**
+   * Posts an answer, an event or an end. One that throws is reported here, since an answer settles outside any caller
+   * and a handler's `send` or `end` must not throw into it.
+   */
+  const post = (method: ProtocolMethod, data: ArrayBuffer): void => {
+    try {
+      provider.post(data);
+    } catch (error) {
+      captureException(error, { flow: 'protocol', step: 'serve_post', tags: { method, side } });
+      log.error(`[dot.li] A ${method} message could not be posted`, error);
+      count(S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: errorName(error) ?? 'unknown', side });
+    }
+  };
+
   const respond = <M extends Requestable>(
     id: number,
     method: M,
@@ -124,17 +138,11 @@ export function createServingTransport(provider: Provider, options: ServingTrans
     } catch (error) {
       data = answer({ ok: false, error: toWireError(error) });
     }
-    try {
-      provider.post(data);
-    } catch (error) {
-      // An answer settles outside any caller, so a post that throws is reported here or nowhere.
-      captureException(error, { flow: 'protocol', step: 'answer_post', tags: { method, side } });
-      log.error(`[dot.li] The ${method} answer could not be posted`, error);
-    }
+    post(method, data);
   };
 
   const postEnd = (id: number, method: SubscriptionMethod, error: Error | null): void => {
-    provider.post(encodeWireMessage({ leg: 'end', id, method, error: error === null ? null : toWireError(error) }));
+    post(method, encodeWireMessage({ leg: 'end', id, method, error: error === null ? null : toWireError(error) }));
   };
 
   const onHandshake = (id: number, payload: RequestPayload<'handshake'>): void => {
@@ -207,7 +215,7 @@ export function createServingTransport(provider: Provider, options: ServingTrans
           finish(toError(error));
           return;
         }
-        provider.post(data);
+        post(method, data);
       },
       end(error) {
         finish(error ?? null);

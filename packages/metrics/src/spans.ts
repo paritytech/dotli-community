@@ -116,6 +116,18 @@ export const PROTOCOL_REQUEST = 'protocol.request';
 export const PROTOCOL_WIRE_REFUSED = 'protocol.wire_refused';
 
 /**
+ * A protocol message the serving end could not post, an answer, an event or an end, so its peer never hears it. Tagged
+ * `outcome` (error), `side` (frame or worker) and `reason` (the error's name).
+ */
+export const PROTOCOL_SERVE_POST = 'protocol.serve_post';
+
+/**
+ * A chain message from the protocol frame that the host could not parse, so its connection never hears it. Tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+export const PROTOCOL_CHAIN_MESSAGE = 'protocol.chain_message';
+
+/**
  * One request as the SharedWorker served it, tagged with the asking tab's `resolution_id`.
  * Apart from `PROTOCOL_REQUEST` because it excludes the postMessage hops.
  */
