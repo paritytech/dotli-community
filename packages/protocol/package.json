@@ -25,6 +25,7 @@
     "@dotli/metrics": "*",
     "@dotli/resolver": "*",
     "@dotli/shared": "*",
-    "@polkadot-api/json-rpc-provider": "^0.2.0"
+    "@polkadot-api/json-rpc-provider": "^0.2.0",
+    "scale-ts": "^1.6.1"
   }
 }
