@@ -9,6 +9,7 @@ export const PROTOCOL_APP_ERRORS = {
   INVALID_SHARED_AUTH_VALUE: 'Invalid shared auth value',
   RESOLVE_DOT_NAME_UNSUPPORTED: 'resolveDotName is not served by this protocol mode',
   RESOLVE_OWNER_UNSUPPORTED: 'resolveOwner is not served by this protocol mode',
+  RESOLVE_SEITY_SLOT_UNSUPPORTED: 'resolveSeitySlot is not served by this protocol mode',
   RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED: 'resolveExecutableManifest is not served by this protocol mode',
   RESOLVE_ROOT_MANIFEST_UNSUPPORTED: 'resolveRootManifest is not served by this protocol mode',
   CHAIN_BROKER_FAILED: 'Failed to create chain broker',

@@ -10,6 +10,16 @@
 
 ![Shared Smoldot](assets/smoldot-shared.svg)
 
+### Seity profile resolution
+
+Seity profile reads use `resolveSeitySlot` through the canonical iframe engine
+(`apps/protocol/src/engine.ts`) or the SharedWorker request handler. Both preserve
+the resolver sync deadline and serialize the slot's bigint version as a decimal
+string. Gateway mode instead calls `resolveSeitySlotViaRpc` directly. All three
+paths use the same pinned `withContract` registry reader; an unconfigured registry
+returns `null`. Profile resolution shares the canonical chain-pool lifecycle and
+stopped-chain recovery rather than maintaining a separate engine or RPC retry loop.
+
 ## Appendix
 
 Table I - Cold-start latency distribution. End-to-end domain resolution across 20 runs (2026-04-24). The *actor* column matches the components in the Architecture Overview above.

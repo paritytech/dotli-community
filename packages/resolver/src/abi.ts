@@ -44,7 +44,27 @@ export function computeMappingSlot(key: `0x${string}`, slotNumber: number): `0x$
   return toHex(new Uint8Array(keccak_256(concatBytes(hexToBytes(key), slotBytes))));
 }
 
-/** `bytes` longer than 31 start at `keccak256(baseSlot)` and span consecutive slots. */
+/**
+ * Compute the slot for `mapping(bytes32 => mapping(bytes32 => T))` at slot N,
+ * which is also how a pvm-contract-sdk `Mapping<([u8; 32], [u8; 32]), T>`
+ * lays out (pvm-storage chains tuple keys like Solidity nested mappings):
+ *   keccak256(inner ++ keccak256(outer ++ uint256(N)))
+ */
+export function computeNestedBytes32MappingSlot(
+  outerKey: `0x${string}`,
+  innerKey: `0x${string}`,
+  slotNumber: number,
+): `0x${string}` {
+  const midSlot = computeMappingSlot(outerKey, slotNumber);
+  return toHex(new Uint8Array(keccak_256(concatBytes(hexToBytes(innerKey), hexToBytes(midSlot)))));
+}
+
+/**
+ * Compute the data slot for long Solidity `bytes` storage.
+ *
+ * When bytes.length > 31, data starts at keccak256(baseSlot)
+ * and spans consecutive slots.
+ */
 export function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
   return toHex(new Uint8Array(keccak_256(hexToBytes(baseSlot))));
 }

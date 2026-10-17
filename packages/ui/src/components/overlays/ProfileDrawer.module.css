@@ -1,0 +1,78 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The host's profile drawer: the contact's name, the portrait (the photo in
+   its circle, a mood ring around it), the mood, the load status and the
+   attribution. floating/Modal.module.css draws the modal around them, a
+   card on wide screens and a bottom sheet on a phone's. */
+
+.profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+.contact {
+  max-width: 100%;
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+/* Room for the ring, half as wide again as the photo. */
+.portrait {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 240px;
+  height: 240px;
+}
+.avatar {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 160px;
+  height: 160px;
+  overflow: hidden;
+  border: 1px solid var(--chrome-ring);
+  border-radius: 50%;
+  background: var(--chrome-well);
+}
+.avatar[data-empty] {
+  border-style: dashed;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mood {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+.status {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.status[data-error] {
+  color: var(--chrome-warn-text);
+}
+.attribution {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+}

@@ -1,7 +1,7 @@
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
 import type { GenericError } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "../runtime.js";
-export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "setChatRoomFooter", "nativeCoinage", "contacts", "pickContact", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "featureSupported", "supportedChains", "scheduleGameReminder", "cancelGameReminder", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "scanCode", "confirmPermission", "confirmUserAction"];
+export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "setChatRoomFooter", "nativeCoinage", "contacts", "pickContact", "pickContacts", "placeContactLabels", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "featureSupported", "supportedChains", "scheduleGameReminder", "cancelGameReminder", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "presentProfile", "presentContactProfile", "placeContactAvatars", "scanCode", "confirmPermission", "confirmUserAction"];
 export type CallbackName = typeof CALLBACK_NAMES[number];
 export declare const SUBSCRIPTION_NAMES: readonly ["subscribeChatRooms", "subscribeLocale", "subscribePocketCards", "lookupPreimage", "subscribeStorage", "subscribeTheme"];
 export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
@@ -31,6 +31,8 @@ export interface OptionalCapabilities {
     permissionStatus?: boolean;
     /** Whether the host serves this capability. */
     pocket?: boolean;
+    /** Whether the host serves this capability. */
+    profile?: boolean;
     /** Whether the host serves this capability. */
     scanner?: boolean;
 }

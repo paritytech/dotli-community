@@ -251,6 +251,85 @@ export const ContactPickerPhone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
 };
 
+// The Seity profile layer's grant: an app may share its profile with app
+// audiences or chosen contacts.
+const PROFILE_DISCLOSURE = entry({
+  icon: iconMarkup(PERMISSION_ICONS.ProfileDisclosure),
+  title: 'Allow Profile Sharing',
+  fields: [
+    { label: 'Requesting product', value: 'echat.paseo' },
+    {
+      label: 'Permission',
+      value:
+        "Share this app's profile with app audiences or selected contacts. Personally shared profiles may be shown across the recipients' apps.",
+    },
+    {
+      label: 'Audience changes',
+      value:
+        'This authorizes the app to choose and update recipients. Always allow remembers that permission; it does not ask again for each audience change.',
+    },
+  ],
+  buttons: [
+    { label: 'Deny', variant: 'danger', result: 'rejected' },
+    { label: 'Always allow', variant: 'secondary', result: 'always' },
+    { label: 'Allow once', variant: 'primary', result: 'once' },
+  ],
+  dismissOnBackdrop: true,
+  dismissResult: 'dismissed',
+  fallbackResult: 'dismissed',
+});
+
+export const ProfileDisclosure: Story = { args: { entry: PROFILE_DISCLOSURE } };
+
+export const ProfileDisclosurePhone: Story = {
+  tags: ['!autodocs'],
+  args: { entry: PROFILE_DISCLOSURE },
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};
+
+// The contacts to share a profile with: checkboxes under a search, which only
+// "Use selection" confirms. Alice comes preselected.
+const CONTACTS_PICKER = entry({
+  title: 'Choose contacts',
+  fields: [
+    { label: 'Requesting product', value: 'echat.paseo' },
+    { label: 'Shared with the app', value: "Only the chosen contacts' accounts. The list stays in this picker." },
+  ],
+  choices: [
+    { label: 'alice.paseo', result: 'alice' },
+    { label: 'bob.paseo', result: 'bob' },
+    { label: 'carol.paseo', result: 'carol' },
+    { label: 'a-contact-with-a-rather-long-verified-username.paseo', result: 'long' },
+    { label: 'Chat contact', result: 'unnamed' },
+  ],
+  selection: { selected: ['alice'], limit: 32 },
+  buttons: [
+    { label: 'Cancel', variant: 'cancel', result: 'dismissed' },
+    { label: 'Use selection', variant: 'primary', result: 'confirmed' },
+  ],
+  dismissOnBackdrop: true,
+  dismissResult: 'dismissed',
+  fallbackResult: 'dismissed',
+});
+
+export const ContactsPicker: Story = {
+  args: { entry: CONTACTS_PICKER },
+  play: async ({ step }) => {
+    const body = within(document.body);
+    await step('Then the search has the focus and Alice is selected', async () => {
+      await expect(body.getByTestId('prompt-choice-search')).toHaveFocus();
+      await expect(body.getByRole('checkbox', { name: 'alice.paseo' })).toBeChecked();
+      await expect(body.getByTestId('prompt-choice-status')).toHaveTextContent('1 selected');
+    });
+  },
+};
+
+export const ContactsPickerPhone: Story = {
+  tags: ['!autodocs'],
+  args: { entry: CONTACTS_PICKER },
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};
+
 export const Phone: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],

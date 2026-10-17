@@ -57,6 +57,7 @@ export {
   resolveExecutableManifestRemote,
   resolveOwnerRemote,
   resolveRootManifestRemote,
+  resolveSeitySlotRemote,
   setProtocolSubMode,
   type SharedStoreStatus,
   subscribeSharedAuthStorage,
@@ -65,6 +66,7 @@ export {
   warmupProtocol,
   writeSharedAuthStorage,
   writeSharedModeStorage,
+  type RemoteSeitySlot,
 } from './client.js';
 export {
   CORE_CUSTODY_BUSY_ERROR,

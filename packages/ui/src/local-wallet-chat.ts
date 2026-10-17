@@ -11,7 +11,7 @@ import {
   requestCoreCustody,
   type CoreCustodyOperation,
 } from '@dotli/protocol';
-import { log } from '@dotli/shared';
+import { createAsyncTaskPool, log } from '@dotli/shared';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { AuthState, ContactsPlatform, CoreStorage, CoreStorageKey } from '@parity/truapi-host';
 import {
@@ -22,14 +22,20 @@ import {
 import { bytesToHex } from '@parity/truapi/scale';
 import type { BlockingModalScope } from './blocking-modal-queue.js';
 import { createContactsPlatform, NativeChatContactsDirectory } from './host-callbacks/Contacts.js';
+import type { ContactLabelOverlay } from './contacts/label-overlay.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
 
 export interface LocalWalletChat {
   /** The core's storage with native Chat's private slots held in custody. */
   coreStorage(storage: CoreStorage): CoreStorage;
   readonly nativeChatFiles: BrowserNativeChatFilesHost;
-  /** Contacts callbacks whose picker belongs to one modal scope. */
-  openContacts(scope: BlockingModalScope): { callbacks: Required<ContactsPlatform>; dispose(): void };
+  /** The native Chat contacts directory, which Profile also reads for contact names. */
+  readonly contactsDirectory: NativeChatContactsDirectory;
+  /** Contacts callbacks whose picker belongs to one modal scope, with names drawn on `labels` if given. */
+  openContacts(
+    scope: BlockingModalScope,
+    labels?: ContactLabelOverlay,
+  ): { callbacks: Required<ContactsPlatform>; dispose(): void };
   authStateChanged(state: AuthState): void;
   /** Binds the contacts directory to the activated core. */
   activated(runtime: WorkerPairingHostRuntime): void;
@@ -37,23 +43,53 @@ export interface LocalWalletChat {
   dispose(): void;
 }
 
-/** Wallet-scoped by their own keys, unlike the core's other slots. */
+/**
+ * A Chat app's Chat access, which the core checks before any product page lists that app's contacts. The other grants
+ * are only read on their own product's page and stay in its storage.
+ */
+function isChatAccessGrant(key: CoreStorageKey): boolean {
+  return key.tag === 'PermissionAuthorization' && key.value.request.tag === 'ChatAuthority';
+}
+
+/**
+ * Native Chat's records, the profile disclosure and received references, and the host channel's peer keys, all
+ * wallet-scoped by their own keys, plus the Chat access grants. A profile is shared from one product page and relayed
+ * or shown from another, so none of these can stay with the page that wrote them.
+ */
 function isCustodySlot(key: CoreStorageKey): boolean {
   return (
     key.tag === 'MainPurseCoinage' ||
     key.tag === 'NativeChatDevice' ||
     key.tag === 'NativeChatFileChunk' ||
-    key.tag === 'NativeChatProducts'
+    key.tag === 'NativeChatProducts' ||
+    key.tag === 'ProfileDisclosure' ||
+    key.tag === 'ProfileReferencesReceived' ||
+    key.tag === 'ProfilePersonalReferencesReceived' ||
+    key.tag === 'HostChannelPeers' ||
+    isChatAccessGrant(key)
   );
 }
 
-function custodyKey(key: CoreStorageKey): string {
-  return bytesToHex(encodeCoreStorageKey(key)).slice(2);
+/** Grants need both scopes explicitly; profile and peer keys already encode their wallet and network. */
+function custodyKey(key: CoreStorageKey, walletId: string, genesis: string): string {
+  const encoded = bytesToHex(encodeCoreStorageKey(key)).slice(2);
+  return isChatAccessGrant(key) ? walletId + genesis.replace(/^0x/, '') + encoded : encoded;
+}
+
+function hasLegacyCustodySlot(key: CoreStorageKey): boolean {
+  // Legacy Chat grants contain no wallet/network binding. Keep their original
+  // bytes, but require fresh consent rather than grant another identity access.
+  return (
+    key.tag === 'ProfileDisclosure' ||
+    key.tag === 'ProfileReferencesReceived' ||
+    key.tag === 'ProfilePersonalReferencesReceived'
+  );
 }
 
 /** Acquisition starts now, so booting never waits on it; only native Chat's own operations do. */
 export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boolean): LocalWalletChat {
-  const lease = localWalletCustodyId(wallet.entropy).then(async id => {
+  const walletId = localWalletCustodyId(wallet.entropy);
+  const lease = walletId.then(async id => {
     const acquired = await requestCoreCustody(SITE_ID, { action: 'acquire', wallet: id });
     if (typeof acquired !== 'string') {
       throw new Error('Native Chat custody was not acquired');
@@ -71,10 +107,11 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
   const custody = async (
     operation: (lease: string) => CoreCustodyOperation,
   ): Promise<string | Uint8Array | Blob | undefined> => {
-    if (disposed) {
+    const token = await lease;
+    if (disposed || !isLive() || genesis !== getActiveServicesConfig().people.genesis) {
       throw new Error('Native Chat custody was released');
     }
-    return requestCoreCustody(SITE_ID, operation(await lease));
+    return requestCoreCustody(SITE_ID, operation(token));
   };
 
   const genesis = getActiveServicesConfig().people.genesis;
@@ -82,6 +119,33 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
     () => !disposed && isLive() && genesis === getActiveServicesConfig().people.genesis,
   );
   let walletPublicKey: string | undefined;
+
+  // The custody lease excludes other documents. Within its owner, serialize all
+  // operations on a slot, including migration, so a delayed legacy read cannot
+  // overwrite a fresh write or resurrect a cleared reference.
+  const slots = createAsyncTaskPool({ poolSize: 1 });
+  const withSlot = async <T>(key: CoreStorageKey, operation: (slot: string) => Promise<T>): Promise<T> => {
+    const slot = custodyKey(key, await walletId, genesis);
+    return slots.call(() => operation(slot), { pool: slot });
+  };
+  const readRecord = async (slot: string): Promise<Uint8Array | undefined> => {
+    const result = await custody(token => ({ action: 'read', lease: token, key: slot }));
+    if (result !== undefined && !(result instanceof Uint8Array)) {
+      throw new Error('Invalid private custody record');
+    }
+    return result;
+  };
+  const retireLegacy = async (storage: CoreStorage, key: CoreStorageKey, slot: string): Promise<void> => {
+    if (!hasLegacyCustodySlot(key)) {
+      return;
+    }
+    // A durable tombstone survives clears and stale copies on another product
+    // origin. Commit it before clearing either copy, never before copying data.
+    if ((await readRecord(`ff${slot}`)) === undefined) {
+      await custody(token => ({ action: 'write', lease: token, key: `ff${slot}`, value: new Uint8Array([1]) }));
+    }
+    await storage.clearCoreStorage(key);
+  };
 
   const nativeChatFiles = createBrowserNativeChatFilesHost({
     async putSources(sources) {
@@ -106,31 +170,48 @@ export function createLocalWalletChat(wallet: LocalWalletBoot, isLive: () => boo
           if (!isCustodySlot(key)) {
             return storage.readCoreStorage(key);
           }
-          const result = await custody(token => ({ action: 'read', lease: token, key: custodyKey(key) }));
-          if (result !== undefined && !(result instanceof Uint8Array)) {
-            throw new Error('Invalid private custody record');
-          }
-          return result;
+          return withSlot(key, async slot => {
+            let result = await readRecord(slot);
+            if (hasLegacyCustodySlot(key)) {
+              if (result === undefined && (await readRecord(`ff${slot}`)) === undefined) {
+                const legacy = await storage.readCoreStorage(key);
+                if (legacy === undefined) {
+                  return undefined;
+                }
+                await custody(token => ({ action: 'write', lease: token, key: slot, value: legacy }));
+                result = legacy;
+              }
+              await retireLegacy(storage, key, slot);
+            }
+            return result;
+          });
         },
         async writeCoreStorage(key, value) {
           if (!isCustodySlot(key)) {
             await storage.writeCoreStorage(key, value);
             return;
           }
-          await custody(token => ({ action: 'write', lease: token, key: custodyKey(key), value }));
+          await withSlot(key, async slot => {
+            await custody(token => ({ action: 'write', lease: token, key: slot, value }));
+            await retireLegacy(storage, key, slot);
+          });
         },
         async clearCoreStorage(key) {
           if (!isCustodySlot(key)) {
             await storage.clearCoreStorage(key);
             return;
           }
-          await custody(token => ({ action: 'clear', lease: token, key: custodyKey(key) }));
+          await withSlot(key, async slot => {
+            await retireLegacy(storage, key, slot);
+            await custody(token => ({ action: 'clear', lease: token, key: slot }));
+          });
         },
       });
     },
     nativeChatFiles,
-    openContacts(scope) {
-      return createContactsPlatform(directory, scope);
+    contactsDirectory: directory,
+    openContacts(scope, labels) {
+      return createContactsPlatform(directory, scope, labels);
     },
     authStateChanged(state) {
       if (state.tag === 'Connected') {

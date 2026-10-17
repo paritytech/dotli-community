@@ -21,6 +21,14 @@ import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js
 import { getWalletMode } from './state/wallet-mode.js';
 import { readWalletBoot } from './wallet-boot.js';
 import { setNotificationAccount } from './notification-activation.js';
+import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
+import type { ContactLabelOverlay } from './contacts/label-overlay.js';
+
+/** The product frame's host-drawn layers a connection paints Profile avatars and contact names on. */
+export interface CoreConnectionOptions {
+  contactAvatars?: ContactAvatarOverlay;
+  contactLabels?: ContactLabelOverlay;
+}
 
 export interface PageProduct {
   label: string;
@@ -39,7 +47,7 @@ export interface CoreConnection {
 
 export interface CoreLease {
   runtime: WorkerPairingHostRuntime;
-  connect(executionKind?: ProductExecutionKind): Promise<CoreConnection>;
+  connect(executionKind?: ProductExecutionKind, options?: CoreConnectionOptions): Promise<CoreConnection>;
   /** Idempotent. */
   release(): void;
 }
@@ -50,7 +58,7 @@ interface Core {
   leases: number;
   faulted: boolean;
   /** Callbacks scoped to one product connection, so its prompts end with it. */
-  openCallbacks(): { callbacks: RequiredHostCallbacks; dispose(): void };
+  openCallbacks(options: CoreConnectionOptions): { callbacks: RequiredHostCallbacks; dispose(): void };
   dispose(): void;
 }
 
@@ -108,7 +116,7 @@ export async function acquireCore(): Promise<CoreLease> {
   }
   return {
     runtime,
-    connect: executionKind => connect(core, runtime, executionKind),
+    connect: (executionKind, options) => connect(core, runtime, executionKind, options),
     release,
   };
 }
@@ -143,6 +151,17 @@ function createCore(product: PageProduct): Core {
   // Native Chat runs only beside the local signer; a Polkadot App session leaves Chat on the phone.
   let chat: LocalWalletChat | null = null;
   const connectionDisposers = new Set<() => void>();
+  // Profile presentations end with the session that opened them.
+  let profileLifetime = new AbortController();
+  let profileAccount: string | undefined;
+  const profileInvalidators = new Set<() => void>();
+  const invalidateProfiles = (): void => {
+    profileLifetime.abort();
+    profileLifetime = new AbortController();
+    for (const invalidate of profileInvalidators) {
+      invalidate();
+    }
+  };
   const callbacksFor = (local: boolean, contacts?: Required<ContactsPlatform>): RequiredHostCallbacks => {
     coreCallbacks = createHostCallbacks({
       label: product.label,
@@ -152,7 +171,19 @@ function createCore(product: PageProduct): Core {
       blockingModalScope,
       local,
       contacts,
+      profileSignal: () => profileLifetime.signal,
+      contactsDirectory: chat?.contactsDirectory,
     });
+    const presentAuth = coreCallbacks.auth.authStateChanged;
+    coreCallbacks.auth.authStateChanged = state => {
+      const profileSession =
+        state.tag === 'Connected' ? `${state.value.publicKey}:${state.value.identityAccountId ?? ''}` : undefined;
+      if (profileSession !== profileAccount) {
+        profileAccount = profileSession;
+        invalidateProfiles();
+      }
+      presentAuth(state);
+    };
     return coreCallbacks;
   };
   // The wallet read, the host chunk and the worker wrapper load in parallel, so a Polkadot App boot waits on
@@ -190,6 +221,7 @@ function createCore(product: PageProduct): Core {
     unsubscribeStore = onStoredSessionChanged(() => {
       // Fence both local and cross-tab changes before the worker reloads auth.
       setNotificationAccount(product.label, undefined);
+      invalidateProfiles();
       booted.notifySessionStoreChanged();
     });
     queueMicrotask(() => {
@@ -204,17 +236,26 @@ function createCore(product: PageProduct): Core {
     runtime,
     leases: 0,
     faulted: false,
-    openCallbacks() {
+    openCallbacks(options) {
       const shared = coreCallbacks;
       if (shared === null || !cores.has(core)) {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const contacts = chat?.openContacts(scope);
+      const contacts = chat?.openContacts(scope, options.contactLabels);
+      let connectionLifetime = new AbortController();
+      const invalidateProfile = (): void => {
+        connectionLifetime.abort();
+        connectionLifetime = new AbortController();
+        options.contactAvatars?.clear();
+      };
       const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
         contacts: contacts?.callbacks,
+        contactAvatars: options.contactAvatars,
+        profileSignal: () => connectionLifetime.signal,
+        contactsDirectory: chat?.contactsDirectory,
       });
       // Authentication, session storage and Chat custody stay core-owned; interactive
       // product prompts cannot outlive the connection that requested them.
@@ -235,11 +276,16 @@ function createCore(product: PageProduct): Core {
           return;
         }
         closed = true;
+        connectionLifetime.abort();
+        options.contactAvatars?.dispose();
+        options.contactLabels?.dispose();
         connectionDisposers.delete(dispose);
+        profileInvalidators.delete(invalidateProfile);
         contacts?.dispose();
         scope.dispose();
       };
       connectionDisposers.add(dispose);
+      profileInvalidators.add(invalidateProfile);
       return { callbacks, dispose };
     },
     dispose() {
@@ -250,6 +296,7 @@ function createCore(product: PageProduct): Core {
         current = null;
       }
       log.event('wallet core disposed', { flow: 'wallet', faulted: core.faulted });
+      profileLifetime.abort();
       unsubscribeStore?.();
       for (const dispose of connectionDisposers) {
         dispose();
@@ -279,9 +326,10 @@ async function connect(
   core: Core,
   runtime: WorkerPairingHostRuntime,
   executionKind: ProductExecutionKind = 'App',
+  options: CoreConnectionOptions = {},
 ): Promise<CoreConnection> {
   const productId = productIdOf(core.product);
-  const callbacks = core.openCallbacks();
+  const callbacks = core.openCallbacks(options);
   let provider: TrUApiProductProvider;
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);

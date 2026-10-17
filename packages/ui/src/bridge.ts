@@ -19,6 +19,7 @@ import {
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import {
+  DEBUG,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
   getBackend,
@@ -36,6 +37,9 @@ import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { buildAllowAttribute, registerPermissionAuthorizationProvider, setPermissionStatus } from './permissions.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
+import { createContactAvatars, installProfileDebugTrigger } from './host-callbacks/Profile.js';
+import type { AvatarSurfaceFit } from './profile/avatar-overlay.js';
+import { createContactLabelOverlay } from './contacts/label-overlay.js';
 import { LoginRequestError } from './login-request-error.js';
 import { attachProductFrame } from './product-frame-layout.js';
 import { labelToProductId } from './runtime-config.js';
@@ -591,6 +595,9 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   blockingModalCoordinator = modalCoordinator;
   bridgeEventListenersInitialized = true;
   (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
+  if (DEBUG) {
+    installProfileDebugTrigger();
+  }
   window.addEventListener('dotli:truapi-disconnect-request', () => {
     log.event('logout requested', { flow: 'wallet' });
     if (getWalletMode() === 'local') {
@@ -955,17 +962,23 @@ async function createHost(args: {
   extraAllow?: readonly string[];
   debugFlowId: string;
   viewInsetsRelay?: boolean;
+  /** How the product's avatar surface maps onto the frame. */
+  avatarSurface?: AvatarSurfaceFit;
 }): Promise<ActiveHost> {
   const lease = await acquireCore();
+  const contactAvatars = createContactAvatars();
+  const contactLabels = createContactLabelOverlay();
   let connection: CoreConnection;
   let chatCapable: boolean;
   try {
     // A Worker-kind execution gets chat calls served on top of everything an App connection can do.
     chatCapable = await chatCapabilityFor(args.label);
     log.event('chat capability resolved', { flow: 'chat', capable: chatCapable });
-    connection = await lease.connect(chatCapable ? 'Worker' : 'App');
+    connection = await lease.connect(chatCapable ? 'Worker' : 'App', { contactAvatars, contactLabels });
     log.event('product connected to wallet core', { flow: 'wallet', kind: chatCapable ? 'Worker' : 'App' });
   } catch (error) {
+    contactAvatars.dispose();
+    contactLabels.dispose();
     lease.release();
     throw error;
   }
@@ -1029,7 +1042,7 @@ async function createHost(args: {
     connecting = true;
     const generation = executionGeneration;
     void lease
-      .connect(chatCapable ? 'Worker' : 'App')
+      .connect(chatCapable ? 'Worker' : 'App', { contactAvatars, contactLabels })
       .then(next => {
         if (disposed || generation !== executionGeneration) {
           next.close();
@@ -1081,6 +1094,9 @@ async function createHost(args: {
       return;
     }
     cleanupProductSide();
+    // Retire the previous document's host-owned presentation immediately.
+    contactAvatars.clear();
+    contactLabels.clear();
     pendingPort?.close();
     pendingPort = null;
     productPortUsed = false;
@@ -1107,6 +1123,8 @@ async function createHost(args: {
     pendingPort = null;
     cleanupProductSide();
     retireExecution();
+    contactAvatars.dispose();
+    contactLabels.dispose();
     lease.release();
   };
   try {
@@ -1121,6 +1139,8 @@ async function createHost(args: {
       container: args.container,
       onPort: connectProductPort,
     });
+    contactAvatars.attach(host.iframe, args.avatarSurface ?? 'viewport');
+    contactLabels.attach(host.iframe, args.avatarSurface ?? 'viewport');
     if (args.viewInsetsRelay === true) {
       disposeViewInsets = installPolkaVmViewInsetsRelay(host.iframe, args.allowedOrigin);
     }
@@ -1319,26 +1339,36 @@ export async function renderIframe(
   });
 }
 
-function isPolkaVmExecutableManifest(value: string | null): boolean {
-  if (value === null) {
-    return false;
-  }
+function field(value: unknown, key: string): unknown {
+  return value !== null && typeof value === 'object' && key in value
+    ? (value as Record<string, unknown>)[key]
+    : undefined;
+}
+
+/**
+ * Whether the executable is a PolkaVM App, and how its avatar surface lands on
+ * the frame. The sandbox fills the frame with the PolkaVM surface; only a
+ * framebuffer canvas is contain-fitted inside it, while Tri2D and WebGPU
+ * canvases stretch over all of it. Web products place in CSS pixels.
+ */
+function executableSurface(value: string | null): {
+  polkaVm: boolean;
+  avatarSurface: AvatarSurfaceFit;
+} {
+  let manifest: unknown;
   try {
-    const manifest: unknown = JSON.parse(value);
-    if (
-      manifest === null ||
-      typeof manifest !== 'object' ||
-      !('runtime' in manifest) ||
-      manifest.runtime === null ||
-      typeof manifest.runtime !== 'object' ||
-      !('kind' in manifest.runtime)
-    ) {
-      return false;
-    }
-    return manifest.runtime.kind === 'polkavm';
+    manifest = value === null ? null : JSON.parse(value);
   } catch {
-    return false;
+    manifest = null;
   }
+  if (field(field(manifest, 'runtime'), 'kind') !== 'polkavm') {
+    return { polkaVm: false, avatarSurface: 'viewport' };
+  }
+  const profile = field(field(field(manifest, 'capabilities'), 'graphics'), 'profile');
+  return {
+    polkaVm: true,
+    avatarSurface: profile === 'framebuffer' ? 'contain' : 'fill',
+  };
 }
 
 /**
@@ -1410,7 +1440,7 @@ export async function renderAppSubdomain(
   const keepLoading = previousHost === null;
 
   const iframeUrl = new URL(url);
-  const isPolkaVm = isPolkaVmExecutableManifest(executableManifest);
+  const surface = executableSurface(executableManifest);
   emitDotliDebugEvent({
     layer: 'bridge',
     event: 'setup_begin',
@@ -1431,8 +1461,9 @@ export async function renderAppSubdomain(
     sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
     label,
     archiveCid: cid,
-    extraAllow: isPolkaVm ? ['accelerometer', 'gyroscope'] : [],
-    viewInsetsRelay: isPolkaVm,
+    extraAllow: surface.polkaVm ? ['accelerometer', 'gyroscope'] : [],
+    viewInsetsRelay: surface.polkaVm,
+    avatarSurface: surface.avatarSurface,
     container: app,
     debugFlowId: bridgeFlowId,
   });

@@ -1,0 +1,70 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Host-drawn contact avatars over a product frame (profile/avatar-overlay.ts
+   makes the .overlay layer, ContactAvatars draws its slots). */
+
+/* The frame's inline geometry is copied onto the layer; these are fallbacks
+   and what the product must never get: pointer events. Above the frame, below
+   the loading screen, toasts, the topbar, modals and the profile drawer. */
+.overlay {
+  position: fixed;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  contain: layout paint;
+}
+.overlay * {
+  pointer-events: none;
+}
+/* The product's clip: the ring and photo are cut where it ends. Slots and
+   circles are placed by transform, so moving them needs no layout. */
+.slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  transition: opacity 120ms ease-out;
+}
+/* Positions arrive a few frames after the product drew them, so a moving
+   avatar would trail its row: it fades out until positions settle. */
+.slot[data-moving] {
+  opacity: 0;
+  transition-duration: 80ms;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .slot[data-moving] {
+    transition: none;
+  }
+}
+/* The circle's box. */
+.avatar {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+/* The ring is wider than the circle it wraps, so auto margins cannot centre
+   it; translate instead. */
+.avatar > .ring {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+.photo {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

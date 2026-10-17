@@ -317,10 +317,10 @@ host-owned IndexedDB, scoped to the product execution, authenticated account, ne
 notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
 the host entry page. It does not navigate the product's route.
 
-The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
-`{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
-consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
-product, account, network or artifact cannot read or acknowledge the retained activation.
+The vendored TrUAPI host serves `notifications.send` and `notifications.cancel` only; it carries no product-facing
+activation feed, which belongs to the separate generic notification feature. The retained activation records stay scoped
+to the product execution, authenticated account, network and artifact, and another product, account, network or artifact
+cannot read them.
 
 Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
 URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
@@ -361,7 +361,11 @@ local wallet is the active signer. With a Polkadot App session the phone holds C
 private slots and offers no contacts.
 
 The local wallet core keeps Chat's main purse, device records, attachment chunks and product index in the protocol
-origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Records are authenticated-encrypted with a
+origin's IndexedDB (`dotli-native-core-custody`), not in host `localStorage`. Each Chat app's Chat access grant is kept
+there too, under the wallet and People network, because the core checks it before any product page's contact picker
+lists that app's contacts. Every other grant stays in the host `localStorage` of the product page that asked for it. The
+profile disclosure, the received profile references and the host channel's peer keys sit in custody as well: a profile
+is shared from one product page and relayed, posted or shown from another. Records are authenticated-encrypted with a
 non-extractable key; immutable attachment source Blobs are host-private but not encrypted at rest. They never enter
 product storage or the product RPC interface. Each core takes a custody lease for the wallet it booted, named by a
 domain-separated hash of the wallet's entropy, and every operation rechecks the stored wallet, so forgetting or
@@ -369,6 +373,14 @@ replacing it ends the lease's authority. A Web Lock admits one holder per browse
 same page waits for its predecessor to release, and a core in another tab is refused after a bounded wait, so its Chat
 operations fail while the tab's other products keep working. There is no handover between tabs at this layer. Closing a
 product connection does not stop receiving while the page core remains alive.
+
+On upgrade, the first read of a root-and-network-bound profile disclosure or received-reference slot copies the existing
+product-origin bytes through the session storage adapter into custody. A newer custody value wins. The source is cleared
+only after the value and a durable migration marker are saved; that marker prevents a later clear from resurrecting a
+stale copy on another product origin. Operations on the same custody slot are serialized, including migration. Legacy
+Chat permission records have no wallet or network provenance. Their bytes remain untouched in the original storage, but
+they cannot authorize the current or a replacement identity: Chat asks for fresh consent. New decisions are shared
+across product pages only for their own product, wallet and People network.
 
 Each payment requires a new host review of the authenticated product and recipient, exact amount, maximum debit
 including fees, selected chain and Coinage asset, and payment operation. Chat or automatic-signing grants never approve
@@ -410,11 +422,13 @@ npm run preview          # Production build served on localhost:5173, as the Pla
 protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
 such as the shell's offline service worker.
 
-This branch vendors the Chat TrUAPI 0.24.0 SDK from source `a0711ac26a795bea35764447f8d5bf36648f55af`, recorded in
+This branch vendors the Profile TrUAPI 0.25.0 SDK from source `d164d8e96ded05ea039c3b7927e645bdc65a4c89`, recorded in
 `vendor/truapi-host.lock.json`. Both Wasm bundles come from upstream's standard `build-wasm.mjs`: `wasm/web` is the
 pairing-only production host, and `wasm/testing` backs the local wallet's signing worker. The recorded archive hashes
-precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority, custody and account-bound
-notification activation sit above the generic PolkaVM runtime; Profile and Jam remain separate feature layers. Install
+precede the local `@parity/truapi=file:../truapi` dependency override. Chat authority and custody sit above the generic
+PolkaVM runtime. Profile disclosure, contacts and presentation fences are added here; contact names and avatars read the
+native Chat contacts beside the local wallet. Jam remains a separate feature layer. Replacing a product document retires
+its execution and clears its avatars and labels immediately; the new execution receives fresh Profile callbacks. Install
 the tree in `package-lock.json` with `npm ci`. To iterate against a matching local truapi checkout instead, run:
 
 ```bash
@@ -719,6 +733,38 @@ clears it. Use `?debug=off` to silence it explicitly within the same session.
 
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources,
 views, filters, correlation keys, and how to add a new instrumentation hook.
+
+### Seity profiles
+
+Profile sharing uses the native core's separate **Profile Disclosure** consent. It does not authorize identity
+disclosure, transaction signing, spending, or statement submission. Dismissing a disclosure prompt leaves it undecided;
+an explicit denial is persisted by the core.
+
+The host resolves Seity contact references through the active network's registry and decrypts Bulletin content outside
+the product frame. Profile references are bearer capabilities: they are stored authenticated-encrypted at rest under
+wallet/network-scoped keys. A network without a configured registry has no contact profile to display.
+
+Profiles and contact-avatar layers are Solid host surfaces attached to the product's connection to the shared page core.
+Closing or retiring the connection aborts pending loads, removes its drawer and avatars, and releases decrypted image
+URLs. Sign-out, account replacement and paired-session storage changes also retire that session's profile UI without
+preventing a later session from presenting on the same connection. Mood rings disappear when their lifetime expires,
+including in an already-open drawer. Profile content is self-described; verified Chat attribution confirms who shared a
+reference, not who an image depicts.
+
+Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
+contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not
+claim the contact has never shared: information may not have reached this host yet. Availability stays private from the
+requesting product, whose completion reply is the same for shared and empty profiles. When a product-specific Chat name
+is unavailable, the drawer resolves it from the same wallet- and People-network-bound verified directory used by contact
+labels, which exists only beside the local wallet's native Chat. This lookup never delays opening the drawer or returns
+the name to the requesting product. Missing or unavailable directory names retain generic attribution.
+
+Contact names and account identities remain host-private. Products receive opaque contact handles and can reserve
+clipped label boxes on their surface; the host draws verified contact usernames, or account identifiers when no username
+is available, above the product frame. These labels do not require a shared profile or photo, and are independent of
+Profile avatar placement. Same-wallet contact-directory changes clear stale names and refresh the latest placement
+without waiting for the product to redraw. Product restart, navigation, wallet/session replacement, an empty placement,
+and frame teardown cancel pending refreshes and remove labels.
 
 ## Sandbox API Checker
 
