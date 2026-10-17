@@ -106,6 +106,12 @@ export interface ProductFrame {
    * superseded it, and rejects when it could not be shown.
    */
   render(product: FrameProduct): Promise<void>;
+  /**
+   * Takes the product down for good under a failure screen the page shows: a render in flight is dropped, and the frame
+   * starts no render of its own again, so nothing it does clears that screen. The product stays mounted under it, and a
+   * render asked from above starts afresh.
+   */
+  halt(): void;
 }
 
 interface MountedHost {
@@ -577,8 +583,16 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       });
   });
 
+  function halt(): void {
+    rendering.abort(new Error('The product failed for good'));
+    // Every render the frame starts on its own reads the product from here.
+    target = null;
+    setStatus('failed');
+  }
+
   return {
     render,
+    halt,
   };
 }
 
