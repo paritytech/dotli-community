@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { memoryStorage } from '@dotli/shared/testing';
 import { SITE_ID } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
+import { denied, err, hostFailure, ok, unsupported } from '@dotli/transport';
 import { createSharedStoreHandler, type SharedAuthChannel, type SharedStoreDeps } from './shared-store-handler.js';
 import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
 
@@ -70,13 +71,13 @@ describe('the shared auth store', () => {
   it('As a host page, I write a shared auth key and read it back', async () => {
     // Given
     const { link } = setup();
-    await link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
+    await link.host.request('storage', 'authWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
 
     // When
-    const read = await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const read = await link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    expect(read).toBe('abc');
+    expect(read).toEqual(ok('abc'));
   });
 
   it('As a host page, I read a key nobody wrote as null', async () => {
@@ -84,10 +85,10 @@ describe('the shared auth store', () => {
     const { link } = setup();
 
     // When
-    const read = await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const read = await link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    expect(read).toBeNull();
+    expect(read).toEqual(ok(null));
   });
 
   it("As a host page in another tab, I hear this tab's auth writes and clears", async () => {
@@ -95,8 +96,8 @@ describe('the shared auth store', () => {
     const { link, channel } = setup();
 
     // When
-    await link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
-    await link.host.request('authStorageClear', { siteId: SITE_ID, key: 'session' });
+    await link.host.request('storage', 'authWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
+    await link.host.request('storage', 'authClear', { siteId: SITE_ID, key: 'session' });
 
     // Then
     expect(channel.posted).toEqual([
@@ -108,8 +109,8 @@ describe('the shared auth store', () => {
   it("As the host, I hear a sibling tab's auth change through my subscription", async () => {
     // Given
     const { link, channel } = setup();
-    const changes = record(link.host, 'sharedAuthChanges', undefined);
-    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const changes = record(link.host, 'storage', 'authChanges', undefined);
+    await link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
 
     // When another tab writes, then clears, and a stranger posts junk on the channel
     channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
@@ -128,15 +129,15 @@ describe('the shared auth store', () => {
   it("As the host, once I unsubscribe I no longer hear sibling tabs' changes", async () => {
     // Given
     const { link, channel } = setup();
-    const changes = record(link.host, 'sharedAuthChanges', undefined);
-    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const changes = record(link.host, 'storage', 'authChanges', undefined);
+    await link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
 
     // When
     changes.unsubscribe();
-    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    await link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
     channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
-    const later = record(link.host, 'sharedAuthChanges', undefined);
-    await link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const later = record(link.host, 'storage', 'authChanges', undefined);
+    await link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
     channel.deliver({ siteId: SITE_ID, key: 'session', value: 'abc' });
     await later.until(1);
 
@@ -151,14 +152,12 @@ describe('the shared auth store', () => {
     storage.setItem(`TRUAPI_${SITE_ID}_session`, 'secret');
 
     // When
-    const read = link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
-    const changes = record(link.host, 'sharedAuthChanges', undefined);
+    const read = link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
+    const changes = record(link.host, 'storage', 'authChanges', undefined);
 
     // Then
-    await expect(read).rejects.toThrow(`Shared auth request denied from origin: ${PRODUCT_ORIGIN}`);
-    expect(await changes.ended).toMatchObject({
-      message: `Shared auth request denied from origin: ${PRODUCT_ORIGIN}`,
-    });
+    await expect(read).resolves.toEqual(err(denied()));
+    expect(await changes.ended).toEqual(err(denied()));
   });
 
   it('As a dotli operator, a failed broadcast is reported and the write is still answered', async () => {
@@ -172,10 +171,10 @@ describe('the shared auth store', () => {
     captures.exception.mockClear();
 
     // When
-    const written = link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
+    const written = link.host.request('storage', 'authWrite', { siteId: SITE_ID, key: 'session', value: 'abc' });
 
     // Then
-    await expect(written).resolves.toBeUndefined();
+    await expect(written).resolves.toEqual(ok());
     expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'storage', step: 'shared_auth_broadcast' });
   });
 
@@ -184,10 +183,10 @@ describe('the shared auth store', () => {
     const { link } = setup();
 
     // When
-    const write = link.host.request('authStorageWrite', { siteId: SITE_ID, key: 'no spaces', value: 'x' });
+    const write = link.host.request('storage', 'authWrite', { siteId: SITE_ID, key: 'no spaces', value: 'x' });
 
     // Then
-    await expect(write).rejects.toThrow('Invalid shared auth key: no spaces');
+    await expect(write).resolves.toEqual(err(hostFailure('Error: Invalid shared auth key: no spaces')));
   });
 
   it('As a page on another root domain, I am refused the shared session', async () => {
@@ -195,10 +194,10 @@ describe('the shared auth store', () => {
     const { link } = setup();
 
     // When
-    const read = link.host.request('authStorageRead', { siteId: 'evil.li', key: 'session' });
+    const read = link.host.request('storage', 'authRead', { siteId: 'evil.li', key: 'session' });
 
     // Then
-    await expect(read).rejects.toThrow('Invalid siteId: evil.li');
+    await expect(read).resolves.toEqual(err(hostFailure('Error: Invalid siteId: evil.li')));
   });
 
   it('As a dotli user, storage blocked by the browser is answered per request and the handler still starts', async () => {
@@ -211,10 +210,10 @@ describe('the shared auth store', () => {
     });
 
     // When
-    const read = link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const read = link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    await expect(read).rejects.toThrow('storage is blocked');
+    await expect(read).resolves.toEqual(err(hostFailure('SecurityError: storage is blocked')));
   });
 
   it('As a dotli integrator, a stopped store serves nothing and hears no sibling tab', async () => {
@@ -224,10 +223,10 @@ describe('the shared auth store', () => {
     // When
     store.stop();
     channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
-    const read = link.host.request('authStorageRead', { siteId: SITE_ID, key: 'session' });
+    const read = link.host.request('storage', 'authRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    await expect(read).rejects.toThrow('This end does not handle authStorageRead');
+    await expect(read).resolves.toEqual(err(unsupported()));
   });
 });
 
@@ -237,11 +236,11 @@ describe('the shared mode store', () => {
     const { link, storage, channel } = setup();
 
     // When
-    await link.host.request('modeStorageWrite', { siteId: SITE_ID, key: 'session', value: 'direct' });
-    const read = await link.host.request('modeStorageRead', { siteId: SITE_ID, key: 'session' });
+    await link.host.request('storage', 'modeWrite', { siteId: SITE_ID, key: 'session', value: 'direct' });
+    const read = await link.host.request('storage', 'modeRead', { siteId: SITE_ID, key: 'session' });
 
     // Then
-    expect(read).toBe('direct');
+    expect(read).toEqual(ok('direct'));
     expect(storage.length).toBe(1);
     expect(storage.key(0)).toBe(`DOTLI_MODE_${SITE_ID}_session`);
     expect(channel.posted).toEqual([]);
@@ -253,7 +252,7 @@ describe('the shared mode store', () => {
     storage.setItem(`DOTLI_MODE_${SITE_ID}_mode`, 'rpc');
 
     // When
-    await link.host.request('modeStorageClear', { siteId: SITE_ID, key: 'mode' });
+    await link.host.request('storage', 'modeClear', { siteId: SITE_ID, key: 'mode' });
 
     // Then
     expect(storage.length).toBe(0);
@@ -264,10 +263,10 @@ describe('the shared mode store', () => {
     const { link, storage } = setup({}, PRODUCT_ORIGIN);
 
     // When
-    const write = link.host.request('modeStorageWrite', { siteId: SITE_ID, key: 'mode', value: 'rpc' });
+    const write = link.host.request('storage', 'modeWrite', { siteId: SITE_ID, key: 'mode', value: 'rpc' });
 
     // Then
-    await expect(write).rejects.toThrow(`Shared auth request denied from origin: ${PRODUCT_ORIGIN}`);
+    await expect(write).resolves.toEqual(err(denied()));
     expect(storage.length).toBe(0);
   });
 });

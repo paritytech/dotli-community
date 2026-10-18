@@ -42,18 +42,16 @@ export class ProtocolPortReleasedError extends Error {
 /**
  * A protocol request that failed across the iframe boundary, or never came back.
  *
- * The sender's error crosses postMessage as text, so this object's own stack says nothing.
- * `method` and `remoteStack` carry which request failed and where the sender threw.
+ * The sender's error crosses as its name and message only, so this object's own stack says nothing. `method` carries
+ * which request failed.
  */
 export class ProtocolRequestError extends Error {
   readonly method: string;
-  readonly remoteStack: string | undefined;
 
-  constructor(message: string, name: string, method: string, remoteStack?: string) {
+  constructor(message: string, name: string, method: string) {
     super(message);
     this.name = name;
     this.method = method;
-    this.remoteStack = remoteStack;
   }
 }
 

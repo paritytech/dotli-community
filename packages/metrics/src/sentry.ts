@@ -272,7 +272,6 @@ const sentrySink: CaptureSink = {
     const extra: Record<string, unknown> = {
       ...ctx.extra,
       ...(err instanceof Error ? {} : nonErrorExtra(err)),
-      ...(facts.remoteStack !== undefined ? { remote_stack: facts.remoteStack } : {}),
     };
     const capture = (): void => {
       Sentry.captureException(error, {
@@ -298,15 +297,12 @@ const sentrySink: CaptureSink = {
 };
 
 /** Origin facts the protocol client attaches to errors it rebuilds from a failed protocol answer. */
-function remoteFacts(err: unknown): { method?: string; remoteStack?: string } {
+function remoteFacts(err: unknown): { method?: string } {
   if (typeof err !== 'object' || err === null) {
     return {};
   }
-  const { method, remoteStack } = err as { method?: unknown; remoteStack?: unknown };
-  return {
-    ...(typeof method === 'string' ? { method } : {}),
-    ...(typeof remoteStack === 'string' ? { remoteStack } : {}),
-  };
+  const { method } = err as { method?: unknown };
+  return typeof method === 'string' ? { method } : {};
 }
 
 function nonErrorThrow(err: unknown): Error {

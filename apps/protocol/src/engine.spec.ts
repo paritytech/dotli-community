@@ -11,7 +11,8 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import type { ConsumerTransport } from '@dotli/protocol';
+import { budgetOf, RESOLVE_BUDGET_MS, type ProtocolTransport } from '@dotli/protocol';
+import { domain, err, hostFailure, ok, type CallError, type Result } from '@dotli/transport';
 import {
   createEngine,
   MAX_CONNS,
@@ -23,6 +24,8 @@ import {
 } from './engine.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
+
+type ChainRecording = Recording<'chain', 'connect'>;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -69,11 +72,11 @@ function createTransports(): {
 
 /** One host page served by one engine scope over the wire. */
 interface Tab {
-  host: ConsumerTransport;
+  host: ProtocolTransport;
   scope: EngineScope;
   /** Settles once the chain is connected or the connect ended. */
-  connect: (genesisHash: string, connectionId: string) => Promise<Recording<'chainConnect'>>;
-  send: (connectionId: string, message: string) => Promise<void>;
+  connect: (genesisHash: string, connectionId: string) => Promise<ChainRecording>;
+  send: (connectionId: string, message: string) => Promise<Result<void, CallError<unknown>>>;
 }
 
 function openTab(engine: ProtocolEngine): Tab {
@@ -83,11 +86,11 @@ function openTab(engine: ProtocolEngine): Tab {
     host,
     scope,
     connect: async (genesisHash, connectionId) => {
-      const chain = record(host, 'chainConnect', { genesisHash, connectionId });
+      const chain = record(host, 'chain', 'connect', { genesisHash, connectionId });
       await Promise.race([chain.until(1), chain.ended]);
       return chain;
     },
-    send: (connectionId, message) => host.request('chainSend', { connectionId, message }),
+    send: (connectionId, message) => host.request('chain', 'send', { connectionId, message }),
   };
 }
 
@@ -111,6 +114,11 @@ function setup(
 }
 
 const CONNECTED = { tag: 'connected' };
+
+/** How the frame answers a call whose handler threw `message`. */
+const thrown = (message: string): Result<never, CallError<never>> => err(hostFailure(`Error: ${message}`));
+
+const context = { origin: null, hello: { resolutionId: null } };
 
 /** The transport reports itself dead, as a smoldot chain does. */
 function haltTransport(transport: TransportRecord): void {
@@ -161,7 +169,7 @@ describe('createEngine chain connections', () => {
     const send = tab.send('nope', '{}');
 
     // Then
-    await expect(send).rejects.toThrow('Unknown chain connection: nope');
+    await expect(send).resolves.toEqual(thrown('Unknown chain connection: nope'));
   });
 
   it('As a product, a send under an empty connection id is refused as bad input', async () => {
@@ -172,7 +180,7 @@ describe('createEngine chain connections', () => {
     const send = tab.send('', '{}');
 
     // Then
-    await expect(send).rejects.toThrow('Invalid connectionId: expected non-empty string');
+    await expect(send).resolves.toEqual(thrown('Invalid connectionId: expected non-empty string'));
   });
 
   it('As a dotli user, an unsupported chain is refused', async () => {
@@ -183,7 +191,7 @@ describe('createEngine chain connections', () => {
     const chain = await tab.connect('0xdead', 'c1');
 
     // Then
-    expect(await chain.ended).toMatchObject({ message: 'Unsupported chain: 0xdead' });
+    expect(await chain.ended).toEqual(thrown('Unsupported chain: 0xdead'));
     expect(chain.events).toEqual([]);
   });
 
@@ -198,7 +206,7 @@ describe('createEngine chain connections', () => {
     const overflow = await tab.connect('0xaa', 'extra');
 
     // Then
-    expect(await overflow.ended).toMatchObject({ message: 'Connection limit reached (max 10)' });
+    expect(await overflow.ended).toEqual(thrown('Connection limit reached (max 10)'));
     expect(overflow.events).toEqual([]);
   });
 
@@ -211,7 +219,7 @@ describe('createEngine chain connections', () => {
     chain.unsubscribe();
 
     // Then the connection is gone by the time a later call is answered
-    await expect(tab.send('c1', genesisRequest('q1'))).rejects.toThrow('Unknown chain connection: c1');
+    await expect(tab.send('c1', genesisRequest('q1'))).resolves.toEqual(thrown('Unknown chain connection: c1'));
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -225,8 +233,8 @@ describe('createEngine chain connections', () => {
     const elsewhere = await tab.connect('0xbb', 'c1');
 
     // Then
-    expect(await again.ended).toMatchObject({ message: 'Duplicate chain connection: c1' });
-    expect(await elsewhere.ended).toMatchObject({ message: 'Duplicate chain connection: c1' });
+    expect(await again.ended).toEqual(thrown('Duplicate chain connection: c1'));
+    expect(await elsewhere.ended).toEqual(thrown('Duplicate chain connection: c1'));
     await tab.send('c1', genesisRequest('q1'));
     expect(built).toHaveLength(1);
     expect(must(built[0], 'transport').sent).toHaveLength(1);
@@ -276,10 +284,10 @@ describe('createEngine name reads', () => {
     });
 
     // When
-    const read = record(tab.host, 'resolveDotName', { label: 'doom' });
+    const read = record(tab.host, 'resolve', 'dotName', { label: 'doom' });
 
     // Then
-    expect(await read.ended).toBeNull();
+    expect(await read.ended).toEqual(ok());
     expect(read.events).toEqual([
       { tag: 'phase', value: 'asset-hub-syncing' },
       { tag: 'phase', value: 'resolving-content' },
@@ -292,10 +300,10 @@ describe('createEngine name reads', () => {
     const { tab } = setup({ resolver: resolverOf(() => Promise.reject(new TypeError('bad label'))) });
 
     // When
-    const read = record(tab.host, 'resolveDotName', { label: 'doom' });
+    const read = record(tab.host, 'resolve', 'dotName', { label: 'doom' });
 
     // Then
-    expect(await read.ended).toMatchObject({ name: 'TypeError', message: 'bad label' });
+    expect(await read.ended).toEqual(err(hostFailure('TypeError: bad label')));
   });
 
   it('As a dotli operator, a sink that throws on the name is reported and the read still ends with that error', async () => {
@@ -306,21 +314,21 @@ describe('createEngine name reads', () => {
       report: error => reported.push(error),
     });
     const broken = new Error('sink is broken');
-    const ended = deferred<Error | undefined>();
+    const ended = deferred<CallError<unknown> | undefined>();
     const sink = {
-      send: () => {
+      receive: () => {
         throw broken;
       },
-      end: (error?: Error) => {
+      interrupt: (error?: CallError<unknown>) => {
         ended.resolve(error);
       },
     };
 
     // When
-    engine.resolveDotName({ label: 'doom' }, { origin: null, deadlineMs: null, resolutionId: null }, sink);
+    engine.resolveDotName({ label: 'doom' }, context, sink);
 
     // Then
-    expect(await ended.promise).toBe(broken);
+    expect(await ended.promise).toEqual(hostFailure('Error: sink is broken'));
     expect(reported).toEqual([broken]);
   });
 
@@ -333,14 +341,14 @@ describe('createEngine name reads', () => {
     });
     const broken = new Error('sink is broken');
     const sink = {
-      send: () => undefined,
-      end: () => {
+      receive: () => undefined,
+      interrupt: () => {
         throw broken;
       },
     };
 
     // When
-    engine.resolveDotName({ label: 'doom' }, { origin: null, deadlineMs: null, resolutionId: null }, sink);
+    engine.resolveDotName({ label: 'doom' }, context, sink);
 
     // Then
     expect(await reported.promise).toBe(broken);
@@ -351,25 +359,23 @@ describe('createEngine name reads', () => {
     const { tab } = setup();
 
     // When
-    const read = record(tab.host, 'resolveDotName', { label: 'doom' });
-    const owner = tab.host.request('resolveOwner', { label: 'doom' });
+    const read = record(tab.host, 'resolve', 'dotName', { label: 'doom' });
+    const owner = tab.host.request('resolve', 'owner', { label: 'doom' });
 
     // Then
-    expect(await read.ended).toMatchObject({ message: PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED });
-    await expect(owner).rejects.toThrow(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
+    expect(await read.ended).toEqual(thrown(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED));
+    await expect(owner).resolves.toEqual(thrown(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED));
   });
 
-  const HOUR = 60 * 60 * 1000;
-
   it.each([
-    ['caps the budget a far deadline allows', 1000, 1000],
+    ['caps the budget its method allows', 1000, 1000],
     [
-      'leaves the budget to what is left of the deadline, less the delivery grace',
+      'leaves the budget to its method, less the delivery grace',
       undefined,
-      HOUR - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+      RESOLVE_BUDGET_MS - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
     ],
   ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
-    // Given a frame clock at 10 s and a host deadline an hour later
+    // Given
     const seen: (number | undefined)[] = [];
     const { tab } = setup({
       resolver: resolverOf((_label, opts) => {
@@ -377,35 +383,68 @@ describe('createEngine name reads', () => {
         return Promise.resolve('bafy-doom');
       }),
       syncBudgetCapMs,
-      timers: { now: () => 10_000 },
     });
 
     // When
-    await record(tab.host, 'resolveDotName', { label: 'doom' }, { deadlineMs: 10_000 + HOUR }).ended;
+    await record(tab.host, 'resolve', 'dotName', { label: 'doom' }).ended;
 
     // Then
     expect(seen).toEqual([expected]);
   });
 
-  it('As the host, a read without a deadline leaves the budget to the resolver', async () => {
-    // Given
+  it("As the frame, a resolve request sizes its sync budget from its method's budget without a deadline from the caller", async () => {
+    // Given a resolver that records the sync budget of each read
     const seen: unknown[] = [];
     const { tab } = setup({
       resolver: {
-        ...resolverOf(() => Promise.resolve(null)),
+        resolveDotName: () => Promise.resolve(null),
         resolveOwner: (_label, opts) => {
-          seen.push(opts);
+          seen.push(['owner', opts]);
           return Promise.resolve('0xowner');
+        },
+        resolveExecutableManifest: (_label, _kind, opts) => {
+          seen.push(['executableManifest', opts]);
+          return Promise.resolve({ kind: 'empty' });
+        },
+        resolveRootManifest: (_label, opts) => {
+          seen.push(['rootManifest', opts]);
+          return Promise.resolve({ kind: 'empty' });
         },
       },
     });
 
+    // When the host reads, sending no deadline
+    const owner = await tab.host.request('resolve', 'owner', { label: 'doom' });
+    await tab.host.request('resolve', 'executableManifest', { label: 'doom', kind: 'app' });
+    await tab.host.request('resolve', 'rootManifest', { label: 'doom' });
+
+    // Then each read has its method's budget, less the grace for the answer to cross back
+    const grace = TIMEOUTS.RESPONSE_DELIVERY_GRACE;
+    expect(owner).toEqual(ok('0xowner'));
+    expect(seen).toEqual([
+      ['owner', { syncTimeoutMs: must(budgetOf('resolve', 'owner'), 'owner budget') - grace }],
+      ['executableManifest', { syncTimeoutMs: must(budgetOf('resolve', 'executableManifest'), 'budget') - grace }],
+      ['rootManifest', { syncTimeoutMs: must(budgetOf('resolve', 'rootManifest'), 'root budget') - grace }],
+    ]);
+  });
+
+  it('As the host, a resolver sync timeout or a stopped light client crosses typed, so my error screen tells them apart', async () => {
+    // Given a resolver whose reads fail as the error screen knows them
+    const named = (name: string, message: string): Error => Object.assign(new Error(message), { name });
+    const { tab } = setup({
+      resolver: {
+        ...resolverOf(() => Promise.reject(named('ApiStoppedError', 'The light client stopped'))),
+        resolveOwner: () => Promise.reject(named('NetworkSyncTimeoutError', 'Asset Hub did not sync in time')),
+      },
+    });
+
     // When
-    const owner = await tab.host.request('resolveOwner', { label: 'doom' });
+    const owner = await tab.host.request('resolve', 'owner', { label: 'doom' });
+    const name = await record(tab.host, 'resolve', 'dotName', { label: 'doom' }).ended;
 
     // Then
-    expect(owner).toBe('0xowner');
-    expect(seen).toEqual([{}]);
+    expect(owner).toEqual(err(domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync in time' })));
+    expect(name).toEqual(err(domain({ tag: 'apiStopped', value: 'The light client stopped' })));
   });
 });
 
@@ -420,7 +459,7 @@ describe('createEngine halts', () => {
     haltTransport(must(built[0], 'transport'));
 
     // Then
-    expect(await chain.ended).toBeNull();
+    expect(await chain.ended).toEqual(ok());
     expect(chain.events).toEqual([
       CONNECTED,
       {
@@ -445,7 +484,7 @@ describe('createEngine halts', () => {
     const send = tab.send('c1', genesisRequest('q1'));
 
     // Then
-    await expect(send).rejects.toThrow('Unknown chain connection: c1');
+    await expect(send).resolves.toEqual(thrown('Unknown chain connection: c1'));
     // The freed slot lets the whole quota fill again.
     for (let i = 0; i < MAX_CONNS; i += 1) {
       expect((await tab.connect('0xaa', `n${String(i)}`)).events).toEqual([CONNECTED]);
@@ -493,7 +532,7 @@ describe('createEngine destroy delay', () => {
 
     // When
     chain.unsubscribe();
-    await expect(tab.send('c1', '{}')).rejects.toThrow('Unknown chain connection: c1');
+    await expect(tab.send('c1', '{}')).resolves.toEqual(thrown('Unknown chain connection: c1'));
     vi.advanceTimersByTime(600_000);
 
     // Then
@@ -506,7 +545,7 @@ describe('createEngine destroy delay', () => {
     const chain = await tab.connect('0xaa', 'c1');
     vi.useFakeTimers();
     chain.unsubscribe();
-    await expect(tab.send('c1', '{}')).rejects.toThrow('Unknown chain connection: c1');
+    await expect(tab.send('c1', '{}')).resolves.toEqual(thrown('Unknown chain connection: c1'));
 
     // When
     vi.advanceTimersByTime(59_999);
@@ -551,7 +590,7 @@ describe('createEngine scopes', () => {
     const send = theirs.send('c1', genesisRequest('q1'));
 
     // Then
-    await expect(send).rejects.toThrow('Unknown chain connection: c1');
+    await expect(send).resolves.toEqual(thrown('Unknown chain connection: c1'));
     await mine.send('c1', genesisRequest('q2'));
     expect(must(built[0], 'transport').sent).toHaveLength(1);
   });
@@ -575,12 +614,12 @@ describe('createEngine scopes', () => {
   it('As a dotli user on the shared light client, I disconnect one connection at my tab limit and can connect again', async () => {
     // Given a tab at its limit, whose next connect is refused
     const { tab } = setup();
-    const chains: Recording<'chainConnect'>[] = [];
+    const chains: ChainRecording[] = [];
     for (let i = 0; i < MAX_CONNS; i++) {
       chains.push(await tab.connect('0xaa', `c${String(i)}`));
     }
     const overflow = await tab.connect('0xaa', 'extra');
-    expect(await overflow.ended).toMatchObject({ message: 'Connection limit reached (max 10)' });
+    expect(await overflow.ended).toEqual(thrown('Connection limit reached (max 10)'));
 
     // When it disconnects one and connects again
     must(chains[0], 'first chain').unsubscribe();
@@ -603,7 +642,7 @@ describe('createEngine scopes', () => {
 
     // Then
     expect(released).toBe(1);
-    expect(await first.ended).toBeNull();
+    expect(await first.ended).toEqual(ok());
     expect(must(built[0], 'first chain').disconnect).toHaveBeenCalledTimes(1);
     expect(must(built[1], 'second chain').disconnect).not.toHaveBeenCalled();
     await staying.send('c2', genesisRequest('q1'));

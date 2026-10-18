@@ -4,9 +4,15 @@
 // How a call's failure reaches host code. Each becomes the error host code has always seen, so its class and name keep
 // matching the error screen, the metrics and the trail.
 
-import { TransportHandshakeTimeoutError, TransportVersionMismatchError, type CallError } from '@dotli/transport';
+import {
+  TransportHandshakeTimeoutError,
+  TransportVersionMismatchError,
+  type CallError,
+  type MethodName,
+  type TraitName,
+} from '@dotli/transport';
 import { toError } from '@dotli/shared';
-import type { CallName } from './call-names.js';
+import { callName, type CallName } from './call-names.js';
 import {
   ProtocolFatalError,
   ProtocolHandshakeTimeoutError,
@@ -15,7 +21,7 @@ import {
   ProtocolRequestError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import type { FrameFailure, RemoteFailure } from './schema.js';
+import type { FrameFailure, ProtocolSchema, RemoteFailure } from './schema.js';
 
 /** Every domain error the schema declares. */
 export type DomainFailure = FrameFailure | RemoteFailure;
@@ -76,4 +82,16 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
     case 'MalformedFrame':
       return new ProtocolRequestError(error.reason, 'MalformedFrame', method);
   }
+}
+
+/**
+ * The failure of a call of `method` in `trait` as the error the protocol's own code sees, for a frame that waits on or
+ * relays another frame's calls.
+ */
+export function failureOf<T extends TraitName<ProtocolSchema>>(
+  trait: T,
+  method: MethodName<ProtocolSchema, T>,
+  error: CallError<DomainFailure>,
+): Error {
+  return callFailure(error, callName(trait, method));
 }

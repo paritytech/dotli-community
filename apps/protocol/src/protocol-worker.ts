@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The protocol SharedWorker. Every tab's protocol iframe shares its one light client over a port. Each port has its
-// own serving transport, so what a tab hears is encoded for that port alone, and its own engine scope, so its chain
+// own transport, so what a tab hears is encoded for that port alone, and its own engine scope, so its chain
 // connections are its own.
 
 import type * as Chains from '@dotli/chains';
@@ -10,25 +10,39 @@ import type * as Resolver from '@dotli/resolver';
 import { isValidNetwork, getActiveFixedServicesConfig, type Network } from '@dotli/config/fixed';
 import { m, captureException, spans as S, type SpanHandle } from '@dotli/metrics';
 import {
-  createPortProvider,
-  createServingTransport,
+  callName,
+  failureOf,
+  protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
-  type RequestHandler,
-  type RequestMethod,
-  type ServingTransport,
-  type SubscriptionEvent,
-  type SubscriptionHandler,
-  type SubscriptionSink,
+  type ProtocolSchema,
+  type ProtocolTransport,
 } from '@dotli/protocol';
 import { errorName, log, serializeError } from '@dotli/shared';
+import {
+  createPortProvider,
+  createTransport,
+  ok,
+  type CallError,
+  type DomainError,
+  type MethodName,
+  type MethodTypes,
+  type RequestHandler,
+  type RequestMethodName,
+  type Result,
+  type Sink,
+  type SubscriptionHandler,
+  type SubscriptionMethodName,
+  type TraitName,
+} from '@dotli/transport';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
-import { createFrameStatus } from './frame-status.js';
+import { createFrameStatus, frameStatusEnd, type FrameStatusSink } from './frame-status.js';
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { createWireReport } from './refusal-report.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
 import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
@@ -80,19 +94,24 @@ export interface ProtocolWorkerDeps {
 
 interface PortSession {
   port: MessagePort;
-  transport: ServingTransport;
+  transport: ProtocolTransport;
   /** Opened by the tab's first chain call. */
   scope: EngineScope | null;
   /** Beats since the port last sent anything. */
   missed: number;
-  /** The tab's open `beat` subscriptions, which each beat reaches. */
-  beats: Set<SubscriptionSink<'beat'>>;
+  /** The tab's open `frame.beat` subscriptions, which each beat reaches. */
+  beats: Set<Sink<void, never>>;
+  /** The tab's open `frame.status` subscriptions, which a release ends before the transport goes. */
+  statuses: Set<FrameStatusSink>;
   /** Stops hearing the port close. */
   unwatch: () => void;
 }
 
-/** The requests a span follows. A chain message would swamp them, and a heartbeat says nothing of a load. */
-type TracedRequest = Exclude<RequestMethod, 'chainSend' | 'heartbeat'>;
+/** A traced call's failure: no domain error but the one name resolution and chain connections declare. */
+type TracedFailure = CallError<DomainError<ProtocolSchema, 'resolve', 'owner'>>;
+
+type ValueOf<T extends TraitName<ProtocolSchema>, M extends SubscriptionMethodName<ProtocolSchema, T>> =
+  MethodTypes<ProtocolSchema, T, M> extends { receive: infer V } ? V : never;
 
 const TAG = '[dot.li SW]';
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
@@ -122,6 +141,8 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const { scope, lightClient, resolver } = deps;
   const openSpan = deps.openSpan ?? m.open;
   const sessions = new Set<PortSession>();
+  // What each port's transport cannot handle itself, counted as the worker's.
+  const wire = createWireReport('worker', { warn: log.warn, count: m.count });
   // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
   // it. So a released port stays open until the beat after its tab speaks again, or until the worker closes. Each maps
   // to its close.
@@ -137,7 +158,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const unheard = new Set<PortSession>();
   // The first failure is the cause, and every later tab hears it on subscribe.
   let phase: { name: 'syncing' | 'ready' } | { name: 'failed'; error: Error } = { name: 'syncing' };
-  // What every port hears through its `frameStatus` subscription, each on its own transport.
+  // What every port hears through its `frame.status` subscription, each on its own transport.
   const status = createFrameStatus();
 
   const networkInitFailure = deps.network.ok ? null : deps.network.message;
@@ -166,10 +187,17 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     joinedSynced: () => phase.name === 'ready',
   });
 
-  /** Stops serving the port, once. Its transport goes first, so each open chain hears the release and not a halt. */
+  /**
+   * Stops serving the port, once. Its status ends first with why, typed, so the tab tells a release from a crash. Its
+   * transport goes next, so each open chain hears the release and not a halt.
+   */
   function release(session: PortSession, reason: Error): void {
     if (!sessions.delete(session)) {
       return;
+    }
+    const end = frameStatusEnd(reason);
+    for (const sink of [...session.statuses]) {
+      sink.interrupt(end);
     }
     session.transport.dispose(reason);
     session.scope?.close();
@@ -294,7 +322,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   /** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
-  function openRequestSpan(method: TracedRequest | 'chainConnect' | 'resolveDotName', resolutionId: string | null) {
+  function openRequestSpan(method: string, resolutionId: string | null) {
     return openSpan(S.PROTOCOL_WORKER_REQUEST, {
       root: true,
       attributes: {
@@ -311,27 +339,54 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     span.end();
   }
 
-  function traced<M extends TracedRequest>(method: M, handler: RequestHandler<M>): RequestHandler<M> {
+  /** Why an answer failed, as an error under its name, or undefined for one that succeeded. */
+  function failureOfAnswer<T extends TraitName<ProtocolSchema>>(
+    trait: T,
+    method: MethodName<ProtocolSchema, T>,
+    answer: unknown,
+  ): Error | undefined {
+    // Every answer is a `Result`, which the method's deferred answer type does not show where the method is generic.
+    const outcome = answer as Result<unknown, TracedFailure>;
+    return outcome.ok ? undefined : failureOf(trait, method, outcome.error);
+  }
+
+  /** Spans a request, and logs one that fails, by the name dashboards know it by. */
+  function traced<T extends 'frame' | 'resolve', M extends RequestMethodName<ProtocolSchema, T>>(
+    trait: T,
+    method: M,
+    handler: RequestHandler<ProtocolSchema, T, M>,
+  ): RequestHandler<ProtocolSchema, T, M> {
+    const name = callName(trait, method);
     return async (payload, context) => {
-      const span = openRequestSpan(method, context.resolutionId);
+      const span = openRequestSpan(name, context.hello.resolutionId);
       try {
         const answer = await handler(payload, context);
-        endSpan(span, undefined);
+        const failure = failureOfAnswer(trait, method, answer);
+        endSpan(span, failure);
+        if (failure !== undefined) {
+          // The host rebuilds this failure from the answer and reports it.
+          log.warn(`${TAG} ${name} failed`, failure);
+        }
         return answer;
       } catch (error) {
         endSpan(span, error);
-        // The host rebuilds this failure from the answer and reports it.
-        log.warn(`${TAG} ${method} failed`, error);
+        log.warn(`${TAG} ${name} failed`, error);
         throw error;
       }
     };
   }
 
   /** A chain message gets no span, which would swamp the request spans, but its failure is logged as theirs are. */
-  function loggedChainSend(handler: RequestHandler<'chainSend'>): RequestHandler<'chainSend'> {
+  function loggedChainSend(
+    handler: RequestHandler<ProtocolSchema, 'chain', 'send'>,
+  ): RequestHandler<ProtocolSchema, 'chain', 'send'> {
     return async (payload, context) => {
       try {
-        await handler(payload, context);
+        const answer = await handler(payload, context);
+        if (!answer.ok) {
+          log.warn(`${TAG} chainSend failed`, failureOf('chain', 'send', answer.error));
+        }
+        return answer;
       } catch (error) {
         log.warn(`${TAG} chainSend failed`, error);
         throw error;
@@ -339,14 +394,16 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     };
   }
 
-  /** Spans a subscription until the event that answers it, or its end, or the tab stopping it first. */
-  function tracedSubscription<M extends 'chainConnect' | 'resolveDotName'>(
+  /** Spans a subscription until the value that answers it, or its end, or the tab stopping it first. */
+  function tracedSubscription<T extends 'chain' | 'resolve', M extends SubscriptionMethodName<ProtocolSchema, T>>(
+    trait: T,
     method: M,
-    answers: (event: SubscriptionEvent<M>) => boolean,
-    handler: SubscriptionHandler<M>,
-  ): SubscriptionHandler<M> {
-    return (payload, context, sink) => {
-      const span = openRequestSpan(method, context.resolutionId);
+    answers: (value: ValueOf<T, M>) => boolean,
+    handler: SubscriptionHandler<ProtocolSchema, T, M>,
+  ): SubscriptionHandler<ProtocolSchema, T, M> {
+    const name = callName(trait, method);
+    return (start, context, sink) => {
+      const span = openRequestSpan(name, context.hello.resolutionId);
       let open = true;
       const settle = (error: unknown): void => {
         if (!open) {
@@ -355,24 +412,24 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         open = false;
         endSpan(span, error);
         if (error !== undefined) {
-          log.warn(`${TAG} ${method} failed`, error);
+          log.warn(`${TAG} ${name} failed`, error);
         }
       };
-      const spanned: SubscriptionSink<M> = {
-        send: event => {
-          sink.send(event);
-          if (answers(event)) {
+      const spanned: typeof sink = {
+        receive: value => {
+          sink.receive(value);
+          if (answers(value)) {
             settle(undefined);
           }
         },
-        end: error => {
-          settle(error);
-          sink.end(error);
+        interrupt: error => {
+          settle(error === undefined ? undefined : failureOfAnswer(trait, method, { ok: false, error }));
+          sink.interrupt(error);
         },
       };
       let stop: () => void;
       try {
-        stop = handler(payload, context, spanned);
+        stop = handler(start, context, spanned);
       } catch (error) {
         settle(error);
         throw error;
@@ -390,57 +447,70 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
 
   function serve(session: PortSession): void {
     const { transport } = session;
-    transport.handleSubscription('frameStatus', (payload, context, sink) => {
+    transport.handleSubscription('frame', 'status', (start, context, sink) => {
+      session.statuses.add(sink);
       // Ended at once if the worker already failed, and told of a later failure the moment it happens.
-      const stop = status.handler(payload, context, sink);
+      const stop = status.handler(start, context, sink);
       heard(session);
-      return stop;
+      return () => {
+        session.statuses.delete(sink);
+        stop();
+      };
     });
-    transport.handleSubscription('telemetry', telemetry);
-    transport.handleSubscription('beat', (_payload, _context, sink) => {
+    transport.handleSubscription('frame', 'telemetry', telemetry);
+    transport.handleSubscription('frame', 'beat', (_start, _context, sink) => {
       session.beats.add(sink);
       return () => {
         session.beats.delete(sink);
       };
     });
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
-    transport.handleRequest('heartbeat', () => undefined);
+    transport.handleRequest('frame', 'heartbeat', () => ok());
     transport.handleRequest(
+      'frame',
       'warmup',
-      traced('warmup', (payload, context) => requireEngine().warmup(payload, context)),
+      traced('frame', 'warmup', (payload, context) => requireEngine().warmup(payload, context)),
     );
     transport.handleRequest(
-      'resolveOwner',
-      traced('resolveOwner', (payload, context) => requireEngine().resolveOwner(payload, context)),
+      'resolve',
+      'owner',
+      traced('resolve', 'owner', (payload, context) => requireEngine().resolveOwner(payload, context)),
     );
     transport.handleRequest(
-      'resolveExecutableManifest',
-      traced('resolveExecutableManifest', (payload, context) =>
+      'resolve',
+      'executableManifest',
+      traced('resolve', 'executableManifest', (payload, context) =>
         requireEngine().resolveExecutableManifest(payload, context),
       ),
     );
     transport.handleRequest(
-      'resolveRootManifest',
-      traced('resolveRootManifest', (payload, context) => requireEngine().resolveRootManifest(payload, context)),
+      'resolve',
+      'rootManifest',
+      traced('resolve', 'rootManifest', (payload, context) => requireEngine().resolveRootManifest(payload, context)),
     );
     transport.handleSubscription(
-      'resolveDotName',
+      'resolve',
+      'dotName',
       tracedSubscription(
-        'resolveDotName',
-        event => event.tag === 'resolved',
-        (payload, context, sink) => requireEngine().resolveDotName(payload, context, sink),
+        'resolve',
+        'dotName',
+        value => value.tag === 'resolved',
+        (start, context, sink) => requireEngine().resolveDotName(start, context, sink),
       ),
     );
     transport.handleSubscription(
-      'chainConnect',
+      'chain',
+      'connect',
       tracedSubscription(
-        'chainConnect',
-        event => event.tag === 'connected',
-        (payload, context, sink) => scopeOf(session).connect(payload, context, sink),
+        'chain',
+        'connect',
+        value => value.tag === 'connected',
+        (start, context, sink) => scopeOf(session).connect(start, context, sink),
       ),
     );
     transport.handleRequest(
-      'chainSend',
+      'chain',
+      'send',
       loggedChainSend((payload, context) => scopeOf(session).send(payload, context)),
     );
   }
@@ -458,7 +528,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         continue;
       }
       for (const sink of [...session.beats]) {
-        sink.send(undefined);
+        sink.receive(undefined);
       }
     }
   }
@@ -467,15 +537,18 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     reached = true;
     // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
     const provider = createPortProvider(port, { closeOnDispose: false });
-    const transport = createServingTransport(provider, {
-      side: 'worker',
+    // A tab's hello names its page load, which each request span carries. The worker's own names none.
+    const transport = createTransport(protocolSchema, provider, {
+      handshake: 'accept',
+      hello: { resolutionId: null },
+      onIssue: wire.onIssue,
       // A live tab always holds a subscription, so a tab that left none disposed its transport, as a page that left for
       // good does, and would never speak to end a release.
       onPeerIdle: () => {
         forget(session);
       },
     });
-    // The tab's end of the port closed, as when its page crashed or was evicted, which no unsubscribe or message tells.
+    // The tab's end of the port closed, as when its page crashed or was evicted, which no stop or message tells.
     // Engines that never fire the event fall back to the heartbeat release.
     const onClosed = (): void => {
       if (sessions.has(session)) {
@@ -491,6 +564,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       scope: null,
       missed: 0,
       beats: new Set(),
+      statuses: new Set(),
       unwatch: () => {
         port.removeEventListener('close', onClosed);
       },

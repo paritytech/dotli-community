@@ -1,24 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// How the protocol iframe reports a call it refused or failed, for operators reading logs and the rejection counts.
-// The host still hears each failure as the call's error.
+// How the protocol iframe and the SharedWorker report what they refuse, for operators reading logs and the rejection
+// counts: messages their transport or provider drops, and calls their handlers refuse or fail. The host still hears
+// each call's failure as the call's answer.
 
 import { spans as S, type m } from '@dotli/metrics';
 import {
-  isSharedAuthRequestMethod,
+  createIssueReporter,
   isSharedModeRequestMethod,
-  isSharedWalletRequestMethod,
-  type RequestMethod,
-  type ServingTransport,
-  type SubscriptionMethod,
+  type ProtocolSchema,
+  type ProtocolTransport,
 } from '@dotli/protocol';
+import type { CallError, Result, TraitName, TransportIssue } from '@dotli/transport';
 
 export type FrameRoute = 'auth' | 'mode' | 'wallet' | 'chain';
 
 export interface FrameRefusal {
   route: FrameRoute;
+  /** The call as `<trait>.<method>`. */
   method: string;
+  /** What the handler threw, or the failure it answered with. */
   error: unknown;
 }
 
@@ -27,20 +29,38 @@ export interface RefusalReportDeps {
   count: typeof m.count;
 }
 
+/** Where a side reports what its transport and its window provider drop. */
+export interface WireReport {
+  /** The transport's issue hook. */
+  onIssue: (issue: TransportIssue) => void;
+  /** Data from the admitted peer that is not bytes, which the provider drops before the transport sees it. */
+  onNotBytes: () => void;
+  /** Bytes from a page at an origin the provider does not admit. */
+  onRefusedOrigin: (origin: string) => void;
+}
+
 /**
- * Reports wire bytes the frame's provider refused for their origin, before any call is read from them. Only the first
- * from an origin is counted and logged, so the metric reads as "this origin tried the wire" and a hostile page that
+ * Reports what the transport and the window provider of `side` drop, each once. A refused message, a post the provider
+ * threw on and a listener that threw are reported as every side of the protocol reports them. Only the first bytes from
+ * a refused origin are counted and logged, so the metric reads as "this origin tried the wire" and a hostile page that
  * keeps posting floods neither the log nor the metrics.
  */
-export function createOriginRefusalReporter({ warn, count }: RefusalReportDeps): (origin: string) => void {
-  const reported = new Set<string>();
-  return origin => {
-    if (reported.has(origin)) {
-      return;
-    }
-    reported.add(origin);
-    count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' });
-    warn(`[dot.li protocol] Rejected protocol messages from disallowed origin: ${origin}`);
+export function createWireReport(side: 'frame' | 'worker', { warn, count }: RefusalReportDeps): WireReport {
+  const onIssue = createIssueReporter(side, count);
+  const refusedOrigins = new Set<string>();
+  return {
+    onIssue,
+    onNotBytes: () => {
+      onIssue({ kind: 'refused', reason: 'not_bytes' });
+    },
+    onRefusedOrigin: origin => {
+      if (refusedOrigins.has(origin)) {
+        return;
+      }
+      refusedOrigins.add(origin);
+      count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side });
+      warn(`[dot.li protocol] Rejected protocol messages from disallowed origin: ${origin}`);
+    },
   };
 }
 
@@ -56,67 +76,74 @@ export function createRefusalReporter({ warn, count }: RefusalReportDeps): (refu
   };
 }
 
-function requestRoute(method: RequestMethod): FrameRoute {
-  if (isSharedAuthRequestMethod(method)) {
-    return 'auth';
+function routeOf(trait: TraitName<ProtocolSchema>, method: string): FrameRoute {
+  switch (trait) {
+    case 'storage':
+      return isSharedModeRequestMethod(method) ? 'mode' : 'auth';
+    case 'wallet':
+      return 'wallet';
+    case 'frame':
+    case 'resolve':
+    case 'chain':
+      return 'chain';
   }
-  if (isSharedModeRequestMethod(method)) {
-    return 'mode';
-  }
-  if (isSharedWalletRequestMethod(method)) {
-    return 'wallet';
-  }
-  return 'chain';
 }
 
-function subscriptionRoute(method: SubscriptionMethod): FrameRoute {
-  return method === 'sharedAuthChanges' ? 'auth' : 'chain';
-}
-
-/** Serves on `serving` and tells `report` of each call a handler refuses or fails, before the host hears it. */
-export function reportRefusals(serving: ServingTransport, report: (refusal: FrameRefusal) => void): ServingTransport {
-  const refused = (route: FrameRoute, method: string, error: unknown): void => {
-    report({ route, method, error });
-  };
-
+/**
+ * Serves on `serving` and tells `report` of each call a handler refuses or fails, before the host hears it: a handler
+ * that throws or rejects, one that answers with a failure, and a subscription that ends with one.
+ */
+export function reportRefusals(serving: ProtocolTransport, report: (refusal: FrameRefusal) => void): ProtocolTransport {
   return {
-    handleRequest(method, handler) {
-      const route = requestRoute(method);
-      return serving.handleRequest(method, async (payload, context) => {
+    ...serving,
+
+    handleRequest(trait, method, handler) {
+      const refusal = (error: unknown): FrameRefusal => ({
+        route: routeOf(trait, method),
+        method: `${trait}.${method}`,
+        error,
+      });
+      return serving.handleRequest(trait, method, async (payload, context) => {
         try {
-          return await handler(payload, context);
+          const answer = await handler(payload, context);
+          // Every answer is a `Result`, which the method's deferred answer type does not show here.
+          const outcome = answer as Result<unknown, CallError<unknown>>;
+          if (!outcome.ok) {
+            report(refusal(outcome.error));
+          }
+          return answer;
         } catch (error) {
-          refused(route, method, error);
+          report(refusal(error));
           throw error;
         }
       });
     },
 
-    handleSubscription(method, handler) {
-      const route = subscriptionRoute(method);
-      return serving.handleSubscription(method, (payload, context, sink) => {
+    handleSubscription(trait, method, handler) {
+      const refusal = (error: unknown): FrameRefusal => ({
+        route: routeOf(trait, method),
+        method: `${trait}.${method}`,
+        error,
+      });
+      return serving.handleSubscription(trait, method, (start, context, sink) => {
         const reporting: typeof sink = {
-          send: event => {
-            sink.send(event);
+          receive: value => {
+            sink.receive(value);
           },
-          end: error => {
+          interrupt: error => {
             if (error !== undefined) {
-              refused(route, method, error);
+              report(refusal(error));
             }
-            sink.end(error);
+            sink.interrupt(error);
           },
         };
         try {
-          return handler(payload, context, reporting);
+          return handler(start, context, reporting);
         } catch (error) {
-          refused(route, method, error);
+          report(refusal(error));
           throw error;
         }
       });
-    },
-
-    dispose(reason) {
-      serving.dispose(reason);
     },
   };
 }

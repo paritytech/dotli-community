@@ -27,13 +27,13 @@ import {
 
 import {
   backendOfFrameMode,
-  createServingTransport,
-  createWindowProvider,
   isSharedAuthOriginAllowed,
+  protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
 } from '@dotli/protocol';
 import { DB_NAME } from '@dotli/storage';
+import { createTransport, createWindowProvider } from '@dotli/transport';
 
 import { connectSharedWorker } from './shared-worker-link.js';
 import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
@@ -42,7 +42,7 @@ import { createEngine, serveEngineScope } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { serveLocalWallet } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
-import { createOriginRefusalReporter, createRefusalReporter, reportRefusals } from './refusal-report.js';
+import { createRefusalReporter, createWireReport, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
 import { createFrameBoot } from './frame-boot.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
@@ -85,23 +85,25 @@ function isAllowedOrigin(origin: string): boolean {
   return isSharedAuthOriginAllowed(origin);
 }
 
+// What this frame's provider and transport drop, each counted once, whichever of them drops it.
+const wire = createWireReport('frame', { warn: log.warn, count: m.count });
+
 // The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
-// speaks only when spoken to.
-const serving = createServingTransport(
+// speaks only when spoken to. The host's hello names no page load, which this frame reads from its URL.
+const serving = createTransport(
+  protocolSchema,
   createWindowProvider({
     listen: window,
     peer: () => window.parent,
     origin: isAllowedOrigin,
     // Only a host page of an earlier release sends objects. It never hears an answer and fails by its own timeout.
-    onNotBytes: () => {
-      m.count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'not_bytes', side: 'frame' });
-    },
-    onRefusedOrigin: createOriginRefusalReporter({ warn: log.warn, count: m.count }),
+    onNotBytes: wire.onNotBytes,
+    onRefusedOrigin: wire.onRefusedOrigin,
   }),
-  { side: 'frame' },
+  { handshake: 'accept', hello: { resolutionId: null }, onIssue: wire.onIssue },
 );
-serving.handleSubscription('frameStatus', boot.frameStatus);
-serving.handleSubscription('telemetry', boot.telemetry);
+serving.handleSubscription('frame', 'status', boot.frameStatus);
+serving.handleSubscription('frame', 'telemetry', boot.telemetry);
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
@@ -202,6 +204,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     window,
     resolutionId: getResolutionId(),
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
+    onIssue: wire.onIssue,
     onOpen: (link, workerStatus) => {
       // The worker reports what it refuses, so these calls skip this frame's refusal report.
       registerWorkerRelay(serving, link, workerStatus, boot);

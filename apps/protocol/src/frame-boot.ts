@@ -5,27 +5,36 @@
 // subscribes to both as soon as its handshake is answered, before the mode has loaded anything, and a subscription
 // left waiting would never end.
 
-import type { SubscriptionHandler } from '@dotli/protocol';
+import type { ProtocolSchema, TelemetryEvent } from '@dotli/protocol';
+import type { CallError, MethodTypes, SubscriptionHandler } from '@dotli/transport';
 
 import { createDeferredSubscription } from './deferred-subscription.js';
-import { createFrameStatus } from './frame-status.js';
+import { createFrameStatus, type FrameFailure } from './frame-status.js';
+
+type Telemetry = SubscriptionHandler<ProtocolSchema, 'frame', 'telemetry'>;
+type TelemetryStart = MethodTypes<ProtocolSchema, 'frame', 'telemetry'>['start'];
 
 export interface FrameBoot {
-  frameStatus: SubscriptionHandler<'frameStatus'>;
-  telemetry: SubscriptionHandler<'telemetry'>;
+  frameStatus: SubscriptionHandler<ProtocolSchema, 'frame', 'status'>;
+  telemetry: Telemetry;
   /** Feeds the telemetry from the mode's light client. Only the first source, or the idle feed of `ready`, counts. */
-  serveTelemetry(source: SubscriptionHandler<'telemetry'>): void;
+  serveTelemetry(source: Telemetry): void;
   /** The frame serves from now on. A mode that runs no light client of its own has served none, so it reports nothing. */
   ready(): void;
   /** The frame will never serve, or has stopped for good. A telemetry subscription still waiting ends with `error`. */
   fail(error: Error): void;
+  /**
+   * Ends the status with another frame's end as it is, for the relay. The relay serves the telemetry before it can hear
+   * an end, so none waits.
+   */
+  interrupt(end?: CallError<FrameFailure>): void;
 }
 
-const idleTelemetry: SubscriptionHandler<'telemetry'> = () => () => undefined;
+const idleTelemetry: Telemetry = () => () => undefined;
 
 export function createFrameBoot(): FrameBoot {
   const status = createFrameStatus();
-  const telemetry = createDeferredSubscription<'telemetry'>();
+  const telemetry = createDeferredSubscription<TelemetryStart, TelemetryEvent, never>();
   return {
     frameStatus: status.handler,
     telemetry: telemetry.handler,
@@ -39,6 +48,9 @@ export function createFrameBoot(): FrameBoot {
     fail(error) {
       status.fail(error);
       telemetry.fail(error);
+    },
+    interrupt(end) {
+      status.interrupt(end);
     },
   };
 }

@@ -4,22 +4,42 @@
 // The iframe's link to the protocol SharedWorker: a transport on the worker's port that waits until the worker is
 // ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
-import {
-  createConsumerTransport,
-  createPortProvider,
-  ProtocolInitFailedError,
-  type ConsumerTransport,
-} from '@dotli/protocol';
+import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { failureOf, protocolSchema, ProtocolInitFailedError, type ProtocolTransport } from '@dotli/protocol';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import {
+  createPortProvider,
+  createTransport,
+  type CallError,
+  type Result,
+  type TransportIssue,
+} from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import type { FrameFailure } from './frame-status.js';
 import { disposeOnPageHide } from './worker-port.js';
 
-/** The one `frameStatus` subscription to the worker. */
+/**
+ * How the worker's status ended for this tab: the worker's own end, which a relay passes on as it is, or the link's
+ * transport closing under it.
+ */
+export type WorkerEnd =
+  { kind: 'interrupt'; outcome: Result<void, CallError<FrameFailure>> } | { kind: 'close'; error: Error };
+
+/** The one `frame.status` subscription to the worker. */
 export interface WorkerStatus {
-  /** Hears its one end: null when the worker ended it cleanly, else why. Called at once if it has ended. */
-  onEnd(listener: (error: Error | null) => void): void;
+  /** Hears its one end. Called at once if it has ended. */
+  onEnd(listener: (end: WorkerEnd) => void): void;
+}
+
+/** What a worker's end means for this tab, as an error under the name the worker's failure has. */
+export function workerEndError(end: WorkerEnd): Error {
+  if (end.kind === 'close') {
+    return end.error;
+  }
+  return end.outcome.ok
+    ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED)
+    : failureOf('frame', 'status', end.outcome.error);
 }
 
 export interface SharedWorkerLinkDeps {
@@ -30,11 +50,57 @@ export interface SharedWorkerLinkDeps {
   resolutionId: string | null;
   readyTimeoutMs: number;
   timers?: Timers;
+  /** Hears what the link's transport cannot handle itself. Logged by the transport when unset. */
+  onIssue?: (issue: TransportIssue) => void;
   /**
    * Hands over the transport and the worker's status before the ready wait, so what the worker reports while it syncs
-   * reaches the host live, and a worker that fails while it syncs ends the frame with its own error.
+   * reaches the host live, and a worker that fails while it syncs ends the frame with its own end.
    */
-  onOpen?: (transport: ConsumerTransport, status: WorkerStatus) => void;
+  onOpen?: (transport: ProtocolTransport, status: WorkerStatus) => void;
+}
+
+/**
+ * Subscribes to the worker's status once, and tells each listener its end. `onReady` hears the worker say it is
+ * ready.
+ */
+export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => void): WorkerStatus {
+  const report = reportListener('protocol', 'protocol.transport');
+  const listeners: ((end: WorkerEnd) => void)[] = [];
+  let ended: WorkerEnd | null = null;
+  const tell = (listener: (end: WorkerEnd) => void, end: WorkerEnd): void => {
+    try {
+      listener(end);
+    } catch (error) {
+      report(error);
+    }
+  };
+  const finish = (end: WorkerEnd): void => {
+    if (ended !== null) {
+      return;
+    }
+    ended = end;
+    for (const listener of listeners.splice(0)) {
+      tell(listener, end);
+    }
+  };
+  const handle = transport.subscribe('frame', 'status', undefined, {
+    receive: onReady,
+    interrupt: outcome => {
+      finish({ kind: 'interrupt', outcome });
+    },
+  });
+  handle.onClose(error => {
+    finish({ kind: 'close', error });
+  });
+  return {
+    onEnd(listener) {
+      if (ended === null) {
+        listeners.push(listener);
+      } else {
+        tell(listener, ended);
+      }
+    },
+  };
 }
 
 /**
@@ -42,43 +108,54 @@ export interface SharedWorkerLinkDeps {
  * serving this tab has nothing left to keep. The beat arrives as a message event, which a page hidden for long still
  * handles at once, while its own timers are throttled to about one a minute.
  */
-function answerBeats(transport: ConsumerTransport, status: WorkerStatus): void {
+function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
   let answering = true;
   const stop = (): void => {
     answering = false;
-    beats.unsubscribe();
+    beats.stop();
   };
-  const beats = transport.subscribe('beat', undefined, () => {
-    void transport.request('heartbeat', undefined).catch((error: unknown) => {
-      // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
-      if (!answering) {
-        return;
-      }
-      stop();
-      captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
-      log.error('[dot.li protocol] Worker heartbeat failed', error);
-      m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
-    });
+  const failed = (error: unknown): void => {
+    // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
+    if (!answering) {
+      return;
+    }
+    stop();
+    captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
+    log.error('[dot.li protocol] Worker heartbeat failed', error);
+    m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
+  };
+  const beats = transport.subscribe('frame', 'beat', undefined, {
+    receive: () => {
+      void transport.request('frame', 'heartbeat', undefined).then(outcome => {
+        if (!outcome.ok) {
+          failed(failureOf('frame', 'heartbeat', outcome.error));
+        }
+      }, failed);
+    },
+    interrupt: () => {
+      answering = false;
+    },
   });
-  beats.onEnd(() => {
+  beats.onClose(() => {
     answering = false;
   });
   status.onEnd(stop);
 }
 
 /** Resolves with the transport to the worker once the worker says it is ready, and rejects with why it never will be. */
-export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<ConsumerTransport> {
+export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<ProtocolTransport> {
   const { worker, readyTimeoutMs } = deps;
   const timers = deps.timers ?? realTimers;
   const startedAt = performance.now();
   // A port delivers every message, so one handshake is enough. It has the ready wait's budget, so a worker whose script
   // loads slowly fails no sooner than one that loaded and never synced.
-  const transport = createConsumerTransport(createPortProvider(worker.port), {
-    side: 'frame',
+  const transport = createTransport(protocolSchema, createPortProvider(worker.port), {
+    handshake: 'open',
+    hello: { resolutionId: deps.resolutionId },
     timers,
     retryMs: readyTimeoutMs,
     timeoutMs: readyTimeoutMs,
-    ...(deps.resolutionId === null ? {} : { resolutionId: deps.resolutionId }),
+    ...(deps.onIssue === undefined ? {} : { onIssue: deps.onIssue }),
   });
   let failReadyWait: ((error: Error, why: string) => void) | null = null;
 
@@ -102,7 +179,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
   // Why the wait failed, for the metric. A timeout carries none.
   let reason: string | undefined;
   let resolveReady: () => void = () => undefined;
-  const ready = new Promise<ConsumerTransport>((resolve, reject) => {
+  const ready = new Promise<ProtocolTransport>((resolve, reject) => {
     resolveReady = () => {
       failReadyWait = null;
       resolve(transport);
@@ -115,17 +192,17 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Consume
   });
   // One subscription serves the ready wait and the caller alike, since a dead worker may close once this tab first
   // heard why, and would never answer a second.
-  const status = transport.subscribe('frameStatus', undefined, () => {
+  const status = watchWorkerStatus(transport, () => {
     resolveReady();
   });
   // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
   answerBeats(transport, status);
 
   // Before the ready wait hears the end, so a worker that fails while it syncs ends the caller's calls first, and the
-  // frame fails with the worker's own error rather than the failed boot that follows from it.
+  // frame fails with the worker's own end rather than the failed boot that follows from it.
   deps.onOpen?.(transport, status);
-  status.onEnd(error => {
-    failReadyWait?.(error ?? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED), 'worker_reported');
+  status.onEnd(end => {
+    failReadyWait?.(workerEndError(end), 'worker_reported');
   });
 
   let timedOut: Error | undefined;

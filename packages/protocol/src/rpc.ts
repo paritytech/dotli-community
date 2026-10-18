@@ -56,7 +56,7 @@ export function callTimeoutError(method: CallName, budgetMs: number): ProtocolRe
 export function asCallError(error: unknown): Error {
   const err = toError(error);
   return err instanceof ProtocolRequestError && err.name === 'Error'
-    ? new ProtocolRequestError(err.message, 'ProtocolResponseError', err.method, err.remoteStack)
+    ? new ProtocolRequestError(err.message, 'ProtocolResponseError', err.method)
     : err;
 }
 

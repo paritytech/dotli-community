@@ -196,7 +196,7 @@ function statusEnd(error: Error): CallError<FrameFailure> {
   if (error instanceof ProtocolPortReleasedError) {
     return domain({ tag: 'released', value: error.message });
   }
-  return hostFailure(`${error.name}: ${error.message}`);
+  return hostFailure(error);
 }
 
 function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {

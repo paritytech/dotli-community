@@ -129,10 +129,10 @@ longer waiting is ignored without a count.
 - Client: `protocolClient` (the page's client, built on first use: frame, resolution, remote chains, shared store and
   telemetry as one object), `ProtocolClient`, `ProtocolFrameConfig`, `ProtocolStatus`, `getProtocolOrigin`.
 - Remote chains: `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`.
-- Shared store: `SharedStoreStatus`, `SharedWalletRequestMethod`, `SHARED_CORE_SESSION_KEY`, the key helpers
-  `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the
-  request guards `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, `isSharedAuthRequestMethod`,
-  `isSharedModeRequestMethod`, `isSharedWalletRequestMethod`.
+- Shared store: `SharedStoreStatus`, `SHARED_CORE_SESSION_KEY`, the key helpers `buildSharedAuthStorageKey`,
+  `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the request guards
+  `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, and `isSharedAuthRequestMethod` and `isSharedModeRequestMethod`,
+  which tell the storage trait's methods of each store apart.
 - Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
   the entropy and the cached identity).
 - The protocol as a transport schema: `protocolSchema`, its traits `frame`, `resolve`, `storage`, `wallet` and `chain`,
@@ -141,11 +141,10 @@ longer waiting is ignored without a count.
   `TelemetryEvent` is what the frame reports on its telemetry feed.
 - Budgets, for the frame to size its own work: `budgetOf` (a method's budget by its trait and method, or null for one
   waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
-- The earlier transport, until the frame app serves through the schema: `createConsumerTransport`,
-  `createServingTransport` (with `onPeerIdle`), `ConsumerTransport`, `ServingTransport`, `CallContext`,
-  `RequestHandler`, `SubscriptionHandler`, `SubscriptionSink`, the providers `createWindowProvider` and
-  `createPortProvider`, and the flat method names and their types `RequestMethod`, `SubscriptionMethod`,
-  `SubscribePayload`, `Answer` and `SubscriptionEvent`.
+- For the frame, which serves the schema and waits on or relays another frame's calls: `callName` (a method's one name
+  for metrics, the trail and spans), `failureOf` (a call's failure as the error host code sees, by its trait and method)
+  and `createIssueReporter` (what a transport cannot handle itself, counted and logged under the side that reports it,
+  as the host's own transport is).
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 

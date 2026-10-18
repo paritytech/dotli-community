@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { failureReason } from './errors.js';
+
 /** The outcome of a call that can fail, told apart by its `ok` field. */
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
@@ -33,5 +35,12 @@ export const domain = <E>(value: E): CallError<E> => ({ tag: 'Domain', value });
 export const denied = (): CallError<never> => ({ tag: 'Denied' });
 export const unsupported = (): CallError<never> => ({ tag: 'Unsupported' });
 export const malformedFrame = (reason: string): CallError<never> => ({ tag: 'MalformedFrame', reason });
-export const hostFailure = (reason: string): CallError<never> => ({ tag: 'HostFailure', reason });
+/**
+ * A handler's failure. Given an `Error`, the reason is the one a handler that throws it answers with, `"<name>:
+ * <message>"`, bounded, so a peer reads the error's name back.
+ */
+export const hostFailure = (reason: string | Error): CallError<never> => ({
+  tag: 'HostFailure',
+  reason: typeof reason === 'string' ? reason : failureReason(reason),
+});
 export const cancelled = (): CallError<never> => ({ tag: 'Cancelled' });

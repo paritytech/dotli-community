@@ -57,6 +57,7 @@ export function isProtocolTrait(trait: string): trait is Trait {
   return Object.hasOwn(CALL_NAMES, trait);
 }
 
+/** The one name of `method` in `trait`, the flat name it had before the methods were grouped into traits. */
 export function callName<T extends Trait>(trait: T, method: MethodName<ProtocolSchema, T>): CallName {
   return BY_ADDRESS[trait][method];
 }

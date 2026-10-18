@@ -2,38 +2,37 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
-import type { RequestMethod } from './methods.js';
+import type { MethodName } from '@dotli/transport';
+import type { ProtocolSchema } from './schema.js';
 
-export type SharedAuthRequestMethod = 'authStorageRead' | 'authStorageWrite' | 'authStorageClear';
+type StorageMethod = MethodName<ProtocolSchema, 'storage'>;
 
-export type SharedModeRequestMethod = 'modeStorageRead' | 'modeStorageWrite' | 'modeStorageClear';
+export type SharedAuthRequestMethod = Extract<StorageMethod, 'authRead' | 'authWrite' | 'authClear'>;
+
+export type SharedModeRequestMethod = Extract<StorageMethod, 'modeRead' | 'modeWrite' | 'modeClear'>;
 
 export const SHARED_CORE_SESSION_KEY = 'session';
 
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const SHARED_AUTH_METHODS = new Set<RequestMethod>(['authStorageRead', 'authStorageWrite', 'authStorageClear']);
-const SHARED_MODE_METHODS = new Set<RequestMethod>(['modeStorageRead', 'modeStorageWrite', 'modeStorageClear']);
+const SHARED_AUTH_METHODS: ReadonlySet<string> = new Set<SharedAuthRequestMethod>([
+  'authRead',
+  'authWrite',
+  'authClear',
+]);
+const SHARED_MODE_METHODS: ReadonlySet<string> = new Set<SharedModeRequestMethod>([
+  'modeRead',
+  'modeWrite',
+  'modeClear',
+]);
 
-export function isSharedAuthRequestMethod(method: RequestMethod): method is SharedAuthRequestMethod {
+/** Whether `method` is a request of the shared auth store, among the storage trait's methods. */
+export function isSharedAuthRequestMethod(method: string): method is SharedAuthRequestMethod {
   return SHARED_AUTH_METHODS.has(method);
 }
 
-export function isSharedModeRequestMethod(method: RequestMethod): method is SharedModeRequestMethod {
+/** Whether `method` is a request of the shared mode store, among the storage trait's methods. */
+export function isSharedModeRequestMethod(method: string): method is SharedModeRequestMethod {
   return SHARED_MODE_METHODS.has(method);
-}
-
-export type SharedWalletRequestMethod =
-  'localWalletRead' | 'localWalletSave' | 'localWalletIdentity' | 'localWalletForget';
-
-const SHARED_WALLET_METHODS = new Set<RequestMethod>([
-  'localWalletRead',
-  'localWalletSave',
-  'localWalletIdentity',
-  'localWalletForget',
-]);
-
-export function isSharedWalletRequestMethod(method: RequestMethod): method is SharedWalletRequestMethod {
-  return SHARED_WALLET_METHODS.has(method);
 }
 
 /**

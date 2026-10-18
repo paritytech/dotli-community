@@ -13,11 +13,11 @@ import {
   isSharedAuthSiteId,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-  type CallContext,
-  type RequestHandler,
-  type ServingTransport,
-  type SubscriptionSink,
+  type ProtocolContext,
+  type ProtocolSchema,
+  type ProtocolTransport,
 } from '@dotli/protocol';
+import { denied, err, ok, type CallError, type MethodTypes, type Result, type Sink } from '@dotli/transport';
 
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
@@ -38,6 +38,8 @@ export interface SharedStoreDeps {
   /** Null where the browser has no `BroadcastChannel`, so writes reach no other tab. */
   channel: SharedAuthChannel | null;
 }
+
+type SharedAuthChange = MethodTypes<ProtocolSchema, 'storage', 'authChanges'>['receive'];
 
 export interface SharedStoreHandler {
   /** Stops serving the stores and hearing other tabs. */
@@ -63,26 +65,44 @@ function assertModeKey(value: string): void {
 }
 
 // Holds the shared-auth trust boundary on any transport these stores are served over.
-function assertOrigin(context: CallContext): void {
-  if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
-    throw new Error(`Shared auth request denied from origin: ${context.origin ?? 'none'}`);
+function isOriginAllowed(context: ProtocolContext): boolean {
+  return context.origin !== null && isSharedAuthOriginAllowed(context.origin);
+}
+
+/** A call's storage key once its site and key check, or the call's refusal when its origin may not use the store. */
+function storeKey(
+  payload: { siteId: string; key: string },
+  context: ProtocolContext,
+  assertKey: (key: string) => void,
+  build: (siteId: SiteId, key: string) => string,
+): Result<string, CallError<never>> {
+  if (!isOriginAllowed(context)) {
+    return err(denied());
   }
+  assertSiteId(payload.siteId);
+  assertKey(payload.key);
+  return ok(build(payload.siteId, payload.key));
 }
 
 /** Checks a call's origin, site and auth key, and returns its storage key. */
-function authKeyOf(payload: { siteId: string; key: string }, context: CallContext): string {
-  assertOrigin(context);
-  assertSiteId(payload.siteId);
-  assertAuthKey(payload.key);
-  return buildSharedAuthStorageKey(payload.siteId, payload.key);
+function authKeyOf(
+  payload: { siteId: string; key: string },
+  context: ProtocolContext,
+): Result<string, CallError<never>> {
+  return storeKey(payload, context, assertAuthKey, buildSharedAuthStorageKey);
 }
 
 /** Checks a call's origin, site and mode key, and returns its storage key. */
-function modeKeyOf(payload: { siteId: string; key: string }, context: CallContext): string {
-  assertOrigin(context);
-  assertSiteId(payload.siteId);
-  assertModeKey(payload.key);
-  return buildSharedModeStorageKey(payload.siteId, payload.key);
+function modeKeyOf(
+  payload: { siteId: string; key: string },
+  context: ProtocolContext,
+): Result<string, CallError<never>> {
+  return storeKey(payload, context, assertModeKey, buildSharedModeStorageKey);
+}
+
+/** Runs `use` on the call's storage key, or answers the call's refusal. */
+function withKey<T>(key: Result<string, CallError<never>>, use: (key: string) => T): Result<T, CallError<never>> {
+  return key.ok ? ok(use(key.value)) : key;
 }
 
 function isBroadcastMessage(value: unknown): value is SharedAuthBroadcastMessage {
@@ -97,9 +117,9 @@ function isBroadcastMessage(value: unknown): value is SharedAuthBroadcastMessage
   );
 }
 
-export function createSharedStoreHandler(serving: ServingTransport, deps: SharedStoreDeps): SharedStoreHandler {
+export function createSharedStoreHandler(serving: ProtocolTransport, deps: SharedStoreDeps): SharedStoreHandler {
   const { channel } = deps;
-  const subscribers = new Set<SubscriptionSink<'sharedAuthChanges'>>();
+  const subscribers = new Set<Sink<SharedAuthChange, never>>();
 
   function broadcast(siteId: string, key: string, value: string | null): void {
     if (channel === null) {
@@ -122,36 +142,46 @@ export function createSharedStoreHandler(serving: ServingTransport, deps: Shared
       return;
     }
     for (const sink of [...subscribers]) {
-      sink.send({ siteId: data.siteId, key: data.key, value: data.value });
+      sink.receive({ siteId: data.siteId, key: data.key, value: data.value });
     }
   }
 
   channel?.addEventListener('message', relay);
 
-  const writeAuth: RequestHandler<'authStorageWrite'> = (payload, context) => {
-    deps.storage().setItem(authKeyOf(payload, context), payload.value);
-    broadcast(payload.siteId, payload.key, payload.value);
-  };
-  const clearAuth: RequestHandler<'authStorageClear'> = (payload, context) => {
-    deps.storage().removeItem(authKeyOf(payload, context));
-    broadcast(payload.siteId, payload.key, null);
-  };
-  const writeMode: RequestHandler<'modeStorageWrite'> = (payload, context) => {
-    deps.storage().setItem(modeKeyOf(payload, context), payload.value);
-  };
-  const clearMode: RequestHandler<'modeStorageClear'> = (payload, context) => {
-    deps.storage().removeItem(modeKeyOf(payload, context));
-  };
-
   const unregister = [
-    serving.handleRequest('authStorageRead', (payload, context) => deps.storage().getItem(authKeyOf(payload, context))),
-    serving.handleRequest('authStorageWrite', writeAuth),
-    serving.handleRequest('authStorageClear', clearAuth),
-    serving.handleRequest('modeStorageRead', (payload, context) => deps.storage().getItem(modeKeyOf(payload, context))),
-    serving.handleRequest('modeStorageWrite', writeMode),
-    serving.handleRequest('modeStorageClear', clearMode),
-    serving.handleSubscription('sharedAuthChanges', (_payload, context, sink) => {
-      assertOrigin(context);
+    serving.handleRequest('storage', 'authRead', (payload, context) =>
+      withKey(authKeyOf(payload, context), key => deps.storage().getItem(key)),
+    ),
+    serving.handleRequest('storage', 'authWrite', (payload, context) =>
+      withKey(authKeyOf(payload, context), key => {
+        deps.storage().setItem(key, payload.value);
+        broadcast(payload.siteId, payload.key, payload.value);
+      }),
+    ),
+    serving.handleRequest('storage', 'authClear', (payload, context) =>
+      withKey(authKeyOf(payload, context), key => {
+        deps.storage().removeItem(key);
+        broadcast(payload.siteId, payload.key, null);
+      }),
+    ),
+    serving.handleRequest('storage', 'modeRead', (payload, context) =>
+      withKey(modeKeyOf(payload, context), key => deps.storage().getItem(key)),
+    ),
+    serving.handleRequest('storage', 'modeWrite', (payload, context) =>
+      withKey(modeKeyOf(payload, context), key => {
+        deps.storage().setItem(key, payload.value);
+      }),
+    ),
+    serving.handleRequest('storage', 'modeClear', (payload, context) =>
+      withKey(modeKeyOf(payload, context), key => {
+        deps.storage().removeItem(key);
+      }),
+    ),
+    serving.handleSubscription('storage', 'authChanges', (_start, context, sink) => {
+      if (!isOriginAllowed(context)) {
+        sink.interrupt(denied());
+        return () => undefined;
+      }
       subscribers.add(sink);
       return () => {
         subscribers.delete(sink);

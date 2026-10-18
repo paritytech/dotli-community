@@ -5,7 +5,8 @@
 // that comes late hears where things stand first, so nothing reported before it subscribed is lost.
 
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import type { SubscriptionHandler } from '@dotli/protocol';
+import type { ProtocolSchema } from '@dotli/protocol';
+import type { SubscriptionHandler } from '@dotli/transport';
 
 import { chainDetailTelemetry, chainSyncTelemetry, netBytesTelemetry, smoldotDbTelemetry } from './telemetry-events.js';
 
@@ -27,7 +28,7 @@ export interface TelemetryDeps {
   joinedSynced: () => boolean;
 }
 
-export function createTelemetryHandler(deps: TelemetryDeps): SubscriptionHandler<'telemetry'> {
+export function createTelemetryHandler(deps: TelemetryDeps): SubscriptionHandler<ProtocolSchema, 'frame', 'telemetry'> {
   return (_payload, _context, sink) => {
     const stops: (() => void)[] = [];
     const stopAll = (): void => {
@@ -40,33 +41,33 @@ export function createTelemetryHandler(deps: TelemetryDeps): SubscriptionHandler
       let replaying = true;
       stops.push(
         deps.onChainSync(event => {
-          sink.send(chainSyncTelemetry(event));
+          sink.receive(chainSyncTelemetry(event));
         }),
       );
       stops.push(
         deps.onChainDetail(detail => {
           const reported =
             replaying && synced && detail.dbCache !== undefined ? { ...detail, dbCache: 'hit' as const } : detail;
-          sink.send(chainDetailTelemetry(reported));
+          sink.receive(chainDetailTelemetry(reported));
         }),
       );
       replaying = false;
       for (const [chain, outcome] of deps.dbOutcomes()) {
-        sink.send(smoldotDbTelemetry(chain, synced ? 'hit' : outcome));
+        sink.receive(smoldotDbTelemetry(chain, synced ? 'hit' : outcome));
       }
       stops.push(
         deps.onDbOutcome((chain, outcome) => {
-          sink.send(smoldotDbTelemetry(chain, outcome));
+          sink.receive(smoldotDbTelemetry(chain, outcome));
         }),
       );
       stops.push(
         deps.netBytes(total => {
-          sink.send(netBytesTelemetry(total));
+          sink.receive(netBytesTelemetry(total));
         }),
       );
     } catch (error) {
-      // The transport refuses the subscription with this error and never gets a stop, so the feeds started are
-      // stopped here.
+      // The transport ends the subscription with this error and never gets a stop, so the feeds started are stopped
+      // here.
       stopAll();
       throw error;
     }

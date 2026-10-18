@@ -4,7 +4,7 @@
 // The protocol's methods as traits of a transport schema. New traits and methods go at the end, and any change to them
 // bumps the version.
 
-import { Bytes, Enum, Struct, _void, enhanceCodec, str, type Codec as ScaleCodec, type CodecType } from 'scale-ts';
+import { Bytes, Enum, Struct, _void, str, type Codec as ScaleCodec, type CodecType } from 'scale-ts';
 import {
   codec,
   defineSchema,
@@ -18,17 +18,16 @@ import {
   type Transport,
 } from '@dotli/transport';
 import type { ExecutableManifest, RootManifest } from '@dotli/resolver';
-import { decodeExact, nullable, oneOf, safeInteger } from './codec-primitives.js';
+import { decodeExact, nullable, oneOf } from './codec-primitives.js';
 import {
-  chainDetailCodec,
-  chainSyncEventCodec,
   executableManifestCodec,
   manifestResultCodec,
   resolvePhaseCodec,
   rootManifestCodec,
-  smoldotDbChainCodec,
-  smoldotDbOutcomeCodec,
+  telemetryEventCodec,
 } from './codec-values.js';
+
+export type { TelemetryEvent } from './codec-values.js';
 
 /**
  * A scale-ts codec as a transport codec. Decoding throws unless the value ends exactly where the payload does. It
@@ -64,59 +63,6 @@ const localWalletRead = scaleCodec(
   }),
 );
 
-const telemetryEventWire = Enum({
-  chainSync: chainSyncEventCodec,
-  chainDetail: chainDetailCodec,
-  netBytes: safeInteger,
-  smoldotDb: Struct({ chain: smoldotDbChainCodec, outcome: smoldotDbOutcomeCodec }),
-});
-
-export type TelemetryEvent = CodecType<typeof telemetryEventWire>;
-
-// Peer ids and roles land in telemetry attributes, so a spoofed frame could write unbounded junk into spans.
-const MAX_PEER_ID_LENGTH = 128;
-const MAX_PEERS = 50;
-const MAX_SYNC_PEERS = 10_000;
-
-function isTelemetryEventValid(event: TelemetryEvent): boolean {
-  switch (event.tag) {
-    case 'chainSync': {
-      const { kind, peers } = event.value;
-      return kind !== 'peers' || (peers !== undefined && peers <= MAX_SYNC_PEERS);
-    }
-    case 'chainDetail': {
-      const peers = event.value.peers;
-      return (
-        peers === undefined ||
-        (peers.length <= MAX_PEERS &&
-          peers.every(
-            peer =>
-              peer.peerId.length > 0 &&
-              peer.peerId.length <= MAX_PEER_ID_LENGTH &&
-              peer.roles.length <= MAX_PEER_ID_LENGTH,
-          ))
-      );
-    }
-    case 'netBytes':
-    case 'smoldotDb':
-      return true;
-  }
-}
-
-/** A telemetry event. Decoding throws on one past the limits, so the transport refuses it as malformed. */
-const telemetryEvent = scaleCodec(
-  enhanceCodec(
-    telemetryEventWire,
-    (event: TelemetryEvent) => event,
-    (event: TelemetryEvent) => {
-      if (!isTelemetryEventValid(event)) {
-        throw new RangeError(`a ${event.tag} event is past the telemetry limits`);
-      }
-      return event;
-    },
-  ),
-);
-
 export const protocolSchema = defineSchema({
   version: 2,
   hello: resolutionHello,
@@ -128,7 +74,7 @@ export const protocolSchema = defineSchema({
       // timer throttling does not delay.
       beat: subscription({ start: none, receive: none }),
       warmup: request({ request: none, response: none }),
-      telemetry: subscription({ start: none, receive: telemetryEvent }),
+      telemetry: subscription({ start: none, receive: scaleCodec(telemetryEventCodec) }),
     },
     resolve: {
       owner: request({ request: label, response: nullableString, error: remoteFailure }),

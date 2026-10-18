@@ -9,10 +9,8 @@ export {
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
-  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-  type SharedWalletRequestMethod,
 } from './auth-storage.js';
 export {
   getProtocolOrigin,
@@ -42,14 +40,6 @@ export {
   type ProtocolTransport,
   type TelemetryEvent,
 } from './schema.js';
-export type { Answer, RequestMethod, SubscribePayload, SubscriptionEvent, SubscriptionMethod } from './methods.js';
-export { createPortProvider, createWindowProvider } from './provider.js';
-export { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
-export {
-  createServingTransport,
-  type CallContext,
-  type RequestHandler,
-  type ServingTransport,
-  type SubscriptionHandler,
-  type SubscriptionSink,
-} from './transport-serving.js';
+export { callName } from './call-names.js';
+export { failureOf } from './outcomes.js';
+export { createIssueReporter } from './wire-issues.js';

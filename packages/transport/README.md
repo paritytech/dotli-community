@@ -118,7 +118,8 @@ sequenceDiagram
   byte on decode.
 - `Result<T, E>` with `ok()` and `err(error)`.
 - `CallError<E>` with the constructors `domain`, `denied`, `unsupported`, `malformedFrame`, `hostFailure` and
-  `cancelled`.
+  `cancelled`. `hostFailure` takes a reason, or an `Error`, whose reason is the one a handler that throws it answers
+  with, so a sink ends with a failure the caller reads as it would a throw.
 - `request({ request, response, error? })` declares a request. `error` is the method's own error type and defaults to
   `never`. It returns a `RequestDef`.
 - `subscription({ start, receive, interrupt? })` declares a subscription. `interrupt` is the method's own end reason and

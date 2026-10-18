@@ -69,7 +69,7 @@ function resolveFailure(message: string, name = 'Error'): CallError<RemoteFailur
     case 'ApiStoppedError':
       return domain({ tag: 'apiStopped', value: message });
     default:
-      return hostFailure(`${name}: ${message}`);
+      return hostFailure(Object.assign(new Error(message), { name }));
   }
 }
 

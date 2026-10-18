@@ -22,13 +22,25 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   stopped with the last. Each subscriber hears the total at once as its baseline. A subscribe whose first read or ticker
   start fails leaves nothing behind. A read that fails on a tick is skipped and reported once per run of failures, under
   its own metric, and a subscriber that throws is reported without stopping the others.
-- The iframe serves through one serving transport on a window provider that admits only its parent at an allowed origin.
-  Bytes from a page at any other origin are refused, and the first from each such origin is counted as a refused wire
-  message and logged, so a hostile page that keeps posting floods neither. Objects from the parent come only from a host
-  page of an earlier release, and are counted as not bytes.
-- It sends nothing unsolicited: its readiness and failures reach the host as events on the frame status subscription,
-  which a late subscriber hears on subscribe. The status tells each subscriber on its own, so one that throws is
-  reported and the others still hear. A handler's failure is answered as an error response.
+- The iframe speaks to the host through the transport library over the protocol schema: one transport on a window
+  provider that admits only its parent at an allowed origin. It accepts the host's handshake, whose hello names no page
+  load, since the iframe reads that from its URL. Bytes from a page at any other origin are refused, and the first from
+  each such origin is counted as a refused wire message and logged, so a hostile page that keeps posting floods neither.
+  Objects from the parent come only from a host page of an earlier release, and are counted as not bytes.
+- What a provider or a transport drops is counted once, under the side that dropped it, the frame or the worker: a
+  message that does not decode or does not fit the call it names, data that is not bytes, which the provider drops
+  before the transport sees it, and a message the provider could not post, which is also captured and logged. A listener
+  that throws on the transport is reported as a listener.
+- It sends nothing unsolicited: its readiness and failures reach the host on the frame status subscription, which a late
+  subscriber hears on subscribe. The status tells each subscriber on its own, so one that throws is reported and the
+  others still hear. It ends typed, as a fatal light client, a failed init or a released port, so the host tells them
+  apart, and any other error ends it as that error's failure.
+- A handler answers with a result. A refused origin is denied, a resolver's sync timeout and a stopped light client are
+  typed failures the host's error screen tells apart, and any other failure is thrown, so it crosses as the handler's
+  failure under its error's name and message. A subscription a handler cannot start ends the same way.
+- No deadline crosses the wire. A name read sizes its sync budget from its method's budget, the one the host gives up
+  on, less a grace for the typed failure to cross back, counted from when the call arrives. A tester can cap it from
+  session storage.
 - The frame's boot holds the status and the telemetry together, since the host subscribes to both as soon as its
   handshake is answered, before the mode has loaded anything. A chain mode feeds the telemetry from its light client.
   Auth-only and gateway mode run none, so once ready they serve an idle feed that stays open and says nothing. A boot
@@ -43,18 +55,23 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   holds the boundary on any transport they are served over. What the stores refuse is counted as bad input, and what the
   wallet refuses is logged.
 - In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
-  through its own consumer transport, including the frame status and telemetry subscriptions.
-- The SharedWorker runs smoldot and serves each tab port with its own serving transport and engine scope, so no buffer
-  is shared between ports. It drives the heartbeat: it sends a beat event to each port on its own clock, the iframe
-  answers each with a heartbeat request, and a port that misses too many beats is released. A release ends that port's
-  subscriptions with an error, so a thawed tab rebuilds its frame and opens a new port. A released port stays open, so a
-  frozen tab still hears its release when it thaws. It closes on the beat after its tab speaks again, so the ends posted
-  at the release arrive first, or when the worker closes.
-- A tab that leaves ends its subscriptions, which frees its connections at once. Its port is then forgotten and closed
-  at once, since a live tab always holds a subscription and one that drops to none through its own unsubscribe, with no
-  call in flight, has disposed its transport. A port whose tab crashed fires its close event, and the worker forgets it,
-  or closes it if it was released, at once. Where an engine never fires the event, the heartbeat release is the
-  fallback.
+  through its own transport, including the frame status and telemetry subscriptions. That transport opens the handshake
+  toward the worker, with this page load's resolution id as its hello. The relay adds nothing to a call and passes each
+  answer, value and end on as the worker gave it. When the worker ends this tab's status, the relay ends the frame
+  status with the same end and closes its transport, so each call the worker still held fails.
+- The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
+  between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
+  It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat
+  request, and a port that sends nothing for too many beats is released. A release ends that port's frame status as a
+  released port, then closes its transport, which ends the rest of its subscriptions with the release, so a thawed tab
+  rebuilds its frame and opens a new port. A released port stays open, so a frozen tab still hears its release when it
+  thaws. It closes on the beat after its tab speaks again, so the ends posted at the release arrive first, or when the
+  worker closes.
+- A tab that leaves ends its subscriptions, which frees its connections at once. The worker then forgets its port and
+  closes it at once: a live tab always holds a subscription, so a tab whose own stop leaves nothing running, with no
+  call of its in flight, has disposed its transport. A call from the tab after that keeps it. A port whose tab crashed
+  fires its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never
+  fires the event, the heartbeat release is the fallback.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
   ends. A heartbeat it cannot send is captured, logged and counted, and the link stops answering, so the worker releases
   the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the
@@ -73,15 +90,15 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 flowchart LR
   host[host page] -- postMessage --> serving
   subgraph frame[protocol iframe]
-    serving[serving transport] --> stores["shared stores, local wallet"]
+    serving["transport, accepts the host"] --> stores["shared stores, local wallet"]
     serving -- direct or gateway --> engine --> pool[chain pool]
     pool --> smoldot
-    serving -- shared worker --> relay["relay, over its own consumer transport"]
+    serving -- shared worker --> relay["relay, over its own transport that opens toward the worker"]
   end
   pool --> gateway[WSS gateway]
   relay -- port --> portServing
   subgraph worker[SharedWorker]
-    portServing[serving transport per port] --> scope[engine scope per port] --> workerPool[chain pool]
+    portServing["transport per port, accepts the tab"] --> scope[engine scope per port] --> workerPool[chain pool]
     workerPool --> workerSmoldot[smoldot]
   end
 ```

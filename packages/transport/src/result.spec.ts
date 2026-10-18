@@ -36,4 +36,19 @@ describe('result', () => {
       { tag: 'Cancelled' },
     ]);
   });
+
+  it('As a handler, I fail a call with an error as a handler that throws it would, so the caller reads its name', () => {
+    // Given
+    const thrown = new TypeError('bad label');
+    const long = new Error('x'.repeat(600));
+
+    // When
+    const failures = [hostFailure(thrown), hostFailure(long)];
+
+    // Then
+    expect(failures).toEqual([
+      { tag: 'HostFailure', reason: 'TypeError: bad label' },
+      { tag: 'HostFailure', reason: `Error: ${'x'.repeat(493)}` },
+    ]);
+  });
 });

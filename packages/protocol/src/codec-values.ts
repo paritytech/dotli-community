@@ -4,7 +4,7 @@
 // Wire codecs for the chain, resolver and manifest values the frame carries. An absent optional field stays absent
 // after decoding, and a manifest's `$v` is not sent because only version 1 is carried.
 
-import { Enum, Struct, Tuple, Vector, _void, enhanceCodec, str, type Codec } from 'scale-ts';
+import { Enum, Struct, Tuple, Vector, _void, enhanceCodec, str, type Codec, type CodecType } from 'scale-ts';
 import type {
   ChainDetail,
   ChainPeer,
@@ -15,7 +15,7 @@ import type {
 } from '@dotli/chains';
 import type { ChainRole } from '@dotli/config';
 import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-import { f64, oneOf, strictBool, strictOption, u32Exact } from './codec-primitives.js';
+import { f64, oneOf, safeInteger, strictBool, strictOption, u32Exact } from './codec-primitives.js';
 
 const CHAIN_ROLES = Object.keys({
   relay: true,
@@ -119,7 +119,7 @@ const chainDetailWire = Struct({
   peers: strictOption(Vector(chainPeerCodec)),
 } satisfies FieldsOf<ChainDetail>);
 
-export const chainDetailCodec: Codec<ChainDetail> = enhanceCodec(
+const chainDetailCodec: Codec<ChainDetail> = enhanceCodec(
   chainDetailWire,
   (detail: ChainDetail) => ({ chain: detail.chain, dbCache: detail.dbCache, peers: detail.peers }),
   wire => dropUndefined<ChainDetail>(wire),
@@ -308,3 +308,55 @@ export function manifestResultCodec<T>(value: Codec<T>): Codec<ManifestResult<T>
     },
   );
 }
+
+const telemetryEventWire = Enum({
+  chainSync: chainSyncEventCodec,
+  chainDetail: chainDetailCodec,
+  netBytes: safeInteger,
+  smoldotDb: Struct({ chain: smoldotDbChainCodec, outcome: smoldotDbOutcomeCodec }),
+});
+
+/** What the frame reports on its telemetry feed. */
+export type TelemetryEvent = CodecType<typeof telemetryEventWire>;
+
+// Peer ids and roles land in telemetry attributes, so a spoofed frame could write unbounded junk into spans.
+const MAX_PEER_ID_LENGTH = 128;
+const MAX_PEERS = 50;
+const MAX_SYNC_PEERS = 10_000;
+
+function isTelemetryEventValid(event: TelemetryEvent): boolean {
+  switch (event.tag) {
+    case 'chainSync': {
+      const { kind, peers } = event.value;
+      return kind !== 'peers' || (peers !== undefined && peers <= MAX_SYNC_PEERS);
+    }
+    case 'chainDetail': {
+      const peers = event.value.peers;
+      return (
+        peers === undefined ||
+        (peers.length <= MAX_PEERS &&
+          peers.every(
+            peer =>
+              peer.peerId.length > 0 &&
+              peer.peerId.length <= MAX_PEER_ID_LENGTH &&
+              peer.roles.length <= MAX_PEER_ID_LENGTH,
+          ))
+      );
+    }
+    case 'netBytes':
+    case 'smoldotDb':
+      return true;
+  }
+}
+
+/** A telemetry event. Decoding throws on one past the limits, so the transport refuses it as malformed. */
+export const telemetryEventCodec: Codec<TelemetryEvent> = enhanceCodec(
+  telemetryEventWire,
+  (event: TelemetryEvent) => event,
+  (event: TelemetryEvent) => {
+    if (!isTelemetryEventValid(event)) {
+      throw new RangeError(`a ${event.tag} event is past the telemetry limits`);
+    }
+    return event;
+  },
+);
