@@ -52,7 +52,13 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.objectContaining({ name: 'WireDecodeError', message: 'the header ends early' }) as Error,
+      },
+    ]);
     const heard = peer.heard.length;
     await timers.advance(RETRY_MS);
     expect(peer.heard.length).toBeGreaterThan(heard);

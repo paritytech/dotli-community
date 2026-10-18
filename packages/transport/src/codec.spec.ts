@@ -3,7 +3,7 @@
 
 import { Tuple, u8 } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { codec, none, scaleOf } from './codec.js';
+import { codec, isPayloadFailure, none, scaleOf } from './codec.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -23,7 +23,7 @@ describe('codec', () => {
     expect(wrapped.dec(bytes)).toBe('hello');
   });
 
-  it('As a schema author, my decode gets the rest of the input after what precedes it, and the read ends there', () => {
+  it('As a schema author, I decode my payload after other fields and my decode gets exactly the rest of the input', () => {
     // Given
     const message = Tuple(u8, scaleOf(text), scaleOf(none));
     const bytes = message.enc([7, 'tail', undefined]);
@@ -34,6 +34,32 @@ describe('codec', () => {
     // Then
     expect([...bytes]).toEqual([7, 0x74, 0x61, 0x69, 0x6c]);
     expect(decoded).toEqual([7, 'tail', undefined]);
+  });
+
+  it('As a schema author, I throw from my decode and the library rethrows my own error, marked as mine', () => {
+    // Given
+    const thrown = new RangeError('not a note');
+    const broken = scaleOf(
+      codec<string>(
+        () => new Uint8Array(0),
+        () => {
+          throw thrown;
+        },
+      ),
+    );
+
+    // When
+    let caught: unknown;
+    try {
+      broken.dec(new Uint8Array([1]));
+    } catch (error) {
+      caught = error;
+    }
+
+    // Then
+    expect(caught).toBe(thrown);
+    expect(isPayloadFailure(caught)).toBe(true);
+    expect(isPayloadFailure(new RangeError('not a note'))).toBe(false);
   });
 
   it('As a schema author, I use none for an empty payload and it refuses any byte', () => {

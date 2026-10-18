@@ -11,7 +11,15 @@ export interface Codec<T> {
 }
 
 /** scale-ts hands a decoder its own byte array over the whole buffer, which carries the read position. */
-type Cursor = Uint8Array & { i: number };
+export type Cursor = Uint8Array & { i: number };
+
+// What a user's decode threw. The library names its own decode failures, and passes these on as they were thrown.
+const payloadFailures = new WeakSet();
+
+/** Whether a user's decode threw `error`, which the library reports unchanged. */
+export function isPayloadFailure(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && payloadFailures.has(error);
+}
 
 /**
  * Wraps plain encode and decode functions as a codec. A payload is the last field of a message, so the decode gets the
@@ -22,7 +30,15 @@ export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8
     encode,
     createDecoder(input => {
       const cursor = input as Cursor;
-      const value = decode(new Uint8Array(cursor.buffer, cursor.i));
+      let value: T;
+      try {
+        value = decode(new Uint8Array(cursor.buffer, cursor.i));
+      } catch (error) {
+        if (typeof error === 'object' && error !== null) {
+          payloadFailures.add(error);
+        }
+        throw error;
+      }
       cursor.i = cursor.byteLength;
       return value;
     }),

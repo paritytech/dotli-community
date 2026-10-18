@@ -90,6 +90,6 @@ describe('describeMessage', () => {
     expect(thrown).toBeInstanceOf(Error);
     const refusal = (thrown as Error).cause as Refusal;
     expect(refusal.refused).toBe('malformed');
-    expect(refusal.cause).toBeInstanceOf(RangeError);
+    expect(refusal.cause).toMatchObject({ name: 'WireDecodeError', message: 'the header ends early' });
   });
 });

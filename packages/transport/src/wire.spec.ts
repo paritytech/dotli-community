@@ -60,10 +60,14 @@ const BROKEN = 3;
 const bytes = (...values: number[]): ArrayBuffer => Uint8Array.of(...values).buffer;
 const listed = (data: ArrayBuffer): number[] => [...new Uint8Array(data)];
 
-// A refusal's cause is named by its class, which is what tells a cut-short read from a refused tag or leg.
+// A refusal's cause is named by its class and message, which is what tells a cut-short read from a refused tag or leg.
 const summarised = (decoded: DecodedMessage | Refusal): unknown =>
   'refused' in decoded
-    ? { ...decoded, cause: decoded.cause instanceof Error ? decoded.cause.name : typeof decoded.cause }
+    ? {
+        ...decoded,
+        cause:
+          decoded.cause instanceof Error ? `${decoded.cause.name}: ${decoded.cause.message}` : typeof decoded.cause,
+      }
     : decoded;
 
 describe('wire messages', () => {
@@ -241,7 +245,7 @@ describe('wire messages', () => {
     const decoded = summarised(decodeMessage(schema, data));
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'RangeError' });
+    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg ends early' });
   });
 
   it('As a transport, I decode an unknown leg byte and refuse it as malformed', () => {
@@ -252,7 +256,7 @@ describe('wire messages', () => {
     const decoded = summarised(decodeMessage(schema, data));
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'TypeError' });
+    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg does not decode' });
   });
 
   it('As a transport, I decode trailing bytes after a body that ends and refuse them as malformed', () => {
@@ -270,11 +274,31 @@ describe('wire messages', () => {
 
     // Then
     expect(decoded).toEqual([
-      { refused: 'malformed', cause: 'RangeError', header: { id: 1, trait: NOTES, method: WATCH, leg: 'stop' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 3, trait: NOTES, method: WATCH, leg: 'interrupt' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 4, trait: 255, method: 0, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 5, trait: 255, method: 255, leg: 'response' } },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: 1 byte follows a body that has ended',
+        header: { id: 1, trait: NOTES, method: WATCH, leg: 'stop' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: 1 byte follows a body that has ended',
+        header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: 1 byte follows a body that has ended',
+        header: { id: 3, trait: NOTES, method: WATCH, leg: 'interrupt' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: 1 byte follows a body that has ended',
+        header: { id: 4, trait: 255, method: 0, leg: 'response' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: 1 byte follows a body that has ended',
+        header: { id: 5, trait: 255, method: 255, leg: 'response' },
+      },
     ]);
   });
 
@@ -292,10 +316,26 @@ describe('wire messages', () => {
 
     // Then
     expect(decoded).toEqual([
-      { refused: 'malformed', cause: 'RangeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'TypeError', header: { id: 3, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'TypeError', header: { id: 4, trait: 255, method: 0, leg: 'response' } },
-      { refused: 'malformed', cause: 'TypeError', header: { id: 5, trait: 255, method: 255, leg: 'response' } },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: Cancelled is raised on the caller side and never crosses the wire',
+        header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: the call error does not decode',
+        header: { id: 3, trait: NOTES, method: READ, leg: 'response' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: the handshake error does not decode',
+        header: { id: 4, trait: 255, method: 0, leg: 'response' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: the protocol error does not decode',
+        header: { id: 5, trait: 255, method: 255, leg: 'response' },
+      },
     ]);
   });
 
@@ -309,7 +349,7 @@ describe('wire messages', () => {
     // Then
     expect(decoded).toEqual({
       refused: 'malformed',
-      cause: 'RangeError',
+      cause: 'WireDecodeError: the method declares no domain error',
       header: { id: 1, trait: NOTES, method: TOUCH, leg: 'response' },
     });
   });
@@ -326,8 +366,16 @@ describe('wire messages', () => {
 
     // Then
     expect(decoded).toEqual([
-      { refused: 'malformed', cause: 'RangeError', header: { id: 1, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'TypeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: the reason ends early',
+        header: { id: 1, trait: NOTES, method: READ, leg: 'response' },
+      },
+      {
+        refused: 'malformed',
+        cause: 'WireDecodeError: the reason does not decode',
+        header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
+      },
     ]);
   });
 
@@ -348,20 +396,20 @@ describe('wire messages', () => {
     const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
 
     // Then
-    const invalid = (id: number, trait: number, method: number, leg: string) => ({
+    const invalid = (id: number, trait: number, method: number, leg: string, target: string) => ({
       refused: 'invalid',
-      cause: 'TypeError',
+      cause: `TypeError: the ${leg} leg does not belong to ${target}`,
       header: { id, trait, method, leg },
     });
     expect(decoded).toEqual([
-      invalid(1, NOTES, WATCH, 'request'),
-      invalid(2, NOTES, WATCH, 'response'),
-      invalid(3, NOTES, READ, 'start'),
-      invalid(4, NOTES, READ, 'receive'),
-      invalid(5, NOTES, READ, 'interrupt'),
-      invalid(6, NOTES, READ, 'stop'),
-      invalid(7, 255, 0, 'stop'),
-      invalid(8, 255, 255, 'request'),
+      invalid(1, NOTES, WATCH, 'request', 'a subscription method'),
+      invalid(2, NOTES, WATCH, 'response', 'a subscription method'),
+      invalid(3, NOTES, READ, 'start', 'a request method'),
+      invalid(4, NOTES, READ, 'receive', 'a request method'),
+      invalid(5, NOTES, READ, 'interrupt', 'a request method'),
+      invalid(6, NOTES, READ, 'stop', 'a request method'),
+      invalid(7, 255, 0, 'stop', 'the handshake'),
+      invalid(8, 255, 255, 'request', 'the protocol error'),
     ]);
   });
 
@@ -385,6 +433,36 @@ describe('wire messages', () => {
       cause: failure,
       header: { id: 21, trait: NOTES, method: BROKEN, leg: 'request' },
     });
+  });
+
+  it('As a caller, I decode an answer and a domain error my decodes throw on and the refusal carries their own errors', () => {
+    // Given
+    const messages = [bytes(1, 0, 0, 0, NOTES, READ, 1, 1, 0, 1, 2), bytes(2, 0, 0, 0, NOTES, BROKEN, 1, 0)];
+    const brokenAnswer = defineSchema({
+      version: 3,
+      traits: {
+        notes: {
+          read: request({ request: text, response: text, error: byte }),
+          watch: subscription({ start: text, receive: byte }),
+          touch: request({ request: none, response: none }),
+          broken: request({ request: none, response: unreadable }),
+        },
+      },
+    });
+
+    // When
+    const decoded = messages.map(data => decodeMessage(brokenAnswer, data));
+
+    // Then
+    expect(decoded).toEqual([
+      {
+        refused: 'malformed',
+        cause: new RangeError('expected one byte, got 2'),
+        header: { id: 1, trait: NOTES, method: READ, leg: 'response' },
+      },
+      { refused: 'malformed', cause: failure, header: { id: 2, trait: NOTES, method: BROKEN, leg: 'response' } },
+    ]);
+    expect((decoded[0] as Refusal).cause).toBeInstanceOf(RangeError);
   });
 
   it('As a schema author, my decode gets exactly the payload bytes even when the message has a header before them', () => {

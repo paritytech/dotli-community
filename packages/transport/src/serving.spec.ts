@@ -334,7 +334,14 @@ describe('serving', () => {
 
     // Then
     expect(issues).toEqual([
-      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
+      {
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.objectContaining({
+          name: 'WireDecodeError',
+          message: 'the handshake version ends early',
+        }) as Error,
+      },
       { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
     ]);
     expect(peer.legs()).toEqual(['response:255.0']);
@@ -380,7 +387,14 @@ describe('serving', () => {
 
     // Then
     expect(issues).toEqual([
-      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
+      {
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.objectContaining({
+          name: 'WireDecodeError',
+          message: 'the handshake version ends early',
+        }) as Error,
+      },
       { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
     ]);
     expect(peer.heard).toEqual([]);
@@ -398,7 +412,14 @@ describe('serving', () => {
 
     // Then
     expect(issues).toEqual([
-      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
+      {
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.objectContaining({
+          name: 'WireDecodeError',
+          message: 'the protocol error does not decode',
+        }) as Error,
+      },
       { kind: 'refused', reason: 'invalid', cause: expect.any(TypeError) as TypeError },
     ]);
     expect(peer.legs()).toEqual(['response:255.0']);
