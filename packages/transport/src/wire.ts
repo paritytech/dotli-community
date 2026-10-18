@@ -47,7 +47,14 @@ export function decode<T>(codec: Codec<T>, data: Uint8Array | ArrayBuffer): Resu
 }
 
 /** Encodes a frame into a buffer of its own, which a provider can transfer. */
-export const encodeFrame = <M>(codec: Codec<Frame<M>>, value: Frame<M>): ArrayBuffer => codec.enc(value).slice().buffer;
+export function encodeFrame<M>(codec: Codec<Frame<M>>, value: Frame<M>): ArrayBuffer {
+  const bytes = codec.enc(value);
+  const { buffer } = bytes;
+  // A struct encodes into a fresh buffer of exactly its bytes, so only a view into a larger one needs a copy.
+  return buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === buffer.byteLength
+    ? buffer
+    : bytes.slice().buffer;
+}
 
 /** Encodes a message on call `id` of the method at `address`, or says why it cannot. */
 export function encodeCall<M>(

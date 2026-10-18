@@ -10,6 +10,7 @@ import { captureException, getResolutionId, m, reportListener, spans as S } from
 import {
   createAsyncTaskPool,
   createStatusCell,
+  deferred,
   log,
   realTimers,
   serializeError,
@@ -220,10 +221,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   let mismatch: ProtocolVersionMismatchError | null = null;
 
   let frameConfig: ProtocolFrameConfig | null = null;
-  let resolveConfigured: () => void = () => undefined;
-  const configured = new Promise<void>(resolve => {
-    resolveConfigured = resolve;
-  });
+  const configured = deferred<undefined>();
 
   // One task keeps the frame. It retries without end, each wait doubling, and settles only when a frame it kept
   // stable is lost.
@@ -486,46 +484,57 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   }
 
   function untilConfigured(): Promise<void> {
-    return withTimeout(configured, timeouts.configureMs, () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED), timers);
+    return withTimeout(
+      configured.promise,
+      timeouts.configureMs,
+      () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED),
+      timers,
+    );
   }
 
-  function whenReady(): Promise<ProtocolTransport> {
+  /** Runs `run` with the config, in the turn it is called once there is one, and never after a version mismatch. */
+  function withConfig<T>(run: (config: ProtocolFrameConfig) => Promise<T>): Promise<T> {
     if (mismatch !== null) {
       return Promise.reject(mismatch);
     }
     if (frameConfig === null) {
-      return untilConfigured().then(whenReady);
+      return untilConfigured().then(() => withConfig(run));
     }
-    // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
-    // before this call is what the boot answers, so it does not fail the wait.
-    const since = losses;
-    askForFrame(frameConfig);
-    // Read when the status is reached, since the frame can be dropped before the wait's continuation runs.
-    let reached: ProtocolTransport | null = null;
-    return untilStatus(next => {
-      if (next === 'ready') {
-        reached = slot?.transport ?? null;
-        return reached !== null || downReason;
+    return run(frameConfig);
+  }
+
+  function whenReady(): Promise<ProtocolTransport> {
+    return withConfig(config => {
+      if (status.get() === 'ready' && slot !== null) {
+        return Promise.resolve(slot.transport);
       }
-      return next === 'idle' || (next === 'failed' && losses > since) ? downReason : false;
-    }).then(() => {
-      if (reached === null) {
-        throw downReason;
-      }
-      return reached;
+      // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
+      // before this call is what the boot answers, so it does not fail the wait.
+      const since = losses;
+      askForFrame(config);
+      // Read when the status is reached, since the frame can be dropped before the wait's continuation runs.
+      let reached: ProtocolTransport | null = null;
+      return untilStatus(next => {
+        if (next === 'ready') {
+          reached = slot?.transport ?? null;
+          return reached !== null || downReason;
+        }
+        return next === 'idle' || (next === 'failed' && losses > since) ? downReason : false;
+      }).then(() => {
+        if (reached === null) {
+          throw downReason;
+        }
+        return reached;
+      });
     });
   }
 
   function transport(): Promise<ProtocolTransport> {
-    if (mismatch !== null) {
-      return Promise.reject(mismatch);
-    }
-    if (frameConfig === null) {
-      return untilConfigured().then(transport);
-    }
-    askForFrame(frameConfig);
-    // A keeper opens its slot in the turn it is asked for, so none here means its build failed at once.
-    return slot === null ? Promise.reject(downReason) : Promise.resolve(slot.transport);
+    return withConfig(config => {
+      askForFrame(config);
+      // A keeper opens its slot in the turn it is asked for, so none here means its build failed at once.
+      return slot === null ? Promise.reject(downReason) : Promise.resolve(slot.transport);
+    });
   }
 
   return {
@@ -535,7 +544,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       const previous = frameConfig;
       frameConfig = { ...config };
       if (previous === null) {
-        resolveConfigured();
+        configured.resolve(undefined);
         return;
       }
       if (mismatch !== null || sameFrameConfig(previous, config) || status.get() === 'idle') {

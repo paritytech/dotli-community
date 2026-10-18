@@ -11,20 +11,9 @@ import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
 import { protocolSchema } from './schema.js';
-import { recordWireMessage } from './testing/index.js';
-import {
-  createFrameHost,
-  FRAME_CONFIG,
-  FRAME_ORIGIN,
-  type FakeIframe,
-  type FrameDom,
-  type FrameHost,
-} from './testing/frame-host.js';
+import { createFrameHost, FRAME_CONFIG, FRAME_ORIGIN, type FakeIframe, type FrameHost } from './testing/frame-host.js';
 
 const { storage } = protocolSchema.traits;
-
-// The host posts its handshake again this often until it is answered.
-const HANDSHAKE_RETRY_MS = 50;
 
 /** The clock and timers each test moves by hand. */
 let timers: ManualTimers;
@@ -32,20 +21,6 @@ let timers: ManualTimers;
 beforeEach(() => {
   timers = manualTimers();
 });
-
-/** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
-async function listen(dom: FrameDom): Promise<void> {
-  dom.status();
-  await timers.advance(HANDSHAKE_RETRY_MS);
-}
-
-/** The requests the host sent `iframe`, as `trait.method`, its handshakes left out. */
-function sent(iframe: FakeIframe): string[] {
-  return iframe.window.posted.flatMap(data => {
-    const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
-    return message?.tag === 'request' ? [`${message.trait}.${message.method}`] : [];
-  });
-}
 
 describe('createProtocolClient', () => {
   it('As a dotli integrator, I build a client on my own document and origin, and it mounts its frame there only when asked', async () => {
@@ -73,7 +48,7 @@ describe('createProtocolClient', () => {
       () => 'resolved',
       (err: unknown) => (err instanceof Error ? err.message : String(err)),
     );
-    await listen(host);
+    await host.listen();
 
     // When
     await timers.advance(1_000);
@@ -164,7 +139,7 @@ describe('configureProtocolFrame', () => {
       served.push(key);
       return ok('session');
     });
-    await listen(host);
+    await host.listen();
 
     // Then
     await expect(first).resolves.toBe('session');
@@ -179,7 +154,7 @@ describe('configureProtocolFrame', () => {
     void host.client.ensureProtocolFrame();
     const frame = host.iframe();
     host.status().ready();
-    await listen(host);
+    await host.listen();
     const statuses: ProtocolStatus[] = [];
     host.client.subscribeProtocolStatus(status => statuses.push(status));
 
@@ -198,7 +173,7 @@ describe('configureProtocolFrame', () => {
     const host = createFrameHost(undefined, FRAME_CONFIG, timers);
     const warmup = host.client.warmupProtocol().catch((err: unknown) => (err as Error).message);
     const old = host.iframe();
-    await listen(host);
+    await host.listen();
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
@@ -215,7 +190,7 @@ describe('configureProtocolFrame', () => {
     // Given: the shared store's first read booted the frame before the reset was known.
     const host = createFrameHost(undefined, FRAME_CONFIG, timers);
     void host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => undefined);
-    await listen(host);
+    await host.listen();
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, skipWorkerCache: true });
@@ -282,7 +257,7 @@ describe('protocol iframe listening handshake', () => {
 
     // When
     host.serve().handleRequest(storage.authRead, () => ok('0x0102'));
-    await listen(host);
+    await host.listen();
 
     // Then
     await expect(read).resolves.toBe('0x0102');
@@ -300,7 +275,7 @@ describe('protocol iframe listening handshake', () => {
     // When with no request waiting, the store builds a new frame 2 s later, which listens
     await timers.advance(2_000);
     const rebuilt = host.iframe();
-    await listen(host);
+    await host.listen();
 
     // Then
     expect(await failed).toBe('failed');
@@ -341,7 +316,7 @@ describe('protocol iframe listening handshake', () => {
       (err: unknown) => settled.push(err instanceof Error ? err.message : String(err)),
     );
     host.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
-    await listen(host);
+    await host.listen();
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
@@ -364,7 +339,7 @@ describe('protocol iframe listening handshake', () => {
     // Given a listening frame
     void host.client.readSharedModeStorage(SITE_ID, 'backend').catch(() => undefined);
     host.serve().handleRequest(storage.modeRead, () => ok(null));
-    await listen(host);
+    await host.listen();
     const settled: string[] = [];
 
     // When
@@ -373,11 +348,11 @@ describe('protocol iframe listening handshake', () => {
       (err: unknown) => settled.push(err instanceof Error ? err.message : String(err)),
     );
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await listen(host);
+    await host.listen();
 
     // Then
     expect(settled).toEqual([PROTOCOL_ERRORS.FRAME_RESET]);
-    expect(sent(host.iframe())).toEqual([]);
+    expect(host.sent().filter(message => message.tag === 'request')).toEqual([]);
   });
 
   it('As a returning user whose protocol frame dies, I see the shared store report it down and rebuild it unasked', async () => {
@@ -387,7 +362,7 @@ describe('protocol iframe listening handshake', () => {
     const unsubscribeAuth = host.client.subscribeSharedAuthStorage(() => undefined);
     const dead = host.iframe();
     const status = host.status();
-    await listen(host);
+    await host.listen();
 
     // When it dies, and with no request waiting the store builds a new frame 2 s later, which listens
     status.fail(new ProtocolFatalError('boom'));
@@ -396,7 +371,7 @@ describe('protocol iframe listening handshake', () => {
     const framesBeforeInterval = host.frames();
     await timers.advance(1);
     const rebuilt = host.iframe();
-    await listen(host);
+    await host.listen();
 
     // Then
     expect(statusAfterFatal).toBe('unavailable');

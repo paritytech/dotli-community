@@ -13,11 +13,7 @@ import { subscribe } from './subscription.js';
 
 const { dotName, owner, executableManifest, rootManifest } = protocolSchema.traits.resolve;
 
-export interface RemoteResolveDeps {
-  rpc: FrameRpc;
-}
-
-export function createRemoteResolve({ rpc }: RemoteResolveDeps) {
+export function createRemoteResolve(rpc: FrameRpc) {
   /**
    * Hears the frame's resolve phases, then its result, and unsubscribes on the result. The budget runs once the frame
    * is ready, and a resolution that outlives it is unsubscribed, so the frame stops it.

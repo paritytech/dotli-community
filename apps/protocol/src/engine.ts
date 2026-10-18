@@ -16,7 +16,7 @@ import {
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
-import { err, ok, type CallError, type ResultPayload } from '@dotli/transport';
+import { err, ok, type AnyMethod, type CallError, type ResultPayload } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
@@ -75,7 +75,6 @@ export type EngineResolver = Pick<
 export const MAX_CONNS = 10;
 
 interface Connection {
-  readonly genesisHash: string;
   readonly connectionId: string;
   readonly connection: StringJsonRpcConnection;
   readonly sink: ChainSink;
@@ -184,7 +183,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       if (connection === null) {
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
-      const opened: Connection = { genesisHash, connectionId, connection, sink };
+      const opened: Connection = { connectionId, connection, sink };
       held = opened;
       connections.set(connectionId, opened);
       scopes.add(connections);
@@ -233,10 +232,11 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
   }
 
   /**
-   * The resolver's sync budget for a read the host gives up on after `budgetMs`, counted from when the call arrives,
-   * less a grace for the typed error to cross back before the host gives up.
+   * The resolver's sync budget for a read the host gives up on after the method's budget, counted from when the call
+   * arrives, less a grace for the typed error to cross back before the host gives up.
    */
-  function syncOptions(budgetMs: number | null): { syncTimeoutMs?: number } {
+  function syncOptions(method: AnyMethod): { syncTimeoutMs?: number } {
+    const budgetMs = budgetOf(method);
     if (budgetMs === null) {
       return {};
     }
@@ -270,7 +270,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
           onPhase: phase => {
             sink.receive({ tag: 'phase', value: phase });
           },
-          ...syncOptions(budgetOf(methods.resolve.dotName)),
+          ...syncOptions(methods.resolve.dotName),
         })
         .then(
           resolved => {
@@ -288,23 +288,19 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       answerRead(() => {
         const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
         assertStr(label, 'label');
-        return resolver.resolveOwner(label, syncOptions(budgetOf(methods.resolve.owner)));
+        return resolver.resolveOwner(label, syncOptions(methods.resolve.owner));
       }),
     resolveExecutableManifest: ({ label, kind }) =>
       answerRead(() => {
         const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
         assertStr(label, 'label');
-        return resolver.resolveExecutableManifest(
-          label,
-          kind,
-          syncOptions(budgetOf(methods.resolve.executableManifest)),
-        );
+        return resolver.resolveExecutableManifest(label, kind, syncOptions(methods.resolve.executableManifest));
       }),
     resolveRootManifest: ({ label }) =>
       answerRead(() => {
         const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
         assertStr(label, 'label');
-        return resolver.resolveRootManifest(label, syncOptions(budgetOf(methods.resolve.rootManifest)));
+        return resolver.resolveRootManifest(label, syncOptions(methods.resolve.rootManifest));
       }),
     cleanup,
   };

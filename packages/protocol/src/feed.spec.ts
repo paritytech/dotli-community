@@ -4,9 +4,10 @@
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { deferred } from '@dotli/shared';
+import { createStatusCell, deferred, type StatusCell } from '@dotli/shared';
 import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
-import { createFeedKeeper, type FeedEnds, type FeedName } from './feed.js';
+import { createFeedKeeper, type FeedEnds, type FeedFrame, type FeedName } from './feed.js';
+import type { ProtocolStatus } from './frame.js';
 
 /** A frame's transport, known here by name only. */
 interface Transport {
@@ -24,8 +25,16 @@ describe('createFeedKeeper', () => {
   let opened: HeldSubscription[];
   let current: Transport;
 
-  /** A keeper following a frame whose transport is `current`, recording each subscription it opens. */
-  const keeperOf = (feed: FeedName, frame = { transport: () => Promise.resolve(current) }) =>
+  let status: StatusCell<ProtocolStatus>;
+  /** The frame, ready with `current` as its transport unless a test says otherwise. */
+  const frameOf = (transport = (): Promise<Transport> => Promise.resolve(current)): FeedFrame<Transport> => ({
+    getStatus: status.get,
+    subscribeStatus: status.subscribe,
+    transport,
+  });
+
+  /** A keeper following `frame`, recording each subscription it opens. */
+  const keeperOf = (feed: FeedName, frame = frameOf(), boots = true) =>
     createFeedKeeper(
       feed,
       frame,
@@ -36,13 +45,18 @@ describe('createFeedKeeper', () => {
           held.unsubscribed = true;
         };
       },
-      timers,
+      { boots, timers },
     );
 
   beforeEach(() => {
     timers = manualTimers();
     opened = [];
     current = { name: 'first' };
+    status = createStatusCell<ProtocolStatus>('ready', {
+      onListenerError: error => {
+        throw error;
+      },
+    });
     recordLog({ onFinished: onTestFinished });
   });
 
@@ -133,7 +147,7 @@ describe('createFeedKeeper', () => {
     expect(captured).toEqual([]);
   });
 
-  it('As the host, I follow the frame onto a new transport and the feed held on the old one is unsubscribed', async () => {
+  it('As the host, my feed follows each frame that boots, and the feed held on the old one is unsubscribed', async () => {
     // Given one feed held, and following the same transport again
     const keeper = keeperOf('shared_auth');
     keeper.follow();
@@ -141,9 +155,10 @@ describe('createFeedKeeper', () => {
     keeper.follow();
     await timers.advance(0);
 
-    // When the frame has a new transport
+    // When a new frame boots
     current = { name: 'second' };
-    keeper.follow();
+    status.set('failed');
+    status.set('booting');
     await timers.advance(0);
 
     // Then
@@ -157,7 +172,10 @@ describe('createFeedKeeper', () => {
     // Given a feed the frame ended, waiting to be reopened, and a frame whose next transport is still being asked for
     const asked = deferred<Transport>();
     let transport = (): Promise<Transport> => Promise.resolve(current);
-    const keeper = keeperOf('shared_auth', { transport: () => transport() });
+    const keeper = keeperOf(
+      'shared_auth',
+      frameOf(() => transport()),
+    );
     keeper.follow();
     await timers.advance(0);
     opened[0]?.end(new TypeError('relay broke'));
@@ -172,5 +190,46 @@ describe('createFeedKeeper', () => {
     // Then
     expect(opened).toHaveLength(1);
     expect(timers.pending()).toBe(0);
+  });
+
+  it('As the host, a feed that boots no frame hears none while the frame is down, then the next one that boots', async () => {
+    // Given a frame that is down, and telemetry that never boots one
+    status.set('idle');
+    let asked = 0;
+    const keeper = keeperOf(
+      'telemetry',
+      frameOf(() => {
+        asked += 1;
+        return Promise.resolve(current);
+      }),
+      false,
+    );
+
+    // When the feed is followed, and a frame boots later
+    keeper.follow();
+    await timers.advance(0);
+    const askedWhileDown = asked;
+    status.set('booting');
+    await timers.advance(0);
+
+    // Then
+    expect([askedWhileDown, asked, opened.length]).toEqual([0, 1, 1]);
+  });
+
+  it('As the host, a feed let go is not followed onto the next frame', async () => {
+    // Given
+    const keeper = keeperOf('shared_auth');
+    keeper.follow();
+    await timers.advance(0);
+
+    // When the last listener leaves, and a new frame boots
+    keeper.stop();
+    current = { name: 'second' };
+    status.set('failed');
+    status.set('booting');
+    await timers.advance(0);
+
+    // Then
+    expect(opened.map(({ transport, unsubscribed }) => [transport.name, unsubscribed])).toEqual([['first', true]]);
   });
 });

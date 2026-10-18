@@ -46,6 +46,13 @@ export interface SharedStoreDeps {
 
 const { storage } = protocolSchema.traits;
 
+/** One store's read, write and clear. Both stores share their codecs, so they share these types. */
+interface StoreMethods {
+  read: typeof storage.authRead;
+  write: typeof storage.authWrite;
+  clear: typeof storage.authClear;
+}
+
 export interface SharedStoreHandler {
   /** Stops serving the stores and hearing other tabs. */
   stop: () => void;
@@ -95,16 +102,6 @@ function storeKey(
   }
   assertKey(payload.key);
   return ok(build(site.value, payload.key));
-}
-
-/** Checks a call's origin, site and auth key, and returns its storage key. */
-function authKeyOf(payload: { siteId: string; key: string }, context: ProtocolContext): ResultPayload<string, Failure> {
-  return storeKey(payload, context, assertAuthKey, buildSharedAuthStorageKey);
-}
-
-/** Checks a call's origin, site and mode key, and returns its storage key. */
-function modeKeyOf(payload: { siteId: string; key: string }, context: ProtocolContext): ResultPayload<string, Failure> {
-  return storeKey(payload, context, assertModeKey, buildSharedModeStorageKey);
 }
 
 /** Reads with the call's storage key, or answers the call's refusal. */
@@ -166,36 +163,50 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
     }
   }
 
+  /**
+   * Serves one store, keyed by `build` once `assertKey` passes. `onChange` hears each write and clear the store
+   * made.
+   */
+  function serveStore(
+    methods: StoreMethods,
+    assertKey: (key: string) => void,
+    build: (siteId: SiteId, key: string) => string,
+    onChange: (siteId: string, key: string, value: string | null) => void = () => undefined,
+  ): (() => void)[] {
+    const keyOf = (payload: { siteId: string; key: string }, context: ProtocolContext) =>
+      storeKey(payload, context, assertKey, build);
+    return [
+      serving.handleRequest(methods.read, (payload, context) =>
+        readWith(keyOf(payload, context), key => deps.storage().getItem(key)),
+      ),
+      serving.handleRequest(methods.write, (payload, context) =>
+        writeWith(keyOf(payload, context), key => {
+          deps.storage().setItem(key, payload.value);
+          onChange(payload.siteId, payload.key, payload.value);
+        }),
+      ),
+      serving.handleRequest(methods.clear, (payload, context) =>
+        writeWith(keyOf(payload, context), key => {
+          deps.storage().removeItem(key);
+          onChange(payload.siteId, payload.key, null);
+        }),
+      ),
+    ];
+  }
+
   channel?.addEventListener('message', relay);
 
   const unregister = [
-    serving.handleRequest(storage.authRead, (payload, context) =>
-      readWith(authKeyOf(payload, context), key => deps.storage().getItem(key)),
+    ...serveStore(
+      { read: storage.authRead, write: storage.authWrite, clear: storage.authClear },
+      assertAuthKey,
+      buildSharedAuthStorageKey,
+      broadcast,
     ),
-    serving.handleRequest(storage.authWrite, (payload, context) =>
-      writeWith(authKeyOf(payload, context), key => {
-        deps.storage().setItem(key, payload.value);
-        broadcast(payload.siteId, payload.key, payload.value);
-      }),
-    ),
-    serving.handleRequest(storage.authClear, (payload, context) =>
-      writeWith(authKeyOf(payload, context), key => {
-        deps.storage().removeItem(key);
-        broadcast(payload.siteId, payload.key, null);
-      }),
-    ),
-    serving.handleRequest(storage.modeRead, (payload, context) =>
-      readWith(modeKeyOf(payload, context), key => deps.storage().getItem(key)),
-    ),
-    serving.handleRequest(storage.modeWrite, (payload, context) =>
-      writeWith(modeKeyOf(payload, context), key => {
-        deps.storage().setItem(key, payload.value);
-      }),
-    ),
-    serving.handleRequest(storage.modeClear, (payload, context) =>
-      writeWith(modeKeyOf(payload, context), key => {
-        deps.storage().removeItem(key);
-      }),
+    ...serveStore(
+      { read: storage.modeRead, write: storage.modeWrite, clear: storage.modeClear },
+      assertModeKey,
+      buildSharedModeStorageKey,
     ),
     serving.handleSubscription(storage.authChanges, (_start, context, sink) => {
       if (!isOriginAllowed(context)) {

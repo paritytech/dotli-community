@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { FrameStatus } from './frame-status.js';
 import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
@@ -23,19 +22,10 @@ import {
 import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame } from './frame.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { recordWireMessage } from './testing/index.js';
-import {
-  createFrameDom,
-  createFrameHost,
-  FRAME_CONFIG,
-  type FakeIframe,
-  type FrameDom,
-  type FrameHost,
-} from './testing/frame-host.js';
+import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameDom, type FrameHost } from './testing/frame-host.js';
 
 const { resolve, storage, chain } = protocolSchema.traits;
 
-// The host posts its handshake again this often until it is answered.
-const HANDSHAKE_RETRY_MS = 50;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const READY_TIMEOUT_MS = 240_000;
 
@@ -47,29 +37,6 @@ beforeEach(() => {
 });
 
 const advance = (ms = 0): Promise<void> => timers.advance(ms);
-
-/** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
-async function listen(dom: FrameDom): Promise<FrameStatus> {
-  const status = dom.status();
-  await advance(HANDSHAKE_RETRY_MS);
-  return status;
-}
-
-/** Answers the current iframe and reports its light client ready. */
-async function bringUp(dom: FrameDom): Promise<FrameStatus> {
-  const status = await listen(dom);
-  status.ready();
-  await advance();
-  return status;
-}
-
-/** What the host sent `iframe`, as `tag:trait.method`, its handshakes left out. */
-function sent(iframe: FakeIframe): string[] {
-  return iframe.window.posted.flatMap(data => {
-    const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
-    return message === null ? [] : [`${message.tag}:${message.trait}.${message.method}`];
-  });
-}
 
 /** The frame's transport once its handshake is done, which is how the shared store waits for a listening frame. */
 async function whenListening(frame: ProtocolFrame): Promise<ProtocolTransport> {
@@ -87,7 +54,7 @@ async function recordedReady(): Promise<ArrayBuffer[]> {
   const frame = createProtocolFrame(other.deps);
   frame.configure(FRAME_CONFIG);
   void frame.transport();
-  const status = await listen(other);
+  const status = await other.listen();
   status.ready();
   await advance();
   return other
@@ -113,7 +80,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.transport();
-    await listen(dom);
+    await dom.listen();
     const stranger = dom.stranger();
 
     // When the other iframe, and the frame from another origin, say the light client is ready
@@ -142,7 +109,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.transport();
-    await listen(dom);
+    await dom.listen();
 
     // When the frame sends bytes too short to be a message, and an object as a frame of an earlier release does
     dom.deliverRaw(new Uint8Array([0xff, 0xff, 0xff]).buffer);
@@ -198,7 +165,7 @@ describe('createProtocolFrame', () => {
     void frame.whenReady().then(() => settled.push('ready'));
 
     // When
-    const status = await listen(dom);
+    const status = await dom.listen();
     const afterListening = [...settled];
     status.ready();
     await advance();
@@ -218,7 +185,7 @@ describe('createProtocolFrame', () => {
     // When
     const first = await frame.transport();
     const second = await frame.transport();
-    await bringUp(dom);
+    await dom.bringUp();
 
     // Then
     expect(framesBeforeAsking).toBe(0);
@@ -239,7 +206,7 @@ describe('createProtocolFrame', () => {
 
     // When the frame refuses the host wire version
     dom.serveNewer();
-    await advance(HANDSHAKE_RETRY_MS);
+    await dom.retryHandshake();
 
     // Then
     expect(heard).toEqual([{ name: 'ProtocolVersionMismatchError', status: 'failed' }]);
@@ -256,7 +223,7 @@ describe('createProtocolFrame', () => {
     // When
     frame.configure(FRAME_CONFIG);
     await advance();
-    await listen(dom);
+    await dom.listen();
 
     // Then
     expect(framesBeforeConfig).toBe(0);
@@ -274,7 +241,7 @@ describe('createProtocolFrame', () => {
     dom.status().fail(new ProtocolInitFailedError('no SharedWorker'));
 
     // When
-    await advance(HANDSHAKE_RETRY_MS);
+    await dom.retryHandshake();
     const failure = await up;
     const statusAfterFailure = frame.getStatus();
     await advance(2_000);
@@ -297,7 +264,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
-    const status = await listen(dom);
+    const status = await dom.listen();
     dom.serve().handleRequest(resolve.owner, () => new Promise(() => undefined));
     const transport = await frame.transport();
     const owner = transport.request(resolve.owner, { label: 'doom' }).then(() => null, toError);
@@ -322,7 +289,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
-    const status = await bringUp(dom);
+    const status = await dom.bringUp();
 
     // When its light client dies
     status.fail(new ProtocolFatalError('boom'));
@@ -342,12 +309,12 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
-    const first = await bringUp(dom);
+    const first = await dom.bringUp();
 
     // When it dies soon after ready, and so does the frame rebuilt after the backoff
     first.fail(new ProtocolFatalError('boom'));
     await advance(2_000);
-    const second = await bringUp(dom);
+    const second = await dom.bringUp();
     second.fail(new ProtocolFatalError('boom'));
     await advance(4_000);
 
@@ -356,7 +323,7 @@ describe('createProtocolFrame', () => {
     expect(captured).toEqual([{ flow: 'protocol', step: 'frame_lost' }]);
 
     // When the next frame stays ready for the stable span before it dies
-    const third = await bringUp(dom);
+    const third = await dom.bringUp();
     await advance(30_000);
     third.fail(new ProtocolFatalError('boom'));
     await advance();
@@ -378,7 +345,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
-    const status = await bringUp(dom);
+    const status = await dom.bringUp();
     const transport = await frame.transport();
     dom.serve().handleRequest(resolve.owner, () => new Promise(() => undefined));
     const owner = transport.request(resolve.owner, { label: 'doom' }).then(() => null, toError);
@@ -404,7 +371,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
-    const status = await bringUp(dom);
+    const status = await dom.bringUp();
     const transport = await frame.transport();
     dom.serve().handleRequest(resolve.owner, () => new Promise(() => undefined));
     const owner = transport.request(resolve.owner, { label: 'doom' }).then(() => null, toError);
@@ -429,7 +396,7 @@ describe('createProtocolFrame', () => {
     const first = dom.iframe();
     const held = deferred<string | null>();
     dom.serve(first).handleRequest(storage.authRead, () => held.promise.then(value => ok(value)));
-    const firstStatus = await bringUp(dom);
+    const firstStatus = await dom.bringUp();
     const firstTransport = await frame.transport();
     // Enough reads that their ids reach past the one the rebuilt frame's read gets
     const oldReads = Array.from({ length: 16 }, () =>
@@ -442,7 +409,7 @@ describe('createProtocolFrame', () => {
     // And a read on the rebuilt frame, which it never answers
     const rebuilt = await frame.transport();
     dom.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
-    await bringUp(dom);
+    await dom.bringUp();
     const answered: boolean[] = [];
     void rebuilt.request(storage.authRead, { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer.success));
     await advance();
@@ -473,7 +440,7 @@ describe('createProtocolFrame', () => {
 
     // When
     dom.serveNewer();
-    await advance(HANDSHAKE_RETRY_MS);
+    await dom.retryHandshake();
     const failure = await up;
     await advance(60_000);
     const framesAfterBackoff = dom.frames();
@@ -499,7 +466,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
-    const status = await bringUp(dom);
+    const status = await dom.bringUp();
     const heard: Error[] = [];
     frame.onVersionMismatch(error => heard.push(error));
 
@@ -570,7 +537,7 @@ describe('createProtocolFrame', () => {
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     const up = frame.whenReady();
-    const status = await bringUp(dom);
+    const status = await dom.bringUp();
     await up;
     status.fail(new ProtocolFatalError('boom'));
     await advance();
@@ -585,7 +552,7 @@ describe('createProtocolFrame', () => {
     // When
     const up = outcomeOf(frame.whenReady());
     const framesAfterAsking = dom.frames();
-    await bringUp(dom);
+    await dom.bringUp();
 
     // Then
     expect(framesWhileDown).toBe(0);
@@ -600,7 +567,7 @@ describe('createProtocolFrame', () => {
 
     // When
     const up = outcomeOf(frame.whenReady());
-    const status = await listen(dom);
+    const status = await dom.listen();
     status.fail(new ProtocolInitFailedError('no SharedWorker'));
 
     // Then
@@ -637,7 +604,7 @@ describe('createProtocolFrame', () => {
     });
     frame.configure(FRAME_CONFIG);
     const up = frame.whenReady();
-    const firstStatus = await bringUp(dom);
+    const firstStatus = await dom.bringUp();
     await up;
     firstStatus.fail(new ProtocolFatalError('boom'));
     await advance();
@@ -647,7 +614,7 @@ describe('createProtocolFrame', () => {
     const first = outcomeOf(frame.whenReady());
     const second = outcomeOf(whenListening(frame));
     const framesAfterAsking = dom.frames();
-    const status = await listen(dom);
+    const status = await dom.listen();
     const secondSettled = await second;
     status.fail(new ProtocolInitFailedError('no SharedWorker'));
     const outcomes = [await first, secondSettled];
@@ -674,7 +641,7 @@ describe('createProtocolFrame', () => {
     const second = outcomeOf(whenListening(frame));
     const rebuilt = dom.iframe();
     const framesAfterAsking = dom.frames();
-    await bringUp(dom);
+    await dom.bringUp();
     await advance(2_000);
 
     // Then
@@ -715,7 +682,7 @@ describe('protocol status', () => {
 
     // When
     void host.client.ensureProtocolFrame();
-    await bringUp(host);
+    await host.bringUp();
 
     // Then
     expect(framesBeforeAsking).toBe(0);
@@ -726,7 +693,7 @@ describe('protocol status', () => {
   it('As a dotli user whose protocol frame fails its init, I see it reported failed and then rebuilt', async () => {
     // Given
     void host.client.ensureProtocolFrame().catch(() => undefined);
-    const status = await listen(host);
+    const status = await host.listen();
     const dead = host.iframe();
 
     // When
@@ -734,7 +701,7 @@ describe('protocol status', () => {
     await advance();
     const statusAfterFailure = host.client.getProtocolStatus();
     await advance(2_000);
-    await bringUp(host);
+    await host.bringUp();
 
     // Then
     expect(statusAfterFailure).toBe('failed');
@@ -746,7 +713,7 @@ describe('protocol status', () => {
   it('As a dotli user, I make a request while the protocol frame boots and it waits, then fails as soon as that boot fails', async () => {
     // Given
     const warmup = settledWith(host.client.warmupProtocol());
-    const status = await listen(host);
+    const status = await host.listen();
     const waitingWhileBooting = warmup.outcome;
 
     // When
@@ -763,13 +730,13 @@ describe('protocol status', () => {
     const statuses: SharedStoreStatus[] = [];
     host.client.subscribeSharedStoreStatus(status => statuses.push(status));
     const warmup = settledWith(host.client.warmupProtocol());
-    await listen(host);
+    await host.listen();
     const dead = host.iframe();
 
     // When
     await advance(READY_TIMEOUT_MS);
     await advance(2_000);
-    await listen(host);
+    await host.listen();
 
     // Then
     expect(warmup.outcome).toBe(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT);
@@ -780,7 +747,7 @@ describe('protocol status', () => {
   it('As a dotli user whose light client dies soon after each rebuild, I wait longer before each new frame', async () => {
     // Given a frame that comes up and dies at once
     void host.client.ensureProtocolFrame();
-    let status = await bringUp(host);
+    let status = await host.bringUp();
     const rebuildsAfter: number[] = [];
 
     // When each rebuild comes up and dies at once too
@@ -794,7 +761,7 @@ describe('protocol status', () => {
       }
       expect(host.frames()).toBe(1);
       rebuildsAfter.push(waited);
-      status = await bringUp(host);
+      status = await host.bringUp();
     }
 
     // Then
@@ -804,13 +771,13 @@ describe('protocol status', () => {
   it('As a dotli user whose protocol frame stayed up past 30 s, I get its rebuild after 2 s again', async () => {
     // Given two quick deaths grew the wait, then a frame stayed up 30 s
     void host.client.ensureProtocolFrame();
-    let status = await bringUp(host);
+    let status = await host.bringUp();
     status.fail(new ProtocolFatalError('boom'));
     await advance(2_000);
-    status = await bringUp(host);
+    status = await host.bringUp();
     status.fail(new ProtocolFatalError('boom'));
     await advance(4_000);
-    status = await bringUp(host);
+    status = await host.bringUp();
     await advance(30_000);
 
     // When
@@ -827,13 +794,13 @@ describe('protocol status', () => {
   it('As a returning user, I change the frame config during my session and see the shared store down, then available', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    await bringUp(host);
+    await host.bringUp();
     const statuses: SharedStoreStatus[] = [];
     host.client.subscribeSharedStoreStatus(status => statuses.push(status));
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    await listen(host);
+    await host.listen();
 
     // Then
     expect(statuses).toEqual(['unavailable', 'available']);
@@ -851,7 +818,7 @@ describe('protocol status', () => {
       sink.receive({ tag: 'connected', value: undefined });
       return () => undefined;
     });
-    await bringUp(host);
+    await host.bringUp();
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
@@ -864,7 +831,7 @@ describe('protocol status', () => {
   it('As a dotli user, I change the frame config and a late fatal from the dropped frame does not fail the rebuild', async () => {
     // Given the dropped frame's fatal is sent while the client has no frame
     void host.client.ensureProtocolFrame();
-    const deadStatus = await bringUp(host);
+    const deadStatus = await host.bringUp();
     host.client.subscribeProtocolStatus(next => {
       if (next === 'idle') {
         deadStatus.fail(new ProtocolFatalError('late'));
@@ -875,18 +842,22 @@ describe('protocol status', () => {
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const read = settledWith(host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY));
     host.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
-    await listen(host);
+    await host.listen();
 
     // Then
     expect(host.client.getProtocolStatus()).toBe('listening');
     expect(read.outcome).toBeNull();
-    expect(sent(host.iframe())).toEqual(['start:frame.status', 'start:frame.telemetry', 'request:storage.authRead']);
+    expect(host.sent().map(message => `${message.tag}:${message.trait}.${message.method}`)).toEqual([
+      'start:frame.status',
+      'start:frame.telemetry',
+      'request:storage.authRead',
+    ]);
   });
 
   it('As a dotli integrator, I request from a status listener after a config change and see the statuses in order', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    await bringUp(host);
+    await host.bringUp();
     const heard: ProtocolStatus[][] = [[], []];
     let request: Promise<void> | null = null;
     host.client.subscribeProtocolStatus(next => {
@@ -900,7 +871,7 @@ describe('protocol status', () => {
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const framesAfterChange = host.frames();
-    await bringUp(host);
+    await host.bringUp();
 
     // Then
     expect(framesAfterChange).toBe(1);
@@ -912,14 +883,14 @@ describe('protocol status', () => {
   it('As a dotli integrator, I request from an idle listener during a config change and the frame keeps one keeper', async () => {
     // Given a second keeper would wait behind the first and rebuild the next lost frame at once
     void host.client.ensureProtocolFrame();
-    await bringUp(host);
+    await host.bringUp();
     host.client.subscribeProtocolStatus(next => {
       if (next === 'idle') {
         void host.client.ensureProtocolFrame().catch(() => undefined);
       }
     });
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
-    const status = await bringUp(host);
+    const status = await host.bringUp();
 
     // When
     status.fail(new ProtocolFatalError('boom'));
@@ -1000,14 +971,14 @@ describe('protocol status', () => {
   it('As a dotli user, I change the config during the wait before a rebuild and get a frame at once, and the dropped wait leaves no second rebuild', async () => {
     // Given a retry left over from the dropped wait would rebuild the next lost frame at once
     void host.client.ensureProtocolFrame();
-    let status = await bringUp(host);
+    let status = await host.bringUp();
     status.fail(new ProtocolFatalError('boom'));
     await advance(1_000);
 
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const mode = new URL(host.iframe().src).searchParams.get('mode');
-    status = await bringUp(host);
+    status = await host.bringUp();
     status.fail(new ProtocolFatalError('boom'));
     await advance(1_999);
     const framesBeforeWait = host.frames();
@@ -1022,7 +993,7 @@ describe('protocol status', () => {
   it('As a dotli integrator, I change the config and request from a failed listener and the request resolves', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    const status = await bringUp(host);
+    const status = await host.bringUp();
     let request: Promise<void> | null = null;
     host.client.subscribeProtocolStatus(next => {
       if (next === 'failed' && request === null) {
@@ -1034,7 +1005,7 @@ describe('protocol status', () => {
     // When
     status.fail(new ProtocolFatalError('boom'));
     await advance();
-    await bringUp(host);
+    await host.bringUp();
 
     // Then
     await expect(request).resolves.toBeUndefined();
@@ -1056,7 +1027,7 @@ describe('protocol status', () => {
     const framesAfterChange = host.frames();
     const mode = new URL(host.iframe().src).searchParams.get('mode');
     void host.client.ensureProtocolFrame();
-    await bringUp(host);
+    await host.bringUp();
 
     // Then
     expect(framesAfterChange).toBe(1);
@@ -1084,7 +1055,7 @@ describe('protocol status', () => {
 
     // When
     void host.client.ensureProtocolFrame();
-    await listen(host);
+    await host.listen();
 
     // Then the next listener heard each change, and each throw was captured once and counted once
     expect(heard).toEqual(['booting', 'listening']);
@@ -1101,7 +1072,7 @@ describe('protocol status', () => {
   it('As a dotli integrator, I unsubscribe a listener from another listener and it hears nothing after that', async () => {
     // Given
     void host.client.ensureProtocolFrame();
-    const status = await bringUp(host);
+    const status = await host.bringUp();
     const heard: ProtocolStatus[] = [];
     let unsubscribe: (() => void) | null = null;
     host.client.subscribeProtocolStatus(next => {

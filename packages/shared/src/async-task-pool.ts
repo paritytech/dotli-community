@@ -116,7 +116,7 @@ class TaskPool implements AsyncTaskPool {
 
   /** Starts queued tasks of the pool while it has room, then tells `settle` waiters if nothing is left. */
   private pump(pool: string): void {
-    while (this.countRunning(pool) < this.params.poolSize) {
+    while (this.hasRoom(pool)) {
       // A task whose signal is already aborted is left for its own abort listener, which may not have run yet when
       // another task on the same signal frees a slot.
       const index = this.queue.findIndex(task => task.pool === pool && task.signal?.aborted !== true);
@@ -129,8 +129,8 @@ class TaskPool implements AsyncTaskPool {
         void this.run(task);
       }
     }
-    if (this.isIdle(pool)) {
-      const waiters = this.settleWaiters.get(pool) ?? [];
+    const waiters = this.settleWaiters.get(pool);
+    if (waiters !== undefined && this.isIdle(pool)) {
       this.settleWaiters.delete(pool);
       for (const resolve of waiters) {
         resolve();
@@ -203,19 +203,39 @@ class TaskPool implements AsyncTaskPool {
     }
   }
 
-  private countRunning(pool: string): number {
+  private hasRoom(pool: string): boolean {
+    const { poolSize } = this.params;
+    if (poolSize === Number.POSITIVE_INFINITY) {
+      return true;
+    }
     let count = 0;
     for (const task of this.running) {
       if (task.pool === pool) {
         count += 1;
+        if (count >= poolSize) {
+          return false;
+        }
       }
     }
-    return count;
+    return count < poolSize;
   }
 
   private isIdle(pool: string): boolean {
     const inPool = (task: Task): boolean => task.pool === pool;
-    return !this.queue.some(inPool) && ![...this.running].some(inPool) && ![...this.waiting].some(inPool);
+    if (this.queue.some(inPool)) {
+      return false;
+    }
+    for (const task of this.running) {
+      if (inPool(task)) {
+        return false;
+      }
+    }
+    for (const task of this.waiting) {
+      if (inPool(task)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private retryDelay(retry: number, error: unknown): number {

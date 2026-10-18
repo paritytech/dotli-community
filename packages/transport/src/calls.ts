@@ -8,7 +8,7 @@ import type { ResultPayload } from 'scale-ts';
 import type { Post, Refuse, RunListener } from './parts.js';
 import { createRecentIds } from './recent-ids.js';
 import { cancelled, err, malformedFrame, type CallError, type Failure } from './result.js';
-import { sameMethod, type Address, type Request, type Subscription } from './schema.js';
+import { sameMethod, type Address, type AnyMethod, type Request, type Subscription } from './schema.js';
 import { decode, encodeCall, type Call } from './wire.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
@@ -22,6 +22,7 @@ export interface SubscriptionListeners<V, I> {
 
 export interface CallsDeps {
   nextId: () => number;
+  addressOf: (method: AnyMethod) => Address;
   post: Post;
   /** Settles once the handshake succeeds or fails, or the transport closes. */
   handshakeOver: Promise<void>;
@@ -35,14 +36,12 @@ export interface Calls {
   /** Resolves to the peer's outcome or `Cancelled`. Rejects with the closing error, or when the call cannot go out. */
   request<P, R, E>(
     method: Request<P, R, E>,
-    address: Address,
     payload: P,
     signal: AbortSignal | undefined,
   ): Promise<ResultPayload<R, CallError<E>>>;
   /** Opens a subscription, and returns what stops it. Throws when the start does not encode. */
   subscribe<S, V, I>(
     method: Subscription<S, V, I>,
-    address: Address,
     start: S,
     listeners: SubscriptionListeners<V, I>,
     signal: AbortSignal | undefined,
@@ -67,7 +66,7 @@ interface OutCall {
 }
 
 export function createCalls(deps: CallsDeps): Calls {
-  const { post, handshakeOver, closedBy, refuse, runListener } = deps;
+  const { addressOf, post, handshakeOver, closedBy, refuse, runListener } = deps;
   // The calls that went out and wait for the peer.
   const out = new Map<number, OutCall>();
   const ended = createRecentIds();
@@ -97,10 +96,10 @@ export function createCalls(deps: CallsDeps): Calls {
   return {
     request<P, R, E>(
       method: Request<P, R, E>,
-      address: Address,
       payload: P,
       signal: AbortSignal | undefined,
     ): Promise<ResultPayload<R, CallError<E>>> {
+      const address = addressOf(method);
       return new Promise<ResultPayload<R, CallError<E>>>((resolve, reject) => {
         // A closed transport is never a call outcome, so its error wins over an aborted signal.
         const closed = closedBy();
@@ -178,11 +177,11 @@ export function createCalls(deps: CallsDeps): Calls {
 
     subscribe<S, V, I>(
       method: Subscription<S, V, I>,
-      address: Address,
       start: S,
       listeners: SubscriptionListeners<V, I>,
       signal: AbortSignal | undefined,
     ): () => void {
+      const address = addressOf(method);
       let state: 'queued' | 'open' | 'ended' = 'queued';
       const id = deps.nextId();
 

@@ -68,22 +68,6 @@ export interface WorkerScope {
 export type WorkerResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
   Pick<typeof Chains, 'enableSyncReporting' | 'onChainDetail' | 'onChainSync'>;
 
-/** Calls `beat` once per heartbeat interval. Returns a stop. */
-export interface HeartbeatClock {
-  start: (beat: () => void) => () => void;
-}
-
-function intervalClock(intervalMs: number): HeartbeatClock {
-  return {
-    start: beat => {
-      const timer = setInterval(beat, intervalMs);
-      return () => {
-        clearInterval(timer);
-      };
-    },
-  };
-}
-
 /** The network a worker serves, or why it cannot serve one. */
 export type WorkerNetwork = ResultPayload<Network, string>;
 
@@ -96,8 +80,8 @@ export interface ProtocolWorkerDeps {
   resolver: WorkerResolver;
   /** Opens the span of one tab's request. */
   openSpan?: typeof m.open;
-  /** Defaults to a `HEARTBEAT_INTERVAL_MS` interval. */
-  heartbeat?: HeartbeatClock;
+  /** Beats each port. Defaults to a `HEARTBEAT_INTERVAL_MS` interval. */
+  heartbeat?: Ticker;
   /** The light client's inbound byte total, which every tab hears for its speed readout. Unset, nothing is reported. */
   netBytes?: { read: () => number; ticker?: Ticker | undefined } | undefined;
   /** Sends buffered telemetry before the worker closes. Never rejects. */
@@ -169,7 +153,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     phase = { name: 'failed', error: new ProtocolInitFailedError(networkInitFailure) };
     status.fail(phase.error);
   }
-  const stopHeartbeat = (deps.heartbeat ?? intervalClock(HEARTBEAT_INTERVAL_MS)).start(beat);
+  const stopHeartbeat = (deps.heartbeat ?? intervalTicker(HEARTBEAT_INTERVAL_MS))(beat);
   // Only this worker can meter the light client every tab shares, so every tab hears its total from one meter.
   const netBytes =
     deps.netBytes === undefined
@@ -342,19 +326,17 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
   ): RequestHandler<P, R, E, ProtocolHello> {
     const { name, timed } = policyOf(method);
+    if (!timed) {
+      return handler;
+    }
     return async (payload, context) => {
-      const span = timed ? openRequestSpan(name, context.hello.resolutionId) : null;
+      const span = openRequestSpan(name, context.hello.resolutionId);
       try {
         const answer = await handler(payload, context);
-        const failure = answer.success ? undefined : failureOf(method, answer.value);
-        if (span !== null) {
-          endSpan(span, failure);
-        }
+        endSpan(span, answer.success ? undefined : failureOf(method, answer.value));
         return answer;
       } catch (error) {
-        if (span !== null) {
-          endSpan(span, toError(error));
-        }
+        endSpan(span, toError(error));
         throw error;
       }
     };

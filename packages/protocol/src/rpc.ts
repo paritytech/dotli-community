@@ -6,15 +6,11 @@
 import { m, spans as S } from '@dotli/metrics';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { failureReason, type AnyMethod, type Request } from '@dotli/transport';
-import { callName, policyOf, type CallName } from './method-policy.js';
+import { callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import { callFailure, fromTransportError } from './outcomes.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
-
-export function createRequestId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
 
 /** The error a call that outlived its budget fails with. */
 function callTimeoutError(method: CallName, budgetMs: number): ProtocolRequestError {
@@ -26,10 +22,11 @@ function callTimeoutError(method: CallName, budgetMs: number): ProtocolRequestEr
 }
 
 /**
- * A remote failure as callers see it. A bare `"Error"` carries nothing, and would cost the "crossed the protocol
- * boundary" signal dashboards filter on.
+ * A call's failure as callers see it, under the protocol's class for a transport that closed. A bare `"Error"` from the
+ * frame carries nothing, and would cost the "crossed the protocol boundary" signal dashboards filter on.
  */
-function asCallError(error: Error): Error {
+function callError(reason: unknown): Error {
+  const error = fromTransportError(toError(reason));
   return error instanceof ProtocolRequestError && error.name === 'Error'
     ? new ProtocolRequestError(error.message, 'ProtocolResponseError', error.method)
     : error;
@@ -43,8 +40,8 @@ interface CallTrail {
 }
 
 /** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
-function startCallTrail(called: AnyMethod, now: () => number): CallTrail {
-  const { name: method, budgetMs, timed, trailed } = policyOf(called);
+function startCallTrail(policy: MethodPolicy, now: () => number): CallTrail {
+  const { name: method, budgetMs, timed, trailed } = policy;
   const stop = timed ? m.timer(S.PROTOCOL_REQUEST, now) : (): number => 0;
   const sentAt = now();
   if (trailed) {
@@ -87,12 +84,20 @@ export interface FrameRpc {
   request<P, R, E extends DomainFailure>(method: Request<P, R, E>, payload: NoInfer<P>): Promise<R>;
   /**
    * Runs a call made on the transport itself, such as a subscription, as `request` runs its own. `run` gets the frame's
-   * transport and the signal that aborts once the budget runs out, and settles with the call.
+   * transport and the signal that aborts once the budget runs out or `options.signal` aborts, and settles with the
+   * call. A call whose signal aborts before the frame can answer never goes out.
    */
-  call<V>(method: AnyMethod, run: (transport: ProtocolTransport, signal: AbortSignal) => Promise<V>): Promise<V>;
+  call<V>(
+    method: AnyMethod,
+    run: (transport: ProtocolTransport, signal: AbortSignal) => Promise<V>,
+    options?: { signal?: AbortSignal | undefined },
+  ): Promise<V>;
 }
 
-/** A call's budget. Once it runs out, `signal` aborts with the timeout error, which `bounded` rejects with. */
+/**
+ * A call's budget. Once it runs out, `signal` aborts with the timeout error, which `bounded` rejects with. It also
+ * aborts with the caller's `signal`.
+ */
 interface Budget {
   signal: AbortSignal;
   bounded: <V>(work: Promise<V>) => Promise<V>;
@@ -100,9 +105,18 @@ interface Budget {
   timedOut: (reason: unknown) => boolean;
 }
 
-function startBudget(method: AnyMethod, timers: Timers): Budget {
-  const { name, budgetMs } = policyOf(method);
+function startBudget({ name, budgetMs }: MethodPolicy, timers: Timers, signal: AbortSignal | undefined): Budget {
   const giveUp = new AbortController();
+  if (signal?.aborted === true) {
+    giveUp.abort(signal.reason);
+  }
+  signal?.addEventListener(
+    'abort',
+    () => {
+      giveUp.abort(signal.reason);
+    },
+    { once: true },
+  );
   let timeout: Error | undefined;
   return {
     signal: giveUp.signal,
@@ -123,11 +137,6 @@ function startBudget(method: AnyMethod, timers: Timers): Budget {
   };
 }
 
-/** A call's failure as callers see it, under the protocol's class for a transport that closed. */
-function callError(reason: unknown): Error {
-  return asCallError(fromTransportError(toError(reason)));
-}
-
 /** Budgets run on `timers`, and call trails on `now`, a monotonic clock that a spec may set to its own timers. */
 export function createFrameRpc(
   frame: RpcFrame,
@@ -137,23 +146,25 @@ export function createFrameRpc(
   async function call<V>(
     method: AnyMethod,
     run: (transport: ProtocolTransport, signal: AbortSignal) => Promise<V>,
+    options: { signal?: AbortSignal | undefined } = {},
   ): Promise<V> {
+    const policy = policyOf(method);
     // Ends the call on its budget. The transport drops it, and a late answer is ignored.
-    const { signal, bounded, timedOut } = startBudget(method, timers);
+    const { signal, bounded, timedOut } = startBudget(policy, timers, options.signal);
     // Set once the call is handed to a connected transport, which the frame wait may never reach.
     const sent: { trail: CallTrail | null } = { trail: null };
     const send = (transport: ProtocolTransport): Promise<V> => {
-      // The budget ran out while the frame was asked for, so nothing goes out.
+      // The budget ran out, or the caller left, while the frame was asked for, so nothing goes out.
       if (signal.aborted) {
         throw toError(signal.reason);
       }
-      sent.trail = startCallTrail(method, now);
+      sent.trail = startCallTrail(policy, now);
       return run(transport, signal);
     };
 
     try {
       let value: V;
-      if (policyOf(method).whenListening) {
+      if (policy.whenListening) {
         // The transport queues a call until its handshake, and the wait for it is the boot's, not the call's.
         value = await bounded(
           frame.transport().then(async transport => {
@@ -174,7 +185,7 @@ export function createFrameRpc(
         sent.trail.settled(outcome, error);
       } else if (outcome === 'timeout') {
         // Never sent, since the frame did not come up within the budget.
-        m.count(S.PROTOCOL_REQUEST, { outcome, method: callName(method), reason: errorName(error) ?? 'unknown' });
+        m.count(S.PROTOCOL_REQUEST, { outcome, method: policy.name, reason: errorName(error) ?? 'unknown' });
       }
       throw error;
     }

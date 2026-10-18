@@ -159,10 +159,9 @@ export function createTransport<H, T extends Traits>(
       return err(error);
     }
   };
-  const { addressOf } = schema;
-
   const calls = createCalls({
     nextId,
+    addressOf: schema.addressOf,
     post,
     handshakeOver: handshakeOver.promise,
     closedBy,
@@ -171,6 +170,7 @@ export function createTransport<H, T extends Traits>(
   });
   const serving = createServing<H>({
     placeAt: schema.placeAt,
+    addressOf: schema.addressOf,
     post,
     closedBy,
     refuse,
@@ -272,19 +272,19 @@ export function createTransport<H, T extends Traits>(
     },
 
     request(method, payload, requestOptions = {}) {
-      return calls.request(method, addressOf(method), payload, requestOptions.signal);
+      return calls.request(method, payload, requestOptions.signal);
     },
 
     handleRequest(method, handler) {
-      return serving.handleRequest(method, addressOf(method), handler);
+      return serving.handleRequest(method, handler);
     },
 
     subscribe(method, start, listeners, subscribeOptions = {}) {
-      return calls.subscribe(method, addressOf(method), start, listeners, subscribeOptions.signal);
+      return calls.subscribe(method, start, listeners, subscribeOptions.signal);
     },
 
     handleSubscription(method, handler) {
-      return serving.handleSubscription(method, addressOf(method), handler);
+      return serving.handleSubscription(method, handler);
     },
 
     dispose(reason) {

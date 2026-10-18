@@ -6,7 +6,7 @@
 // frame is up and when it is lost. A frame's handshake is answered only once the test says it listens, so calls made
 // while it boots wait in the transport's queue as they would on a real frame.
 
-import { realTimers, type Timers } from '@dotli/shared';
+import { createStatusCell, realTimers, type Timers } from '@dotli/shared';
 import { createTransport } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
@@ -14,7 +14,7 @@ import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 export interface FakeFrame {
   frame: ProtocolFrame;
-  /** The frame moving to `status`. `booting` builds a frame if there is none, `listening` and `ready` connect it. */
+  /** The frame moving to `status`. Up, it builds a frame if there is none, and `listening` and `ready` connect it. */
   setStatus(status: ProtocolStatus): void;
   /** The frame being dropped with `error`, after its status says it is down. Its transport is disposed with `error`. */
   lose(error: Error): void;
@@ -40,19 +40,15 @@ export function createFakeFrame(
   options: { status?: ProtocolStatus; timers?: Timers } = {},
 ): FakeFrame {
   const timers = options.timers ?? realTimers;
-  let status: ProtocolStatus = options.status ?? 'ready';
+  // A listener's throw fails the test that set the status.
+  const status = createStatusCell<ProtocolStatus>(options.status ?? 'ready', {
+    onListenerError: error => {
+      throw error;
+    },
+  });
   let lostWith: Error = new Error('lost');
   let builds = 0;
   let current: Built | null = null;
-  const statusListeners = new Set<(status: ProtocolStatus) => void>();
-  const subscribe =
-    <T>(listeners: Set<(event: T) => void>) =>
-    (listener: (event: T) => void): (() => void) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    };
 
   const build = (): Built => {
     builds += 1;
@@ -63,38 +59,37 @@ export function createFakeFrame(
     return { host: createTransport(protocolSchema, left, { handshake: 'open', hello, timers }), serving };
   };
 
-  const setStatus = (next: ProtocolStatus): void => {
-    if (next === 'booting' && current === null) {
-      current = build();
+  /** Builds a frame for a status that is up if there is none, and connects it once it listens. */
+  const bringUp = (next: ProtocolStatus): void => {
+    if (next === 'idle' || next === 'failed') {
+      return;
     }
+    current ??= build();
     if (next === 'listening' || next === 'ready') {
-      current?.host.connect();
-    }
-    status = next;
-    for (const listener of [...statusListeners]) {
-      listener(next);
+      current.host.connect();
     }
   };
 
+  const setStatus = (next: ProtocolStatus): void => {
+    bringUp(next);
+    status.set(next);
+  };
+
   const boot = (): Built => {
-    if (status === 'idle' || status === 'failed') {
+    const now = status.get();
+    if (now === 'idle' || now === 'failed') {
       setStatus('booting');
     }
     current ??= build();
     return current;
   };
 
-  if (status !== 'idle' && status !== 'failed') {
-    current = build();
-    if (status === 'listening' || status === 'ready') {
-      current.host.connect();
-    }
-  }
+  bringUp(status.get());
 
   return {
     frame: {
-      getStatus: () => status,
-      subscribeStatus: subscribe(statusListeners),
+      getStatus: status.get,
+      subscribeStatus: status.subscribe,
       configure: () => undefined,
       transport: () => Promise.resolve(boot().host),
       whenReady() {
@@ -115,10 +110,10 @@ export function createFakeFrame(
             }
             return false;
           };
-          if (settle(status)) {
+          if (settle(status.get())) {
             return;
           }
-          const stop = subscribe(statusListeners)(next => {
+          const stop = status.subscribe(next => {
             if (settle(next)) {
               stop();
             }

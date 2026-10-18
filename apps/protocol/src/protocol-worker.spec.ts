@@ -27,7 +27,6 @@ import { createTestTicker } from './net-bytes.fake.js';
 import {
   startProtocolWorker,
   workerNetwork,
-  type HeartbeatClock,
   type WorkerResolver,
   type WorkerPort,
   type WorkerScope,
@@ -326,15 +325,7 @@ async function bootWorker(
   flush: () => Promise<void> = () => Promise.resolve(),
   readNetBytes?: () => number,
 ): Promise<Worker> {
-  let beat: (() => void) | null = null;
-  const heartbeat: HeartbeatClock = {
-    start: onBeat => {
-      beat = onBeat;
-      return () => {
-        beat = null;
-      };
-    },
-  };
+  const heartbeat = createTestTicker();
   const netBytesTicker = createTestTicker();
   const logs: LogLine[] = [];
   const logWaiters: { message: string; resolve: () => void }[] = [];
@@ -371,7 +362,7 @@ async function bootWorker(
     lightClient: light.lightClient,
     resolver: light.resolver,
     openSpan: open,
-    heartbeat,
+    heartbeat: heartbeat.ticker,
     flush,
     netBytes: readNetBytes === undefined ? undefined : { read: readNetBytes, ticker: netBytesTicker.ticker },
   });
@@ -444,10 +435,8 @@ async function bootWorker(
   return {
     connect: resolutionId => attach().speak(resolutionId),
     attach,
-    beat: () => {
-      beat?.();
-    },
-    beating: () => beat !== null,
+    beat: heartbeat.tick,
+    beating: () => heartbeat.running() > 0,
     tickNetBytes: netBytesTicker.tick,
     netBytesTickers: netBytesTicker.running,
     close,

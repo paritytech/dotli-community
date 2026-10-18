@@ -28,8 +28,6 @@ const { chain } = protocolSchema.traits;
 
 type Connect = MethodTypes<typeof chain.connect>;
 
-// The host posts its handshake again this often until it is answered.
-const HANDSHAKE_RETRY_MS = 50;
 const CONNECT_BUDGET_MS = budgetOf(chain.connect) ?? 0;
 
 /** The clock and timers each test moves by hand. */
@@ -129,7 +127,7 @@ describe('createRemoteChains', () => {
       },
       { timers },
     );
-    const chains = createRemoteChains({ rpc: createFrameRpc(fake.frame, timers) });
+    const chains = createRemoteChains(createFrameRpc(fake.frame, timers));
     const provider = chains.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
     if (provider === null) {
       throw new Error('People is not remote-connectable');
@@ -382,12 +380,8 @@ interface Frame {
 
 /** Serves the client's current protocol iframe and reports it ready. */
 async function bootFrame(): Promise<Frame> {
-  const status = host.status();
   const chains = serveChains(host.serve());
-  await settle(HANDSHAKE_RETRY_MS);
-  status.ready();
-  await settle();
-  return { status, chains };
+  return { status: await host.bringUp(), chains };
 }
 
 interface Remote {
@@ -657,8 +651,7 @@ describe('createRemoteChainProvider halts', () => {
     // Given a connection starts a frame, which listens but never reports ready
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     peopleProvider()(() => undefined, onHalt);
-    host.status();
-    await settle(HANDSHAKE_RETRY_MS);
+    await host.listen();
     const booting = host.client.getProtocolStatus();
 
     // When its ready wait times out
@@ -720,8 +713,9 @@ describe('createRemoteChainProvider halts', () => {
     expect(logError.flatMap(line => line.args ?? []).filter(arg => arg instanceof Error)).toEqual([]);
   });
 
-  it('As a dotli integrator, a connection closed while its frame boots never reaches the frame', async () => {
+  it('As a dotli integrator, a connection closed while its frame boots never reaches the frame, and is not counted', async () => {
     // Given a connection with a send queued, closed before its frame is up
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const received: JsonRpcMessage[] = [];
     const connection = peopleProvider()(message => received.push(message));
     connection.send(genesisRequest(1));
@@ -735,6 +729,7 @@ describe('createRemoteChainProvider halts', () => {
     expect(frame.chains.connects).toEqual([]);
     expect(frame.chains.sends).toEqual([]);
     expect(received).toEqual([]);
+    expect(sentry.counted(S.PROTOCOL_REQUEST)).toEqual([]);
   });
 
   it('As a dotli integrator, a connection closed before the frame accepts it is closed in the frame, and sends nothing', async () => {

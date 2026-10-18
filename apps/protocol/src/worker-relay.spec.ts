@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host speaks to the iframe and the iframe to a fake worker, each over a real port pair, so every call crosses both
+// The host speaks to the iframe and the iframe to a fake worker, each over its own link, so every call crosses both
 // hops on the wire.
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -21,8 +21,6 @@ import {
 import { deferred } from '@dotli/shared';
 import {
   TransportVersionMismatchError,
-  createPortProvider,
-  createTransport,
   denied,
   domain,
   err,
@@ -58,36 +56,15 @@ interface Hops {
   workerStatusHeard: Promise<void>;
 }
 
-const closers = new Set<() => void>();
-
 afterEach(() => {
-  for (const close of closers) {
-    close();
-  }
-  closers.clear();
   closeHostLinks();
 });
 
 /** Links a host to an iframe in shared-worker mode, whose worker answers with what `serveWorker` registers. */
 function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string, ProtocolContext>) => void): Hops {
   const iframe: HostLink = linkHost();
-  const channel = new MessageChannel();
-  const worker = createTransport(protocolSchema, createPortProvider(channel.port1), {
-    handshake: 'accept',
-    hello: { resolutionId: null },
-    onIssue: iframe.report,
-  });
-  const toWorker = createTransport(protocolSchema, createPortProvider(channel.port2), {
-    handshake: 'open',
-    hello: { resolutionId: null },
-    onIssue: iframe.report,
-  });
-  toWorker.connect();
-  closers.add(() => {
-    const over = new Error('The spec is over');
-    toWorker.dispose(over);
-    worker.dispose(over);
-  });
+  // The worker's port names no origin.
+  const { serving: worker, host: toWorker } = linkHost(null);
   const contexts = new Map<string, ProtocolContext>();
   serveWorker(worker, contexts);
   const workerStatus = createFrameStatus();

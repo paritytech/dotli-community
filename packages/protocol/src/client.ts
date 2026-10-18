@@ -42,7 +42,7 @@ export function createProtocolClient<E extends FrameElement>(deps: ProtocolFrame
   const frame = createProtocolFrame(deps);
   const timers = deps.timers ?? realTimers;
   const rpc = createFrameRpc(frame, timers);
-  const chains = createRemoteChains({ rpc });
+  const chains = createRemoteChains(rpc);
   const sharedStore = createSharedStore({ frame, rpc, timers });
   return {
     async ensureProtocolFrame(): Promise<void> {
@@ -68,7 +68,7 @@ export function createProtocolClient<E extends FrameElement>(deps: ProtocolFrame
       frame.configure(config);
     },
     ...sharedStore,
-    ...createRemoteResolve({ rpc }),
+    ...createRemoteResolve(rpc),
     ...createFrameTelemetry(frame, timers),
     ...chains,
   };

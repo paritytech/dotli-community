@@ -82,10 +82,9 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
         receive: change => {
           sharedAuthListeners.emit(change);
         },
-        end: ends.end,
-        close: ends.close,
+        ...ends,
       }),
-    timers,
+    { boots: true, timers },
   );
 
   let announced = getStatus();
@@ -95,10 +94,6 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     if (store !== announced) {
       announced = store;
       statusListeners.emit(store);
-    }
-    // A new frame relays nothing to a subscription on the one it replaces.
-    if (next === 'booting' && sharedAuthListeners.size > 0) {
-      changes.follow();
     }
   });
 
@@ -140,7 +135,6 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
      */
     subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
       const unsubscribe = sharedAuthListeners.subscribe(listener);
-      // Not awaited, since subscribe is synchronous. A frame that fails rebuilds itself.
       changes.follow();
       return () => {
         unsubscribe();

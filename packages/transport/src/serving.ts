@@ -45,6 +45,7 @@ export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>
 export interface ServingDeps {
   /** The method at a place in the schema, and its address. */
   placeAt: (traitId: number, methodId: number) => Place | undefined;
+  addressOf: (method: AnyMethod) => Address;
   post: Post;
   /** The error the transport closed with, after which the peer hears no answer, or null while it is open. */
   closedBy: () => Error | null;
@@ -56,12 +57,8 @@ export interface ServingDeps {
 
 export interface Serving<H> {
   /** One handler per method. Returns what unregisters it. */
-  handleRequest<P, R, E>(method: Request<P, R, E>, address: Address, handler: RequestHandler<P, R, E, H>): () => void;
-  handleSubscription<S, V, I>(
-    method: Subscription<S, V, I>,
-    address: Address,
-    handler: SubscriptionHandler<S, V, I, H>,
-  ): () => void;
+  handleRequest<P, R, E>(method: Request<P, R, E>, handler: RequestHandler<P, R, E, H>): () => void;
+  handleSubscription<S, V, I>(method: Subscription<S, V, I>, handler: SubscriptionHandler<S, V, I, H>): () => void;
   /** Hands a message of the peer's call `id` to what serves it. */
   hear(id: number, call: Call<Uint8Array>, context: CallContext<H>): void;
   /** Answers every call in flight with `HostFailure` carrying `error`, and stops every running subscription. */
@@ -69,9 +66,7 @@ export interface Serving<H> {
 }
 
 /** A method's handler, as the peer's calls reach it. */
-interface Served<H> {
-  hear(id: number, message: Uint8Array, context: CallContext<H>): void;
-}
+type Served<H> = (id: number, message: Uint8Array, context: CallContext<H>) => void;
 
 /** A subscription the peer opened, as its stop reaches it. */
 interface Running {
@@ -81,7 +76,7 @@ interface Running {
 }
 
 export function createServing<H>(deps: ServingDeps): Serving<H> {
-  const { placeAt, post, closedBy, refuse, runListener, onPeerIdle } = deps;
+  const { placeAt, addressOf, post, closedBy, refuse, runListener, onPeerIdle } = deps;
   const handlers = new Map<AnyMethod, Served<H>>();
   // The peer's requests whose handlers have not settled, which a close answers.
   const inFlight = new Map<number, Address>();
@@ -235,54 +230,52 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
   }
 
   return {
-    handleRequest(method, address, handler) {
-      return register(method, address, {
-        hear(id, bytes, context) {
-          const message = decode(method.message, bytes);
-          if (!message.success) {
-            malformed(id, message.value, address);
-            return;
-          }
-          if (message.value.tag !== 'request') {
-            refuse('invalid', new Error(`A response names call ${String(id)}, which the peer made`));
-            return;
-          }
-          const payload = message.value.value;
-          inFlight.set(id, address);
-          void handlerCalls
-            .call(() => handler(payload, context))
-            .then(
-              outcome => {
-                // A close answered the call already.
-                if (inFlight.delete(id)) {
-                  answer(method, address, id, { tag: 'response', value: outcome });
-                }
-              },
-              (error: unknown) => {
-                if (inFlight.delete(id)) {
-                  fail(id, hostFailure(toError(error)), address);
-                }
-              },
-            );
-        },
+    handleRequest(method, handler) {
+      const address = addressOf(method);
+      return register(method, address, (id, bytes, context) => {
+        const message = decode(method.message, bytes);
+        if (!message.success) {
+          malformed(id, message.value, address);
+          return;
+        }
+        if (message.value.tag !== 'request') {
+          refuse('invalid', new Error(`A response names call ${String(id)}, which the peer made`));
+          return;
+        }
+        const payload = message.value.value;
+        inFlight.set(id, address);
+        void handlerCalls
+          .call(() => handler(payload, context))
+          .then(
+            outcome => {
+              // A close answered the call already.
+              if (inFlight.delete(id)) {
+                answer(method, address, id, { tag: 'response', value: outcome });
+              }
+            },
+            (error: unknown) => {
+              if (inFlight.delete(id)) {
+                fail(id, hostFailure(toError(error)), address);
+              }
+            },
+          );
       });
     },
 
-    handleSubscription(method, address, handler) {
-      return register(method, address, {
-        hear(id, bytes, context) {
-          const message = decode(method.message, bytes);
-          if (!message.success) {
-            malformed(id, message.value, address);
-            return;
-          }
-          const sent = message.value;
-          if (sent.tag !== 'start') {
-            refuse('invalid', new Error(`A ${sent.tag} names subscription ${String(id)}, which is not running`));
-            return;
-          }
-          start(method, address, handler, id, sent.value, context);
-        },
+    handleSubscription(method, handler) {
+      const address = addressOf(method);
+      return register(method, address, (id, bytes, context) => {
+        const message = decode(method.message, bytes);
+        if (!message.success) {
+          malformed(id, message.value, address);
+          return;
+        }
+        const sent = message.value;
+        if (sent.tag !== 'start') {
+          refuse('invalid', new Error(`A ${sent.tag} names subscription ${String(id)}, which is not running`));
+          return;
+        }
+        start(method, address, handler, id, sent.value, context);
       });
     },
 
@@ -311,7 +304,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
         fail(id, unsupported());
         return;
       }
-      served.hear(id, call.message, context);
+      served(id, call.message, context);
     },
 
     close(error) {

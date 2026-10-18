@@ -6,15 +6,10 @@
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
-import type { ProtocolFrame, ProtocolStatus } from './frame.js';
+import type { ProtocolFrame } from './frame.js';
 import { protocolListeners } from './listeners.js';
 import { protocolSchema } from './schema.js';
 import { subscribe } from './subscription.js';
-
-/** A frame that is booting or up has a transport to hear. */
-function hasFrame(status: ProtocolStatus): boolean {
-  return status === 'booting' || status === 'listening' || status === 'ready';
-}
 
 /** A feed the frame ends while it stays up is reopened after a wait on `timers`. */
 export function createFrameTelemetry(
@@ -55,11 +50,10 @@ export function createFrameTelemetry(
                 return;
             }
           },
-          end: ends.end,
-          close: ends.close,
+          ...ends,
         });
     },
-    timers,
+    { boots: false, timers },
   );
 
   // Cleared when a new frame boots, not when one is lost, which happens before the host's pending rejection and
@@ -67,13 +61,10 @@ export function createFrameTelemetry(
   frame.subscribeStatus(status => {
     if (status === 'booting') {
       smoldotDbOutcomes.clear();
-      reports.follow();
     }
   });
-  // Hearing a frame never boots one, so only a frame already there is heard at once.
-  if (hasFrame(frame.getStatus())) {
-    reports.follow();
-  }
+  // Hearing a frame never boots one, so the reports are heard from each frame there is.
+  reports.follow();
 
   return {
     /** Whether a chain began from existing smoldot state, so telemetry keeps cold syncs and warm resumes apart. */

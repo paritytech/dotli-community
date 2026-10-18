@@ -7,7 +7,7 @@
 // asks. Its window delivers on a microtask and moves each transferred buffer, as a browser does, and a test answers
 // the host through a real transport on it.
 
-import type { Timers } from '@dotli/shared';
+import type { ManualTimers } from '@dotli/shared/testing';
 import { _void } from 'scale-ts';
 import {
   createTransport,
@@ -21,11 +21,15 @@ import { createProtocolClient, type ProtocolClient } from '../client.js';
 import { createFrameStatus, type FrameStatus } from '../frame-status.js';
 import type { ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { protocolSchema, type ProtocolTransport } from '../schema.js';
+import { recordWireMessage, type RecordedWireMessage } from './index.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
 
 /** The host page's origin, as the frame's window knows it. */
 const HOST_ORIGIN = 'https://dot.li';
+
+// The host posts its handshake again this often until it is answered.
+const HANDSHAKE_RETRY_MS = 50;
 
 export const FRAME_CONFIG: ProtocolFrameConfig = {
   backend: 'smoldot-direct',
@@ -198,6 +202,14 @@ export interface FrameDom {
   serveNewer(iframe?: FakeIframe): void;
   /** The frame status `iframe` (the current one by default) serves, on its serving transport. */
   status(iframe?: FakeIframe): FrameStatus;
+  /** Moves the timers on to the host's next handshake retry, so a frame that now answers is heard. */
+  retryHandshake(): Promise<void>;
+  /** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
+  listen(): Promise<FrameStatus>;
+  /** Answers the current iframe and reports its light client ready. */
+  bringUp(): Promise<FrameStatus>;
+  /** The calls' messages the host sent `iframe` (the current one by default), its handshakes left out. */
+  sent(iframe?: FakeIframe): RecordedWireMessage[];
   /** Data sent by `iframe` (the current one by default) as it is, from the frame's origin unless told otherwise. */
   deliverRaw(data: unknown, iframe?: FakeIframe, origin?: string): void;
 }
@@ -207,9 +219,10 @@ export interface FrameDom {
  * frame waits on `options.timers`.
  */
 export function createFrameDom(
-  timeouts?: Partial<ProtocolFrameTimeouts>,
-  options: { mount?: MountEvent; timers?: Timers | undefined } = {},
+  timeouts: Partial<ProtocolFrameTimeouts> | undefined,
+  options: { mount?: MountEvent; timers: ManualTimers },
 ): FrameDom {
+  const { timers } = options;
   const listeners = new Set<Listener>();
   const messages: MessageTarget = {
     addEventListener: (_type, listener) => listeners.add(listener),
@@ -249,6 +262,12 @@ export function createFrameDom(
     }
     return entry;
   };
+  const status = (target = iframe()): FrameStatus => {
+    const entry = servedOn(target);
+    entry.status ??= serveFrameStatus(entry.serving);
+    return entry.status;
+  };
+  const retryHandshake = (): Promise<void> => timers.advance(HANDSHAKE_RETRY_MS);
   return {
     deps: {
       origin: FRAME_ORIGIN,
@@ -258,7 +277,7 @@ export function createFrameDom(
       },
       window: messages,
       timeouts,
-      timers: options.timers,
+      timers,
     },
     iframe,
     frames: () => mount.iframes.size,
@@ -267,11 +286,25 @@ export function createFrameDom(
     serveNewer(target = iframe()) {
       createTransport(newerSchema, providerOn(target), { handshake: 'accept', hello: undefined });
     },
-    status(target = iframe()) {
-      const entry = servedOn(target);
-      entry.status ??= serveFrameStatus(entry.serving);
-      return entry.status;
+    status,
+    retryHandshake,
+    async listen() {
+      const frameStatus = status();
+      await retryHandshake();
+      return frameStatus;
     },
+    async bringUp() {
+      const frameStatus = status();
+      await retryHandshake();
+      frameStatus.ready();
+      await timers.advance(0);
+      return frameStatus;
+    },
+    sent: (target = iframe()) =>
+      target.window.posted.flatMap(data => {
+        const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
+        return message === null ? [] : [message];
+      }),
     deliverRaw(data, from = iframe(), origin = FRAME_ORIGIN) {
       toHost(messageEvent(data, origin, from.window));
     },
@@ -287,9 +320,9 @@ export interface FrameHost extends FrameDom {
  * on `timers`.
  */
 export function createFrameHost(
-  timeouts?: Partial<ProtocolFrameTimeouts>,
-  config: ProtocolFrameConfig | null = FRAME_CONFIG,
-  timers?: Timers,
+  timeouts: Partial<ProtocolFrameTimeouts> | undefined,
+  config: ProtocolFrameConfig | null,
+  timers: ManualTimers,
 ): FrameHost {
   const dom = createFrameDom(timeouts, { timers });
   const client = createProtocolClient(dom.deps);

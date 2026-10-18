@@ -74,23 +74,16 @@ export type MethodPolicy = Policy<CallName>;
 
 const isPath = (path: string): path is Path => Object.hasOwn(POLICIES, path);
 
-const policies = new Map<AnyMethod, MethodPolicy>();
-for (const [trait, methods] of Object.entries(protocolSchema.traits)) {
-  place(trait, methods);
+/** The policy of the method at `trait` and `method`, or undefined for a place the protocol lacks. */
+function policyAt(trait: string, method: string): MethodPolicy | undefined {
+  const path = `${trait}.${method}`;
+  return isPath(path) ? POLICIES[path] : undefined;
 }
 
-function place(trait: string, methods: Readonly<Record<string, AnyMethod>>): void {
-  for (const [name, method] of Object.entries(methods)) {
-    const path = `${trait}.${name}`;
-    if (isPath(path)) {
-      policies.set(method, POLICIES[path]);
-    }
-  }
-}
-
-/** What the host knows of a protocol method. */
+/** What the host knows of a protocol method. Throws for a method of another schema. */
 export function policyOf(method: AnyMethod): MethodPolicy {
-  const known = policies.get(method);
+  const address = protocolSchema.addressOf(method);
+  const known = policyAt(address.trait, address.method);
   if (known === undefined) {
     throw new Error('The method is not one of the protocol');
   }
@@ -105,6 +98,5 @@ export const budgetOf = (method: AnyMethod): number | null => policyOf(method).b
 
 /** The name of the method at `trait` and `method`, or its place for one the schema lacks. */
 export function callNameAt(trait: string, method: string): string {
-  const path = `${trait}.${method}`;
-  return isPath(path) ? POLICIES[path].name : path;
+  return policyAt(trait, method)?.name ?? `${trait}.${method}`;
 }
