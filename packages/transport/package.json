@@ -20,6 +20,7 @@
     "@config/typescript": "*"
   },
   "dependencies": {
+    "@dotli/shared": "*",
     "scale-ts": "^1.6.1"
   }
 }

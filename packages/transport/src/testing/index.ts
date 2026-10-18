@@ -11,6 +11,8 @@ import {
   type DecodedMessage,
 } from '../wire.js';
 
+export { createProviderPair } from '../provider.fake.js';
+
 /** A message as a test reads it. The body is the leg's decoded value, left as it is. */
 export interface DescribedMessage {
   trait: string;

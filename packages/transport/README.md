@@ -28,6 +28,38 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 - The library keeps trait 255 for itself. Method 0 is the handshake, which carries the schema version and the hello, and
   method 255 is the protocol error that answers a message for an unknown address. Their layout never changes, so a peer
   of any release reads the version it refuses.
+- A provider moves bytes between two contexts and knows nothing of their meaning. The window provider admits one peer
+  window at a fixed origin, or at the first origin a predicate allows. The port provider speaks over a message port. Any
+  object with the same four methods works.
+- One transport serves every side, and both sides call and serve over it. One side opens the handshake and the other
+  accepts it. The opener posts a fresh attempt every `retryMs` until it is answered or `timeoutMs` passes on the running
+  clock. The accepter answers every attempt with the outcome of the first. A version mismatch closes both sides.
+
+```mermaid
+sequenceDiagram
+  participant O as Opener
+  participant A as Accepter
+  O->>A: handshake (version, hello)
+  Note over O: retries every retryMs
+  O->>A: handshake (version, hello)
+  A-->>O: Ok(hello), or the accepter's version
+  A-->>O: the same outcome again
+  Note over O,A: queued calls go out in call order
+```
+
+- Calls made before the handshake wait in a queue and go out in call order once it succeeds, then run side by side. A
+  call resolves to the peer's `Result`. Aborting its signal resolves it as `Cancelled`, whether it waits or is out, and
+  a late answer is ignored. The peer is not told.
+- A transport closes when the handshake fails or times out, the versions differ, or its owner disposes it. Every pending
+  and later call then rejects with that error itself, so a closed transport is never a call outcome.
+- The serving side answers outcomes of its own: `Unsupported` for a method with no handler, `MalformedFrame` with the
+  decode error's message for a payload that does not decode, and `HostFailure` with `"<name>: <message>"`, bounded to
+  500 characters, for a handler that throws or rejects or an answer the wire cannot carry. A message for an address the
+  schema lacks gets one protocol error reply, and nothing ever answers a protocol error. A request before the handshake
+  is refused with no reply.
+- What the transport cannot handle itself goes to one issue hook: a refused message (`malformed`, `invalid` or
+  `not_bytes`, with its cause), a post the provider threw on (with its leg), and a callback of the owner's that threw.
+  With no hook, each issue is logged as one bounded error. Nothing is dropped unseen.
 
 ## Public API
 
@@ -54,6 +86,34 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
   - `DomainError<S, T, M>` is the method's own error, `E` or `I`.
   - `HelloOf<S>` is the handshake value, or `void` when the schema declares none.
 
+- `createTransport(schema, provider, options)` returns a `Transport`. `TransportOptions`:
+  - `handshake: 'open' | 'accept'` sets which side opens the handshake.
+  - `hello`, this side's handshake value, required exactly when the schema declares one.
+  - `retryMs` (50 by default) and `timeoutMs` (5000 by default) pace the opener.
+  - `timers` replaces the page's clock and timers.
+  - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause? }`,
+    `{ kind: 'post_failed', leg, error }` or `{ kind: 'listener_threw', error }`.
+- `Transport`:
+  - `connect()` starts the handshake on the opener and does nothing on the accepter.
+  - `whenConnected()` resolves once the handshake succeeds and rejects with the closing error.
+  - `request(trait, method, payload, { signal? })` resolves to `Result<R, CallError<E>>`. It rejects only with the
+    closing error, or when the call cannot go out: a payload that does not encode or a post the provider throws on.
+  - `handleRequest(trait, method, handler)` serves a method and returns what unregisters it. The handler gets the
+    payload and a `CallContext` and returns a `Result`, sync or async. A second handler for one method throws.
+  - `dispose(reason)` closes the transport with `reason` and disposes the provider.
+- `CallContext` is `{ origin, hello }`: the peer's origin from the provider, or null, and the peer's handshake hello.
+  `RequestHandler` and `RequestOptions` name the handler and the call options.
+- `TransportHandshakeTimeoutError` closes an opener that heard no answer in time. `TransportVersionMismatchError` closes
+  both sides of a mismatch and carries `ours` and `theirs`.
+- `Provider` is `post(data)`, `subscribe(listener)`, `peerOrigin()` and `dispose()`. A provider holds nothing for a
+  listener yet to come, and `post` transfers the buffer.
+- `createWindowProvider({ listen, peer, origin, onNotBytes?, onRefusedOrigin? })` hears `listen` (a `MessageTarget`) and
+  posts to `peer()`, a `WindowLike`. `origin` is fixed, or a predicate whose first origin to send bytes is locked.
+  `onNotBytes` hears data from the admitted peer that is not bytes, and `onRefusedOrigin` hears bytes from an origin it
+  does not admit. `WindowProviderDeps` names the argument.
+- `createPortProvider(port, { closeOnDispose? })` speaks over a `PortLike`. Its peer origin is always null, and
+  `closeOnDispose: false` leaves closing the port to its owner.
+
 ```ts
 const schema = defineSchema({
   version: 1,
@@ -70,6 +130,8 @@ const schema = defineSchema({
 
 Test helpers for code that uses the library.
 
+- `createProviderPair()` returns two connected providers, `left` and `right`, and the `delivered` buffers. They deliver
+  on a microtask, in order, and detach each buffer as a browser transfer does.
 - `describeMessage(schema, data)` reads a recorded message as `{ trait, method, leg, id, body }`. The body is the leg's
   decoded value, left as it is: a payload, an outcome, a handshake's `{ version, hello }`, or a protocol error's
   `{ trait, method }`. A library message or one for an address the schema lacks is named by its numeric ids, and the
