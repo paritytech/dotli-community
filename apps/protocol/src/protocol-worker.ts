@@ -14,6 +14,7 @@ import {
   createFrameStatus,
   failureOf,
   frameStatusEnd,
+  policyOf,
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
@@ -341,18 +342,14 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     span.end();
   }
 
-  /**
-   * Logs a request that fails by the name dashboards know it by, and spans it unless `spanned` is false: a chain
-   * message gets no span, which would swamp the request spans.
-   */
+  /** Logs a request that fails by the name dashboards know it by, and spans it when its calls are timed. */
   function traced<P, R, E extends DomainFailure>(
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
-    spanned = true,
   ): RequestHandler<P, R, E, ProtocolHello> {
-    const name = callName(method);
+    const { name, timed } = policyOf(method);
     return async (payload, context) => {
-      const span = spanned ? openRequestSpan(name, context.hello.resolutionId) : null;
+      const span = timed ? openRequestSpan(name, context.hello.resolutionId) : null;
       try {
         const answer = await handler(payload, context);
         const failure = answer.success ? undefined : failureOf(method, answer.value);
@@ -481,7 +478,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     );
     transport.handleRequest(
       chain.send,
-      traced(chain.send, (payload, context) => scopeOf(session).send(payload, context), false),
+      traced(chain.send, (payload, context) => scopeOf(session).send(payload, context)),
     );
   }
 

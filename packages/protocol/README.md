@@ -34,8 +34,10 @@ flowchart TB
   init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
   or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
   refused as malformed.
-- Every method keeps one name for the metrics, the trail, the budgets and the errors, the flat name it had before the
-  methods were grouped into traits, such as `resolveOwner` or `authStorageRead`, so dashboards read on unchanged.
+- What the host knows of each method beyond its wire types sits in one policy record: its name for the metrics, the
+  trail and the errors (the flat name it had before the methods were grouped into traits, such as `resolveOwner` or
+  `authStorageRead`, so dashboards read on unchanged), its budget, whether a page load's trail names it, whether each
+  call is timed, and whether the frame answers it once it listens, before its light client is ready.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
   and owns one provider and one transport per iframe. The window provider admits only bytes from that iframe's window at
   the frame's origin. It rebuilds itself when lost, after a backoff that grows while rebuilds keep failing, and a
@@ -143,8 +145,8 @@ a call that is no longer waiting is ignored without a count.
   transport for the schema's own errors, and `ProtocolHandler<typeof method>` a method's handler. `FrameFailure` and
   `RemoteFailure` are its typed failures, `DomainFailure` both, `SharedAuthChange` what the shared auth feed sends, and
   `TelemetryEvent` what the frame reports on its telemetry feed.
-- Budgets, for the frame to size its own work: `budgetOf` (a method's budget, or null for one waited on without a
-  timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
+- The method policy: `policyOf` and `MethodPolicy`. For the frame to size its own work, `budgetOf` (a method's budget,
+  or null for one waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
 - For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a
   method's one name for metrics, the trail and spans), `createFrameStatus` with `FrameStatus`, `FrameStatusSink` and
   `FrameStatusEnd` (the `frame.status` subscription a frame serves, which tells a late subscriber where the frame stands

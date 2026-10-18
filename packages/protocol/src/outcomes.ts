@@ -14,7 +14,7 @@ import {
   type CallError,
 } from '@dotli/transport';
 import { toError } from '@dotli/shared';
-import { callName, type CallName } from './call-names.js';
+import { callName, type CallName } from './method-policy.js';
 import {
   ProtocolFatalError,
   ProtocolHandshakeTimeoutError,

@@ -6,27 +6,11 @@
 import { m, spans as S } from '@dotli/metrics';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import type { AnyMethod, Request } from '@dotli/transport';
-import { callName, type CallName } from './call-names.js';
+import { callName, policyOf, type CallName } from './method-policy.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
-import { budgetOf } from './method-timeouts.js';
 import { callFailure, fromTransportError } from './outcomes.js';
-import { protocolSchema, type DomainFailure, type ProtocolTransport } from './schema.js';
-
-const { frame, resolve, chain } = protocolSchema.traits;
-
-/**
- * Page load steps, breadcrumbed when sent and settled so a failed load's trail names what it waited on.
- * Storage and chain traffic is per product call and would crowd them out.
- */
-const TRAILED_METHODS: ReadonlySet<AnyMethod> = new Set<AnyMethod>([
-  frame.warmup,
-  chain.connect,
-  resolve.dotName,
-  resolve.owner,
-  resolve.executableManifest,
-  resolve.rootManifest,
-]);
+import type { DomainFailure, ProtocolTransport } from './schema.js';
 
 export function createRequestId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -59,12 +43,9 @@ interface CallTrail {
 }
 
 /** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
-function startCallTrail(called: AnyMethod, budgetMs: number | null, now: () => number): CallTrail {
-  const method = callName(called);
-  // `chain.send` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
-  // round trips this span measures.
-  const stop = called === chain.send ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST, now);
-  const trailed = TRAILED_METHODS.has(called);
+function startCallTrail(called: AnyMethod, now: () => number): CallTrail {
+  const { name: method, budgetMs, timed, trailed } = policyOf(called);
+  const stop = timed ? m.timer(S.PROTOCOL_REQUEST, now) : (): number => 0;
   const sentAt = now();
   if (trailed) {
     log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });
@@ -120,8 +101,7 @@ interface Budget {
 }
 
 function startBudget(method: AnyMethod, timers: Timers): Budget {
-  const name = callName(method);
-  const budgetMs = budgetOf(method);
+  const { name, budgetMs } = policyOf(method);
   const giveUp = new AbortController();
   let timeout: Error | undefined;
   return {
@@ -148,12 +128,6 @@ function callError(reason: unknown): Error {
   return asCallError(fromTransportError(toError(reason)));
 }
 
-/** The shared store answers once the frame listens, long before its light client is ready. */
-function isSharedStore(method: AnyMethod): boolean {
-  const { trait } = protocolSchema.addressOf(method);
-  return trait === 'storage' || trait === 'wallet';
-}
-
 /** Budgets run on `timers`, and call trails on `now`, a monotonic clock that a spec may set to its own timers. */
 export function createFrameRpc(
   frame: RpcFrame,
@@ -163,7 +137,7 @@ export function createFrameRpc(
   return {
     async call(method, run) {
       const budget = startBudget(method, timers);
-      const trail = startCallTrail(method, budgetOf(method), now);
+      const trail = startCallTrail(method, now);
       try {
         const value = await budget.bounded(run(budget.signal));
         trail.settled('ok');
@@ -185,7 +159,7 @@ export function createFrameRpc(
         if (signal.aborted) {
           throw toError(signal.reason);
         }
-        sent.trail = startCallTrail(method, budgetOf(method), now);
+        sent.trail = startCallTrail(method, now);
         const outcome = await transport.request(method, payload, { signal });
         if (outcome.success) {
           return outcome.value;
@@ -195,7 +169,7 @@ export function createFrameRpc(
 
       try {
         let answer: R;
-        if (isSharedStore(method)) {
+        if (policyOf(method).whenListening) {
           // The transport queues a call until its handshake, and the wait for it is the boot's, not the call's.
           answer = await bounded(
             frame.transport().then(async transport => {

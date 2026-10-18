@@ -6,7 +6,7 @@
 import { captureException, reportListener, spans as S, type m } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 import { failureReason, type TransportIssue } from '@dotli/transport';
-import { callNameAt } from './call-names.js';
+import { callNameAt } from './method-policy.js';
 
 // A refused message's cause in the log, enough to tell decode failures apart.
 const MAX_CAUSE_CHARS = 200;

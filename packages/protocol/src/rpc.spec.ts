@@ -7,7 +7,7 @@ import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testin
 import { toError } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { denied, domain, err, malformedFrame, ok, unsupported, type Request } from '@dotli/transport';
-import { callName } from './call-names.js';
+import { callName } from './method-policy.js';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';

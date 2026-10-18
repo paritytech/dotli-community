@@ -5,7 +5,7 @@
 // it, its one end is heard in one place, as the error host code sees.
 
 import type { SubscribeOptions, Subscription as Method } from '@dotli/transport';
-import { callName } from './call-names.js';
+import { callName } from './method-policy.js';
 import { callFailure, fromTransportError } from './outcomes.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
 
