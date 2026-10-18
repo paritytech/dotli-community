@@ -611,7 +611,10 @@ describe('protocol SharedWorker', () => {
     // When the tab's iframe links, its relay sharing the link's status subscription as the iframe's does
     const iframe = linkHost();
     const linked = attached.link((transport, status) => {
-      registerWorkerRelay(iframe.serving, transport, status, createFrameStatus());
+      registerWorkerRelay(iframe.serving, transport, status, {
+        ...createFrameStatus(),
+        serveTelemetry: () => undefined,
+      });
     });
 
     // Then the ready wait fails with the fatal, measured as the worker's report

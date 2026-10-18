@@ -101,14 +101,15 @@ were.
 
 ### Held feeds
 
-- The host holds the shared auth changes and the telemetry for as long as anyone listens. The frame ends either only
-  when it fails, so an end on a frame that stays up is counted and logged, captured once per held feed, and reopened on
-  the same transport.
+- The host holds the shared auth changes while anyone listens, and the telemetry for as long as the page runs. The frame
+  ends either only when it fails, so an end on a frame that stays up is counted and logged, captured once per held feed,
+  and reopened on the same transport.
 - The reopen waits 1 second, doubling after each end on the same frame up to 30 seconds. A feed that stayed open for 30
   seconds before it ended starts the waits over.
-- The feed follows the frame there is now, and an answer to an ask a later ask overtook is dropped. A transport that
-  closes under the feed ends it for good with no report, since the frame's loss is reported where the frame was dropped
-  and following the next frame opens the feed again.
+- A held feed follows the frame there is now and each frame that boots after it, and an answer to an ask a later ask
+  overtook is dropped. The shared auth feed boots a frame that is down, since a listener needs one. The telemetry only
+  hears a frame there is. A transport that closes under the feed ends it on that frame with no report, since the frame's
+  loss is reported where the frame was dropped.
 
 ### Refused messages
 

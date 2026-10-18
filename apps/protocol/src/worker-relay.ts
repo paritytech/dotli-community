@@ -67,19 +67,16 @@ function relaySubscription<S, V, I>(
     });
 }
 
-/** The worker's telemetry, for the frame to serve once it has a worker to hear. */
-export const relayTelemetry = (worker: ProtocolTransport) => relaySubscription(worker, frame.telemetry);
-
 /**
- * Serves the chain and name methods on `serving` through `worker`. When the worker stops serving this tab, `status`
- * ends with the worker's own end, so the host's frame status ends with it and the host rebuilds the frame, and the
- * calls the worker still holds fail, since it will answer nothing more.
+ * Serves the chain and name methods on `serving` through `worker`, and feeds `boot` the worker's telemetry. When the
+ * worker stops serving this tab, `boot` ends the status with the worker's own end, so the host's frame status ends with
+ * it and the host rebuilds the frame, and the calls the worker still holds fail, since it will answer nothing more.
  */
 export function registerWorkerRelay(
   serving: ProtocolServing,
   worker: ProtocolTransport,
   workerStatus: WorkerStatus,
-  status: Pick<FrameBoot, 'fail' | 'interrupt'>,
+  boot: Pick<FrameBoot, 'fail' | 'interrupt' | 'serveTelemetry'>,
 ): void {
   serveEngineMethods(serving, {
     warmup: relayRequest(worker, frame.warmup),
@@ -90,13 +87,15 @@ export function registerWorkerRelay(
     connect: relaySubscription(worker, chain.connect),
     send: relayRequest(worker, chain.send),
   });
+  // Before the status can end, so no telemetry subscription waits for a source when it does.
+  boot.serveTelemetry(relaySubscription(worker, frame.telemetry));
   workerStatus.onEnd(end => {
     // The status goes first, so the host drops this frame before it hears the relayed calls fail, and counts them in
     // the frame's loss.
     if (end.kind === 'interrupt') {
-      status.interrupt(end.outcome);
+      boot.interrupt(end.outcome);
     } else {
-      status.fail(end.error);
+      boot.fail(end.error);
     }
     // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
     worker.dispose(workerEndError(end));

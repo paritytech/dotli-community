@@ -599,10 +599,9 @@ describe('createEngine scopes', () => {
     const second = await staying.connect('0xbb', 'c2');
 
     // When
-    const released = closing.scope.close();
+    closing.scope.close();
 
     // Then
-    expect(released).toBe(1);
     expect(await first.ended).toEqual(ok());
     expect(must(built[0], 'first chain').disconnect).toHaveBeenCalledTimes(1);
     expect(must(built[1], 'second chain').disconnect).not.toHaveBeenCalled();
@@ -618,14 +617,16 @@ describe('createEngine scopes', () => {
     const { tab, built } = setup({}, 0);
     await tab.connect('0xaa', 'c1');
     await tab.connect('0xbb', 'c2');
-    haltTransport(must(built[0], 'first chain'));
+    const died = must(built[0], 'first chain');
+    haltTransport(died);
+    const diedDisconnects = died.disconnect.mock.calls.length;
 
-    // When
-    const released = tab.scope.close();
+    // When the tab closes, and closes again
+    tab.scope.close();
+    tab.scope.close();
 
     // Then
-    expect(released).toBe(1);
+    expect(died.disconnect).toHaveBeenCalledTimes(diedDisconnects);
     expect(must(built[1], 'second chain').disconnect).toHaveBeenCalledTimes(1);
-    expect(tab.scope.close()).toBe(0);
   });
 });

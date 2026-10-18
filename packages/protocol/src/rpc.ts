@@ -107,19 +107,9 @@ interface Budget {
 
 function startBudget({ name, budgetMs }: MethodPolicy, timers: Timers, signal: AbortSignal | undefined): Budget {
   const giveUp = new AbortController();
-  if (signal?.aborted === true) {
-    giveUp.abort(signal.reason);
-  }
-  signal?.addEventListener(
-    'abort',
-    () => {
-      giveUp.abort(signal.reason);
-    },
-    { once: true },
-  );
   let timeout: Error | undefined;
   return {
-    signal: giveUp.signal,
+    signal: signal === undefined ? giveUp.signal : AbortSignal.any([signal, giveUp.signal]),
     bounded: work =>
       budgetMs === null
         ? work

@@ -33,7 +33,7 @@ import {
 } from '@dotli/transport';
 import { watchWorkerStatus } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
-import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
+import { registerWorkerRelay } from './worker-relay.js';
 
 const { frame, resolve, chain } = protocolSchema.traits;
 
@@ -77,13 +77,17 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
   workerStatus.ready();
   const status = createFrameStatus();
   iframe.serving.handleSubscription(frame.status, status.handler);
-  iframe.serving.handleSubscription(frame.telemetry, relayTelemetry(toWorker));
   // The iframe's link holds the one status subscription to the worker and shares it with the relay.
   registerWorkerRelay(
     iframe.serving,
     toWorker,
     watchWorkerStatus(toWorker, () => undefined),
-    status,
+    {
+      ...status,
+      serveTelemetry: source => {
+        iframe.serving.handleSubscription(frame.telemetry, source);
+      },
+    },
   );
   status.ready();
   return {

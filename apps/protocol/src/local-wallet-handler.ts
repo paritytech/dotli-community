@@ -4,7 +4,7 @@
 // Serves the local wallet to host pages. Same trust boundary as shared auth storage: host and landing origins of this
 // root domain only, never product origins.
 
-import { protocolSchema, type LocalWalletRead, type ProtocolContext, type ProtocolServing } from '@dotli/protocol';
+import { protocolSchema, type LocalWalletRead, type ProtocolServing } from '@dotli/protocol';
 import {
   forgetLocalWallet,
   loadLocalWallet,
@@ -13,9 +13,7 @@ import {
   updateLocalWalletIdentity,
   type LocalWalletStore,
 } from '@dotli/storage';
-import { ok, type Failure, type ResultPayload } from '@dotli/transport';
-
-import { admitSite } from './shared-store-handler.js';
+import { whenAdmitted } from './shared-store-handler.js';
 
 const { wallet } = protocolSchema.traits;
 
@@ -45,36 +43,23 @@ async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
   }
 }
 
-/** Runs `write` once the call's origin and site check, or answers the call's refusal. */
-async function admittedWrite(
-  payload: { siteId: string },
-  context: ProtocolContext,
-  write: () => Promise<void>,
-): Promise<ResultPayload<undefined, Failure>> {
-  const site = admitSite(payload, context);
-  if (!site.success) {
-    return site;
-  }
-  await write();
-  return ok();
-}
-
 /** Serves the wallet to host pages on `serving`, over the page's own wallet store by default. */
 export function serveLocalWallet(serving: ProtocolServing, store: LocalWalletStore = pageWallet): void {
-  serving.handleRequest(wallet.read, async (payload, context) => {
-    const site = admitSite(payload, context);
-    return site.success ? ok(await read(store)) : site;
-  });
+  serving.handleRequest(wallet.read, (payload, context) => whenAdmitted(payload, context, () => read(store)));
   serving.handleRequest(wallet.save, (payload, context) =>
-    admittedWrite(payload, context, () => {
+    whenAdmitted(payload, context, async (): Promise<undefined> => {
       assertEntropy(payload.entropy);
-      return store.saveLocalWallet(payload.entropy);
+      await store.saveLocalWallet(payload.entropy);
     }),
   );
   serving.handleRequest(wallet.identity, (payload, context) =>
-    admittedWrite(payload, context, () => store.updateLocalWalletIdentity(payload.identity)),
+    whenAdmitted(payload, context, async (): Promise<undefined> => {
+      await store.updateLocalWalletIdentity(payload.identity);
+    }),
   );
   serving.handleRequest(wallet.forget, (payload, context) =>
-    admittedWrite(payload, context, () => store.forgetLocalWallet()),
+    whenAdmitted(payload, context, async (): Promise<undefined> => {
+      await store.forgetLocalWallet();
+    }),
   );
 }

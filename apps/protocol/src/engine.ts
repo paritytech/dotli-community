@@ -28,11 +28,8 @@ export interface EngineScope {
   /** Opens a chain connection for the subscription. Stopping it disconnects it, and a chain halt ends it cleanly. */
   connect: ProtocolHandler<typeof methods.chain.connect>;
   send: ProtocolHandler<typeof methods.chain.send>;
-  /**
-   * Ends each connection's subscription cleanly, releases it and returns how many there were. The scope stays
-   * usable.
-   */
-  close: () => number;
+  /** Ends each connection's subscription cleanly and releases it. The scope stays usable. */
+  close: () => void;
 }
 
 export interface ProtocolEngine {
@@ -208,17 +205,14 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       return ok();
     };
 
-    function close(): number {
-      let released = 0;
+    function close(): void {
       for (const held of [...connections.values()]) {
         // Forgotten first, so neither the end nor a halt the disconnect causes releases it again.
         forget(held);
         held.sink.interrupt(ok());
         held.connection.disconnect();
-        released += 1;
       }
       scopes.delete(connections);
-      return released;
     }
 
     return { connect, send, close };

@@ -58,67 +58,27 @@ export interface SharedStoreHandler {
   stop: () => void;
 }
 
-function assertAuthKey(value: string): void {
-  if (!isValidSharedAuthKey(value)) {
-    throw new Error(`Invalid shared auth key: ${value}`);
-  }
-}
-
-function assertModeKey(value: string): void {
-  if (!isValidSharedModeKey(value)) {
-    throw new Error(`Invalid shared mode key: ${value}`);
-  }
-}
-
 // Holds the shared-auth trust boundary on any transport these stores are served over.
 function isOriginAllowed(context: ProtocolContext): boolean {
   return context.origin !== null && isSharedAuthOriginAllowed(context.origin);
 }
 
 /**
- * The call's site once its origin and site check, or the call's refusal when its origin may not use the shared stores.
- * A site that does not check throws.
+ * Answers with what `run` returns for the call's site once its origin and site check, or with the call's refusal when
+ * its origin may not use the shared stores. A site that does not check throws.
  */
-export function admitSite(payload: { siteId: string }, context: ProtocolContext): ResultPayload<SiteId, Failure> {
+export async function whenAdmitted<T>(
+  payload: { siteId: string },
+  context: ProtocolContext,
+  run: (site: SiteId) => T | Promise<T>,
+): Promise<ResultPayload<T, Failure>> {
   if (!isOriginAllowed(context)) {
     return err(denied());
   }
   if (!isSharedAuthSiteId(payload.siteId)) {
     throw new Error(`Invalid siteId: ${String(payload.siteId)}`);
   }
-  return ok(payload.siteId);
-}
-
-/** A call's storage key once its site and key check, or the call's refusal when its origin may not use the store. */
-function storeKey(
-  payload: { siteId: string; key: string },
-  context: ProtocolContext,
-  assertKey: (key: string) => void,
-  build: (siteId: SiteId, key: string) => string,
-): ResultPayload<string, Failure> {
-  const site = admitSite(payload, context);
-  if (!site.success) {
-    return site;
-  }
-  assertKey(payload.key);
-  return ok(build(site.value, payload.key));
-}
-
-/** Reads with the call's storage key, or answers the call's refusal. */
-function readWith<T>(key: ResultPayload<string, Failure>, read: (key: string) => T): ResultPayload<T, Failure> {
-  return key.success ? ok(read(key.value)) : key;
-}
-
-/** Writes with the call's storage key, or answers the call's refusal. */
-function writeWith(
-  key: ResultPayload<string, Failure>,
-  write: (key: string) => void,
-): ResultPayload<undefined, Failure> {
-  if (!key.success) {
-    return key;
-  }
-  write(key.value);
-  return ok();
+  return ok(await run(payload.siteId));
 }
 
 function isBroadcastMessage(data: unknown): data is SharedAuthBroadcastMessage {
@@ -164,29 +124,35 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
   }
 
   /**
-   * Serves one store, keyed by `build` once `assertKey` passes. `onChange` hears each write and clear the store
+   * Serves the `name` store, keyed by `build` once `isValidKey` passes. `onChange` hears each write and clear the store
    * made.
    */
   function serveStore(
     methods: StoreMethods,
-    assertKey: (key: string) => void,
+    name: 'auth' | 'mode',
+    isValidKey: (key: string) => boolean,
     build: (siteId: SiteId, key: string) => string,
     onChange: (siteId: string, key: string, value: string | null) => void = () => undefined,
   ): (() => void)[] {
-    const keyOf = (payload: { siteId: string; key: string }, context: ProtocolContext) =>
-      storeKey(payload, context, assertKey, build);
+    const keyed = <T>(payload: { siteId: string; key: string }, context: ProtocolContext, use: (key: string) => T) =>
+      whenAdmitted(payload, context, site => {
+        if (!isValidKey(payload.key)) {
+          throw new Error(`Invalid shared ${name} key: ${payload.key}`);
+        }
+        return use(build(site, payload.key));
+      });
     return [
       serving.handleRequest(methods.read, (payload, context) =>
-        readWith(keyOf(payload, context), key => deps.storage().getItem(key)),
+        keyed(payload, context, key => deps.storage().getItem(key)),
       ),
       serving.handleRequest(methods.write, (payload, context) =>
-        writeWith(keyOf(payload, context), key => {
+        keyed(payload, context, (key): undefined => {
           deps.storage().setItem(key, payload.value);
           onChange(payload.siteId, payload.key, payload.value);
         }),
       ),
       serving.handleRequest(methods.clear, (payload, context) =>
-        writeWith(keyOf(payload, context), key => {
+        keyed(payload, context, (key): undefined => {
           deps.storage().removeItem(key);
           onChange(payload.siteId, payload.key, null);
         }),
@@ -199,13 +165,15 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
   const unregister = [
     ...serveStore(
       { read: storage.authRead, write: storage.authWrite, clear: storage.authClear },
-      assertAuthKey,
+      'auth',
+      isValidSharedAuthKey,
       buildSharedAuthStorageKey,
       broadcast,
     ),
     ...serveStore(
       { read: storage.modeRead, write: storage.modeWrite, clear: storage.modeClear },
-      assertModeKey,
+      'mode',
+      isValidSharedModeKey,
       buildSharedModeStorageKey,
     ),
     serving.handleSubscription(storage.authChanges, (_start, context, sink) => {

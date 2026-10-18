@@ -164,7 +164,10 @@ function sameFrameConfig(a: ProtocolFrameConfig, b: ProtocolFrameConfig): boolea
 /** The frame's step that failed, so a failure is counted where it happened. */
 type BootPhase = 'load' | 'listen' | 'ready';
 
-/** `name` labels the count: the error's name under the protocol's class, or `unknown` for a thrown value that is no `Error`. */
+/**
+ * `name` labels the count: the error's name under the protocol's class, or `unknown` for a thrown value that is no
+ * `Error`.
+ */
 function reportBootFailure(phase: BootPhase, error: Error, name: string, count: typeof m.count): void {
   count(S.PROTOCOL_IFRAME_READY, { outcome: 'error', phase, reason: name });
   m.breadcrumb(phase === 'ready' ? 'protocol iframe ready wait failed' : 'protocol iframe load failed', {
@@ -321,9 +324,18 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
           reject(error);
         }
       }
+      // The status there is now settles the wait at once, so a frame already there costs no subscription.
+      const now = verdict(status.get());
+      if (now !== false) {
+        if (now === true) {
+          resolve();
+        } else {
+          reject(now);
+        }
+        return;
+      }
       unsubscribe = status.subscribe(onStatus);
       signal?.addEventListener('abort', onAbort, { once: true });
-      onStatus(status.get());
     });
   }
 
@@ -505,9 +517,6 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
 
   function whenReady(): Promise<ProtocolTransport> {
     return withConfig(config => {
-      if (status.get() === 'ready' && slot !== null) {
-        return Promise.resolve(slot.transport);
-      }
       // Taken before the boot, since a frame that cannot be built fails in the same turn it is asked for. A loss from
       // before this call is what the boot answers, so it does not fail the wait.
       const since = losses;

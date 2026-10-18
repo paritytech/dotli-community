@@ -30,6 +30,7 @@ import {
 } from '@dotli/transport';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { connectSharedWorker, workerEndError, type WorkerEnd, type WorkerStatus } from './shared-worker-link.js';
+import { createFramePage, type FramePage } from './worker-port.fake.js';
 
 const { frame } = protocolSchema.traits;
 
@@ -144,21 +145,10 @@ function fakeWorker(): FakeWorker {
   };
 }
 
-/** The iframe's page, which hides when the host removes the frame, the tab navigates or the page enters the cache. */
-function framePage(): { target: EventTarget; hide: (persisted: boolean) => void } {
-  const target = new EventTarget();
-  return {
-    target,
-    hide: persisted => {
-      target.dispatchEvent(Object.assign(new Event('pagehide'), { persisted }));
-    },
-  };
-}
-
 function link(
   fake: FakeWorker,
   options: {
-    page?: ReturnType<typeof framePage>;
+    page?: FramePage;
     timers?: ManualTimers;
     resolutionId?: string | null;
     onOpen?: (transport: ProtocolTransport, status: WorkerStatus) => void;
@@ -166,7 +156,7 @@ function link(
 ): ReturnType<typeof connectSharedWorker> {
   return connectSharedWorker({
     worker: fake.worker,
-    window: (options.page ?? framePage()).target,
+    window: (options.page ?? createFramePage()).target,
     resolutionId: options.resolutionId ?? null,
     readyTimeoutMs: READY_TIMEOUT_MS,
     timers: options.timers ?? manualTimers(),
@@ -400,7 +390,7 @@ describe('connectSharedWorker', () => {
 
   it('As a tab kept in the back-forward cache, I keep my worker transport', async () => {
     // Given a tab on a ready worker
-    const page = framePage();
+    const page = createFramePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
     worker.status.ready();
@@ -415,7 +405,7 @@ describe('connectSharedWorker', () => {
 
   it('As a tab that leaves for good, I dispose my worker transport', async () => {
     // Given a tab on a ready worker
-    const page = framePage();
+    const page = createFramePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
     worker.status.ready();

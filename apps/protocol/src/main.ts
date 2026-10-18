@@ -36,9 +36,9 @@ import { DB_NAME } from '@dotli/storage';
 import { createTransport, createWindowProvider } from '@dotli/transport';
 
 import { connectSharedWorker } from './shared-worker-link.js';
-import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
+import { registerWorkerRelay } from './worker-relay.js';
 import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
-import { createEngine, serveEngineScope } from './engine.js';
+import { createEngine, serveEngineScope, type ProtocolEngine } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { serveLocalWallet } from './local-wallet-handler.js';
 import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
@@ -204,10 +204,20 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     onOpen: (link, workerStatus) => {
       // The worker reports what it refuses, so these calls skip this frame's refusal report.
       registerWorkerRelay(serving, link, workerStatus, boot);
-      boot.serveTelemetry(relayTelemetry(link));
     },
   });
   boot.ready();
+}
+
+/**
+ * Serves `engine` and reports the frame ready. The iframe serves its one parent, so one scope holds every connection.
+ */
+function serveEngine(engine: ProtocolEngine): void {
+  serveEngineScope(served, engine);
+  boot.ready();
+  window.addEventListener('beforeunload', () => {
+    engine.cleanup();
+  });
 }
 
 async function initDirectMode(): Promise<void> {
@@ -259,13 +269,7 @@ async function initDirectMode(): Promise<void> {
     syncBudgetCapMs: resolveBudgetCapMs(session),
   });
 
-  // The iframe serves its one parent, so one scope holds every connection.
-  serveEngineScope(served, engine);
-  boot.ready();
-
-  window.addEventListener('beforeunload', () => {
-    engine.cleanup();
-  });
+  serveEngine(engine);
 }
 
 // Gateway mode resolves names in the host process, so no resolver is wired here.
@@ -273,13 +277,7 @@ async function initRpcMode(): Promise<void> {
   const { openGatewayChains } = await loadGatewayChains();
   const engine = createEngine(openGatewayChains());
 
-  // The iframe serves its one parent, so one scope holds every connection.
-  serveEngineScope(served, engine);
-  boot.ready();
-
-  window.addEventListener('beforeunload', () => {
-    engine.cleanup();
-  });
+  serveEngine(engine);
 }
 
 void init().catch((err: unknown) => {
