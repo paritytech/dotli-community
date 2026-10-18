@@ -21,9 +21,10 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
   caller's own side and never reaches a handler.
 - A message is a fixed header (request id, trait id, method id and leg), the leg's envelope, then the payload with no
   length prefix. Encoding writes it into one buffer. Decoding reads the header with one cursor and hands the user's
-  decode a view of exactly the payload bytes, with no copy. Decoding is strict: a whole header, a known leg, a leg the
-  method has, and a body that ends where the message does. A message for an address the schema lacks is still read as
-  that address, so the receiver can answer it.
+  decode a view of exactly the payload bytes, with no copy. The view shares the message's buffer at a non-zero offset,
+  so a decode must respect `byteOffset` or copy the bytes first. Decoding is strict: a whole header, a known leg, a leg
+  the method has, and a body that ends where the message does. A message for an address the schema lacks is still read
+  as that address, so the receiver can answer it.
 - The library keeps trait 255 for itself. Method 0 is the handshake, which carries the schema version and the hello, and
   method 255 is the protocol error that answers a message for an unknown address. Their layout never changes, so a peer
   of any release reads the version it refuses.

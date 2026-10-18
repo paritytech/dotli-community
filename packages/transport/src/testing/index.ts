@@ -63,12 +63,12 @@ function describeDecoded(schema: Schema, message: DecodedMessage, data: ArrayBuf
 
 /**
  * Describes a recorded message by its names, leg, id and decoded body. A reserved or unknown address is named by its
- * numeric ids. Throws on data the schema refuses, with the refusal's cause.
+ * numeric ids. Throws on data the schema refuses, with the refusal as the cause.
  */
 export function describeMessage(schema: Schema, data: ArrayBuffer): DescribedMessage {
   const decoded = decodeMessage(schema, data);
   if ('refused' in decoded) {
-    throw new Error(`the data is refused as ${decoded.refused}`, { cause: decoded.cause });
+    throw new Error(`the data is refused as ${decoded.refused}`, { cause: decoded });
   }
   return describeDecoded(schema, decoded, data);
 }

@@ -5,7 +5,7 @@
 // length prefix. The header, the leg bytes, the result and error tags, the handshake on 255/0 and the protocol error on
 // 255/255 are frozen, since a peer of any release reads them to tell versions apart.
 
-import { createDecoder, str, u32, u8 } from 'scale-ts';
+import { compact, createDecoder, u16, u32, u8 } from 'scale-ts';
 import { decodeValue, encodeValue, none, type Codec } from './codec.js';
 import {
   denied,
@@ -45,6 +45,16 @@ const ERR = 1;
 const DOMAIN = 0;
 const UNSUPPORTED_MESSAGE = 0;
 const EMPTY = new Uint8Array(0);
+
+// A reason's length is a compact integer. The two- and four-byte modes start at these lengths, and a reason too long
+// for the four-byte mode is longer than any message carries, so the wire refuses it both ways.
+const TWO_BYTE_MODE = 2 ** 6;
+const FOUR_BYTE_MODE = 2 ** 14;
+const MAX_REASON_BYTES = 2 ** 30;
+
+const utf8Encoder = new TextEncoder();
+// Fatal so bytes that are no UTF-8 are refused, not replaced, and BOM-keeping so a reason reads back as it was written.
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /** A message on a schema method, addressed by its wire ids. */
 export type MethodMessage =
@@ -113,16 +123,24 @@ export interface Header {
 
 type Target = MethodImpl | { kind: 'handshake' } | { kind: 'protocolError' };
 
+const TARGET_NAMES: Record<Target['kind'], string> = {
+  request: 'a request method',
+  subscription: 'a subscription method',
+  handshake: 'the handshake',
+  protocolError: 'the protocol error',
+};
+
 /** A leg its target does not have. Its own class, so a decode refuses it as invalid rather than malformed. */
 class UnfitLeg extends TypeError {
   constructor(leg: Leg, target: Target['kind']) {
-    super(`a ${leg} leg does not belong to a ${target} method`);
+    super(`the ${leg} leg does not belong to ${TARGET_NAMES[target]}`);
   }
 }
 
-/** scale-ts hands decoders its byte array over the whole buffer, which carries the read position. */
+/** scale-ts hands decoders its byte array over the whole buffer, which carries the read position and a view. */
 interface Cursor extends Uint8Array {
   i: number;
+  v: DataView;
 }
 
 // scale-ts decoders read `view.buffer` and ignore a view's offset, so the cursor always spans the whole message.
@@ -172,8 +190,13 @@ function outcomeBody(
     case 'Unsupported':
       return { envelope: [ERR, tag], payload: EMPTY };
     case 'MalformedFrame':
-    case 'HostFailure':
-      return { envelope: [ERR, tag], payload: str.enc(error.reason) };
+    case 'HostFailure': {
+      const reason = utf8Encoder.encode(error.reason);
+      if (reason.length >= MAX_REASON_BYTES) {
+        throw new RangeError(`a reason of ${String(reason.length)} bytes is longer than the wire carries`);
+      }
+      return { envelope: [ERR, tag, ...compact.enc(reason.length)], payload: reason };
+    }
     case 'Cancelled':
       throw new TypeError('Cancelled is raised on the caller side and never crosses the wire');
   }
@@ -268,6 +291,30 @@ function readPayload(c: Codec<unknown>, cursor: Cursor): unknown {
   return decodeValue(c, new Uint8Array(cursor.buffer, cursor.i));
 }
 
+// Stricter than the scale-ts string: the length must be in its shortest compact form and the bytes must be UTF-8.
+function readReason(cursor: Cursor): string {
+  const mode = cursor.v.getUint8(cursor.i) & 0b11;
+  let length: number;
+  if (mode === 0) {
+    length = u8.dec(cursor) >>> 2;
+  } else if (mode === 1) {
+    length = u16.dec(cursor) >>> 2;
+  } else if (mode === 2) {
+    length = u32.dec(cursor) >>> 2;
+  } else {
+    throw new RangeError('a reason length past the four-byte compact mode is longer than the wire carries');
+  }
+  if ((mode === 1 && length < TWO_BYTE_MODE) || (mode === 2 && length < FOUR_BYTE_MODE)) {
+    throw new RangeError(`the reason length ${String(length)} is not in its shortest compact form`);
+  }
+  if (length > cursor.byteLength - cursor.i) {
+    throw new RangeError(`expected a ${String(length)}-byte reason, got ${String(cursor.byteLength - cursor.i)} bytes`);
+  }
+  const reason = utf8Decoder.decode(new Uint8Array(cursor.buffer, cursor.i, length));
+  cursor.i += length;
+  return reason;
+}
+
 function readOutcome(
   cursor: Cursor,
   value: Codec<unknown>,
@@ -298,12 +345,12 @@ function readOutcome(
       end(cursor);
       return err(unsupported());
     case 'MalformedFrame': {
-      const reason = str.dec(cursor);
+      const reason = readReason(cursor);
       end(cursor);
       return err(malformedFrame(reason));
     }
     case 'HostFailure': {
-      const reason = str.dec(cursor);
+      const reason = readReason(cursor);
       end(cursor);
       return err(hostFailure(reason));
     }
@@ -393,7 +440,9 @@ function targetAt(schema: Schema, trait: number, method: number): Target | undef
  */
 export function decodeMessage(schema: Schema, data: ArrayBuffer): DecodedMessage | Refusal {
   if (data.byteLength < HEADER_BYTES) {
-    const cause = new RangeError(`a ${String(HEADER_BYTES)}-byte header, got ${String(data.byteLength)} bytes`);
+    const cause = new RangeError(
+      `expected a ${String(HEADER_BYTES)}-byte header, got ${String(data.byteLength)} bytes`,
+    );
     return { refused: 'malformed', cause };
   }
   const cursor = toCursor(data);
