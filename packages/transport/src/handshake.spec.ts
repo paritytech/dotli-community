@@ -142,7 +142,9 @@ describe('the handshake', () => {
     // Then
     const failure = await outcomeOf(transport.whenConnected());
     expect(failure).toBeInstanceOf(TransportVersionMismatchError);
-    expect(failure).toMatchObject({ ours: VERSION, theirs: VERSION + 1 });
+    expect(failure).toMatchObject({
+      message: `The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
+    });
     expect(await call).toBe(failure);
     const heard = peer.heard.length;
     await timers.advance(RETRY_MS * 10);
@@ -236,7 +238,9 @@ describe('the handshake', () => {
     ]);
     const failure = await outcomeOf(transport.whenConnected());
     expect(failure).toBeInstanceOf(TransportVersionMismatchError);
-    expect(failure).toMatchObject({ ours: VERSION, theirs: VERSION + 1 });
+    expect(failure).toMatchObject({
+      message: `The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
+    });
     expect(await call).toBe(failure);
     expect(peer.names()).not.toContain('request:notes.touch');
   });

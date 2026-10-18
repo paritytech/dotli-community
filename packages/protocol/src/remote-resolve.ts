@@ -32,28 +32,30 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
     let timedOut: Error | undefined;
     const resolved = new Promise<string | null>((resolve, reject) => {
       let answered = false;
-      const resolution = subscribe(
+      const stop = subscribe(
         transport,
         dotName,
         { label },
-        event => {
-          if (event.tag === 'phase') {
-            onPhase?.(event.value);
-            return;
-          }
-          answered = true;
-          resolve(event.value);
-          // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
-          resolution.unsubscribe();
+        {
+          receive: event => {
+            if (event.tag === 'phase') {
+              onPhase?.(event.value);
+              return;
+            }
+            answered = true;
+            resolve(event.value);
+            // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
+            stop();
+          },
+          // An end before the result is a failure.
+          end: error => {
+            if (!answered) {
+              reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
+            }
+          },
         },
         { signal: giveUp.signal },
       );
-      // An end before the result is a failure.
-      resolution.onEnd(error => {
-        if (!answered) {
-          reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
-        }
-      });
     });
     try {
       const name = await withTimeout(

@@ -3,7 +3,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
-import type { SubscriptionHandle } from './calls.js';
 import { TransportHandshakeTimeoutError, type TransportIssue } from './errors.js';
 import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import {
@@ -389,14 +388,12 @@ describe('calls', () => {
     // Given
     const { transport, timers, peer, answerHandshake } = rawRig('open');
     const heard = watcher();
-    const closes: Error[] = [];
-    const handle = transport.subscribe(notes.watch, 'from the top', heard);
-    handle.onClose(error => closes.push(error));
+    const stop = transport.subscribe(notes.watch, 'from the top', heard);
     transport.connect();
     await timers.advance(0);
 
     // When
-    handle.stop();
+    stop();
     answerHandshake();
     await transport.whenConnected();
     await timers.advance(0);
@@ -405,20 +402,20 @@ describe('calls', () => {
     // Then
     expect(peer.names()).toEqual(['open']);
     expect(heard.ends).toEqual([]);
-    expect(closes).toEqual([]);
+    expect(heard.closes).toEqual([]);
   });
 
   it('As a subscriber, stopping my open subscription posts one stop and I hear nothing more, a crossing interrupt included', async () => {
     // Given
     const { transport, timers, peer, issues } = await connectedRaw();
     const heard = watcher();
-    const handle = transport.subscribe(notes.watch, 'from the top', heard);
+    const stop = transport.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
     const [id = 0] = startIds(peer);
 
     // When
-    handle.stop();
-    handle.stop();
+    stop();
+    stop();
     peer.call(notes.watch, id, { tag: 'receive', value: 'crossing' });
     peer.call(notes.watch, id, { tag: 'interrupt', value: ok() });
     await timers.advance(0);
@@ -435,13 +432,13 @@ describe('calls', () => {
     const { transport, timers, peer, issues } = await connectedRaw();
     const heard = watcher();
     const abort = new AbortController();
-    const handle = transport.subscribe(notes.watch, 'from the top', heard, { signal: abort.signal });
+    const stop = transport.subscribe(notes.watch, 'from the top', heard, { signal: abort.signal });
     await timers.advance(0);
     const [id = 0] = startIds(peer);
 
     // When
     abort.abort();
-    handle.stop();
+    stop();
     peer.call(notes.watch, id, { tag: 'receive', value: 'crossing' });
     await timers.advance(0);
 
@@ -480,21 +477,17 @@ describe('calls', () => {
     expect(peer.names()).toEqual(['open']);
   });
 
-  it('As a caller, a transport that closes calls my onClose once with its error', async () => {
+  it('As a caller, a transport that closes closes my subscription once with its error', async () => {
     // Given
     const { opener, accepter, timers, issues } = rig();
     const { stops } = serveWatch(accepter);
     opener.connect();
     const heard = watcher();
-    const handle = opener.subscribe(notes.watch, 'open', heard);
-    const closes: Error[] = [];
-    handle.onClose(error => closes.push(error));
-    handle.onClose(error => closes.push(error));
-    const stopped = opener.subscribe(notes.watch, 'stopped', watcher());
-    const stoppedCloses: Error[] = [];
-    stopped.onClose(error => stoppedCloses.push(error));
+    opener.subscribe(notes.watch, 'open', heard);
+    const stopped = watcher();
+    const stop = opener.subscribe(notes.watch, 'stopped', stopped);
     await timers.advance(0);
-    stopped.stop();
+    stop();
     const reason = new Error('the page is closing');
 
     // When
@@ -503,21 +496,21 @@ describe('calls', () => {
     await timers.advance(0);
 
     // Then
-    expect(closes).toEqual([reason, reason]);
-    expect(stoppedCloses).toEqual([]);
+    expect(heard.closes).toEqual([reason]);
+    expect(stopped.closes).toEqual([]);
     expect(heard.ends).toEqual([]);
     expect(stops).toEqual([1, 1]);
 
-    // When a listener comes late, and a subscription is made once closed
-    const late: Error[] = [];
-    handle.onClose(error => late.push(error));
-    const after = opener.subscribe(notes.watch, 'after', watcher());
-    after.onClose(error => late.push(error));
-    after.stop();
-    after.onClose(error => late.push(error));
+    // When a subscription is made once closed, and stopped before it hears
+    const after = watcher();
+    opener.subscribe(notes.watch, 'after', after);
+    const stoppedAfter = watcher();
+    opener.subscribe(notes.watch, 'stopped after', stoppedAfter)();
+    await timers.advance(0);
 
     // Then
-    expect(late).toEqual([reason, reason, reason]);
+    expect(after.closes).toEqual([reason]);
+    expect(stoppedAfter.closes).toEqual([]);
     expect(stops).toEqual([1, 1]);
     expect(issues).toEqual([]);
   });
@@ -527,9 +520,7 @@ describe('calls', () => {
     const { transport, timers, peer, issues } = await connectedRaw();
     const heard = watcher();
     const abort = new AbortController();
-    const closes: Error[] = [];
-    const handle = transport.subscribe(notes.watch, 'from the top', heard, { signal: abort.signal });
-    handle.onClose(error => closes.push(error));
+    transport.subscribe(notes.watch, 'from the top', heard, { signal: abort.signal });
     await timers.advance(0);
     const [id = 0] = startIds(peer);
     peer.call(notes.watch, id, { tag: 'interrupt', value: ok() });
@@ -537,23 +528,21 @@ describe('calls', () => {
 
     // When
     abort.abort();
-    handle.onClose(error => closes.push(error));
     transport.dispose(new Error('done'));
     await timers.advance(0);
 
     // Then
     expect(heard.ends).toEqual([ok()]);
-    expect(closes).toEqual([]);
+    expect(heard.closes).toEqual([]);
     expect(peer.find('stop:notes.watch')).toEqual([]);
     expect(issues).toEqual([]);
   });
 
-  it('As a caller, disposing while my start is queued calls onClose with the reason and posts no start', async () => {
+  it('As a caller, disposing while my start is queued closes it with the reason and posts no start', async () => {
     // Given
     const { transport, timers, peer } = rawRig('open');
     const heard = watcher();
-    const closes: Error[] = [];
-    transport.subscribe(notes.watch, 'queued', heard).onClose(error => closes.push(error));
+    transport.subscribe(notes.watch, 'queued', heard);
     transport.connect();
     await timers.advance(0);
     const reason = new Error('leaving');
@@ -563,24 +552,23 @@ describe('calls', () => {
     await timers.advance(0);
 
     // Then
-    expect(closes).toEqual([reason]);
+    expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
     expect(peer.find('start:notes.watch')).toEqual([]);
   });
 
-  it('As a caller, a handshake that times out calls onClose of my queued subscription with why and posts no start', async () => {
+  it('As a caller, a handshake that times out closes my queued subscription with why and posts no start', async () => {
     // Given
     const { transport, timers, peer } = rawRig('open');
     const heard = watcher();
-    const closes: Error[] = [];
-    transport.subscribe(notes.watch, 'queued', heard).onClose(error => closes.push(error));
+    transport.subscribe(notes.watch, 'queued', heard);
 
     // When
     transport.connect();
     await timers.advance(TIMEOUT_MS);
 
     // Then
-    expect(closes).toEqual([expect.any(TransportHandshakeTimeoutError)]);
+    expect(heard.closes).toEqual([expect.any(TransportHandshakeTimeoutError)]);
     expect(heard.ends).toEqual([]);
     expect(peer.find('start:notes.watch')).toEqual([]);
   });
@@ -591,6 +579,7 @@ describe('calls', () => {
     const { sinks } = serveWatch(accepter);
     opener.connect();
     const bug = new Error('listener bug');
+    const closeBug = new Error('close listener bug');
     const throwing = {
       receive: vi.fn(() => {
         throw bug;
@@ -598,17 +587,20 @@ describe('calls', () => {
       interrupt: vi.fn(() => {
         throw bug;
       }),
+      close: vi.fn(() => undefined),
     };
     const heard = watcher();
     opener.subscribe(notes.watch, 'a', throwing);
     opener.subscribe(notes.watch, 'b', heard);
-    const closing = opener.subscribe(notes.watch, 'c', watcher());
-    const closeBug = new Error('close listener bug');
-    const closes = vi.fn();
-    closing.onClose(() => {
-      throw closeBug;
-    });
-    closing.onClose(closes);
+    const closing = {
+      ...watcher(),
+      close: vi.fn(() => {
+        throw closeBug;
+      }),
+    };
+    opener.subscribe(notes.watch, 'c', closing);
+    const closed = watcher();
+    opener.subscribe(notes.watch, 'd', closed);
     await timers.advance(0);
 
     // When
@@ -626,7 +618,8 @@ describe('calls', () => {
     expect(throwing.interrupt).toHaveBeenCalledOnce();
     expect(heard.values).toEqual(['one', 'two']);
     expect(heard.ends).toEqual([ok()]);
-    expect(closes).toHaveBeenCalledOnce();
+    expect(closing.close).toHaveBeenCalledOnce();
+    expect(closed.closes).toHaveLength(1);
     expect(issues).toEqual([
       { kind: 'listener_threw', error: bug },
       { kind: 'listener_threw', error: bug },
@@ -635,37 +628,40 @@ describe('calls', () => {
     ]);
   });
 
-  it('As a subscriber, I can stop and dispose from inside receive and onClose', async () => {
+  it('As a subscriber, I can stop and dispose from inside receive and close', async () => {
     // Given
     const { opener, accepter, timers } = rig();
     const { sinks, stops } = serveWatch(accepter);
     opener.connect();
     const reason = new Error('torn down');
     const heardBySelfStopping = vi.fn();
-    const selfStopping = opener.subscribe(notes.watch, 'a', {
+    const stopSelf = opener.subscribe(notes.watch, 'a', {
       receive: () => {
         heardBySelfStopping();
-        selfStopping.stop();
-        selfStopping.stop();
+        stopSelf();
+        stopSelf();
       },
       interrupt: () => undefined,
+      close: () => undefined,
     });
-    const disposing = opener.subscribe(notes.watch, 'b', {
+    const disposingCloses = vi.fn();
+    opener.subscribe(notes.watch, 'b', {
       receive: () => {
         opener.dispose(reason);
       },
       interrupt: () => undefined,
+      close: disposingCloses,
     });
-    const disposingCloses = vi.fn();
-    disposing.onClose(disposingCloses);
     const watcherCloses = vi.fn();
     let callFromClose: Promise<unknown> | undefined;
-    const watched = opener.subscribe(notes.watch, 'c', watcher());
-    watched.onClose(error => {
-      watcherCloses(error);
-      watched.stop();
-      opener.dispose(new Error('second dispose'));
-      callFromClose = outcomeOf(opener.request(echo.say, 'still there?'));
+    const stopWatched = opener.subscribe(notes.watch, 'c', {
+      ...watcher(),
+      close: error => {
+        watcherCloses(error);
+        stopWatched();
+        opener.dispose(new Error('second dispose'));
+        callFromClose = outcomeOf(opener.request(echo.say, 'still there?'));
+      },
     });
     await timers.advance(0);
 
@@ -692,6 +688,7 @@ describe('calls', () => {
       interrupt: () => {
         transport.dispose(new Error('torn down'));
       },
+      close: () => undefined,
     });
     transport.subscribe(notes.watch, 'open', watcher());
     await timers.advance(0);
@@ -711,7 +708,8 @@ describe('calls', () => {
     const stopped = watcher();
     const interrupted = watcher();
     const open = watcher();
-    transport.subscribe(notes.watch, 'stopped', stopped).stop();
+    const stopStopped = transport.subscribe(notes.watch, 'stopped', stopped);
+    stopStopped();
     await timers.advance(0);
     transport.subscribe(notes.watch, 'interrupted', interrupted);
     transport.subscribe(notes.watch, 'open', open);
@@ -719,10 +717,10 @@ describe('calls', () => {
     const [ended = 0, running = 0] = startIds(peer);
     peer.call(notes.watch, ended, { tag: 'interrupt', value: ok() });
     await timers.advance(0);
-    const handle = transport.subscribe(notes.watch, 'later', watcher());
+    const stopLater = transport.subscribe(notes.watch, 'later', watcher());
     await timers.advance(0);
     const [, , later = 0] = startIds(peer);
-    handle.stop();
+    stopLater();
 
     // When values and ends come on the stopped one, after the interrupt, under another method, and on an id never used
     peer.call(notes.watch, later, { tag: 'receive', value: 'crossing' });
@@ -821,14 +819,13 @@ describe('calls', () => {
     await raw.transport.whenConnected();
     breakPosts();
     const heard = watcher();
-    const closes: Error[] = [];
 
     // When
-    raw.transport.subscribe(notes.watch, 'from the top', heard).onClose(error => closes.push(error));
+    raw.transport.subscribe(notes.watch, 'from the top', heard);
     await raw.timers.advance(0);
 
     // Then the transport closed it before the post returned, and the peer heard no stop
-    expect(closes).toEqual([reason]);
+    expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.names()).toEqual(['open']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
@@ -839,14 +836,14 @@ describe('calls', () => {
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts, mendPosts } = breakable(broken);
     const issues: TransportIssue[] = [];
-    // The handle is made after the hook, which runs only once the start is posted.
-    const handles: SubscriptionHandle[] = [];
+    // The stop is made after the hook, which runs only once the start is posted.
+    const stops: (() => void)[] = [];
     const raw = rawRig('open', wrap, {
       onIssue: issue => {
         issues.push(issue);
         if (issue.kind === 'post_failed') {
           mendPosts();
-          handles[0]?.stop();
+          stops[0]?.();
         }
       },
     });
@@ -856,18 +853,15 @@ describe('calls', () => {
     await raw.transport.whenConnected();
     breakPosts();
     const heard = watcher();
-    const closes: Error[] = [];
 
     // When
-    const handle = raw.transport.subscribe(notes.watch, 'from the top', heard);
-    handles.push(handle);
-    handle.onClose(error => closes.push(error));
+    stops.push(raw.transport.subscribe(notes.watch, 'from the top', heard));
     await raw.timers.advance(0);
     raw.transport.dispose(new Error('done'));
     await raw.timers.advance(0);
 
     // Then the stop ended it before the post returned, and the peer heard no stop
-    expect(closes).toEqual([]);
+    expect(heard.closes).toEqual([]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.names()).toEqual(['open']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
@@ -880,21 +874,18 @@ describe('calls', () => {
     const { transport, timers, peer, issues } = await connectedRaw(wrap);
     breakPosts();
     const heard = watcher();
-    const closes: Error[] = [];
 
     // When
-    const handle = transport.subscribe(notes.watch, 'from the top', heard);
-    handle.onClose(error => closes.push(error));
+    const stop = transport.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
     mendPosts();
-    handle.stop();
-    handle.onClose(error => closes.push(error));
+    stop();
     transport.dispose(new Error('done'));
     await timers.advance(0);
 
     // Then
     const failed = expect.objectContaining({ message: 'The start could not be posted', cause: broken }) as Error;
-    expect(closes).toEqual([failed, failed]);
+    expect(heard.closes).toEqual([failed]);
     expect(heard.ends).toEqual([]);
     expect(peer.names()).toEqual(['open']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);

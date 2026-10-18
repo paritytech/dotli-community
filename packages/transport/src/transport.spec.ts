@@ -4,7 +4,6 @@
 import { type ResultPayload, str } from 'scale-ts';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { manualTimers } from '@dotli/shared/testing';
-import type { SubscriptionHandle } from './calls.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { err, hostFailure, ok, type CallError } from './result.js';
@@ -45,8 +44,11 @@ describe('createTransport', () => {
         interrupt: outcome => {
           expectTypeOf(outcome).toEqualTypeOf<ResultPayload<undefined, CallError<string>>>();
         },
+        close: error => {
+          expectTypeOf(error).toEqualTypeOf<Error>();
+        },
       });
-      expectTypeOf(handle).toEqualTypeOf<SubscriptionHandle>();
+      expectTypeOf(handle).toEqualTypeOf<() => void>();
       // @ts-expect-error a request is not a subscription
       transport.subscribe(notes.read, 'a note', watcher());
       // @ts-expect-error a subscription is not served as a request
@@ -96,21 +98,17 @@ describe('createTransport', () => {
     const relayCalling = upstream.opener;
     serveWatch(upstream.accepter);
     relayServing.handleSubscription(notes.watch, (start, _context, sink) => {
-      const onward = relayCalling.subscribe(notes.watch, start, {
+      return relayCalling.subscribe(notes.watch, start, {
         receive: value => {
           sink.receive(value);
         },
         interrupt: outcome => {
-          if (outcome.success) {
-            sink.interrupt(ok());
-          } else {
-            sink.interrupt(err(outcome.value));
-          }
+          sink.interrupt(outcome);
+        },
+        close: error => {
+          sink.interrupt(err(hostFailure(error)));
         },
       });
-      return () => {
-        onward.stop();
-      };
     });
     caller.connect();
     relayCalling.connect();

@@ -70,7 +70,7 @@ sequenceDiagram
   end: the peer's interrupt, a failure the library answered with, `Cancelled` once its signal aborts, or
   `MalformedFrame` when a message does not decode, after which the peer is told to stop, since what was lost may be a
   value. Stopping it tells the peer and calls no listener. A start that does not encode throws. The one local end with
-  an error goes to `onClose` instead: the transport closed, or the start could not be posted.
+  an error goes to `close` instead: the transport closed, or the start could not be posted.
 
 ```mermaid
 sequenceDiagram
@@ -86,10 +86,10 @@ sequenceDiagram
 ```
 
 - A transport closes when the handshake fails or times out, the versions differ, or its owner disposes it. Every pending
-  and later request then rejects with that error itself, and every subscription still queued or open hears it once
-  through `onClose`, so a closed transport is never a call outcome. Disposing also answers each request this side is
-  serving, and ends each subscription it serves, with `HostFailure` carrying `"<name>: <message>"` of the reason, and
-  tells the peer to stop each subscription it made.
+  and later request then rejects with that error itself, and every subscription still queued or open, or made later,
+  hears it once through `close`, so a closed transport is never a call outcome. Disposing also answers each request this
+  side is serving, and ends each subscription it serves, with `HostFailure` carrying `"<name>: <message>"` of the
+  reason, and tells the peer to stop each subscription it made.
 - A subscription handler gets the start, the context and a sink, and returns its stop function. That function runs once,
   on the peer's stop, an interrupt or a dispose, even when the handler interrupts before it returns. The peer hears an
   end before the stop function runs. A handler that throws on start, or a value the wire cannot carry, ends it with
@@ -136,15 +136,14 @@ sequenceDiagram
     closing error, or when the call cannot go out.
   - `handleRequest(method, handler)` serves a request method and returns what unregisters it. A `RequestHandler` gets
     the payload and a `CallContext` and returns a `ResultPayload`, sync or async.
-  - `subscribe(method, start, { receive, interrupt }, { signal? })` returns a `SubscriptionHandle` with `stop()` and
-    `onClose(listener)`.
+  - `subscribe(method, start, { receive, interrupt, close }, { signal? })` returns what stops it.
   - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
     `CallContext` and a `Sink`, with `receive(value)` and `interrupt(outcome)`, where `outcome` is the `ResultPayload`
     the subscriber hears, `ok()` or `err(error)`, and returns its stop function.
   - `dispose(reason)` closes the transport and disposes the provider.
 - `CallContext<H>` is `{ origin, hello }`: the peer's origin from the provider, or null, and the peer's hello.
 - `TransportHandshakeTimeoutError` closes an opener that heard no answer in time. `TransportVersionMismatchError` closes
-  both sides of a mismatch and carries `ours` and `theirs`.
+  both sides of a mismatch, and names both versions.
 - `Provider` is `post(data)`, `subscribe(listener)`, `peerOrigin()` and `dispose()`. `post` transfers the buffer and
   never delivers to the provider's own listeners before it returns.
 - `createWindowProvider({ listen, peer, origin, onNotBytes?, onRefusedOrigin? })` and

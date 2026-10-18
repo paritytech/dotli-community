@@ -8,7 +8,6 @@
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, errorName, log, named, type Timers } from '@dotli/shared';
 import type { ProtocolFrame } from './frame.js';
-import type { Subscription } from './subscription.js';
 
 /** The first wait before an ended feed is reopened. It doubles after each end on the same frame. */
 const REOPEN_MS = 1_000;
@@ -25,7 +24,7 @@ export interface FeedKeeper {
    * the frame's loss count when the transport `open` subscribes on was asked for, so a loss before it was handed over
    * counts.
    */
-  hold(open: () => Subscription, since: number): void;
+  hold(open: (end: (error: Error | null) => void) => () => void, since: number): void;
   /** Unsubscribes the held subscription, and drops a reopen that waits. */
   stop(): void;
 }
@@ -88,14 +87,8 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
             return;
           }
           judge();
-          const subscription = open();
           const openedAt = timers.now();
-          const onStop = (): void => {
-            subscription.unsubscribe();
-            resolve('done');
-          };
-          run.signal.addEventListener('abort', onStop, { once: true });
-          subscription.onEnd(error => {
+          const unsubscribe = open(error => {
             run.signal.removeEventListener('abort', onStop);
             ended = error ?? named(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
             if (timers.now() - openedAt >= STABLE_MS) {
@@ -104,6 +97,11 @@ export function createFeedKeeper(feed: FeedName, frame: Pick<ProtocolFrame, 'los
               reject(ended);
             }
           });
+          const onStop = (): void => {
+            unsubscribe();
+            resolve('done');
+          };
+          run.signal.addEventListener('abort', onStop, { once: true });
         });
       const keep = (delay: number): void => {
         reopens.call(attempt, { signal: run.signal, delay }).then(

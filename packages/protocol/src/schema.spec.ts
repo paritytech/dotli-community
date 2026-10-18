@@ -87,19 +87,20 @@ function requestCase<P, R, E>(
   };
 }
 
-/** Subscribes once and settles with the values heard and the one end. */
+/** Subscribes once and settles with the values heard and the one end, or fails with the closing error. */
 function heardUntilEnd<S, V, I>(
   transport: ProtocolTransport,
   method: Subscription<S, V, I>,
   start: NoInfer<S>,
 ): Promise<{ values: V[]; end: ResultPayload<undefined, CallError<I>> }> {
   const values: V[] = [];
-  return new Promise(settle => {
+  return new Promise((settle, fail) => {
     transport.subscribe(method, start, {
       receive: value => values.push(value),
       interrupt: end => {
         settle({ values, end });
       },
+      close: fail,
     });
   });
 }

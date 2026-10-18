@@ -13,8 +13,9 @@ import { isRemoteChainConnectable } from './remote-chain-support.js';
 import { callTimeoutError, createRequestId, type FrameRpc } from './rpc.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
+import { subscribe } from './subscription.js';
+
 const { chain } = protocolSchema.traits;
-import { subscribe, type Subscription } from './subscription.js';
 
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;
@@ -23,8 +24,6 @@ interface RemoteChainConnection {
   /** What the consumer sent before the frame accepted the connection, in order. */
   pendingMessages: JsonRpcRequest[];
   connected: boolean;
-  /** Null until the frame is ready and the connect goes out. */
-  subscription: Subscription | null;
 }
 
 /** `null` for a notification, which has no `id` to answer. */
@@ -148,43 +147,44 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
         }
       };
     });
-    const subscription = subscribe(
+    const unsubscribe = subscribe(
       transport,
       chain.connect,
       { genesisHash, connectionId },
-      event => {
-        if (event.tag === 'message') {
-          deliver(connectionId, remote, event.value);
-          return;
-        }
-        if (remote.connected || !isOpen(connectionId, remote)) {
-          return;
-        }
-        remote.connected = true;
-        settleConnect(null);
-        for (const message of remote.pendingMessages.splice(0)) {
-          send(connectionId, remote, message);
-        }
+      {
+        receive: event => {
+          if (event.tag === 'message') {
+            deliver(connectionId, remote, event.value);
+            return;
+          }
+          if (remote.connected || !isOpen(connectionId, remote)) {
+            return;
+          }
+          remote.connected = true;
+          settleConnect(null);
+          for (const message of remote.pendingMessages.splice(0)) {
+            send(connectionId, remote, message);
+          }
+        },
+        // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that
+        // went down, and halts like a dead frame so a caching consumer drops it.
+        end: error => {
+          if (!remote.connected) {
+            settleConnect(error ?? new Error('Chain halted before it connected'));
+          }
+          if (!isOpen(connectionId, remote)) {
+            return;
+          }
+          // Removed first, so a send made during the halt is answered at once, not queued and lost.
+          chainConnections.delete(connectionId);
+          if (error !== null && !remote.connected) {
+            log.error('[dot.li protocol] Failed to connect remote chain:', error);
+          }
+          haltRemote(remote, error === null ? 'chain' : 'frame');
+        },
       },
       { signal: giveUp.signal },
     );
-    remote.subscription = subscription;
-    // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that went
-    // down, and halts like a dead frame so a caching consumer drops it.
-    subscription.onEnd(error => {
-      if (!remote.connected) {
-        settleConnect(error ?? new Error('Chain halted before it connected'));
-      }
-      if (!isOpen(connectionId, remote)) {
-        return;
-      }
-      // Removed first, so a send made during the halt is answered at once, not queued and lost.
-      chainConnections.delete(connectionId);
-      if (error !== null && !remote.connected) {
-        log.error('[dot.li protocol] Failed to connect remote chain:', error);
-      }
-      haltRemote(remote, error === null ? 'chain' : 'frame');
-    });
     void withTimeout(
       connected,
       CONNECT_BUDGET_MS,
@@ -203,8 +203,10 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
         giveUp.abort(err);
       },
     );
-    // A consumer that leaves before `connected` settles the connect as a disconnect, so its trail still ends.
+    // A consumer that leaves before `connected` settles the connect as a disconnect, so its trail still ends. A connect
+    // still queued is never sent, and one the frame has is closed there.
     return () => {
+      unsubscribe();
       settleConnect(named(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError'));
     };
   }
@@ -222,16 +224,15 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
         onHalt: onHalt ?? null,
         pendingMessages: [],
         connected: false,
-        subscription: null,
       };
       chainConnections.set(connectionId, remote);
-      let stopConnect = (): void => undefined;
+      let disconnect = (): void => undefined;
 
       void frame.whenReady().then(
         transport => {
           // Disconnected before the frame was up: the frame never hears of it.
           if (isOpen(connectionId, remote)) {
-            stopConnect = open(transport, genesisHash, connectionId, remote);
+            disconnect = open(transport, genesisHash, connectionId, remote);
           }
         },
         (error: unknown) => {
@@ -264,9 +265,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
             return;
           }
           chainConnections.delete(connectionId);
-          // A connect still queued is never sent, and one the frame has is closed there.
-          remote.subscription?.unsubscribe();
-          stopConnect();
+          disconnect();
         },
       };
     };

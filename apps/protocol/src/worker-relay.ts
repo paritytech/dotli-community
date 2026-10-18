@@ -52,22 +52,18 @@ function relaySubscription<S, V, I>(
   worker: ProtocolTransport,
   method: Subscription<S, V, I>,
 ): SubscriptionHandler<S, V, I, ProtocolHello> {
-  return (start, _context, sink) => {
-    const subscription = worker.subscribe(method, start, {
+  return (start, _context, sink) =>
+    worker.subscribe(method, start, {
       receive: value => {
         sink.receive(value);
       },
       interrupt: outcome => {
         sink.interrupt(outcome);
       },
+      close: error => {
+        sink.interrupt(err(hostFailure(fromTransportError(error))));
+      },
     });
-    subscription.onClose(error => {
-      sink.interrupt(err(hostFailure(fromTransportError(error))));
-    });
-    return () => {
-      subscription.stop();
-    };
-  };
 }
 
 /** The worker's telemetry, for the frame to serve once it has a worker to hear. */

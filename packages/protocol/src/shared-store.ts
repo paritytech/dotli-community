@@ -91,9 +91,12 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     }
     heard = transport;
     changes.hold(
-      () =>
-        subscribe(transport, storage.authChanges, undefined, change => {
-          sharedAuthListeners.emit(change);
+      end =>
+        subscribe(transport, storage.authChanges, undefined, {
+          receive: change => {
+            sharedAuthListeners.emit(change);
+          },
+          end,
         }),
       since,
     );

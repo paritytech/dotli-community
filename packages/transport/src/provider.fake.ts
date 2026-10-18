@@ -1,23 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Provider } from './provider.js';
-
-type Listener = (data: ArrayBuffer) => void;
-
-interface Side {
-  listeners: Set<Listener>;
-  disposed: boolean;
-}
-
-function deliver(side: Side, data: ArrayBuffer): void {
-  for (const listener of [...side.listeners]) {
-    if (side.disposed) {
-      return;
-    }
-    listener(data);
-  }
-}
+import { createListeners, type Listeners, type Provider } from './provider.js';
 
 /**
  * Two connected providers that deliver on a microtask, in order, and detach each buffer like a browser transfer. As a
@@ -26,36 +10,27 @@ function deliver(side: Side, data: ArrayBuffer): void {
  */
 export function createProviderPair(): { left: Provider; right: Provider; delivered: ArrayBuffer[] } {
   const delivered: ArrayBuffer[] = [];
-  const leftSide: Side = { listeners: new Set(), disposed: false };
-  const rightSide: Side = { listeners: new Set(), disposed: false };
+  const leftSide = createListeners();
+  const rightSide = createListeners();
 
-  const createSide = (own: Side, peer: Side): Provider => ({
+  const createSide = (own: Listeners, peer: Listeners): Provider => ({
     post(data) {
-      if (own.disposed) {
+      if (own.disposed()) {
         throw new Error('The provider is disposed');
       }
       const moved = structuredClone(data, { transfer: [data] });
       queueMicrotask(() => {
-        if (peer.disposed) {
+        if (peer.disposed()) {
           return;
         }
         delivered.push(moved);
-        deliver(peer, moved);
+        peer.deliver(moved);
       });
     },
-    subscribe(listener) {
-      if (own.disposed) {
-        return () => undefined;
-      }
-      own.listeners.add(listener);
-      return () => {
-        own.listeners.delete(listener);
-      };
-    },
+    subscribe: own.subscribe,
     peerOrigin: () => null,
     dispose() {
-      own.disposed = true;
-      own.listeners.clear();
+      own.dispose();
     },
   });
 

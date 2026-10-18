@@ -9,6 +9,7 @@
 import { Bytes, Enum, Result, Struct, u32, u8, type Codec, type CodecType, type ResultPayload } from 'scale-ts';
 import { toError } from '@dotli/shared';
 import { err, failure, ok } from './result.js';
+import type { Address } from './schema.js';
 
 // A hello stays bytes, since another release's may not decode.
 const open = Struct({ version: u8, hello: Bytes(Infinity) });
@@ -48,10 +49,16 @@ export function decode<T>(codec: Codec<T>, data: Uint8Array | ArrayBuffer): Resu
 /** Encodes a frame into a buffer of its own, which a provider can transfer. */
 export const encodeFrame = <M>(codec: Codec<Frame<M>>, value: Frame<M>): ArrayBuffer => codec.enc(value).slice().buffer;
 
-/** Encodes a frame, or says why it cannot. */
-export function encode<M>(codec: Codec<Frame<M>>, value: Frame<M>): ResultPayload<ArrayBuffer, Error> {
+/** Encodes a message on call `id` of the method at `address`, or says why it cannot. */
+export function encodeCall<M>(
+  method: { readonly frame: Codec<Frame<M>> },
+  address: Address,
+  id: number,
+  message: M,
+): ResultPayload<ArrayBuffer, Error> {
   try {
-    return ok(encodeFrame(codec, value));
+    const call = { trait: address.traitId, method: address.methodId, message };
+    return ok(encodeFrame(method.frame, { id, body: { tag: 'call', value: call } }));
   } catch (error) {
     return err(toError(error));
   }

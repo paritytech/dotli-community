@@ -33,6 +33,7 @@ describe('recordWireMessage', () => {
           resolve();
         },
         interrupt: () => undefined,
+        close: () => undefined,
       });
     });
 

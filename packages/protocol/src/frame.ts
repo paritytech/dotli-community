@@ -275,16 +275,18 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: reportIssue },
       ),
     );
-    const frameStatus = subscribe(kept.transport, protocolSchema.traits.frame.status, undefined, () => {
-      if (slot === kept) {
-        setStatus('ready');
-      }
-    });
-    // A dropped frame's own status ends with its loss, which was counted when it was dropped.
-    frameStatus.onEnd(error => {
-      if (slot === kept) {
-        kept.loss.abort(error ?? new Error(PROTOCOL_ERRORS.FRAME_STATUS_ENDED));
-      }
+    subscribe(kept.transport, protocolSchema.traits.frame.status, undefined, {
+      receive: () => {
+        if (slot === kept) {
+          setStatus('ready');
+        }
+      },
+      // A dropped frame's own status ends with its loss, which was counted when it was dropped.
+      end: error => {
+        if (slot === kept) {
+          kept.loss.abort(error ?? new Error(PROTOCOL_ERRORS.FRAME_STATUS_ENDED));
+        }
+      },
     });
     return kept;
   }

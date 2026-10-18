@@ -41,27 +41,30 @@ export function createFrameTelemetry(
     // Each frame's byte meter starts at zero, and a reopened feed reads on from the same meter.
     let lastNetBytesTotal = 0;
     reports.hold(
-      () =>
-        subscribe(transport, protocolSchema.traits.frame.telemetry, undefined, event => {
-          switch (event.tag) {
-            case 'chainSync':
-              chainSyncListeners.emit(event.value);
-              return;
-            case 'chainDetail':
-              chainDetailListeners.emit(event.value);
-              return;
-            case 'netBytes':
-              // Cumulative, so a total below the last one is corrupt traffic and would feed a negative rate into the
-              // network panel.
-              if (event.value >= lastNetBytesTotal) {
-                lastNetBytesTotal = event.value;
-                netBytesListeners.emit({ received: event.value });
-              }
-              return;
-            case 'smoldotDb':
-              smoldotDbOutcomes.set(event.value.chain, event.value.outcome);
-              return;
-          }
+      end =>
+        subscribe(transport, protocolSchema.traits.frame.telemetry, undefined, {
+          receive: event => {
+            switch (event.tag) {
+              case 'chainSync':
+                chainSyncListeners.emit(event.value);
+                return;
+              case 'chainDetail':
+                chainDetailListeners.emit(event.value);
+                return;
+              case 'netBytes':
+                // Cumulative, so a total below the last one is corrupt traffic and would feed a negative rate into the
+                // network panel.
+                if (event.value >= lastNetBytesTotal) {
+                  lastNetBytesTotal = event.value;
+                  netBytesListeners.emit({ received: event.value });
+                }
+                return;
+              case 'smoldotDb':
+                smoldotDbOutcomes.set(event.value.chain, event.value.outcome);
+                return;
+            }
+          },
+          end,
         }),
       since,
     );

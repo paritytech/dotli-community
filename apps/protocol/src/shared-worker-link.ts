@@ -13,7 +13,7 @@ import {
   type FrameStatusEnd,
   type ProtocolTransport,
 } from '@dotli/protocol';
-import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import { createListenerSet, errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { createPortProvider, createTransport, type TransportIssue } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -66,40 +66,28 @@ export interface SharedWorkerLinkDeps {
  * ready.
  */
 export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => void): WorkerStatus {
-  const report = reportListener('protocol', 'protocol.worker_status');
-  const listeners: ((end: WorkerEnd) => void)[] = [];
+  const ends = createListenerSet<WorkerEnd>({ onListenerError: reportListener('protocol', 'protocol.worker_status') });
   let ended: WorkerEnd | null = null;
-  const tell = (listener: (end: WorkerEnd) => void, end: WorkerEnd): void => {
-    try {
-      listener(end);
-    } catch (error) {
-      report(error);
-    }
-  };
+  // The transport ends a subscription once.
   const finish = (end: WorkerEnd): void => {
-    if (ended !== null) {
-      return;
-    }
     ended = end;
-    for (const listener of listeners.splice(0)) {
-      tell(listener, end);
-    }
+    ends.emit(end);
   };
-  const handle = transport.subscribe(protocolSchema.traits.frame.status, undefined, {
+  transport.subscribe(protocolSchema.traits.frame.status, undefined, {
     receive: onReady,
     interrupt: outcome => {
       finish({ kind: 'interrupt', outcome });
     },
-  });
-  handle.onClose(error => {
-    finish({ kind: 'close', error });
+    close: error => {
+      finish({ kind: 'close', error });
+    },
   });
   return {
     onEnd(listener) {
       if (ended === null) {
-        listeners.push(listener);
+        ends.subscribe(listener);
       } else {
-        tell(listener, ended);
+        ends.deliver(listener, ended);
       }
     },
   };
@@ -114,7 +102,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
   let answering = true;
   const stop = (): void => {
     answering = false;
-    beats.stop();
+    stopBeats();
   };
   const failed = (error: Error): void => {
     // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
@@ -126,7 +114,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     log.error('[dot.li protocol] Worker heartbeat failed', error);
     m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
   };
-  const beats = transport.subscribe(protocolSchema.traits.frame.beat, undefined, {
+  const stopBeats = transport.subscribe(protocolSchema.traits.frame.beat, undefined, {
     receive: () => {
       void transport.request(protocolSchema.traits.frame.heartbeat, undefined).then(
         outcome => {
@@ -142,9 +130,9 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     interrupt: () => {
       answering = false;
     },
-  });
-  beats.onClose(() => {
-    answering = false;
+    close: () => {
+      answering = false;
+    },
   });
   status.onEnd(stop);
 }

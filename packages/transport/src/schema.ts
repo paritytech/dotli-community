@@ -91,6 +91,10 @@ export interface Address {
   methodId: number;
 }
 
+/** Whether a call names the method at `address`. */
+export const sameMethod = (address: Address, call: { trait: number; method: number }): boolean =>
+  address.traitId === call.trait && address.methodId === call.method;
+
 /** A method and where it sits. */
 export interface Place {
   method: AnyMethod;

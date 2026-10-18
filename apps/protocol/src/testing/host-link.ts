@@ -6,6 +6,7 @@
 // spec did not take, so none goes unseen.
 
 import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
+import { deferred } from '@dotli/shared/testing';
 import {
   createPortProvider,
   createTransport,
@@ -121,11 +122,8 @@ export function record<S, V, I>(
 ): Recording<V, I> {
   const events: V[] = [];
   const waiters: { count: number; resolve: () => void }[] = [];
-  let end: (outcome: EndOf<I>) => void = () => undefined;
-  const ended = new Promise<EndOf<I>>(resolve => {
-    end = resolve;
-  });
-  const handle = transport.subscribe(method, start, {
+  const ended = deferred<EndOf<I>>();
+  const unsubscribe = transport.subscribe(method, start, {
     receive: value => {
       events.push(value);
       for (const waiter of [...waiters]) {
@@ -135,20 +133,18 @@ export function record<S, V, I>(
         }
       }
     },
-    interrupt: end,
+    interrupt: ended.resolve,
+    close: ended.resolve,
   });
-  handle.onClose(end);
   return {
     events,
-    ended,
+    ended: ended.promise,
     until: count =>
       events.length >= count
         ? Promise.resolve()
         : new Promise(resolve => {
             waiters.push({ count, resolve });
           }),
-    unsubscribe: () => {
-      handle.stop();
-    },
+    unsubscribe,
   };
 }

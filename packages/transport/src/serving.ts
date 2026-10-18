@@ -8,18 +8,11 @@
 
 import { createAsyncTaskPool, toError } from '@dotli/shared';
 import type { Codec, ResultPayload } from 'scale-ts';
-import {
-  REMEMBERED_ENDS,
-  createRecentIds,
-  encodeCall,
-  sameMethod,
-  type Post,
-  type Refuse,
-  type RunListener,
-} from './parts.js';
+import type { Post, Refuse, RunListener } from './parts.js';
+import { createRecentIds } from './recent-ids.js';
 import { hostFailure, malformedFrame, unsupported, type CallError, type Failure } from './result.js';
-import type { Address, AnyMethod, Place, Request, Subscription } from './schema.js';
-import { decode, encodeFrame, frame, type Call, type Frame } from './wire.js';
+import { sameMethod, type Address, type AnyMethod, type Place, type Request, type Subscription } from './schema.js';
+import { decode, encodeCall, encodeFrame, frame, type Call, type Frame } from './wire.js';
 
 /** What a handler knows about the peer that called it. */
 export interface CallContext<H> {
@@ -96,7 +89,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
   // Runs the request handlers, so the wait for a peer that left is a wait for every call of its to settle. The pool
   // answers a handler that throws at once like one that rejects.
   const handlerCalls = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
-  const lateEnds = createRecentIds(REMEMBERED_ENDS);
+  const lateEnds = createRecentIds();
   // How many calls the peer has made so far. It only grows, so a wait that read it can tell whether the peer called
   // again since.
   let peerCalls = 0;
@@ -143,9 +136,6 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
       void whenPeerIdle(peerCalls);
     }
   };
-
-  /** Whether request `id` still waits for its answer. One whose handler settles once the transport closed has it. */
-  const settles = (id: number): boolean => inFlight.delete(id) && !closed();
 
   /** Sends `message` on call `id`, or answers `HostFailure` for one the wire cannot carry. */
   function answer<M>(method: { readonly frame: Codec<Frame<M>> }, address: Address, id: number, message: M): void {
@@ -248,8 +238,6 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
     handleRequest(method, address, handler) {
       return register(method, address, {
         hear(id, bytes, context) {
-          // A call that does not decode still tells that the peer is here.
-          peerCalls += 1;
           const message = decode(method.message, bytes);
           if (!message.success) {
             malformed(id, message.value, address);
@@ -265,12 +253,13 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
             .call(() => handler(payload, context))
             .then(
               outcome => {
-                if (settles(id)) {
+                // A close answered the call already.
+                if (inFlight.delete(id)) {
                   answer(method, address, id, { tag: 'response', value: outcome });
                 }
               },
               (error: unknown) => {
-                if (settles(id)) {
+                if (inFlight.delete(id)) {
                   fail(id, hostFailure(toError(error)), address);
                 }
               },
@@ -284,7 +273,6 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
         hear(id, bytes, context) {
           const message = decode(method.message, bytes);
           if (!message.success) {
-            peerCalls += 1;
             malformed(id, message.value, address);
             return;
           }
@@ -293,7 +281,6 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
             refuse('invalid', new Error(`A ${sent.tag} names subscription ${String(id)}, which is not running`));
             return;
           }
-          peerCalls += 1;
           start(method, address, handler, id, sent.value, context);
         },
       });
@@ -315,10 +302,12 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
         onPeerStop();
         return;
       }
+      // A new call, even one that does not decode or that names a method this side does not serve, tells that the peer
+      // is here.
+      peerCalls += 1;
       const placed = placeAt(call.trait, call.method);
       const served = placed === undefined ? undefined : handlers.get(placed.method);
       if (served === undefined) {
-        peerCalls += 1;
         fail(id, unsupported());
         return;
       }

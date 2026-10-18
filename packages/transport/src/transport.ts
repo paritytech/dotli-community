@@ -8,7 +8,7 @@
 
 import { realTimers, toError, type Timers } from '@dotli/shared';
 import type { ResultPayload } from 'scale-ts';
-import { createCalls, type SubscriptionHandle, type SubscriptionListeners } from './calls.js';
+import { createCalls, type SubscriptionListeners } from './calls.js';
 import { failureReason, logIssue, type TransportIssue } from './errors.js';
 import { createAccepter, createOpener } from './handshake.js';
 import type { Post, Refuse, RunListener } from './parts.js';
@@ -77,15 +77,16 @@ export interface Transport<H> {
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, H>,
   ): () => void;
   /**
-   * Subscribes to the peer. `receive` hears each value and `interrupt` the one end. Subscriptions made before the
-   * handshake wait and go out in call order with the requests. Throws when the start does not encode.
+   * Subscribes to the peer. `receive` hears each value, and `interrupt` or `close` the one end. Subscriptions made
+   * before the handshake wait and go out in call order with the requests. Returns what stops it, which tells the peer
+   * and calls no listener. Throws when the start does not encode.
    */
   subscribe<S, V, I>(
     method: Subscription<S, V, I>,
     start: NoInfer<S>,
     listeners: SubscriptionListeners<NoInfer<V>, NoInfer<I>>,
     options?: SubscribeOptions,
-  ): SubscriptionHandle;
+  ): () => void;
   /** Serves one subscription method. One handler per method, and calling the returned function unregisters it. */
   handleSubscription<S, V, I>(
     method: Subscription<S, V, I>,

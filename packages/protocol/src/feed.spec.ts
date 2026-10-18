@@ -7,39 +7,22 @@ import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { createFeedKeeper } from './feed.js';
-import type { Subscription } from './subscription.js';
-
-interface HeldSubscription extends Subscription {
-  /** The frame ending it, cleanly with null. */
+/** A subscription the keeper holds. The frame ends it with `end`, cleanly with null. */
+interface HeldSubscription {
   end(error: Error | null): void;
   unsubscribed: boolean;
-}
-
-function heldSubscription(): HeldSubscription {
-  let endListener: ((error: Error | null) => void) | null = null;
-  const held: HeldSubscription = {
-    unsubscribed: false,
-    unsubscribe() {
-      held.unsubscribed = true;
-      endListener = null;
-    },
-    onEnd(listener) {
-      endListener = listener;
-    },
-    end(error) {
-      endListener?.(error);
-    },
-  };
-  return held;
 }
 
 describe('createFeedKeeper', () => {
   let timers: ManualTimers;
   let opened: HeldSubscription[];
-  const open = (): Subscription => {
-    const subscription = heldSubscription();
-    opened.push(subscription);
-    return subscription;
+  const open = (end: (error: Error | null) => void): (() => void) => {
+    const held: HeldSubscription = { end, unsubscribed: false };
+    opened.push(held);
+    return () => {
+      held.unsubscribed = true;
+      held.end = () => undefined;
+    };
   };
 
   beforeEach(() => {

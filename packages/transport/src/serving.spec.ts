@@ -469,7 +469,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // When
-    handle.stop();
+    handle();
     must(sinks[0], 'a sink').interrupt(ok());
     await timers.advance(0);
 
@@ -486,7 +486,7 @@ describe('serving', () => {
     opener.connect();
     const handle = opener.subscribe(notes.watch, 'from the top', watcher());
     await timers.advance(0);
-    handle.stop();
+    handle();
     await timers.advance(0);
     const posted = delivered.length;
 
@@ -682,7 +682,7 @@ describe('serving', () => {
     // When it subscribes again and leaves that one
     const again = opener.subscribe(notes.watch, 'tick', watcher());
     await timers.advance(0);
-    again.stop();
+    again();
     await timers.advance(0);
 
     // Then it is
@@ -721,7 +721,7 @@ describe('serving', () => {
     const ticks = opener.subscribe(notes.watch, 'tick', watcher());
     const touched = opener.request(notes.touch, undefined);
     await timers.advance(0);
-    ticks.stop();
+    ticks();
     await timers.advance(0);
 
     // When it makes another call, and both settle

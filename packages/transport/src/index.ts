@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export type { SubscriptionHandle, SubscriptionListeners } from './calls.js';
+export type { SubscriptionListeners } from './calls.js';
 export { codec } from './codec.js';
 export type { Codec, ResultPayload } from 'scale-ts';
 export { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';

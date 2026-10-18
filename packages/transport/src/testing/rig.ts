@@ -62,18 +62,23 @@ export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: 
 /** Text cut short: its length says two bytes and none follow, so `str` refuses it. */
 export const CUT_SHORT_TEXT = Uint8Array.of(8);
 
-/** Listeners of a `notes.watch` subscription that record the values and the ends it hears. */
+/** Listeners of a `notes.watch` subscription that record the values it hears, its interrupts and its closes. */
 export function watcher() {
   const values: string[] = [];
   const ends: ResultPayload<undefined, CallError<string>>[] = [];
+  const closes: Error[] = [];
   return {
     values,
     ends,
+    closes,
     receive: (value: string) => {
       values.push(value);
     },
     interrupt: (outcome: ResultPayload<undefined, CallError<string>>) => {
       ends.push(outcome);
+    },
+    close: (error: Error) => {
+      closes.push(error);
     },
   };
 }

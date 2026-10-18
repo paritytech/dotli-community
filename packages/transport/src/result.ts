@@ -23,13 +23,11 @@ export function err<E>(error: E): ResultPayload<never, E> {
   return { success: false, value: error };
 }
 
-const reason = Struct({ reason: str });
-
 const failures = {
   Denied: _void,
   Unsupported: _void,
-  MalformedFrame: reason,
-  HostFailure: reason,
+  MalformedFrame: Struct({ reason: str }),
+  HostFailure: Struct({ reason: str }),
   Cancelled: _void,
 };
 

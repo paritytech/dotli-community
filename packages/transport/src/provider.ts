@@ -62,7 +62,7 @@ export interface WindowProviderDeps {
 }
 
 /** A provider's listeners, which hear nothing once it is disposed. */
-interface Listeners {
+export interface Listeners {
   deliver: (data: ArrayBuffer) => void;
   subscribe: (listener: (data: ArrayBuffer) => void) => () => void;
   /** Drops every listener. Returns false when already disposed. */
@@ -70,7 +70,7 @@ interface Listeners {
   disposed: () => boolean;
 }
 
-function createListeners(): Listeners {
+export function createListeners(): Listeners {
   const listeners = new Set<(data: ArrayBuffer) => void>();
   let disposed = false;
   return {

@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { spans as S } from '@dotli/metrics';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { _void } from 'scale-ts';
 import {
@@ -68,8 +66,10 @@ describe('subscribe', () => {
     const transport = await hostTransport();
     const heard: string[] = [];
     const ends: (Error | null)[] = [];
-    const status = subscribe(transport, frame.status, undefined, () => heard.push('ready'));
-    status.onEnd(error => ends.push(error));
+    subscribe(transport, frame.status, undefined, {
+      receive: () => heard.push('ready'),
+      end: error => ends.push(error),
+    });
     await settle();
 
     // When
@@ -86,8 +86,9 @@ describe('subscribe', () => {
     // Given
     const transport = await hostTransport();
     const ends: (Error | null)[] = [];
-    subscribe(transport, frame.status, undefined, () => undefined).onEnd(error => ends.push(error));
-    subscribe(transport, resolve.dotName, { label: 'doom' }, () => undefined).onEnd(error => ends.push(error));
+    const listeners = { receive: () => undefined, end: (error: Error | null) => ends.push(error) };
+    subscribe(transport, frame.status, undefined, listeners);
+    subscribe(transport, resolve.dotName, { label: 'doom' }, listeners);
     await settle();
 
     // When
@@ -106,9 +107,13 @@ describe('subscribe', () => {
     const transport = await hostTransport();
     const giveUp = new AbortController();
     const ends: (Error | null)[] = [];
-    subscribe(transport, resolve.dotName, { label: 'doom' }, () => undefined, {
-      signal: giveUp.signal,
-    }).onEnd(error => ends.push(error));
+    subscribe(
+      transport,
+      resolve.dotName,
+      { label: 'doom' },
+      { receive: () => undefined, end: error => ends.push(error) },
+      { signal: giveUp.signal },
+    );
     await settle();
     const reason = new Error('budget spent');
 
@@ -125,7 +130,7 @@ describe('subscribe', () => {
     // Given
     const transport = await hostTransport();
     const ends: (Error | null)[] = [];
-    subscribe(transport, frame.status, undefined, () => undefined).onEnd(error => ends.push(error));
+    subscribe(transport, frame.status, undefined, { receive: () => undefined, end: error => ends.push(error) });
     await settle();
     const loss = new ProtocolFatalError('boom');
 
@@ -150,7 +155,7 @@ describe('subscribe', () => {
       timers,
     });
     const ends: (Error | null)[] = [];
-    subscribe(transport, frame.status, undefined, () => undefined).onEnd(error => ends.push(error));
+    subscribe(transport, frame.status, undefined, { receive: () => undefined, end: error => ends.push(error) });
 
     // When
     transport.connect();
@@ -160,43 +165,18 @@ describe('subscribe', () => {
     expect(ends).toEqual([expect.any(ProtocolVersionMismatchError)]);
   });
 
-  it('As the host, an end listener that throws is reported and the next one still hears the end, also when it subscribes late', async () => {
-    // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const transport = await hostTransport();
-    const status = subscribe(transport, frame.status, undefined, () => undefined);
-    const ends: (Error | null)[] = [];
-    status.onEnd(() => {
-      throw new TypeError('listener broke');
-    });
-    status.onEnd(error => ends.push(error));
-    await settle();
-
-    // When
-    statusSinks[0]?.interrupt(ok());
-    await settle();
-    status.onEnd(error => ends.push(error));
-
-    // Then
-    expect(ends).toEqual([null, null]);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'listener', tags: { owner: 'protocol.transport' } }]);
-    expect(metrics.counted(S.LISTENER_DELIVERY)).toEqual([
-      { outcome: 'error', reason: 'TypeError', owner: 'protocol.transport' },
-    ]);
-  });
-
   it('As the host, I unsubscribe and the frame stops it, and no end listener hears anything', async () => {
     // Given
     const transport = await hostTransport();
     const ends: (Error | null)[] = [];
-    const status = subscribe(transport, frame.status, undefined, () => undefined);
-    status.onEnd(error => ends.push(error));
+    const unsubscribe = subscribe(transport, frame.status, undefined, {
+      receive: () => undefined,
+      end: error => ends.push(error),
+    });
     await settle();
 
     // When
-    status.unsubscribe();
-    status.onEnd(error => ends.push(error));
+    unsubscribe();
     statusSinks[0]?.interrupt(ok());
     await settle();
 
