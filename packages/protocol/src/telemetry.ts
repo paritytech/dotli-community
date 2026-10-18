@@ -8,7 +8,8 @@ import { log, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { ConsumerTransport } from './transport-consumer.js';
+import type { ProtocolTransport } from './schema.js';
+import { subscribe } from './subscription.js';
 
 /** A frame that is booting or up has a transport to hear. */
 function hasFrame(status: ProtocolStatus): boolean {
@@ -26,13 +27,13 @@ export function createFrameTelemetry(
   // A chain stays "unknown" on the gateway path, which runs no light client, and until its store answers.
   const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
   const reports = createFeedKeeper('telemetry', frame, timers);
-  let heard: ConsumerTransport | null = null;
+  let heard: ProtocolTransport | null = null;
 
   // Each ask for a frame's transport, so an answer a later ask overtook is not heard.
   let asks = 0;
 
   /** Hears one frame's reports until the frame is lost. */
-  function hear(transport: ConsumerTransport, since: number): void {
+  function hear(transport: ProtocolTransport, since: number): void {
     if (heard === transport) {
       return;
     }
@@ -41,7 +42,7 @@ export function createFrameTelemetry(
     let lastNetBytesTotal = 0;
     reports.hold(
       () =>
-        transport.subscribe('telemetry', undefined, event => {
+        subscribe(transport, 'frame', 'telemetry', undefined, event => {
           switch (event.tag) {
             case 'chainSync':
               chainSyncListeners.emit(event.value);

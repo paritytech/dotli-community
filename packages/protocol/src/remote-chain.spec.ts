@@ -14,13 +14,15 @@ import {
 import { bindLogSink } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
+import { hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
 import { ProtocolFatalError } from './errors.js';
-import type { SubscribePayload } from './methods.js';
 import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame, type FakeFrame } from './frame.fake.js';
+import type { ProtocolSchema, ProtocolTransport, RemoteFailure } from './schema.js';
 import { createFrameHost, FRAME_CONFIG, type FrameHost, type FrameStatusServer } from './testing/frame-host.js';
-import type { ServingTransport, SubscriptionSink } from './transport-serving.js';
+
+type Connect = MethodTypes<ProtocolSchema, 'chain', 'connect'>;
 
 // The consumer transport posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
@@ -33,8 +35,8 @@ let timers: ManualTimers;
 const settle = (ms = 0): Promise<void> => timers.advance(ms);
 
 interface ServedConnect {
-  payload: SubscribePayload<'chainConnect'>;
-  sink: SubscriptionSink<'chainConnect'>;
+  payload: Connect['start'];
+  sink: Sink<Connect['receive'], RemoteFailure>;
   /** The host unsubscribed, which is its disconnect. */
   stopped: boolean;
 }
@@ -51,19 +53,19 @@ interface ChainServer {
   sends: ServedSend[];
 }
 
-function serveChains(serving: ServingTransport): ChainServer {
+function serveChains(serving: ProtocolTransport): ChainServer {
   const server: ChainServer = { connects: [], sends: [] };
-  serving.handleSubscription('chainConnect', (payload, _context, sink) => {
+  serving.handleSubscription('chain', 'connect', (payload, _context, sink) => {
     const connect: ServedConnect = { payload, sink, stopped: false };
     server.connects.push(connect);
     return () => {
       connect.stopped = true;
     };
   });
-  serving.handleRequest('chainSend', ({ connectionId, message }) => {
+  serving.handleRequest('chain', 'send', ({ connectionId, message }) => {
     const answer = deferred<undefined>();
     server.sends.push({ connectionId, message, answer });
-    return answer.promise;
+    return answer.promise.then(() => ok());
   });
   return server;
 }
@@ -72,7 +74,7 @@ function accept(connect: ServedConnect | undefined): void {
   if (connect === undefined) {
     throw new Error('no chainConnect reached the frame');
   }
-  connect.sink.send({ tag: 'connected', value: undefined });
+  connect.sink.receive({ tag: 'connected', value: undefined });
 }
 
 /** The JSON-RPC ids of the sends that reached the frame, in order. */
@@ -180,7 +182,10 @@ describe('createRemoteChains', () => {
     accept(server().connects[0]);
 
     // When
-    server().connects[0]?.sink.send({ tag: 'message', value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x' }) });
+    server().connects[0]?.sink.receive({
+      tag: 'message',
+      value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x' }),
+    });
     await settle();
 
     // Then
@@ -207,7 +212,10 @@ describe('createRemoteChains', () => {
 
     // When it is closed while the frame sends a message for it
     connection.disconnect();
-    server().connects[0]?.sink.send({ tag: 'message', value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }) });
+    server().connects[0]?.sink.receive({
+      tag: 'message',
+      value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }),
+    });
     await settle();
 
     // Then
@@ -253,7 +261,7 @@ describe('createRemoteChains', () => {
     accept(server().connects[0]);
 
     // When the frame sends a message that is not JSON
-    server().connects[0]?.sink.send({ tag: 'message', value: '{' });
+    server().connects[0]?.sink.receive({ tag: 'message', value: '{' });
     await settle();
 
     // Then
@@ -297,7 +305,7 @@ describe('createRemoteChains', () => {
     await settle();
 
     // When
-    server().connects[0]?.sink.end();
+    server().connects[0]?.sink.interrupt();
     await settle();
     fake.lose(new ProtocolFatalError('boom'));
     survivor.send(genesisRequest(2));
@@ -318,7 +326,7 @@ describe('createRemoteChains', () => {
 
     // When the budget runs out, and the frame accepts it afterwards
     await settle(CONNECT_BUDGET_MS);
-    connect?.sink.send({ tag: 'connected', value: undefined });
+    connect?.sink.receive({ tag: 'connected', value: undefined });
     await settle();
     connection.send(genesisRequest(1));
 
@@ -342,7 +350,7 @@ describe('createRemoteChains', () => {
     await settle();
 
     // When the chain halts, then the frame refuses the send for a connection it forgot
-    server().connects[0]?.sink.end();
+    server().connects[0]?.sink.interrupt();
     await settle();
     server().sends[0]?.answer.reject(new Error('Unknown chain connection'));
     await settle();
@@ -457,7 +465,7 @@ describe('createRemoteChainProvider halts', () => {
     const { received, connection, connect } = await connectRemote(onHalt);
 
     // When
-    connect.sink.end();
+    connect.sink.interrupt();
     await settle();
     connection.send(genesisRequest(7));
 
@@ -475,7 +483,7 @@ describe('createRemoteChainProvider halts', () => {
     const frame = await bootFrame();
 
     // When
-    frame.chains.connects[0]?.sink.end();
+    frame.chains.connects[0]?.sink.interrupt();
     await settle();
 
     // Then
@@ -498,7 +506,7 @@ describe('createRemoteChainProvider halts', () => {
     });
 
     // When
-    connect.sink.end();
+    connect.sink.interrupt();
     await settle();
     connection.send(genesisRequest(9));
 
@@ -521,8 +529,8 @@ describe('createRemoteChainProvider halts', () => {
     await settle();
 
     // When
-    closedRemote.connect.sink.end();
-    open.connect.sink.end();
+    closedRemote.connect.sink.interrupt();
+    open.connect.sink.interrupt();
     await settle();
 
     // Then
@@ -766,7 +774,7 @@ describe('createRemoteChainProvider halts', () => {
 
     // When it is closed, and the frame accepts it all the same
     connection.disconnect();
-    connect?.sink.send({ tag: 'connected', value: undefined });
+    connect?.sink.receive({ tag: 'connected', value: undefined });
     await settle();
 
     // Then
@@ -784,7 +792,7 @@ describe('createRemoteChainProvider halts', () => {
 
     // When
     connection.disconnect();
-    connect?.sink.end(new Error('Too many chain connections'));
+    connect?.sink.interrupt(hostFailure('Error: Too many chain connections'));
     await settle();
 
     // Then
@@ -801,7 +809,7 @@ describe('createRemoteChainProvider halts', () => {
     const frame = await bootFrame();
 
     // When
-    frame.chains.connects[0]?.sink.end(new Error('Too many chain connections'));
+    frame.chains.connects[0]?.sink.interrupt(hostFailure('Error: Too many chain connections'));
     await settle();
     connection.send(genesisRequest(7));
 

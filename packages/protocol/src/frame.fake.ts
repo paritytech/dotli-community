@@ -1,16 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A protocol frame without an iframe, for the layers above it. Each frame it builds is a real consumer transport over
-// an in-memory provider pair, with a real serving transport the test answers through. The test says when the frame is
-// up and when it is lost. A frame's handshake is answered only once the test says it listens, so calls made while it
-// boots wait in the transport's queue as they would on a real frame.
+// A protocol frame without an iframe, for the layers above it. Each frame it builds is a real transport over an
+// in-memory provider pair, with a real transport on the far side the test answers through. The test says when the
+// frame is up and when it is lost. A frame's handshake is answered only once the test says it listens, so calls made
+// while it boots wait in the transport's queue as they would on a real frame.
 
 import { realTimers, type Timers } from '@dotli/shared';
+import { createTransport } from '@dotli/transport';
+import { createProviderPair } from '@dotli/transport/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
-import { createProviderPair } from './provider.fake.js';
-import { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
-import { createServingTransport, type ServingTransport } from './transport-serving.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 export interface FakeFrame {
   frame: ProtocolFrame;
@@ -23,8 +23,10 @@ export interface FakeFrame {
 }
 
 interface Built {
-  consumer: ConsumerTransport;
-  serving: ServingTransport;
+  /** The host's side. */
+  host: ProtocolTransport;
+  /** The frame app's side, which serves the host. */
+  serving: ProtocolTransport;
 }
 
 /**
@@ -34,7 +36,7 @@ interface Built {
  * `ready`, and fails when the frame is then lost or goes idle.
  */
 export function createFakeFrame(
-  serve: (serving: ServingTransport) => void = () => undefined,
+  serve: (serving: ProtocolTransport) => void = () => undefined,
   options: { status?: ProtocolStatus; timers?: Timers } = {},
 ): FakeFrame {
   const timers = options.timers ?? realTimers;
@@ -56,9 +58,10 @@ export function createFakeFrame(
   const build = (): Built => {
     builds += 1;
     const { left, right } = createProviderPair();
-    const serving = createServingTransport(right, { side: 'frame' });
+    const hello = { resolutionId: null };
+    const serving = createTransport(protocolSchema, right, { handshake: 'accept', hello });
     serve(serving);
-    return { consumer: createConsumerTransport(left, { side: 'host', timers }), serving };
+    return { host: createTransport(protocolSchema, left, { handshake: 'open', hello, timers }), serving };
   };
 
   const setStatus = (next: ProtocolStatus): void => {
@@ -66,7 +69,7 @@ export function createFakeFrame(
       current = build();
     }
     if (next === 'listening' || next === 'ready') {
-      current?.consumer.connect();
+      current?.host.connect();
     }
     status = next;
     for (const listener of [...statusListeners]) {
@@ -85,7 +88,7 @@ export function createFakeFrame(
   if (status !== 'idle' && status !== 'failed') {
     current = build();
     if (status === 'listening' || status === 'ready') {
-      current.consumer.connect();
+      current.host.connect();
     }
   }
 
@@ -94,16 +97,16 @@ export function createFakeFrame(
       getStatus: () => status,
       subscribeStatus: subscribe(statusListeners),
       configure: () => undefined,
-      transport: () => Promise.resolve(boot().consumer),
+      transport: () => Promise.resolve(boot().host),
       whenReady() {
         boot();
-        return new Promise<ConsumerTransport>((resolve, reject) => {
+        return new Promise<ProtocolTransport>((resolve, reject) => {
           const settle = (next: ProtocolStatus): boolean => {
             if (next === 'ready') {
               if (current === null) {
                 reject(lostWith);
               } else {
-                resolve(current.consumer);
+                resolve(current.host);
               }
               return true;
             }
@@ -123,7 +126,7 @@ export function createFakeFrame(
           });
         });
       },
-      // The facades never read it, and this fake's frame speaks the host wire.
+      // The facades never read it, and this fake's frame speaks the host's schema.
       onVersionMismatch: () => () => undefined,
       losses: () => losses,
     },
@@ -134,7 +137,7 @@ export function createFakeFrame(
       const lost = current;
       current = null;
       setStatus('failed');
-      lost?.consumer.dispose(error);
+      lost?.host.dispose(error);
       lost?.serving.dispose(error);
     },
     builds: () => builds,

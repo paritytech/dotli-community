@@ -6,16 +6,19 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink, createStatusCell } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
+import { hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createSharedStore, type SharedAuthStorageChange, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ServingTransport, SubscriptionSink } from './transport-serving.js';
+import type { ProtocolTransport } from './schema.js';
+
+type ChangeSink = Sink<SharedAuthStorageChange, never>;
 
 /** A frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is subscribed. */
-function relayingChanges(sinks: Set<SubscriptionSink<'sharedAuthChanges'>>): (serving: ServingTransport) => void {
+function relayingChanges(sinks: Set<ChangeSink>): (serving: ProtocolTransport) => void {
   return serving => {
-    serving.handleSubscription('sharedAuthChanges', (_payload, _context, sink) => {
+    serving.handleSubscription('storage', 'authChanges', (_start, _context, sink) => {
       sinks.add(sink);
       return () => {
         sinks.delete(sink);
@@ -25,9 +28,9 @@ function relayingChanges(sinks: Set<SubscriptionSink<'sharedAuthChanges'>>): (se
 }
 
 /** A frame app that keeps the sink of every auth change subscription it was asked for, in order. */
-function openingChanges(opened: SubscriptionSink<'sharedAuthChanges'>[]): (serving: ServingTransport) => void {
+function openingChanges(opened: ChangeSink[]): (serving: ProtocolTransport) => void {
   return serving => {
-    serving.handleSubscription('sharedAuthChanges', (_payload, _context, sink) => {
+    serving.handleSubscription('storage', 'authChanges', (_start, _context, sink) => {
       opened.push(sink);
       return () => undefined;
     });
@@ -145,7 +148,7 @@ describe('createSharedStore', () => {
         },
       }),
     );
-    const sinks = new Set<SubscriptionSink<'sharedAuthChanges'>>();
+    const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting', timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
     const changes: SharedAuthStorageChange[] = [];
@@ -157,7 +160,7 @@ describe('createSharedStore', () => {
     fake.setStatus('listening');
     await timers.advance(0);
     for (const sink of sinks) {
-      sink.send({ siteId: 'dotli', key: 'k', value: 'v' });
+      sink.receive({ siteId: 'dotli', key: 'k', value: 'v' });
     }
     await timers.advance(0);
     fake.setStatus('idle');
@@ -172,7 +175,7 @@ describe('createSharedStore', () => {
   it('As a returning user, my shared auth subscription follows each new frame and stops in the frame once I leave', async () => {
     // Given a subscription on a frame that is then lost and rebuilt
     const timers = manualTimers();
-    const sinks = new Set<SubscriptionSink<'sharedAuthChanges'>>();
+    const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
     const changes: SharedAuthStorageChange[] = [];
@@ -186,7 +189,7 @@ describe('createSharedStore', () => {
 
     // When a sibling tab writes, and then I leave
     for (const sink of sinks) {
-      sink.send({ siteId: 'dotli', key: 'k', value: null });
+      sink.receive({ siteId: 'dotli', key: 'k', value: null });
     }
     await timers.advance(0);
     unsubscribe();
@@ -204,7 +207,7 @@ describe('createSharedStore', () => {
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const captured = recordCaptures({ onFinished: onTestFinished });
     const errors = recordLoggedErrors();
-    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
     const changes: SharedAuthStorageChange[] = [];
@@ -212,16 +215,16 @@ describe('createSharedStore', () => {
     await timers.advance(0);
 
     // When the frame ends it cleanly, and then ends the reopened one with an error
-    opened[0]?.end();
+    opened[0]?.interrupt();
     await timers.advance(999);
     const openedBeforeFirstWait = opened.length;
     await timers.advance(1);
     const openedAfterFirstWait = opened.length;
-    opened[1]?.end(new TypeError('relay broke'));
+    opened[1]?.interrupt(hostFailure('TypeError: relay broke'));
     await timers.advance(1_999);
     const openedBeforeSecondWait = opened.length;
     await timers.advance(1);
-    opened[2]?.send({ siteId: 'dotli', key: 'k', value: 'v' });
+    opened[2]?.receive({ siteId: 'dotli', key: 'k', value: 'v' });
     await timers.advance(0);
 
     // Then
@@ -239,7 +242,7 @@ describe('createSharedStore', () => {
     // Given a subscription on a frame that is up
     const timers = manualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
     store.subscribeSharedAuthStorage(() => undefined);
@@ -258,7 +261,7 @@ describe('createSharedStore', () => {
     // Given a subscription on a frame that is dropped in the turn the subscription asks for it
     const timers = manualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
 
@@ -275,12 +278,12 @@ describe('createSharedStore', () => {
   it('As a returning user, I leave while my ended shared auth subscription waits to be reopened, and it is not reopened', async () => {
     // Given a subscription the frame ended
     const timers = manualTimers();
-    const opened: SubscriptionSink<'sharedAuthChanges'>[] = [];
+    const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
     const unsubscribe = store.subscribeSharedAuthStorage(() => undefined);
     await timers.advance(0);
-    opened[0]?.end();
+    opened[0]?.interrupt();
     await timers.advance(0);
 
     // When
@@ -298,7 +301,7 @@ describe('createSharedStore', () => {
   ])('As the host, I read a local wallet the frame answers $tag for as its status', async ({ tag, read }) => {
     // Given a frame whose local wallet store answers `tag`
     const fake = createFakeFrame(serving => {
-      serving.handleRequest('localWalletRead', () => ({ tag, value: undefined }));
+      serving.handleRequest('wallet', 'read', () => ok({ tag, value: undefined }));
     });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
 
@@ -314,7 +317,7 @@ describe('createSharedStore', () => {
     const entropy = new Uint8Array([1, 2, 3]);
     const identity = { identityAccountId: '5Grw', liteUsername: 'alice' };
     const fake = createFakeFrame(serving => {
-      serving.handleRequest('localWalletRead', () => ({ tag: 'ok' as const, value: { entropy, identity } }));
+      serving.handleRequest('wallet', 'read', () => ok({ tag: 'ok' as const, value: { entropy, identity } }));
     });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
 

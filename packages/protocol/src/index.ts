@@ -33,17 +33,17 @@ export {
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-export type {
-  Answer,
-  LocalWalletIdentity,
-  RequestMethod,
-  SubscribePayload,
-  SubscriptionEvent,
-  SubscriptionMethod,
-  TelemetryEvent,
-} from './methods.js';
+export { budgetOf, CONNECT_BUDGET_MS, RESOLVE_BUDGET_MS } from './method-timeouts.js';
+export {
+  protocolSchema,
+  type LocalWalletIdentity,
+  type ProtocolContext,
+  type ProtocolSchema,
+  type ProtocolTransport,
+  type TelemetryEvent,
+} from './schema.js';
+export type { Answer, RequestMethod, SubscribePayload, SubscriptionEvent, SubscriptionMethod } from './methods.js';
 export { createPortProvider, createWindowProvider } from './provider.js';
-export { protocolSchema, type ProtocolContext, type ProtocolSchema, type ProtocolTransport } from './schema.js';
 export { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
 export {
   createServingTransport,

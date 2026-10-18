@@ -8,13 +8,11 @@ import { captureException, m, reportListener, spans as S } from '@dotli/metrics'
 import { errorName, log, named, realTimers, serializeError, toError, withTimeout, type Timers } from '@dotli/shared';
 import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolFrame } from './frame.js';
-import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
+import { CONNECT_BUDGET_MS } from './method-timeouts.js';
 import { isRemoteChainConnectable } from './remote-chain-support.js';
 import { callTimeoutError, createRequestId, type FrameRpc } from './rpc.js';
-import type { ConsumerTransport, Subscription } from './transport-consumer.js';
-
-// A timed method, so the default is never taken.
-const CONNECT_BUDGET_MS = budgetOf('chainConnect') ?? DEFAULT_TIMEOUT_MS;
+import type { ProtocolTransport } from './schema.js';
+import { subscribe, type Subscription } from './subscription.js';
 
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;
@@ -111,7 +109,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
 
   /** Sends one message once the frame accepted the connection. A refusal reaches the consumer as its answer. */
   function send(connectionId: string, connection: RemoteChainConnection, message: JsonRpcRequest): void {
-    void rpc.request('chainSend', { connectionId, message: JSON.stringify(message) }).catch((error: unknown) => {
+    void rpc.request('chain', 'send', { connectionId, message: JSON.stringify(message) }).catch((error: unknown) => {
       // A papi client re-follows on the `stop` that comes before the halt, and the frame refuses that send for a
       // connection it has already forgotten.
       if (!isOpen(connectionId, connection)) {
@@ -130,7 +128,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
    * and running out of it unsubscribes, which disconnects a connection a busy frame may still accept.
    */
   function open(
-    transport: ConsumerTransport,
+    transport: ProtocolTransport,
     genesisHash: string,
     connectionId: string,
     remote: RemoteChainConnection,
@@ -148,8 +146,10 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
         }
       };
     });
-    const subscription = transport.subscribe(
-      'chainConnect',
+    const subscription = subscribe(
+      transport,
+      'chain',
+      'connect',
       { genesisHash, connectionId },
       event => {
         if (event.tag === 'message') {
@@ -165,7 +165,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
           send(connectionId, remote, message);
         }
       },
-      { deadlineMs: timers.now() + CONNECT_BUDGET_MS, signal: giveUp.signal },
+      { signal: giveUp.signal },
     );
     remote.subscription = subscription;
     // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that went

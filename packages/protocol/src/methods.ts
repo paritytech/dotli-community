@@ -165,6 +165,4 @@ export type SubscriptionEvent<M extends SubscriptionMethod> = Table[M] extends {
     : never
   : never;
 
-export type LocalWalletIdentity = CodecType<typeof localWalletIdentityCodec>;
 export type TelemetryEvent = CodecType<typeof telemetryEventCodec>;
-export type SharedAuthChange = CodecType<typeof sharedAuthChangeCodec>;

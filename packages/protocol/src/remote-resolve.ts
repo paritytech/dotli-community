@@ -7,11 +7,9 @@ import type { ResolvePhase } from '@dotli/resolver';
 import { realTimers, withTimeout, type Timers } from '@dotli/shared';
 import { PROTOCOL_ERRORS } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
-import { budgetOf, DEFAULT_TIMEOUT_MS } from './method-timeouts.js';
+import { RESOLVE_BUDGET_MS } from './method-timeouts.js';
 import { asCallError, callTimeoutError, type FrameRpc } from './rpc.js';
-
-// A timed method, so the default is never taken.
-const RESOLVE_BUDGET_MS = budgetOf('resolveDotName') ?? DEFAULT_TIMEOUT_MS;
+import { subscribe } from './subscription.js';
 
 export interface RemoteResolveDeps {
   frame: Pick<ProtocolFrame, 'whenReady'>;
@@ -31,8 +29,10 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
     let timedOut: Error | undefined;
     const resolved = new Promise<string | null>((resolve, reject) => {
       let answered = false;
-      const resolution = transport.subscribe(
-        'resolveDotName',
+      const resolution = subscribe(
+        transport,
+        'resolve',
+        'dotName',
         { label },
         event => {
           if (event.tag === 'phase') {
@@ -44,7 +44,7 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
           // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
           resolution.unsubscribe();
         },
-        { deadlineMs: timers.now() + RESOLVE_BUDGET_MS, signal: giveUp.signal },
+        { signal: giveUp.signal },
       );
       // An end before the result is a failure.
       resolution.onEnd(error => {
@@ -75,12 +75,12 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
 
   return {
     async warmupProtocol(): Promise<void> {
-      await rpc.request('warmup', undefined);
+      await rpc.request('frame', 'warmup', undefined);
     },
     resolveDotNameRemote: resolveDotName,
-    resolveOwnerRemote: (label: string) => rpc.request('resolveOwner', { label }),
+    resolveOwnerRemote: (label: string) => rpc.request('resolve', 'owner', { label }),
     resolveExecutableManifestRemote: (label: string, kind: 'app' | 'widget' | 'worker') =>
-      rpc.request('resolveExecutableManifest', { label, kind }),
-    resolveRootManifestRemote: (label: string) => rpc.request('resolveRootManifest', { label }),
+      rpc.request('resolve', 'executableManifest', { label, kind }),
+    resolveRootManifestRemote: (label: string) => rpc.request('resolve', 'rootManifest', { label }),
   };
 }

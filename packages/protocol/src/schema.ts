@@ -13,6 +13,8 @@ import {
   subscription,
   type CallContext,
   type Codec,
+  type DomainError,
+  type MethodTypes,
   type Transport,
 } from '@dotli/transport';
 import type { ExecutableManifest, RootManifest } from '@dotli/resolver';
@@ -52,6 +54,8 @@ const remoteFailure = scaleCodec(Enum({ syncTimeout: str, apiStopped: str }));
 
 const localWalletIdentity = Struct({ identityAccountId: str, liteUsername: nullable(str) });
 
+export type LocalWalletIdentity = CodecType<typeof localWalletIdentity>;
+
 const localWalletRead = scaleCodec(
   Enum({
     none: _void,
@@ -67,7 +71,7 @@ const telemetryEventWire = Enum({
   smoldotDb: Struct({ chain: smoldotDbChainCodec, outcome: smoldotDbOutcomeCodec }),
 });
 
-type TelemetryEvent = CodecType<typeof telemetryEventWire>;
+export type TelemetryEvent = CodecType<typeof telemetryEventWire>;
 
 // Peer ids and roles land in telemetry attributes, so a spoofed frame could write unbounded junk into spans.
 const MAX_PEER_ID_LENGTH = 128;
@@ -179,3 +183,10 @@ export const protocolSchema = defineSchema({
 export type ProtocolSchema = typeof protocolSchema;
 export type ProtocolTransport = Transport<ProtocolSchema>;
 export type ProtocolContext = CallContext<ProtocolSchema>;
+
+/** Why the frame's status ended. */
+export type FrameFailure = DomainError<ProtocolSchema, 'frame', 'status'>;
+/** The remote errors name resolution and chain connections fail with. */
+export type RemoteFailure = DomainError<ProtocolSchema, 'resolve', 'owner'>;
+/** A shared auth write a sibling tab made. */
+export type SharedAuthChange = MethodTypes<ProtocolSchema, 'storage', 'authChanges'>['receive'];

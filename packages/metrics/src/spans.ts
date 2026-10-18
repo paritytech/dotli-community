@@ -123,8 +123,8 @@ export const PROTOCOL_REQUEST = 'protocol.request';
 export const PROTOCOL_WIRE_REFUSED = 'protocol.wire_refused';
 
 /**
- * A protocol message the serving end could not post, an answer, an event or an end, so its peer never hears it. Tagged
- * `outcome` (error), `side` (frame or worker) and `reason` (the error's name).
+ * A protocol message a side could not post, so its peer never hears it. Tagged `outcome` (error), `side` (host, frame or
+ * worker) and `reason` (the error's name).
  */
 export const PROTOCOL_SERVE_POST = 'protocol.serve_post';
 

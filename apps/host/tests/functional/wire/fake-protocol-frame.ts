@@ -2,23 +2,32 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Stands in for the protocol iframe, so a test drives the real host and sandbox with no chain and no network. The
-// fake frame's document loads this script, which answers the host through the real serving transport with the
-// options its own script tag carries as JSON.
+// fake frame's document loads this script, which answers the host through the real transport with the options its own
+// script tag carries as JSON.
 
+import { protocolSchema, type ProtocolSchema } from '@dotli/protocol';
 import {
-  createServingTransport,
+  createTransport,
   createWindowProvider,
-  ProtocolFatalError,
-  ProtocolInitFailedError,
-  type Answer,
-  type SubscriptionSink,
-} from '@dotli/protocol';
+  domain,
+  hostFailure,
+  ok,
+  type CallError,
+  type DomainError,
+  type MethodTypes,
+  type Sink,
+} from '@dotli/transport';
+
+type ChainMessage = MethodTypes<ProtocolSchema, 'chain', 'connect'>['receive'];
+type RootManifest = Extract<MethodTypes<ProtocolSchema, 'resolve', 'rootManifest'>['response'], { ok: true }>['value'];
+type RemoteFailure = DomainError<ProtocolSchema, 'chain', 'connect'>;
+type FrameFailure = DomainError<ProtocolSchema, 'frame', 'status'>;
 
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';
 
 /**
- * What the fake answers `resolveDotName` with. `none` is a name with no content, `error` ends the resolution with an
+ * What the fake answers `resolve.dotName` with. `none` is a name with no content, `error` ends the resolution with an
  * error of that name after `delayMs`, and `fatal` ends the frame's status as a crash.
  */
 export type FakeResolve =
@@ -36,8 +45,8 @@ export interface FakeProtocolOptions {
   blocks?: Record<string, string>;
   /** Per CID. A CID with no mode is served. */
   modes?: Record<string, BlockMode>;
-  /** What `resolveRootManifest` answers. None published by default. */
-  rootManifest?: Answer<'resolveRootManifest'>;
+  /** What `resolve.rootManifest` answers. None published by default. */
+  rootManifest?: RootManifest;
 }
 
 /** What a test reads and steers in the fake, through `window.__fakeProtocol` in the protocol frame. */
@@ -49,17 +58,32 @@ export interface FakeProtocolControl {
   release: (cid: string) => void;
 }
 
+/**
+ * How the frame ends a resolution that failed with `message` under `name`. The two the host's error screen tells apart
+ * cross as their typed failures, as the frame app sends them, and any other as the resolver's own failure.
+ */
+function resolveFailure(message: string, name = 'Error'): CallError<RemoteFailure> {
+  switch (name) {
+    case 'NetworkSyncTimeoutError':
+      return domain({ tag: 'syncTimeout', value: message });
+    case 'ApiStoppedError':
+      return domain({ tag: 'apiStopped', value: message });
+    default:
+      return hostFailure(`${name}: ${message}`);
+  }
+}
+
 function runFakeProtocol(options: FakeProtocolOptions): void {
   const blocks = options.blocks ?? {};
   const modes: Record<string, BlockMode> = { ...options.modes };
   const gets: Record<string, number> = {};
   const held: { cid: string; connectionId: string; rpcId: unknown }[] = [];
-  const connections = new Map<string, SubscriptionSink<'chainConnect'>>();
-  const statuses = new Set<SubscriptionSink<'frameStatus'>>();
+  const connections = new Map<string, Sink<ChainMessage, RemoteFailure>>();
+  const statuses = new Set<Sink<void, FrameFailure>>();
   const stopNothing = (): void => undefined;
 
   const reply = (connectionId: string, message: unknown): void => {
-    connections.get(connectionId)?.send({ tag: 'message', value: JSON.stringify(message) });
+    connections.get(connectionId)?.receive({ tag: 'message', value: JSON.stringify(message) });
   };
   const answerBlock = (connectionId: string, rpcId: unknown, cid: string): void => {
     const hex = blocks[cid];
@@ -104,27 +128,28 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   };
   Object.defineProperty(window, '__fakeProtocol', { value: control });
 
-  const serving = createServingTransport(
+  const serving = createTransport(
+    protocolSchema,
     createWindowProvider({ listen: window, peer: () => window.parent, origin: () => true }),
-    { side: 'frame', count: () => undefined },
+    { handshake: 'accept', hello: { resolutionId: null } },
   );
 
-  serving.handleSubscription('frameStatus', (_payload, _context, sink) => {
+  serving.handleSubscription('frame', 'status', (_start, _context, sink) => {
     if (options.initFailed !== undefined) {
-      sink.end(new ProtocolInitFailedError(options.initFailed));
+      sink.interrupt(domain({ tag: 'initFailed', value: options.initFailed }));
       return stopNothing;
     }
-    sink.send(undefined);
+    sink.receive(undefined);
     statuses.add(sink);
     return () => {
       statuses.delete(sink);
     };
   });
   // The fake has no light client to report on and no other tab signing in.
-  serving.handleSubscription('telemetry', () => stopNothing);
-  serving.handleSubscription('sharedAuthChanges', () => stopNothing);
+  serving.handleSubscription('frame', 'telemetry', () => stopNothing);
+  serving.handleSubscription('storage', 'authChanges', () => stopNothing);
 
-  serving.handleSubscription('resolveDotName', (_payload, _context, sink) => {
+  serving.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
     const resolve = options.resolve;
     if (resolve === undefined) {
       return stopNothing;
@@ -132,21 +157,17 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     switch (resolve.kind) {
       case 'cid':
       case 'none':
-        sink.send({ tag: 'resolved', value: resolve.kind === 'cid' ? resolve.cid : null });
-        sink.end();
+        sink.receive({ tag: 'resolved', value: resolve.kind === 'cid' ? resolve.cid : null });
+        sink.interrupt();
         return stopNothing;
       case 'fatal':
         for (const status of [...statuses]) {
-          status.end(new ProtocolFatalError(resolve.message));
+          status.interrupt(domain({ tag: 'fatal', value: resolve.message }));
         }
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          const error = new Error(resolve.message);
-          if (resolve.name !== undefined) {
-            error.name = resolve.name;
-          }
-          sink.end(error);
+          sink.interrupt(resolveFailure(resolve.message, resolve.name));
         }, resolve.delayMs ?? 0);
         return () => {
           clearTimeout(timer);
@@ -154,39 +175,36 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
       }
     }
   });
-  serving.handleRequest('resolveRootManifest', () => options.rootManifest ?? { kind: 'empty' as const });
-  serving.handleRequest('resolveExecutableManifest', () => ({ kind: 'empty' as const }));
-  serving.handleRequest('localWalletRead', () => ({ tag: 'none' as const, value: undefined }));
+  serving.handleRequest('resolve', 'rootManifest', () => ok(options.rootManifest ?? { kind: 'empty' as const }));
+  serving.handleRequest('resolve', 'executableManifest', () => ok({ kind: 'empty' as const }));
+  serving.handleRequest('wallet', 'read', () => ok({ tag: 'none' as const, value: undefined }));
 
-  serving.handleSubscription('chainConnect', ({ connectionId }, _context, sink) => {
+  serving.handleSubscription('chain', 'connect', ({ connectionId }, _context, sink) => {
     connections.set(connectionId, sink);
-    sink.send({ tag: 'connected', value: undefined });
+    sink.receive({ tag: 'connected', value: undefined });
     return () => {
       connections.delete(connectionId);
     };
   });
-  serving.handleRequest('chainSend', ({ connectionId, message }): undefined => {
+  serving.handleRequest('chain', 'send', ({ connectionId, message }) => {
     // After the send's own answer, as a light client's reply comes.
     setTimeout(() => {
       askBlock(connectionId, message);
     }, 0);
+    return ok();
   });
 
   // Storage reads and the owner lookup find nothing, and writes and the warmup succeed.
-  for (const method of ['resolveOwner', 'authStorageRead', 'modeStorageRead'] as const) {
-    serving.handleRequest(method, () => null);
+  serving.handleRequest('resolve', 'owner', () => ok(null));
+  serving.handleRequest('frame', 'warmup', () => ok());
+  for (const method of ['authRead', 'modeRead'] as const) {
+    serving.handleRequest('storage', method, () => ok(null));
   }
-  for (const method of [
-    'warmup',
-    'authStorageWrite',
-    'authStorageClear',
-    'modeStorageWrite',
-    'modeStorageClear',
-    'localWalletSave',
-    'localWalletIdentity',
-    'localWalletForget',
-  ] as const) {
-    serving.handleRequest(method, () => undefined);
+  for (const method of ['authWrite', 'authClear', 'modeWrite', 'modeClear'] as const) {
+    serving.handleRequest('storage', method, () => ok());
+  }
+  for (const method of ['save', 'identity', 'forget'] as const) {
+    serving.handleRequest('wallet', method, () => ok());
   }
 }
 

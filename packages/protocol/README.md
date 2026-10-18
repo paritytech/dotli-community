@@ -16,80 +16,73 @@ turns postMessage traffic into promises, streams and remote chain connections.
 ```mermaid
 flowchart TB
   client --> facades["facades: frame status, resolve, chains, shared store, telemetry"]
-  facades --> transport["consumer transport"]
+  facades --> transport["transport, over the protocol schema"]
   transport --> provider["window provider"]
   provider -. postMessage .-> frame[protocol frame]
-  transport --- methods["method table: codecs and checks"]
 ```
 
-- The provider moves bytes and nothing else. The window provider admits only `ArrayBuffer` data from one window and one
-  origin, and posts to that window at that origin. Given a predicate, it locks to the first admitted origin that sends
-  bytes, so other data from an admitted origin never locks it. It tells its owner of data from its peer that is not
-  bytes, and of bytes from any window at an origin it does not admit, so a page outside the trust boundary that tries
-  the wire is seen. The port provider wraps a `MessagePort`, and closes it on dispose unless its owner keeps that for
-  itself.
-- A provider holds nothing for a listener yet to come, so its owner subscribes in the turn that creates it. Once
-  disposed it delivers nothing, not even the rest of a message it was delivering, and a listener added then hears
-  nothing.
-- The transport owns the framing, the request and subscription ids, the handshake, the queue and the matching of answers
-  and events. One transport is bound to one provider for its whole life, and disposing it ends everything on it. The two
-  ends share the framing and the receiving: a consumer side that calls and a serving side that handles.
+- The page speaks to the frame through the transport library, over the protocol schema. The library owns the framing,
+  the handshake, the queue, the request and subscription ids and the strict decoding. This package owns the schema, the
+  frame's lifecycle, the facades and how every outcome reaches host code.
 - The protocol schema is where the wire types come from. It groups the methods into traits: the frame, name resolution,
-  the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its codecs,
-  and each handshake carries the resolution id as its hello. Each leg is typed by its method, so a payload, answer or
-  event that does not fit its method fails to compile. Its codecs cross the package only as opaque values, so callers
-  see only typed requests and subscriptions.
+  the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its
+  payloads, and each handshake carries the resolution id as its hello. Each payload is typed by its method, so a
+  payload, answer or value that does not fit its method fails to compile. Its value codecs are built from the protocol's
+  own checked codecs and cross the package only as opaque values.
 - A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed init
   or as a released port, and name resolution and chain connections fail with a sync timeout or a stopped light client. A
   telemetry event past the limits, such as the peer count limit, fails to decode, so it is refused as malformed.
-- The method table carries the same methods for the consumer and serving transports, with the checks a codec cannot
-  express. Every message is encoded with SCALE codecs and sent as a transferred `ArrayBuffer`. The table and the framing
-  never leave the package.
-- Every integer goes through a codec that throws on a value it cannot carry exactly, and a message that is truncated,
+- Every integer goes through a codec that throws on a value it cannot carry exactly, and a payload that is truncated,
   has trailing bytes, names an unknown variant or holds an option or bool byte other than 0 or 1 fails to decode.
+- Every method keeps one name for the metrics, the trail, the budgets and the errors, the flat name it had before the
+  methods were grouped into traits, such as `resolveOwner` or `authStorageRead`, so dashboards read on unchanged.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
-  and owns one provider and one transport per iframe. It rebuilds itself when lost, after a backoff that grows while
-  rebuilds keep failing, and a request while it is down boots one at once. Boot is deduped with a task pool. It is
-  configured with the backend, and names it in its URL in the frame's own words, which a host page of an earlier release
-  still sends.
+  and owns one provider and one transport per iframe. The window provider admits only bytes from that iframe's window at
+  the frame's origin. It rebuilds itself when lost, after a backoff that grows while rebuilds keep failing, and a
+  request while it is down boots one at once. Boot is deduped with a task pool. It is configured with the backend, and
+  names it in its URL in the frame's own words, which a host page of an earlier release still sends.
 - The facades are the host's parts written against the transport: name resolution, remote chains, the shared store and
   telemetry. The client factory builds them and returns them as one object. The page's instance is `protocolClient()`,
   built on first use, and callers reach every request through it.
-- A call can carry an abort signal. A request given up this way is dropped locally and no cancel goes over the wire,
-  while a subscription is unsubscribed. It rejects, or its subscription ends, with the signal's reason itself when that
-  is an error, and wraps any other reason.
-- A request has a budget per method. A shared store request's budget runs from the call. A chain or resolve request's
-  runs once the frame is ready, since it also waits for the light client.
+- A request has a budget per method. No deadline crosses the wire, so the frame sizes its own work from the same
+  budgets. A shared store request's budget runs from the call. A chain or resolve request's runs once the frame is
+  ready, since it also waits for the light client. A request that outlives its budget is given up on the host and its
+  late answer is ignored, with no cancel on the wire, while a subscription given up is stopped in the frame.
 - A request is timed and counted from when it goes out after the handshake, on a monotonic clock. One whose budget runs
   out before it goes out is counted as a timeout. A boot that fails is otherwise counted once, as the frame's.
-- A listener's error, for an event or an end the consumer hears or a stop function the serving side runs, goes to the
-  transport's `report` option, so the others still run.
+
+### How outcomes reach host code
+
+Each outcome becomes the error host code has always seen, so the error screen, the metrics and the trail stay as they
+were.
+
+- A typed failure becomes its class or its name: a fatal, a failed init and a released port become `ProtocolFatalError`,
+  `ProtocolInitFailedError` and `ProtocolPortReleasedError`, and a sync timeout and a stopped light client become a
+  `ProtocolRequestError` named `NetworkSyncTimeoutError` and `ApiStoppedError`.
+- A handler's own failure crosses as its name and message only, and becomes a `ProtocolRequestError` under that name. A
+  request's bare `Error` is named `ProtocolResponseError`, so it still reads as one that crossed the boundary.
+- A refusal, a method the frame does not serve and a call it cannot read become a `ProtocolRequestError` named `Denied`,
+  `Unsupported` and `MalformedFrame`. A request given up on its budget fails with its timeout.
+- A transport that closes rejects every request and ends every subscription with why: the frame's loss itself, or a
+  handshake that timed out or met another version, which become `ProtocolHandshakeTimeoutError` and
+  `ProtocolVersionMismatchError`.
+- A subscription the host holds hears one end, the frame's or the closed transport's, and a listener that throws is
+  reported while the others still hear it.
 
 ### Handshake and queue
 
-- The consumer sends a handshake with its wire version and repeats it on a short interval until the serving side
-  answers. The first answer wins and a repeat is harmless. The handshake starts when the iframe has loaded, and
-  `listening` is a completed handshake.
-- A call made before the handshake succeeds waits in a task pool and is sent once it does, in call order and ahead of
-  any call made after. The pool is unbounded, so calls run side by side once the handshake is done. Every post encodes a
-  fresh buffer, since a transferred buffer is detached. A call given up, or a subscription unsubscribed, while it waits
-  is never sent.
+- The host opens the handshake when the iframe has loaded, and repeats it on a short interval until the frame answers.
+  `listening` is a completed handshake. Its hello carries no resolution id, since the frame reads that from its URL.
+- A call made before the handshake succeeds waits and goes out once it does, in call order. A call given up, or a
+  subscription stopped, while it waits is never sent.
 - A handshake that does not succeed in time fails with a timeout, measured on a clock that does not run while the page
-  is frozen. When it fails, every queued call rejects and every queued subscription ends with the reason.
-- The serving side answers a call for a method it does not handle with an error at once.
-- The serving side never throws into a handler. An answer, event or end its provider cannot post is captured, logged and
-  counted. An answer that settles after the serving side was disposed is logged and never posted. The ends it posts as
-  it disposes go unreported, since the peer may already be gone.
-- The serving side's `onPeerIdle` hears a peer that left. A live peer keeps at least one subscription open, so when the
-  peer's own unsubscribe leaves nothing running and no call of its is in flight, the peer has disposed its transport.
-  The serving side runs its request handlers in a task pool and waits for that pool to settle before it says so. A call
-  the peer makes after its unsubscribe cancels it, and an end the serving side posted never counts, since the peer may
-  not have heard it.
+  is frozen. When it fails, every queued call fails with the reason.
 
 ### Frame loss and version mismatch
 
 - A lost frame disposes its transport with the loss as the reason. Every call in flight rejects with it and every open
-  subscription ends with it, so a remote chain connection hears that the frame stopped. The frame is then rebuilt.
+  subscription ends with it, so a remote chain connection hears that the frame stopped. The transport goes before the
+  iframe, so the frame still hears each subscription stop. The frame is then rebuilt.
 - A call made while the frame is down waits for the next transport.
 - A version mismatch is final. A rebuild cannot fix it and a reload can, so the frame moves to `failed`, stops
   rebuilding, and rejects every waiting and later call with `ProtocolVersionMismatchError`.
@@ -115,11 +108,11 @@ flowchart TB
 
 ### Refused messages
 
-A message that cannot be decoded, or fails a check of its method, is dropped, counted once with its reason (malformed or
-invalid) and logged once with what failed. Data that is not an `ArrayBuffer` is dropped too. The frame's provider facing
-its parent counts it as not bytes, since only a host page of an earlier release sends it there, while the other
-providers drop it without a count. These are ignored without a count: an answer for a call that is no longer waiting, an
-unsubscribe for a subscription that already ended, and a repeat handshake answer.
+A message from the frame that cannot be decoded, or does not fit the call it names, is dropped, counted once with its
+reason (malformed or invalid) and side, and logged once with what failed. Data from the frame that is not bytes is
+counted as not bytes, since only a frame of an earlier release sends it, once, whether the provider or the transport
+drops it. A message the provider could not post is captured, logged and counted. A late answer to a call that is no
+longer waiting is ignored without a count.
 
 ### Shared store and chains
 
@@ -142,14 +135,17 @@ unsubscribe for a subscription that already ended, and a repeat handshake answer
   `isSharedModeRequestMethod`, `isSharedWalletRequestMethod`.
 - Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
   the entropy and the cached identity).
-- Transport, for the frame app: `createConsumerTransport`, `createServingTransport` (with `onPeerIdle`),
-  `ConsumerTransport`, `ServingTransport`, `CallContext`, `RequestHandler`, `SubscriptionHandler`, `SubscriptionSink`.
-- Providers: `createWindowProvider` (with `onNotBytes` and `onRefusedOrigin` for what it drops), `createPortProvider`.
-- Method names and their types: `RequestMethod`, `SubscriptionMethod`, `SubscribePayload`, `Answer`,
-  `SubscriptionEvent`, `TelemetryEvent`.
 - The protocol as a transport schema: `protocolSchema`, its traits `frame`, `resolve`, `storage`, `wallet` and `chain`,
   with the resolution hello and the typed failures of the frame status, the resolve methods and chain connections.
   `ProtocolSchema`, `ProtocolTransport` and `ProtocolContext` type a transport over it and its handlers' context.
+  `TelemetryEvent` is what the frame reports on its telemetry feed.
+- Budgets, for the frame to size its own work: `budgetOf` (a method's budget by its flat name, or null for one waited on
+  without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
+- The earlier transport, until the frame app serves through the schema: `createConsumerTransport`,
+  `createServingTransport` (with `onPeerIdle`), `ConsumerTransport`, `ServingTransport`, `CallContext`,
+  `RequestHandler`, `SubscriptionHandler`, `SubscriptionSink`, the providers `createWindowProvider` and
+  `createPortProvider`, and the flat method names and their types `RequestMethod`, `SubscriptionMethod`,
+  `SubscribePayload`, `Answer` and `SubscriptionEvent`.
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 
@@ -157,6 +153,6 @@ unsubscribe for a subscription that already ended, and a repeat handshake answer
 
 Test-only, for functional tests that read the protocol frame's traffic in a real page. Never imported by shipped code.
 
-- `describeWireMessage`: a wire message as its method, leg, id and body, with bytes as hex, or null for data that does
-  not decode as one.
+- `describeWireMessage`: a wire message as its trait, method, leg, id and decoded body, with bytes as hex, or null for
+  data that does not decode as one.
 - `DescribedWireMessage`: the type of what `describeWireMessage` returns.

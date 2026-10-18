@@ -6,10 +6,11 @@ import { SITE_ID } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { ok } from '@dotli/transport';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
-import { decodeWireMessage } from './wire-message.js';
+import { describeWireMessage } from './testing/index.js';
 import {
   createFrameHost,
   FRAME_CONFIG,
@@ -35,13 +36,11 @@ async function listen(dom: FrameDom): Promise<void> {
   await timers.advance(HANDSHAKE_RETRY_MS);
 }
 
-/** What the host sent `iframe`, as `leg:method`, its handshakes and status left out. */
+/** The requests the host sent `iframe`, as `trait.method`, its handshakes left out. */
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
-    const decoded = decodeWireMessage(data as ArrayBuffer);
-    return decoded.ok && decoded.message.leg === 'request' && decoded.message.method !== 'handshake'
-      ? [decoded.message.method]
-      : [];
+    const message = describeWireMessage(data);
+    return message?.leg === 'request' && message.trait !== '255' ? [`${message.trait}.${message.method}`] : [];
   });
 }
 
@@ -158,9 +157,9 @@ describe('configureProtocolFrame', () => {
     host.client.configureProtocolFrame(FRAME_CONFIG);
     await timers.advance(0);
     const served: string[] = [];
-    host.serve().handleRequest('authStorageRead', ({ key }) => {
+    host.serve().handleRequest('storage', 'authRead', ({ key }) => {
       served.push(key);
-      return 'session';
+      return ok('session');
     });
     await listen(host);
 
@@ -279,7 +278,7 @@ describe('protocol iframe listening handshake', () => {
     const read = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
 
     // When
-    host.serve().handleRequest('authStorageRead', () => '0x0102');
+    host.serve().handleRequest('storage', 'authRead', () => ok('0x0102'));
     await listen(host);
 
     // Then
@@ -338,7 +337,7 @@ describe('protocol iframe listening handshake', () => {
       () => settled.push('resolved'),
       (err: unknown) => settled.push(err instanceof Error ? err.message : String(err)),
     );
-    host.serve().handleRequest('authStorageRead', () => new Promise<null>(() => undefined));
+    host.serve().handleRequest('storage', 'authRead', () => new Promise(() => undefined));
     await listen(host);
 
     // When
@@ -361,7 +360,7 @@ describe('protocol iframe listening handshake', () => {
   it('As a returning user, I write a setting and change the frame config in the same turn, and the write fails at once instead of going to a frame that cannot hear it', async () => {
     // Given a listening frame
     void host.client.readSharedModeStorage(SITE_ID, 'backend').catch(() => undefined);
-    host.serve().handleRequest('modeStorageRead', () => null);
+    host.serve().handleRequest('storage', 'modeRead', () => ok(null));
     await listen(host);
     const settled: string[] = [];
 

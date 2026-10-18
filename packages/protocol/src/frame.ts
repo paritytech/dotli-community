@@ -18,15 +18,13 @@ import {
   withTimeout,
   type Timers,
 } from '@dotli/shared';
-import {
-  PROTOCOL_ERRORS,
-  ProtocolFatalError,
-  ProtocolInitFailedError,
-  ProtocolVersionMismatchError,
-} from './errors.js';
+import { createTransport, createWindowProvider, type WindowLike } from '@dotli/transport';
+import { PROTOCOL_ERRORS, ProtocolVersionMismatchError } from './errors.js';
 import { protocolListeners } from './listeners.js';
-import { createWindowProvider, type WindowLike } from './provider.js';
-import { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
+import { fromTransportError } from './outcomes.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
+import { subscribe } from './subscription.js';
+import { createIssueReporter } from './wire-issues.js';
 
 /**
  * Where the protocol frame stands. `idle` before anything asked for it. `booting` while it loads. `listening` once it
@@ -122,14 +120,14 @@ export interface ProtocolFrame {
    * wait in its queue until its handshake succeeds, and fail with the loss when the frame is dropped first. Rejects
    * with the version mismatch for good once a frame refused the host's wire.
    */
-  transport(): Promise<ConsumerTransport>;
+  transport(): Promise<ProtocolTransport>;
   /**
    * The transport of the ready frame, booting one if none was asked for yet, once it is configured. A call while the
    * frame is down boots one at once instead of waiting out the rebuild backoff, and calls that find a boot under way
    * join it. Rejects with why when the boot it waits on fails, or when a config change drops the frame, so no caller is
    * left to its own timeout.
    */
-  whenReady(): Promise<ConsumerTransport>;
+  whenReady(): Promise<ProtocolTransport>;
   /**
    * Hears the version mismatch that left the frame down for good, once, and at once if it already did. A frame rebuilt
    * while an app is open can come from a newer release, and only a reload fixes that.
@@ -148,9 +146,9 @@ class FrameSlot {
   iframe: HTMLIFrameElement | null = null;
   /** Aborted with why the frame is gone, which ends whatever its keeper waits on. */
   readonly loss = new AbortController();
-  readonly transport: ConsumerTransport;
+  readonly transport: ProtocolTransport;
 
-  constructor(open: (peer: () => WindowLike | null) => ConsumerTransport) {
+  constructor(open: (peer: () => WindowLike | null) => ProtocolTransport) {
     this.transport = open(() => this.iframe?.contentWindow ?? null);
   }
 }
@@ -193,28 +191,12 @@ function reportFrameLost(error: Error, count: typeof m.count, capture: boolean):
   return capture;
 }
 
-/**
- * Why a frame whose status subscription ended is lost. A failure crossed the wire under its class name, so the two
- * the host's error page knows become their classes again.
- */
-function statusEndReason(error: Error | null): Error {
-  if (error === null) {
-    return new Error(PROTOCOL_ERRORS.FRAME_STATUS_ENDED);
-  }
-  if (error.name === 'ProtocolFatalError') {
-    return new ProtocolFatalError(error.message, { cause: error });
-  }
-  if (error.name === 'ProtocolInitFailedError') {
-    return new ProtocolInitFailedError(error.message, { cause: error });
-  }
-  return error;
-}
-
 export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   const { origin, document: frameDocument, window: messages } = deps;
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...deps.timeouts };
   const timers = deps.timers ?? realTimers;
   const count = deps.count ?? m.count;
+  const reportIssue = createIssueReporter('host', count);
 
   const status = createStatusCell<ProtocolStatus>('idle', {
     onListenerError: reportListener('protocol', 'protocol.status'),
@@ -250,31 +232,41 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
 
   const setStatus = status.set;
 
-  /** Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down. */
+  /**
+   * Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down, and
+   * before its iframe goes, so the frame still hears the subscriptions it served stop.
+   */
   function loseFrame(error: Error, next: 'failed' | 'idle'): void {
     const lost = slot;
     slot = null;
     downReason = error;
     losses += 1;
-    if (lost !== null) {
-      lost.loss.abort(error);
-      lost.iframe?.remove();
-    }
+    lost?.loss.abort(error);
     setStatus(next);
     lost?.transport.dispose(error);
+    lost?.iframe?.remove();
     lostListeners.emit(error);
   }
 
   /** A slot with its transport, which hears the frame's status from the start. */
   function openSlot(): FrameSlot {
     const kept = new FrameSlot(peer =>
-      createConsumerTransport(createWindowProvider({ listen: messages, peer, origin }), {
-        side: 'host',
-        timers,
-        count,
-      }),
+      createTransport(
+        protocolSchema,
+        createWindowProvider({
+          listen: messages,
+          peer,
+          origin,
+          // The provider drops what is not bytes before the transport sees it, so this is its only count.
+          onNotBytes: () => {
+            reportIssue({ kind: 'refused', reason: 'not_bytes' });
+          },
+        }),
+        // The frame reads the resolution id from its URL, which it needs before any handshake.
+        { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: reportIssue },
+      ),
     );
-    const frameStatus = kept.transport.subscribe('frameStatus', undefined, () => {
+    const frameStatus = subscribe(kept.transport, 'frame', 'status', undefined, () => {
       if (slot === kept) {
         setStatus('ready');
       }
@@ -282,7 +274,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     // A dropped frame's own status ends with its loss, which was counted when it was dropped.
     frameStatus.onEnd(error => {
       if (slot === kept) {
-        kept.loss.abort(statusEndReason(error));
+        kept.loss.abort(error ?? new Error(PROTOCOL_ERRORS.FRAME_STATUS_ENDED));
       }
     });
     return kept;
@@ -429,7 +421,9 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
       }
       readyAt = timers.now();
       await untilStatus(() => false, kept.loss.signal);
-    } catch (error: unknown) {
+    } catch (thrown: unknown) {
+      // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
+      const error = thrown instanceof Error ? fromTransportError(thrown) : thrown;
       const reason = toError(error);
       // Still the frame, so this keeper found the failure, not a config change.
       if (slot === kept) {
@@ -492,7 +486,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     return withTimeout(configured, timeouts.configureMs, () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED), timers);
   }
 
-  function whenReady(): Promise<ConsumerTransport> {
+  function whenReady(): Promise<ProtocolTransport> {
     if (mismatch !== null) {
       return Promise.reject(mismatch);
     }
@@ -504,7 +498,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     const since = losses;
     askForFrame(frameConfig);
     // Read when the status is reached, since the frame can be dropped before the wait's continuation runs.
-    let reached: ConsumerTransport | null = null;
+    let reached: ProtocolTransport | null = null;
     return untilStatus(next => {
       if (next === 'ready') {
         reached = slot?.transport ?? null;
@@ -519,7 +513,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     });
   }
 
-  function transport(): Promise<ConsumerTransport> {
+  function transport(): Promise<ProtocolTransport> {
     if (mismatch !== null) {
       return Promise.reject(mismatch);
     }

@@ -4,13 +4,15 @@
 // What a functional test needs to read the protocol frame's traffic in a real page. Never imported by shipped code.
 
 import { toHex } from '@dotli/shared';
-import { decodeWireMessage } from '../wire-message.js';
+import { describeMessage } from '@dotli/transport/testing';
+import { protocolSchema } from '../schema.js';
 
 export interface DescribedWireMessage {
+  trait: string;
   method: string;
   leg: string;
   id: number;
-  /** The leg's own fields, such as `payload`, `event` or `error`, with bytes as hex. */
+  /** The leg's decoded value, such as a payload or an outcome, with bytes as hex. */
   body: unknown;
 }
 
@@ -33,10 +35,12 @@ export function describeWireMessage(data: unknown): DescribedWireMessage | null 
   if (!(data instanceof ArrayBuffer)) {
     return null;
   }
-  const decoded = decodeWireMessage(data);
-  if (!decoded.ok) {
+  let described: DescribedWireMessage;
+  try {
+    described = describeMessage(protocolSchema, data);
+  } catch {
+    // Refused data is no message, and a recording keeps only messages.
     return null;
   }
-  const { method, leg, id, ...body } = decoded.message;
-  return { method, leg, id, body: plain(body) };
+  return { ...described, body: plain(described.body) };
 }

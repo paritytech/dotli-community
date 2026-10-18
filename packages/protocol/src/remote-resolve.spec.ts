@@ -3,23 +3,34 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { domain, hostFailure, type SubscriptionHandler } from '@dotli/transport';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remote-resolve.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ServingTransport, SubscriptionHandler } from './transport-serving.js';
+import type { ProtocolSchema, ProtocolTransport } from './schema.js';
 
 /** A frame app that resolves names with `handler`. */
-function resolving(handler: SubscriptionHandler<'resolveDotName'>): (serving: ServingTransport) => void {
+function resolving(
+  handler: SubscriptionHandler<ProtocolSchema, 'resolve', 'dotName'>,
+): (serving: ProtocolTransport) => void {
   return serving => {
-    serving.handleSubscription('resolveDotName', handler);
+    serving.handleSubscription('resolve', 'dotName', handler);
   };
+}
+
+/** How a resolution failed, read once it has. */
+function failure(resolution: Promise<unknown>): Promise<Error> {
+  return resolution.then(
+    () => new Error('the resolution succeeded'),
+    (err: unknown) => err as Error,
+  );
 }
 
 describe('createRemoteResolve', () => {
   let timers: ManualTimers;
 
-  function resolveOver(serve: (serving: ServingTransport) => void) {
+  function resolveOver(serve: (serving: ProtocolTransport) => void) {
     const fake = createFakeFrame(serve, { timers });
     return createRemoteResolve({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
   }
@@ -34,10 +45,10 @@ describe('createRemoteResolve', () => {
     const resolve = resolveOver(
       resolving(({ label }, _context, sink) => {
         asked.push(label);
-        sink.send({ tag: 'phase', value: 'asset-hub-syncing' });
-        sink.send({ tag: 'phase', value: 'resolving-content' });
-        sink.send({ tag: 'resolved', value: '0xcid' });
-        sink.end();
+        sink.receive({ tag: 'phase', value: 'asset-hub-syncing' });
+        sink.receive({ tag: 'phase', value: 'resolving-content' });
+        sink.receive({ tag: 'resolved', value: '0xcid' });
+        sink.interrupt();
         return () => undefined;
       }),
     );
@@ -58,7 +69,7 @@ describe('createRemoteResolve', () => {
     let stopped = false;
     const resolve = resolveOver(
       resolving((_payload, _context, sink) => {
-        sink.send({ tag: 'resolved', value: '0xcid' });
+        sink.receive({ tag: 'resolved', value: '0xcid' });
         return () => {
           stopped = true;
         };
@@ -78,8 +89,8 @@ describe('createRemoteResolve', () => {
     // Given a frame app that stops after a phase
     const resolve = resolveOver(
       resolving((_payload, _context, sink) => {
-        sink.send({ tag: 'phase', value: 'asset-hub-syncing' });
-        sink.end();
+        sink.receive({ tag: 'phase', value: 'asset-hub-syncing' });
+        sink.interrupt();
         return () => undefined;
       }),
     );
@@ -93,6 +104,43 @@ describe('createRemoteResolve', () => {
 
     // Then
     expect((await cid).message).toBe(PROTOCOL_ERRORS.RESOLUTION_ENDED);
+  });
+
+  it('As the host, a resolver sync timeout in the frame reaches my error screen as NetworkSyncTimeoutError', async () => {
+    // Given a frame app whose resolver runs out of sync time
+    const message = 'Sync to Asset Hub Paseo timed out after 45s. Unable to reach peers.';
+    const resolve = resolveOver(
+      resolving((_payload, _context, sink) => {
+        sink.interrupt(domain({ tag: 'syncTimeout', value: message }));
+        return () => undefined;
+      }),
+    );
+
+    // When
+    const cid = failure(resolve.resolveDotNameRemote('doom'));
+    await timers.advance(0);
+
+    // Then the error screen matches on the name and reads the chain from the message
+    expect(await cid).toMatchObject({ name: 'NetworkSyncTimeoutError', message, method: 'resolveDotName' });
+  });
+
+  it('As the host, a resolution the frame fails keeps the name it crossed with, and a bare Error becomes a protocol response error', async () => {
+    // Given a frame app whose resolver throws a named error for one name and a bare one for another
+    const resolve = resolveOver(
+      resolving(({ label }, _context, sink) => {
+        sink.interrupt(hostFailure(label === 'named' ? 'DotNsError: no' : 'Error: no'));
+        return () => undefined;
+      }),
+    );
+
+    // When
+    const named = failure(resolve.resolveDotNameRemote('named'));
+    const bare = failure(resolve.resolveDotNameRemote('bare'));
+    await timers.advance(0);
+
+    // Then
+    expect(await named).toMatchObject({ name: 'DotNsError', message: 'no' });
+    expect(await bare).toMatchObject({ name: 'ProtocolResponseError', message: 'no' });
   });
 
   it('As the host, a resolution that outlives its budget is stopped in the frame and fails as timed out', async () => {

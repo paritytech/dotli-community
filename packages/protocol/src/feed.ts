@@ -8,7 +8,7 @@
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, errorName, log, named, type Timers } from '@dotli/shared';
 import type { ProtocolFrame } from './frame.js';
-import type { Subscription } from './transport-consumer.js';
+import type { Subscription } from './subscription.js';
 
 /** The first wait before an ended feed is reopened. It doubles after each end on the same frame. */
 const REOPEN_MS = 1_000;

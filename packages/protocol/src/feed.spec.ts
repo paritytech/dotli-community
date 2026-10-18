@@ -7,7 +7,7 @@ import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { createFeedKeeper } from './feed.js';
-import type { Subscription } from './transport-consumer.js';
+import type { Subscription } from './subscription.js';
 
 interface HeldSubscription extends Subscription {
   /** The frame ending it, cleanly with null. */

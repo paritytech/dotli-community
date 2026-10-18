@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { bindLogSink } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { domain, ok } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
@@ -18,8 +20,8 @@ import {
   ProtocolVersionMismatchError,
 } from './errors.js';
 import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame } from './frame.js';
-import type { ConsumerTransport } from './transport-consumer.js';
-import { decodeWireMessage, encodeWireMessage } from './wire-message.js';
+import type { ProtocolTransport } from './schema.js';
+import { describeWireMessage } from './testing/index.js';
 import {
   createFrameDom,
   createFrameHost,
@@ -30,7 +32,7 @@ import {
   type FrameStatusServer,
 } from './testing/frame-host.js';
 
-// The consumer transport posts its handshake again this often until it is answered.
+// The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const READY_TIMEOUT_MS = 240_000;
@@ -59,21 +61,34 @@ async function bringUp(dom: FrameDom): Promise<FrameStatusServer> {
   return status;
 }
 
-/** What the host sent `iframe`, as `leg:method`, its handshakes left out. */
+/** What the host sent `iframe`, as `leg:trait.method`, its handshakes left out. */
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
-    const decoded = decodeWireMessage(data as ArrayBuffer);
-    return decoded.ok && decoded.message.method !== 'handshake'
-      ? [`${decoded.message.leg}:${decoded.message.method}`]
-      : [];
+    const message = describeWireMessage(data);
+    return message !== null && message.trait !== '255' ? [`${message.leg}:${message.trait}.${message.method}`] : [];
   });
 }
 
 /** The frame's transport once its handshake is done, which is how the shared store waits for a listening frame. */
-async function whenListening(frame: ProtocolFrame): Promise<ConsumerTransport> {
+async function whenListening(frame: ProtocolFrame): Promise<ProtocolTransport> {
   const transport = await frame.transport();
   await transport.whenConnected();
   return transport;
+}
+
+/**
+ * What a frame app sends the host once its light client is ready, recorded from a frame of its own that went through
+ * the same steps, so the bytes would be heard from the right frame.
+ */
+async function recordedReady(): Promise<unknown[]> {
+  const other = createFrameDom(undefined, { timers });
+  const frame = createProtocolFrame(other.deps);
+  frame.configure(FRAME_CONFIG);
+  void frame.transport();
+  const status = await listen(other);
+  status.ready();
+  await advance();
+  return other.iframe().window.sent.filter(data => describeWireMessage(data)?.leg === 'receive');
 }
 
 /** How a wait settled, read once it has, with its handler bound at once so a rejection is never unhandled. */
@@ -86,28 +101,70 @@ function outcomeOf(wait: Promise<unknown>): Promise<string> {
 
 describe('createProtocolFrame', () => {
   it('As a dotli integrator, I hear only what the current frame sends from its origin', async () => {
-    // Given a listening frame, and another iframe on the page
+    // Given what a frame says when its light client is ready, a listening frame, and another iframe on the page
+    const ready = await recordedReady();
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.transport();
-    const status = await listen(dom);
+    await listen(dom);
     const stranger = dom.stranger();
 
     // When the other iframe, and the frame from another origin, say the light client is ready
-    for (let id = 1; id <= 8; id++) {
-      const ready = (): ArrayBuffer => encodeWireMessage({ leg: 'event', id, method: 'frameStatus', event: undefined });
-      dom.deliverRaw(ready(), stranger);
-      dom.deliverRaw(ready(), dom.iframe(), 'https://evil.example');
+    for (const data of ready) {
+      dom.deliverRaw(data, stranger);
+      dom.deliverRaw(data, dom.iframe(), 'https://evil.example');
     }
     await advance();
     const afterStrangers = frame.getStatus();
-    status.ready();
+    for (const data of ready) {
+      dom.deliverRaw(data);
+    }
     await advance();
 
     // Then
+    expect(ready).toHaveLength(1);
     expect(afterStrangers).toBe('listening');
     expect(frame.getStatus()).toBe('ready');
+  });
+
+  it('As a dotli operator, I see each message the frame sends that the host cannot read counted once as refused', async () => {
+    // Given a listening frame, and a log of the host's breadcrumbs
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const events: { message: string; attrs: Record<string, unknown> | undefined }[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message, attrs) => {
+          if (level === 'info' && message === 'protocol message refused') {
+            events.push({ message, attrs });
+          }
+        },
+      }),
+    );
+    const dom = createFrameDom(undefined, { timers });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.transport();
+    await listen(dom);
+
+    // When the frame sends bytes too short to be a message, and an object as a frame of an earlier release does
+    dom.deliverRaw(new Uint8Array([0xff, 0xff, 0xff]).buffer);
+    dom.deliverRaw({ namespace: 'dotli:protocol', kind: 'ready' });
+    await advance();
+
+    // Then
+    expect(metrics.counted(S.PROTOCOL_WIRE_REFUSED)).toEqual([
+      { outcome: 'refused', reason: 'malformed', side: 'host' },
+      { outcome: 'refused', reason: 'not_bytes', side: 'host' },
+    ]);
+    expect(events).toEqual([
+      {
+        message: 'protocol message refused',
+        attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: expect.any(String) as string },
+      },
+      { message: 'protocol message refused', attrs: { flow: 'protocol', reason: 'not_bytes', side: 'host' } },
+    ]);
+    expect(frame.getStatus()).toBe('listening');
   });
 
   it('As the host, I start my handshake on the frame load', async () => {
@@ -180,22 +237,8 @@ describe('createProtocolFrame', () => {
     frame.onVersionMismatch(error => heard.push({ name: error.name, status: frame.getStatus() }));
 
     // When the frame refuses the host wire version
-    dom.deliverRaw(
-      encodeWireMessage({
-        leg: 'response',
-        id: 1,
-        method: 'handshake',
-        outcome: {
-          ok: false,
-          error: {
-            message: 'The peer speaks wire version 3 and this end 2',
-            name: 'ProtocolVersionMismatchError',
-            stack: null,
-          },
-        },
-      }),
-    );
-    await advance();
+    dom.serveNewer();
+    await advance(HANDSHAKE_RETRY_MS);
 
     // Then
     expect(heard).toEqual([{ name: 'ProtocolVersionMismatchError', status: 'failed' }]);
@@ -254,9 +297,9 @@ describe('createProtocolFrame', () => {
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
     const status = await listen(dom);
-    dom.serve().handleRequest('resolveOwner', () => new Promise<null>(() => undefined));
+    dom.serve().handleRequest('resolve', 'owner', () => new Promise(() => undefined));
     const transport = await frame.transport();
-    const owner = transport.request('resolveOwner', { label: 'doom' }).catch((err: unknown) => err);
+    const owner = transport.request('resolve', 'owner', { label: 'doom' }).catch((err: unknown) => err);
     await advance();
 
     // When its light client dies, which ends its status, and the loss disposes its transport
@@ -326,23 +369,41 @@ describe('createProtocolFrame', () => {
     ]);
   });
 
-  it('As the host, a ready frame whose port the worker released is counted as lost and not captured', async () => {
-    // Given a ready frame, and a reporting pipeline that records captures and counts
+  it('As the host, a worker port release ends the frame without capturing it, through the typed released interrupt', async () => {
+    // Given a ready frame, and a reporting pipeline that records captures, counts and breadcrumbs
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const events: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: (level, message) => {
+          if (level === 'info') {
+            events.push(message);
+          }
+        },
+      }),
+    );
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
     const status = await bringUp(dom);
+    const transport = await frame.transport();
+    dom.serve().handleRequest('resolve', 'owner', () => new Promise(() => undefined));
+    const owner = transport.request('resolve', 'owner', { label: 'doom' }).catch((err: unknown) => err);
+    await advance();
 
     // When the tab thaws and finds the SharedWorker let go of its port
-    status.fail(new ProtocolPortReleasedError('released'));
+    status.interrupt(domain({ tag: 'released', value: 'The worker released this tab' }));
     await advance();
 
     // Then
     expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'ProtocolPortReleasedError' }]);
     expect(captured).toEqual([]);
+    expect(events).toContain('protocol frame released');
+    expect(await owner).toBeInstanceOf(ProtocolPortReleasedError);
+    expect(((await owner) as Error).message).toBe('The worker released this tab');
+    expect(frame.getStatus()).toBe('failed');
   });
 
   it('As the host, a late message from a dropped frame settles nothing on the new one', async () => {
@@ -353,35 +414,35 @@ describe('createProtocolFrame', () => {
     void frame.whenReady().catch(() => undefined);
     const first = dom.iframe();
     const held = deferred<string | null>();
-    dom.serve(first).handleRequest('authStorageRead', () => held.promise);
+    dom.serve(first).handleRequest('storage', 'authRead', () => held.promise.then(value => ok(value)));
     const firstStatus = await bringUp(dom);
-    const oldRead = (await frame.transport()).request('authStorageRead', { siteId: SITE_ID, key: 'k' });
-    void oldRead.catch(() => undefined);
+    const firstTransport = await frame.transport();
+    // Enough reads that their ids reach past the one the rebuilt frame's read gets
+    const oldReads = Array.from({ length: 16 }, () =>
+      firstTransport.request('storage', 'authRead', { siteId: SITE_ID, key: 'k' }).catch((err: unknown) => err),
+    );
     await advance();
     firstStatus.fail(new ProtocolFatalError('boom'));
     await advance();
 
     // And a read on the rebuilt frame, which it never answers
     const rebuilt = await frame.transport();
-    dom.serve().handleRequest('authStorageRead', () => new Promise<null>(() => undefined));
+    dom.serve().handleRequest('storage', 'authRead', () => new Promise(() => undefined));
     await bringUp(dom);
-    const answered: (string | null)[] = [];
-    void rebuilt.request('authStorageRead', { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer));
+    const answered: unknown[] = [];
+    void rebuilt.request('storage', 'authRead', { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer));
     await advance();
 
-    // When the dropped frame answers late, and answers for every id arrive from its window
+    // When the dropped frame answers every read late
     held.resolve('stale');
-    for (let id = 1; id <= 16; id++) {
-      dom.deliverRaw(
-        encodeWireMessage({ leg: 'response', id, method: 'authStorageRead', outcome: { ok: true, answer: 'stale' } }),
-        first,
-      );
-    }
     await advance();
 
     // Then
     expect(answered).toEqual([]);
-    await expect(oldRead).rejects.toThrow('boom');
+    expect(first.window.sent.filter(data => describeWireMessage(data)?.trait === 'storage')).toHaveLength(16);
+    for (const read of oldReads) {
+      expect(await read).toMatchObject({ message: 'boom' });
+    }
     expect(frame.getStatus()).toBe('ready');
   });
 
@@ -395,22 +456,8 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // When
-    dom.deliverRaw(
-      encodeWireMessage({
-        leg: 'response',
-        id: 1,
-        method: 'handshake',
-        outcome: {
-          ok: false,
-          error: {
-            message: 'The peer speaks wire version 1 and this end 2',
-            name: 'ProtocolVersionMismatchError',
-            stack: null,
-          },
-        },
-      }),
-    );
-    await advance();
+    dom.serveNewer();
+    await advance(HANDSHAKE_RETRY_MS);
     const failure = await up;
     await advance(60_000);
     const framesAfterBackoff = dom.frames();
@@ -443,21 +490,7 @@ describe('createProtocolFrame', () => {
     // When the frame is lost, and the frame rebuilt after the backoff refuses the host wire version
     status.fail(new ProtocolFatalError('boom'));
     await advance(2_000);
-    dom.deliverRaw(
-      encodeWireMessage({
-        leg: 'response',
-        id: 1,
-        method: 'handshake',
-        outcome: {
-          ok: false,
-          error: {
-            message: 'The peer speaks wire version 3 and this end 2',
-            name: 'ProtocolVersionMismatchError',
-            stack: null,
-          },
-        },
-      }),
-    );
+    dom.serveNewer();
     await advance(60_000);
     const late: Error[] = [];
     frame.onVersionMismatch(error => late.push(error));
@@ -476,7 +509,7 @@ describe('createProtocolFrame', () => {
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
-    const up = whenListening(frame).catch((err: unknown) => err);
+    const up = frame.whenReady().catch((err: unknown) => err);
     const silent = dom.iframe();
 
     // When
@@ -798,8 +831,8 @@ describe('protocol status', () => {
     }
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     provider(() => undefined, onHalt);
-    host.serve().handleSubscription('chainConnect', (_payload, _context, sink) => {
-      sink.send({ tag: 'connected', value: undefined });
+    host.serve().handleSubscription('chain', 'connect', (_start, _context, sink) => {
+      sink.receive({ tag: 'connected', value: undefined });
       return () => undefined;
     });
     await bringUp(host);
@@ -825,13 +858,13 @@ describe('protocol status', () => {
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const read = settledWith(host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY));
-    host.serve().handleRequest('authStorageRead', () => new Promise<null>(() => undefined));
+    host.serve().handleRequest('storage', 'authRead', () => new Promise(() => undefined));
     await listen(host);
 
     // Then
     expect(host.client.getProtocolStatus()).toBe('listening');
     expect(read.outcome).toBeNull();
-    expect(sent(host.iframe())).toEqual(['subscribe:frameStatus', 'subscribe:telemetry', 'request:authStorageRead']);
+    expect(sent(host.iframe())).toEqual(['start:frame.status', 'start:frame.telemetry', 'request:storage.authRead']);
   });
 
   it('As a dotli integrator, I request from a status listener after a config change and see the statuses in order', async () => {

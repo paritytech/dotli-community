@@ -17,16 +17,16 @@ export class ProtocolInitFailedError extends Error {
 
 /** The peer speaks another wire version. Rebuilding cannot fix it, and a reload loads the matching build. */
 export class ProtocolVersionMismatchError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'ProtocolVersionMismatchError';
   }
 }
 
 /** The peer never answered the handshake while the page was running. */
 export class ProtocolHandshakeTimeoutError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'ProtocolHandshakeTimeoutError';
   }
 }

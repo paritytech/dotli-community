@@ -8,9 +8,9 @@ import { log, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { Answer, LocalWalletIdentity, SharedAuthChange } from './methods.js';
-import type { FrameRpc } from './rpc.js';
-import type { ConsumerTransport } from './transport-consumer.js';
+import type { FrameRpc, Reply } from './rpc.js';
+import type { LocalWalletIdentity, ProtocolTransport, SharedAuthChange } from './schema.js';
+import { subscribe } from './subscription.js';
 
 export type SharedAuthStorageChange = SharedAuthChange;
 
@@ -22,7 +22,7 @@ export type LocalWalletReadResult =
   | { status: 'unreadable' }
   | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null };
 
-function localWalletReadResult(answer: Answer<'localWalletRead'>): LocalWalletReadResult {
+function localWalletReadResult(answer: Reply<'wallet', 'read'>): LocalWalletReadResult {
   switch (answer.tag) {
     case 'none':
       return { status: 'none' };
@@ -75,18 +75,18 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
   // The sibling tabs' auth changes, heard on the frame there is now while anyone listens.
   const changes = createFeedKeeper('shared_auth', frame, timers);
   // The transport the changes are heard on, null while nobody listens.
-  let heard: ConsumerTransport | null = null;
+  let heard: ProtocolTransport | null = null;
   // Each ask for a frame's transport, so an answer a later ask overtook is not followed.
   let asks = 0;
 
-  function follow(transport: ConsumerTransport, since: number): void {
+  function follow(transport: ProtocolTransport, since: number): void {
     if (sharedAuthListeners.size === 0 || heard === transport) {
       return;
     }
     heard = transport;
     changes.hold(
       () =>
-        transport.subscribe('sharedAuthChanges', undefined, change => {
+        subscribe(transport, 'storage', 'authChanges', undefined, change => {
           sharedAuthListeners.emit(change);
         }),
       since,
@@ -128,33 +128,33 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     getSharedStoreStatus: getStatus,
     /** Called on each change only. */
     subscribeSharedStoreStatus: (listener: (status: SharedStoreStatus) => void) => statusListeners.subscribe(listener),
-    readSharedAuthStorage: (siteId: SiteId, key: string) => rpc.request('authStorageRead', { siteId, key }),
+    readSharedAuthStorage: (siteId: SiteId, key: string) => rpc.request('storage', 'authRead', { siteId, key }),
     async writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
-      await rpc.request('authStorageWrite', { siteId, key, value });
+      await rpc.request('storage', 'authWrite', { siteId, key, value });
     },
     async clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
-      await rpc.request('authStorageClear', { siteId, key });
+      await rpc.request('storage', 'authClear', { siteId, key });
     },
     /** Lives on `host.<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
-    readSharedModeStorage: (siteId: SiteId, key: string) => rpc.request('modeStorageRead', { siteId, key }),
+    readSharedModeStorage: (siteId: SiteId, key: string) => rpc.request('storage', 'modeRead', { siteId, key }),
     async writeSharedModeStorage(siteId: SiteId, key: string, value: string): Promise<void> {
-      await rpc.request('modeStorageWrite', { siteId, key, value });
+      await rpc.request('storage', 'modeWrite', { siteId, key, value });
     },
     async clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
-      await rpc.request('modeStorageClear', { siteId, key });
+      await rpc.request('storage', 'modeClear', { siteId, key });
     },
     /** The record lives on `host.<BASE_DOMAIN>`, so one import covers every app on the domain. */
     async readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
-      return localWalletReadResult(await rpc.request('localWalletRead', { siteId }));
+      return localWalletReadResult(await rpc.request('wallet', 'read', { siteId }));
     },
     async saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
-      await rpc.request('localWalletSave', { siteId, entropy });
+      await rpc.request('wallet', 'save', { siteId, entropy });
     },
     async updateSharedLocalWalletIdentity(siteId: SiteId, identity: LocalWalletIdentity): Promise<void> {
-      await rpc.request('localWalletIdentity', { siteId, identity });
+      await rpc.request('wallet', 'identity', { siteId, identity });
     },
     async forgetSharedLocalWallet(siteId: SiteId): Promise<void> {
-      await rpc.request('localWalletForget', { siteId });
+      await rpc.request('wallet', 'forget', { siteId });
     },
     /**
      * Hears shared-auth writes from sibling tabs of the same root domain, relayed by the host iframe

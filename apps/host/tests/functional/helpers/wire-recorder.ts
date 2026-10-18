@@ -10,6 +10,8 @@ import { RECORDER_BUNDLE_PATH } from './wire-bundles.js';
 
 /** What a recorded message must be. `body` matches when each of its fields does, at any depth. */
 export interface MessageMatch {
+  /** Any trait when unset. */
+  trait?: string;
   method: string;
   leg: string;
   body?: Record<string, unknown>;
@@ -45,7 +47,10 @@ export async function waitForProtocolMessage(
         (window as unknown as { __dotliProtocolMessages?: DescribedWireMessage[] }).__dotliProtocolMessages ?? [];
       return seen.find(
         message =>
-          message.method === wanted.method && message.leg === wanted.leg && contains(message.body, wanted.body ?? {}),
+          (wanted.trait === undefined || message.trait === wanted.trait) &&
+          message.method === wanted.method &&
+          message.leg === wanted.leg &&
+          contains(message.body, wanted.body ?? {}),
       );
     },
     match,

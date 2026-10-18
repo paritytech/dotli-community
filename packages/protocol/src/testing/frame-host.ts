@@ -5,13 +5,23 @@
 // hears nothing and builds nothing a later test sees. The iframe is a fake with only what the frame touches, so the
 // frame's lifecycle runs under Node. A mounted fake fires `load` as a page that loads would, or `error` when the test
 // asks. Its window delivers on a microtask and moves each transferred buffer, as a browser does, and a test answers
-// the host through a real serving transport on it.
+// the host through a real transport on it.
 
 import type { Timers } from '@dotli/shared';
+import {
+  createTransport,
+  createWindowProvider,
+  defineSchema,
+  domain,
+  hostFailure,
+  type CallError,
+  type Sink,
+  type WindowLike,
+} from '@dotli/transport';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
+import { ProtocolFatalError, ProtocolInitFailedError, ProtocolPortReleasedError } from '../errors.js';
 import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
-import { createWindowProvider, type WindowLike } from '../provider.js';
-import { createServingTransport, type ServingTransport, type SubscriptionSink } from '../transport-serving.js';
+import { protocolSchema, type FrameFailure, type ProtocolTransport } from '../schema.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
 
@@ -43,6 +53,8 @@ function moved(data: unknown, transfer: Transferable[] | undefined): unknown {
 export class FakeFrameWindow implements MessageTarget {
   /** Everything the host posted, in order, as the frame received it. */
   readonly posted: unknown[] = [];
+  /** Everything the frame posted to the host, in order, as the host received it. */
+  readonly sent: unknown[] = [];
   /** The host page as the frame sees it. A post reaches the host's listeners with this window as the source. */
   readonly parent: WindowLike;
   readonly #listeners = new Set<Listener>();
@@ -54,6 +66,7 @@ export class FakeFrameWindow implements MessageTarget {
           return;
         }
         const data = moved(message, transfer);
+        this.sent.push(data);
         queueMicrotask(() => {
           toHost(messageEvent(data, FRAME_ORIGIN, this));
         });
@@ -163,41 +176,67 @@ function createMount(fires: MountEvent): FakeMount {
 export interface FrameStatusServer {
   /** The light client is ready, which every subscriber hears, now and later. */
   ready(): void;
-  /** The frame failed, which ends every subscription with `error`, now and later. */
+  /**
+   * The frame failed, which ends every subscription, now and later. A fatal, a failed init or a released port ends it
+   * with its typed failure, as the frame app does, and any other error as the handler's own failure.
+   */
   fail(error: Error): void;
+  /** Ends every subscription with `end`, now and later. */
+  interrupt(end: CallError<FrameFailure>): void;
 }
 
-function serveFrameStatus(serving: ServingTransport): FrameStatusServer {
-  const sinks = new Set<SubscriptionSink<'frameStatus'>>();
-  let state: 'booting' | 'ready' | Error = 'booting';
-  serving.handleSubscription('frameStatus', (_payload, _context, sink) => {
-    if (state instanceof Error) {
-      sink.end(state);
+/** How a frame app ends its status on `error`. */
+function statusEnd(error: Error): CallError<FrameFailure> {
+  if (error instanceof ProtocolFatalError) {
+    return domain({ tag: 'fatal', value: error.message });
+  }
+  if (error instanceof ProtocolInitFailedError) {
+    return domain({ tag: 'initFailed', value: error.message });
+  }
+  if (error instanceof ProtocolPortReleasedError) {
+    return domain({ tag: 'released', value: error.message });
+  }
+  return hostFailure(`${error.name}: ${error.message}`);
+}
+
+function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
+  const sinks = new Set<Sink<void, FrameFailure>>();
+  let state: 'booting' | 'ready' | CallError<FrameFailure> = 'booting';
+  serving.handleSubscription('frame', 'status', (_start, _context, sink) => {
+    if (typeof state === 'object') {
+      sink.interrupt(state);
       return () => undefined;
     }
     if (state === 'ready') {
-      sink.send(undefined);
+      sink.receive(undefined);
     }
     sinks.add(sink);
     return () => {
       sinks.delete(sink);
     };
   });
+  const interrupt = (end: CallError<FrameFailure>): void => {
+    state = end;
+    for (const sink of [...sinks]) {
+      sink.interrupt(end);
+    }
+  };
   return {
     ready() {
       state = 'ready';
       for (const sink of [...sinks]) {
-        sink.send(undefined);
+        sink.receive(undefined);
       }
     },
     fail(error) {
-      state = error;
-      for (const sink of [...sinks]) {
-        sink.end(error);
-      }
+      interrupt(statusEnd(error));
     },
+    interrupt,
   };
 }
+
+/** A frame of a later release, whose wire the host cannot speak. */
+const newerSchema = defineSchema({ version: 255, traits: {} });
 
 export interface FrameDom {
   /** What a frame or client is built on. */
@@ -209,10 +248,12 @@ export interface FrameDom {
   /** An iframe mounted elsewhere on the page, which is not the protocol frame. */
   stranger(): FakeIframe;
   /**
-   * A serving transport on `iframe`'s window (the current one by default), so a spec answers the host as the frame
-   * app would. The same iframe gives the same transport.
+   * A transport on `iframe`'s window (the current one by default), which accepts the host's handshake, so a spec
+   * answers the host as the frame app would. The same iframe gives the same transport.
    */
-  serve(iframe?: FakeIframe): ServingTransport;
+  serve(iframe?: FakeIframe): ProtocolTransport;
+  /** Answers the host's handshake on `iframe` (the current one by default) as a frame of a later release. */
+  serveNewer(iframe?: FakeIframe): void;
   /** The frame status `iframe` (the current one by default) serves, on its serving transport. */
   status(iframe?: FakeIframe): FrameStatusServer;
   /** Data sent by `iframe` (the current one by default) as it is, from the frame's origin unless told otherwise. */
@@ -239,7 +280,7 @@ export function createFrameDom(
   };
   const mount = createMount(options.mount === undefined ? 'load' : options.mount);
   const elsewhere = createMount('load');
-  const served = new Map<FakeIframe, { serving: ServingTransport; status: FrameStatusServer | null }>();
+  const served = new Map<FakeIframe, { serving: ProtocolTransport; status: FrameStatusServer | null }>();
   const iframe = (): FakeIframe => {
     const [found] = mount.iframes;
     if (found === undefined) {
@@ -247,15 +288,20 @@ export function createFrameDom(
     }
     return found;
   };
-  const servedOn = (target: FakeIframe): { serving: ServingTransport; status: FrameStatusServer | null } => {
+  const providerOn = (target: FakeIframe) => {
+    const window = target.window;
+    return createWindowProvider({ listen: window, peer: () => window.parent, origin: HOST_ORIGIN });
+  };
+  const servedOn = (target: FakeIframe): { serving: ProtocolTransport; status: FrameStatusServer | null } => {
     let entry = served.get(target);
     if (entry === undefined) {
-      const window = target.window;
-      const provider = createWindowProvider({ listen: window, peer: () => window.parent, origin: HOST_ORIGIN });
-      const serving = createServingTransport(provider, { side: 'frame' });
+      const serving = createTransport(protocolSchema, providerOn(target), {
+        handshake: 'accept',
+        hello: { resolutionId: null },
+      });
       // A frame app always serves the client's feeds, and these frames have nothing to report on them.
-      serving.handleSubscription('telemetry', () => () => undefined);
-      serving.handleSubscription('sharedAuthChanges', () => () => undefined);
+      serving.handleSubscription('frame', 'telemetry', () => () => undefined);
+      serving.handleSubscription('storage', 'authChanges', () => () => undefined);
       entry = { serving, status: null };
       served.set(target, entry);
     }
@@ -276,6 +322,9 @@ export function createFrameDom(
     frames: () => mount.iframes.size,
     stranger: () => elsewhere.appendChild(new FakeIframe(toHost)),
     serve: (target = iframe()) => servedOn(target).serving,
+    serveNewer(target = iframe()) {
+      createTransport(newerSchema, providerOn(target), { handshake: 'accept' });
+    },
     status(target = iframe()) {
       const entry = servedOn(target);
       entry.status ??= serveFrameStatus(entry.serving);
