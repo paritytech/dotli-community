@@ -53,6 +53,8 @@ export interface SubscriptionImpl {
 export type MethodImpl = RequestImpl | SubscriptionImpl;
 
 interface TraitEntry {
+  readonly name: string;
+  readonly methodNames: readonly string[];
   readonly methods: readonly MethodImpl[];
   readonly methodIds: ReadonlyMap<string, number>;
 }
@@ -68,6 +70,15 @@ interface SchemaImpl {
 const MAX_TRAITS = 255;
 const MAX_METHODS = 256;
 const MAX_VERSION = 255;
+
+// JavaScript lists integer-like keys first and in numeric order, so such a name would not keep its written position.
+const INTEGER_LIKE = /^\d+$/;
+
+function checkName(name: string, label: string): void {
+  if (INTEGER_LIKE.test(name)) {
+    throw new RangeError(`${label} must not be an integer, since its id would not follow the written order`);
+  }
+}
 
 /** Declares a request. `error` is the method's own error type and defaults to `never`. */
 export function request<P, R, E = never>(def: {
@@ -116,13 +127,19 @@ export function defineSchema<T extends Traits, H = void>(def: {
     throw new RangeError(`a schema has at most ${String(MAX_TRAITS)} traits, got ${String(traitEntries.length)}`);
   }
   const traits = traitEntries.map(([name, methods]): TraitEntry => {
+    checkName(name, `trait "${name}"`);
     const methodEntries = Object.entries(methods);
     if (methodEntries.length > MAX_METHODS) {
       throw new RangeError(
         `trait "${name}" has at most ${String(MAX_METHODS)} methods, got ${String(methodEntries.length)}`,
       );
     }
+    for (const [methodName] of methodEntries) {
+      checkName(methodName, `method "${methodName}" of trait "${name}"`);
+    }
     return Object.freeze({
+      name,
+      methodNames: Object.freeze(methodEntries.map(([methodName]) => methodName)),
       methods: Object.freeze(methodEntries.map(([, method]) => method as unknown as MethodImpl)),
       methodIds: new Map(methodEntries.map(([methodName], id) => [methodName, id])),
     });
@@ -155,7 +172,7 @@ export type SubscriptionMethodName<S extends Schema, T extends TraitName<S>> = {
   [M in MethodName<S, T>]: TraitsOf<S>[T][M] extends SubscriptionDef<unknown, unknown, unknown> ? M : never;
 }[MethodName<S, T>];
 
-/** The value each leg of a method carries. A request answers and a subscription ends with a `Result`. */
+/** What each side of a method sends and receives. A request answers and a subscription ends with a `Result`. */
 export type MethodTypes<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
   DefOf<S, T, M> extends RequestDef<infer P, infer R, infer E>
     ? { request: P; response: Result<R, CallError<E>> }
@@ -195,4 +212,25 @@ export function methodAddress<S extends Schema, T extends TraitName<S>>(
 /** The method at a pair of wire ids, or `undefined` when the schema has none there. */
 export function methodAt(schema: Schema, traitId: number, methodId: number): MethodImpl | undefined {
   return internals(schema).traits[traitId]?.methods[methodId];
+}
+
+/** The method's names at a pair of wire ids, or `undefined` when the schema has none there. */
+export function methodNamesAt(
+  schema: Schema,
+  traitId: number,
+  methodId: number,
+): { trait: string; method: string } | undefined {
+  const trait = internals(schema).traits[traitId];
+  const method = trait?.methodNames[methodId];
+  return trait === undefined || method === undefined ? undefined : { trait: trait.name, method };
+}
+
+/** The version the handshake carries. */
+export function schemaVersion(schema: Schema): number {
+  return internals(schema).version;
+}
+
+/** The codec of the handshake's hello, or `undefined` when the schema declares none. */
+export function schemaHello(schema: Schema): Codec<unknown> | undefined {
+  return internals(schema).hello;
 }

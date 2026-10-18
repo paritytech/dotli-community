@@ -13,6 +13,8 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 - Wire ids are positions: a trait's id is its place in the schema and a method's id is its place in its trait. Defining
   the schema fixes them, so new traits and methods go at the end. A schema holds up to 255 traits of up to 256 methods
   each, since the library keeps one trait id for itself, and a version from 0 to 255.
+- A trait or method name cannot be an integer such as `"3"`. JavaScript lists such keys first, so its id would not be
+  its written place.
 - The schema is opaque. Its names and payload types are read through type helpers, and nobody writes a type argument.
 - A call returns a `Result`. Its error side is a `CallError`, tagged by `tag`: the handler's own `Domain` error, plus
   the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`. `Cancelled` is raised by the
@@ -32,11 +34,12 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 - `subscription({ start, receive, interrupt? })` declares a subscription. `interrupt` is the method's own end reason and
   defaults to `never`. It returns a `SubscriptionDef`.
 - `defineSchema({ version, hello?, traits })` checks the record, fixes the wire ids and returns a `Schema`. `hello` is
-  the codec of the value each side sends in the handshake. It throws on a version outside 0 to 255, more than 255 traits
-  or more than 256 methods in a trait. `Traits` is the type of the record it takes.
+  the codec of the value each side sends in the handshake. It throws on a version outside 0 to 255, more than 255
+  traits, more than 256 methods in a trait, or an integer-like trait or method name. `Traits` is the type of the record
+  it takes.
 - Type helpers over a schema `S`:
   - `TraitName<S>`, `MethodName<S, T>`, `RequestMethodName<S, T>` and `SubscriptionMethodName<S, T>` name its parts.
-  - `MethodTypes<S, T, M>` is what each leg carries. For a request of `P`, `R` and `E` it is
+  - `MethodTypes<S, T, M>` is what each side of a method sends and receives. For a request of `P`, `R` and `E` it is
     `{ request: P; response: Result<R, CallError<E>> }`. For a subscription of `St`, `V` and `I` it is
     `{ start: St; receive: V; interrupt: Result<void, CallError<I>>; stop: void }`.
   - `DomainError<S, T, M>` is the method's own error, `E` or `I`.

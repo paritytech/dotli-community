@@ -5,7 +5,16 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { codec, none } from './codec.js';
 import type { Codec } from './codec.js';
 import type { CallError, Result } from './result.js';
-import { defineSchema, methodAddress, methodAt, request, subscription } from './schema.js';
+import {
+  defineSchema,
+  methodAddress,
+  methodAt,
+  methodNamesAt,
+  request,
+  schemaHello,
+  schemaVersion,
+  subscription,
+} from './schema.js';
 import type {
   DomainError,
   HelloOf,
@@ -14,7 +23,6 @@ import type {
   RequestMethodName,
   SubscriptionMethodName,
   TraitName,
-  Traits,
 } from './schema.js';
 
 // The schema checks only the shape, so the codecs never run here.
@@ -28,23 +36,28 @@ const fake = <T>(): Codec<T> =>
 
 const label = fake<{ label: string }>();
 const nullableString = fake<string | null>();
-const resolveEvent = fake<{ owner: string }>();
+const change = fake<{ owner: string }>();
 const frameFailure = fake<'fatal' | 'released'>();
-const resolutionId = fake<number>();
+const peerId = fake<number>();
 
 const s = defineSchema({
   version: 2,
-  hello: resolutionId,
+  hello: peerId,
   traits: {
     resolve: {
       owner: request({ request: label, response: nullableString }),
-      dotName: subscription({ start: label, receive: resolveEvent }),
+      changes: subscription({ start: label, receive: change }),
     },
     frame: {
       status: subscription({ start: none, receive: none, interrupt: frameFailure }),
       reload: request({ request: none, response: none, error: frameFailure }),
     },
   },
+});
+
+const withoutHello = defineSchema({
+  version: 1,
+  traits: { resolve: { owner: request({ request: label, response: nullableString }) } },
 });
 
 const traitsOf = (count: number, methods: number) =>
@@ -65,7 +78,7 @@ describe('schema', () => {
     // When
     const addresses = [
       methodAddress(schema, 'resolve', 'owner'),
-      methodAddress(schema, 'resolve', 'dotName'),
+      methodAddress(schema, 'resolve', 'changes'),
       methodAddress(schema, 'frame', 'status'),
       methodAddress(schema, 'frame', 'reload'),
     ];
@@ -84,6 +97,26 @@ describe('schema', () => {
     expect(methodAt(schema, 0, 2)).toBeUndefined();
     expect(methodAt(schema, 2, 0)).toBeUndefined();
     expect(methodAt(schema, 255, 0)).toBeUndefined();
+  });
+
+  it('As the library, I read the version, the hello codec and the names behind an id from a schema', () => {
+    // Given
+    const schema = s;
+
+    // When
+    const names = [methodNamesAt(schema, 0, 1), methodNamesAt(schema, 1, 0)];
+
+    // Then
+    expect(names).toEqual([
+      { trait: 'resolve', method: 'changes' },
+      { trait: 'frame', method: 'status' },
+    ]);
+    expect(methodNamesAt(schema, 0, 2)).toBeUndefined();
+    expect(methodNamesAt(schema, 255, 255)).toBeUndefined();
+    expect(schemaVersion(schema)).toBe(2);
+    expect(schemaHello(schema)).toBe(peerId);
+    expect(schemaVersion(withoutHello)).toBe(1);
+    expect(schemaHello(withoutHello)).toBeUndefined();
   });
 
   it('As a schema author, I change my traits record after defining the schema and its ids stay as they were', () => {
@@ -117,7 +150,7 @@ describe('schema', () => {
     expect(methodAt(schema, 2, 0)).toBeUndefined();
   });
 
-  it('As a schema author, I am refused a schema with too many traits or methods, or a version over 255', () => {
+  it('As a schema author, I am refused a schema with too many traits or methods, or a version that is not 0 to 255', () => {
     // Given
     const fits = { version: 255, traits: traitsOf(255, 1) };
     const fitsMethods = { version: 0, traits: traitsOf(1, 256) };
@@ -141,22 +174,36 @@ describe('schema', () => {
     expect(versionFraction).toThrow('got 1.5');
   });
 
-  it('As a schema author, I read every name, payload and answer type from the schema without a type argument', () => {
+  it('As a schema author, I am refused an integer-like trait or method name, so no id can leave its written place', () => {
+    // Given
+    const method = request({ request: none, response: none });
+
+    // When
+    const integerTrait = () => defineSchema({ version: 0, traits: { names: { method }, '3': { method } } });
+    const integerMethod = () => defineSchema({ version: 0, traits: { names: { first: method, '0': method } } });
+    const mixed = () => defineSchema({ version: 0, traits: { v2: { m1: method }, '01x': { method } } });
+
+    // Then
+    expect(integerTrait).toThrow('trait "3" must not be an integer');
+    expect(integerMethod).toThrow('method "0" of trait "names" must not be an integer');
+    expect(mixed).not.toThrow();
+  });
+
+  it('As a schema author, I define a schema without type arguments and read every name, payload and answer type from it', () => {
     // Given
     type S = typeof s;
-    type WithoutHello = ReturnType<typeof defineSchema<Traits>>;
 
     // When
     type Owner = MethodTypes<S, 'resolve', 'owner'>;
-    type DotName = MethodTypes<S, 'resolve', 'dotName'>;
+    type DotName = MethodTypes<S, 'resolve', 'changes'>;
     type Status = MethodTypes<S, 'frame', 'status'>;
     type Reload = MethodTypes<S, 'frame', 'reload'>;
 
     // Then
     expectTypeOf<TraitName<S>>().toEqualTypeOf<'resolve' | 'frame'>();
-    expectTypeOf<MethodName<S, 'resolve'>>().toEqualTypeOf<'owner' | 'dotName'>();
+    expectTypeOf<MethodName<S, 'resolve'>>().toEqualTypeOf<'owner' | 'changes'>();
     expectTypeOf<RequestMethodName<S, 'resolve'>>().toEqualTypeOf<'owner'>();
-    expectTypeOf<SubscriptionMethodName<S, 'resolve'>>().toEqualTypeOf<'dotName'>();
+    expectTypeOf<SubscriptionMethodName<S, 'resolve'>>().toEqualTypeOf<'changes'>();
     expectTypeOf<RequestMethodName<S, 'frame'>>().toEqualTypeOf<'reload'>();
     expectTypeOf<SubscriptionMethodName<S, 'frame'>>().toEqualTypeOf<'status'>();
     expectTypeOf<Owner>().toEqualTypeOf<{
@@ -177,10 +224,10 @@ describe('schema', () => {
     expectTypeOf<DomainError<S, 'resolve', 'owner'>>().toBeNever();
     expectTypeOf<HelloOf<S>>().toEqualTypeOf<number>();
     // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- a schema without hello sends none
-    expectTypeOf<HelloOf<WithoutHello>>().toEqualTypeOf<void>();
+    expectTypeOf<HelloOf<typeof withoutHello>>().toEqualTypeOf<void>();
   });
 
-  it('As a schema author, I get a type error for a misspelt trait or method', () => {
+  it('As a schema author, I misspell a trait or method and get a type error', () => {
     // Given
     type S = typeof s;
 
