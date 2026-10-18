@@ -11,7 +11,7 @@ import { decodeReason, failureReason } from './errors.js';
 import { createRecentIds, type Address, type Outcome, type Post, type RunListener } from './parts.js';
 import { err, hostFailure, malformedFrame, ok, unsupported, type CallError } from './result.js';
 import type { HelloOf, Schema } from './schema.js';
-import { encodeMessage, type Header, type MethodMessage, type UnknownAddressMessage } from './wire.js';
+import { LIBRARY_TRAIT, type Header, type Message, type Received, type Wire } from './wire.js';
 
 /** What a handler knows about the peer that called it. */
 export interface CallContext<S extends Schema> {
@@ -29,9 +29,7 @@ export interface Sink<V, I> {
   interrupt(error?: CallError<I>): void;
 }
 
-/** A request or a start, which carries the call's payload. */
-type CallMessage = Extract<MethodMessage, { payload: unknown }>;
-type StopMessage = Extract<MethodMessage, { leg: 'stop' }>;
+type UnknownAddress = Extract<Received, { kind: 'unknownAddress' }>;
 
 export type AnyHandler = (payload: unknown, context: CallContext<Schema>) => Outcome | PromiseLike<Outcome>;
 export type AnySubscriptionHandler = (
@@ -41,7 +39,7 @@ export type AnySubscriptionHandler = (
 ) => () => void;
 
 export interface ServingDeps {
-  schema: Schema;
+  wire: Wire;
   post: Post;
   /** The context of an admitted call. */
   context: () => CallContext<Schema>;
@@ -56,16 +54,16 @@ export interface ServingDeps {
 
 export interface Serving {
   /** One handler per method. Returns what unregisters it. */
-  handleRequest(address: Address, name: string, handler: AnyHandler): () => void;
-  handleSubscription(address: Address, name: string, handler: AnySubscriptionHandler): () => void;
-  onRequest(message: CallMessage): void;
-  onStart(message: CallMessage): void;
+  handleRequest(address: Address, handler: AnyHandler): () => void;
+  handleSubscription(address: Address, handler: AnySubscriptionHandler): () => void;
+  onRequest(message: Message): void;
+  onStart(message: Message): void;
   /** Runs the stop function. Refused when the stop names nothing running and nothing this side ended lately. */
-  onStop(message: StopMessage): void;
+  onStop(message: Message): void;
   /** Answers a call on a schema method whose payload did not decode. Its refusal is already reported. */
   onMalformed(header: Header, cause: unknown): void;
   /** Answers a message for an address this schema lacks on the protocol error address. */
-  onUnknownAddress(message: UnknownAddressMessage): void;
+  onUnknownAddress(message: UnknownAddress): void;
   /** Interrupts every running subscription with `HostFailure` carrying `error`, and runs its stop function. */
   close(error: Error): void;
 }
@@ -80,14 +78,14 @@ interface Running extends Address {
 // latest ends are kept.
 const REMEMBERED_ENDS = 1_024;
 
-// Trait and method ids are each a byte, so this key is unique per method.
-const keyOf = ({ trait, method }: Address): number => trait * 256 + method;
+// Names are identifiers, so this key is unique per method.
+const keyOf = ({ trait, method }: Address): string => `${trait}.${method}`;
 
 /** Stores one handler per method, and returns what unregisters it. */
-function register<H>(handlers: Map<number, H>, address: Address, name: string, handler: H): () => void {
+function register<H>(handlers: Map<string, H>, address: Address, handler: H): () => void {
   const key = keyOf(address);
   if (handlers.has(key)) {
-    throw new Error(`${name} already has a handler`);
+    throw new Error(`${key} already has a handler`);
   }
   handlers.set(key, handler);
   return () => {
@@ -98,9 +96,9 @@ function register<H>(handlers: Map<number, H>, address: Address, name: string, h
 }
 
 export function createServing(deps: ServingDeps): Serving {
-  const { schema, post, context, closed, refuse, runListener, onPeerIdle } = deps;
-  const requestHandlers = new Map<number, AnyHandler>();
-  const subscriptionHandlers = new Map<number, AnySubscriptionHandler>();
+  const { wire, post, context, closed, refuse, runListener, onPeerIdle } = deps;
+  const requestHandlers = new Map<string, AnyHandler>();
+  const subscriptionHandlers = new Map<string, AnySubscriptionHandler>();
   const running = new Map<number, Running>();
   // Runs the request handlers, so the wait for a peer that left is a wait for every call of its to settle. The pool
   // answers a handler that throws at once like one that rejects.
@@ -114,11 +112,10 @@ export function createServing(deps: ServingDeps): Serving {
 
   /** An outcome as bytes. One the wire cannot carry, such as an undeclared domain error, is the handler's fault. */
   const encodeOutcome = (header: Header & { leg: 'response' | 'interrupt' }, outcome: Outcome): ArrayBuffer => {
-    const message = { kind: 'method', ...header } as const;
     try {
-      return encodeMessage(schema, { ...message, outcome });
+      return wire.encode({ ...header, value: outcome });
     } catch (error) {
-      return encodeMessage(schema, { ...message, outcome: err(hostFailure(failureReason(error))) });
+      return wire.encode({ ...header, value: err(hostFailure(failureReason(error))) });
     }
   };
 
@@ -167,12 +164,12 @@ export function createServing(deps: ServingDeps): Serving {
   };
 
   return {
-    handleRequest(address, name, handler) {
-      return register(requestHandlers, address, name, handler);
+    handleRequest(address, handler) {
+      return register(requestHandlers, address, handler);
     },
 
-    handleSubscription(address, name, handler) {
-      return register(subscriptionHandlers, address, name, handler);
+    handleSubscription(address, handler) {
+      return register(subscriptionHandlers, address, handler);
     },
 
     onRequest(message) {
@@ -185,7 +182,7 @@ export function createServing(deps: ServingDeps): Serving {
         return;
       }
       void handlers
-        .call(() => handler(message.payload, callContext))
+        .call(() => handler(message.value, callContext))
         .then(
           outcome => {
             answerCall(message, outcome);
@@ -218,7 +215,7 @@ export function createServing(deps: ServingDeps): Serving {
           }
           let data: ArrayBuffer;
           try {
-            data = encodeMessage(schema, { ...message, leg: 'receive', payload: value });
+            data = wire.encode({ ...message, leg: 'receive', value });
           } catch (error) {
             finish(id, entry, err(hostFailure(failureReason(error))));
             return;
@@ -231,7 +228,7 @@ export function createServing(deps: ServingDeps): Serving {
       };
       let stop: () => void;
       try {
-        stop = handler(message.payload, callContext, sink);
+        stop = handler(message.value, callContext, sink);
       } catch (error) {
         finish(id, entry, err(hostFailure(failureReason(error))));
         return;
@@ -279,10 +276,12 @@ export function createServing(deps: ServingDeps): Serving {
       if (message.leg === 'request' || message.leg === 'start') {
         peerCalls += 1;
       }
-      const data = encodeMessage(schema, {
-        kind: 'protocolError',
+      const data = wire.encode({
         id: message.id,
-        unsupportedMessage: message.unknownAddress,
+        trait: LIBRARY_TRAIT,
+        method: 'protocolError',
+        leg: 'response',
+        value: { tag: 'UnsupportedMessage', value: { trait: message.trait, method: message.method } },
       });
       post(data);
     },

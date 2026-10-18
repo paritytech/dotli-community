@@ -3,7 +3,7 @@
 
 import { Tuple, u8 } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { codec, isPayloadFailure, none, scaleOf, thrownBy, type Codec } from './codec.js';
+import { codec, none, scaleOf, type Codec } from './codec.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -36,7 +36,7 @@ describe('codec', () => {
     expect(decoded).toEqual([7, 'tail', undefined]);
   });
 
-  it('As a schema author, I throw from my decode and the library rethrows my own error, marked as mine', () => {
+  it('As a schema author, I throw from my decode and the library rethrows my own error', () => {
     // Given
     const thrown = new RangeError('not a note');
     const broken = scaleOf(
@@ -58,33 +58,6 @@ describe('codec', () => {
 
     // Then
     expect(caught).toBe(thrown);
-    expect(isPayloadFailure(caught)).toBe(true);
-    expect(isPayloadFailure(new RangeError('not a note'))).toBe(false);
-  });
-
-  it('As a schema author, I throw something other than an error from my decode and the library keeps exactly what I threw', () => {
-    // Given
-    const broken = scaleOf(
-      codec<string>(
-        () => new Uint8Array(0),
-        () => {
-          // eslint-disable-next-line no-throw-literal, @typescript-eslint/only-throw-error -- a schema author's decode may throw anything
-          throw 42;
-        },
-      ),
-    );
-
-    // When
-    let caught: unknown;
-    try {
-      broken.dec(new Uint8Array([1]));
-    } catch (error) {
-      caught = error;
-    }
-
-    // Then
-    expect(isPayloadFailure(caught)).toBe(true);
-    expect(thrownBy(caught)).toBe(42);
   });
 
   it('As a schema author, I can only pass a codec built by codec where a codec is due', () => {
@@ -100,7 +73,7 @@ describe('codec', () => {
     expect(empty).toEqual({});
   });
 
-  it('As a schema author, I use none for an empty payload and it refuses any byte', () => {
+  it('As a schema author, I use none for an empty payload and it reads no byte', () => {
     // Given
     const empty = scaleOf(none);
 
@@ -113,10 +86,5 @@ describe('codec', () => {
     expect(() => {
       empty.dec(new Uint8Array(0));
     }).not.toThrow();
-    for (const payload of [[0], [1, 2, 3]]) {
-      expect(() => {
-        empty.dec(new Uint8Array(payload));
-      }).toThrow(`got ${String(payload.length)} bytes`);
-    }
   });
 });

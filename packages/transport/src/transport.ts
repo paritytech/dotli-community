@@ -13,8 +13,8 @@ import type { Provider } from './provider.js';
 import type { Post, RunListener } from './parts.js';
 import { err, ok } from './result.js';
 import {
-  methodAddress,
-  methodNamesAt,
+  schemaVersion,
+  wireOf,
   type DomainError,
   type HelloOf,
   type MethodName,
@@ -25,7 +25,7 @@ import {
   type TraitName,
 } from './schema.js';
 import { createServing, type AnyHandler, type AnySubscriptionHandler, type CallContext, type Sink } from './serving.js';
-import { HANDSHAKE_METHOD, RESERVED_TRAIT, decodeMessage, type Admit, type Header, type Refusal } from './wire.js';
+import { LIBRARY_TRAIT, type Header, type Message, type Received } from './wire.js';
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -195,15 +195,16 @@ export function createTransport<S extends Schema>(
       provider.post(data);
       return ok();
     } catch (error) {
-      const call = address === undefined ? undefined : methodNamesAt(schema, address.trait, address.method);
+      const call = address && { trait: address.trait, method: address.method };
       report(call === undefined ? { kind: 'post_failed', error } : { kind: 'post_failed', error, call });
       return err(error);
     }
   };
 
-  const calls = createCalls({ schema, nextId, post, handshakeOver, closedBy, refuse, runListener });
+  const wire = wireOf(schema);
+  const calls = createCalls({ wire, nextId, post, handshakeOver, closedBy, refuse, runListener });
   const serving = createServing({
-    schema,
+    wire,
     post,
     // Called only for an admitted call, so the phase holds the peer's hello.
     context: () => ({ origin: provider.peerOrigin(), hello: phase.name === 'connected' ? phase.peerHello : undefined }),
@@ -230,7 +231,7 @@ export function createTransport<S extends Schema>(
     calls.close(error);
   };
 
-  const handshakeDeps = { schema, hello, nextId, post, refuse, onOpen, onFail: close };
+  const handshakeDeps = { wire, version: schemaVersion(schema), hello, nextId, post, refuse, onOpen, onFail: close };
   const handshake =
     options.handshake === 'open'
       ? createOpener({
@@ -242,7 +243,7 @@ export function createTransport<S extends Schema>(
       : createAccepter(handshakeDeps);
 
   /** Why a call or a stop of the peer is not served, or null once the handshake told who the peer is. */
-  const notAdmitted = ({ leg }: Header): Error | null => {
+  const notAdmitted = (leg: Header['leg']): Error | null => {
     const what = leg === 'stop' ? 'A stop' : 'A call';
     switch (phase.name) {
       case 'connected':
@@ -255,25 +256,62 @@ export function createTransport<S extends Schema>(
   };
 
   // A request or a start opens a call and a stop ends one, at a schema address or one it lacks. Each is the peer acting
-  // on this side, so each waits for the handshake. The handshake is the library's own call.
-  const needsAdmission = ({ trait, method, leg }: Header): boolean =>
-    (leg === 'request' || leg === 'start' || leg === 'stop') &&
-    !(trait === RESERVED_TRAIT && method === HANDSHAKE_METHOD);
-  // A call or a stop that is not admitted is refused on its header alone, whatever its payload holds.
-  const admit: Admit = header => (needsAdmission(header) ? notAdmitted(header) : null);
+  // on this side, so each waits for the handshake, whatever its payload holds. The handshake is the library's own call.
+  const barred = (trait: string | number, leg: Header['leg']): Error | null =>
+    (leg === 'request' || leg === 'start' || leg === 'stop') && trait !== LIBRARY_TRAIT ? notAdmitted(leg) : null;
 
   /** Hands a refused message on to the part that can still answer or settle what it names. */
-  const onRefused = (refusal: Refusal): void => {
-    report({ kind: 'refused', reason: refusal.refused, cause: refusal.cause });
-    const { header } = refusal;
+  const onRefused = ({ reason, cause, header }: Extract<Received, { kind: 'refused' }>): void => {
+    const bar = header === undefined ? null : barred(header.trait, header.leg);
+    if (bar !== null) {
+      refuse(bar);
+      return;
+    }
+    report({ kind: 'refused', reason, cause });
     // A library message is never answered, so a peer of another release cannot be drawn into a loop.
-    if (refusal.refused !== 'malformed' || header === undefined || header.trait === RESERVED_TRAIT) {
+    if (reason !== 'malformed' || header === undefined || header.trait === LIBRARY_TRAIT) {
       return;
     }
     if (header.leg === 'request' || header.leg === 'start') {
-      serving.onMalformed(header, refusal.cause);
+      serving.onMalformed(header, cause);
     } else {
-      calls.onUndecodable(header, refusal.cause);
+      calls.onUndecodable(header, cause);
+    }
+  };
+
+  const onLibraryMessage = (message: Message): void => {
+    if (message.method === 'handshake') {
+      handshake.hear(message);
+    } else {
+      // Nothing ever answers a protocol error, so two peers that both lack an address cannot loop.
+      calls.onProtocolError(message.id);
+    }
+  };
+
+  const onMessage = (message: Message): void => {
+    if (message.trait === LIBRARY_TRAIT) {
+      onLibraryMessage(message);
+      return;
+    }
+    switch (message.leg) {
+      case 'request':
+        serving.onRequest(message);
+        return;
+      case 'response':
+        calls.onResponse(message);
+        return;
+      case 'start':
+        serving.onStart(message);
+        return;
+      case 'receive':
+        calls.onReceive(message);
+        return;
+      case 'interrupt':
+        calls.onInterrupt(message);
+        return;
+      case 'stop':
+        serving.onStop(message);
+        return;
     }
   };
 
@@ -283,51 +321,35 @@ export function createTransport<S extends Schema>(
       report({ kind: 'refused', reason: 'not_bytes', cause: new TypeError(`Expected bytes, got ${typeof data}`) });
       return;
     }
-    const decoded = decodeMessage(schema, data, admit);
-    if ('refused' in decoded) {
-      onRefused(decoded);
-      return;
-    }
-    switch (decoded.kind) {
-      case 'handshake':
-        handshake.hear(decoded);
+    const received = wire.decode(data);
+    switch (received.kind) {
+      case 'refused':
+        onRefused(received);
         return;
-      case 'protocolError':
-        // Nothing ever answers a protocol error, so two peers that both lack an address cannot loop.
-        calls.onProtocolError(decoded);
-        return;
-      case 'unknownAddress':
-        if (phase.name === 'closed') {
+      case 'unknownAddress': {
+        const bar = barred(received.trait, received.leg);
+        if (bar !== null) {
+          refuse(bar);
+        } else if (phase.name === 'closed') {
           refuse(
             new Error(
               `A message for an unknown address came after the transport closed, ${failureReason(phase.error)}`,
             ),
           );
         } else {
-          serving.onUnknownAddress(decoded);
+          serving.onUnknownAddress(received);
         }
         return;
-      case 'method':
-        switch (decoded.leg) {
-          case 'request':
-            serving.onRequest(decoded);
-            return;
-          case 'response':
-            calls.onResponse(decoded);
-            return;
-          case 'start':
-            serving.onStart(decoded);
-            return;
-          case 'receive':
-            calls.onReceive(decoded);
-            return;
-          case 'interrupt':
-            calls.onInterrupt(decoded);
-            return;
-          case 'stop':
-            serving.onStop(decoded);
-            return;
+      }
+      case 'message': {
+        const bar = barred(received.message.trait, received.message.leg);
+        if (bar !== null) {
+          refuse(bar);
+        } else {
+          onMessage(received.message);
         }
+        return;
+      }
     }
   };
   // Nothing thrown while a message is handled reaches the provider, whose other listeners must still hear it.
@@ -359,39 +381,26 @@ export function createTransport<S extends Schema>(
     },
 
     request(trait, method, payload, requestOptions = {}) {
-      const address = methodAddress(schema, trait, method);
-      return calls.request(
-        { trait: address.traitId, method: address.methodId },
-        payload,
-        requestOptions.signal,
-      ) as Promise<Answer<S, typeof trait, typeof method>>;
+      return calls.request({ trait, method }, payload, requestOptions.signal) as Promise<
+        Answer<S, typeof trait, typeof method>
+      >;
     },
 
     handleRequest(trait, method, handler) {
-      const address = methodAddress(schema, trait, method);
       return serving.handleRequest(
-        { trait: address.traitId, method: address.methodId },
-        `${trait}.${method}`,
+        { trait, method },
         // The handler was typed against this method's payload, which the address decodes to.
         handler as unknown as AnyHandler,
       );
     },
 
     subscribe(trait, method, start, listeners, subscribeOptions = {}) {
-      const address = methodAddress(schema, trait, method);
-      return calls.subscribe(
-        { trait: address.traitId, method: address.methodId },
-        start,
-        listeners,
-        subscribeOptions.signal,
-      );
+      return calls.subscribe({ trait, method }, start, listeners, subscribeOptions.signal);
     },
 
     handleSubscription(trait, method, handler) {
-      const address = methodAddress(schema, trait, method);
       return serving.handleSubscription(
-        { trait: address.traitId, method: address.methodId },
-        `${trait}.${method}`,
+        { trait, method },
         // The handler was typed against this method's start and values, which the address decodes and encodes.
         handler as unknown as AnySubscriptionHandler,
       );

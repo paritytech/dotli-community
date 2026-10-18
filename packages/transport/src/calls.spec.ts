@@ -7,9 +7,8 @@ import type { SubscriptionHandle } from './calls.js';
 import { TransportHandshakeTimeoutError, type TransportIssue } from './errors.js';
 import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import {
-  ECHO,
-  LISTEN,
   NOTES,
+  PROTOCOL_ERROR,
   READ,
   TIMEOUT_MS,
   WATCH,
@@ -78,7 +77,7 @@ describe('calls', () => {
 
     // Then
     expect(peer.legs()).toEqual([
-      'request:255.0',
+      'request:#library.handshake',
       'request:notes.touch',
       'request:echo.say',
       'request:notes.read',
@@ -127,7 +126,11 @@ describe('calls', () => {
     const asked = must(peer.find('request:notes.read')[0], 'the call');
 
     // When
-    peer.send({ kind: 'protocolError', id: asked.id, unsupportedMessage: { trait: NOTES, method: READ } });
+    peer.send({
+      ...PROTOCOL_ERROR,
+      id: asked.id,
+      value: { tag: 'UnsupportedMessage', value: { trait: NOTES, method: READ } },
+    });
     await timers.advance(0);
 
     // Then
@@ -140,20 +143,16 @@ describe('calls', () => {
     const call = transport.request('notes', 'read', 'note');
     await timers.advance(0);
     const asked = must(peer.find('request:notes.read')[0], 'the call');
-    const answer = { kind: 'method', leg: 'response', id: asked.id, trait: NOTES, method: READ } as const;
+    const answer = { leg: 'response', id: asked.id, trait: 'notes', method: 'read' } as const;
 
     // When
-    peer.send({ ...answer, method: READ + 1, outcome: ok() });
-    peer.send({ kind: 'protocolError', id: asked.id, unsupportedMessage: { trait: NOTES, method: READ + 1 } });
+    peer.send({ ...answer, method: 'touch', value: ok() });
     await timers.advance(0);
-    peer.send({ ...answer, outcome: ok('the note') });
+    peer.send({ ...answer, value: ok('the note') });
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([
-      { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
-      { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
-    ]);
+    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error }]);
     expect(await call).toEqual(ok('the note'));
   });
 
@@ -169,12 +168,11 @@ describe('calls', () => {
     // When
     giveUp.abort(new Error('the budget ran out'));
     const late = {
-      kind: 'method',
       leg: 'response',
       id: asked.id,
-      trait: NOTES,
-      method: READ,
-      outcome: ok('late'),
+      trait: 'notes',
+      method: 'read',
+      value: ok('late'),
     } as const;
     peer.send(late);
     peer.send(late);
@@ -183,7 +181,7 @@ describe('calls', () => {
     // Then
     expect(await call).toEqual(err(cancelled()));
     expect(issues).toEqual([]);
-    expect(peer.legs()).toEqual(['request:255.0', 'request:notes.read']);
+    expect(peer.legs()).toEqual(['request:#library.handshake', 'request:notes.read']);
     expect(detach).toHaveBeenCalledOnce();
     // A call still waiting would be settled again by the dispose, and detach its listener a second time.
     transport.dispose(new Error('done'));
@@ -205,7 +203,7 @@ describe('calls', () => {
     // Then
     expect(await outcomeOf(transport.whenConnected())).toBeInstanceOf(TransportHandshakeTimeoutError);
     expect(await call).toEqual({ value: err(cancelled()) });
-    expect(new Set(peer.legs())).toEqual(new Set(['request:255.0']));
+    expect(new Set(peer.legs())).toEqual(new Set(['request:#library.handshake']));
   });
 
   it('As a caller, a call aborted while queued never goes out once the handshake succeeds', async () => {
@@ -224,7 +222,7 @@ describe('calls', () => {
 
     // Then
     expect(await call).toEqual(err(cancelled()));
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
   });
 
   it('As a caller, a call with an already aborted signal resolves Cancelled at once and posts nothing', async () => {
@@ -237,7 +235,7 @@ describe('calls', () => {
     // Then a marker settled after the call loses the race, so the call settled before any queue step
     expect(await Promise.race([call, Promise.resolve('still waiting')])).toEqual(err(cancelled()));
     await timers.advance(0);
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
   });
 
   it('As a caller, an answer that does not decode resolves my call as MalformedFrame and is reported', async () => {
@@ -318,7 +316,11 @@ describe('calls', () => {
     transport.connect();
     const call = outcomeOf(transport.request('notes', 'touch', undefined));
     await timers.advance(100);
-    expect(peer.legs()).toEqual(['request:255.0', 'request:255.0', 'request:255.0']);
+    expect(peer.legs()).toEqual([
+      'request:#library.handshake',
+      'request:#library.handshake',
+      'request:#library.handshake',
+    ]);
     const post = vi.spyOn(left, 'post');
     const reason = new Error('the peer left');
 
@@ -353,7 +355,7 @@ describe('calls', () => {
 
     // Then
     expect(peer.legs()).toEqual([
-      'request:255.0',
+      'request:#library.handshake',
       'request:notes.touch',
       'start:notes.watch',
       'request:echo.say',
@@ -416,7 +418,7 @@ describe('calls', () => {
     transport.dispose(new Error('done'));
 
     // Then
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
     expect(heard.ends).toEqual([]);
     expect(closes).toEqual([]);
   });
@@ -432,8 +434,8 @@ describe('calls', () => {
     // When
     handle.stop();
     handle.stop();
-    peer.send({ kind: 'method', leg: 'receive', id, trait: NOTES, method: WATCH, payload: 'crossing' });
-    peer.send({ kind: 'method', leg: 'interrupt', id, trait: NOTES, method: WATCH, outcome: ok() });
+    peer.send({ leg: 'receive', id, trait: 'notes', method: 'watch', value: 'crossing' });
+    peer.send({ leg: 'interrupt', id, trait: 'notes', method: 'watch', value: ok() });
     await timers.advance(0);
 
     // Then
@@ -455,7 +457,7 @@ describe('calls', () => {
     // When
     abort.abort();
     handle.stop();
-    peer.send({ kind: 'method', leg: 'receive', id, trait: NOTES, method: WATCH, payload: 'crossing' });
+    peer.send({ leg: 'receive', id, trait: 'notes', method: 'watch', value: 'crossing' });
     await timers.advance(0);
 
     // Then
@@ -490,7 +492,7 @@ describe('calls', () => {
     // Then
     expect(queued.ends).toEqual([err(cancelled())]);
     expect(early.ends).toEqual([err(cancelled())]);
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
   });
 
   it('As a caller, a transport that closes calls my onClose once with its error', async () => {
@@ -545,7 +547,7 @@ describe('calls', () => {
     handle.onClose(error => closes.push(error));
     await timers.advance(0);
     const [id = 0] = startIds(peer);
-    peer.send({ kind: 'method', leg: 'interrupt', id, trait: NOTES, method: WATCH, outcome: ok() });
+    peer.send({ leg: 'interrupt', id, trait: 'notes', method: 'watch', value: ok() });
     await timers.advance(0);
 
     // When
@@ -711,7 +713,7 @@ describe('calls', () => {
     const [ended = 0, open = 0] = startIds(peer);
 
     // When
-    peer.send({ kind: 'method', leg: 'interrupt', id: ended, trait: NOTES, method: WATCH, outcome: ok() });
+    peer.send({ leg: 'interrupt', id: ended, trait: 'notes', method: 'watch', value: ok() });
     await timers.advance(0);
 
     // Then
@@ -730,7 +732,7 @@ describe('calls', () => {
     transport.subscribe('notes', 'watch', 'open', open);
     await timers.advance(0);
     const [ended = 0, running = 0] = startIds(peer);
-    peer.send({ kind: 'method', leg: 'interrupt', id: ended, trait: NOTES, method: WATCH, outcome: ok() });
+    peer.send({ leg: 'interrupt', id: ended, trait: 'notes', method: 'watch', value: ok() });
     await timers.advance(0);
     const handle = transport.subscribe('notes', 'watch', 'later', watcher());
     await timers.advance(0);
@@ -738,12 +740,12 @@ describe('calls', () => {
     handle.stop();
 
     // When values and ends come on the stopped one, after the interrupt, under another method, and on an id never used
-    peer.send({ kind: 'method', leg: 'receive', id: later, trait: NOTES, method: WATCH, payload: 'crossing' });
-    peer.send({ kind: 'method', leg: 'interrupt', id: later, trait: NOTES, method: WATCH, outcome: ok() });
-    peer.send({ kind: 'method', leg: 'receive', id: ended, trait: NOTES, method: WATCH, payload: 'after the end' });
-    peer.send({ kind: 'method', leg: 'interrupt', id: ended, trait: NOTES, method: WATCH, outcome: ok() });
-    peer.send({ kind: 'method', leg: 'receive', id: running, trait: ECHO, method: LISTEN, payload: 'elsewhere' });
-    peer.send({ kind: 'method', leg: 'receive', id: 900, trait: NOTES, method: WATCH, payload: 'never asked' });
+    peer.send({ leg: 'receive', id: later, trait: 'notes', method: 'watch', value: 'crossing' });
+    peer.send({ leg: 'interrupt', id: later, trait: 'notes', method: 'watch', value: ok() });
+    peer.send({ leg: 'receive', id: ended, trait: 'notes', method: 'watch', value: 'after the end' });
+    peer.send({ leg: 'interrupt', id: ended, trait: 'notes', method: 'watch', value: ok() });
+    peer.send({ leg: 'receive', id: running, trait: 'echo', method: 'listen', value: 'elsewhere' });
+    peer.send({ leg: 'receive', id: 900, trait: 'notes', method: 'watch', value: 'never asked' });
     await timers.advance(0);
 
     // Then
@@ -789,7 +791,11 @@ describe('calls', () => {
     const [id = 0] = startIds(peer);
 
     // When
-    peer.send({ kind: 'protocolError', id, unsupportedMessage: { trait: NOTES, method: WATCH } });
+    peer.send({
+      ...PROTOCOL_ERROR,
+      id: id,
+      value: { tag: 'UnsupportedMessage', value: { trait: NOTES, method: WATCH } },
+    });
     await timers.advance(0);
 
     // Then
@@ -810,7 +816,7 @@ describe('calls', () => {
     // Then
     expect(subscribe).toThrow(new RangeError('A word is never empty'));
     await timers.advance(0);
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
   });
 
   it('As a caller, an issue hook that disposes on my failed start post leaves the peer nothing to stop', async () => {
@@ -843,7 +849,7 @@ describe('calls', () => {
     // Then the transport closed it before the post returned, and the peer heard no stop
     expect(closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
-    expect(raw.peer.legs()).toEqual(['request:255.0']);
+    expect(raw.peer.legs()).toEqual(['request:#library.handshake']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
   });
 
@@ -882,7 +888,7 @@ describe('calls', () => {
     // Then the stop ended it before the post returned, and the peer heard no stop
     expect(closes).toEqual([]);
     expect(heard.ends).toEqual([]);
-    expect(raw.peer.legs()).toEqual(['request:255.0']);
+    expect(raw.peer.legs()).toEqual(['request:#library.handshake']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
   });
 
@@ -909,7 +915,7 @@ describe('calls', () => {
     const failed = expect.objectContaining({ message: 'The start could not be posted', cause: broken }) as Error;
     expect(closes).toEqual([failed, failed]);
     expect(heard.ends).toEqual([]);
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
   });
 });

@@ -4,15 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { codec, none } from './codec.js';
 import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
-import { defineSchema, request, subscription } from './schema.js';
-import {
-  decodeMessage,
-  encodeMessage,
-  type DecodedMessage,
-  type Header,
-  type Refusal,
-  type WireMessage,
-} from './wire.js';
+import { defineSchema, request, subscription, wireOf } from './schema.js';
+import { LIBRARY_TRAIT, type Message } from './wire.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -37,188 +30,126 @@ const unreadable = codec<string>(
   },
 );
 
-const schema = defineSchema({
-  version: 3,
-  hello: text,
-  traits: {
-    notes: {
-      read: request({ request: text, response: text, error: byte }),
-      watch: subscription({ start: text, receive: byte, interrupt: text }),
-      touch: request({ request: none, response: none }),
-      broken: request({ request: unreadable, response: none }),
+const wire = wireOf(
+  defineSchema({
+    version: 3,
+    hello: text,
+    traits: {
+      notes: {
+        read: request({ request: text, response: text, error: byte }),
+        watch: subscription({ start: text, receive: byte, interrupt: text }),
+        touch: request({ request: none, response: none }),
+        broken: request({ request: unreadable, response: none }),
+      },
     },
-  },
-});
+  }),
+);
 
 // notes is trait 0, and its methods are 0 to 3 in the order written.
 const NOTES = 0;
 const READ = 0;
 const WATCH = 1;
-const TOUCH = 2;
 const BROKEN = 3;
+
+const read = { trait: 'notes', method: 'read' } as const;
+const watch = { trait: 'notes', method: 'watch' } as const;
+const handshake = { trait: LIBRARY_TRAIT, method: 'handshake' } as const;
+const protocolError = { trait: LIBRARY_TRAIT, method: 'protocolError', leg: 'response' } as const;
 
 const bytes = (...values: number[]): ArrayBuffer => Uint8Array.of(...values).buffer;
 const listed = (data: ArrayBuffer): number[] => [...new Uint8Array(data)];
 
-// A refusal's cause is named by its class and message, which is what tells a cut-short read from a refused tag or leg.
-const summarised = (decoded: DecodedMessage | Refusal): unknown =>
-  'refused' in decoded
-    ? {
-        ...decoded,
-        cause:
-          decoded.cause instanceof Error ? `${decoded.cause.name}: ${decoded.cause.message}` : typeof decoded.cause,
-      }
-    : decoded;
-
-describe('wire messages', () => {
-  it('As a transport, I encode every leg and every error that crosses the wire and decode the same message back', () => {
+describe('wire', () => {
+  it('As a transport, I encode every leg and every CallError variant and decode the same message back', () => {
     // Given
-    const at = { kind: 'method', trait: NOTES } as const;
-    const messages: WireMessage[] = [
-      { ...at, method: READ, leg: 'request', id: 1, payload: 'the first note' },
-      { ...at, method: READ, leg: 'response', id: 1, outcome: ok('a body') },
-      { ...at, method: READ, leg: 'response', id: 2, outcome: err(domain(7)) },
-      { ...at, method: READ, leg: 'response', id: 3, outcome: err(denied()) },
-      { ...at, method: READ, leg: 'response', id: 4, outcome: err(unsupported()) },
-      { ...at, method: READ, leg: 'response', id: 5, outcome: err(malformedFrame('a short payload')) },
-      { ...at, method: READ, leg: 'response', id: 6, outcome: err(hostFailure('TypeError: no such note')) },
-      { ...at, method: WATCH, leg: 'start', id: 8, payload: 'from the top' },
-      { ...at, method: WATCH, leg: 'receive', id: 8, payload: 42 },
-      { ...at, method: WATCH, leg: 'interrupt', id: 8, outcome: ok() },
-      { ...at, method: WATCH, leg: 'interrupt', id: 9, outcome: err(domain('gone')) },
-      { ...at, method: WATCH, leg: 'interrupt', id: 10, outcome: err(denied()) },
-      { ...at, method: WATCH, leg: 'interrupt', id: 11, outcome: err(unsupported()) },
-      { ...at, method: WATCH, leg: 'interrupt', id: 12, outcome: err(malformedFrame('')) },
-      { ...at, method: WATCH, leg: 'interrupt', id: 13, outcome: err(hostFailure('Error: ü'.repeat(40))) },
-      { ...at, method: WATCH, leg: 'interrupt', id: 14, outcome: err(hostFailure('x'.repeat(20_000))) },
-      { ...at, method: WATCH, leg: 'stop', id: 15 },
-      { ...at, method: TOUCH, leg: 'request', id: 0xffff_ffff, payload: undefined },
-      { kind: 'handshake', leg: 'request', id: 16, version: 3, hello: 'opener' },
-      { kind: 'handshake', leg: 'response', id: 16, outcome: ok('accepter') },
-      { kind: 'handshake', leg: 'response', id: 17, outcome: err({ version: 9 }) },
-      { kind: 'protocolError', id: 18, unsupportedMessage: { trait: 4, method: 200 } },
+    const messages: Message[] = [
+      { ...read, leg: 'request', id: 1, value: 'the first note' },
+      { ...read, leg: 'response', id: 1, value: ok('a body') },
+      { ...read, leg: 'response', id: 2, value: err(domain(7)) },
+      { ...read, leg: 'response', id: 3, value: err(denied()) },
+      { ...read, leg: 'response', id: 4, value: err(unsupported()) },
+      { ...read, leg: 'response', id: 5, value: err(malformedFrame('a short payload')) },
+      { ...read, leg: 'response', id: 6, value: err(hostFailure('TypeError: no such note')) },
+      { ...read, leg: 'response', id: 7, value: err(cancelled()) },
+      { ...watch, leg: 'start', id: 8, value: 'from the top' },
+      { ...watch, leg: 'receive', id: 8, value: 42 },
+      { ...watch, leg: 'interrupt', id: 8, value: ok() },
+      { ...watch, leg: 'interrupt', id: 9, value: err(domain('gone')) },
+      { ...watch, leg: 'interrupt', id: 10, value: err(hostFailure('Error: ü'.repeat(40))) },
+      { ...watch, leg: 'stop', id: 11, value: undefined },
+      { trait: 'notes', method: 'touch', leg: 'request', id: 0xffff_ffff, value: undefined },
+      { ...handshake, leg: 'request', id: 12, value: { version: 3, hello: 'opener' } },
+      { ...handshake, leg: 'response', id: 12, value: ok('accepter') },
+      { ...handshake, leg: 'response', id: 13, value: err({ tag: 'VersionMismatch', value: { version: 9 } }) },
+      { ...protocolError, id: 14, value: { tag: 'UnsupportedMessage', value: { trait: 4, method: 200 } } },
     ];
 
     // When
-    const decoded = messages.map(message => decodeMessage(schema, encodeMessage(schema, message)));
+    const received = messages.map(message => wire.decode(wire.encode(message)));
 
     // Then
-    expect(decoded).toEqual(messages);
+    expect(received).toEqual(messages.map(message => ({ kind: 'message', message })));
   });
 
-  it('As a transport, I encode Cancelled and am refused, since it never crosses the wire', () => {
+  it('As a peer of any release, I encode the handshake and the protocol error and get the frozen bytes', () => {
     // Given
-    const response: WireMessage = {
-      kind: 'method',
-      trait: NOTES,
-      method: READ,
-      leg: 'response',
-      id: 1,
-      outcome: err(cancelled()),
-    };
-    const interrupt: WireMessage = {
-      kind: 'method',
-      trait: NOTES,
-      method: WATCH,
-      leg: 'interrupt',
-      id: 2,
-      outcome: err(cancelled()),
-    };
-
-    // When
-    const encodings = [() => encodeMessage(schema, response), () => encodeMessage(schema, interrupt)];
-
-    // Then
-    for (const encode of encodings) {
-      expect(encode).toThrow(TypeError);
-      expect(encode).toThrow(/Cancelled/);
-    }
-  });
-
-  it('As a transport, I encode what the wire cannot carry exactly and am refused with the reason', () => {
-    // Given
-    const at = { kind: 'method', trait: NOTES } as const;
-    const attempts: [WireMessage, typeof RangeError | typeof TypeError, RegExp][] = [
-      [{ ...at, method: TOUCH, leg: 'request', id: 2 ** 32, payload: undefined }, RangeError, /id 4294967296 is not/],
-      [{ ...at, method: TOUCH, leg: 'request', id: -1, payload: undefined }, RangeError, /id -1 is not a u32/],
-      [{ ...at, method: 9, leg: 'request', id: 1, payload: undefined }, RangeError, /no method 9 in trait 0/],
-      [{ ...at, method: WATCH, leg: 'request', id: 1, payload: 'a start' }, TypeError, /request leg .* subscription/],
-      [{ ...at, method: READ, leg: 'start', id: 1, payload: 'a start' }, TypeError, /start leg .* request method/],
-      [{ ...at, method: READ, leg: 'interrupt', id: 1, outcome: ok() }, TypeError, /interrupt leg .* request/],
-      [{ ...at, method: WATCH, leg: 'response', id: 1, outcome: ok() }, TypeError, /response leg .* subscription/],
-      [{ ...at, method: TOUCH, leg: 'response', id: 1, outcome: err(domain('x')) }, TypeError, /no domain error/],
-      [{ kind: 'handshake', leg: 'request', id: 1, version: 256, hello: 'hi' }, RangeError, /version 256 is not a u8/],
-      [{ kind: 'protocolError', id: 1, unsupportedMessage: { trait: 1.5, method: 0 } }, RangeError, /trait 1.5 is/],
+    const messages: Message[] = [
+      { ...handshake, leg: 'request', id: 1, value: { version: 3, hello: 'hi' } },
+      { ...handshake, leg: 'response', id: 2, value: ok('hi') },
+      { ...handshake, leg: 'response', id: 2, value: err({ tag: 'VersionMismatch', value: { version: 3 } }) },
+      { ...protocolError, id: 0x0102_0304, value: { tag: 'UnsupportedMessage', value: { trait: 7, method: 2 } } },
     ];
 
     // When
-    const encodings = attempts.map(([message, type, reason]) => ({
-      encode: () => encodeMessage(schema, message),
-      type,
-      reason,
-    }));
+    const encoded = messages.map(message => listed(wire.encode(message)));
 
     // Then
-    for (const { encode, type, reason } of encodings) {
-      expect(encode).toThrow(type);
-      expect(encode).toThrow(reason);
-    }
-  });
-
-  it('As a peer of any release, I encode a handshake request and get the frozen bytes', () => {
-    // Given
-    const message: WireMessage = { kind: 'handshake', leg: 'request', id: 1, version: 3, hello: 'hi' };
-
-    // When
-    const data = encodeMessage(schema, message);
-
-    // Then
-    expect(listed(data)).toEqual([1, 0, 0, 0, 255, 0, 0, 3, 0x68, 0x69]);
-  });
-
-  it('As a peer of any release, I encode both handshake responses and get the frozen bytes', () => {
-    // Given
-    const accepted: WireMessage = { kind: 'handshake', leg: 'response', id: 2, outcome: ok('hi') };
-    const mismatched: WireMessage = { kind: 'handshake', leg: 'response', id: 2, outcome: err({ version: 3 }) };
-
-    // When
-    const encoded = [encodeMessage(schema, accepted), encodeMessage(schema, mismatched)];
-
-    // Then
-    expect(encoded.map(listed)).toEqual([
+    expect(encoded).toEqual([
+      [1, 0, 0, 0, 255, 0, 0, 3, 0x68, 0x69],
       [2, 0, 0, 0, 255, 0, 1, 0, 0x68, 0x69],
       [2, 0, 0, 0, 255, 0, 1, 1, 0, 3],
+      [4, 3, 2, 1, 255, 255, 1, 0, 7, 2],
     ]);
   });
 
-  it('As a peer of any release, I encode a protocol error and get the frozen bytes', () => {
+  it('As a schema author, my decode gets exactly the payload bytes after the address', () => {
     // Given
-    const message: WireMessage = {
-      kind: 'protocolError',
-      id: 0x0102_0304,
-      unsupportedMessage: { trait: 7, method: 2 },
-    };
+    const seen: number[][] = [];
+    const recording = codec<string>(
+      value => new TextEncoder().encode(value),
+      payload => {
+        seen.push([...payload]);
+        return 'seen';
+      },
+    );
+    const recorder = wireOf(
+      defineSchema({ version: 1, traits: { notes: { read: request({ request: recording, response: none }) } } }),
+    );
 
     // When
-    const data = encodeMessage(schema, message);
+    const received = recorder.decode(bytes(1, 0, 0, 0, NOTES, READ, 0, 0x61, 0x62));
 
     // Then
-    expect(listed(data)).toEqual([4, 3, 2, 1, 255, 255, 1, 0, 7, 2]);
+    expect(received).toEqual({ kind: 'message', message: { ...read, leg: 'request', id: 1, value: 'seen' } });
+    expect(seen).toEqual([[0x61, 0x62]]);
   });
 
   it('As an accepter, I decode a handshake from another release and get its version without its hello', () => {
     // Given
-    const newer = defineSchema({ version: 4, hello: byte, traits: {} });
-    const data = encodeMessage(newer, { kind: 'handshake', leg: 'request', id: 5, version: 4, hello: 200 });
+    const newer = wireOf(defineSchema({ version: 4, hello: byte, traits: {} }));
+    const data = newer.encode({ ...handshake, leg: 'request', id: 5, value: { version: 4, hello: 200 } });
 
     // When
-    const decoded = decodeMessage(schema, data);
+    const received = wire.decode(data);
 
     // Then
-    expect(decoded).toEqual({ kind: 'handshake', leg: 'request', id: 5, version: 4, hello: undefined });
+    expect(received).toEqual({
+      kind: 'message',
+      message: { ...handshake, leg: 'request', id: 5, value: { version: 4, hello: undefined } },
+    });
   });
 
-  it('As a transport, I decode a message for a trait or method my schema lacks and get its address to reply to', () => {
+  it('As a transport, I decode a message for an address my schema lacks and get its ids to reply to', () => {
     // Given
     const messages = [
       bytes(1, 0, 0, 0, 4, 0, 0, 0xaa),
@@ -227,355 +158,111 @@ describe('wire messages', () => {
     ];
 
     // When
-    const decoded = messages.map(data => decodeMessage(schema, data));
+    const received = messages.map(data => wire.decode(data));
 
     // Then
-    expect(decoded).toEqual([
-      { kind: 'unknownAddress', id: 1, leg: 'request', unknownAddress: { trait: 4, method: 0 } },
-      { kind: 'unknownAddress', id: 2, leg: 'start', unknownAddress: { trait: NOTES, method: 9 } },
-      { kind: 'unknownAddress', id: 3, leg: 'response', unknownAddress: { trait: 255, method: 7 } },
+    expect(received).toEqual([
+      { kind: 'unknownAddress', id: 1, leg: 'request', trait: 4, method: 0 },
+      { kind: 'unknownAddress', id: 2, leg: 'start', trait: NOTES, method: 9 },
+      { kind: 'unknownAddress', id: 3, leg: 'response', trait: 255, method: 7 },
     ]);
   });
 
-  it('As a transport, I decode a header cut short and refuse it as malformed', () => {
+  it('As a transport, I decode data whose address cannot be read and refuse it as malformed with no header', () => {
     // Given
-    const data = bytes(1, 0, 0, 0, NOTES, READ);
+    const messages = [bytes(), bytes(1, 0, 0), bytes(1, 0, 0, 0, NOTES, READ), bytes(1, 0, 0, 0, NOTES, READ, 6)];
 
     // When
-    const decoded = summarised(decodeMessage(schema, data));
+    const received = messages.map(data => wire.decode(data));
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg could not be decoded' });
+    for (const refusal of received) {
+      expect(refusal).toEqual({ kind: 'refused', reason: 'malformed', cause: expect.any(Error) as Error });
+    }
   });
 
-  it('As a transport, I decode an unknown leg byte and refuse it as malformed', () => {
+  it('As a serving side, I decode a leg its method does not have and refuse it as invalid with its header', () => {
     // Given
-    const data = bytes(1, 0, 0, 0, NOTES, READ, 6);
+    const data = bytes(4, 0, 0, 0, NOTES, READ, 2, 0x61);
 
     // When
-    const decoded = summarised(decodeMessage(schema, data));
+    const received = wire.decode(data);
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg could not be decoded' });
+    expect(received).toEqual({
+      kind: 'refused',
+      reason: 'invalid',
+      cause: new TypeError('notes.read has no start leg'),
+      header: { ...read, leg: 'start', id: 4 },
+    });
   });
 
-  it('As a transport, I decode trailing bytes after a body that ends and refuse them as malformed', () => {
+  it('As a transport, I decode a body the codecs refuse and refuse it as malformed with its header and cause', () => {
     // Given
     const messages = [
-      bytes(1, 0, 0, 0, NOTES, WATCH, 5, 0),
-      bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 1, 0),
-      bytes(3, 0, 0, 0, NOTES, WATCH, 4, 0, 0),
-      bytes(4, 0, 0, 0, 255, 0, 1, 1, 0, 3, 0),
-      bytes(5, 0, 0, 0, 255, 255, 1, 0, 7, 2, 0),
+      // An outcome tag other than Ok or Err.
+      bytes(1, 0, 0, 0, NOTES, READ, 1, 2),
+      // A CallError tag the wire does not define.
+      bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 6),
+      // A reason cut short.
+      bytes(3, 0, 0, 0, NOTES, READ, 1, 1, 3, 8, 0x61),
+      // A byte after an interrupt that has ended.
+      bytes(4, 0, 0, 0, NOTES, WATCH, 4, 0, 0xff),
+      // A domain error the byte codec refuses.
+      bytes(5, 0, 0, 0, NOTES, READ, 1, 1, 0, 1, 2),
     ];
 
     // When
-    const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
+    const received = messages.map(data => wire.decode(data));
 
     // Then
-    expect(decoded).toEqual([
+    expect(received).toEqual([
       {
-        refused: 'malformed',
-        cause: 'WireDecodeError: 1 byte follows a body that has ended',
-        header: { id: 1, trait: NOTES, method: WATCH, leg: 'stop' },
-      },
-      {
-        refused: 'malformed',
-        cause: 'WireDecodeError: 1 byte follows a body that has ended',
-        header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.any(TypeError) as TypeError,
+        header: { ...read, leg: 'response', id: 1 },
       },
       {
-        refused: 'malformed',
-        cause: 'WireDecodeError: 1 byte follows a body that has ended',
-        header: { id: 3, trait: NOTES, method: WATCH, leg: 'interrupt' },
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.any(TypeError) as TypeError,
+        header: { ...read, leg: 'response', id: 2 },
       },
       {
-        refused: 'malformed',
-        cause: 'WireDecodeError: 1 byte follows a body that has ended',
-        header: { id: 4, trait: 255, method: 0, leg: 'response' },
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.any(Error) as Error,
+        header: { ...read, leg: 'response', id: 3 },
       },
       {
-        refused: 'malformed',
-        cause: 'WireDecodeError: 1 byte follows a body that has ended',
-        header: { id: 5, trait: 255, method: 255, leg: 'response' },
-      },
-    ]);
-  });
-
-  it('As a transport, I decode an envelope with a tag the wire does not define and refuse it as malformed', () => {
-    // Given
-    const messages = [
-      bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 5),
-      bytes(3, 0, 0, 0, NOTES, READ, 1, 1, 6),
-      bytes(4, 0, 0, 0, 255, 0, 1, 1, 1),
-      bytes(5, 0, 0, 0, 255, 255, 1, 1, 7, 2),
-    ];
-
-    // When
-    const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
-
-    // Then
-    expect(decoded).toEqual([
-      {
-        refused: 'malformed',
-        cause: 'WireDecodeError: Cancelled is raised on the caller side and never crosses the wire',
-        header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
+        kind: 'refused',
+        reason: 'malformed',
+        cause: new RangeError('1 bytes follow the end of the message'),
+        header: { ...watch, leg: 'interrupt', id: 4 },
       },
       {
-        refused: 'malformed',
-        cause: 'WireDecodeError: the call error could not be decoded',
-        header: { id: 3, trait: NOTES, method: READ, leg: 'response' },
-      },
-      {
-        refused: 'malformed',
-        cause: 'WireDecodeError: the handshake error could not be decoded',
-        header: { id: 4, trait: 255, method: 0, leg: 'response' },
-      },
-      {
-        refused: 'malformed',
-        cause: 'WireDecodeError: the protocol error could not be decoded',
-        header: { id: 5, trait: 255, method: 255, leg: 'response' },
-      },
-    ]);
-  });
-
-  it('As a transport, I decode an outcome whose tag is neither Ok nor Err and refuse it as malformed', () => {
-    // Given a tag of 2, then what would read as Err(Denied) or Err(VersionMismatch(3)) after it
-    const messages = [
-      bytes(1, 0, 0, 0, NOTES, READ, 1, 2, 1),
-      bytes(2, 0, 0, 0, NOTES, WATCH, 4, 2, 1),
-      bytes(3, 0, 0, 0, 255, 0, 1, 2, 0, 3),
-    ];
-
-    // When
-    const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
-
-    // Then
-    const refused = (id: number, trait: number, method: number, leg: string) => ({
-      refused: 'malformed',
-      cause: 'WireDecodeError: the outcome could not be decoded',
-      header: { id, trait, method, leg },
-    });
-    expect(decoded).toEqual([
-      refused(1, NOTES, READ, 'response'),
-      refused(2, NOTES, WATCH, 'interrupt'),
-      refused(3, 255, 0, 'response'),
-    ]);
-  });
-
-  it('As a schema author, my decode throws something other than an error and the refusal carries exactly what it threw', () => {
-    // Given
-    const throwsText = codec<string>(
-      value => new TextEncoder().encode(value),
-      () => {
-        // eslint-disable-next-line no-throw-literal, @typescript-eslint/only-throw-error -- a schema author's decode may throw anything
-        throw 'not a note';
-      },
-    );
-    const texty = defineSchema({
-      version: 1,
-      traits: { notes: { read: request({ request: throwsText, response: throwsText, error: throwsText }) } },
-    });
-    const messages = [
-      bytes(1, 0, 0, 0, 0, 0, 0, 0x61),
-      bytes(2, 0, 0, 0, 0, 0, 1, 0),
-      bytes(3, 0, 0, 0, 0, 0, 1, 1, 0),
-    ];
-
-    // When
-    const decoded = messages.map(data => decodeMessage(texty, data));
-
-    // Then
-    expect(decoded).toEqual([
-      { refused: 'malformed', cause: 'not a note', header: { id: 1, trait: 0, method: 0, leg: 'request' } },
-      { refused: 'malformed', cause: 'not a note', header: { id: 2, trait: 0, method: 0, leg: 'response' } },
-      { refused: 'malformed', cause: 'not a note', header: { id: 3, trait: 0, method: 0, leg: 'response' } },
-    ]);
-  });
-
-  it('As a transport, I decode a domain error on a method that declares none and refuse it as malformed', () => {
-    // Given
-    const data = bytes(1, 0, 0, 0, NOTES, TOUCH, 1, 1, 0);
-
-    // When
-    const decoded = summarised(decodeMessage(schema, data));
-
-    // Then
-    expect(decoded).toEqual({
-      refused: 'malformed',
-      cause: 'WireDecodeError: the method declares no domain error',
-      header: { id: 1, trait: NOTES, method: TOUCH, leg: 'response' },
-    });
-  });
-
-  it('As a transport, I decode a reason that is cut short or longer than the wire carries and refuse it as malformed', () => {
-    // Given
-    const messages = [
-      bytes(1, 0, 0, 0, NOTES, READ, 1, 1, 4, 8, 0x61),
-      bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 4, 0x03, 0x00, 0x00, 0x00, 0x40),
-    ];
-
-    // When
-    const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
-
-    // Then
-    expect(decoded).toEqual([
-      {
-        refused: 'malformed',
-        cause: 'WireDecodeError: the reason could not be decoded',
-        header: { id: 1, trait: NOTES, method: READ, leg: 'response' },
-      },
-      {
-        refused: 'malformed',
-        cause: 'WireDecodeError: the reason could not be decoded',
-        header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
-      },
-    ]);
-  });
-
-  it('As a serving side, I decode a leg that does not fit its method and refuse it as invalid', () => {
-    // Given
-    const messages = [
-      bytes(1, 0, 0, 0, NOTES, WATCH, 0, 0x61),
-      bytes(2, 0, 0, 0, NOTES, WATCH, 1, 0, 0x61),
-      bytes(3, 0, 0, 0, NOTES, READ, 2, 0x61),
-      bytes(4, 0, 0, 0, NOTES, READ, 3, 7),
-      bytes(5, 0, 0, 0, NOTES, READ, 4, 0),
-      bytes(6, 0, 0, 0, NOTES, READ, 5),
-      bytes(7, 0, 0, 0, 255, 0, 5),
-      bytes(8, 0, 0, 0, 255, 255, 0, 0, 7, 2),
-    ];
-
-    // When
-    const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
-
-    // Then
-    const invalid = (id: number, trait: number, method: number, leg: string, target: string) => ({
-      refused: 'invalid',
-      cause: `TypeError: the ${leg} leg does not belong to ${target}`,
-      header: { id, trait, method, leg },
-    });
-    expect(decoded).toEqual([
-      invalid(1, NOTES, WATCH, 'request', 'a subscription method'),
-      invalid(2, NOTES, WATCH, 'response', 'a subscription method'),
-      invalid(3, NOTES, READ, 'start', 'a request method'),
-      invalid(4, NOTES, READ, 'receive', 'a request method'),
-      invalid(5, NOTES, READ, 'interrupt', 'a request method'),
-      invalid(6, NOTES, READ, 'stop', 'a request method'),
-      invalid(7, 255, 0, 'stop', 'the handshake'),
-      invalid(8, 255, 255, 'request', 'the protocol error'),
-    ]);
-  });
-
-  it('As a serving side, I decode a payload my decode throws on and refuse it as malformed with its cause', () => {
-    // Given
-    const data = encodeMessage(schema, {
-      kind: 'method',
-      trait: NOTES,
-      method: BROKEN,
-      leg: 'request',
-      id: 21,
-      payload: 'unreadable',
-    });
-
-    // When
-    const decoded = decodeMessage(schema, data);
-
-    // Then
-    expect(decoded).toEqual({
-      refused: 'malformed',
-      cause: failure,
-      header: { id: 21, trait: NOTES, method: BROKEN, leg: 'request' },
-    });
-  });
-
-  it('As a caller, I decode an answer and a domain error my decodes throw on and the refusal carries their own errors', () => {
-    // Given
-    const messages = [bytes(1, 0, 0, 0, NOTES, READ, 1, 1, 0, 1, 2), bytes(2, 0, 0, 0, NOTES, BROKEN, 1, 0)];
-    const brokenAnswer = defineSchema({
-      version: 3,
-      traits: {
-        notes: {
-          read: request({ request: text, response: text, error: byte }),
-          watch: subscription({ start: text, receive: byte }),
-          touch: request({ request: none, response: none }),
-          broken: request({ request: none, response: unreadable }),
-        },
-      },
-    });
-
-    // When
-    const decoded = messages.map(data => decodeMessage(brokenAnswer, data));
-
-    // Then
-    expect(decoded).toEqual([
-      {
-        refused: 'malformed',
+        kind: 'refused',
+        reason: 'malformed',
         cause: new RangeError('expected one byte, got 2'),
-        header: { id: 1, trait: NOTES, method: READ, leg: 'response' },
+        header: { ...read, leg: 'response', id: 5 },
       },
-      { refused: 'malformed', cause: failure, header: { id: 2, trait: NOTES, method: BROKEN, leg: 'response' } },
     ]);
-    expect((decoded[0] as Refusal).cause).toBeInstanceOf(RangeError);
   });
 
-  it('As a schema author, my decode gets exactly the payload bytes even when the message has a header before them', () => {
+  it('As a serving side, I decode a payload my decode throws on and the refusal carries its own error', () => {
     // Given
-    const seen: Uint8Array[] = [];
-    const spy = codec<string>(
-      value => new TextEncoder().encode(value),
-      payload => {
-        seen.push(payload);
-        return new TextDecoder().decode(payload);
-      },
-    );
-    const spied = defineSchema({
-      version: 1,
-      traits: { notes: { echo: request({ request: spy, response: none }) } },
-    });
-    const data = encodeMessage(spied, {
-      kind: 'method',
-      trait: NOTES,
-      method: 0,
-      leg: 'request',
-      id: 1,
-      payload: 'abc',
-    });
+    const data = bytes(6, 0, 0, 0, NOTES, BROKEN, 0, 0x61);
 
     // When
-    const decoded = decodeMessage(spied, data);
+    const received = wire.decode(data);
 
     // Then
-    expect(decoded).toMatchObject({ payload: 'abc' });
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.buffer).toBe(data);
-    expect(seen[0]?.byteOffset).toBe(7);
-    expect([...(seen[0] ?? [])]).toEqual([0x61, 0x62, 0x63]);
-  });
-
-  it('As a transport, I bar a message on its header alone and it is refused as invalid before its body is read', () => {
-    // Given
-    const barred = new Error('A call came before the handshake');
-    const seen: Header[] = [];
-    const admit = (header: Header): Error | null => {
-      seen.push(header);
-      return header.leg === 'request' ? barred : null;
-    };
-    const messages = [
-      encodeMessage(schema, { kind: 'method', trait: NOTES, method: BROKEN, leg: 'request', id: 1, payload: 'x' }),
-      bytes(2, 0, 0, 0, 4, 0, 0, 0xaa),
-      encodeMessage(schema, { kind: 'method', trait: NOTES, method: WATCH, leg: 'stop', id: 3 }),
-    ];
-
-    // When
-    const decoded = messages.map(data => decodeMessage(schema, data, admit));
-
-    // Then
-    expect(decoded).toEqual([
-      { refused: 'invalid', cause: barred, header: { id: 1, trait: NOTES, method: BROKEN, leg: 'request' } },
-      { refused: 'invalid', cause: barred, header: { id: 2, trait: 4, method: 0, leg: 'request' } },
-      { kind: 'method', trait: NOTES, method: WATCH, leg: 'stop', id: 3 },
-    ]);
-    expect(seen.map(header => header.id)).toEqual([1, 2, 3]);
+    expect(received).toEqual({
+      kind: 'refused',
+      reason: 'malformed',
+      cause: failure,
+      header: { trait: 'notes', method: 'broken', leg: 'request', id: 6 },
+    });
   });
 });

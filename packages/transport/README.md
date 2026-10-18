@@ -15,24 +15,21 @@ correlation, cancellation and failure.
 - Wire ids are positions: a trait's id is its place in the schema and a method's id is its place in its trait. Defining
   the schema fixes them, so new traits and methods go at the end. A schema holds up to 255 traits of up to 256 methods
   each, since the library keeps one trait id for itself, and a version from 0 to 255.
-- A trait or method name cannot be an integer such as `"3"`. JavaScript lists such keys first, so its id would not be
-  its written place.
+- A trait or method name is an identifier. JavaScript lists integer-like keys first, so such a name would not keep its
+  written place.
 - The schema is opaque. Its names and payload types are read through type helpers, and nobody writes a type argument.
 - A call returns a `Result`. Its error side is a `CallError`, tagged by `tag`: the handler's own `Domain` error, plus
-  the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`. `Cancelled` is raised by the
-  caller's own side and never reaches a handler.
-- A message is a SCALE codec composed from the schema. Its header is a struct of the request id (`u32`), the trait and
-  method ids (`u8`) and the leg (an enum). Its body is the leg's codec: the payload for a request, a start or a value, a
-  `Result` of the answer and a `CallError` for a response, a `Result` of nothing and a `CallError` for an interrupt, and
-  nothing for a stop. A `Result` is a SCALE enum of `Ok` and `Err` at 0 and 1, so any other tag is refused. `CallError`
-  is a SCALE enum with its indices pinned, and a reason is a SCALE string. The payload always comes last, with no length
-  prefix. Encoding is one pass of the composed codec. Decoding reads the header, then the body its target and leg name,
-  on one cursor, and refuses a body that does not end where the message does. The user's decode gets a view of exactly
-  the payload bytes, with no copy. The view shares the message's buffer at a non-zero offset, so a decode must respect
-  `byteOffset` or copy the bytes first. A message for an address the schema lacks is still read as that address, so the
-  receiver can answer it. Data the library's own fields cannot hold is refused with an error that names the field that
-  could not be decoded, such as the leg or the reason, with the underlying error as its cause. A user's decode keeps its
-  own error, whatever it throws.
+  the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`, each with its `value`, in
+  truapi's order. `Cancelled` is raised by the caller's own side when it aborts, and a relay may pass it on.
+- A message is one SCALE codec composed from the schema, laid out as a truapi frame: the request id (`u32`), then the
+  trait, the method and the leg as nested enums, then the leg's body. So a message reads as names. The body is the
+  payload for a request, a start or a value, a `Result` of the answer and a `CallError` for a response, a `Result` of
+  nothing and a `CallError` for an interrupt, and nothing for a stop. A `Result` is an enum of `Ok` and `Err` at 0
+  and 1. The payload always comes last, with no length prefix, and the user's decode gets exactly its bytes. Encoding
+  and decoding are each one pass of the composed codec, and a message must end where its data does. When it does not
+  decode, its ids are read back so its sender can still be answered: a message for an address the schema lacks gets a
+  protocol error, and a malformed call or answer settles the call it names. A refusal keeps the codec's own error as its
+  cause.
 - The library keeps trait 255 for itself. Method 0 is the handshake, which carries the schema version and the hello, and
   method 255 is the protocol error that answers a message for an unknown address. Their layout never changes, so a peer
   of any release reads the version it refuses.
@@ -121,8 +118,8 @@ sequenceDiagram
   500 characters, for a handler that throws or rejects or an answer the wire cannot carry. A message for an address the
   schema lacks gets one protocol error reply while the transport is open, and is refused after it closes. Nothing ever
   answers a protocol error or a refused message on the library's own addresses. A call (a request or a start) or a stop
-  before the handshake, or after a failed one, is refused on its header alone with no reply, whether its payload decodes
-  and whether the schema has its address or not. Such a stop never counts toward `onPeerIdle`.
+  before the handshake, or after a failed one, is refused on its address alone with no reply, whether its payload
+  decodes and whether the schema has its address or not. Such a stop never counts toward `onPeerIdle`.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed`, `invalid` or
   `not_bytes`, with its cause), a post the provider threw on (with its error, and the trait and method names of the call
   it belonged to, if any, so not for the handshake or a protocol error), and a callback of the owner's that threw
@@ -141,8 +138,8 @@ sequenceDiagram
 
 ### `.`
 
-- `codec(encode, decode)` wraps two functions as a `Codec<T>`. `none` is the codec of an empty payload and refuses any
-  byte on decode.
+- `codec(encode, decode)` wraps two functions as a `Codec<T>`. `none` is the codec of an empty payload, so a message
+  that carries a byte for it is refused.
 - `Result<T, E>` with `ok()` and `err(error)`.
 - `CallError<E>` with the constructors `domain`, `denied`, `unsupported`, `malformedFrame`, `hostFailure` and
   `cancelled`. `hostFailure` takes a reason, or an `Error`, whose reason is the one a handler that throws it answers
@@ -153,8 +150,8 @@ sequenceDiagram
   defaults to `never`. It returns a `SubscriptionDef`.
 - `defineSchema({ version, hello?, traits })` checks the record, fixes the wire ids and returns a `Schema`. `hello` is
   the codec of the value each side sends in the handshake. It throws on a version outside 0 to 255, more than 255
-  traits, more than 256 methods in a trait, or an integer-like trait or method name. `Traits` is the type of the record
-  it takes.
+  traits, more than 256 methods in a trait, or a trait or method name that is no identifier. `Traits` is the type of the
+  record it takes.
 - Type helpers over a schema `S`:
   - `TraitName<S>`, `MethodName<S, T>`, `RequestMethodName<S, T>` and `SubscriptionMethodName<S, T>` name its parts.
   - `MethodTypes<S, T, M>` is what each side of a method sends and receives. For a request of `P`, `R` and `E` it is
@@ -227,7 +224,7 @@ Test helpers for code that uses the library.
 - `createProviderPair()` returns two connected providers, `left` and `right`, and the `delivered` buffers. They deliver
   on a microtask, in order, and detach each buffer as a browser transfer does.
 - `describeMessage(schema, data)` reads a recorded message as a `DescribedMessage`, `{ trait, method, leg, id, body }`.
-  The body is the leg's decoded value, left as it is: a payload, an outcome, a handshake's `{ version, hello }`, or a
-  protocol error's `{ trait, method }`. A library message or one for an address the schema lacks is named by its numeric
-  ids, and the latter keeps its body as bytes. It throws a `MessageRefusedError` on data the schema refuses.
+  The body is the leg's decoded value, left as it is. The library's own messages are on the trait `#library`, as
+  `handshake` and `protocolError`. A message for an address the schema lacks is named by its numeric ids, with no body.
+  It throws a `MessageRefusedError` on data the schema refuses.
 - `MessageRefusedError` has `reason`, `malformed` or `invalid`, and the refusal's `cause`.

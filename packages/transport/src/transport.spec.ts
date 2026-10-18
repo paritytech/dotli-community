@@ -7,13 +7,11 @@ import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { none } from './codec.js';
 import { err, hostFailure, ok, type CallError, type Result } from './result.js';
-import { defineSchema, request } from './schema.js';
+import { defineSchema, request, wireOf } from './schema.js';
 import type { CallContext, Sink } from './serving.js';
 import {
-  NOTES,
-  TOUCH,
+  HANDSHAKE,
   VERSION,
-  WATCH,
   errorLog,
   issueLog,
   rawRig,
@@ -31,7 +29,7 @@ import {
   type Transport,
   type TransportOptions,
 } from './transport.js';
-import { encodeMessage, type WireMessage } from './wire.js';
+import type { Header } from './wire.js';
 
 /** Collects what the shared log records as errors. */
 describe('createTransport', () => {
@@ -195,16 +193,16 @@ describe('createTransport', () => {
     const { issues, onIssue } = issueLog();
     const transport = createTransport(testSchema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
     transport.handleRequest('notes', 'touch', () => ok());
-    const hear = (message: WireMessage): void => {
+    const hear = (message: Header & { value?: unknown }): void => {
       for (const listener of listeners) {
-        listener(encodeMessage(testSchema, message));
+        listener(wireOf(testSchema).encode({ ...message, value: message.value }));
       }
     };
-    hear({ kind: 'handshake', leg: 'request', id: 1, version: VERSION, hello: 'peer' });
+    hear({ ...HANDSHAKE, id: 1, leg: 'request', value: { version: VERSION, hello: 'peer' } });
 
     // When
     const call = (): void => {
-      hear({ kind: 'method', leg: 'request', id: 2, trait: NOTES, method: TOUCH, payload: undefined });
+      hear({ leg: 'request', id: 2, trait: 'notes', method: 'touch', value: undefined });
     };
 
     // Then
@@ -249,7 +247,7 @@ describe('createTransport', () => {
     // Then
     expect(hear).not.toThrow();
     expect(errors).toEqual([
-      '[transport] A message was refused as malformed, WireDecodeError: the header could not be decoded',
+      '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
       '[transport] A listener threw, Error: The issue hook threw, Error: hook bug',
     ]);
   });
@@ -262,8 +260,8 @@ describe('createTransport', () => {
     answerHandshake();
 
     // When
-    peer.send({ kind: 'method', leg: 'receive', id: 40, trait: NOTES, method: WATCH, payload: 'a line' });
-    peer.send({ kind: 'method', leg: 'interrupt', id: 40, trait: NOTES, method: WATCH, outcome: ok() });
+    peer.send({ leg: 'receive', id: 40, trait: 'notes', method: 'watch', value: 'a line' });
+    peer.send({ leg: 'interrupt', id: 40, trait: 'notes', method: 'watch', value: ok() });
     await timers.advance(0);
 
     // Then
@@ -271,7 +269,7 @@ describe('createTransport', () => {
       { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
       { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
     ]);
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(peer.legs()).toEqual(['request:#library.handshake']);
   });
 
   it('As an owner with no issue hook, each issue is logged as one bounded error', async () => {
@@ -299,7 +297,7 @@ describe('createTransport', () => {
     // Then
     expect(errors).toHaveLength(2);
     expect(errors[0]).toBe(
-      '[transport] A message was refused as malformed, WireDecodeError: the header could not be decoded',
+      '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
     );
     expect(errors[1]).toMatch(/^\[transport\] A message could not be posted, Error: x+$/);
     expect(errors[1]).toHaveLength(200);

@@ -8,10 +8,10 @@ import type { CallError, Result } from './result.js';
 /** How a call ends: the peer's `Result`, or one the library gives it. */
 export type Outcome = Result<unknown, CallError<unknown>>;
 
-/** A schema method by its wire ids. */
+/** A schema method by its names. */
 export interface Address {
-  trait: number;
-  method: number;
+  trait: string;
+  method: string;
 }
 
 /**

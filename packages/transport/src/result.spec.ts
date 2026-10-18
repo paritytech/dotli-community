@@ -29,11 +29,11 @@ describe('result', () => {
     // Then
     expect(all).toEqual([
       { tag: 'Domain', value: 3 },
-      { tag: 'Denied' },
-      { tag: 'Unsupported' },
-      { tag: 'MalformedFrame', reason },
-      { tag: 'HostFailure', reason },
-      { tag: 'Cancelled' },
+      { tag: 'Denied', value: undefined },
+      { tag: 'Unsupported', value: undefined },
+      { tag: 'MalformedFrame', value: { reason } },
+      { tag: 'HostFailure', value: { reason } },
+      { tag: 'Cancelled', value: undefined },
     ]);
   });
 
@@ -47,8 +47,8 @@ describe('result', () => {
 
     // Then
     expect(failures).toEqual([
-      { tag: 'HostFailure', reason: 'TypeError: bad label' },
-      { tag: 'HostFailure', reason: `Error: ${'x'.repeat(493)}` },
+      { tag: 'HostFailure', value: { reason: 'TypeError: bad label' } },
+      { tag: 'HostFailure', value: { reason: `Error: ${'x'.repeat(493)}` } },
     ]);
   });
 });

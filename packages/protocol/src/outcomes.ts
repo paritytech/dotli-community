@@ -74,7 +74,7 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
     case 'Domain':
       return domainFailure(error.value, method);
     case 'HostFailure': {
-      const { name, message } = splitReason(error.reason);
+      const { name, message } = splitReason(error.value.reason);
       return new ProtocolRequestError(message, name, method);
     }
     case 'Cancelled':
@@ -86,7 +86,7 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
     case 'Unsupported':
       return new ProtocolRequestError(`The frame does not serve "${method}"`, 'Unsupported', method);
     case 'MalformedFrame':
-      return new ProtocolRequestError(error.reason, 'MalformedFrame', method);
+      return new ProtocolRequestError(error.value.reason, 'MalformedFrame', method);
   }
 }
 

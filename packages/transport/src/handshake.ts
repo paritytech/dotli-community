@@ -9,11 +9,12 @@ import { createAsyncTaskPool, toError, withTimeout, type Timers } from '@dotli/s
 import { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
 import type { Post } from './parts.js';
 import { err, ok, type Result } from './result.js';
-import { schemaVersion, type Schema } from './schema.js';
-import { encodeMessage, type HandshakeMessage } from './wire.js';
+import { LIBRARY_TRAIT, type Leg, type Message, type Wire } from './wire.js';
 
 export interface HandshakeDeps {
-  schema: Schema;
+  wire: Wire;
+  /** The schema version this side speaks. */
+  version: number;
   /** This side's hello. */
   hello: unknown;
   nextId: () => number;
@@ -29,17 +30,35 @@ export interface HandshakeDeps {
 export interface Handshake {
   /** Starts the opener's attempts. Does nothing on the accepter or once started. */
   start(): void;
-  hear(message: HandshakeMessage): void;
+  hear(message: Message): void;
   /** Stops the opener's attempts and timeout. */
   stop(reason: Error): void;
 }
+
+/** An attempt: the opener's version, and its hello, read only when the version is this side's. */
+interface HandshakeAttempt {
+  version: number;
+  hello: unknown;
+}
+
+/** The accepter's hello, or the version it speaks. */
+type HandshakeAnswer = Result<unknown, { tag: 'VersionMismatch'; value: { version: number } }>;
+
+const versionMismatch = (version: number) => ({ tag: 'VersionMismatch' as const, value: { version } });
+
+const handshake = (id: number, leg: Leg, value: HandshakeAttempt | HandshakeAnswer): Message => ({
+  id,
+  trait: LIBRARY_TRAIT,
+  method: 'handshake',
+  leg,
+  value,
+});
 
 /** Fails an attempt so the pool tries again. Any other failure ends the handshake. */
 class HandshakeUnansweredError extends Error {}
 
 export function createOpener(deps: HandshakeDeps & { retryMs: number; timeoutMs: number; timers: Timers }): Handshake {
-  const { schema, retryMs, timeoutMs, timers } = deps;
-  const version = schemaVersion(schema);
+  const { version, retryMs, timeoutMs, timers } = deps;
   const attempts = createAsyncTaskPool({
     poolSize: 1,
     retryCount: Number.POSITIVE_INFINITY,
@@ -67,13 +86,7 @@ export function createOpener(deps: HandshakeDeps & { retryMs: number; timeoutMs:
   };
 
   const attempt = (): never => {
-    const data = encodeMessage(schema, {
-      kind: 'handshake',
-      leg: 'request',
-      id: deps.nextId(),
-      version,
-      hello: deps.hello,
-    });
+    const data = deps.wire.encode(handshake(deps.nextId(), 'request', { version, hello: deps.hello }));
     const posted = deps.post(data);
     if (!posted.ok) {
       throw new Error('The handshake could not be posted', { cause: posted.error });
@@ -110,8 +123,10 @@ export function createOpener(deps: HandshakeDeps & { retryMs: number; timeoutMs:
         return;
       }
       // Only the first answer counts. The rest answer attempts already in flight.
-      const { outcome } = message;
-      finish(outcome.ok ? ok(outcome.value) : err(new TransportVersionMismatchError(version, outcome.error.version)));
+      const answer = message.value as HandshakeAnswer;
+      finish(
+        answer.ok ? ok(answer.value) : err(new TransportVersionMismatchError(version, answer.error.value.version)),
+      );
     },
 
     stop(reason) {
@@ -121,10 +136,9 @@ export function createOpener(deps: HandshakeDeps & { retryMs: number; timeoutMs:
 }
 
 export function createAccepter(deps: HandshakeDeps): Handshake {
-  const { schema } = deps;
-  const version = schemaVersion(schema);
-  // The outcome of the first attempt whose answer was posted, which every later attempt hears again.
-  let first: Result<unknown, { version: number }> | undefined;
+  const { version } = deps;
+  // The answer to the first attempt whose answer was posted, which every later attempt hears again.
+  let first: HandshakeAnswer | undefined;
 
   return {
     start() {
@@ -136,11 +150,12 @@ export function createAccepter(deps: HandshakeDeps): Handshake {
         deps.refuse(new Error('A handshake response reached the side that accepts the handshake'));
         return;
       }
+      const attempt = message.value as HandshakeAttempt;
       const deciding = first === undefined;
-      const outcome = first ?? (message.version === version ? ok(deps.hello) : err({ version }));
+      const answer = first ?? (attempt.version === version ? ok(deps.hello) : err(versionMismatch(version)));
       let data: ArrayBuffer;
       try {
-        data = encodeMessage(schema, { kind: 'handshake', leg: 'response', id: message.id, outcome });
+        data = deps.wire.encode(handshake(message.id, 'response', answer));
       } catch (error) {
         deps.onFail(new Error('The handshake answer could not be encoded', { cause: error }));
         return;
@@ -149,11 +164,11 @@ export function createAccepter(deps: HandshakeDeps): Handshake {
       if (!deps.post(data).ok || !deciding) {
         return;
       }
-      first = outcome;
-      if (outcome.ok) {
-        deps.onOpen(message.hello);
+      first = answer;
+      if (answer.ok) {
+        deps.onOpen(attempt.hello);
       } else {
-        deps.onFail(new TransportVersionMismatchError(version, message.version));
+        deps.onFail(new TransportVersionMismatchError(version, attempt.version));
       }
     },
 

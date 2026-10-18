@@ -9,8 +9,7 @@ import { createAsyncTaskPool, toError } from '@dotli/shared';
 import { decodeReason } from './errors.js';
 import { createRecentIds, type Address, type Outcome, type Post, type RunListener } from './parts.js';
 import { cancelled, err, malformedFrame, unsupported, type CallError, type Result } from './result.js';
-import type { Schema } from './schema.js';
-import { encodeMessage, type Header, type MethodMessage, type ProtocolErrorMessage } from './wire.js';
+import type { Header, Message, Wire } from './wire.js';
 
 /** What a subscriber hears: each value, then one end. */
 export interface SubscriptionListeners<V, I> {
@@ -32,7 +31,7 @@ export interface SubscriptionHandle {
 }
 
 export interface CallsDeps {
-  schema: Schema;
+  wire: Wire;
   nextId: () => number;
   post: Post;
   /** Settles once the handshake succeeds or fails, or the transport closes. */
@@ -44,11 +43,6 @@ export interface CallsDeps {
   runListener: RunListener;
 }
 
-/** A message that carries a `Result`: a response or an interrupt. */
-type OutcomeMessage = Extract<MethodMessage, { outcome: unknown }>;
-/** A message that carries a payload, of which this side hears only receives. */
-type PayloadMessage = Extract<MethodMessage, { payload: unknown }>;
-
 export interface Calls {
   /** Resolves to the peer's outcome or `Cancelled`. Rejects with the closing error, or when the call cannot go out. */
   request(address: Address, payload: unknown, signal: AbortSignal | undefined): Promise<Outcome>;
@@ -59,12 +53,13 @@ export interface Calls {
     listeners: SubscriptionListeners<unknown, unknown>,
     signal: AbortSignal | undefined,
   ): SubscriptionHandle;
-  onResponse(message: OutcomeMessage): void;
-  onReceive(message: PayloadMessage): void;
-  onInterrupt(message: OutcomeMessage): void;
+  onResponse(message: Message): void;
+  onReceive(message: Message): void;
+  onInterrupt(message: Message): void;
   /** Ends the call an answer, value or end that did not decode names, as `MalformedFrame` with why. */
   onUndecodable(header: Header, cause: unknown): void;
-  onProtocolError(message: ProtocolErrorMessage): void;
+  /** Ends the call `id` names as `Unsupported`, since the peer lacks its address. */
+  onProtocolError(id: number): void;
   /**
    * Rejects every call that went out and is still waiting with `error`, and closes every subscription with it, telling
    * the peer to stop each open one. Calls still queued find the error as they leave.
@@ -97,7 +92,7 @@ interface Subscription extends Address {
 const REMEMBERED_STOPS = 1_024;
 
 export function createCalls(deps: CallsDeps): Calls {
-  const { schema, post, handshakeOver, closedBy, refuse, runListener } = deps;
+  const { wire, post, handshakeOver, closedBy, refuse, runListener } = deps;
   const waiting = new Map<number, PendingRequest>();
   // Queued and open subscriptions. Messages from the peer reach only the open ones.
   const subscriptions = new Map<number, Subscription>();
@@ -134,7 +129,7 @@ export function createCalls(deps: CallsDeps): Calls {
     let data: ArrayBuffer;
     try {
       const { id, trait, method } = call;
-      data = encodeMessage(schema, { kind: 'method', leg: 'request', id, trait, method, payload });
+      data = wire.encode({ id, trait, method, leg: 'request', value: payload });
     } catch (error) {
       call.settle(toError(error));
       return;
@@ -173,7 +168,7 @@ export function createCalls(deps: CallsDeps): Calls {
 
   const postStop = ({ id, trait, method }: Subscription): void => {
     lateStops.add(id);
-    post(encodeMessage(schema, { kind: 'method', leg: 'stop', id, trait, method }), { trait, method });
+    post(wire.encode({ id, trait, method, leg: 'stop', value: undefined }), { trait, method });
   };
 
   /**
@@ -321,7 +316,7 @@ export function createCalls(deps: CallsDeps): Calls {
       }
       // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
       const { id } = subscription;
-      const data = encodeMessage(schema, { kind: 'method', leg: 'start', id, ...address, payload: start });
+      const data = wire.encode({ id, ...address, leg: 'start', value: start });
       const onAbort = (): void => {
         finish(subscription, err(cancelled()), true);
       };
@@ -358,7 +353,8 @@ export function createCalls(deps: CallsDeps): Calls {
     },
 
     onResponse(message) {
-      answered(message.id, message)?.settle(message.outcome);
+      // The wire decoded the value as the method's outcome.
+      answered(message.id, message)?.settle(message.value as Outcome);
     },
 
     onReceive(message) {
@@ -368,7 +364,7 @@ export function createCalls(deps: CallsDeps): Calls {
         return;
       }
       runListener(() => {
-        subscription.listeners.receive(message.payload);
+        subscription.listeners.receive(message.value);
       });
     },
 
@@ -378,7 +374,7 @@ export function createCalls(deps: CallsDeps): Calls {
         refuseStray(message);
         return;
       }
-      finish(subscription, message.outcome, false);
+      finish(subscription, message.value as Outcome, false);
     },
 
     onUndecodable(header, cause) {
@@ -397,13 +393,14 @@ export function createCalls(deps: CallsDeps): Calls {
       }
     },
 
-    onProtocolError({ id, unsupportedMessage }) {
-      if (waiting.has(id)) {
-        answered(id, unsupportedMessage)?.settle(err(unsupported()));
+    onProtocolError(id) {
+      const call = waiting.get(id);
+      if (call !== undefined) {
+        call.settle(err(unsupported()));
         return;
       }
-      const subscription = openAt(id, unsupportedMessage);
-      if (subscription !== undefined) {
+      const subscription = subscriptions.get(id);
+      if (subscription?.state.name === 'open') {
         finish(subscription, err(unsupported()), false);
       }
     },

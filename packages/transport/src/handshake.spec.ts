@@ -8,6 +8,7 @@ import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { err, ok } from './result.js';
 import {
+  HANDSHAKE,
   RETRY_MS,
   TIMEOUT_MS,
   VERSION,
@@ -56,10 +57,7 @@ describe('the handshake', () => {
       {
         kind: 'refused',
         reason: 'malformed',
-        cause: expect.objectContaining({
-          name: 'WireDecodeError',
-          message: 'the header could not be decoded',
-        }) as Error,
+        cause: expect.any(RangeError) as RangeError,
       },
     ]);
     const heard = peer.heard.length;
@@ -110,7 +108,12 @@ describe('the handshake', () => {
     const attempt = must(peer.heard[0], 'a handshake');
 
     // When
-    peer.send({ kind: 'handshake', leg: 'response', id: attempt.id, outcome: err({ version: VERSION + 1 }) });
+    peer.send({
+      ...HANDSHAKE,
+      id: attempt.id,
+      leg: 'response',
+      value: err({ tag: 'VersionMismatch', value: { version: VERSION + 1 } }),
+    });
     await timers.advance(0);
 
     // Then
@@ -138,10 +141,10 @@ describe('the handshake', () => {
 
     // Then
     expect(peer.legs()).toEqual([
-      'request:255.0',
-      'request:255.0',
-      'request:255.0',
-      'request:255.0',
+      'request:#library.handshake',
+      'request:#library.handshake',
+      'request:#library.handshake',
+      'request:#library.handshake',
       'request:notes.touch',
       'request:notes.touch',
       'request:notes.touch',
@@ -186,7 +189,7 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.find('response:255.0').map(({ id, body }) => ({ id, body }))).toEqual([
+    expect(peer.find('response:#library.handshake').map(({ id, body }) => ({ id, body }))).toEqual([
       { id: 1, body: ok('accepter') },
       { id: 2, body: ok('accepter') },
     ]);
@@ -204,9 +207,9 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.find('response:255.0').map(({ id, body }) => ({ id, body }))).toEqual([
-      { id: 1, body: err({ version: VERSION }) },
-      { id: 2, body: err({ version: VERSION }) },
+    expect(peer.find('response:#library.handshake').map(({ id, body }) => ({ id, body }))).toEqual([
+      { id: 1, body: err({ tag: 'VersionMismatch', value: { version: VERSION } }) },
+      { id: 2, body: err({ tag: 'VersionMismatch', value: { version: VERSION } }) },
     ]);
     const failure = await outcomeOf(transport.whenConnected());
     expect(failure).toBeInstanceOf(TransportVersionMismatchError);
@@ -224,7 +227,7 @@ describe('the handshake', () => {
     });
 
     // When
-    peer.send({ kind: 'handshake', leg: 'response', id: 1, outcome: ok('peer') });
+    peer.send({ ...HANDSHAKE, id: 1, leg: 'response', value: ok('peer') });
     await timers.advance(0);
 
     // Then
@@ -258,11 +261,11 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.find('response:255.0').map(({ id, body }) => ({ id, body }))).toEqual([
+    expect(peer.find('response:#library.handshake').map(({ id, body }) => ({ id, body }))).toEqual([
       { id: 2, body: ok('accepter') },
     ]);
     expect(connected).toBe(true);
-    expect(peer.legs()).toEqual(['response:255.0', 'request:notes.touch']);
+    expect(peer.legs()).toEqual(['response:#library.handshake', 'request:notes.touch']);
   });
 
   it('As either side, a handshake leg meant for the other side is refused as invalid', async () => {
@@ -272,7 +275,7 @@ describe('the handshake', () => {
 
     // When
     opening.openHandshake();
-    accepting.peer.send({ kind: 'handshake', leg: 'response', id: 1, outcome: ok('peer') });
+    accepting.peer.send({ ...HANDSHAKE, id: 1, leg: 'response', value: ok('peer') });
     await opening.timers.advance(0);
 
     // Then

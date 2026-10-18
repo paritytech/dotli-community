@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { codec, none } from '../codec.js';
 import { err, ok } from '../result.js';
-import { defineSchema, request, subscription } from '../schema.js';
-import { encodeMessage } from '../wire.js';
+import { defineSchema, request, subscription, wireOf } from '../schema.js';
+import { LIBRARY_TRAIT } from '../wire.js';
 import { MessageRefusedError, describeMessage } from './index.js';
 
 const text = codec<string>(
@@ -24,13 +24,16 @@ const schema = defineSchema({
   },
 });
 
+const wire = wireOf(schema);
+const handshake = { trait: LIBRARY_TRAIT, method: 'handshake' } as const;
+
 describe('describeMessage', () => {
   it('As a test, I describe a recorded message and get its trait, method, leg, id and decoded body', () => {
     // Given
     const messages = [
-      encodeMessage(schema, { kind: 'method', trait: 0, method: 0, leg: 'request', id: 1, payload: 'a note' }),
-      encodeMessage(schema, { kind: 'method', trait: 0, method: 0, leg: 'response', id: 1, outcome: ok('a body') }),
-      encodeMessage(schema, { kind: 'method', trait: 0, method: 1, leg: 'stop', id: 2 }),
+      wire.encode({ trait: 'notes', method: 'read', leg: 'request', id: 1, value: 'a note' }),
+      wire.encode({ trait: 'notes', method: 'read', leg: 'response', id: 1, value: ok('a body') }),
+      wire.encode({ trait: 'notes', method: 'watch', leg: 'stop', id: 2, value: undefined }),
     ];
 
     // When
@@ -44,12 +47,14 @@ describe('describeMessage', () => {
     ]);
   });
 
-  it('As a test, I describe the library messages on the reserved trait and get their numeric ids', () => {
+  it('As a test, I describe the library messages and get them on the library trait by name', () => {
     // Given
+    const mismatch = { tag: 'VersionMismatch', value: { version: 5 } };
+    const unsupported = { tag: 'UnsupportedMessage', value: { trait: 9, method: 1 } };
     const messages = [
-      encodeMessage(schema, { kind: 'handshake', leg: 'request', id: 3, version: 2, hello: 'opener' }),
-      encodeMessage(schema, { kind: 'handshake', leg: 'response', id: 3, outcome: err({ version: 5 }) }),
-      encodeMessage(schema, { kind: 'protocolError', id: 4, unsupportedMessage: { trait: 9, method: 1 } }),
+      wire.encode({ ...handshake, leg: 'request', id: 3, value: { version: 2, hello: 'opener' } }),
+      wire.encode({ ...handshake, leg: 'response', id: 3, value: err(mismatch) }),
+      wire.encode({ trait: LIBRARY_TRAIT, method: 'protocolError', leg: 'response', id: 4, value: unsupported }),
     ];
 
     // When
@@ -57,13 +62,13 @@ describe('describeMessage', () => {
 
     // Then
     expect(described).toEqual([
-      { trait: '255', method: '0', leg: 'request', id: 3, body: { version: 2, hello: 'opener' } },
-      { trait: '255', method: '0', leg: 'response', id: 3, body: { ok: false, error: { version: 5 } } },
-      { trait: '255', method: '255', leg: 'response', id: 4, body: { trait: 9, method: 1 } },
+      { ...handshake, leg: 'request', id: 3, body: { version: 2, hello: 'opener' } },
+      { ...handshake, leg: 'response', id: 3, body: err(mismatch) },
+      { trait: LIBRARY_TRAIT, method: 'protocolError', leg: 'response', id: 4, body: unsupported },
     ]);
   });
 
-  it('As a test, I describe a message for an address the schema lacks and get its numeric ids and raw body', () => {
+  it('As a test, I describe a message for an address the schema lacks and get its numeric ids', () => {
     // Given
     const data = Uint8Array.of(5, 0, 0, 0, 9, 1, 2, 0xde, 0xad).buffer;
 
@@ -71,7 +76,7 @@ describe('describeMessage', () => {
     const described = describeMessage(schema, data);
 
     // Then
-    expect(described).toEqual({ trait: '9', method: '1', leg: 'start', id: 5, body: Uint8Array.of(0xde, 0xad) });
+    expect(described).toEqual({ trait: '9', method: '1', leg: 'start', id: 5, body: undefined });
   });
 
   it('As a test, I describe recorded data that is no message and am told why, as a refusal I can tell apart', () => {
@@ -91,6 +96,6 @@ describe('describeMessage', () => {
     const refused = thrown as MessageRefusedError;
     expect(refused.reason).toBe('malformed');
     expect(refused.message).toBe('The data is refused as malformed');
-    expect(refused.cause).toMatchObject({ name: 'WireDecodeError', message: 'the header could not be decoded' });
+    expect(refused.cause).toBeInstanceOf(RangeError);
   });
 });

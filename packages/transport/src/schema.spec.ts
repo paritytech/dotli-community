@@ -5,16 +5,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { codec, none } from './codec.js';
 import type { Codec } from './codec.js';
 import type { CallError, Result } from './result.js';
-import {
-  defineSchema,
-  methodAddress,
-  methodAt,
-  methodNamesAt,
-  request,
-  schemaHello,
-  schemaVersion,
-  subscription,
-} from './schema.js';
+import { defineSchema, request, schemaVersion, subscription, wireOf, type Schema } from './schema.js';
 import type {
   DomainError,
   HelloOf,
@@ -70,53 +61,34 @@ const traitsOf = (count: number, methods: number) =>
     ]),
   );
 
+/** The trait and method ids a message on the method goes out with. */
+const idsOf = (schema: Schema, trait: string, method: string, leg: 'request' | 'stop'): number[] => {
+  const data = wireOf(schema).encode({ trait, method, leg, id: 0, value: undefined });
+  return [...new Uint8Array(data).slice(4, 6)];
+};
+
 describe('schema', () => {
   it('As a schema author, I nest traits and methods and the ids follow their order', () => {
     // Given
     const schema = s;
 
     // When
-    const addresses = [
-      methodAddress(schema, 'resolve', 'owner'),
-      methodAddress(schema, 'resolve', 'changes'),
-      methodAddress(schema, 'frame', 'status'),
-      methodAddress(schema, 'frame', 'reload'),
+    const ids = [
+      idsOf(schema, 'resolve', 'owner', 'request'),
+      idsOf(schema, 'resolve', 'changes', 'stop'),
+      idsOf(schema, 'frame', 'status', 'stop'),
+      idsOf(schema, 'frame', 'reload', 'request'),
     ];
 
     // Then
-    expect(addresses).toEqual([
-      { traitId: 0, methodId: 0 },
-      { traitId: 0, methodId: 1 },
-      { traitId: 1, methodId: 0 },
-      { traitId: 1, methodId: 1 },
+    expect(ids).toEqual([
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 1],
     ]);
-    expect(methodAt(schema, 0, 0)?.kind).toBe('request');
-    expect(methodAt(schema, 0, 1)?.kind).toBe('subscription');
-    expect(methodAt(schema, 1, 0)?.kind).toBe('subscription');
-    expect(methodAt(schema, 1, 1)?.kind).toBe('request');
-    expect(methodAt(schema, 0, 2)).toBeUndefined();
-    expect(methodAt(schema, 2, 0)).toBeUndefined();
-    expect(methodAt(schema, 255, 0)).toBeUndefined();
-  });
-
-  it('As the library, I read the version, the hello codec and the names behind an id from a schema', () => {
-    // Given
-    const schema = s;
-
-    // When
-    const names = [methodNamesAt(schema, 0, 1), methodNamesAt(schema, 1, 0)];
-
-    // Then
-    expect(names).toEqual([
-      { trait: 'resolve', method: 'changes' },
-      { trait: 'frame', method: 'status' },
-    ]);
-    expect(methodNamesAt(schema, 0, 2)).toBeUndefined();
-    expect(methodNamesAt(schema, 255, 255)).toBeUndefined();
     expect(schemaVersion(schema)).toBe(2);
-    expect(schemaHello(schema)).toBe(peerId);
     expect(schemaVersion(withoutHello)).toBe(1);
-    expect(schemaHello(withoutHello)).toBeUndefined();
   });
 
   it('As a schema author, I change my traits record after defining the schema and its ids stay as they were', () => {
@@ -134,20 +106,9 @@ describe('schema', () => {
     traits['later'] = { owner };
 
     // Then
-    expect(methodAddress(schema, 'resolve', 'owner')).toEqual({ traitId: 0, methodId: 0 });
-    expect(methodAt(schema, 0, 0)).toEqual({
-      kind: 'request',
-      request: label,
-      response: nullableString,
-      error: undefined,
-    });
-    expect(methodAt(schema, 1, 0)).toEqual({
-      kind: 'subscription',
-      start: none,
-      receive: none,
-      interrupt: frameFailure,
-    });
-    expect(methodAt(schema, 2, 0)).toBeUndefined();
+    expect(idsOf(schema, 'resolve', 'owner', 'request')).toEqual([0, 0]);
+    expect(idsOf(schema, 'frame', 'status', 'stop')).toEqual([1, 0]);
+    expect(() => idsOf(schema, 'later', 'owner', 'request')).toThrow();
   });
 
   it('As a schema author, I am refused a schema with too many traits or methods, or a version that is not 0 to 255', () => {
@@ -165,8 +126,8 @@ describe('schema', () => {
     // Then
     expect(() => defineSchema(fits)).not.toThrow();
     expect(() => defineSchema(fitsMethods)).not.toThrow();
-    expect(methodAddress(defineSchema(fits), 'trait254', 'method0')).toEqual({ traitId: 254, methodId: 0 });
-    expect(methodAddress(defineSchema(fitsMethods), 'trait0', 'method255')).toEqual({ traitId: 0, methodId: 255 });
+    expect(idsOf(defineSchema(fits), 'trait254', 'method0', 'request')).toEqual([254, 0]);
+    expect(idsOf(defineSchema(fitsMethods), 'trait0', 'method255', 'request')).toEqual([0, 255]);
     expect(tooManyTraits).toThrow('at most 255 traits, got 256');
     expect(tooManyMethods).toThrow('trait "trait0" has at most 256 methods, got 257');
     expect(versionOver).toThrow('version must be an integer from 0 to 255, got 256');
@@ -174,19 +135,23 @@ describe('schema', () => {
     expect(versionFraction).toThrow('got 1.5');
   });
 
-  it('As a schema author, I am refused an integer-like trait or method name, so no id can leave its written place', () => {
+  it('As a schema author, I am refused a trait or method name that is no identifier, so no id can leave its place', () => {
     // Given
     const method = request({ request: none, response: none });
 
     // When
     const integerTrait = () => defineSchema({ version: 0, traits: { names: { method }, '3': { method } } });
     const integerMethod = () => defineSchema({ version: 0, traits: { names: { first: method, '0': method } } });
-    const mixed = () => defineSchema({ version: 0, traits: { v2: { m1: method }, '01x': { method } } });
+    const dotted = () => defineSchema({ version: 0, traits: { 'a.b': { method } } });
+    const empty = () => defineSchema({ version: 0, traits: { names: { '': method } } });
+    const identifiers = () => defineSchema({ version: 0, traits: { v2: { m1: method }, _$x: { method } } });
 
     // Then
-    expect(integerTrait).toThrow('trait "3" must not be an integer');
-    expect(integerMethod).toThrow('method "0" of trait "names" must not be an integer');
-    expect(mixed).not.toThrow();
+    expect(integerTrait).toThrow('trait "3" must be an identifier');
+    expect(integerMethod).toThrow('method "0" of trait "names" must be an identifier');
+    expect(dotted).toThrow('trait "a.b" must be an identifier');
+    expect(empty).toThrow('method "" of trait "names" must be an identifier');
+    expect(identifiers).not.toThrow();
   });
 
   it('As a schema author, I define a schema without type arguments and read every name, payload and answer type from it', () => {
@@ -232,17 +197,16 @@ describe('schema', () => {
     type S = typeof s;
 
     // When
-    const misspelt = () =>
-      // @ts-expect-error a method of another trait
-      methodAddress(s, 'frame', 'owner');
+    // @ts-expect-error a method of another trait
+    type Misspelt = MethodTypes<S, 'frame', 'owner'>;
 
     // Then
+    expectTypeOf<Misspelt>().toBeNever();
     // @ts-expect-error a trait the schema lacks
     expectTypeOf<MethodTypes<S, 'resolv', 'owner'>>();
     // @ts-expect-error a method the trait lacks
     expectTypeOf<MethodTypes<S, 'resolve', 'ownr'>>();
     // @ts-expect-error a trait the schema lacks
     expectTypeOf<MethodName<S, 'resolv'>>();
-    expect(misspelt).toThrow('no method "owner" in trait "frame"');
   });
 });

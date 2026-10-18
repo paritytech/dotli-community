@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A schema nests traits, then methods, then a request or a subscription. Wire ids are positions, fixed once by
-// `defineSchema`. The public types carry the payload types only, and the codecs stay behind library accessors.
+// `defineSchema`, which composes the message codec. The public types carry the payload types only, and the codecs stay
+// behind library accessors.
 
-import type { Codec } from './codec.js';
+import { none, type Codec } from './codec.js';
 import type { CallError, Result } from './result.js';
+import { createWire, requestWire, subscriptionWire, type MethodWire, type Wire } from './wire.js';
 
 // Phantom keys. No value ever holds them, so only these types can read what a def or a schema carries.
 declare const requestTypes: unique symbol;
@@ -34,36 +36,9 @@ export interface Schema<T extends Traits = Traits, H = unknown> {
   readonly [schemaTypes]: { traits: T; hello: H };
 }
 
-/** What the library reads from a request def. */
-export interface RequestImpl {
-  readonly kind: 'request';
-  readonly request: Codec<unknown>;
-  readonly response: Codec<unknown>;
-  readonly error: Codec<unknown> | undefined;
-}
-
-/** What the library reads from a subscription def. */
-export interface SubscriptionImpl {
-  readonly kind: 'subscription';
-  readonly start: Codec<unknown>;
-  readonly receive: Codec<unknown>;
-  readonly interrupt: Codec<unknown> | undefined;
-}
-
-export type MethodImpl = RequestImpl | SubscriptionImpl;
-
-interface TraitEntry {
-  readonly name: string;
-  readonly methodNames: readonly string[];
-  readonly methods: readonly MethodImpl[];
-  readonly methodIds: ReadonlyMap<string, number>;
-}
-
 interface SchemaImpl {
   readonly version: number;
-  readonly hello: Codec<unknown> | undefined;
-  readonly traits: readonly TraitEntry[];
-  readonly traitIds: ReadonlyMap<string, number>;
+  readonly wire: Wire;
 }
 
 // Trait id 255 is the library's own, so user traits take 0 to 254, and methods take every u8.
@@ -71,12 +46,13 @@ const MAX_TRAITS = 255;
 const MAX_METHODS = 256;
 const MAX_VERSION = 255;
 
-// JavaScript lists integer-like keys first and in numeric order, so such a name would not keep its written position.
-const INTEGER_LIKE = /^\d+$/;
+// An identifier keeps its written position among object keys, which an integer-like name would not, and never takes
+// the name of the library's own trait.
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
 function checkName(name: string, label: string): void {
-  if (INTEGER_LIKE.test(name)) {
-    throw new RangeError(`${label} must not be an integer, since its id would not follow the written order`);
+  if (!IDENTIFIER.test(name)) {
+    throw new RangeError(`${label} must be an identifier`);
   }
 }
 
@@ -86,13 +62,8 @@ export function request<P, R, E = never>(def: {
   response: Codec<R>;
   error?: Codec<E>;
 }): RequestDef<P, R, E> {
-  const impl: RequestImpl = Object.freeze({
-    kind: 'request',
-    request: def.request as Codec<unknown>,
-    response: def.response as Codec<unknown>,
-    error: def.error as Codec<unknown> | undefined,
-  });
-  return impl as unknown as RequestDef<P, R, E>;
+  const wire = requestWire(def.request as Codec<unknown>, def.response as Codec<unknown>, def.error as Codec<unknown>);
+  return wire as unknown as RequestDef<P, R, E>;
 }
 
 /** Declares a subscription. `interrupt` is the method's own end reason and defaults to `never`. */
@@ -101,13 +72,12 @@ export function subscription<S, V, I = never>(def: {
   receive: Codec<V>;
   interrupt?: Codec<I>;
 }): SubscriptionDef<S, V, I> {
-  const impl: SubscriptionImpl = Object.freeze({
-    kind: 'subscription',
-    start: def.start as Codec<unknown>,
-    receive: def.receive as Codec<unknown>,
-    interrupt: def.interrupt as Codec<unknown> | undefined,
-  });
-  return impl as unknown as SubscriptionDef<S, V, I>;
+  const wire = subscriptionWire(
+    def.start as Codec<unknown>,
+    def.receive as Codec<unknown>,
+    def.interrupt as Codec<unknown>,
+  );
+  return wire as unknown as SubscriptionDef<S, V, I>;
 }
 
 /**
@@ -122,33 +92,26 @@ export function defineSchema<T extends Traits, H = void>(def: {
   if (!Number.isInteger(def.version) || def.version < 0 || def.version > MAX_VERSION) {
     throw new RangeError(`version must be an integer from 0 to ${String(MAX_VERSION)}, got ${String(def.version)}`);
   }
-  const traitEntries = Object.entries(def.traits);
-  if (traitEntries.length > MAX_TRAITS) {
-    throw new RangeError(`a schema has at most ${String(MAX_TRAITS)} traits, got ${String(traitEntries.length)}`);
+  const traits = Object.entries(def.traits);
+  if (traits.length > MAX_TRAITS) {
+    throw new RangeError(`a schema has at most ${String(MAX_TRAITS)} traits, got ${String(traits.length)}`);
   }
-  const traits = traitEntries.map(([name, methods]): TraitEntry => {
+  for (const [name, methods] of traits) {
     checkName(name, `trait "${name}"`);
-    const methodEntries = Object.entries(methods);
-    if (methodEntries.length > MAX_METHODS) {
+    const methodNames = Object.keys(methods);
+    if (methodNames.length > MAX_METHODS) {
       throw new RangeError(
-        `trait "${name}" has at most ${String(MAX_METHODS)} methods, got ${String(methodEntries.length)}`,
+        `trait "${name}" has at most ${String(MAX_METHODS)} methods, got ${String(methodNames.length)}`,
       );
     }
-    for (const [methodName] of methodEntries) {
+    for (const methodName of methodNames) {
       checkName(methodName, `method "${methodName}" of trait "${name}"`);
     }
-    return Object.freeze({
-      name,
-      methodNames: Object.freeze(methodEntries.map(([methodName]) => methodName)),
-      methods: Object.freeze(methodEntries.map(([, method]) => method as unknown as MethodImpl)),
-      methodIds: new Map(methodEntries.map(([methodName], id) => [methodName, id])),
-    });
-  });
+  }
+  const hello = (def.hello ?? none) as Codec<unknown>;
   const impl: SchemaImpl = Object.freeze({
     version: def.version,
-    hello: def.hello as Codec<unknown> | undefined,
-    traits: Object.freeze(traits),
-    traitIds: new Map(traitEntries.map(([name], id) => [name, id])),
+    wire: createWire(def.version, hello, def.traits as unknown as Record<string, Record<string, MethodWire>>),
   });
   return impl as unknown as Schema<T, H>;
 }
@@ -194,43 +157,12 @@ export type HelloOf<S extends Schema> = S[typeof schemaTypes]['hello'];
 
 const internals = (schema: Schema): SchemaImpl => schema as unknown as SchemaImpl;
 
-/** The wire ids of a method. Throws on a name the schema lacks, which the types already rule out. */
-export function methodAddress<S extends Schema, T extends TraitName<S>>(
-  schema: S,
-  trait: T,
-  method: MethodName<S, T>,
-): { traitId: number; methodId: number } {
-  const impl = internals(schema);
-  const traitId = impl.traitIds.get(trait);
-  const methodId = traitId === undefined ? undefined : impl.traits[traitId]?.methodIds.get(method);
-  if (traitId === undefined || methodId === undefined) {
-    throw new Error(`no method "${method}" in trait "${trait}"`);
-  }
-  return { traitId, methodId };
-}
-
-/** The method at a pair of wire ids, or `undefined` when the schema has none there. */
-export function methodAt(schema: Schema, traitId: number, methodId: number): MethodImpl | undefined {
-  return internals(schema).traits[traitId]?.methods[methodId];
-}
-
-/** The method's names at a pair of wire ids, or `undefined` when the schema has none there. */
-export function methodNamesAt(
-  schema: Schema,
-  traitId: number,
-  methodId: number,
-): { trait: string; method: string } | undefined {
-  const trait = internals(schema).traits[traitId];
-  const method = trait?.methodNames[methodId];
-  return trait === undefined || method === undefined ? undefined : { trait: trait.name, method };
+/** The schema's message codec. */
+export function wireOf(schema: Schema): Wire {
+  return internals(schema).wire;
 }
 
 /** The version the handshake carries. */
 export function schemaVersion(schema: Schema): number {
   return internals(schema).version;
-}
-
-/** The codec of the handshake's hello, or `undefined` when the schema declares none. */
-export function schemaHello(schema: Schema): Codec<unknown> | undefined {
-  return internals(schema).hello;
 }

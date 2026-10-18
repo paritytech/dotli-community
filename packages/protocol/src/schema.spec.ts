@@ -7,6 +7,7 @@ import {
   createTransport,
   domain,
   err,
+  malformedFrame,
   ok,
   type CallError,
   type DomainError,
@@ -379,7 +380,7 @@ describe('protocolSchema', () => {
 
     // Then
     expect(values).toEqual([{ tag: 'netBytes', value: 512 }]);
-    expect(end).toEqual(err({ tag: 'MalformedFrame', reason: 'a chainDetail event is past the telemetry limits' }));
+    expect(end).toEqual(err(malformedFrame('a chainDetail event is past the telemetry limits')));
     const refusals = delivered.flatMap(data => {
       try {
         describeMessage(protocolSchema, data);

@@ -1,18 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A message is a header of `id: u32`, `trait: u8`, `method: u8` and `leg: u8`, then a body that is a scale-ts codec
-// composed from the schema's codecs for that leg, with the user payload last and no length prefix. The header, the leg
-// indices, the `Result` and `CallError` indices, the handshake on 255/0 and the protocol error on 255/255 are frozen,
-// since a peer of any release reads them to tell versions apart.
+// A message is one scale-ts codec composed from the schema, laid out as a truapi frame:
+// `[id: u32][trait: u8][method: u8][leg: u8][body]`. Trait, method and leg are nested enums, so a message reads as names,
+// and the body is the leg's codec with the user's payload last. The library's own trait sits at 255, with the handshake
+// at method 0 and the protocol error at 255. Their layout and the leg, `Result` and `CallError` indices are frozen, since
+// a peer of any release reads them to tell versions apart.
 
 import {
   Bytes,
   Enum,
   Struct,
-  Tuple,
   _void,
-  createCodec,
   createDecoder,
   enhanceCodec,
   str,
@@ -20,460 +19,258 @@ import {
   u8,
   type Codec as ScaleCodec,
 } from 'scale-ts';
-import { isPayloadFailure, none, scaleOf, thrownBy, type Codec, type Cursor } from './codec.js';
-import {
-  denied,
-  domain,
-  err,
-  hostFailure,
-  malformedFrame,
-  ok,
-  unsupported,
-  type CallError,
-  type Result,
-} from './result.js';
-import { methodAt, schemaHello, schemaVersion, type MethodImpl, type Schema } from './schema.js';
+import { none, scaleOf, type Codec } from './codec.js';
+import { err, ok, type CallError, type Result } from './result.js';
 
-export type Leg = 'request' | 'response' | 'start' | 'receive' | 'interrupt' | 'stop';
+/** The legs, at their indices on the wire. */
+const LEGS = ['request', 'response', 'start', 'receive', 'interrupt', 'stop'] as const;
 
-export const RESERVED_TRAIT = 255;
-export const HANDSHAKE_METHOD = 0;
-export const PROTOCOL_ERROR_METHOD = 255;
+export type Leg = (typeof LEGS)[number];
 
-/** A message on a schema method, addressed by its wire ids. */
-export type MethodMessage =
-  | {
-      kind: 'method';
-      leg: 'request' | 'start' | 'receive';
-      id: number;
-      trait: number;
-      method: number;
-      payload: unknown;
-    }
-  | {
-      kind: 'method';
-      leg: 'response' | 'interrupt';
-      id: number;
-      trait: number;
-      method: number;
-      outcome: Result<unknown, CallError<unknown>>;
-    }
-  | { kind: 'method'; leg: 'stop'; id: number; trait: number; method: number };
-
-/**
- * The handshake. A response's error is a version mismatch naming the accepter's version. A request's `hello` is read
- * only when its version is ours, since another release's hello may not decode, and is `undefined` otherwise.
- */
-export type HandshakeMessage =
-  | { kind: 'handshake'; leg: 'request'; id: number; version: number; hello: unknown }
-  | { kind: 'handshake'; leg: 'response'; id: number; outcome: Result<unknown, { version: number }> };
-
-/** The reply to a message whose address the receiver lacks. Nothing answers it. */
-export interface ProtocolErrorMessage {
-  kind: 'protocolError';
+/** A message, addressed by names. `value` is what its leg carries: a payload, a `Result`, or nothing on a stop. */
+export interface Message {
   id: number;
-  unsupportedMessage: { trait: number; method: number };
-}
-
-export type WireMessage = MethodMessage | HandshakeMessage | ProtocolErrorMessage;
-
-/** A message for a trait or method this schema lacks. Its body is not read, since only the sender has its codecs. */
-export interface UnknownAddressMessage {
-  kind: 'unknownAddress';
-  id: number;
+  trait: string;
+  method: string;
   leg: Leg;
-  unknownAddress: { trait: number; method: number };
+  value: unknown;
 }
 
-export type DecodedMessage = WireMessage | UnknownAddressMessage;
+/** What addresses a message. */
+export type Header = Omit<Message, 'value'>;
 
-/**
- * Data the receiver drops. `malformed` is bytes that are no message, a payload included. `invalid` is a leg its method
- * does not have, or a header the receiver bars. `header` is there once it is read, so the receiver can still answer the
- * sender.
- */
-export interface Refusal {
-  refused: 'malformed' | 'invalid';
-  cause: unknown;
-  header?: Header;
+/** The name of the library's own trait. A schema name is an identifier, so none takes it. */
+export const LIBRARY_TRAIT = '#library';
+
+const LIBRARY_TRAIT_ID = 255;
+
+/** An enum value: a variant's name and what it carries. */
+interface Tagged<T = unknown> {
+  tag: string;
+  value: T;
 }
 
-/** What precedes every body. */
-export interface Header {
-  id: number;
-  trait: number;
-  method: number;
-  leg: Leg;
+/** A method's legs, and the codec that reads them. */
+export interface MethodWire {
+  legs: readonly Leg[];
+  codec: ScaleCodec<Tagged>;
 }
 
-/** Why a receiver bars a message on its header alone, before its body is read, or null to read it. */
-export type Admit = (header: Header) => Error | null;
+const asTagged = <T extends Tagged>(codec: ScaleCodec<T>): ScaleCodec<Tagged> => codec as unknown as ScaleCodec<Tagged>;
 
-/** Data the library's own codecs cannot read. The scale-ts failure is its cause. */
-class WireDecodeError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'WireDecodeError';
-  }
-}
-
-/**
- * Names a decode failure in `what`, keeping it as the cause. A failure already named, or a user's decode's own, passes
- * unchanged.
- */
-function named<T>(c: ScaleCodec<T>, what: string): ScaleCodec<T> {
-  return createCodec(
-    c.enc,
-    createDecoder(input => {
-      try {
-        return c.dec(input);
-      } catch (cause) {
-        if (cause instanceof WireDecodeError || isPayloadFailure(cause)) {
-          throw cause;
-        }
-        throw new WireDecodeError(`${what} could not be decoded`, { cause });
-      }
-    }),
-  );
-}
-
-// scale-ts writes integers through a DataView, which wraps a number outside the type, so a value is checked first.
-function ranged(codec: ScaleCodec<number>, max: number, type: string, label: string): ScaleCodec<number> {
-  return enhanceCodec(
-    codec,
-    (value: number) => {
-      if (!Number.isInteger(value) || value < 0 || value > max) {
-        throw new RangeError(`${label} ${String(value)} is not a ${type}`);
-      }
-      return value;
-    },
-    value => value,
-  );
-}
-
-const rangedU8 = (label: string): ScaleCodec<number> => ranged(u8, 0xff, 'u8', label);
-
-const legCodec = named(
-  enhanceCodec(
-    Enum({ request: _void, response: _void, start: _void, receive: _void, interrupt: _void, stop: _void }),
-    (leg: Leg) => ({ tag: leg, value: undefined }),
-    ({ tag }): Leg => tag,
-  ),
-  'the leg',
-);
-
-/** Exported for the describer, which reads an unknown address's body as bytes after it. */
-export const headerCodec: ScaleCodec<Header> = named(
-  Struct({
-    id: ranged(u32, 0xffff_ffff, 'u32', 'id'),
-    trait: u8,
-    method: u8,
-    leg: legCodec,
-  }),
-  'the header',
-);
-
-/** The library's `Result` as an enum of `Ok` and `Err` at 0 and 1. Unlike scale-ts `Result`, it refuses any other tag. */
+/** The library's `Result`, with `Ok` at 0 and `Err` at 1. */
 function outcome<T, E>(value: ScaleCodec<T>, error: ScaleCodec<E>): ScaleCodec<Result<T, E>> {
-  return named(
-    enhanceCodec(
-      Enum({ Ok: value, Err: error }, [0, 1]),
-      (result: Result<T, E>) =>
-        result.ok ? { tag: 'Ok' as const, value: result.value } : { tag: 'Err' as const, value: result.error },
-      decoded => (decoded.tag === 'Ok' ? ok(decoded.value) : err(decoded.value)),
+  return enhanceCodec(
+    Enum({ Ok: value, Err: error }),
+    (result: Result<T, E>) =>
+      result.ok ? { tag: 'Ok' as const, value: result.value } : { tag: 'Err' as const, value: result.error },
+    decoded => (decoded.tag === 'Ok' ? ok(decoded.value) : err(decoded.value)),
+  );
+}
+
+const reason = Struct({ reason: str });
+
+/** `CallError` at truapi's indices. */
+const callError = <E>(domain: ScaleCodec<E>): ScaleCodec<CallError<E>> =>
+  Enum({
+    Domain: domain,
+    Denied: _void,
+    Unsupported: _void,
+    MalformedFrame: reason,
+    HostFailure: reason,
+    Cancelled: _void,
+  });
+
+// What `Domain` carries for a method that declares no error.
+const nothing = none as Codec<unknown>;
+
+/** A request's legs. A method that declares no error carries nothing in `Domain`. */
+export function requestWire(request: Codec<unknown>, response: Codec<unknown>, error?: Codec<unknown>): MethodWire {
+  return {
+    legs: ['request', 'response'],
+    codec: asTagged(
+      Enum(
+        {
+          request: scaleOf(request),
+          response: outcome(scaleOf(response), callError(scaleOf(error ?? nothing))),
+        },
+        [0, 1],
+      ),
     ),
-    'the outcome',
-  );
-}
-
-const reason = Struct({ reason: named(str, 'the reason') });
-
-/** The domain codec of a method that declares no error. Nothing crosses it. */
-const undeclared = createCodec<unknown>(
-  () => {
-    throw new TypeError('the method declares no domain error');
-  },
-  createDecoder(() => {
-    throw new WireDecodeError('the method declares no domain error');
-  }),
-);
-
-/** `CallError` with its indices pinned. `Cancelled` holds its index but never crosses. */
-function callError(domainCodec: Codec<unknown> | undefined): ScaleCodec<CallError<unknown>> {
-  const wire = Enum(
-    {
-      Domain: domainCodec === undefined ? undeclared : scaleOf(domainCodec),
-      Denied: _void,
-      Unsupported: _void,
-      MalformedFrame: reason,
-      HostFailure: reason,
-      Cancelled: _void,
-    },
-    [0, 1, 2, 3, 4, 5],
-  );
-  type Wire = Parameters<typeof wire.enc>[0];
-  const mapped = enhanceCodec(
-    wire,
-    (error: CallError<unknown>): Wire => {
-      switch (error.tag) {
-        case 'Domain':
-          return error;
-        case 'Denied':
-        case 'Unsupported':
-          return { tag: error.tag, value: undefined };
-        case 'MalformedFrame':
-        case 'HostFailure':
-          return { tag: error.tag, value: { reason: error.reason } };
-        case 'Cancelled':
-          throw new TypeError('Cancelled is raised on the caller side and never crosses the wire');
-      }
-    },
-    (decoded): CallError<unknown> => {
-      switch (decoded.tag) {
-        case 'Domain':
-          return domain(decoded.value);
-        case 'Denied':
-          return denied();
-        case 'Unsupported':
-          return unsupported();
-        case 'MalformedFrame':
-          return malformedFrame(decoded.value.reason);
-        case 'HostFailure':
-          return hostFailure(decoded.value.reason);
-        case 'Cancelled':
-          throw new WireDecodeError('Cancelled is raised on the caller side and never crosses the wire');
-      }
-    },
-  );
-  return named(mapped, 'the call error');
-}
-
-/**
- * What a target reads on each of its legs. A body holds the message's own fields, so it encodes from the message and
- * decodes into it. A leg the target lacks is invalid.
- */
-interface Target {
-  name: string;
-  legs: Partial<Record<Leg, LegCodecs>>;
-  message: (header: Header, body: object) => WireMessage;
-}
-
-/** A body codec. It encodes from the whole message, since it reads only its own fields. */
-type Body = ScaleCodec<object>;
-
-/** A leg's body, and the whole message as its header and body, which encodes in one pass. */
-interface LegCodecs {
-  body: Body;
-  message: ScaleCodec<[Header, object]>;
-}
-
-function target(name: string, bodies: Partial<Record<Leg, Body>>, message: Target['message']): Target {
-  const legs: Target['legs'] = {};
-  for (const [leg, body] of Object.entries(bodies) as [Leg, Body][]) {
-    legs[leg] = { body, message: Tuple(headerCodec, body) };
-  }
-  return { name, legs, message };
-}
-
-/** Composes a target once per key, on its first message, and keeps it as long as the key lives. */
-function composedOnce<K extends object>(compose: (key: K) => Target): (key: K) => Target {
-  const targets = new WeakMap<K, Target>();
-  return key => {
-    let composed = targets.get(key);
-    if (composed === undefined) {
-      composed = compose(key);
-      targets.set(key, composed);
-    }
-    return composed;
   };
 }
 
-const asBody = <T extends object>(c: ScaleCodec<T>): Body => c as unknown as Body;
-/**
- * A body of one field of the message. Mapped rather than a one-field struct, which would copy the field's bytes once
- * more before the message is merged.
- */
-function field<T>(key: string, c: ScaleCodec<T>): Body {
-  return asBody(
-    enhanceCodec(
-      c,
-      (message: Record<string, T>) => message[key] as T,
-      (value): Record<string, T> => ({ [key]: value }),
-    ),
-  );
-}
-
-const payloadBody = (c: Codec<unknown>): Body => field('payload', scaleOf(c));
-const outcomeBody = <T, E>(c: ScaleCodec<Result<T, E>>): Body => field('outcome', c);
-
-const methodTarget = composedOnce((impl: MethodImpl): Target => {
-  const message = (header: Header, body: object): WireMessage =>
-    ({ kind: 'method', ...header, ...body }) as WireMessage;
-  switch (impl.kind) {
-    case 'request':
-      return target(
-        'a request method',
+/** A subscription's legs. A method that declares no end reason carries nothing in `Domain`. */
+export function subscriptionWire(
+  start: Codec<unknown>,
+  receive: Codec<unknown>,
+  interrupt?: Codec<unknown>,
+): MethodWire {
+  return {
+    legs: ['start', 'receive', 'interrupt', 'stop'],
+    codec: asTagged(
+      Enum(
         {
-          request: payloadBody(impl.request),
-          response: outcomeBody(outcome(scaleOf(impl.response), callError(impl.error))),
+          start: scaleOf(start),
+          receive: scaleOf(receive),
+          interrupt: outcome(_void, callError(scaleOf(interrupt ?? nothing))),
+          stop: _void,
         },
-        message,
-      );
-    case 'subscription':
-      return target(
-        'a subscription method',
-        {
-          start: payloadBody(impl.start),
-          receive: payloadBody(impl.receive),
-          interrupt: outcomeBody(outcome(_void, callError(impl.interrupt))),
-          stop: asBody(Struct({})),
-        },
-        message,
-      );
-  }
-});
-
-// The one error of a handshake response, at the index every release reads.
-const versionMismatch = named(
-  enhanceCodec(
-    Enum({ VersionMismatch: Struct({ version: rangedU8('version') }) }),
-    (value: { version: number }) => ({ tag: 'VersionMismatch' as const, value }),
-    ({ value }) => value,
-  ),
-  'the handshake error',
-);
-
-const handshakeVersion = named(rangedU8('version'), 'the handshake version');
-
-const handshakeTarget = composedOnce((schema: Schema): Target => {
-  const hello = scaleOf(schemaHello(schema) ?? (none as Codec<unknown>));
-  const request = Struct({ version: handshakeVersion, hello });
-  return target(
-    'the handshake',
-    {
-      request: asBody(
-        createCodec(
-          request.enc,
-          createDecoder(input => {
-            const version = handshakeVersion.dec(input);
-            if (version !== schemaVersion(schema)) {
-              // Another release's hello may not decode, so the rest of the message is skipped.
-              Bytes(Infinity).dec(input);
-              return { version, hello: undefined };
-            }
-            return { version, hello: hello.dec(input) };
-          }),
-        ),
-      ),
-      response: outcomeBody(outcome(hello, versionMismatch)),
-    },
-    (header, body) => ({ kind: 'handshake', id: header.id, leg: header.leg, ...body }) as HandshakeMessage,
-  );
-});
-
-const PROTOCOL_ERROR_TARGET = target(
-  'the protocol error',
-  {
-    response: field(
-      'unsupportedMessage',
-      named(
-        enhanceCodec(
-          Enum({ UnsupportedMessage: Struct({ trait: rangedU8('trait'), method: rangedU8('method') }) }),
-          (value: { trait: number; method: number }) => ({ tag: 'UnsupportedMessage' as const, value }),
-          ({ value }) => value,
-        ),
-        'the protocol error',
+        [2, 3, 4, 5],
       ),
     ),
-  },
-  (header, body) => ({ kind: 'protocolError', id: header.id, ...body }) as ProtocolErrorMessage,
-);
-
-function targetAt(schema: Schema, trait: number, method: number): Target | undefined {
-  if (trait !== RESERVED_TRAIT) {
-    const impl = methodAt(schema, trait, method);
-    return impl === undefined ? undefined : methodTarget(impl);
-  }
-  if (method === HANDSHAKE_METHOD) {
-    return handshakeTarget(schema);
-  }
-  return method === PROTOCOL_ERROR_METHOD ? PROTOCOL_ERROR_TARGET : undefined;
+  };
 }
 
-function headerOf(message: WireMessage): Header {
-  switch (message.kind) {
-    case 'method':
-      return { id: message.id, trait: message.trait, method: message.method, leg: message.leg };
-    case 'handshake':
-      return { id: message.id, trait: RESERVED_TRAIT, method: HANDSHAKE_METHOD, leg: message.leg };
-    case 'protocolError':
-      return { id: message.id, trait: RESERVED_TRAIT, method: PROTOCOL_ERROR_METHOD, leg: 'response' };
-  }
-}
-
-const unfitLeg = (leg: Leg, target: Target): TypeError =>
-  new TypeError(`the ${leg} leg does not belong to ${target.name}`);
-
-/**
- * Encodes a message in one pass of its composed codec. Throws on what the wire cannot carry exactly: an id outside u32,
- * an address the schema lacks, a leg the method does not have, a domain error the method does not declare, or
- * `Cancelled`.
- */
-export function encodeMessage(schema: Schema, message: WireMessage): ArrayBuffer {
-  const header = headerOf(message);
-  const target = targetAt(schema, header.trait, header.method);
-  if (target === undefined) {
-    throw new RangeError(`no method ${String(header.method)} in trait ${String(header.trait)}`);
-  }
-  const codecs = target.legs[header.leg];
-  if (codecs === undefined) {
-    throw unfitLeg(header.leg, target);
-  }
-  // A composed encode merges its parts into one fresh buffer of exactly the message's length.
-  return codecs.message.enc([header, message]).buffer as ArrayBuffer;
-}
-
-function readMessage(schema: Schema, admit: Admit, cursor: Cursor): DecodedMessage | Refusal {
-  let header: Header;
-  try {
-    header = headerCodec.dec(cursor);
-  } catch (cause) {
-    return { refused: 'malformed', cause };
-  }
-  const barred = admit(header);
-  if (barred !== null) {
-    return { refused: 'invalid', cause: barred, header };
-  }
-  const { id, trait, method, leg } = header;
-  const target = targetAt(schema, trait, method);
-  if (target === undefined) {
-    return { kind: 'unknownAddress', id, leg, unknownAddress: { trait, method } };
-  }
-  const codecs = target.legs[leg];
-  if (codecs === undefined) {
-    return { refused: 'invalid', cause: unfitLeg(leg, target), header };
-  }
-  try {
-    const value = codecs.body.dec(cursor);
-    if (cursor.i !== cursor.byteLength) {
-      const left = cursor.byteLength - cursor.i;
-      throw new WireDecodeError(
-        `${String(left)} ${left === 1 ? 'byte follows' : 'bytes follow'} a body that has ended`,
-      );
+/** Decodes all of `data`. scale-ts hands a decoder its read position as `i`, which must reach the end. */
+function decodeAll<T>(codec: ScaleCodec<T>, data: Uint8Array | ArrayBuffer): T {
+  return createDecoder(input => {
+    const value = codec.dec(input);
+    const left = input.length - (input as Uint8Array & { i: number }).i;
+    if (left > 0) {
+      throw new RangeError(`${String(left)} bytes follow the end of the message`);
     }
-    return target.message(header, value);
-  } catch (cause) {
-    return { refused: 'malformed', cause: thrownBy(cause), header };
-  }
+    return value;
+  })(data);
 }
 
-const admitAll: Admit = () => null;
-
 /**
- * Decodes a message in one pass: the header, then the body its target and leg name, which must end where the data
- * does. `admit` bars a message on its header before the body is read. The payload reaches the user's decode as a view
- * of `data`. An address the schema lacks is not refused, so the receiver can answer it.
+ * The handshake: this side's version and hello, answered with the peer's hello or the version the peer speaks. A hello
+ * is read only at this side's version, since another release's may not decode.
  */
-export function decodeMessage(schema: Schema, data: ArrayBuffer, admit: Admit = admitAll): DecodedMessage | Refusal {
-  return createDecoder(input => readMessage(schema, admit, input as Cursor))(data);
+function handshakeWire(version: number, hello: ScaleCodec<unknown>): MethodWire {
+  const request = enhanceCodec(
+    Struct({ version: u8, hello: Bytes(Infinity) }),
+    (value: { version: number; hello: unknown }) => ({ version: value.version, hello: hello.enc(value.hello) }),
+    decoded => ({
+      version: decoded.version,
+      hello: decoded.version === version ? decodeAll(hello, decoded.hello) : undefined,
+    }),
+  );
+  const versionMismatch = Enum({ VersionMismatch: Struct({ version: u8 }) });
+  return {
+    legs: ['request', 'response'],
+    codec: asTagged(Enum({ request, response: outcome(hello, versionMismatch) }, [0, 1])),
+  };
+}
+
+/** The answer to a message at an address the receiver lacks, which names the address by its ids. */
+const protocolErrorWire: MethodWire = {
+  legs: ['response'],
+  codec: asTagged(Enum({ response: Enum({ UnsupportedMessage: Struct({ trait: u8, method: u8 }) }) }, [1])),
+};
+
+/** What a receiver makes of data. */
+export type Received =
+  | { kind: 'message'; message: Message }
+  /** A message at an address the schema lacks, which its sender is told by the address's ids. */
+  | { kind: 'unknownAddress'; id: number; leg: Leg; trait: number; method: number }
+  /**
+   * Data that is no message, or a leg its method does not have. `header` names the message when its address could be
+   * read, so its sender can still be answered.
+   */
+  | { kind: 'refused'; reason: 'malformed' | 'invalid'; cause: unknown; header?: Header };
+
+export interface Wire {
+  /** Encodes a message into a fresh buffer. Throws on a value its leg's codec cannot carry. */
+  encode(message: Message): ArrayBuffer;
+  /** Decodes all of `data` in one pass. The bytes after a payload go to the user's decode. */
+  decode(data: ArrayBuffer): Received;
+}
+
+interface Entry<T> {
+  id: number;
+  name: string;
+  value: T;
+}
+
+const entries = <T>(record: Readonly<Record<string, T>>): Entry<T>[] =>
+  Object.entries(record).map(([name, value], id) => ({ id, name, value }));
+
+/** An enum over names known only at runtime, at their ids. `Enum` types its indices by keys, which a record lacks. */
+const enumOf = <T>(variants: readonly Entry<ScaleCodec<T>>[]): ScaleCodec<Tagged<T>> =>
+  Enum(
+    Object.fromEntries(variants.map(({ name, value }) => [name, value])) as never,
+    variants.map(({ id }) => id) as never,
+  ) as unknown as ScaleCodec<Tagged<T>>;
+
+/** The ids that address a message, read alone when the message as a whole does not decode. */
+const addressIds = Struct({ id: u32, trait: u8, method: u8, leg: u8 });
+
+/** Composes the message codec of a schema's version, hello and traits. Trait and method ids are their positions. */
+export function createWire(
+  version: number,
+  hello: Codec<unknown>,
+  traits: Readonly<Record<string, Readonly<Record<string, MethodWire>>>>,
+): Wire {
+  const all: Entry<Entry<MethodWire>[]>[] = [
+    ...entries(traits).map(trait => ({ ...trait, value: entries(trait.value) })),
+    {
+      id: LIBRARY_TRAIT_ID,
+      name: LIBRARY_TRAIT,
+      value: [
+        { id: 0, name: 'handshake', value: handshakeWire(version, scaleOf(hello)) },
+        { id: 255, name: 'protocolError', value: protocolErrorWire },
+      ],
+    },
+  ];
+  const call = enumOf(
+    all.map(trait => ({ ...trait, value: enumOf(trait.value.map(m => ({ ...m, value: m.value.codec }))) })),
+  );
+  const codec = enhanceCodec(
+    Struct({ id: u32, call }),
+    ({ id, trait, method, leg, value }: Message) => ({
+      id,
+      call: { tag: trait, value: { tag: method, value: { tag: leg, value } } },
+    }),
+    ({
+      id,
+      call: {
+        tag: trait,
+        value: { tag: method, value: leg },
+      },
+    }): Message => ({
+      id,
+      trait,
+      method,
+      leg: leg.tag as Leg,
+      value: leg.value,
+    }),
+  );
+
+  /** Reads back what data that did not decode was addressed to. */
+  const refusal = (data: ArrayBuffer, cause: unknown): Received => {
+    let ids: { id: number; trait: number; method: number; leg: number };
+    try {
+      ids = addressIds.dec(data);
+    } catch {
+      return { kind: 'refused', reason: 'malformed', cause };
+    }
+    const leg = LEGS[ids.leg];
+    if (leg === undefined) {
+      return { kind: 'refused', reason: 'malformed', cause };
+    }
+    const trait = all.find(entry => entry.id === ids.trait);
+    const method = trait?.value.find(entry => entry.id === ids.method);
+    if (trait === undefined || method === undefined) {
+      return { kind: 'unknownAddress', id: ids.id, leg, trait: ids.trait, method: ids.method };
+    }
+    const header = { id: ids.id, trait: trait.name, method: method.name, leg };
+    if (!method.value.legs.includes(leg)) {
+      const invalid = new TypeError(`${trait.name}.${method.name} has no ${leg} leg`);
+      return { kind: 'refused', reason: 'invalid', cause: invalid, header };
+    }
+    return { kind: 'refused', reason: 'malformed', cause, header };
+  };
+
+  return {
+    encode: message => codec.enc(message).buffer as ArrayBuffer,
+    decode(data) {
+      try {
+        return { kind: 'message', message: decodeAll(codec, data) };
+      } catch (cause) {
+        return refusal(data, cause);
+      }
+    },
+  };
 }

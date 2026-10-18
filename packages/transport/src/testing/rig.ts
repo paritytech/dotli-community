@@ -10,11 +10,11 @@ import { codec, none } from '../codec.js';
 import type { TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
-import { defineSchema, request, subscription } from '../schema.js';
+import { defineSchema, request, subscription, wireOf } from '../schema.js';
 import type { CallError, Result } from '../result.js';
 import type { Sink } from '../serving.js';
 import { createTransport, type Transport } from '../transport.js';
-import { encodeMessage, type WireMessage } from '../wire.js';
+import { LIBRARY_TRAIT, type Header } from '../wire.js';
 import { describeMessage, type DescribedMessage } from './index.js';
 
 export const RETRY_MS = 50;
@@ -57,13 +57,10 @@ export const testSchema = defineSchema({
   },
 });
 
-// Wire ids are positions in the schema above.
+// Wire ids are positions in the schema above, for tests that write bytes by hand.
 export const NOTES = 0;
 export const READ = 0;
-export const TOUCH = 1;
 export const WATCH = 2;
-export const ECHO = 1;
-export const LISTEN = 1;
 
 export type TestSchema = typeof testSchema;
 
@@ -139,8 +136,9 @@ function rawPeer(provider: Provider) {
   provider.subscribe(data => heard.push(describeMessage(testSchema, data)));
   return {
     heard,
-    send: (message: WireMessage) => {
-      provider.post(encodeMessage(testSchema, message));
+    /** Posts a message. A stop carries no value. */
+    send: (message: Header & { value?: unknown }) => {
+      provider.post(wireOf(testSchema).encode({ ...message, value: message.value }));
     },
     /** Posts bytes the test wrote by hand. */
     sendBytes: (...bytes: number[]) => {
@@ -151,6 +149,12 @@ function rawPeer(provider: Provider) {
     find: (leg: string) => heard.filter(message => legOf(message) === leg),
   };
 }
+
+/** The address of the library's handshake. */
+export const HANDSHAKE = { trait: LIBRARY_TRAIT, method: 'handshake' } as const;
+
+/** The address of the library's protocol error, which names an address the receiver lacks by its ids. */
+export const PROTOCOL_ERROR = { trait: LIBRARY_TRAIT, method: 'protocolError', leg: 'response' } as const;
 
 /** A transport facing a raw peer, which answers nothing until the test says so. `wrap` stands between it and its side. */
 export function rawRig(
@@ -173,15 +177,15 @@ export function rawRig(
   });
   /** Answers the first handshake the transport posted, as an accepter of the same version. */
   const answerHandshake = (): void => {
-    const [attempt] = peer.find('request:255.0');
+    const [attempt] = peer.find(`request:${LIBRARY_TRAIT}.handshake`);
     if (attempt === undefined) {
       throw new Error('no handshake heard yet');
     }
-    peer.send({ kind: 'handshake', leg: 'response', id: attempt.id, outcome: { ok: true, value: 'peer' } });
+    peer.send({ ...HANDSHAKE, id: attempt.id, leg: 'response', value: { ok: true, value: 'peer' } });
   };
   /** Opens the handshake toward the transport, as an opener of `version`. */
   const openHandshake = (version = VERSION, id = 1): void => {
-    peer.send({ kind: 'handshake', leg: 'request', id, version, hello: 'peer' });
+    peer.send({ ...HANDSHAKE, id, leg: 'request', value: { version, hello: 'peer' } });
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }
