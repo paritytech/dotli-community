@@ -19,6 +19,14 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 - A call returns a `Result`. Its error side is a `CallError`, tagged by `tag`: the handler's own `Domain` error, plus
   the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`. `Cancelled` is raised by the
   caller's own side and never reaches a handler.
+- A message is a fixed header (request id, trait id, method id and leg), the leg's envelope, then the payload with no
+  length prefix. Encoding writes it into one buffer. Decoding reads the header with one cursor and hands the user's
+  decode a view of exactly the payload bytes, with no copy. Decoding is strict: a whole header, a known leg, a leg the
+  method has, and a body that ends where the message does. A message for an address the schema lacks is still read as
+  that address, so the receiver can answer it.
+- The library keeps trait 255 for itself. Method 0 is the handshake, which carries the schema version and the hello, and
+  method 255 is the protocol error that answers a message for an unknown address. Their layout never changes, so a peer
+  of any release reads the version it refuses.
 
 ## Public API
 
@@ -59,4 +67,9 @@ const schema = defineSchema({
 
 ### `./testing`
 
-Test helpers for code that uses the library. Empty for now.
+Test helpers for code that uses the library.
+
+- `describeMessage(schema, data)` reads a recorded message as `{ trait, method, leg, id, body }`. The body is the leg's
+  decoded value, left as it is: a payload, an outcome, a handshake's `{ version, hello }`, or a protocol error's
+  `{ trait, method }`. A library message or one for an address the schema lacks is named by its numeric ids, and the
+  latter keeps its body as bytes. It throws on data the schema refuses, with the refusal as the cause.

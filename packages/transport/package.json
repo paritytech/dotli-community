@@ -18,5 +18,8 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*"
+  },
+  "dependencies": {
+    "scale-ts": "^1.6.1"
   }
 }
