@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { deferred, manualTimers } from '@dotli/shared/testing';
+import { deferred, manualTimers, must } from '@dotli/shared/testing';
 import { createProviderPair } from './provider.fake.js';
 import {
   cancelled,
@@ -15,12 +15,27 @@ import {
   type CallError,
   type Result,
 } from './result.js';
-import { NOTES, READ, TOUCH, VERSION, WATCH, breakable, rawRig, rig, testSchema } from './testing/rig.js';
+import {
+  ECHO,
+  LISTEN,
+  NOTES,
+  READ,
+  TOUCH,
+  VERSION,
+  WATCH,
+  breakable,
+  outcomeOf,
+  rawRig,
+  rig,
+  serveWatch,
+  testSchema,
+  watcher,
+} from './testing/rig.js';
 import { createTransport } from './transport.js';
 
 /** A transport that accepted a raw peer's handshake. */
-async function acceptedRaw(wrap?: Parameters<typeof rawRig>[1]) {
-  const raw = rawRig('accept', wrap);
+async function acceptedRaw(wrap?: Parameters<typeof rawRig>[1], watched?: Parameters<typeof rawRig>[2]) {
+  const raw = rawRig('accept', wrap, watched);
   raw.openHandshake();
   await raw.timers.advance(0);
   return raw;
@@ -108,12 +123,15 @@ describe('serving', () => {
     // Given
     const { accepter } = rig();
     accepter.handleRequest('notes', 'read', () => ok('a'));
+    accepter.handleSubscription('notes', 'watch', () => () => undefined);
 
     // When
     const second = () => accepter.handleRequest('notes', 'read', () => ok('b'));
+    const secondSubscription = () => accepter.handleSubscription('notes', 'watch', () => () => undefined);
 
     // Then
     expect(second).toThrow('notes.read already has a handler');
+    expect(secondSubscription).toThrow('notes.watch already has a handler');
   });
 
   it('As a serving side, I unregister a handler and a call then answers Unsupported', async () => {
@@ -239,9 +257,11 @@ describe('serving', () => {
     expect(peer.legs()).toEqual(['response:255.0']);
   });
 
-  it('As a serving side, a subscription start is answered Unsupported until subscriptions are served', async () => {
+  it('As a serving side, a start with no handler is answered Unsupported, and one that does not decode MalformedFrame', async () => {
     // Given
-    const { timers, peer } = await acceptedRaw();
+    const { transport, timers, peer } = await acceptedRaw();
+    const unregister = transport.handleSubscription('notes', 'watch', () => () => undefined);
+    unregister();
 
     // When
     peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'from the top' });
@@ -403,5 +423,379 @@ describe('serving', () => {
 
     // Then
     expect(await first).toEqual(ok('slow'));
+  });
+
+  it("As a handler, I read the subscriber's start, origin and hello, and the peer's stop runs my stop function once", async () => {
+    // Given
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    const started: unknown[] = [];
+    const stop = vi.fn();
+    transport.handleSubscription('notes', 'watch', (start, context) => {
+      started.push({ start, context });
+      return stop;
+    });
+    peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'from the top' });
+    await timers.advance(0);
+
+    // When
+    peer.send({ kind: 'method', leg: 'stop', id: 4, trait: NOTES, method: WATCH });
+    peer.send({ kind: 'method', leg: 'stop', id: 4, trait: NOTES, method: WATCH });
+    await timers.advance(0);
+
+    // Then
+    expect(started).toEqual([{ start: 'from the top', context: { origin: null, hello: 'peer' } }]);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(peer.legs()).toEqual(['response:255.0']);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a serving side, a handler that throws on start interrupts with HostFailure', async () => {
+    // Given
+    const { opener, accepter, timers, issues } = rig();
+    accepter.handleSubscription('notes', 'watch', () => {
+      throw new TypeError('bad start');
+    });
+    opener.connect();
+    const heard = watcher();
+
+    // When
+    opener.subscribe('notes', 'watch', 'from the top', heard);
+    await timers.advance(0);
+
+    // Then
+    expect(heard.ends).toEqual([err(hostFailure('TypeError: bad start'))]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a handler, I interrupt inside start and my stop function still runs once', async () => {
+    // Given
+    const { opener, accepter, timers, issues } = rig();
+    const stop = vi.fn();
+    accepter.handleSubscription('notes', 'watch', (_start, _context, sink) => {
+      sink.receive('only');
+      sink.interrupt(domain('at once'));
+      return stop;
+    });
+    opener.connect();
+    const heard = watcher();
+
+    // When
+    opener.subscribe('notes', 'watch', 'from the top', heard);
+    await timers.advance(0);
+
+    // Then
+    expect(heard.values).toEqual(['only']);
+    expect(heard.ends).toEqual([err(domain('at once'))]);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(issues).toEqual([]);
+  });
+
+  it('As either side, a stop crossing an interrupt is ignored by both', async () => {
+    // Given
+    const { opener, accepter, timers, issues } = rig();
+    const { sinks, stops } = serveWatch(accepter);
+    opener.connect();
+    const heard = watcher();
+    const handle = opener.subscribe('notes', 'watch', 'from the top', heard);
+    await timers.advance(0);
+
+    // When
+    handle.stop();
+    must(sinks[0], 'a sink').interrupt();
+    await timers.advance(0);
+
+    // Then
+    expect(heard.ends).toEqual([]);
+    expect(stops).toEqual([1]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a handler, my receive and interrupt after the subscription stopped do nothing', async () => {
+    // Given
+    const { opener, accepter, timers, delivered } = rig();
+    const { sinks, stops } = serveWatch(accepter);
+    opener.connect();
+    const handle = opener.subscribe('notes', 'watch', 'from the top', watcher());
+    await timers.advance(0);
+    handle.stop();
+    await timers.advance(0);
+    const posted = delivered.length;
+
+    // When
+    const sink = must(sinks[0], 'a sink');
+    sink.receive('late');
+    sink.interrupt();
+    sink.interrupt(domain('again'));
+    await timers.advance(0);
+
+    // Then
+    expect(delivered).toHaveLength(posted);
+    expect(stops).toEqual([1]);
+  });
+
+  it('As a handler, a value or an interrupt the wire cannot carry interrupts with HostFailure with why and runs my stop', async () => {
+    // Given
+    const { opener, accepter, timers } = rig();
+    const { sinks, stops } = serveWatch(accepter);
+    opener.connect();
+    const first = watcher();
+    const second = watcher();
+    opener.subscribe('notes', 'watch', 'a', first);
+    opener.subscribe('notes', 'watch', 'b', second);
+    await timers.advance(0);
+
+    // When
+    must(sinks[0], 'the first sink').receive('');
+    must(sinks[1], 'the second sink').interrupt(cancelled());
+    await timers.advance(0);
+
+    // Then
+    expect(first.ends).toEqual([err(hostFailure('RangeError: A word is never empty'))]);
+    expect(second.ends).toEqual([
+      err(hostFailure('TypeError: Cancelled is raised on the caller side and never crosses the wire')),
+    ]);
+    expect(stops).toEqual([1, 1]);
+  });
+
+  it('As a handler, a value or an interrupt my provider cannot post is reported and never thrown into my call', async () => {
+    // Given
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts } = breakable(broken);
+    const { transport, timers, peer, issues } = await acceptedRaw(wrap);
+    const { sinks } = serveWatch(transport);
+    peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'from the top' });
+    await timers.advance(0);
+    breakPosts();
+    const sink = must(sinks[0], 'a sink');
+
+    // When
+    const receive = (): void => {
+      sink.receive('a line');
+    };
+    const interrupt = (): void => {
+      sink.interrupt();
+    };
+
+    // Then
+    expect(receive).not.toThrow();
+    expect(interrupt).not.toThrow();
+    expect(issues).toEqual([
+      { kind: 'post_failed', leg: 'receive', error: broken },
+      { kind: 'post_failed', leg: 'interrupt', error: broken },
+    ]);
+  });
+
+  it('As a serving side, disposing interrupts each subscription I serve with HostFailure carrying the reason and runs its stop', async () => {
+    // Given
+    const { opener, accepter, timers, issues } = rig();
+    const { stops } = serveWatch(accepter);
+    opener.connect();
+    const heard = [watcher(), watcher()];
+    for (const listeners of heard) {
+      opener.subscribe('notes', 'watch', 'from the top', listeners);
+    }
+    await timers.advance(0);
+
+    // When
+    accepter.dispose(new RangeError('the worker let this tab go'));
+    await timers.advance(0);
+
+    // Then
+    expect(stops).toEqual([1, 1]);
+    for (const listeners of heard) {
+      expect(listeners.ends).toEqual([err(hostFailure('RangeError: the worker let this tab go'))]);
+    }
+    expect(issues).toEqual([]);
+  });
+
+  it('As a serving side, a stop function that throws is reported as listener_threw and the others still run', async () => {
+    // Given
+    const { opener, accepter, timers, issues } = rig();
+    const bug = new Error('stop bug');
+    const stops = [
+      vi.fn(() => {
+        throw bug;
+      }),
+      vi.fn(),
+    ];
+    let started = 0;
+    accepter.handleSubscription('notes', 'watch', () => {
+      const stop = stops[started] ?? (() => undefined);
+      started += 1;
+      return stop;
+    });
+    opener.connect();
+    opener.subscribe('notes', 'watch', 'a', watcher());
+    opener.subscribe('notes', 'watch', 'b', watcher());
+    await timers.advance(0);
+
+    // When
+    accepter.dispose(new Error('the page is closing'));
+
+    // Then
+    expect(stops[0]).toHaveBeenCalledOnce();
+    expect(stops[1]).toHaveBeenCalledOnce();
+    expect(issues).toEqual([{ kind: 'listener_threw', error: bug }]);
+  });
+
+  it('As a serving side, a start that reuses the id of a running subscription, or a stop that names another method, is refused as invalid with no reply', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    const { starts, stops } = serveWatch(transport);
+    peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'first' });
+    await timers.advance(0);
+
+    // When
+    peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'second' });
+    peer.send({ kind: 'method', leg: 'stop', id: 4, trait: ECHO, method: LISTEN });
+    await timers.advance(0);
+
+    // Then
+    expect(starts).toEqual(['first']);
+    expect(stops).toEqual([0]);
+    const refused = { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error };
+    expect(issues).toEqual([refused, refused]);
+    expect(peer.legs()).toEqual(['response:255.0']);
+  });
+
+  it('As a serving side, I hear that a disposed peer left once its last stop and its last call are done', async () => {
+    // Given a peer with two subscriptions and a call this side still holds
+    const onPeerIdle = vi.fn();
+    const { opener, accepter, timers } = rig({ onPeerIdle });
+    serveWatch(accepter);
+    const held = deferred<Result<void, CallError<never>>>();
+    accepter.handleRequest('notes', 'touch', () => held.promise);
+    opener.connect();
+    opener.subscribe('notes', 'watch', 'status', watcher());
+    opener.subscribe('notes', 'watch', 'beat', watcher());
+    void outcomeOf(opener.request('notes', 'touch', undefined));
+    await timers.advance(0);
+
+    // When the peer disposes its transport
+    opener.dispose(new Error('pagehide'));
+    await timers.advance(0);
+
+    // Then the call in flight holds the peer
+    expect(onPeerIdle).not.toHaveBeenCalled();
+
+    // When the call settles
+    held.resolve(ok());
+    await timers.advance(0);
+
+    // Then the peer is gone, once
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+  });
+
+  it('As a serving side, I do not take a peer for gone when I ended its subscriptions myself', async () => {
+    // Given a peer with two subscriptions
+    const onPeerIdle = vi.fn();
+    const { opener, accepter, timers } = rig({ onPeerIdle });
+    const { sinks } = serveWatch(accepter);
+    opener.connect();
+    const heard = [watcher(), watcher()];
+    for (const listeners of heard) {
+      opener.subscribe('notes', 'watch', 'beat', listeners);
+    }
+    await timers.advance(0);
+
+    // When this side ends both
+    for (const sink of sinks) {
+      sink.interrupt();
+    }
+    await timers.advance(0);
+
+    // Then the peer heard both ends and is not taken for gone
+    for (const listeners of heard) {
+      expect(listeners.ends).toEqual([ok()]);
+    }
+    expect(onPeerIdle).not.toHaveBeenCalled();
+
+    // When it subscribes again and leaves that one
+    const again = opener.subscribe('notes', 'watch', 'beat', watcher());
+    await timers.advance(0);
+    again.stop();
+    await timers.advance(0);
+
+    // Then it is
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+  });
+
+  it('As a serving side, I take a disposed peer for gone when I ended one of its subscriptions before its stop came', async () => {
+    // Given a peer with a status and a read, over a raw peer the test speaks for
+    const onPeerIdle = vi.fn();
+    const { transport, timers, peer } = await acceptedRaw(undefined, { onPeerIdle });
+    const { sinks } = serveWatch(transport);
+    peer.send({ kind: 'method', leg: 'start', id: 1, trait: NOTES, method: WATCH, payload: 'status' });
+    peer.send({ kind: 'method', leg: 'start', id: 2, trait: NOTES, method: WATCH, payload: 'read' });
+    await timers.advance(0);
+
+    // When the peer stops its status, the read ends here, and then the peer's stop for the read arrives
+    peer.send({ kind: 'method', leg: 'stop', id: 1, trait: NOTES, method: WATCH });
+    await timers.advance(0);
+    must(sinks[1], 'the read').interrupt();
+    peer.send({ kind: 'method', leg: 'stop', id: 2, trait: NOTES, method: WATCH });
+    await timers.advance(0);
+
+    // Then the peer is gone, once
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+  });
+
+  it('As a serving side, I keep a peer that left its last subscription with a call held and goes on making calls', async () => {
+    // Given a peer whose last subscription it leaves while a call is held
+    const onPeerIdle = vi.fn();
+    const { opener, accepter, timers } = rig({ onPeerIdle });
+    serveWatch(accepter);
+    const held = deferred<Result<void, CallError<never>>>();
+    accepter.handleRequest('notes', 'touch', () => held.promise);
+    accepter.handleRequest('echo', 'say', text => ok(text));
+    opener.connect();
+    const beats = opener.subscribe('notes', 'watch', 'beat', watcher());
+    const touched = opener.request('notes', 'touch', undefined);
+    await timers.advance(0);
+    beats.stop();
+    await timers.advance(0);
+
+    // When it makes another call, and both settle
+    await opener.request('echo', 'say', 'still here');
+    held.resolve(ok());
+    await touched;
+    await timers.advance(0);
+
+    // Then it is not taken for gone
+    expect(onPeerIdle).not.toHaveBeenCalled();
+  });
+
+  it('As a serving side, a peer idle hook that throws is reported as listener_threw, and none is heard once I am disposed', async () => {
+    // Given
+    const bug = new Error('idle bug');
+    const onPeerIdle = vi.fn(() => {
+      throw bug;
+    });
+    const { transport, timers, peer, issues } = await acceptedRaw(undefined, { onPeerIdle });
+    serveWatch(transport);
+    const held = deferred<Result<void, CallError<never>>>();
+    transport.handleRequest('notes', 'touch', () => held.promise);
+    peer.send({ kind: 'method', leg: 'start', id: 1, trait: NOTES, method: WATCH, payload: 'beat' });
+    await timers.advance(0);
+
+    // When the peer leaves
+    peer.send({ kind: 'method', leg: 'stop', id: 1, trait: NOTES, method: WATCH });
+    await timers.advance(0);
+
+    // Then
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+    expect(issues).toEqual([{ kind: 'listener_threw', error: bug }]);
+
+    // When it calls, starts and leaves again, and this side is disposed before its call settles
+    peer.send({ kind: 'method', leg: 'request', id: 2, trait: NOTES, method: TOUCH, payload: undefined });
+    peer.send({ kind: 'method', leg: 'start', id: 3, trait: NOTES, method: WATCH, payload: 'beat' });
+    peer.send({ kind: 'method', leg: 'stop', id: 3, trait: NOTES, method: WATCH });
+    await timers.advance(0);
+    transport.dispose(new Error('the page is closing'));
+    held.resolve(ok());
+    await timers.advance(0);
+
+    // Then
+    expect(onPeerIdle).toHaveBeenCalledOnce();
   });
 });

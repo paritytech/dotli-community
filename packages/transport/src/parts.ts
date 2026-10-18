@@ -17,3 +17,6 @@ export interface Address {
 
 /** Posts bytes. A post the provider throws on is already reported when it returns the error. */
 export type Post = (data: ArrayBuffer, leg: Leg) => Result<void, unknown>;
+
+/** Runs a callback of the owner's. One that throws is reported as `listener_threw`, and the transport carries on. */
+export type RunListener = (listener: () => void) => void;

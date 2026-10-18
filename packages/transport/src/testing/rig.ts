@@ -9,7 +9,9 @@ import type { TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
 import { defineSchema, request, subscription } from '../schema.js';
-import { createTransport } from '../transport.js';
+import type { CallError, Result } from '../result.js';
+import type { Sink } from '../serving.js';
+import { createTransport, type Transport } from '../transport.js';
 import { encodeMessage, type WireMessage } from '../wire.js';
 import { describeMessage, type DescribedMessage } from './index.js';
 
@@ -44,10 +46,11 @@ export const testSchema = defineSchema({
     notes: {
       read: request({ request: word, response: text, error: text }),
       touch: request({ request: none, response: none }),
-      watch: subscription({ start: text, receive: text }),
+      watch: subscription({ start: word, receive: word, interrupt: text }),
     },
     echo: {
       say: request({ request: text, response: text }),
+      listen: subscription({ start: none, receive: text }),
     },
   },
 });
@@ -57,8 +60,43 @@ export const NOTES = 0;
 export const READ = 0;
 export const TOUCH = 1;
 export const WATCH = 2;
+export const ECHO = 1;
+export const LISTEN = 1;
 
 export type TestSchema = typeof testSchema;
+
+/** Listeners of a `notes.watch` subscription that record the values and the ends it hears. */
+export function watcher() {
+  const values: string[] = [];
+  const ends: Result<void, CallError<string>>[] = [];
+  return {
+    values,
+    ends,
+    receive: (value: string) => {
+      values.push(value);
+    },
+    interrupt: (outcome: Result<void, CallError<string>>) => {
+      ends.push(outcome);
+    },
+  };
+}
+
+/** Serves `notes.watch` on a transport, keeping each subscription's start and sink and counting its stops. */
+export function serveWatch(transport: Transport<TestSchema>) {
+  const starts: string[] = [];
+  const sinks: Sink<string, string>[] = [];
+  const stops: number[] = [];
+  transport.handleSubscription('notes', 'watch', (start, _context, sink) => {
+    const index = sinks.length;
+    starts.push(start);
+    sinks.push(sink);
+    stops.push(0);
+    return () => {
+      stops[index] = (stops[index] ?? 0) + 1;
+    };
+  });
+  return { starts, sinks, stops };
+}
 
 /** Records every issue a transport hands its owner. */
 export function issueLog() {
@@ -66,8 +104,13 @@ export function issueLog() {
   return { issues, onIssue: (issue: TransportIssue) => issues.push(issue) };
 }
 
+/** What a test may set on the side it watches: the accepter of `rig`, or the transport of `rawRig`. */
+interface WatchedSide {
+  onPeerIdle?: () => void;
+}
+
 /** An opener on the left and an accepter on the right, over one in-memory channel. */
-export function rig() {
+export function rig(watched: WatchedSide = {}) {
   const { left, right, delivered } = createProviderPair();
   const timers = manualTimers();
   const { issues, onIssue } = issueLog();
@@ -79,7 +122,7 @@ export function rig() {
     timeoutMs: TIMEOUT_MS,
     onIssue,
   });
-  const accepter = createTransport(testSchema, right, { handshake: 'accept', hello: 'accepter', onIssue });
+  const accepter = createTransport(testSchema, right, { handshake: 'accept', hello: 'accepter', onIssue, ...watched });
   return { opener, accepter, timers, issues, delivered, left, right };
 }
 
@@ -106,7 +149,11 @@ function rawPeer(provider: Provider) {
 }
 
 /** A transport facing a raw peer, which answers nothing until the test says so. `wrap` stands between it and its side. */
-export function rawRig(handshake: 'open' | 'accept', wrap = (provider: Provider): Provider => provider) {
+export function rawRig(
+  handshake: 'open' | 'accept',
+  wrap = (provider: Provider): Provider => provider,
+  watched: WatchedSide = {},
+) {
   const { left, right } = createProviderPair();
   const timers = manualTimers();
   const { issues, onIssue } = issueLog();
@@ -118,6 +165,7 @@ export function rawRig(handshake: 'open' | 'accept', wrap = (provider: Provider)
     retryMs: RETRY_MS,
     timeoutMs: TIMEOUT_MS,
     onIssue,
+    ...watched,
   });
   /** Answers the first handshake the transport posted, as an accepter of the same version. */
   const answerHandshake = (): void => {

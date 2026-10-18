@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+export type { SubscriptionHandle, SubscriptionListeners } from './calls.js';
 export { codec, none } from './codec.js';
 export type { Codec } from './codec.js';
 export { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
@@ -23,6 +24,13 @@ export type {
   TraitName,
   Traits,
 } from './schema.js';
-export type { CallContext } from './serving.js';
+export type { CallContext, Sink } from './serving.js';
 export { createTransport } from './transport.js';
-export type { RequestHandler, RequestOptions, Transport, TransportOptions } from './transport.js';
+export type {
+  RequestHandler,
+  RequestOptions,
+  SubscribeOptions,
+  SubscriptionHandler,
+  Transport,
+  TransportOptions,
+} from './transport.js';

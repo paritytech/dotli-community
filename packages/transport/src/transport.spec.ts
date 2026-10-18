@@ -7,11 +7,30 @@ import { manualTimers } from '@dotli/shared/testing';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { none } from './codec.js';
-import { ok, type CallError, type Result } from './result.js';
+import { err, hostFailure, ok, type CallError, type Result } from './result.js';
 import { defineSchema, request } from './schema.js';
-import type { CallContext } from './serving.js';
-import { NOTES, TOUCH, VERSION, WATCH, issueLog, rawRig, rig, testSchema, type TestSchema } from './testing/rig.js';
-import { createTransport, type RequestHandler, type Transport, type TransportOptions } from './transport.js';
+import type { CallContext, Sink } from './serving.js';
+import {
+  NOTES,
+  TOUCH,
+  VERSION,
+  WATCH,
+  issueLog,
+  rawRig,
+  rig,
+  serveWatch,
+  testSchema,
+  watcher,
+  type TestSchema,
+} from './testing/rig.js';
+import type { SubscriptionHandle } from './calls.js';
+import {
+  createTransport,
+  type RequestHandler,
+  type SubscriptionHandler,
+  type Transport,
+  type TransportOptions,
+} from './transport.js';
 import { encodeMessage, type WireMessage } from './wire.js';
 
 /** Collects what the shared log records as errors. */
@@ -54,6 +73,13 @@ describe('createTransport', () => {
         context: CallContext<TestSchema>,
       ) => Result<string, CallError<string>> | PromiseLike<Result<string, CallError<string>>>
     >();
+    expectTypeOf<SubscriptionHandler<TestSchema, 'notes', 'watch'>>().toEqualTypeOf<
+      (start: string, context: CallContext<TestSchema>, sink: Sink<string, string>) => () => void
+    >();
+    expectTypeOf<Parameters<SubscriptionHandler<TestSchema, 'echo', 'listen'>>[0]>().toBeVoid();
+    expectTypeOf<Parameters<SubscriptionHandler<TestSchema, 'echo', 'listen'>>[2]>().toEqualTypeOf<
+      Sink<string, never>
+    >();
     expectTypeOf<CallContext<TestSchema>['hello']>().toEqualTypeOf<string>();
     const typeOnly = (transport: Notes): void => {
       expectTypeOf(transport.request('notes', 'read', 'a note')).resolves.toEqualTypeOf<
@@ -63,6 +89,19 @@ describe('createTransport', () => {
       void transport.request('notes', 'watch', 'from the top');
       // @ts-expect-error the payload is text
       void transport.request('echo', 'say', 1);
+      const handle = transport.subscribe('notes', 'watch', 'from the top', {
+        receive: value => {
+          expectTypeOf(value).toEqualTypeOf<string>();
+        },
+        interrupt: outcome => {
+          expectTypeOf(outcome).toEqualTypeOf<Result<void, CallError<string>>>();
+        },
+      });
+      expectTypeOf(handle).toEqualTypeOf<SubscriptionHandle>();
+      // @ts-expect-error a request is not a subscription
+      transport.subscribe('notes', 'read', 'a note', watcher());
+      // @ts-expect-error a subscription is not served as a request
+      transport.handleRequest('notes', 'watch', () => ok());
     };
     expect(typeOnly).toBeTypeOf('function');
     expect(withoutHello).not.toThrow();
@@ -84,6 +123,48 @@ describe('createTransport', () => {
     expect(await fromOpener).toEqual(ok('the accepter heard pong from the opener'));
     expect(await fromAccepter).toEqual(ok('the opener heard ping from the accepter'));
     expect(issues).toEqual([]);
+  });
+
+  it("As a relay, I interrupt with a peer's HostFailure and my caller hears the same reason", async () => {
+    // Given a caller, a relay that serves it and subscribes onward, and an upstream that serves the relay
+    const downstream = rig();
+    const upstream = rig();
+    const caller = downstream.opener;
+    const relayServing = downstream.accepter;
+    const relayCalling = upstream.opener;
+    serveWatch(upstream.accepter);
+    relayServing.handleSubscription('notes', 'watch', (start, _context, sink) => {
+      const onward = relayCalling.subscribe('notes', 'watch', start, {
+        receive: value => {
+          sink.receive(value);
+        },
+        interrupt: outcome => {
+          if (outcome.ok) {
+            sink.interrupt();
+          } else {
+            sink.interrupt(outcome.error);
+          }
+        },
+      });
+      return () => {
+        onward.stop();
+      };
+    });
+    caller.connect();
+    relayCalling.connect();
+    const heard = watcher();
+    caller.subscribe('notes', 'watch', 'from the top', heard);
+    await downstream.timers.advance(0);
+    await upstream.timers.advance(0);
+
+    // When the upstream goes away
+    upstream.accepter.dispose(new RangeError('the worker let this tab go'));
+    await upstream.timers.advance(0);
+    await downstream.timers.advance(0);
+
+    // Then
+    expect(heard.ends).toEqual([err(hostFailure('RangeError: the worker let this tab go'))]);
+    expect([...downstream.issues, ...upstream.issues]).toEqual([]);
   });
 
   it('As a receiver, data that is not bytes is refused as not_bytes', () => {

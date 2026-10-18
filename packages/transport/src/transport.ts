@@ -6,22 +6,24 @@
 // the transport is open, and everything the parts cannot handle goes to the owner's issue hook.
 
 import { realTimers, type Timers } from '@dotli/shared';
-import { createCalls } from './calls.js';
+import { createCalls, type SubscriptionHandle, type SubscriptionListeners } from './calls.js';
 import { failureReason, logIssue, type TransportIssue } from './errors.js';
 import { createAccepter, createOpener } from './handshake.js';
 import type { Provider } from './provider.js';
-import type { Post } from './parts.js';
+import type { Post, RunListener } from './parts.js';
 import { err, ok } from './result.js';
 import {
   methodAddress,
+  type DomainError,
   type HelloOf,
   type MethodName,
   type MethodTypes,
   type RequestMethodName,
   type Schema,
+  type SubscriptionMethodName,
   type TraitName,
 } from './schema.js';
-import { createServing, type AnyHandler, type CallContext } from './serving.js';
+import { createServing, type AnyHandler, type AnySubscriptionHandler, type CallContext, type Sink } from './serving.js';
 import { HANDSHAKE_METHOD, RESERVED_TRAIT, decodeMessage, readHeader, type Header, type Refusal } from './wire.js';
 
 const DEFAULT_RETRY_MS = 50;
@@ -39,6 +41,13 @@ interface BaseOptions {
   timers?: Timers;
   /** Hears what the transport cannot handle itself. With none, each issue is logged as an error. */
   onIssue?: (issue: TransportIssue) => void;
+  /**
+   * Called when the peer's own stop leaves nothing it opened running and no request of the peer is in flight, which is
+   * how a peer that disposes leaves. A live peer keeps at least one subscription open, so dropping to none is taken as
+   * leaving. A call the peer makes after that cancels it. Ends this side posted never count, since the peer may not
+   * have heard them yet.
+   */
+  onPeerIdle?: () => void;
 }
 
 /** A transport's options. `hello` is this side's handshake value, required exactly when the schema declares one. */
@@ -51,16 +60,36 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
+export interface SubscribeOptions {
+  /** Gives up on the subscription: the peer is told to stop and `interrupt` hears `Cancelled`, once. */
+  signal?: AbortSignal;
+}
+
 type Payload<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
   MethodTypes<S, T, M> extends { request: infer P } ? P : never;
 type Answer<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
   MethodTypes<S, T, M> extends { response: infer R } ? R : never;
+
+type Start<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
+  MethodTypes<S, T, M> extends { start: infer St } ? St : never;
+type Value<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
+  MethodTypes<S, T, M> extends { receive: infer V } ? V : never;
 
 /** Serves one request method. It answers with a `Result`, and a throw or rejection answers `HostFailure`. */
 export type RequestHandler<S extends Schema, T extends TraitName<S>, M extends RequestMethodName<S, T>> = (
   payload: Payload<S, T, M>,
   context: CallContext<S>,
 ) => Answer<S, T, M> | PromiseLike<Answer<S, T, M>>;
+
+/**
+ * Serves one subscription method. It starts the subscription, sends on the sink, and returns what stops it, which runs
+ * once on the peer's stop, an interrupt or a dispose. A throw on start interrupts with `HostFailure`.
+ */
+export type SubscriptionHandler<S extends Schema, T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> = (
+  start: Start<S, T, M>,
+  context: CallContext<S>,
+  sink: Sink<Value<S, T, M>, DomainError<S, T, M>>,
+) => () => void;
 
 export interface Transport<S extends Schema> {
   /** Starts the handshake on the opener. Does nothing on the accepter, which waits for the opener. */
@@ -84,7 +113,28 @@ export interface Transport<S extends Schema> {
     method: M,
     handler: RequestHandler<S, T, M>,
   ): () => void;
-  /** Closes this side: every pending and later call rejects with `reason`, and the provider is disposed. */
+  /**
+   * Subscribes to the peer. `receive` hears each value and `interrupt` the one end. Subscriptions made before the
+   * handshake wait and go out in call order with the requests. Throws when the start does not encode.
+   */
+  subscribe<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>>(
+    trait: T,
+    method: M,
+    start: Start<S, T, M>,
+    listeners: SubscriptionListeners<Value<S, T, M>, DomainError<S, T, M>>,
+    options?: SubscribeOptions,
+  ): SubscriptionHandle;
+  /** Serves one subscription method. One handler per method, and calling the returned function unregisters it. */
+  handleSubscription<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>>(
+    trait: T,
+    method: M,
+    handler: SubscriptionHandler<S, T, M>,
+  ): () => void;
+  /**
+   * Closes this side. Every subscription it serves is interrupted with `HostFailure` carrying `reason`, every one it
+   * made is stopped at the peer and hears `onClose(reason)`, every pending and later request rejects with `reason`, and
+   * the provider is disposed.
+   */
   dispose(reason: Error): void;
 }
 
@@ -131,6 +181,13 @@ export function createTransport<S extends Schema>(
   const refuse = (cause: Error): void => {
     report({ kind: 'refused', reason: 'invalid', cause });
   };
+  const runListener: RunListener = listener => {
+    try {
+      listener();
+    } catch (error) {
+      report({ kind: 'listener_threw', error });
+    }
+  };
   const post: Post = (data, leg) => {
     try {
       provider.post(data);
@@ -141,7 +198,17 @@ export function createTransport<S extends Schema>(
     }
   };
 
-  const calls = createCalls({ schema, nextId, post, handshakeOver, closedBy, refuse });
+  const calls = createCalls({ schema, nextId, post, handshakeOver, closedBy, refuse, runListener });
+  const serving = createServing({
+    schema,
+    post,
+    // Called only for an admitted call, so the phase holds the peer's hello.
+    context: () => ({ origin: provider.peerOrigin(), hello: phase.name === 'connected' ? phase.peerHello : undefined }),
+    closed: () => phase.name === 'closed',
+    refuse,
+    runListener,
+    onPeerIdle: options.onPeerIdle,
+  });
 
   const onOpen = (peerHello: unknown): void => {
     if (phase.name !== 'connecting') {
@@ -156,6 +223,7 @@ export function createTransport<S extends Schema>(
     }
     phase = { name: 'closed', error };
     endHandshake();
+    serving.close(error);
     calls.close(error);
   };
 
@@ -169,14 +237,6 @@ export function createTransport<S extends Schema>(
           timers: options.timers ?? realTimers,
         })
       : createAccepter(handshakeDeps);
-
-  const serving = createServing({
-    schema,
-    post,
-    // Called only for an admitted call, so the phase holds the peer's hello.
-    context: () => ({ origin: provider.peerOrigin(), hello: phase.name === 'connected' ? phase.peerHello : undefined }),
-    closed: () => phase.name === 'closed',
-  });
 
   /** Why a call of the peer is not served, or null once the handshake told who the peer is. */
   const notAdmitted = (): Error | null => {
@@ -202,10 +262,10 @@ export function createTransport<S extends Schema>(
     if (refusal.refused !== 'malformed' || header === undefined || header.trait === RESERVED_TRAIT) {
       return;
     }
-    if (header.leg === 'response') {
-      calls.onUndecodableResponse(header, refusal.cause);
-    } else if (header.leg === 'request' || header.leg === 'start') {
+    if (header.leg === 'request' || header.leg === 'start') {
       serving.onMalformed(header, refusal.cause);
+    } else {
+      calls.onUndecodable(header, refusal.cause);
     }
   };
 
@@ -258,13 +318,13 @@ export function createTransport<S extends Schema>(
             serving.onStart(decoded);
             return;
           case 'receive':
+            calls.onReceive(decoded);
+            return;
           case 'interrupt':
-            refuse(
-              new Error(`A ${decoded.leg} leg names subscription ${String(decoded.id)}, which this side never opened`),
-            );
+            calls.onInterrupt(decoded);
             return;
           case 'stop':
-            // This side runs no subscription, and a stop may cross the interrupt that answered its start.
+            serving.onStop(decoded);
             return;
         }
     }
@@ -313,6 +373,26 @@ export function createTransport<S extends Schema>(
         `${trait}.${method}`,
         // The handler was typed against this method's payload, which the address decodes to.
         handler as unknown as AnyHandler,
+      );
+    },
+
+    subscribe(trait, method, start, listeners, subscribeOptions = {}) {
+      const address = methodAddress(schema, trait, method);
+      return calls.subscribe(
+        { trait: address.traitId, method: address.methodId },
+        start,
+        listeners,
+        subscribeOptions.signal,
+      );
+    },
+
+    handleSubscription(trait, method, handler) {
+      const address = methodAddress(schema, trait, method);
+      return serving.handleSubscription(
+        { trait: address.traitId, method: address.methodId },
+        `${trait}.${method}`,
+        // The handler was typed against this method's start and values, which the address decodes and encodes.
+        handler as unknown as AnySubscriptionHandler,
       );
     },
 
