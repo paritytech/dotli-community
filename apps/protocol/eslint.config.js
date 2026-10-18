@@ -15,6 +15,7 @@ const scopeBan = onlyAllowedScopes(
     '@dotli/resolver',
     '@dotli/shared',
     '@dotli/storage',
+    '@dotli/transport',
     '@config/eslint',
     '@config/vite',
   ],

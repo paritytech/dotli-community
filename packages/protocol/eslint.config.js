@@ -23,6 +23,7 @@ export default defineConfig([
         '@dotli/metrics',
         '@dotli/resolver',
         '@dotli/shared',
+        '@dotli/transport',
         '@config/eslint',
         '@config/vite',
       ],
