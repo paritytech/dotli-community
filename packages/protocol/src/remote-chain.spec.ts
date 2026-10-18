@@ -13,7 +13,7 @@ import {
   type RecordingSentry,
 } from '@dotli/metrics/testing';
 import { bindLogSink } from '@dotli/shared';
-import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { deferred, manualTimers, type ManualTimers, recordLog } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { err, hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
 import { ProtocolFatalError } from './errors.js';
@@ -83,21 +83,6 @@ function accept(connect: ServedConnect | undefined): void {
 /** The JSON-RPC ids of the sends that reached the frame, in order. */
 function sentIds(server: ChainServer): unknown[] {
   return server.sends.map(send => (JSON.parse(send.message) as { id: unknown }).id);
-}
-
-/** The arguments of every `log.error` call in this test. */
-function recordLoggedErrors(): unknown[][] {
-  const errors: unknown[][] = [];
-  onTestFinished(
-    bindLogSink({
-      emit: (level, _message, _attrs, args = []) => {
-        if (level === 'error') {
-          errors.push(args);
-        }
-      },
-    }),
-  );
-  return errors;
 }
 
 /** Every exception this test captures with its step and tags, the errors themselves, and every metric it counts. */
@@ -342,7 +327,7 @@ describe('createRemoteChains', () => {
 
   it('As a product, a refused send for a chain that just halted is ignored', async () => {
     // Given a send the frame has not answered yet
-    const logError = recordLoggedErrors();
+    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const received: JsonRpcMessage[] = [];
     const connection = people(message => received.push(message), onHalt);
@@ -733,7 +718,7 @@ describe('createRemoteChainProvider halts', () => {
 
   it('As a dotli integrator, a send still unacknowledged when the frame dies is neither logged nor answered', async () => {
     // Given
-    const logError = recordLoggedErrors();
+    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const { frame, received, connection } = await connectRemote(onHalt);
     connection.send(genesisRequest(3));
@@ -747,7 +732,7 @@ describe('createRemoteChainProvider halts', () => {
     expect(onHalt.mock.calls).toEqual([['frame']]);
     expect(received).toEqual([]);
     expect(logError).toHaveLength(1);
-    expect(logError.flat().filter(arg => arg instanceof Error)).toEqual([]);
+    expect(logError.flatMap(line => line.args ?? []).filter(arg => arg instanceof Error)).toEqual([]);
   });
 
   it('As a dotli integrator, a connection closed while its frame boots never reaches the frame', async () => {
@@ -788,7 +773,7 @@ describe('createRemoteChainProvider halts', () => {
 
   it('As a dotli integrator, a connection closed before the frame refuses it posts nothing more and logs nothing', async () => {
     // Given
-    const logError = recordLoggedErrors();
+    const logError = recordLog({ onFinished: onTestFinished, level: 'error' });
     const connection = peopleProvider()(() => undefined);
     const frame = await bootFrame();
     const connect = frame.chains.connects[0];

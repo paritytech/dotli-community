@@ -17,7 +17,7 @@ export function createRequestId(): string {
 }
 
 /** The error a call that outlived its budget fails with. */
-export function callTimeoutError(method: CallName, budgetMs: number): ProtocolRequestError {
+function callTimeoutError(method: CallName, budgetMs: number): ProtocolRequestError {
   return new ProtocolRequestError(
     `Protocol request "${method}" timed out after ${String(budgetMs)}ms`,
     'ProtocolTimeoutError',
@@ -29,7 +29,7 @@ export function callTimeoutError(method: CallName, budgetMs: number): ProtocolRe
  * A remote failure as callers see it. A bare `"Error"` carries nothing, and would cost the "crossed the protocol
  * boundary" signal dashboards filter on.
  */
-export function asCallError(error: Error): Error {
+function asCallError(error: Error): Error {
   return error instanceof ProtocolRequestError && error.name === 'Error'
     ? new ProtocolRequestError(error.message, 'ProtocolResponseError', error.method)
     : error;

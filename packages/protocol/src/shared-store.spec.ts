@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink, createStatusCell } from '@dotli/shared';
-import { manualTimers } from '@dotli/shared/testing';
+import { manualTimers, recordLog } from '@dotli/shared/testing';
 import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
@@ -38,21 +38,6 @@ function openingChanges(opened: ChangeSink[]): (serving: ProtocolTransport) => v
       return () => undefined;
     });
   };
-}
-
-/** The `log.error` messages of this test. */
-function recordLoggedErrors(): string[] {
-  const errors: string[] = [];
-  onTestFinished(
-    bindLogSink({
-      emit: (level, message) => {
-        if (level === 'error') {
-          errors.push(message);
-        }
-      },
-    }),
-  );
-  return errors;
 }
 
 describe('createSharedStore', () => {
@@ -209,7 +194,7 @@ describe('createSharedStore', () => {
     const timers = manualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const captured = recordCaptures({ onFinished: onTestFinished });
-    const errors = recordLoggedErrors();
+    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });

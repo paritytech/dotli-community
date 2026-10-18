@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A host page linked to this frame's transport over a real port pair, so specs drive the frame's handlers through the
+// A host page linked to this frame's transport over an in-memory pair, so specs drive the frame's handlers through the
 // wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any issue a
 // spec did not take, so none goes unseen.
 
 import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
+import { createProviderPair } from '@dotli/transport/testing';
 import {
-  createPortProvider,
   createTransport,
   describeIssue,
   type CallError,
@@ -35,29 +35,25 @@ export interface HostLink {
   issues: TransportIssue[];
   /** The issue hook of the link, for another transport of the spec. */
   report: (issue: TransportIssue) => void;
-  /** Disposes both ends and closes the ports. */
+  /** Disposes both ends. */
   close: () => void;
 }
 
 const links = new Set<HostLink>();
 
-/**
- * Links a host page known by `origin`. A port has no origin, so the frame's provider names it, as the window provider
- * names the admitted parent's.
- */
+/** Links a host page known by `origin`, which the frame's provider names, as the window provider names the parent's. */
 export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
-  const channel = new MessageChannel();
+  const { left, right } = createProviderPair();
   const issues: TransportIssue[] = [];
   const onIssue = (issue: TransportIssue): void => {
     issues.push(issue);
   };
-  const frameEnd = createPortProvider(channel.port1);
   const serving = createTransport(
     protocolSchema,
-    { ...frameEnd, peerOrigin: () => origin },
+    { ...right, peerOrigin: () => origin },
     { handshake: 'accept', hello: { resolutionId: null }, onIssue },
   );
-  const host = createTransport(protocolSchema, createPortProvider(channel.port2), {
+  const host = createTransport(protocolSchema, left, {
     handshake: 'open',
     hello: { resolutionId: null },
     onIssue,
@@ -79,10 +75,7 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
   return link;
 }
 
-/**
- * Closes every link a spec left open, so no port keeps the test run alive, and throws when a link kept an issue the
- * spec did not take.
- */
+/** Closes every link a spec left open, and throws when a link kept an issue the spec did not take. */
 export function closeHostLinks(): void {
   const unseen = [...links].flatMap(link => link.issues.splice(0));
   for (const link of [...links]) {
@@ -92,6 +85,14 @@ export function closeHostLinks(): void {
     throw new Error(`The links raised issues the spec did not expect: ${unseen.map(describeIssue).join(' | ')}`, {
       cause: unseen,
     });
+  }
+}
+
+/** Settles once the frame has answered a call made after everything before it, by asking for a method it lacks. */
+export async function roundTrip(link: HostLink): Promise<void> {
+  const answer = await link.host.request(protocolSchema.traits.frame.warmup, undefined);
+  if (answer.success || answer.value.tag !== 'Unsupported') {
+    throw new Error('The frame served the warmup, so the round trip proves nothing');
   }
 }
 

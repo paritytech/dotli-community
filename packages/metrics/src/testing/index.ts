@@ -5,7 +5,7 @@
 // free of any test runner so every package's tests can share it.
 
 import { bindCaptureSink, type Flow } from '../capture.js';
-import { m } from '../metrics.js';
+import { m, type SpanValue } from '../metrics.js';
 
 export interface RecordedMetric {
   /** With the `dotli.` prefix, as Sentry receives it. */
@@ -21,6 +21,8 @@ export interface RecordingSentry {
   gauges: RecordedMetric[];
   measurements: { name: string; value: number; unit: string }[];
   tags: { key: string; value: string }[];
+  /** Each span started apart from the active one, with its attributes as they stand now. */
+  spans: { name: string; attributes: Record<string, SpanValue> }[];
   /** The attributes of each count named `dotli.<name>`, in order. */
   counted: (name: string) => (Record<string, string> | undefined)[];
   /** Puts back the Sentry bound before this one. */
@@ -37,13 +39,17 @@ export interface RecordingOptions {
   onRecord?: () => void;
 }
 
-/** Bind a Sentry that records every metric, measurement and tag until `restore`. Spans run but are not recorded. */
+/**
+ * Bind a Sentry that records every metric, measurement and tag, and the attributes of each span started apart from the
+ * active one, until `restore`.
+ */
 export function bindRecordingSentry(options: RecordingOptions = {}): RecordingSentry {
   const counts: RecordedMetric[] = [];
   const distributions: RecordedMetric[] = [];
   const gauges: RecordedMetric[] = [];
   const measurements: RecordingSentry['measurements'] = [];
   const tags: RecordingSentry['tags'] = [];
+  const spans: RecordingSentry['spans'] = [];
   const recordInto =
     (list: RecordedMetric[]) =>
     (name: string, value = 1, opts?: { unit?: string; attributes?: Record<string, string> | undefined }): void => {
@@ -53,7 +59,16 @@ export function bindRecordingSentry(options: RecordingOptions = {}): RecordingSe
   const inert = (): void => undefined;
   const restore = m.bind({
     startSpan: (_opts, fn) => fn(undefined),
-    startInactiveSpan: () => ({ setAttributes: inert, end: inert }),
+    startInactiveSpan: opts => {
+      const span = { name: opts.name, attributes: { ...opts.attributes } };
+      spans.push(span);
+      return {
+        setAttributes: next => {
+          Object.assign(span.attributes, next);
+        },
+        end: inert,
+      };
+    },
     setMeasurement: (name, value, unit) => {
       measurements.push({ name, value, unit });
       options.onRecord?.();
@@ -72,6 +87,7 @@ export function bindRecordingSentry(options: RecordingOptions = {}): RecordingSe
     gauges,
     measurements,
     tags,
+    spans,
     counted: name => counts.filter(c => c.name === `dotli.${name}`).map(c => c.attributes),
     restore,
   };

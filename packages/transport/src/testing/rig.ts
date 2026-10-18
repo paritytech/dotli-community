@@ -3,8 +3,8 @@
 
 // A test schema and two transports over one in-memory channel, or one transport facing a raw peer the test speaks for.
 
-import { bindLogSink, toError } from '@dotli/shared';
-import { manualTimers } from '@dotli/shared/testing';
+import { toError } from '@dotli/shared';
+import { manualTimers, recordLog, type LogLine } from '@dotli/shared/testing';
 import { Bytes, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
 import { onTestFinished } from 'vitest';
 import type { TransportIssue } from '../errors.js';
@@ -209,19 +209,7 @@ export function rawRig(
 }
 
 /** Each error line the shared log writes during the current test. */
-export function errorLog(): string[] {
-  const errors: string[] = [];
-  onTestFinished(
-    bindLogSink({
-      emit: (level, message) => {
-        if (level === 'error') {
-          errors.push(message);
-        }
-      },
-    }),
-  );
-  return errors;
-}
+export const errorLog = (): LogLine[] => recordLog({ onFinished: onTestFinished, level: 'error' });
 
 /** A promise's outcome as a value: `{ value }` when it resolved, or the error it rejected with. */
 export async function outcomeOf<T>(promise: Promise<T>): Promise<{ value: T } | Error> {

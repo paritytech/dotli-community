@@ -3,9 +3,9 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProtocolInitFailedError, protocolSchema, type ProtocolHandler } from '@dotli/protocol';
-import { domain, err, hostFailure, unsupported, type DomainError } from '@dotli/transport';
+import { domain, err, hostFailure, type DomainError } from '@dotli/transport';
 import { createFrameBoot, type FrameBoot } from './frame-boot.js';
-import { closeHostLinks, linkHost, record, type EndOf, type HostLink } from './testing/host-link.js';
+import { closeHostLinks, linkHost, record, roundTrip, type EndOf, type HostLink } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
@@ -18,11 +18,6 @@ function setup(): { boot: FrameBoot; link: HostLink } {
   link.serving.handleSubscription(frame.status, boot.frameStatus);
   link.serving.handleSubscription(frame.telemetry, boot.telemetry);
   return { boot, link };
-}
-
-/** A call the frame does not serve, whose answer means every call sent before it has come back. */
-async function roundTrip(link: HostLink): Promise<void> {
-  await expect(link.host.request(frame.warmup, undefined)).resolves.toEqual(err(unsupported()));
 }
 
 /** Whether the recorded subscription has ended by now. */

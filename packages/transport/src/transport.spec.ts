@@ -199,7 +199,7 @@ describe('createTransport', () => {
 
     // Then
     expect(hear).not.toThrow();
-    expect(errors).toEqual([
+    expect(errors.map(line => line.message)).toEqual([
       '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
       '[transport] A listener threw, Error: The issue hook threw, Error: hook bug',
     ]);
@@ -248,12 +248,13 @@ describe('createTransport', () => {
     await timers.advance(0);
 
     // Then
+    const [refused, posted] = errors.map(line => line.message);
     expect(errors).toHaveLength(2);
-    expect(errors[0]).toBe(
+    expect(refused).toBe(
       '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
     );
-    expect(errors[1]).toMatch(/^\[transport\] A message could not be posted, Error: x+$/);
-    expect(errors[1]).toHaveLength(200);
+    expect(posted).toMatch(/^\[transport\] A message could not be posted, Error: x+$/);
+    expect(posted).toHaveLength(200);
   });
 
   it('As an owner, disposing releases the provider, and a later connect posts nothing', async () => {

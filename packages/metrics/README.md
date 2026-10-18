@@ -21,7 +21,8 @@ compile time.
   with a listed set of integrations, so the bundle carries only those. It binds the capture and log sinks and sets the
   `source` tag (`host`, `protocol`, `worker`, `sandbox`).
 - `spans` lists every metric name without the `dotli.` prefix.
-- The testing entry records counts, distributions, gauges, tags and captured exceptions. It needs no test runner.
+- The testing entry records counts, distributions, gauges, tags, the attributes of spans started apart from the active
+  one, and captured exceptions. It needs no test runner.
 - Lint holds this package to its own rules.
 
 ## Public API

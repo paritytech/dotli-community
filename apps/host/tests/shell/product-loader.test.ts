@@ -7,10 +7,11 @@
 // step, so the step sequence is not asserted. The content-shown flag and the branding are covered by the topbar
 // autohide and product branding specs.
 
+import { bindRecordingSentry, type RecordedMetric } from '@dotli/metrics/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import type { Backend } from '@dotli/config';
-import { bindCaptureSink, m, type CaptureContext } from '@dotli/metrics';
+import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { ExecutableManifest, ManifestResult, ResolvePhase } from '@dotli/resolver';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
@@ -39,43 +40,18 @@ function workerManifest(
   return { kind: 'ok', value: { $v: 1, appVersion: [1, 0, 0], ...value }, raw: '' };
 }
 
-/** The resolution span's attributes as the trace sets them, through a Sentry bound until `restore`. */
+/** The resolution span's attributes as the trace sets them, and every distribution, through a Sentry bound until `restore`. */
 function recordResolution(): {
   root: () => Record<string, unknown> | undefined;
-  /** Each distribution recorded, as its name and attributes. */
-  distributions: { name: string; attributes: Record<string, string> | undefined }[];
+  distributions: RecordedMetric[];
   restore: () => void;
 } {
-  const roots: Record<string, unknown>[] = [];
-  const distributions: { name: string; attributes: Record<string, string> | undefined }[] = [];
-  const inert = (): void => undefined;
-  const sentry: unknown = {
-    startInactiveSpan: (opts: { name: string; attributes?: Record<string, unknown> }) => {
-      const attributes: Record<string, unknown> = { ...opts.attributes };
-      if (opts.name === 'dotli.resolution') {
-        roots.push(attributes);
-      }
-      return {
-        setAttributes: (next: Record<string, unknown>) => {
-          Object.assign(attributes, next);
-        },
-        end: inert,
-      };
-    },
-    startSpan: <T>(_opts: unknown, fn: (span: undefined) => T): T => fn(undefined),
-    setMeasurement: inert,
-    metrics: {
-      count: inert,
-      distribution: (name: string, _value: number, opts?: { attributes?: Record<string, string> }) => {
-        distributions.push({ name, attributes: opts?.attributes });
-      },
-      gauge: inert,
-    },
-    setTag: inert,
-    addBreadcrumb: inert,
+  const recording = bindRecordingSentry();
+  return {
+    root: () => recording.spans.filter(span => span.name === 'dotli.resolution').at(-1)?.attributes,
+    distributions: recording.distributions,
+    restore: recording.restore,
   };
-  const restore = m.bind(sentry as Parameters<typeof m.bind>[0]);
-  return { root: () => roots.at(-1), distributions, restore };
 }
 
 interface Options {

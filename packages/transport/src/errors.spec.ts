@@ -16,7 +16,7 @@ describe('issues', () => {
     logIssue({ kind: 'post_failed', error });
 
     // Then
-    expect(errors).toEqual([
+    expect(errors.map(line => line.message)).toEqual([
       '[transport] A notes.read message could not be posted, Error: the peer window is gone',
       '[transport] A message could not be posted, Error: the peer window is gone',
     ]);

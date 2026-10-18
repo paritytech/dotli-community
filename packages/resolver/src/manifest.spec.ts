@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { recordLog } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { DotnsContracts } from '@dotli/config';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { Api } from './api.js';
 import { PartialStorageReadError } from './errors.js';
 import { readRootManifest } from './manifest.js';
@@ -50,30 +50,10 @@ function failingApi(failure: Error): Api {
   return api as Api;
 }
 
-interface LogLine {
-  level: LogLevel;
-  message: string;
-  attrs: Record<string, unknown> | undefined;
-  args: unknown[] | undefined;
-}
-
-/** Records what the test logs, until it ends and the sink bound before is back. */
-function recordLog(): LogLine[] {
-  const lines: LogLine[] = [];
-  onTestFinished(
-    bindLogSink({
-      emit: (level, message, attrs, args) => {
-        lines.push({ level, message, attrs, args });
-      },
-    }),
-  );
-  return lines;
-}
-
 describe('readRootManifest', () => {
   it('As a dotli maintainer, a manifest read leaves a breadcrumb and never the record text', async () => {
     // Given
-    const lines = recordLog();
+    const lines = recordLog({ onFinished: onTestFinished });
 
     // When
     const result = await readRootManifest(recordApi(ROOT), DOTNS, 'doom');
@@ -101,7 +81,7 @@ describe('readRootManifest', () => {
 
   it('As a dotli maintainer, a manifest read that stops partway fails with a partial read, not a wrong manifest', async () => {
     // Given a record whose second chunk the node no longer has
-    recordLog();
+    recordLog({ onFinished: onTestFinished });
 
     // When
     const result = readRootManifest(recordApi(ROOT, [1]), DOTNS, 'doom');

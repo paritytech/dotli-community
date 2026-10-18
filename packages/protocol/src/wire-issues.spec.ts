@@ -1,30 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { recordLog } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { m, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
-import { createIssueReporter } from './wire-issues.js';
 
-/** Every log line of this test, by level. */
-function recordLog(): { level: string; message: string; attrs: Record<string, unknown> | undefined }[] {
-  const lines: { level: string; message: string; attrs: Record<string, unknown> | undefined }[] = [];
-  onTestFinished(
-    bindLogSink({
-      emit: (level, message, attrs) => {
-        lines.push({ level, message, attrs });
-      },
-    }),
-  );
-  return lines;
-}
+import { createIssueReporter } from './wire-issues.js';
 
 describe('createIssueReporter', () => {
   it('As a dotli operator, I see each refused message counted once with its reason, and its cause in the trail', () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const lines = recordLog();
+    const lines = recordLog({ onFinished: onTestFinished });
     const report = createIssueReporter('host', m.count);
 
     // When
@@ -54,7 +42,7 @@ describe('createIssueReporter', () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const lines = recordLog();
+    const lines = recordLog({ onFinished: onTestFinished });
     const report = createIssueReporter('host', m.count);
 
     // When
@@ -77,7 +65,7 @@ describe('createIssueReporter', () => {
   it('As a dotli operator, I see a message of no call the provider could not post captured and logged with its side alone', () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
-    const lines = recordLog();
+    const lines = recordLog({ onFinished: onTestFinished });
     const report = createIssueReporter('host', m.count);
 
     // When

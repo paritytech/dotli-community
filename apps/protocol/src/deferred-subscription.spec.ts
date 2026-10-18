@@ -4,18 +4,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { protocolSchema, type ProtocolHandler } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
-import { err, hostFailure, unsupported, type DomainError, type MethodTypes } from '@dotli/transport';
+import { err, hostFailure, type DomainError, type MethodTypes } from '@dotli/transport';
 import { createDeferredSubscription, type DeferredSubscription } from './deferred-subscription.js';
-import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
+import { closeHostLinks, linkHost, record, roundTrip, type HostLink } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
 const { frame } = protocolSchema.traits;
-
-/** A call the frame does not serve, whose answer means every call sent before it has reached the frame. */
-async function roundTrip(link: HostLink): Promise<void> {
-  await expect(link.host.request(frame.warmup, undefined)).resolves.toEqual(err(unsupported()));
-}
 
 type Telemetry = MethodTypes<typeof frame.telemetry>;
 type TelemetryHandler = ProtocolHandler<typeof frame.telemetry>;
