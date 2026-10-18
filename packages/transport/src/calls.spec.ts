@@ -290,7 +290,7 @@ describe('calls', () => {
 
     // Then
     expect(await call).toMatchObject({ message: 'The request could not be posted', cause: broken });
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'request', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
   it('As a caller, a closed transport rejects my pending and later requests with the closing error', async () => {
@@ -844,7 +844,7 @@ describe('calls', () => {
     expect(closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.legs()).toEqual(['request:255.0']);
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
   it('As a caller, an issue hook that stops my subscription on its failed start post leaves the peer nothing to stop', async () => {
@@ -883,7 +883,7 @@ describe('calls', () => {
     expect(closes).toEqual([]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.legs()).toEqual(['request:255.0']);
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
   it('As a caller, a start my provider cannot post closes my subscription with why, and the post is reported', async () => {
@@ -910,6 +910,6 @@ describe('calls', () => {
     expect(closes).toEqual([failed, failed]);
     expect(heard.ends).toEqual([]);
     expect(peer.legs()).toEqual(['request:255.0']);
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 });

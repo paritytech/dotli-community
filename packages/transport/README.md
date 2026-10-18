@@ -6,7 +6,8 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 ## Design
 
 - A codec is an opaque value built from two plain functions, one that turns a value into bytes and one that turns bytes
-  back. Code outside the library cannot read it, so the wire format stays a private detail.
+  back. Inside, it is a SCALE codec, so the library composes it with its own. Code outside the library cannot read it,
+  so the wire format stays a private detail.
 - A schema nests traits, then methods, then a request or a subscription. A request carries one payload and is answered
   with a `Result`. A subscription starts with one payload, receives values, and ends with an interrupt that is a
   `Result` or with a stop that carries nothing. Each payload has its own codec.
@@ -19,12 +20,15 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 - A call returns a `Result`. Its error side is a `CallError`, tagged by `tag`: the handler's own `Domain` error, plus
   the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`. `Cancelled` is raised by the
   caller's own side and never reaches a handler.
-- A message is a fixed header (request id, trait id, method id and leg), the leg's envelope, then the payload with no
-  length prefix. Encoding writes it into one buffer. Decoding reads the header with one cursor and hands the user's
-  decode a view of exactly the payload bytes, with no copy. The view shares the message's buffer at a non-zero offset,
-  so a decode must respect `byteOffset` or copy the bytes first. Decoding is strict: a whole header, a known leg, a leg
-  the method has, and a body that ends where the message does. A message for an address the schema lacks is still read
-  as that address, so the receiver can answer it.
+- A message is a SCALE codec composed from the schema. Its header is a struct of the request id (`u32`), the trait and
+  method ids (`u8`) and the leg (an enum). Its body is the leg's codec: the payload for a request, a start or a value, a
+  SCALE `Result` of the answer and a `CallError` for a response, a `Result` of nothing and a `CallError` for an
+  interrupt, and nothing for a stop. `CallError` is a SCALE enum with its indices pinned, and a reason is a SCALE
+  string. The payload always comes last, with no length prefix. Encoding is one pass of the composed codec. Decoding
+  reads the header, then the body its target and leg name, on one cursor, and refuses a body that does not end where the
+  message does. The user's decode gets a view of exactly the payload bytes, with no copy. The view shares the message's
+  buffer at a non-zero offset, so a decode must respect `byteOffset` or copy the bytes first. A message for an address
+  the schema lacks is still read as that address, so the receiver can answer it.
 - The library keeps trait 255 for itself. Method 0 is the handshake, which carries the schema version and the hello, and
   method 255 is the protocol error that answers a message for an unknown address. Their layout never changes, so a peer
   of any release reads the version it refuses.
@@ -98,7 +102,7 @@ sequenceDiagram
   before the handshake, or after a failed one, is refused on its header alone with no reply, whether its payload decodes
   and whether the schema has its address or not. Such a stop never counts toward `onPeerIdle`.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed`, `invalid` or
-  `not_bytes`, with its cause), a post the provider threw on (with its leg), and a callback of the owner's that threw
+  `not_bytes`, with its cause), a post the provider threw on (with its error), and a callback of the owner's that threw
   (`listener_threw`: a subscription's listeners or `onClose`, a stop function, or `onPeerIdle`). A throw while a message
   is handled is reported as a refusal too and never reaches the provider, and neither does a throw from the hook itself,
   which is logged with the issue it was handed. With no hook, each issue is logged as one bounded error. Only expected
@@ -142,7 +146,7 @@ sequenceDiagram
   - `retryMs` (50 by default) and `timeoutMs` (5000 by default) pace the opener.
   - `timers` replaces the page's clock and timers.
   - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause? }`,
-    `{ kind: 'post_failed', leg, error }` or `{ kind: 'listener_threw', error }`.
+    `{ kind: 'post_failed', error }` or `{ kind: 'listener_threw', error }`.
   - `onPeerIdle()` hears that the peer left, as described above.
 - `Transport`:
   - `connect()` starts the handshake on the opener and does nothing on the accepter.

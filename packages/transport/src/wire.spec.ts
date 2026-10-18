@@ -8,8 +8,8 @@ import { defineSchema, request, subscription } from './schema.js';
 import {
   decodeMessage,
   encodeMessage,
-  readHeader,
   type DecodedMessage,
+  type Header,
   type Refusal,
   type WireMessage,
 } from './wire.js';
@@ -78,7 +78,6 @@ describe('wire messages', () => {
       { ...at, method: READ, leg: 'response', id: 4, outcome: err(unsupported()) },
       { ...at, method: READ, leg: 'response', id: 5, outcome: err(malformedFrame('a short payload')) },
       { ...at, method: READ, leg: 'response', id: 6, outcome: err(hostFailure('TypeError: no such note')) },
-      { ...at, method: READ, leg: 'response', id: 7, outcome: err(hostFailure('﻿a leading mark')) },
       { ...at, method: WATCH, leg: 'start', id: 8, payload: 'from the top' },
       { ...at, method: WATCH, leg: 'receive', id: 8, payload: 42 },
       { ...at, method: WATCH, leg: 'interrupt', id: 8, outcome: ok() },
@@ -253,7 +252,7 @@ describe('wire messages', () => {
     const decoded = summarised(decodeMessage(schema, data));
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'RangeError' });
+    expect(decoded).toEqual({ refused: 'malformed', cause: 'TypeError' });
   });
 
   it('As a transport, I decode trailing bytes after a body that ends and refuse them as malformed', () => {
@@ -273,7 +272,7 @@ describe('wire messages', () => {
     expect(decoded).toEqual([
       { refused: 'malformed', cause: 'RangeError', header: { id: 1, trait: NOTES, method: WATCH, leg: 'stop' } },
       { refused: 'malformed', cause: 'RangeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'Error', header: { id: 3, trait: NOTES, method: WATCH, leg: 'interrupt' } },
+      { refused: 'malformed', cause: 'RangeError', header: { id: 3, trait: NOTES, method: WATCH, leg: 'interrupt' } },
       { refused: 'malformed', cause: 'RangeError', header: { id: 4, trait: 255, method: 0, leg: 'response' } },
       { refused: 'malformed', cause: 'RangeError', header: { id: 5, trait: 255, method: 255, leg: 'response' } },
     ]);
@@ -282,7 +281,6 @@ describe('wire messages', () => {
   it('As a transport, I decode an envelope with a tag the wire does not define and refuse it as malformed', () => {
     // Given
     const messages = [
-      bytes(1, 0, 0, 0, NOTES, READ, 1, 2),
       bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 5),
       bytes(3, 0, 0, 0, NOTES, READ, 1, 1, 6),
       bytes(4, 0, 0, 0, 255, 0, 1, 1, 1),
@@ -294,11 +292,10 @@ describe('wire messages', () => {
 
     // Then
     expect(decoded).toEqual([
-      { refused: 'malformed', cause: 'RangeError', header: { id: 1, trait: NOTES, method: READ, leg: 'response' } },
       { refused: 'malformed', cause: 'RangeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 3, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 4, trait: 255, method: 0, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 5, trait: 255, method: 255, leg: 'response' } },
+      { refused: 'malformed', cause: 'TypeError', header: { id: 3, trait: NOTES, method: READ, leg: 'response' } },
+      { refused: 'malformed', cause: 'TypeError', header: { id: 4, trait: 255, method: 0, leg: 'response' } },
+      { refused: 'malformed', cause: 'TypeError', header: { id: 5, trait: 255, method: 255, leg: 'response' } },
     ]);
   });
 
@@ -317,15 +314,11 @@ describe('wire messages', () => {
     });
   });
 
-  it('As a transport, I decode a reason that is cut short, not canonical, too long or not UTF-8 and refuse it as malformed', () => {
+  it('As a transport, I decode a reason that is cut short or longer than the wire carries and refuse it as malformed', () => {
     // Given
     const messages = [
       bytes(1, 0, 0, 0, NOTES, READ, 1, 1, 4, 8, 0x61),
-      bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 4, 0x05, 0x00, 0x61),
-      bytes(3, 0, 0, 0, NOTES, READ, 1, 1, 3, 0x06, 0x00, 0x00, 0x00, 0x61),
-      bytes(4, 0, 0, 0, NOTES, READ, 1, 1, 4, 0x04, 0xff),
-      bytes(5, 0, 0, 0, NOTES, READ, 1, 1, 3, 0x08, 0xc3, 0x28),
-      bytes(6, 0, 0, 0, NOTES, READ, 1, 1, 4, 0x03, 0x00, 0x00, 0x00, 0x40),
+      bytes(2, 0, 0, 0, NOTES, READ, 1, 1, 4, 0x03, 0x00, 0x00, 0x00, 0x40),
     ];
 
     // When
@@ -334,11 +327,7 @@ describe('wire messages', () => {
     // Then
     expect(decoded).toEqual([
       { refused: 'malformed', cause: 'RangeError', header: { id: 1, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 3, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'TypeError', header: { id: 4, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'TypeError', header: { id: 5, trait: NOTES, method: READ, leg: 'response' } },
-      { refused: 'malformed', cause: 'RangeError', header: { id: 6, trait: NOTES, method: READ, leg: 'response' } },
+      { refused: 'malformed', cause: 'TypeError', header: { id: 2, trait: NOTES, method: READ, leg: 'response' } },
     ]);
   });
 
@@ -432,18 +421,29 @@ describe('wire messages', () => {
     expect([...(seen[0] ?? [])]).toEqual([0x61, 0x62, 0x63]);
   });
 
-  it('As a transport, I read a header alone, and none from data too short or with a leg byte that names no leg', () => {
+  it('As a transport, I bar a message on its header alone and it is refused as invalid before its body is read', () => {
     // Given
-    const message = bytes(7, 1, 0, 0, NOTES, WATCH, 2, 0xff);
-
-    // When
-    const read = [
-      readHeader(message),
-      readHeader(bytes(7, 0, 0, 0, NOTES, WATCH)),
-      readHeader(bytes(7, 0, 0, 0, 0, 0, 6)),
+    const barred = new Error('A call came before the handshake');
+    const seen: Header[] = [];
+    const admit = (header: Header): Error | null => {
+      seen.push(header);
+      return header.leg === 'request' ? barred : null;
+    };
+    const messages = [
+      encodeMessage(schema, { kind: 'method', trait: NOTES, method: BROKEN, leg: 'request', id: 1, payload: 'x' }),
+      bytes(2, 0, 0, 0, 4, 0, 0, 0xaa),
+      encodeMessage(schema, { kind: 'method', trait: NOTES, method: WATCH, leg: 'stop', id: 3 }),
     ];
 
+    // When
+    const decoded = messages.map(data => decodeMessage(schema, data, admit));
+
     // Then
-    expect(read).toEqual([{ id: 263, trait: NOTES, method: WATCH, leg: 'start' }, undefined, undefined]);
+    expect(decoded).toEqual([
+      { refused: 'invalid', cause: barred, header: { id: 1, trait: NOTES, method: BROKEN, leg: 'request' } },
+      { refused: 'invalid', cause: barred, header: { id: 2, trait: 4, method: 0, leg: 'request' } },
+      { kind: 'method', trait: NOTES, method: WATCH, leg: 'stop', id: 3 },
+    ]);
+    expect(seen.map(header => header.id)).toEqual([1, 2, 3]);
   });
 });

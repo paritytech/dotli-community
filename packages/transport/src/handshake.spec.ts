@@ -164,7 +164,7 @@ describe('the handshake', () => {
 
     // Then
     expect(await outcome).toMatchObject({ cause: broken });
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'request', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
   it('As an accepter, I answer every handshake attempt with the outcome of the first', async () => {
@@ -240,7 +240,7 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'response', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
     expect(connected).toBe(false);
 
     // When

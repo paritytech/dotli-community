@@ -33,9 +33,9 @@ export function createIssueReporter(side: WireSide, count: typeof m.count): (iss
         return;
       }
       case 'post_failed': {
-        const { leg, error } = issue;
-        captureException(error, { flow: 'protocol', step: 'serve_post', tags: { leg, side } });
-        log.error(`[dot.li protocol] A ${leg} message could not be posted`, error);
+        const { error } = issue;
+        captureException(error, { flow: 'protocol', step: 'serve_post', tags: { side } });
+        log.error('[dot.li protocol] A message could not be posted', error);
         count(S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: errorName(error) ?? 'unknown', side });
         return;
       }

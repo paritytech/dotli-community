@@ -1,13 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Bytes, Tuple } from 'scale-ts';
 import { methodNamesAt, type Schema } from '../schema.js';
 import {
   HANDSHAKE_METHOD,
-  HEADER_BYTES,
   PROTOCOL_ERROR_METHOD,
   RESERVED_TRAIT,
   decodeMessage,
+  headerCodec,
   type DecodedMessage,
 } from '../wire.js';
 
@@ -58,7 +59,7 @@ function describeDecoded(schema: Schema, message: DecodedMessage, data: ArrayBuf
         method: String(message.unknownAddress.method),
         leg: message.leg,
         id: message.id,
-        body: new Uint8Array(data.slice(HEADER_BYTES)),
+        body: Tuple(headerCodec, Bytes(Infinity)).dec(data)[1],
       };
   }
 }

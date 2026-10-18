@@ -263,7 +263,7 @@ describe('createTransport', () => {
     // Then
     expect(hear).not.toThrow();
     expect(errors).toEqual([
-      '[transport] A message was refused as malformed, RangeError: expected a 7-byte header, got 3 bytes',
+      '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
       '[transport] A listener threw, Error: The issue hook threw, Error: hook bug',
     ]);
   });
@@ -313,9 +313,9 @@ describe('createTransport', () => {
     // Then
     expect(errors).toHaveLength(2);
     expect(errors[0]).toBe(
-      '[transport] A message was refused as malformed, RangeError: expected a 7-byte header, got 3 bytes',
+      '[transport] A message was refused as malformed, RangeError: Offset is outside the bounds of the DataView',
     );
-    expect(errors[1]).toMatch(/^\[transport\] A request message could not be posted, Error: x+$/);
+    expect(errors[1]).toMatch(/^\[transport\] A message could not be posted, Error: x+$/);
     expect(errors[1]).toHaveLength(200);
   });
 

@@ -30,7 +30,7 @@ export class TransportVersionMismatchError extends Error {
  */
 export type TransportIssue =
   | { kind: 'refused'; reason: 'malformed' | 'invalid' | 'not_bytes'; cause?: unknown }
-  | { kind: 'post_failed'; leg: string; error: unknown }
+  | { kind: 'post_failed'; error: unknown }
   | { kind: 'listener_threw'; error: unknown };
 
 // A reason crosses the wire and may end up in a metric label, so it stays short.
@@ -56,7 +56,7 @@ function describeIssue(issue: TransportIssue): string {
         ? `A message was refused as ${issue.reason}`
         : `A message was refused as ${issue.reason}, ${failureReason(issue.cause)}`;
     case 'post_failed':
-      return `A ${issue.leg} message could not be posted, ${failureReason(issue.error)}`;
+      return `A message could not be posted, ${failureReason(issue.error)}`;
     case 'listener_threw':
       return `A listener threw, ${failureReason(issue.error)}`;
   }

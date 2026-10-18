@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createCodec, createDecoder, type Codec as ScaleCodec } from 'scale-ts';
+
 declare const brand: unique symbol;
 
 /** An opaque byte codec for one value type. Build one with `codec`; only the library reads it. */
@@ -8,31 +10,29 @@ export interface Codec<T> {
   readonly [brand]?: (value: T) => T;
 }
 
-interface CodecImpl<T> {
-  encode(value: T): Uint8Array;
-  decode(bytes: Uint8Array): T;
-}
+/** scale-ts hands a decoder its own byte array over the whole buffer, which carries the read position. */
+type Cursor = Uint8Array & { i: number };
 
-/** Wraps plain encode and decode functions as a codec. */
+/**
+ * Wraps plain encode and decode functions as a codec. A payload is the last field of a message, so the decode gets the
+ * rest of the input as a view of the message's buffer, with no copy, and the read ends there.
+ */
 export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8Array) => T): Codec<T> {
-  const impl: CodecImpl<T> = { encode, decode };
-  return impl as unknown as Codec<T>;
+  const scale = createCodec<T>(
+    encode,
+    createDecoder(input => {
+      const cursor = input as Cursor;
+      const value = decode(new Uint8Array(cursor.buffer, cursor.i));
+      cursor.i = cursor.byteLength;
+      return value;
+    }),
+  );
+  return scale as unknown as Codec<T>;
 }
 
-/**
- * Turns a value into bytes. A library-internal accessor, so it stays out of the index
- * and schema code cannot call it.
- */
-export function encodeValue<T>(c: Codec<T>, value: T): Uint8Array {
-  return (c as unknown as CodecImpl<T>).encode(value);
-}
-
-/**
- * Turns bytes into a value. A library-internal accessor, so it stays out of the index
- * and schema code cannot call it.
- */
-export function decodeValue<T>(c: Codec<T>, bytes: Uint8Array): T {
-  return (c as unknown as CodecImpl<T>).decode(bytes);
+/** The scale-ts codec behind a codec. A library-internal accessor, so it stays out of the index. */
+export function scaleOf<T>(c: Codec<T>): ScaleCodec<T> {
+  return c as unknown as ScaleCodec<T>;
 }
 
 /** The codec of an empty payload. Decoding refuses any byte. */

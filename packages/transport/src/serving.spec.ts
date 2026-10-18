@@ -199,7 +199,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([{ kind: 'post_failed', leg: 'response', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
   });
 
   it("As a serving side, a payload that does not decode is answered MalformedFrame with the cause's message, and reported", async () => {
@@ -398,7 +398,7 @@ describe('serving', () => {
 
     // Then
     expect(issues).toEqual([
-      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
       { kind: 'refused', reason: 'invalid', cause: expect.any(TypeError) as TypeError },
     ]);
     expect(peer.legs()).toEqual(['response:255.0']);
@@ -587,8 +587,8 @@ describe('serving', () => {
     expect(receive).not.toThrow();
     expect(interrupt).not.toThrow();
     expect(issues).toEqual([
-      { kind: 'post_failed', leg: 'receive', error: broken },
-      { kind: 'post_failed', leg: 'interrupt', error: broken },
+      { kind: 'post_failed', error: broken },
+      { kind: 'post_failed', error: broken },
     ]);
     expect(stops).toEqual([1]);
   });

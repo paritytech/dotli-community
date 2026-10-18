@@ -74,7 +74,7 @@ export function createOpener(deps: HandshakeDeps & { retryMs: number; timeoutMs:
       version,
       hello: deps.hello,
     });
-    const posted = deps.post(data, 'request');
+    const posted = deps.post(data);
     if (!posted.ok) {
       throw new Error('The handshake could not be posted', { cause: posted.error });
     }
@@ -146,7 +146,7 @@ export function createAccepter(deps: HandshakeDeps): Handshake {
         return;
       }
       // An answer the opener never heard decides nothing, so its next attempt is answered afresh.
-      if (!deps.post(data, 'response').ok || !deciding) {
+      if (!deps.post(data).ok || !deciding) {
         return;
       }
       first = outcome;

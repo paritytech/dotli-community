@@ -129,10 +129,10 @@ export function createServing(deps: ServingDeps): Serving {
     }
     const { id, trait, method } = header;
     if (header.leg === 'request') {
-      post(encodeOutcome({ id, trait, method, leg: 'response' }, outcome), 'response');
+      post(encodeOutcome({ id, trait, method, leg: 'response' }, outcome));
     } else if (header.leg === 'start') {
       lateEnds.add(id);
-      post(encodeOutcome({ id, trait, method, leg: 'interrupt' }, outcome), 'interrupt');
+      post(encodeOutcome({ id, trait, method, leg: 'interrupt' }, outcome));
     }
   };
 
@@ -152,7 +152,7 @@ export function createServing(deps: ServingDeps): Serving {
     }
     running.delete(id);
     lateEnds.add(id);
-    post(encodeOutcome({ id, trait: entry.trait, method: entry.method, leg: 'interrupt' }, outcome), 'interrupt');
+    post(encodeOutcome({ id, trait: entry.trait, method: entry.method, leg: 'interrupt' }, outcome));
     runStop(entry);
   };
 
@@ -223,7 +223,7 @@ export function createServing(deps: ServingDeps): Serving {
             finish(id, entry, err(hostFailure(failureReason(error))));
             return;
           }
-          post(data, 'receive');
+          post(data);
         },
         interrupt(error) {
           finish(id, entry, error === undefined ? ok() : err(error));
@@ -284,7 +284,7 @@ export function createServing(deps: ServingDeps): Serving {
         id: message.id,
         unsupportedMessage: message.unknownAddress,
       });
-      post(data, 'response');
+      post(data);
     },
 
     close(error) {

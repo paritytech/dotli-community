@@ -24,7 +24,7 @@ import {
   type TraitName,
 } from './schema.js';
 import { createServing, type AnyHandler, type AnySubscriptionHandler, type CallContext, type Sink } from './serving.js';
-import { HANDSHAKE_METHOD, RESERVED_TRAIT, decodeMessage, readHeader, type Header, type Refusal } from './wire.js';
+import { HANDSHAKE_METHOD, RESERVED_TRAIT, decodeMessage, type Admit, type Header, type Refusal } from './wire.js';
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -189,12 +189,12 @@ export function createTransport<S extends Schema>(
       report({ kind: 'listener_threw', error });
     }
   };
-  const post: Post = (data, leg) => {
+  const post: Post = data => {
     try {
       provider.post(data);
       return ok();
     } catch (error) {
-      report({ kind: 'post_failed', leg, error });
+      report({ kind: 'post_failed', error });
       return err(error);
     }
   };
@@ -257,6 +257,8 @@ export function createTransport<S extends Schema>(
   const needsAdmission = ({ trait, method, leg }: Header): boolean =>
     (leg === 'request' || leg === 'start' || leg === 'stop') &&
     !(trait === RESERVED_TRAIT && method === HANDSHAKE_METHOD);
+  // A call or a stop that is not admitted is refused on its header alone, whatever its payload holds.
+  const admit: Admit = header => (needsAdmission(header) ? notAdmitted(header) : null);
 
   /** Hands a refused message on to the part that can still answer or settle what it names. */
   const onRefused = (refusal: Refusal): void => {
@@ -279,14 +281,7 @@ export function createTransport<S extends Schema>(
       report({ kind: 'refused', reason: 'not_bytes', cause: new TypeError(`Expected bytes, got ${typeof data}`) });
       return;
     }
-    // A call or a stop that is not admitted is refused on its header alone, whatever its payload holds.
-    const header = readHeader(data);
-    const refusal = header !== undefined && needsAdmission(header) ? notAdmitted(header) : null;
-    if (refusal !== null) {
-      refuse(refusal);
-      return;
-    }
-    const decoded = decodeMessage(schema, data);
+    const decoded = decodeMessage(schema, data, admit);
     if ('refused' in decoded) {
       onRefused(decoded);
       return;

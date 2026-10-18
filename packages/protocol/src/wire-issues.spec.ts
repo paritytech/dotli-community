@@ -58,12 +58,12 @@ describe('createIssueReporter', () => {
     const report = createIssueReporter('host', m.count);
 
     // When
-    report({ kind: 'post_failed', leg: 'request', error: new TypeError('The peer window is gone') });
+    report({ kind: 'post_failed', error: new TypeError('The peer window is gone') });
 
     // Then
-    expect(captured).toEqual([{ flow: 'protocol', step: 'serve_post', tags: { leg: 'request', side: 'host' } }]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'serve_post', tags: { side: 'host' } }]);
     expect(lines.filter(line => line.level === 'error').map(line => line.message)).toEqual([
-      '[dot.li protocol] A request message could not be posted The peer window is gone',
+      '[dot.li protocol] A message could not be posted The peer window is gone',
     ]);
     expect(metrics.counted(S.PROTOCOL_SERVE_POST)).toEqual([{ outcome: 'error', reason: 'TypeError', side: 'host' }]);
   });

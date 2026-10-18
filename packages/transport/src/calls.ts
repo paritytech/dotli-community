@@ -140,7 +140,7 @@ export function createCalls(deps: CallsDeps): Calls {
       return;
     }
     waiting.set(call.id, call);
-    const posted = post(data, 'request');
+    const posted = post(data);
     if (!posted.ok) {
       call.settle(new Error('The request could not be posted', { cause: posted.error }));
     }
@@ -173,7 +173,7 @@ export function createCalls(deps: CallsDeps): Calls {
 
   const postStop = ({ id, trait, method }: Subscription): void => {
     lateStops.add(id);
-    post(encodeMessage(schema, { kind: 'method', leg: 'stop', id, trait, method }), 'stop');
+    post(encodeMessage(schema, { kind: 'method', leg: 'stop', id, trait, method }));
   };
 
   /**
@@ -339,7 +339,7 @@ export function createCalls(deps: CallsDeps): Calls {
         subscription.over.signal,
         () => {
           lateStops.delete(id);
-          const posted = post(data, 'start');
+          const posted = post(data);
           if (!posted.ok) {
             shut([subscription], new Error('The start could not be posted', { cause: posted.error }));
             return;
