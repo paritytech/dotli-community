@@ -1,11 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// scale-ts integer encoders write through DataView and silently wrap or truncate, its decoders read from a view's whole
-// buffer, and its `Option` and `bool` read any non-zero byte as present or true. These wrappers refuse what the wire
-// cannot carry exactly.
+// What scale-ts lacks for the protocol's values. Its integer encoders write through DataView and silently wrap or
+// truncate, its `Option` and `bool` read any non-zero byte as present or true, it has no float, and it decodes with no
+// check that the value ends where the data does. These codecs refuse what the wire cannot carry exactly.
 
-import { Option, createCodec, createDecoder, enhanceCodec, u32, u64, u8, type Codec, type Decoder } from 'scale-ts';
+import {
+  Enum,
+  _void,
+  createCodec,
+  createDecoder,
+  enhanceCodec,
+  u32,
+  u64,
+  u8,
+  type Codec,
+  type Decoder,
+  type StringRecord,
+} from 'scale-ts';
 
 /** scale-ts hands decoders its internal byte array, which carries the read cursor and a view over the buffer. */
 interface Cursor extends Uint8Array {
@@ -83,20 +95,13 @@ export const strictBool: Codec<boolean> = enhanceCodec(
   },
 );
 
-/** `Option` on the wire, throws `RangeError` on a tag other than 0 or 1. */
+/** `Option` on the wire as the enum it is, so a tag other than 0 or 1 is refused. */
 export function strictOption<T>(inner: Codec<T>): Codec<T | undefined> {
-  return createCodec(
-    Option(inner).enc,
-    createDecoder(input => {
-      const tag = u8.dec(input);
-      if (tag === 0) {
-        return undefined;
-      }
-      if (tag !== 1) {
-        throw new RangeError(`${String(tag)} is not an option tag`);
-      }
-      return inner.dec(input);
-    }),
+  return enhanceCodec(
+    Enum({ none: _void, some: inner }),
+    (value: T | undefined) =>
+      value === undefined ? { tag: 'none' as const, value: undefined } : { tag: 'some' as const, value },
+    decoded => (decoded.tag === 'some' ? decoded.value : undefined),
   );
 }
 
@@ -109,24 +114,13 @@ export function nullable<T>(inner: Codec<T>): Codec<T | null> {
   );
 }
 
-/** A `u8` index into `values`. An index past the list is a `RangeError`. */
+/** An enum of unit variants, one per value in list order, read as its tag. An index past the list is refused. */
 export function oneOf<T extends string>(values: readonly T[]): Codec<T> {
+  const variants = Object.fromEntries(values.map(value => [value, _void])) as StringRecord<Codec<undefined>>;
   return enhanceCodec(
-    u8,
-    (value: T) => {
-      const index = values.indexOf(value);
-      if (index < 0) {
-        throw new RangeError(`${value} is not one of ${values.join(', ')}`);
-      }
-      return index;
-    },
-    (index: number) => {
-      const value = values[index];
-      if (value === undefined) {
-        throw new RangeError(`index ${String(index)} is past the ${String(values.length)} known values`);
-      }
-      return value;
-    },
+    Enum(variants),
+    (value: T) => ({ tag: value, value: undefined }),
+    ({ tag }) => tag as T,
   );
 }
 

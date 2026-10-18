@@ -89,7 +89,7 @@ describe('codec primitives', () => {
 
     // When / Then
     for (const decoder of decoders) {
-      expect(() => decodeExact(decoder, toBuffer(u8.enc(2)))).toThrow(RangeError);
+      expect(() => decodeExact(decoder, toBuffer(u8.enc(2)))).toThrow();
     }
   });
 
@@ -98,10 +98,12 @@ describe('codec primitives', () => {
     const option = strictOption(str);
 
     // When
+    const encoded = [undefined, 'x'].map(value => [...option.enc(value)]);
     const options = [undefined, 'x'].map(value => decodeExact(option.dec, toBuffer(option.enc(value))));
     const bools = [true, false].map(value => decodeExact(strictBool.dec, toBuffer(strictBool.enc(value))));
 
     // Then
+    expect(encoded).toEqual([[0], [1, 4, 0x78]]);
     expect(options).toEqual([undefined, 'x']);
     expect(bools).toEqual([true, false]);
   });
@@ -131,6 +133,26 @@ describe('codec primitives', () => {
     const codec = oneOf(['a', 'b']);
 
     // When / Then
-    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow(RangeError);
+    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow();
+  });
+
+  it('As a sender, I send one of the listed values as its index and it arrives as sent', () => {
+    // Given
+    const codec = oneOf(['a', 'b', 'c']);
+
+    // When
+    const sent = codec.enc('c');
+
+    // Then
+    expect([...sent]).toEqual([2]);
+    expect(decodeExact(codec.dec, toBuffer(sent))).toBe('c');
+  });
+
+  it('As a sender, I cannot send a value outside the list', () => {
+    // Given
+    const codec = oneOf<string>(['a', 'b']);
+
+    // When / Then
+    expect(() => codec.enc('z')).toThrow();
   });
 });
