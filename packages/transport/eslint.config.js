@@ -17,7 +17,7 @@ export default defineConfig([
   },
   ...importBans([
     onlyAllowedScopes(
-      ['@dotli/shared', '@config/eslint', '@config/vite'],
+      ['@dotli/shared', '@config/eslint'],
       'transport is a generic cross-document library and sits on shared only.',
     ),
   ]),
