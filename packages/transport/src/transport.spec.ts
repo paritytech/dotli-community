@@ -158,12 +158,12 @@ describe('createTransport', () => {
     await upstream.timers.advance(0);
 
     // When the upstream goes away
-    upstream.accepter.dispose(new RangeError('the worker let this tab go'));
+    upstream.accepter.dispose(new RangeError('upstream gone'));
     await upstream.timers.advance(0);
     await downstream.timers.advance(0);
 
     // Then
-    expect(heard.ends).toEqual([err(hostFailure('RangeError: the worker let this tab go'))]);
+    expect(heard.ends).toEqual([err(hostFailure('RangeError: upstream gone'))]);
     expect([...downstream.issues, ...upstream.issues]).toEqual([]);
   });
 

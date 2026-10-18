@@ -58,7 +58,9 @@ sequenceDiagram
   method, or `MalformedFrame` with the decode error's message when an interrupt or a value does not decode. A lost value
   ends the subscription, since the subscriber would fall behind the peer. Stopping it tells the peer and calls no
   listener. Aborting, a value that does not decode and a dispose tell the peer to stop too, once the start went out. A
-  start that does not encode throws, and a start the provider cannot post ends it as `HostFailure` with why.
+  start that does not encode throws. `interrupt` hears only those ends. The one local end with an error goes to
+  `onClose` instead: the transport closed, or the start could not be posted, whose error carries the provider's as its
+  cause.
 
 ```mermaid
 sequenceDiagram
@@ -79,30 +81,34 @@ sequenceDiagram
   side serves with `HostFailure` carrying `"<name>: <message>"` of the reason, and tells the peer to stop each one it
   made.
 - A subscription handler gets the start, the context and a sink, and returns its stop function. That function runs once,
-  on the peer's stop, an interrupt or a dispose, even when the handler interrupts before it returns. A handler that
-  throws on start interrupts with `HostFailure`. A value the wire cannot carry interrupts with `HostFailure` with why.
-  The sink does nothing once the subscription has ended. A start that reuses the id of a running subscription, or a stop
-  that names another method than the subscription, is refused as `invalid` with no reply.
+  on the peer's stop, an interrupt or a dispose, even when the handler interrupts before it returns. An interrupt is
+  posted before the stop function runs, so a stop function that disposes the transport cannot keep it from the peer. A
+  handler that throws on start interrupts with `HostFailure`. A value the wire cannot carry interrupts with
+  `HostFailure` with why. The sink does nothing once the subscription has ended. A start that reuses the id of a running
+  subscription, or a stop that names another method than the subscription, is refused as `invalid` with no reply.
 - `onPeerIdle` fires when the peer's own stop leaves nothing it opened running and no request of the peer is in flight,
-  which is how a peer that disposes leaves. A call from the peer after that cancels it. Interrupts this side posted
-  never count, since the peer may not have heard them yet.
+  which is how a peer that disposes leaves. It fires once per departure. A call from the peer after that cancels a wait
+  and arms it again, even a call whose payload does not decode or that names an address this side lacks. Interrupts this
+  side posted never count, since the peer may not have heard them yet.
 - The serving side answers outcomes of its own: `Unsupported` for a method with no handler, `MalformedFrame` with the
   decode error's message for a payload that does not decode, and `HostFailure` with `"<name>: <message>"`, bounded to
   500 characters, for a handler that throws or rejects or an answer the wire cannot carry. A message for an address the
   schema lacks gets one protocol error reply while the transport is open, and is refused after it closes. Nothing ever
-  answers a protocol error or a refused message on the library's own addresses. A call (a request or a start) before the
-  handshake, or after a failed one, is refused on its header alone with no reply, whether its payload decodes and
-  whether the schema has its address or not.
+  answers a protocol error or a refused message on the library's own addresses. A call (a request or a start) or a stop
+  before the handshake, or after a failed one, is refused on its header alone with no reply, whether its payload decodes
+  and whether the schema has its address or not. Such a stop never counts toward `onPeerIdle`.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed`, `invalid` or
   `not_bytes`, with its cause), a post the provider threw on (with its leg), and a callback of the owner's that threw
   (`listener_threw`: a subscription's listeners or `onClose`, a stop function, or `onPeerIdle`). A throw while a message
   is handled is reported as a refusal too and never reaches the provider, and neither does a throw from the hook itself,
   which is logged with the issue it was handed. With no hook, each issue is logged as one bounded error. Only expected
   messages are dropped without an issue: an answer or protocol error whose id names no waiting call, such as a late
-  answer to a settled one, a handshake answer once the handshake is over, a stop for a subscription that is not running,
-  which may cross the interrupt that ended it, and a value or interrupt on one of the last 1024 subscriptions this side
-  stopped, which may cross the stop. A value or interrupt on any other subscription that is not open cannot be a race,
-  such as one after the peer's own interrupt, and is refused as `invalid`.
+  answer to a settled one, a handshake answer once the handshake is over, a stop for one of the last 1024 subscriptions
+  this side ended, which may cross its interrupt, and a value or interrupt on one of the last 1024 subscriptions this
+  side stopped, which may cross the stop. Any other such message cannot be a race and is refused as `invalid`: a value
+  or interrupt on a subscription that is not open, such as one after the peer's own interrupt, and a stop for a
+  subscription that is not running, such as one never started or stopped twice. That stop never counts toward
+  `onPeerIdle`.
 
 ## Public API
 
@@ -148,9 +154,9 @@ sequenceDiagram
   - `subscribe(trait, method, start, { receive, interrupt }, { signal? })` returns a `SubscriptionHandle`. `receive`
     hears each value and `interrupt` the one end, a `Result<void, CallError<I>>`. It throws when the start does not
     encode.
-  - `SubscriptionHandle` has `stop()`, which tells the peer and calls no listener, and `onClose(listener)`, which runs
-    once with the closing error if the transport closes while the subscription is queued or open, and at once if it
-    already has.
+  - `SubscriptionHandle` has `stop()`, which tells the peer and calls no listener, and `onClose(listener)`. That is the
+    handle's one local end with an `Error`: the transport closed while the subscription was queued or open, or its start
+    could not be posted. It runs once, and at once if that has already happened, and never after a stop or an interrupt.
   - `handleSubscription(trait, method, handler)` serves a subscription method and returns what unregisters it. The
     handler gets the start, a `CallContext` and a `Sink`, and returns its stop function. A second handler for one method
     throws.

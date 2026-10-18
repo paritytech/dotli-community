@@ -6,9 +6,9 @@
 // detached.
 
 import { createAsyncTaskPool, toError } from '@dotli/shared';
-import { decodeReason, failureReason } from './errors.js';
-import type { Address, Outcome, Post, RunListener } from './parts.js';
-import { cancelled, err, hostFailure, malformedFrame, unsupported, type CallError, type Result } from './result.js';
+import { decodeReason } from './errors.js';
+import { createRecentIds, type Address, type Outcome, type Post, type RunListener } from './parts.js';
+import { cancelled, err, malformedFrame, unsupported, type CallError, type Result } from './result.js';
 import type { Schema } from './schema.js';
 import { encodeMessage, type Header, type MethodMessage, type ProtocolErrorMessage } from './wire.js';
 
@@ -23,7 +23,11 @@ export interface SubscriptionListeners<V, I> {
 export interface SubscriptionHandle {
   /** Ends the subscription and tells the peer. No listener is called. */
   stop(): void;
-  /** Runs once if the transport closes while the subscription is open, and at once if it already has. */
+  /**
+   * Hears the one end raised on this side with an error: the transport closed while the subscription was queued or
+   * open, or its start could not be posted. Runs once, and at once if that has already happened. It never runs once the
+   * subscription was stopped or interrupted.
+   */
   onClose(listener: (error: Error) => void): void;
 }
 
@@ -97,7 +101,7 @@ export function createCalls(deps: CallsDeps): Calls {
   const waiting = new Map<number, PendingRequest>();
   // Queued and open subscriptions. Messages from the peer reach only the open ones.
   const subscriptions = new Map<number, Subscription>();
-  const lateStops = new Set<number>();
+  const lateStops = createRecentIds(REMEMBERED_STOPS);
   // Every call waits here for the handshake to be over. It is unbounded, so calls run side by side once it is. Each call
   // is posted one step after it was made or after the handshake ended, whichever is later, so calls go out in call order
   // across the handshake, and a call made while the queue flushes goes out behind it.
@@ -169,10 +173,6 @@ export function createCalls(deps: CallsDeps): Calls {
 
   const postStop = ({ id, trait, method }: Subscription): void => {
     lateStops.add(id);
-    if (lateStops.size > REMEMBERED_STOPS) {
-      const [oldest] = lateStops;
-      lateStops.delete(oldest ?? id);
-    }
     post(encodeMessage(schema, { kind: 'method', leg: 'stop', id, trait, method }), 'stop');
   };
 
@@ -198,12 +198,15 @@ export function createCalls(deps: CallsDeps): Calls {
     }
   };
 
-  /** Closes subscriptions with the transport's `error`. Each open one is stopped before any listener runs. */
-  const shut = (closing: Subscription[], error: Error): void => {
+  /**
+   * Closes subscriptions with `error`, which their `onClose` listeners hear. With `tellPeer`, each open one is stopped
+   * before any listener runs.
+   */
+  const shut = (closing: Subscription[], error: Error, tellPeer: boolean): void => {
     const closed: Subscription[] = [];
     for (const subscription of closing) {
       const was = leave(subscription, { name: 'closed', error });
-      if (was === 'open') {
+      if (tellPeer && was === 'open') {
         postStop(subscription);
       }
       if (was !== null) {
@@ -342,15 +345,12 @@ export function createCalls(deps: CallsDeps): Calls {
           lateStops.delete(id);
           const posted = post(data, 'start');
           if (!posted.ok) {
-            finish(
-              subscription,
-              err(hostFailure(`The start could not be posted, ${failureReason(posted.error)}`)),
-              false,
-            );
+            // The start never went out, so the peer has nothing to stop.
+            shut([subscription], new Error('The start could not be posted', { cause: posted.error }), false);
           }
         },
         error => {
-          shut([subscription], error);
+          shut([subscription], error, true);
         },
       );
       return handle;
@@ -411,7 +411,7 @@ export function createCalls(deps: CallsDeps): Calls {
       for (const call of [...waiting.values()]) {
         call.settle(error);
       }
-      shut([...subscriptions.values()], error);
+      shut([...subscriptions.values()], error, true);
     },
   };
 }

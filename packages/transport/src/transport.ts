@@ -238,21 +238,24 @@ export function createTransport<S extends Schema>(
         })
       : createAccepter(handshakeDeps);
 
-  /** Why a call of the peer is not served, or null once the handshake told who the peer is. */
-  const notAdmitted = (): Error | null => {
+  /** Why a call or a stop of the peer is not served, or null once the handshake told who the peer is. */
+  const notAdmitted = ({ leg }: Header): Error | null => {
+    const what = leg === 'stop' ? 'A stop' : 'A call';
     switch (phase.name) {
       case 'connected':
         return null;
       case 'connecting':
-        return new Error('A call came before the handshake');
+        return new Error(`${what} came before the handshake`);
       case 'closed':
-        return new Error(`A call came after the transport closed, ${failureReason(phase.error)}`);
+        return new Error(`${what} came after the transport closed, ${failureReason(phase.error)}`);
     }
   };
 
-  // A request or a start opens a call, at a schema address or one it lacks. The handshake is the library's own call.
-  const isPeerCall = ({ trait, method, leg }: Header): boolean =>
-    (leg === 'request' || leg === 'start') && !(trait === RESERVED_TRAIT && method === HANDSHAKE_METHOD);
+  // A request or a start opens a call and a stop ends one, at a schema address or one it lacks. Each is the peer acting
+  // on this side, so each waits for the handshake. The handshake is the library's own call.
+  const needsAdmission = ({ trait, method, leg }: Header): boolean =>
+    (leg === 'request' || leg === 'start' || leg === 'stop') &&
+    !(trait === RESERVED_TRAIT && method === HANDSHAKE_METHOD);
 
   /** Hands a refused message on to the part that can still answer or settle what it names. */
   const onRefused = (refusal: Refusal): void => {
@@ -275,9 +278,9 @@ export function createTransport<S extends Schema>(
       report({ kind: 'refused', reason: 'not_bytes', cause: new TypeError(`Expected bytes, got ${typeof data}`) });
       return;
     }
-    // A call that is not admitted is refused on its header alone, whatever its payload holds.
+    // A call or a stop that is not admitted is refused on its header alone, whatever its payload holds.
     const header = readHeader(data);
-    const refusal = header !== undefined && isPeerCall(header) ? notAdmitted() : null;
+    const refusal = header !== undefined && needsAdmission(header) ? notAdmitted(header) : null;
     if (refusal !== null) {
       refuse(refusal);
       return;

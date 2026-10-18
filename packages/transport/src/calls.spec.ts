@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
 import { TransportHandshakeTimeoutError } from './errors.js';
-import { cancelled, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
+import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import {
   ECHO,
   LISTEN,
@@ -534,6 +534,52 @@ describe('calls', () => {
     expect(issues).toEqual([]);
   });
 
+  it('As a caller, aborting or closing after the peer interrupted my subscription changes nothing', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await connectedRaw();
+    const heard = watcher();
+    const abort = new AbortController();
+    const closes: Error[] = [];
+    const handle = transport.subscribe('notes', 'watch', 'from the top', heard, { signal: abort.signal });
+    handle.onClose(error => closes.push(error));
+    await timers.advance(0);
+    const [id = 0] = startIds(peer);
+    peer.send({ kind: 'method', leg: 'interrupt', id, trait: NOTES, method: WATCH, outcome: ok() });
+    await timers.advance(0);
+
+    // When
+    abort.abort();
+    handle.onClose(error => closes.push(error));
+    transport.dispose(new Error('done'));
+    await timers.advance(0);
+
+    // Then
+    expect(heard.ends).toEqual([ok()]);
+    expect(closes).toEqual([]);
+    expect(peer.find('stop:notes.watch')).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a caller, disposing while my start is queued calls onClose with the reason and posts no start', async () => {
+    // Given
+    const { transport, timers, peer } = rawRig('open');
+    const heard = watcher();
+    const closes: Error[] = [];
+    transport.subscribe('notes', 'watch', 'queued', heard).onClose(error => closes.push(error));
+    transport.connect();
+    await timers.advance(0);
+    const reason = new Error('leaving');
+
+    // When
+    transport.dispose(reason);
+    await timers.advance(0);
+
+    // Then
+    expect(closes).toEqual([reason]);
+    expect(heard.ends).toEqual([]);
+    expect(peer.find('start:notes.watch')).toEqual([]);
+  });
+
   it('As a caller, a handshake that times out calls onClose of my queued subscription with why and posts no start', async () => {
     // Given
     const { transport, timers, peer } = rawRig('open');
@@ -766,20 +812,30 @@ describe('calls', () => {
     expect(peer.legs()).toEqual(['request:255.0']);
   });
 
-  it('As a caller, a start my provider cannot post ends my subscription as HostFailure with why, and the post is reported', async () => {
+  it('As a caller, a start my provider cannot post closes my subscription with why, and the post is reported', async () => {
     // Given
     const broken = new Error('the peer window is gone');
-    const { wrap, breakPosts } = breakable(broken);
-    const { transport, timers, issues } = await connectedRaw(wrap);
+    const { wrap, breakPosts, mendPosts } = breakable(broken);
+    const { transport, timers, peer, issues } = await connectedRaw(wrap);
     breakPosts();
     const heard = watcher();
+    const closes: Error[] = [];
 
     // When
-    transport.subscribe('notes', 'watch', 'from the top', heard);
+    const handle = transport.subscribe('notes', 'watch', 'from the top', heard);
+    handle.onClose(error => closes.push(error));
+    await timers.advance(0);
+    mendPosts();
+    handle.stop();
+    handle.onClose(error => closes.push(error));
+    transport.dispose(new Error('done'));
     await timers.advance(0);
 
     // Then
-    expect(heard.ends).toEqual([err(hostFailure('The start could not be posted, Error: the peer window is gone'))]);
+    const failed = expect.objectContaining({ message: 'The start could not be posted', cause: broken }) as Error;
+    expect(closes).toEqual([failed, failed]);
+    expect(heard.ends).toEqual([]);
+    expect(peer.legs()).toEqual(['request:255.0']);
     expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);
   });
 });
