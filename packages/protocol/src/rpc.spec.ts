@@ -201,10 +201,13 @@ describe('createFrameRpc', () => {
       expect.objectContaining({ name: 'Unsupported', method: 'modeStorageRead' }),
       expect.objectContaining({ name: 'Unsupported', method: 'localWalletRead' }),
     ]);
-    expect(metrics.counted(S.PROTOCOL_REQUEST).map(tags => tags?.['reason'])).toEqual(
-      expect.arrayContaining(['Denied', 'MalformedFrame', 'Unsupported', 'Unsupported']),
-    );
-    expect(metrics.counted(S.PROTOCOL_REQUEST)).toHaveLength(4);
+    const byMethod = (tags: Record<string, unknown> | undefined): string => String(tags?.['method']);
+    expect(metrics.counted(S.PROTOCOL_REQUEST).sort((a, b) => byMethod(a).localeCompare(byMethod(b)))).toEqual([
+      { outcome: 'error', method: 'authStorageRead', reason: 'Denied' },
+      { outcome: 'error', method: 'localWalletRead', reason: 'Unsupported' },
+      { outcome: 'error', method: 'modeStorageRead', reason: 'Unsupported' },
+      { outcome: 'error', method: 'modeStorageWrite', reason: 'MalformedFrame' },
+    ]);
   });
 
   it('As a dotli integrator, a request still out when the frame is lost fails at once with why', async () => {

@@ -8,6 +8,7 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
+import { isProtocolTrait } from './call-names.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
 import { describeWireMessage } from './testing/index.js';
@@ -20,7 +21,7 @@ import {
   type FrameHost,
 } from './testing/frame-host.js';
 
-// The consumer transport posts its handshake again this often until it is answered.
+// The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
 
 /** The clock and timers each test moves by hand. */
@@ -40,7 +41,7 @@ async function listen(dom: FrameDom): Promise<void> {
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
     const message = describeWireMessage(data);
-    return message?.leg === 'request' && message.trait !== '255' ? [`${message.trait}.${message.method}`] : [];
+    return message?.leg === 'request' && isProtocolTrait(message.trait) ? [`${message.trait}.${message.method}`] : [];
   });
 }
 

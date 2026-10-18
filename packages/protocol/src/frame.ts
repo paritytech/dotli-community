@@ -118,7 +118,9 @@ export interface ProtocolFrame {
   /**
    * The transport of the frame there is now, booting one if there is none, once the frame is configured. Calls on it
    * wait in its queue until its handshake succeeds, and fail with the loss when the frame is dropped first. Rejects
-   * with the version mismatch for good once a frame refused the host's wire.
+   * with the version mismatch for good once a frame refused the host's wire. The transport itself speaks the transport
+   * library's outcomes and errors, so a failed handshake rejects its calls with the library's timeout or mismatch
+   * error. The frame rpc and `subscribe` turn those into the protocol's errors.
    */
   transport(): Promise<ProtocolTransport>;
   /**

@@ -24,7 +24,7 @@ import { createFrameHost, FRAME_CONFIG, type FrameHost, type FrameStatusServer }
 
 type Connect = MethodTypes<ProtocolSchema, 'chain', 'connect'>;
 
-// The consumer transport posts its handshake again this often until it is answered.
+// The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
 const CONNECT_BUDGET_MS = 30_000;
 

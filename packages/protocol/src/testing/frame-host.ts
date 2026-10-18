@@ -181,8 +181,8 @@ export interface FrameStatusServer {
    * with its typed failure, as the frame app does, and any other error as the handler's own failure.
    */
   fail(error: Error): void;
-  /** Ends every subscription with `end`, now and later. */
-  interrupt(end: CallError<FrameFailure>): void;
+  /** Ends every subscription with `end`, now and later, or cleanly with none. */
+  interrupt(end?: CallError<FrameFailure>): void;
 }
 
 /** How a frame app ends its status on `error`. */
@@ -201,10 +201,10 @@ function statusEnd(error: Error): CallError<FrameFailure> {
 
 function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
   const sinks = new Set<Sink<void, FrameFailure>>();
-  let state: 'booting' | 'ready' | CallError<FrameFailure> = 'booting';
+  let state: 'booting' | 'ready' | { end: CallError<FrameFailure> | undefined } = 'booting';
   serving.handleSubscription('frame', 'status', (_start, _context, sink) => {
     if (typeof state === 'object') {
-      sink.interrupt(state);
+      sink.interrupt(state.end);
       return () => undefined;
     }
     if (state === 'ready') {
@@ -215,8 +215,8 @@ function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
       sinks.delete(sink);
     };
   });
-  const interrupt = (end: CallError<FrameFailure>): void => {
-    state = end;
+  const interrupt = (end?: CallError<FrameFailure>): void => {
+    state = { end };
     for (const sink of [...sinks]) {
       sink.interrupt(end);
     }

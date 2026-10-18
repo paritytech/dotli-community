@@ -10,6 +10,7 @@ import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing
 import { domain, ok } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
+import { isProtocolTrait } from './call-names.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
 import {
   PROTOCOL_ERRORS,
@@ -65,7 +66,9 @@ async function bringUp(dom: FrameDom): Promise<FrameStatusServer> {
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
     const message = describeWireMessage(data);
-    return message !== null && message.trait !== '255' ? [`${message.leg}:${message.trait}.${message.method}`] : [];
+    return message !== null && isProtocolTrait(message.trait)
+      ? [`${message.leg}:${message.trait}.${message.method}`]
+      : [];
   });
 }
 
@@ -403,6 +406,29 @@ describe('createProtocolFrame', () => {
     expect(events).toContain('protocol frame released');
     expect(await owner).toBeInstanceOf(ProtocolPortReleasedError);
     expect(((await owner) as Error).message).toBe('The worker released this tab');
+    expect(frame.getStatus()).toBe('failed');
+  });
+
+  it('As the host, a frame that ends its status cleanly is lost as one that stopped reporting it', async () => {
+    // Given a ready frame, with a request out on its transport
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const dom = createFrameDom(undefined, { timers });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+    void frame.whenReady().catch(() => undefined);
+    const status = await bringUp(dom);
+    const transport = await frame.transport();
+    dom.serve().handleRequest('resolve', 'owner', () => new Promise(() => undefined));
+    const owner = transport.request('resolve', 'owner', { label: 'doom' }).catch((err: unknown) => err);
+    await advance();
+
+    // When the frame ends its status with no failure
+    status.interrupt();
+    await advance();
+
+    // Then
+    expect(((await owner) as Error).message).toBe(PROTOCOL_ERRORS.FRAME_STATUS_ENDED);
+    expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(frame.getStatus()).toBe('failed');
   });
 

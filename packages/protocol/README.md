@@ -139,8 +139,8 @@ longer waiting is ignored without a count.
   with the resolution hello and the typed failures of the frame status, the resolve methods and chain connections.
   `ProtocolSchema`, `ProtocolTransport` and `ProtocolContext` type a transport over it and its handlers' context.
   `TelemetryEvent` is what the frame reports on its telemetry feed.
-- Budgets, for the frame to size its own work: `budgetOf` (a method's budget by its flat name, or null for one waited on
-  without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
+- Budgets, for the frame to size its own work: `budgetOf` (a method's budget by its trait and method, or null for one
+  waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
 - The earlier transport, until the frame app serves through the schema: `createConsumerTransport`,
   `createServingTransport` (with `onPeerIdle`), `ConsumerTransport`, `ServingTransport`, `CallContext`,
   `RequestHandler`, `SubscriptionHandler`, `SubscriptionSink`, the providers `createWindowProvider` and

@@ -67,7 +67,7 @@ export interface CallTrail {
   settled(outcome: CallOutcome, error?: Error): void;
 }
 
-/** Measured on `now`, a monotonic clock apart from the deadline clock, which a spec moves by hand. */
+/** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
 function startCallTrail(method: CallName, budgetMs: number | null, now: () => number): CallTrail {
   // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
   // round trips this span measures.
@@ -139,7 +139,7 @@ export function createFrameRpc(
       payload: RequestPayload<T, M>,
     ): Promise<Reply<T, M>> {
       const name = callName(trait, method);
-      const budgetMs = budgetOf(name);
+      const budgetMs = budgetOf(trait, method);
       // Ends the call on its budget. The transport drops it, and a late answer is ignored.
       const giveUp = new AbortController();
       let timedOut: Error | undefined;

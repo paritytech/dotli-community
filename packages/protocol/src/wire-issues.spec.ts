@@ -28,7 +28,7 @@ describe('createIssueReporter', () => {
     const report = createIssueReporter('host', m.count);
 
     // When
-    report({ kind: 'refused', reason: 'malformed', cause: new RangeError('the header is cut short') });
+    report({ kind: 'refused', reason: 'malformed', cause: new RangeError('the data is cut short') });
     report({ kind: 'refused', reason: 'not_bytes' });
 
     // Then
@@ -40,7 +40,7 @@ describe('createIssueReporter', () => {
       {
         level: 'info',
         message: 'protocol message refused',
-        attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: 'RangeError: the header is cut short' },
+        attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: 'RangeError: the data is cut short' },
       },
       {
         level: 'info',

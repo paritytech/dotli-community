@@ -30,6 +30,12 @@ function plain(value: unknown): unknown {
   return value;
 }
 
+/** The describer throws on data the schema refuses, with the refusal as the cause. */
+function isRefusal(error: unknown): boolean {
+  const cause: unknown = error instanceof Error ? error.cause : undefined;
+  return typeof cause === 'object' && cause !== null && 'refused' in cause;
+}
+
 /** A wire message as a test reads it, or null for data that does not decode as one. */
 export function describeWireMessage(data: unknown): DescribedWireMessage | null {
   if (!(data instanceof ArrayBuffer)) {
@@ -38,9 +44,12 @@ export function describeWireMessage(data: unknown): DescribedWireMessage | null 
   let described: DescribedWireMessage;
   try {
     described = describeMessage(protocolSchema, data);
-  } catch {
-    // Refused data is no message, and a recording keeps only messages.
-    return null;
+  } catch (error) {
+    // Refused data is no message, and a recording keeps only messages. Any other throw is a fault.
+    if (isRefusal(error)) {
+      return null;
+    }
+    throw error;
   }
   return { ...described, body: plain(described.body) };
 }

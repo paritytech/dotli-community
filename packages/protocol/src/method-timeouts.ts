@@ -4,7 +4,9 @@
 // How long the host waits on each method before it gives up. No wait crosses the wire, so the frame sizes its own work
 // from the same budgets.
 
-import type { CallName } from './call-names.js';
+import type { MethodName, TraitName } from '@dotli/transport';
+import { callName, type CallName } from './call-names.js';
+import type { ProtocolSchema } from './schema.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -25,13 +27,17 @@ const METHOD_TIMEOUTS: Partial<Record<CallName, number>> = {
   localWalletRead: 5_000,
 };
 
-/** How long the host waits on `method`, or null for one it waits on without a timer. */
-export function budgetOf(method: CallName): number | null {
-  return UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
+/** How long the host waits on `method` of `trait`, or null for one it waits on without a timer. */
+export function budgetOf<T extends TraitName<ProtocolSchema>>(
+  trait: T,
+  method: MethodName<ProtocolSchema, T>,
+): number | null {
+  const name = callName(trait, method);
+  return UNTIMED_METHODS.has(name) ? null : (METHOD_TIMEOUTS[name] ?? DEFAULT_TIMEOUT_MS);
 }
 
 // Timed methods, so the default is never taken.
 /** How long a chain connection may take to connect. */
-export const CONNECT_BUDGET_MS = budgetOf('chainConnect') ?? DEFAULT_TIMEOUT_MS;
+export const CONNECT_BUDGET_MS = budgetOf('chain', 'connect') ?? DEFAULT_TIMEOUT_MS;
 /** How long a name resolution may take to answer. */
-export const RESOLVE_BUDGET_MS = budgetOf('resolveDotName') ?? DEFAULT_TIMEOUT_MS;
+export const RESOLVE_BUDGET_MS = budgetOf('resolve', 'dotName') ?? DEFAULT_TIMEOUT_MS;
