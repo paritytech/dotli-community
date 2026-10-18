@@ -26,9 +26,10 @@ flowchart TB
   frame's lifecycle, the facades and how every outcome reaches host code.
 - The protocol schema is where the wire types come from. It groups the methods into traits: the frame, name resolution,
   the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its
-  payloads, and each handshake carries the resolution id as its hello. Each payload is typed by its method, so a
-  payload, answer or value that does not fit its method fails to compile. Its value codecs are built from the protocol's
-  own checked codecs and cross the package only as opaque values.
+  payloads, and each handshake's hello has a resolution id field, null from the host and the page load's id from the
+  iframe toward the SharedWorker. Each payload is typed by its method, so a payload, answer or value that does not fit
+  its method fails to compile. Its value codecs are built from the protocol's own checked codecs and cross the package
+  only as opaque values.
 - A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed init
   or as a released port, and name resolution and chain connections fail with a sync timeout or a stopped light client. A
   telemetry event past the limits, such as the peer count limit, fails to decode, so it is refused as malformed.

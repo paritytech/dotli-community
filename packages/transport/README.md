@@ -73,8 +73,8 @@ sequenceDiagram
     H-->>C: response, Ok or Err
   else no handler for the method
     H-->>C: response, Err(Unsupported)
-  else the peer's schema lacks the method
-    H-->>C: protocol error, read as Unsupported
+  else the peer's schema lacks the address
+    H-->>C: protocol error for an unknown address, read as Unsupported
   end
   Note over C: an aborted signal settles the call as Cancelled at once
 ```
@@ -174,8 +174,8 @@ sequenceDiagram
   - `connect()` starts the handshake on the opener and does nothing on the accepter.
   - `whenConnected()` resolves once the handshake succeeds and rejects with the closing error.
   - `request(trait, method, payload, { signal? })` resolves to `Result<R, CallError<E>>`, the peer's or a local
-    `Cancelled` or `MalformedFrame`. It rejects only with the closing error, or when the call cannot go out: a payload
-    that does not encode or a post the provider throws on.
+    `Cancelled`, `MalformedFrame` or `Unsupported`, the last from a protocol error. It rejects only with the closing
+    error, or when the call cannot go out: a payload that does not encode or a post the provider throws on.
   - `handleRequest(trait, method, handler)` serves a method and returns what unregisters it. The handler gets the
     payload and a `CallContext` and returns a `Result`, sync or async. A second handler for one method throws.
   - `subscribe(trait, method, start, { receive, interrupt }, { signal? })` returns a `SubscriptionHandle`. `receive`
