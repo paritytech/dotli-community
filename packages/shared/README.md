@@ -48,7 +48,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 - Concurrency and state: `createAsyncTaskPool`, `createLazyLoad`, `createListenerSet`, `ListenerSet`,
   `ListenerSetOptions`, `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`,
-  `createStatusCell`, `toAbortError`, `createPendingReplies`, `PendingReplies`.
+  `createStatusCell`, `toAbortError`, `createPendingReplies`, `PendingReplies`, `deferred` (a promise with its resolve
+  and reject).
 - Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
   `named`, `endpointHost`, `gatewayUnreachable`.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.
@@ -62,8 +63,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
-- `resetAllStoresForTests`, `deferred`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand,
-  which count the timers still pending), `FakePage` (a page with a document and a window, each firing the events the
-  browser fires on it), `recordLog` with `LogLine` (what the shared log writes until a test ends, at one level if
-  asked).
+- `resetAllStoresForTests`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand, which count the
+  timers still pending), `FakePage` (a page with a document and a window, each firing the events the browser fires on
+  it), `recordLog` with `LogLine` (what the shared log writes until a test ends, at one level if asked).
 - `untilDom` waits on the page for functional tests. It reads the DOM, so only they call it.

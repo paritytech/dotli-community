@@ -42,7 +42,6 @@ export function createFakeFrame(
   const timers = options.timers ?? realTimers;
   let status: ProtocolStatus = options.status ?? 'ready';
   let lostWith: Error = new Error('lost');
-  let losses = 0;
   let builds = 0;
   let current: Built | null = null;
   const statusListeners = new Set<(status: ProtocolStatus) => void>();
@@ -128,12 +127,10 @@ export function createFakeFrame(
       },
       // The facades never read it, and this fake's frame speaks the host's schema.
       onVersionMismatch: () => () => undefined,
-      losses: () => losses,
     },
     setStatus,
     lose(error) {
       lostWith = error;
-      losses += 1;
       const lost = current;
       current = null;
       setStatus('failed');

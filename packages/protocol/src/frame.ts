@@ -141,11 +141,6 @@ export interface ProtocolFrame {
    * while an app is open can come from a newer release, and only a reload fixes that.
    */
   onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
-  /**
-   * How many frames were dropped so far. Counted before the status changes, so work a status listener starts on the
-   * drop can tell itself apart from work begun on the frame that was dropped.
-   */
-  losses(): number;
 }
 
 /** One iframe and the transport to it. The transport exists before the iframe, so a `booting` listener can reach it. */
@@ -435,22 +430,20 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
     } catch (thrown: unknown) {
       // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
       const reason = fromTransportError(toError(thrown));
+      const stable = readyAt !== null && timers.now() - readyAt >= timeouts.stableMs;
       // Still the frame, so this keeper found the failure, not a config change.
       if (slot === kept) {
         if (readyAt === null) {
           reportBootFailure(phase, reason, thrown instanceof Error ? reason.name : 'unknown', count);
-        } else {
-          const stable = timers.now() - readyAt >= timeouts.stableMs;
-          if (reportFrameLost(reason, count, stable || !lossCapturedSinceStable)) {
-            lossCapturedSinceStable = true;
-          }
+        } else if (reportFrameLost(reason, count, stable || !lossCapturedSinceStable)) {
+          lossCapturedSinceStable = true;
         }
         if (reason instanceof ProtocolVersionMismatchError) {
           mismatch = reason;
         }
         loseFrame(reason, 'failed');
       }
-      if (mismatch !== null || (readyAt !== null && timers.now() - readyAt >= timeouts.stableMs)) {
+      if (mismatch !== null || stable) {
         return;
       }
       throw reason;
@@ -577,6 +570,5 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         }
       });
     },
-    losses: () => losses,
   };
 }

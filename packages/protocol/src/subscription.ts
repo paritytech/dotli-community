@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A subscription to the frame as the host's layers hold it. Whether the frame ended it or the transport closed under
-// it, its one end is heard in one place, as the error host code sees.
+// it, its one end is heard in one place, as the error host code sees, unless the subscriber tells the two apart.
 
 import type { SubscribeOptions, Subscription as Method } from '@dotli/transport';
 import { callName } from './method-policy.js';
@@ -14,6 +14,8 @@ export interface SubscriptionListeners<V> {
   receive(value: V): void;
   /** Null when the frame ended it cleanly, else why it ended, as the error host code sees. */
   end(error: Error | null): void;
+  /** Hears the transport closing under it in place of `end`, for a subscriber that the frame's loss ends for good. */
+  close?(): void;
 }
 
 /** Subscribes `method` on `transport`, and returns what stops it. Throws when `start` is refused. */
@@ -36,7 +38,11 @@ export function subscribe<S, V, I extends DomainFailure>(
         listeners.end(outcome.success ? null : callFailure(outcome.value, name, options.signal));
       },
       close: error => {
-        listeners.end(fromTransportError(error));
+        if (listeners.close === undefined) {
+          listeners.end(fromTransportError(error));
+        } else {
+          listeners.close();
+        }
       },
     },
     options,

@@ -106,8 +106,9 @@ were.
   the same transport.
 - The reopen waits 1 second, doubling after each end on the same frame up to 30 seconds. A feed that stayed open for 30
   seconds before it ended starts the waits over.
-- An end is judged after the first wait, so a frame that counts its loss meanwhile is not reported. The frame's loss
-  ends the feed for good, since whoever follows the frame opens it on the next one.
+- The feed follows the frame there is now, and an answer to an ask a later ask overtook is dropped. A transport that
+  closes under the feed ends it for good with no report, since the frame's loss is reported where the frame was dropped
+  and following the next frame opens the feed again.
 
 ### Refused messages
 
@@ -146,7 +147,7 @@ a call that is no longer waiting is ignored without a count.
   `RemoteFailure` are its typed failures, `DomainFailure` both, `SharedAuthChange` what the shared auth feed sends, and
   `TelemetryEvent` what the frame reports on its telemetry feed.
 - The method policy: `policyOf` and `MethodPolicy`. For the frame to size its own work, `budgetOf` (a method's budget,
-  or null for one waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
+  or null for one waited on without a timer).
 - For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a
   method's one name for metrics, the trail and spans), `createFrameStatus` with `FrameStatus`, `FrameStatusSink` and
   `FrameStatusEnd` (the `frame.status` subscription a frame serves, which tells a late subscriber where the frame stands

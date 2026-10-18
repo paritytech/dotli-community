@@ -3,9 +3,8 @@
 
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
+import { deferred, bindLogSink, type LogLevel } from '@dotli/shared';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { deferred } from '@dotli/shared/testing';
 import type { QrDrawOptions } from './qr-code.js';
 import { presentQr, type QrShowing } from './qr-drawer.js';
 

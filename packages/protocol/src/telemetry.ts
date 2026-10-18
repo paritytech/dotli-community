@@ -4,11 +4,11 @@
 // What the protocol frame reports about its light client, for the network panel and telemetry tags.
 
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import { log, realTimers, type Timers } from '@dotli/shared';
+import { realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import { protocolSchema, type ProtocolTransport } from './schema.js';
+import { protocolSchema } from './schema.js';
 import { subscribe } from './subscription.js';
 
 /** A frame that is booting or up has a transport to hear. */
@@ -18,7 +18,7 @@ function hasFrame(status: ProtocolStatus): boolean {
 
 /** A feed the frame ends while it stays up is reopened after a wait on `timers`. */
 export function createFrameTelemetry(
-  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport' | 'losses'>,
+  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>,
   timers: Timers = realTimers,
 ) {
   const chainSyncListeners = protocolListeners<ChainSyncEvent>('chain_sync');
@@ -26,22 +26,13 @@ export function createFrameTelemetry(
   const netBytesListeners = protocolListeners<{ received: number }>('net_bytes');
   // A chain stays "unknown" on the gateway path, which runs no light client, and until its store answers.
   const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
-  const reports = createFeedKeeper('telemetry', frame, timers);
-  let heard: ProtocolTransport | null = null;
-
-  // Each ask for a frame's transport, so an answer a later ask overtook is not heard.
-  let asks = 0;
-
-  /** Hears one frame's reports until the frame is lost. */
-  function hear(transport: ProtocolTransport, since: number): void {
-    if (heard === transport) {
-      return;
-    }
-    heard = transport;
-    // Each frame's byte meter starts at zero, and a reopened feed reads on from the same meter.
-    let lastNetBytesTotal = 0;
-    reports.hold(
-      end =>
+  const reports = createFeedKeeper(
+    'telemetry',
+    frame,
+    transport => {
+      // Each frame's byte meter starts at zero, and a reopened feed reads on from the same meter.
+      let lastNetBytesTotal = 0;
+      return ends =>
         subscribe(transport, protocolSchema.traits.frame.telemetry, undefined, {
           receive: event => {
             switch (event.tag) {
@@ -64,39 +55,24 @@ export function createFrameTelemetry(
                 return;
             }
           },
-          end,
-        }),
-      since,
-    );
-  }
-
-  function hearFrame(): void {
-    asks += 1;
-    const ask = asks;
-    const since = frame.losses();
-    void frame.transport().then(
-      transport => {
-        if (ask === asks) {
-          hear(transport, since);
-        }
-      },
-      (error: unknown) => {
-        log.warn('[dot.li protocol] Failed to hear the protocol frame telemetry:', error);
-      },
-    );
-  }
+          end: ends.end,
+          close: ends.close,
+        });
+    },
+    timers,
+  );
 
   // Cleared when a new frame boots, not when one is lost, which happens before the host's pending rejection and
   // would strip the tags from the very failures they explain.
   frame.subscribeStatus(status => {
     if (status === 'booting') {
       smoldotDbOutcomes.clear();
-      hearFrame();
+      reports.follow();
     }
   });
   // Hearing a frame never boots one, so only a frame already there is heard at once.
   if (hasFrame(frame.getStatus())) {
-    hearFrame();
+    reports.follow();
   }
 
   return {

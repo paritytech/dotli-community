@@ -4,7 +4,7 @@
 // What the light client reports for the host's network panel and telemetry tags, as one subscription. A subscriber
 // that comes late hears where things stand first, so nothing reported before it subscribed is lost.
 
-import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
+import type { ChainDetail, ChainSyncEvent, LightClient, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import type { ProtocolHandler, protocolSchema } from '@dotli/protocol';
 
 export interface TelemetryDeps {
@@ -23,6 +23,21 @@ export interface TelemetryDeps {
    * SharedWorker hears the reads made before it as hits, since what it loads comes from chains already warm.
    */
   joinedSynced: () => boolean;
+}
+
+/** The database reads of `lightClient`, as the telemetry hears them. */
+export function lightClientDb(
+  lightClient: Pick<LightClient, 'status' | 'subscribe'>,
+): Pick<TelemetryDeps, 'dbOutcomes' | 'onDbOutcome'> {
+  return {
+    dbOutcomes: () => lightClient.status().db,
+    onDbOutcome: listener =>
+      lightClient.subscribe(change => {
+        if (change.kind === 'db') {
+          listener(change.chain, change.outcome);
+        }
+      }),
+  };
 }
 
 export function createTelemetryHandler(

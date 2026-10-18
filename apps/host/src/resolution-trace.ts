@@ -4,7 +4,7 @@
 // Collects the protocol iframe's and the sandbox's reports into one Sentry trace per page load. Built live, since a
 // load that never finishes is the one worth looking at.
 
-import type { ChainPeer, ChainSyncKind } from '@dotli/chains';
+import type { ChainDetail, ChainPeer, ChainSyncEvent, ChainSyncKind } from '@dotli/chains';
 import type { ChainRole } from '@dotli/config';
 import { m, type SpanHandle, type SpanValue } from '@dotli/metrics';
 import { peekContinuation, type Continuation } from './continuation.js';
@@ -118,23 +118,10 @@ function newChainState(): ChainState {
   };
 }
 
-export interface ChainSyncFacts {
-  chain: ChainRole;
-  syncKind: ChainSyncKind;
-  peers?: number | undefined;
-  reason?: string | undefined;
-  at?: number | undefined;
-  target?: number | undefined;
-}
-
 export interface ResolutionTrace {
-  chainSync: (event: ChainSyncFacts) => void;
+  chainSync: (event: ChainSyncEvent) => void;
   /** A telemetry-only fact about one chain. */
-  chainDetail: (event: {
-    chain: ChainRole;
-    dbCache?: CacheResult | undefined;
-    peers?: ChainPeer[] | undefined;
-  }) => void;
+  chainDetail: (event: ChainDetail) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;
@@ -259,12 +246,12 @@ export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedP
         return;
       }
       const state = chainOf(event.chain);
-      const phase = PHASE_BY_MILESTONE[event.syncKind];
+      const phase = PHASE_BY_MILESTONE[event.kind];
       // A stall interrupts a phase rather than being one, so it is an attribute, not a span.
       if (phase !== undefined && phase !== 'stalled') {
         enterPhase(event.chain, state, phase);
       }
-      switch (event.syncKind) {
+      switch (event.kind) {
         case 'peers':
           if (typeof event.peers === 'number') {
             state.peersMax = Math.max(state.peersMax, event.peers);

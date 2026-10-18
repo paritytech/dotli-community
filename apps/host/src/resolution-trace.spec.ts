@@ -135,7 +135,7 @@ describe('A resolution is traced as one unit', () => {
     expect(names()).not.toContain('dotli.chain.bulletin');
 
     // When
-    trace.chainSync({ chain: 'bulletin', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'bulletin', kind: 'connecting' });
 
     // Then
     expect(span('chain.bulletin')?.parent).toBe(span('resolution'));
@@ -146,14 +146,14 @@ describe('A resolution is traced as one unit', () => {
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.chainSync({ chain: 'relay', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'relay', kind: 'connecting' });
     trace.chainSync({
       chain: 'relay',
-      syncKind: 'warpSyncProgress',
+      kind: 'warpSyncProgress',
       at: 10,
       target: 20,
     });
-    trace.chainSync({ chain: 'relay', syncKind: 'bootstrapComplete' });
+    trace.chainSync({ chain: 'relay', kind: 'bootstrapComplete' });
 
     // Then
     const chain = span('chain.relay');
@@ -167,8 +167,8 @@ describe('A resolution is traced as one unit', () => {
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.chainSync({ chain: 'relay', syncKind: 'connecting' });
-    trace.chainSync({ chain: 'relay', syncKind: 'bootstrapComplete' });
+    trace.chainSync({ chain: 'relay', kind: 'connecting' });
+    trace.chainSync({ chain: 'relay', kind: 'bootstrapComplete' });
 
     // Then
     expect(span('chain.relay.connecting')?.ended).toBe(true);
@@ -179,8 +179,8 @@ describe('A resolution is traced as one unit', () => {
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.chainSync({ chain: 'assethub', syncKind: 'connecting' });
-    trace.chainSync({ chain: 'assethub', syncKind: 'bootstrapComplete' });
+    trace.chainSync({ chain: 'assethub', kind: 'connecting' });
+    trace.chainSync({ chain: 'assethub', kind: 'bootstrapComplete' });
     trace.finish('rendered');
 
     // Then
@@ -197,13 +197,13 @@ describe('A resolution is traced as one unit', () => {
     // When
     trace.chainSync({
       chain: 'relay',
-      syncKind: 'warpSyncProgress',
+      kind: 'warpSyncProgress',
       at: 974196,
       target: 1006056,
     });
     trace.chainSync({
       chain: 'relay',
-      syncKind: 'warpSyncProgress',
+      kind: 'warpSyncProgress',
       at: 1006053,
       target: 1006056,
     });
@@ -221,7 +221,7 @@ describe('A resolution is traced as one unit', () => {
   it('As a maintainer, I can read whether a chain started warm and who it was talking to', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
-    trace.chainSync({ chain: 'relay', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'relay', kind: 'connecting' });
 
     // When
     trace.chainDetail({
@@ -312,7 +312,7 @@ describe('A resolution reports how it ended', () => {
   it('As a maintainer, a chain that never finished cannot hold the trace open', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
-    trace.chainSync({ chain: 'assethub', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'assethub', kind: 'connecting' });
 
     // When
     trace.finish('abandoned');

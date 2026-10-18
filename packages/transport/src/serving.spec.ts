@@ -3,7 +3,8 @@
 
 import type { ResultPayload } from 'scale-ts';
 import { describe, expect, it, vi } from 'vitest';
-import { deferred, manualTimers, must } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
+import { manualTimers, must } from '@dotli/shared/testing';
 import { createProviderPair } from './provider.fake.js';
 import type { Sink } from './serving.js';
 import { cancelled, domain, err, hostFailure, malformedFrame, ok, unsupported, type CallError } from './result.js';

@@ -2,35 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { createTestTicker } from './net-bytes.fake.js';
 import { shareNetBytes, type Ticker } from './net-bytes.js';
-
-/** A ticker the test ticks, which counts how many times it was started and how many are running. */
-function testTicker(): { ticker: Ticker; tick: () => void; started: () => number; running: () => number } {
-  const ticks = new Set<() => void>();
-  let started = 0;
-  return {
-    ticker: onTick => {
-      started += 1;
-      ticks.add(onTick);
-      return () => {
-        ticks.delete(onTick);
-      };
-    },
-    tick: () => {
-      for (const tick of [...ticks]) {
-        tick();
-      }
-    },
-    started: () => started,
-    running: () => ticks.size,
-  };
-}
 
 describe('shareNetBytes', () => {
   it('As the network panel, I hear the byte total at once as a baseline, then on every tick until I stop', () => {
     // Given
     let total = 10;
-    const clock = testTicker();
+    const clock = createTestTicker();
     const subscribe = shareNetBytes(() => total, clock.ticker);
     const posted: number[] = [];
 
@@ -49,7 +28,7 @@ describe('shareNetBytes', () => {
 
   it('As a worker serving many tabs, I run one ticker while any tab listens and stop it with the last', () => {
     // Given
-    const clock = testTicker();
+    const clock = createTestTicker();
     const subscribe = shareNetBytes(() => 7, clock.ticker);
     const first: number[] = [];
     const second: number[] = [];
@@ -79,7 +58,7 @@ describe('shareNetBytes', () => {
 
   it('As a dotli operator, a listener that throws is reported and the others still hear the tick', () => {
     // Given
-    const clock = testTicker();
+    const clock = createTestTicker();
     const reported: unknown[] = [];
     const subscribe = shareNetBytes(() => 3, clock.ticker, { report: error => reported.push(error) });
     const broken = new Error('port is gone');
@@ -103,7 +82,7 @@ describe('shareNetBytes', () => {
 
   it('As a worker, a subscribe whose baseline read throws leaves no subscriber and no ticker behind', () => {
     // Given
-    const clock = testTicker();
+    const clock = createTestTicker();
     const broken = new Error('meter is gone');
     const subscribe = shareNetBytes(() => {
       throw broken;
@@ -116,7 +95,7 @@ describe('shareNetBytes', () => {
 
   it('As a worker, a subscribe whose ticker fails to start is rolled back, and the next one starts it', () => {
     // Given a ticker that fails to start once
-    const clock = testTicker();
+    const clock = createTestTicker();
     let failing = true;
     const ticker: Ticker = onTick => {
       if (failing) {
@@ -142,7 +121,7 @@ describe('shareNetBytes', () => {
 
   it('As a dotli operator, a meter that fails tick after tick is reported once per run of failures, as the meter', () => {
     // Given a meter whose reads I break and mend
-    const clock = testTicker();
+    const clock = createTestTicker();
     const readFailures: unknown[] = [];
     const listenerFailures: unknown[] = [];
     const broken = new Error('meter is gone');

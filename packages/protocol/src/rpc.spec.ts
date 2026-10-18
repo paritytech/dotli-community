@@ -4,8 +4,8 @@
 import { beforeEach, describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { toError } from '@dotli/shared';
-import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { deferred, toError } from '@dotli/shared';
+import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { denied, domain, err, malformedFrame, ok, unsupported, type Request } from '@dotli/transport';
 import { callName } from './method-policy.js';
 import { PROTOCOL_ERRORS } from './errors.js';

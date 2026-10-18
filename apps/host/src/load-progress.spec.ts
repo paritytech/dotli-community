@@ -5,17 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import type { Backend } from '@dotli/config';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { enableDotliDebugBuffering, watchDotliDebugEvents, type DotliDebugEvent } from '@dotli/truapi-debug';
+import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { createSyncStore } from '@dotli/shared';
 import type { PageContent } from '@dotli/ui';
 import { createLoadingController, type LoadingPhase } from './loading-controller.js';
 import {
   startLoadProgress,
-  type ChainDetailFacts,
   type ContentProgressFacts,
   type LoadingScreen,
   type LoadProgress,
 } from './load-progress.js';
-import type { ChainSyncFacts } from './resolution-trace.js';
 import { setProductLoaded } from './runtime/state/product.js';
 import { getLoadingState } from './state/loading.js';
 import { networkMonitor } from './state/network-monitor.js';
@@ -52,8 +51,8 @@ const progressNow = (): number => getLoadingState().progress;
 
 function setup(backend: Backend): {
   progress: LoadProgress;
-  chainSync: ReturnType<typeof source<ChainSyncFacts>>;
-  chainDetail: ReturnType<typeof source<ChainDetailFacts>>;
+  chainSync: ReturnType<typeof source<ChainSyncEvent>>;
+  chainDetail: ReturnType<typeof source<ChainDetail>>;
   netBytes: ReturnType<typeof source<{ received: number }>>;
   content: ReturnType<typeof source<ContentProgressFacts>>;
   /** The bands the load gave the loading screen. */
@@ -67,8 +66,8 @@ function setup(backend: Backend): {
   };
   debug: DotliDebugEvent[];
 } {
-  const chainSync = source<ChainSyncFacts>();
-  const chainDetail = source<ChainDetailFacts>();
+  const chainSync = source<ChainSyncEvent>();
+  const chainDetail = source<ChainDetail>();
   const netBytes = source<{ received: number }>();
   const content = source<ContentProgressFacts>();
   // The page's loading screen, which writes the loading store, with motion off so no typing frame is asked for.
@@ -208,9 +207,9 @@ describe('startLoadProgress', () => {
     const { chainSync, chainDetail, netBytes, content, trace, debug } = setup('rpc-gateway');
 
     // When the relay finds no peers, and Asset Hub finds one, which would move a light client's bar
-    chainSync.send({ chain: 'relay', syncKind: 'peers', peers: 0 });
-    chainSync.send({ chain: 'relay', syncKind: 'connecting' });
-    chainSync.send({ chain: 'assethub', syncKind: 'firstPeer' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    chainSync.send({ chain: 'assethub', kind: 'firstPeer' });
     chainDetail.send({ chain: 'assethub', dbCache: 'hit' });
     netBytes.send({ received: 2048 });
     content.send({ bytesFetched: 10, totalBytes: 100 });
@@ -220,7 +219,7 @@ describe('startLoadProgress', () => {
     // Then
     expect(getLoadingState().warning).toBeNull();
     expect(afterReports).toBe(5);
-    expect(trace.chainSync).toHaveBeenCalledWith({ chain: 'relay', syncKind: 'connecting' });
+    expect(trace.chainSync).toHaveBeenCalledWith({ chain: 'relay', kind: 'connecting' });
     expect(trace.chainDetail).toHaveBeenCalledWith({ chain: 'assethub', dbCache: 'hit' });
     expect(trace.bytes).toHaveBeenCalledWith(2048);
     expect(trace.content).toHaveBeenCalledWith(10, 100);
@@ -230,10 +229,10 @@ describe('startLoadProgress', () => {
   it('As a visitor in direct mode, I am told a chain finds no peers only once the load is old enough to be slow', () => {
     // Given
     const { chainSync, trace } = setup('smoldot-direct');
-    chainSync.send({ chain: 'relay', syncKind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
 
     // When
-    chainSync.send({ chain: 'relay', syncKind: 'connecting' });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
     vi.advanceTimersByTime(3_000);
     const warnedEarly = getLoadingState().warning;
     vi.advanceTimersByTime(2_000);
@@ -251,14 +250,14 @@ describe('startLoadProgress', () => {
     const { chainSync, debug } = setup('smoldot-direct');
 
     // When
-    chainSync.send({ chain: 'relay', syncKind: 'warpSyncProgress', at: 50, target: 100 });
+    chainSync.send({ chain: 'relay', kind: 'warpSyncProgress', at: 50, target: 100 });
     const warping = progressNow();
-    chainSync.send({ chain: 'relay', syncKind: 'warpSyncFinished' });
+    chainSync.send({ chain: 'relay', kind: 'warpSyncFinished' });
     const warped = progressNow();
-    chainSync.send({ chain: 'assethub', syncKind: 'firstPeer' });
+    chainSync.send({ chain: 'assethub', kind: 'firstPeer' });
     const hubFound = { progress: progressNow(), line: stepLine() };
-    chainSync.send({ chain: 'assethub', syncKind: 'bootstrapComplete' });
-    chainSync.send({ chain: 'bulletin', syncKind: 'peers', peers: 3 });
+    chainSync.send({ chain: 'assethub', kind: 'bootstrapComplete' });
+    chainSync.send({ chain: 'bulletin', kind: 'peers', peers: 3 });
 
     // Then: half the warp is half of the starting band, from 2 to 10
     expect(warping).toBe(6);
@@ -293,7 +292,7 @@ describe('startLoadProgress', () => {
     [
       'Bulletin finds a peer',
       (load: ReturnType<typeof setup>) => {
-        load.chainSync.send({ chain: 'bulletin', syncKind: 'peers', peers: 3 });
+        load.chainSync.send({ chain: 'bulletin', kind: 'peers', peers: 3 });
       },
     ],
     [

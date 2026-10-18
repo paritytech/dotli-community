@@ -5,6 +5,7 @@
 // fake frame's document loads this script, which answers the host through the real transport with the options its own
 // script tag carries as JSON.
 
+import type { ManifestResult, RootManifest } from '@dotli/resolver';
 import { named } from '@dotli/shared';
 import {
   createFrameStatus,
@@ -19,7 +20,6 @@ import { createTransport, createWindowProvider, err, ok, type MethodTypes, type 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
 type ChainMessage = MethodTypes<typeof chain.connect>['receive'];
-type RootManifest = Extract<MethodTypes<typeof resolve.rootManifest>['response'], { success: true }>['value'];
 
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';
@@ -44,7 +44,7 @@ export interface FakeProtocolOptions {
   /** Per CID. A CID with no mode is served. */
   modes?: Record<string, BlockMode>;
   /** What `resolve.rootManifest` answers. None published by default. */
-  rootManifest?: RootManifest;
+  rootManifest?: ManifestResult<RootManifest>;
 }
 
 declare global {

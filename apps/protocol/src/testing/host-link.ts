@@ -6,7 +6,7 @@
 // spec did not take, so none goes unseen.
 
 import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
-import { deferred } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
 import { createProviderPair } from '@dotli/transport/testing';
 import {
   createTransport,

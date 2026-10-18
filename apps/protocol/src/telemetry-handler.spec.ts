@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { protocolSchema } from '@dotli/protocol';
-import { deferred } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
 import { err, hostFailure } from '@dotli/transport';
 import { createTelemetryHandler, type TelemetryDeps } from './telemetry-handler.js';
 import { closeHostLinks, linkHost, record } from './testing/host-link.js';

@@ -5,7 +5,7 @@
 // Each tab is a real transport on its own port pair, so the worker is driven over the wire as an iframe drives it.
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { deferred, manualTimers, must } from '@dotli/shared/testing';
+import { manualTimers, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
@@ -22,8 +22,8 @@ import {
   type MethodTypes,
 } from '@dotli/transport';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import { bindLogSink, type LogLevel } from '@dotli/shared';
-import type { Ticker } from './net-bytes.js';
+import { deferred, bindLogSink, type LogLevel } from '@dotli/shared';
+import { createTestTicker } from './net-bytes.fake.js';
 import {
   startProtocolWorker,
   workerNetwork,
@@ -335,13 +335,7 @@ async function bootWorker(
       };
     },
   };
-  const ticks = new Set<() => void>();
-  const netBytesTicker: Ticker = onTick => {
-    ticks.add(onTick);
-    return () => {
-      ticks.delete(onTick);
-    };
-  };
+  const netBytesTicker = createTestTicker();
   const logs: LogLine[] = [];
   const logWaiters: { message: string; resolve: () => void }[] = [];
   bindLogSink({
@@ -379,7 +373,7 @@ async function bootWorker(
     openSpan: open,
     heartbeat,
     flush,
-    netBytes: readNetBytes === undefined ? undefined : { read: readNetBytes, ticker: netBytesTicker },
+    netBytes: readNetBytes === undefined ? undefined : { read: readNetBytes, ticker: netBytesTicker.ticker },
   });
   await light.presyncDone;
   const attach = ({ closeEvent = true }: { closeEvent?: boolean } = {}): Attached => {
@@ -454,12 +448,8 @@ async function bootWorker(
       beat?.();
     },
     beating: () => beat !== null,
-    tickNetBytes: () => {
-      for (const tick of [...ticks]) {
-        tick();
-      }
-    },
-    netBytesTickers: () => ticks.size,
+    tickNetBytes: netBytesTicker.tick,
+    netBytesTickers: netBytesTicker.running,
     close,
     closed: closing.promise,
     closedOnce: closing.promise.then(afterQueuedTimers),

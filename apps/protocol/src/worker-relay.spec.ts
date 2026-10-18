@@ -18,7 +18,7 @@ import {
   createFrameStatus,
   type FrameStatus,
 } from '@dotli/protocol';
-import { deferred } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
 import {
   TransportVersionMismatchError,
   createPortProvider,

@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createLazyLoad } from './lazy-load.js';
-import { deferred } from './testing/deferred.js';
+import { deferred } from './deferred.js';
 
 const RUNTIME = { name: 'host runtime' };
 

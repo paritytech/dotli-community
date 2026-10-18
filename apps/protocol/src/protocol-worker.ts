@@ -44,8 +44,8 @@ import { createEngine, serveEngineMethods, type EngineScope, type ProtocolEngine
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { createWireReport } from './refusal-report.js';
-import { createTelemetryHandler } from './telemetry-handler.js';
+import { createWireReport, reportRefusals } from './refusal-report.js';
+import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
 import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
 const { frame, resolve, chain } = protocolSchema.traits;
@@ -178,13 +178,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const telemetry = createTelemetryHandler({
     onChainSync: resolver.onChainSync,
     onChainDetail: resolver.onChainDetail,
-    dbOutcomes: () => lightClient.status().db,
-    onDbOutcome: listener =>
-      lightClient.subscribe(change => {
-        if (change.kind === 'db') {
-          listener(change.chain, change.outcome);
-        }
-      }),
+    ...lightClientDb(lightClient),
     netBytes: listener => (netBytes === null ? (): void => undefined : netBytes(listener)),
     // A tab that subscribes once the chains are synced paid no sync cost, so the reads before it are hits.
     joinedSynced: () => phase.name === 'ready',
@@ -342,7 +336,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     span.end();
   }
 
-  /** Logs a request that fails by the name dashboards know it by, and spans it when its calls are timed. */
+  /** Spans a request when its calls are timed. */
   function traced<P, R, E extends DomainFailure>(
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
@@ -356,16 +350,11 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         if (span !== null) {
           endSpan(span, failure);
         }
-        if (failure !== undefined) {
-          // The host rebuilds this failure from the answer and reports it.
-          log.warn(`${TAG} ${name} failed`, failure);
-        }
         return answer;
       } catch (error) {
         if (span !== null) {
           endSpan(span, toError(error));
         }
-        log.warn(`${TAG} ${name} failed`, error);
         throw error;
       }
     };
@@ -387,9 +376,6 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         }
         open = false;
         endSpan(span, error);
-        if (error !== undefined) {
-          log.warn(`${TAG} ${name} failed`, error);
-        }
       };
       const spanned: Sink<V, I> = {
         receive: value => {
@@ -442,8 +428,12 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     });
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
     transport.handleRequest(frame.heartbeat, () => ok());
-    // The engine and the tab's scope are made on first use, so each method asks for them when called.
-    serveEngineMethods(transport, {
+    // The engine and the tab's scope are made on first use, so each method asks for them when called. A failure is
+    // logged by the name dashboards know it by, and the host rebuilds it from the answer and reports it.
+    const reporting = reportRefusals(transport, ({ method, error }) => {
+      log.warn(`${TAG} ${method} failed`, error);
+    });
+    serveEngineMethods(reporting, {
       warmup: traced(frame.warmup, (payload, context) => requireEngine().warmup(payload, context)),
       resolveDotName: tracedSubscription(
         resolve.dotName,

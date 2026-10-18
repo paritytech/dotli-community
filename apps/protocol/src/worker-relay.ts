@@ -91,12 +91,14 @@ export function registerWorkerRelay(
     send: relayRequest(worker, chain.send),
   });
   workerStatus.onEnd(end => {
-    // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
-    worker.dispose(workerEndError(end));
+    // The status goes first, so the host drops this frame before it hears the relayed calls fail, and counts them in
+    // the frame's loss.
     if (end.kind === 'interrupt') {
       status.interrupt(end.outcome);
     } else {
       status.fail(end.error);
     }
+    // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
+    worker.dispose(workerEndError(end));
   });
 }

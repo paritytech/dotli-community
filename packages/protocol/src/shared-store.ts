@@ -4,18 +4,12 @@
 // The shared store on `host.<BASE_DOMAIN>`: auth, mode preferences and the local wallet, one for every subdomain.
 
 import type { SiteId } from '@dotli/config';
-import { log, realTimers, type Timers } from '@dotli/shared';
+import { realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
 import type { FrameRpc } from './rpc.js';
-import {
-  protocolSchema,
-  type LocalWalletIdentity,
-  type LocalWalletRead,
-  type ProtocolTransport,
-  type SharedAuthChange,
-} from './schema.js';
+import { protocolSchema, type LocalWalletIdentity, type LocalWalletRead, type SharedAuthChange } from './schema.js';
 import { subscribe } from './subscription.js';
 
 const { storage, wallet } = protocolSchema.traits;
@@ -59,7 +53,7 @@ function sharedStoreStatusOf(status: ProtocolStatus, settledOnce: boolean): Shar
 }
 
 export interface SharedStoreDeps {
-  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport' | 'losses'>;
+  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>;
   rpc: FrameRpc;
   /** What a reopen of the auth change feed waits on. */
   timers?: Timers;
@@ -78,46 +72,21 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     return sharedStoreStatusOf(frame.getStatus(), settledOnce);
   }
 
-  // The sibling tabs' auth changes, heard on the frame there is now while anyone listens.
-  const changes = createFeedKeeper('shared_auth', frame, timers);
-  // The transport the changes are heard on, null while nobody listens.
-  let heard: ProtocolTransport | null = null;
-  // Each ask for a frame's transport, so an answer a later ask overtook is not followed.
-  let asks = 0;
-
-  function follow(transport: ProtocolTransport, since: number): void {
-    if (sharedAuthListeners.size === 0 || heard === transport) {
-      return;
-    }
-    heard = transport;
-    changes.hold(
-      end =>
-        subscribe(transport, storage.authChanges, undefined, {
-          receive: change => {
-            sharedAuthListeners.emit(change);
-          },
-          end,
-        }),
-      since,
-    );
-  }
-
-  /** Follows the frame's transport. Asking for it boots a frame that is down, as a listener needs one. */
-  function followFrame(): void {
-    asks += 1;
-    const ask = asks;
-    const since = frame.losses();
-    void frame.transport().then(
-      transport => {
-        if (ask === asks) {
-          follow(transport, since);
-        }
-      },
-      (error: unknown) => {
-        log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);
-      },
-    );
-  }
+  // The sibling tabs' auth changes, heard on the frame there is now while anyone listens. Asking for its transport
+  // boots a frame that is down, as a listener needs one.
+  const changes = createFeedKeeper(
+    'shared_auth',
+    frame,
+    transport => ends =>
+      subscribe(transport, storage.authChanges, undefined, {
+        receive: change => {
+          sharedAuthListeners.emit(change);
+        },
+        end: ends.end,
+        close: ends.close,
+      }),
+    timers,
+  );
 
   let announced = getStatus();
   frame.subscribeStatus(next => {
@@ -129,7 +98,7 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     }
     // A new frame relays nothing to a subscription on the one it replaces.
     if (next === 'booting' && sharedAuthListeners.size > 0) {
-      followFrame();
+      changes.follow();
     }
   });
 
@@ -172,12 +141,11 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
       const unsubscribe = sharedAuthListeners.subscribe(listener);
       // Not awaited, since subscribe is synchronous. A frame that fails rebuilds itself.
-      followFrame();
+      changes.follow();
       return () => {
         unsubscribe();
         if (sharedAuthListeners.size === 0) {
           changes.stop();
-          heard = null;
         }
       };
     },

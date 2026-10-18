@@ -30,7 +30,6 @@ interface SharedAuthBroadcastMessage {
   value: string | null;
 }
 
-/** The channel the iframes of every tab on this origin share. */
 /** The tabs' broadcast channel, as much of it as the store uses. A `BroadcastChannel` is one. */
 export interface SharedAuthChannel {
   postMessage(message: SharedAuthBroadcastMessage): void;
@@ -52,12 +51,6 @@ export interface SharedStoreHandler {
   stop: () => void;
 }
 
-function assertSiteId(value: string): asserts value is SiteId {
-  if (!isSharedAuthSiteId(value)) {
-    throw new Error(`Invalid siteId: ${String(value)}`);
-  }
-}
-
 function assertAuthKey(value: string): void {
   if (!isValidSharedAuthKey(value)) {
     throw new Error(`Invalid shared auth key: ${value}`);
@@ -75,6 +68,20 @@ function isOriginAllowed(context: ProtocolContext): boolean {
   return context.origin !== null && isSharedAuthOriginAllowed(context.origin);
 }
 
+/**
+ * The call's site once its origin and site check, or the call's refusal when its origin may not use the shared stores.
+ * A site that does not check throws.
+ */
+export function admitSite(payload: { siteId: string }, context: ProtocolContext): ResultPayload<SiteId, Failure> {
+  if (!isOriginAllowed(context)) {
+    return err(denied());
+  }
+  if (!isSharedAuthSiteId(payload.siteId)) {
+    throw new Error(`Invalid siteId: ${String(payload.siteId)}`);
+  }
+  return ok(payload.siteId);
+}
+
 /** A call's storage key once its site and key check, or the call's refusal when its origin may not use the store. */
 function storeKey(
   payload: { siteId: string; key: string },
@@ -82,12 +89,12 @@ function storeKey(
   assertKey: (key: string) => void,
   build: (siteId: SiteId, key: string) => string,
 ): ResultPayload<string, Failure> {
-  if (!isOriginAllowed(context)) {
-    return err(denied());
+  const site = admitSite(payload, context);
+  if (!site.success) {
+    return site;
   }
-  assertSiteId(payload.siteId);
   assertKey(payload.key);
-  return ok(build(payload.siteId, payload.key));
+  return ok(build(site.value, payload.key));
 }
 
 /** Checks a call's origin, site and auth key, and returns its storage key. */

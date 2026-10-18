@@ -15,7 +15,8 @@ import {
   type FrameStatus,
   type FrameStatusEnd,
 } from '@dotli/protocol';
-import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
+import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
   createPortProvider,
   createTransport,

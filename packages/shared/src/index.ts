@@ -23,6 +23,7 @@ export { bindLogSink, log, type LogLevel } from './log.js';
 export { formatRate, formatSize } from './byte-size.js';
 export { createLazyLoad } from './lazy-load.js';
 export { createListenerSet, type ListenerSet, type ListenerSetOptions } from './listener-set.js';
+export { deferred } from './deferred.js';
 export { dur, elapsed } from './perf.js';
 export { noop } from './noop.js';
 export { createPendingReplies, type PendingReplies } from './pending-replies.js';

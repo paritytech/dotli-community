@@ -4,14 +4,7 @@
 // Serves the local wallet to host pages. Same trust boundary as shared auth storage: host and landing origins of this
 // root domain only, never product origins.
 
-import {
-  isSharedAuthOriginAllowed,
-  isSharedAuthSiteId,
-  protocolSchema,
-  type LocalWalletRead,
-  type ProtocolContext,
-  type ProtocolServing,
-} from '@dotli/protocol';
+import { protocolSchema, type LocalWalletRead, type ProtocolContext, type ProtocolServing } from '@dotli/protocol';
 import {
   forgetLocalWallet,
   loadLocalWallet,
@@ -20,7 +13,9 @@ import {
   updateLocalWalletIdentity,
   type LocalWalletStore,
 } from '@dotli/storage';
-import { denied, err, ok, type Failure, type ResultPayload } from '@dotli/transport';
+import { ok, type Failure, type ResultPayload } from '@dotli/transport';
+
+import { admitSite } from './shared-store-handler.js';
 
 const { wallet } = protocolSchema.traits;
 
@@ -32,20 +27,6 @@ function assertEntropy(value: Uint8Array): void {
   if (!ENTROPY_LENGTHS.has(value.length)) {
     throw new Error('Invalid local wallet entropy');
   }
-}
-
-/**
- * The refusal of a call whose origin does not check, or null to serve it. A site that does not check throws. Holds the
- * shared-auth trust boundary on any transport the wallet is served over.
- */
-function refusalOf(payload: { siteId: string }, context: ProtocolContext): ResultPayload<never, Failure> | null {
-  if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
-    return err(denied());
-  }
-  if (!isSharedAuthSiteId(payload.siteId)) {
-    throw new Error(`Invalid siteId: ${String(payload.siteId)}`);
-  }
-  return null;
 }
 
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
@@ -70,9 +51,9 @@ async function admittedWrite(
   context: ProtocolContext,
   write: () => Promise<void>,
 ): Promise<ResultPayload<undefined, Failure>> {
-  const refusal = refusalOf(payload, context);
-  if (refusal !== null) {
-    return refusal;
+  const site = admitSite(payload, context);
+  if (!site.success) {
+    return site;
   }
   await write();
   return ok();
@@ -80,7 +61,10 @@ async function admittedWrite(
 
 /** Serves the wallet to host pages on `serving`, over the page's own wallet store by default. */
 export function serveLocalWallet(serving: ProtocolServing, store: LocalWalletStore = pageWallet): void {
-  serving.handleRequest(wallet.read, async (payload, context) => refusalOf(payload, context) ?? ok(await read(store)));
+  serving.handleRequest(wallet.read, async (payload, context) => {
+    const site = admitSite(payload, context);
+    return site.success ? ok(await read(store)) : site;
+  });
   serving.handleRequest(wallet.save, (payload, context) =>
     admittedWrite(payload, context, () => {
       assertEntropy(payload.entropy);

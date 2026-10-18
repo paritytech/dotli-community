@@ -11,7 +11,7 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import { budgetOf, protocolSchema, RESOLVE_BUDGET_MS, type ProtocolTransport } from '@dotli/protocol';
+import { budgetOf, protocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import {
   domain,
   err,
@@ -333,7 +333,7 @@ describe('createEngine name reads', () => {
     [
       'leaves the budget to its method, less the delivery grace',
       undefined,
-      RESOLVE_BUDGET_MS - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+      (budgetOf(protocolSchema.traits.resolve.dotName) ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
     ],
   ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
     // Given

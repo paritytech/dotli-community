@@ -6,7 +6,6 @@
 import type { ResolvePhase } from '@dotli/resolver';
 
 import { PROTOCOL_ERRORS } from './errors.js';
-import type { ProtocolFrame } from './frame.js';
 
 import type { FrameRpc } from './rpc.js';
 import { protocolSchema } from './schema.js';
@@ -15,20 +14,18 @@ import { subscribe } from './subscription.js';
 const { dotName, owner, executableManifest, rootManifest } = protocolSchema.traits.resolve;
 
 export interface RemoteResolveDeps {
-  frame: Pick<ProtocolFrame, 'whenReady'>;
   rpc: FrameRpc;
 }
 
-export function createRemoteResolve({ frame, rpc }: RemoteResolveDeps) {
+export function createRemoteResolve({ rpc }: RemoteResolveDeps) {
   /**
    * Hears the frame's resolve phases, then its result, and unsubscribes on the result. The budget runs once the frame
    * is ready, and a resolution that outlives it is unsubscribed, so the frame stops it.
    */
-  async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
-    const transport = await frame.whenReady();
+  function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
     return rpc.call(
       dotName,
-      signal =>
+      (transport, signal) =>
         new Promise<string | null>((resolve, reject) => {
           let answered = false;
           const stop = subscribe(

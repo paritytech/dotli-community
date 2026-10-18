@@ -19,7 +19,8 @@ if (window.top === window && location.hostname !== PROTOCOL_HOSTNAME) {
       return;
     }
     const recorded = recordWireMessage(event.data);
-    if (recorded !== null) {
+    // The light client's own traffic, which no test reads, would dwarf the rest and slow every wait that scans it.
+    if (recorded !== null && recorded.trait !== 'chain') {
       seen.push(recorded);
     }
   });

@@ -57,11 +57,12 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 - In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
   through its own transport, including the frame status and telemetry subscriptions. That transport opens the handshake
   toward the worker, with this page load's resolution id as its hello. The relay adds nothing to a call and passes each
-  answer, value and end on as the worker gave it. When this tab's status from the worker ends, the relay first closes
-  its transport, so each call the worker still held fails and each relayed subscription ends before the host hears the
-  frame end. It then ends the frame status: with the worker's own end as it is, or, when its transport closed under it,
-  with the closing error. A transport's own closing error, a version mismatch or a handshake timeout, reaches the host
-  under the protocol's class, as it would from the iframe's own link, and a version mismatch ends the status typed.
+  answer, value and end on as the worker gave it. When this tab's status from the worker ends, the relay first ends the
+  frame status: with the worker's own end as it is, or, when its transport closed under it, with the closing error. The
+  host drops the frame on that end, as the worker orders its own release. The relay then closes its transport, so each
+  call the worker still held fails. A transport's own closing error, a version mismatch or a handshake timeout, reaches
+  the host under the protocol's class, as it would from the iframe's own link, and a version mismatch ends the status
+  typed.
 - The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
   between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
   It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat

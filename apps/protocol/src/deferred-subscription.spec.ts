@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { protocolSchema, type ProtocolHandler } from '@dotli/protocol';
-import { deferred } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
 import { err, hostFailure, type DomainError, type MethodTypes } from '@dotli/transport';
 import { createDeferredSubscription, type DeferredSubscription } from './deferred-subscription.js';
 import { closeHostLinks, linkHost, record, roundTrip, type HostLink } from './testing/host-link.js';

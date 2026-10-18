@@ -6,7 +6,7 @@
 // odd and the accepter even, so a frame's id tells whose call it is about. The transport owns whether it is open, and
 // everything the parts cannot handle goes to the owner's issue hook.
 
-import { realTimers, toError, type Timers } from '@dotli/shared';
+import { deferred, realTimers, toError, type Timers } from '@dotli/shared';
 import type { ResultPayload } from 'scale-ts';
 import { createCalls, type SubscriptionListeners } from './calls.js';
 import { failureReason, logIssue, type TransportIssue } from './errors.js';
@@ -128,11 +128,8 @@ export function createTransport<H, T extends Traits>(
   let disposed = false;
   const firstId = options.handshake === 'open' ? 1 : 2;
   let lastId = firstId - 2;
-  let endHandshake = (): void => undefined;
   // Settles once the handshake succeeds or fails, or the transport closes. The phase says which.
-  const handshakeOver = new Promise<void>(resolve => {
-    endHandshake = resolve;
-  });
+  const handshakeOver = deferred<undefined>();
 
   const nextId = (): number => {
     lastId = lastId + 2 > MAX_ID ? firstId : lastId + 2;
@@ -167,7 +164,7 @@ export function createTransport<H, T extends Traits>(
   const calls = createCalls({
     nextId,
     post,
-    handshakeOver,
+    handshakeOver: handshakeOver.promise,
     closedBy,
     refuse,
     runListener,
@@ -175,7 +172,7 @@ export function createTransport<H, T extends Traits>(
   const serving = createServing<H>({
     placeAt: schema.placeAt,
     post,
-    closed: () => phase.name === 'closed',
+    closedBy,
     refuse,
     runListener,
     onPeerIdle: options.onPeerIdle,
@@ -186,14 +183,14 @@ export function createTransport<H, T extends Traits>(
       return;
     }
     phase = { name: 'connected', peerHello };
-    endHandshake();
+    handshakeOver.resolve(undefined);
   };
   const close = (error: Error): void => {
     if (phase.name === 'closed') {
       return;
     }
     phase = { name: 'closed', error };
-    endHandshake();
+    handshakeOver.resolve(undefined);
     serving.close(error);
     calls.close(error);
   };
@@ -267,7 +264,7 @@ export function createTransport<H, T extends Traits>(
     },
 
     async whenConnected() {
-      await handshakeOver;
+      await handshakeOver.promise;
       const closed = closedBy();
       if (closed !== null) {
         throw closed;

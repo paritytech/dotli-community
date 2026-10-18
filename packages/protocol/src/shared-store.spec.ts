@@ -4,7 +4,7 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { bindLogSink, createStatusCell } from '@dotli/shared';
+import { createStatusCell } from '@dotli/shared';
 import { manualTimers, recordLog } from '@dotli/shared/testing';
 import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
@@ -126,16 +126,7 @@ describe('createSharedStore', () => {
   it("As a returning user, another tab's shared auth write reaches me, and my subscription waits only for a listening frame", async () => {
     // Given a frame still booting, and a subscription made while it boots
     const timers = manualTimers();
-    const warnings: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'warn') {
-            warnings.push(message);
-          }
-        },
-      }),
-    );
+    const warnings = recordLog({ onFinished: onTestFinished, level: 'warn' });
     const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting', timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });

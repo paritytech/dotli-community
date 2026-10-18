@@ -5,19 +5,14 @@
 // monitor and the debug panel's chain events. The reports come from other frames, so they are passed in.
 
 import type { Backend, ChainRole } from '@dotli/config';
-import type { ChainPeer, ChainSyncKind } from '@dotli/chains';
+import type { ChainDetail, ChainSyncEvent, ChainSyncKind } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingPhase } from './loading-controller.js';
 import { log } from '@dotli/shared';
 import { productStore } from './runtime/state/product.js';
 import { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './state/network-monitor.js';
-import {
-  chainTelemetryName,
-  createChainPhaseTracker,
-  type CacheResult,
-  type ChainSyncFacts,
-} from './resolution-trace.js';
+import { chainTelemetryName, createChainPhaseTracker } from './resolution-trace.js';
 import {
   describeProgressStall,
   describeStall,
@@ -35,12 +30,6 @@ const CHAIN_BYTES_DEBUG_MS = 1000;
 const CHAIN_BYTES_DEBUG_MAX = 300;
 const SPEED_WINDOW_MS = 3_000;
 
-export interface ChainDetailFacts {
-  chain: ChainRole;
-  dbCache?: CacheResult | undefined;
-  peers?: ChainPeer[] | undefined;
-}
-
 export interface ContentProgressFacts {
   bytesFetched: number;
   totalBytes: number | null;
@@ -48,8 +37,8 @@ export interface ContentProgressFacts {
 
 /** Where the load's reports come from: the protocol frame and the sandbox's content fetch. Each returns its unsubscribe. */
 export interface LoadEvents {
-  onChainSync: (listener: (event: ChainSyncFacts) => void) => () => void;
-  onChainDetail: (listener: (event: ChainDetailFacts) => void) => () => void;
+  onChainSync: (listener: (event: ChainSyncEvent) => void) => () => void;
+  onChainDetail: (listener: (event: ChainDetail) => void) => () => void;
   onNetBytes: (listener: (event: { received: number }) => void) => () => void;
   onContentProgress: (listener: (event: ContentProgressFacts) => void) => () => void;
 }
@@ -70,8 +59,8 @@ export interface LoadingScreen {
 
 /** The part of the resolution trace that hears the load's reports. */
 export interface LoadTrace {
-  chainSync: (event: ChainSyncFacts) => void;
-  chainDetail: (event: ChainDetailFacts) => void;
+  chainSync: (event: ChainSyncEvent) => void;
+  chainDetail: (event: ChainDetail) => void;
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;
   warningShown: () => void;
@@ -281,8 +270,8 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
 
   options.events.onChainSync(event => {
     const role = event.chain;
-    const phase = trackPhase(role, event.syncKind);
-    if (event.syncKind === 'peers' && event.peers !== undefined) {
+    const phase = trackPhase(role, event.kind);
+    if (event.kind === 'peers' && event.peers !== undefined) {
       // Independent of the phase, since the relay usually finds its peers after its last transition.
       const changed = peersByRole.get(role) !== event.peers;
       peersByRole.set(role, event.peers);
@@ -336,15 +325,15 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
       }
     }
     // Not health samples, which arrive every second and would keep a stalled chain from ever warning.
-    if (event.syncKind !== 'peers' && isCriticalChain(event.chain)) {
-      if (event.syncKind === 'stalled') {
+    if (event.kind !== 'peers' && isCriticalChain(event.chain)) {
+      if (event.kind === 'stalled') {
         stallReason.set(event.chain, event.reason);
       } else {
         stallReason.delete(event.chain);
       }
-      armStallWatch(event.chain, event.syncKind);
+      armStallWatch(event.chain, event.kind);
     }
-    switch (event.syncKind) {
+    switch (event.kind) {
       case 'peers':
         if (event.peers === undefined) {
           return;

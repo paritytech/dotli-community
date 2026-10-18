@@ -46,15 +46,7 @@ export {
   type SharedAuthChange,
   type TelemetryEvent,
 } from './schema.js';
-export {
-  budgetOf,
-  callName,
-  CONNECT_BUDGET_MS,
-  policyOf,
-  RESOLVE_BUDGET_MS,
-  type CallName,
-  type MethodPolicy,
-} from './method-policy.js';
+export { budgetOf, callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
 export { failureOf, frameStatusEnd, fromTransportError, remoteEnd } from './outcomes.js';
 export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
 export { createIssueReporter, type WireIssue } from './wire-issues.js';

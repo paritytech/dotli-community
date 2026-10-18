@@ -46,8 +46,8 @@ export interface ServingDeps {
   /** The method at a place in the schema, and its address. */
   placeAt: (traitId: number, methodId: number) => Place | undefined;
   post: Post;
-  /** Whether the transport has closed, after which the peer hears no answer. */
-  closed: () => boolean;
+  /** The error the transport closed with, after which the peer hears no answer, or null while it is open. */
+  closedBy: () => Error | null;
   refuse: Refuse;
   runListener: RunListener;
   /** Hears that the peer left: its own stop left nothing running, and its calls have settled. Once per departure. */
@@ -81,7 +81,7 @@ interface Running {
 }
 
 export function createServing<H>(deps: ServingDeps): Serving<H> {
-  const { placeAt, post, closed, refuse, runListener, onPeerIdle } = deps;
+  const { placeAt, post, closedBy, refuse, runListener, onPeerIdle } = deps;
   const handlers = new Map<AnyMethod, Served<H>>();
   // The peer's requests whose handlers have not settled, which a close answers.
   const inFlight = new Map<number, Address>();
@@ -123,7 +123,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
   /** Tells `onPeerIdle` once the peer's calls have settled, unless it called again meanwhile or the transport closed. */
   const whenPeerIdle = async (seen: number): Promise<void> => {
     await handlerCalls.settle();
-    if (closed() || peerCalls !== seen || idleHeardAt === seen || onPeerIdle === undefined) {
+    if (closedBy() !== null || peerCalls !== seen || idleHeardAt === seen || onPeerIdle === undefined) {
       return;
     }
     idleHeardAt = seen;

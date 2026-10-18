@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { deferred, manualTimers } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
+import { manualTimers } from '@dotli/shared/testing';
 import { type BlockCache, createBlockCache } from './block-cache.js';
 import { abortAtCommit } from './testing/abort-at-commit.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';

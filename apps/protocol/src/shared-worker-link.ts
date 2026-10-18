@@ -13,7 +13,16 @@ import {
   type FrameStatusEnd,
   type ProtocolTransport,
 } from '@dotli/protocol';
-import { createListenerSet, errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import {
+  createListenerSet,
+  deferred,
+  errorName,
+  log,
+  realTimers,
+  toError,
+  withTimeout,
+  type Timers,
+} from '@dotli/shared';
 import { createPortProvider, createTransport, type TransportIssue } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -152,14 +161,25 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
     timeoutMs: readyTimeoutMs,
     onIssue: deps.onIssue,
   });
-  let failReadyWait: ((error: Error, why: string) => void) | null = null;
+  // Why the wait failed, for the metric. A timeout carries none.
+  let reason: string | undefined;
+  const ready = deferred<ProtocolTransport>();
+  // Until the wait settles, so what is heard after it changes nothing.
+  let waiting = true;
+  const failReadyWait = (error: Error, why: string): void => {
+    if (waiting) {
+      waiting = false;
+      reason = why;
+      ready.reject(error);
+    }
+  };
 
   // Fires only when the worker script cannot be fetched or evaluated.
   worker.addEventListener('error', event => {
     const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
     const error = new ProtocolInitFailedError(`SharedWorker failed to start${detail}`);
     log.error('[dot.li protocol] SharedWorker error event', error);
-    if (failReadyWait !== null) {
+    if (waiting) {
       // Fails now with the cause instead of at the ready timeout. The host reports the resulting failed init.
       failReadyWait(error, 'load_failed');
       return;
@@ -171,24 +191,11 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
   // Before the ready wait, so a frame removed while the worker syncs still frees its port at once.
   disposeOnPageHide(deps.window, transport, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
 
-  // Why the wait failed, for the metric. A timeout carries none.
-  let reason: string | undefined;
-  let resolveReady: () => void = () => undefined;
-  const ready = new Promise<ProtocolTransport>((resolve, reject) => {
-    resolveReady = () => {
-      failReadyWait = null;
-      resolve(transport);
-    };
-    failReadyWait = (error, why) => {
-      failReadyWait = null;
-      reason = why;
-      reject(error);
-    };
-  });
   // One subscription serves the ready wait and the caller alike, since a dead worker may close once this tab first
   // heard why, and would never answer a second.
   const status = watchWorkerStatus(transport, () => {
-    resolveReady();
+    waiting = false;
+    ready.resolve(transport);
   });
   // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
   answerBeats(transport, status);
@@ -197,12 +204,12 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
   // frame fails with the worker's own end rather than the failed boot that follows from it.
   deps.onOpen?.(transport, status);
   status.onEnd(end => {
-    failReadyWait?.(workerEndError(end), 'worker_reported');
+    failReadyWait(workerEndError(end), 'worker_reported');
   });
 
   let timedOut: Error | undefined;
   const record = (outcome: 'ok' | 'error' | 'timeout'): number => {
-    failReadyWait = null;
+    waiting = false;
     const waitMs = performance.now() - startedAt;
     m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
       outcome,
@@ -212,7 +219,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
   };
   // Armed before the handshake starts, so on a tie the ready wait's own timeout is the one heard.
   const waited = withTimeout(
-    ready,
+    ready.promise,
     readyTimeoutMs,
     () => {
       timedOut = new ProtocolInitFailedError(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);

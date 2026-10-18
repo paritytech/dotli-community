@@ -12,11 +12,12 @@ import {
   type RecordedCapture,
   type RecordingSentry,
 } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
-import { deferred, manualTimers, type ManualTimers, recordLog } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
+import { manualTimers, type ManualTimers, recordLog } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { err, hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
 import { ProtocolFatalError } from './errors.js';
+import { budgetOf } from './method-policy.js';
 import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame, type FakeFrame } from './frame.fake.js';
@@ -29,7 +30,7 @@ type Connect = MethodTypes<typeof chain.connect>;
 
 // The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
-const CONNECT_BUDGET_MS = 30_000;
+const CONNECT_BUDGET_MS = budgetOf(chain.connect) ?? 0;
 
 /** The clock and timers each test moves by hand. */
 let timers: ManualTimers;
@@ -128,7 +129,7 @@ describe('createRemoteChains', () => {
       },
       { timers },
     );
-    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
+    const chains = createRemoteChains({ rpc: createFrameRpc(fake.frame, timers) });
     const provider = chains.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
     if (provider === null) {
       throw new Error('People is not remote-connectable');
@@ -182,16 +183,7 @@ describe('createRemoteChains', () => {
 
   it('As a dotli integrator, I disconnect a connection and a chain message still on its way is dropped without a warning', async () => {
     // Given a connection the frame accepted
-    const warnings: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'warn') {
-            warnings.push(message);
-          }
-        },
-      }),
-    );
+    const warnings = recordLog({ onFinished: onTestFinished, level: 'warn' });
     const received: JsonRpcMessage[] = [];
     const connection = people(message => received.push(message));
     await settle();
@@ -231,16 +223,7 @@ describe('createRemoteChains', () => {
 
   it('As a dotli integrator, I receive a malformed chain message and it is reported and counted as a failure while the consumer hears nothing', async () => {
     // Given a live connection and a recorder of captured exceptions and logged errors
-    const errors: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'error') {
-            errors.push(message);
-          }
-        },
-      }),
-    );
+    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const captures = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const received: JsonRpcMessage[] = [];
@@ -255,7 +238,9 @@ describe('createRemoteChains', () => {
     // Then
     expect(received).toEqual([]);
     expect(captures).toEqual([{ flow: 'protocol', step: 'chain_message_parse', tags: undefined }]);
-    expect(errors).toEqual([expect.stringMatching(/chain-message JSON parse failed/) as string]);
+    expect(errors.map(line => line.message)).toEqual([
+      expect.stringMatching(/chain-message JSON parse failed/) as string,
+    ]);
     expect(metrics.counted(S.PROTOCOL_CHAIN_MESSAGE)).toEqual([{ outcome: 'error', reason: 'SyntaxError' }]);
   });
 

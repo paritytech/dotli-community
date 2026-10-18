@@ -13,7 +13,6 @@ import {
   type ProtocolServing,
   type RemoteFailure,
   remoteEnd,
-  RESOLVE_BUDGET_MS,
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
@@ -98,9 +97,7 @@ async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, C
 }
 
 /** What serves the chain and name methods: the engine and its scope, a relay to the worker, or the worker's traces. */
-export type EngineMethods = Pick<ProtocolEngine, 'warmup' | 'resolveDotName' | 'resolveOwner'> &
-  Pick<ProtocolEngine, 'resolveExecutableManifest' | 'resolveRootManifest'> &
-  Pick<EngineScope, 'connect' | 'send'>;
+export type EngineMethods = Omit<ProtocolEngine, 'openScope' | 'cleanup'> & Pick<EngineScope, 'connect' | 'send'>;
 
 /** Serves every chain and name method on `serving`, so no side can leave one out. */
 export function serveEngineMethods(serving: ProtocolServing, served: EngineMethods): void {
@@ -273,7 +270,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
           onPhase: phase => {
             sink.receive({ tag: 'phase', value: phase });
           },
-          ...syncOptions(RESOLVE_BUDGET_MS),
+          ...syncOptions(budgetOf(methods.resolve.dotName)),
         })
         .then(
           resolved => {

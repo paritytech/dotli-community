@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { bindLogSink, toError } from '@dotli/shared';
-import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { deferred, toError } from '@dotli/shared';
+import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { domain, err, ok } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
@@ -137,16 +137,7 @@ describe('createProtocolFrame', () => {
   it('As a dotli operator, I see each message the frame sends that the host cannot read counted once as refused', async () => {
     // Given a listening frame, and a log of the host's breadcrumbs
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const events: { message: string; attrs: Record<string, unknown> | undefined }[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message, attrs) => {
-          if (level === 'info' && message === 'protocol message refused') {
-            events.push({ message, attrs });
-          }
-        },
-      }),
-    );
+    const events = recordLog({ onFinished: onTestFinished, level: 'info' });
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
@@ -163,7 +154,11 @@ describe('createProtocolFrame', () => {
       { outcome: 'refused', reason: 'malformed', side: 'host' },
       { outcome: 'refused', reason: 'not_bytes', side: 'host' },
     ]);
-    expect(events).toEqual([
+    expect(
+      events
+        .filter(line => line.message === 'protocol message refused')
+        .map(({ message, attrs }) => ({ message, attrs })),
+    ).toEqual([
       {
         message: 'protocol message refused',
         attrs: { flow: 'protocol', reason: 'malformed', side: 'host', cause: expect.any(String) as string },
@@ -314,7 +309,6 @@ describe('createProtocolFrame', () => {
 
     // Then
     expect(await owner).toBeInstanceOf(ProtocolFatalError);
-    expect(frame.losses()).toBe(1);
     expect(metrics.counted(S.PROTOCOL_IFRAME_READY)).toEqual([
       { outcome: 'error', phase: 'ready', reason: 'ProtocolFatalError' },
     ]);
@@ -379,16 +373,7 @@ describe('createProtocolFrame', () => {
     // Given a ready frame, and a reporting pipeline that records captures, counts and breadcrumbs
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const events: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'info') {
-            events.push(message);
-          }
-        },
-      }),
-    );
+    const events = recordLog({ onFinished: onTestFinished, level: 'info' });
     const dom = createFrameDom(undefined, { timers });
     const frame = createProtocolFrame(dom.deps);
     frame.configure(FRAME_CONFIG);
@@ -406,7 +391,7 @@ describe('createProtocolFrame', () => {
     // Then
     expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'ProtocolPortReleasedError' }]);
     expect(captured).toEqual([]);
-    expect(events).toContain('protocol frame released');
+    expect(events.map(line => line.message)).toContain('protocol frame released');
     expect(await owner).toBeInstanceOf(ProtocolPortReleasedError);
     expect((await owner)?.message).toBe('The worker released this tab');
     expect(frame.getStatus()).toBe('failed');

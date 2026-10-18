@@ -16,10 +16,8 @@ type Path = { [T in keyof Traits]: `${T}.${Extract<keyof Traits[T], string>}` }[
 
 const DEFAULT_BUDGET_MS = 30_000;
 
-/** How long a chain connection may take to connect. */
-export const CONNECT_BUDGET_MS = 30_000;
 /** How long a name resolution may take to answer. */
-export const RESOLVE_BUDGET_MS = 90_000;
+const RESOLVE_BUDGET_MS = 90_000;
 
 interface Policy<N extends string> {
   /** The method's name in metrics, the trail and errors. */
@@ -65,7 +63,7 @@ const POLICIES = {
   'wallet.identity': policy('localWalletIdentity', store),
   'wallet.forget': policy('localWalletForget', store),
   'chain.send': policy('chainSend', { timed: false }),
-  'chain.connect': policy('chainConnect', { trailed: true, budgetMs: CONNECT_BUDGET_MS }),
+  'chain.connect': policy('chainConnect', { trailed: true }),
 } satisfies Record<Path, Policy<string>>;
 
 /** A method's name in metrics, the trail and errors. */

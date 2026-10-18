@@ -45,7 +45,7 @@ import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-ha
 import { createRefusalReporter, createWireReport, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
 import { createFrameBoot } from './frame-boot.js';
-import { createTelemetryHandler } from './telemetry-handler.js';
+import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
 // invisible to resource timing, so the speed readout needs this.
@@ -80,11 +80,6 @@ function adoptResolutionId(): void {
   }
 }
 
-// Same allowlist as shared auth, so sandboxed apps never drive the chain bridge directly.
-function isAllowedOrigin(origin: string): boolean {
-  return isSharedAuthOriginAllowed(origin);
-}
-
 // What this frame's provider and transport drop, each counted once, whichever of them drops it.
 const wire = createWireReport('frame', { warn: log.warn, count: m.count });
 
@@ -95,7 +90,8 @@ const serving = createTransport(
   createWindowProvider({
     listen: window,
     peer: () => window.parent,
-    origin: isAllowedOrigin,
+    // Same allowlist as shared auth, so sandboxed apps never drive the chain bridge directly.
+    origin: isSharedAuthOriginAllowed,
     // Only a host page of an earlier release sends objects. It never hears an answer and fails by its own timeout.
     onNotBytes: wire.onNotBytes,
     onRefusedOrigin: wire.onRefusedOrigin,
@@ -242,13 +238,7 @@ async function initDirectMode(): Promise<void> {
       onChainSync: provider.onChainSync,
       // Telemetry only, attached by the host to the resolution it is tracing.
       onChainDetail: provider.onChainDetail,
-      dbOutcomes: () => lightClient.status().db,
-      onDbOutcome: listener =>
-        lightClient.subscribe(change => {
-          if (change.kind === 'db') {
-            listener(change.chain, change.outcome);
-          }
-        }),
+      ...lightClientDb(lightClient),
       netBytes: shareNetBytes(chainBytesReceived, intervalTicker(NET_BYTES_INTERVAL_MS)),
       // This frame's light client is its own, so each database read is this tab's.
       joinedSynced: () => false,

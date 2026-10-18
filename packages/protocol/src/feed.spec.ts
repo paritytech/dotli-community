@@ -4,37 +4,52 @@
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { createFeedKeeper } from './feed.js';
-/** A subscription the keeper holds. The frame ends it with `end`, cleanly with null. */
-interface HeldSubscription {
-  end(error: Error | null): void;
+import { deferred } from '@dotli/shared';
+import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
+import { createFeedKeeper, type FeedEnds, type FeedName } from './feed.js';
+
+/** A frame's transport, known here by name only. */
+interface Transport {
+  name: string;
+}
+
+/** A subscription the keeper holds on `transport`. */
+interface HeldSubscription extends FeedEnds {
+  transport: Transport;
   unsubscribed: boolean;
 }
 
 describe('createFeedKeeper', () => {
   let timers: ManualTimers;
   let opened: HeldSubscription[];
-  const open = (end: (error: Error | null) => void): (() => void) => {
-    const held: HeldSubscription = { end, unsubscribed: false };
-    opened.push(held);
-    return () => {
-      held.unsubscribed = true;
-      held.end = () => undefined;
-    };
-  };
+  let current: Transport;
+
+  /** A keeper following a frame whose transport is `current`, recording each subscription it opens. */
+  const keeperOf = (feed: FeedName, frame = { transport: () => Promise.resolve(current) }) =>
+    createFeedKeeper(
+      feed,
+      frame,
+      transport => ends => {
+        const held: HeldSubscription = { transport, unsubscribed: false, ...ends };
+        opened.push(held);
+        return () => {
+          held.unsubscribed = true;
+        };
+      },
+      timers,
+    );
 
   beforeEach(() => {
     timers = manualTimers();
     opened = [];
-    onTestFinished(bindLogSink({ emit: () => undefined }));
+    current = { name: 'first' };
+    recordLog({ onFinished: onTestFinished });
   });
 
   it('As the host, a feed the frame keeps ending waits twice as long before each reopen, and never more than 30 s', async () => {
     // Given
-    const keeper = createFeedKeeper('telemetry', { losses: () => 0 }, timers);
-    keeper.hold(open, 0);
+    keeperOf('telemetry').follow();
+    await timers.advance(0);
     const waits: number[] = [];
 
     // When the frame ends each reopened feed at once, waiting at most one step past the cap for each reopen
@@ -55,8 +70,8 @@ describe('createFeedKeeper', () => {
 
   it('As the host, a feed that stayed open for a while before it ended is reopened after the first wait again', async () => {
     // Given a feed the frame ended at once twice, so the next wait would be 4 s
-    const keeper = createFeedKeeper('telemetry', { losses: () => 0 }, timers);
-    keeper.hold(open, 0);
+    keeperOf('telemetry').follow();
+    await timers.advance(0);
     opened.at(-1)?.end(null);
     await timers.advance(1_000);
     opened.at(-1)?.end(null);
@@ -73,129 +88,89 @@ describe('createFeedKeeper', () => {
     expect([openedBeforeWait, opened.length]).toEqual([3, 4]);
   });
 
-  it('As an operator, I see every end of a feed counted and logged, and captured once while it is held', async () => {
+  it('As an operator, I see every end of a feed counted and logged as it happens, and captured once while it is held', async () => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const captured = recordCaptures({ onFinished: onTestFinished });
-    const errors: string[] = [];
-    onTestFinished(
-      bindLogSink({
-        emit: (level, message) => {
-          if (level === 'error') {
-            errors.push(message);
-          }
-        },
-      }),
-    );
-    const keeper = createFeedKeeper('telemetry', { losses: () => 0 }, timers);
-    keeper.hold(open, 0);
+    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
+    keeperOf('shared_auth').follow();
+    await timers.advance(0);
 
     // When the frame ends the feed three times
+    const countedAtEach: number[] = [];
     for (const wait of [1_000, 2_000, 4_000]) {
-      opened.at(-1)?.end(null);
+      opened.at(-1)?.end(new TypeError('relay broke'));
+      countedAtEach.push(metrics.counted(S.PROTOCOL_FEED_END).length);
       await timers.advance(wait);
     }
 
     // Then
-    expect(metrics.counted(S.PROTOCOL_FEED_END)).toHaveLength(3);
+    expect(countedAtEach).toEqual([1, 2, 3]);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)[0]).toEqual({
+      outcome: 'error',
+      feed: 'shared_auth',
+      reason: 'TypeError',
+    });
     expect(errors).toHaveLength(3);
-    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'telemetry' } }]);
+    expect(captured).toEqual([{ flow: 'protocol', step: 'feed_end', tags: { feed: 'shared_auth' } }]);
   });
 
-  it.each([
-    ['the frame stays up', 0, 1],
-    ['the frame counted a loss meanwhile', 1, 0],
-  ] as const)(
-    'As an operator, a feed let go during the wait after an end is reported then unless the end was a loss, when %s',
-    async (_case, lossesMeanwhile, reported) => {
-      // Given a feed the frame ended, waiting to be reopened
-      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-      let losses = 0;
-      const keeper = createFeedKeeper('shared_auth', { losses: () => losses }, timers);
-      keeper.hold(open, 0);
-      opened[0]?.end(new TypeError('relay broke'));
-      await timers.advance(500);
-      losses += lossesMeanwhile;
-
-      // When the last listener leaves before the wait ends
-      keeper.stop();
-      await timers.advance(30_000);
-
-      // Then
-      expect(metrics.counted(S.PROTOCOL_FEED_END)).toHaveLength(reported);
-      expect(opened).toHaveLength(1);
-      expect(timers.pending()).toBe(0);
-    },
-  );
-
-  it('As the host, I hold a new feed and the one held before is unsubscribed, and its waiting reopen dropped', async () => {
-    // Given one feed held, and another that ended and waits to be reopened
-    const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);
-    keeper.hold(open, 0);
-    const first = opened[0];
-    keeper.hold(open, 0);
-    const second = opened[1];
-    second?.end(new Error('relay broke'));
+  it('As the host, a feed whose transport closes under it is neither reported nor reopened', async () => {
+    // Given
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    keeperOf('telemetry').follow();
+    await timers.advance(0);
 
     // When
-    keeper.hold(open, 0);
+    opened[0]?.close();
     await timers.advance(30_000);
 
     // Then
-    expect(first?.unsubscribed).toBe(true);
-    expect(opened).toHaveLength(3);
-    expect(opened[2]?.unsubscribed).toBe(false);
+    expect(opened).toHaveLength(1);
+    expect(timers.pending()).toBe(0);
+    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
+    expect(captured).toEqual([]);
   });
 
-  it.each([
-    ['the frame counts its loss before the feed ends', 'loss first'],
-    ['the feed ends before the frame counts its loss', 'end first'],
-  ] as const)(
-    'As the host, a feed ended by the loss of its frame is neither reported nor reopened when %s',
-    async (_order, order) => {
-      // Given
-      const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-      const captured = recordCaptures({ onFinished: onTestFinished });
-      let losses = 0;
-      const keeper = createFeedKeeper('telemetry', { losses: () => losses }, timers);
-      keeper.hold(open, 0);
+  it('As the host, I follow the frame onto a new transport and the feed held on the old one is unsubscribed', async () => {
+    // Given one feed held, and following the same transport again
+    const keeper = keeperOf('shared_auth');
+    keeper.follow();
+    await timers.advance(0);
+    keeper.follow();
+    await timers.advance(0);
 
-      // When
-      if (order === 'loss first') {
-        losses += 1;
-        opened[0]?.end(new Error('frame lost'));
-      } else {
-        opened[0]?.end(new Error('handshake refused'));
-        await timers.advance(0);
-        losses += 1;
-      }
-      await timers.advance(30_000);
-
-      // Then
-      expect(opened).toHaveLength(1);
-      expect(timers.pending()).toBe(0);
-      expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
-      expect(captured).toEqual([]);
-    },
-  );
-
-  it('As the host, a feed the frame ended while it stayed up is reported once the wait shows the frame still up', async () => {
-    // Given a feed the frame ended
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const keeper = createFeedKeeper('shared_auth', { losses: () => 0 }, timers);
-    keeper.hold(open, 0);
-    opened[0]?.end(new TypeError('relay broke'));
-
-    // When the wait before the reopen passes
-    await timers.advance(999);
-    const countedDuringWait = metrics.counted(S.PROTOCOL_FEED_END).length;
-    await timers.advance(1);
+    // When the frame has a new transport
+    current = { name: 'second' };
+    keeper.follow();
+    await timers.advance(0);
 
     // Then
-    expect(countedDuringWait).toBe(0);
-    expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([
-      { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
+    expect(opened.map(({ transport, unsubscribed }) => [transport.name, unsubscribed])).toEqual([
+      ['first', true],
+      ['second', false],
     ]);
-    expect(opened).toHaveLength(2);
+  });
+
+  it('As the host, a feed let go during the wait after an end is not reopened, and an ask still out is dropped', async () => {
+    // Given a feed the frame ended, waiting to be reopened, and a frame whose next transport is still being asked for
+    const asked = deferred<Transport>();
+    let transport = (): Promise<Transport> => Promise.resolve(current);
+    const keeper = keeperOf('shared_auth', { transport: () => transport() });
+    keeper.follow();
+    await timers.advance(0);
+    opened[0]?.end(new TypeError('relay broke'));
+    transport = () => asked.promise;
+    keeper.follow();
+
+    // When the last listener leaves before the wait ends and before the frame answers
+    keeper.stop();
+    asked.resolve({ name: 'second' });
+    await timers.advance(30_000);
+
+    // Then
+    expect(opened).toHaveLength(1);
+    expect(timers.pending()).toBe(0);
   });
 });

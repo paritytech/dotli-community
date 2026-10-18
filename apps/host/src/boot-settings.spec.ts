@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { BACKEND_KEY, NETWORK_KEY, getSettings, setSettings, type Settings, type SharedSettings } from '@dotli/config';
-import { deferred, memoryStorage } from '@dotli/shared/testing';
+import { deferred } from '@dotli/shared';
+import { memoryStorage } from '@dotli/shared/testing';
 import { bootSettings, type SettingsBootDeps } from './boot-settings.js';
 import type { SettingsActions } from './settings-actions.js';
 
