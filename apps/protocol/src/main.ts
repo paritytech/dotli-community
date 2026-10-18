@@ -195,17 +195,16 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     type: 'module',
     name: `dotli-protocol-${network}`,
   });
-  await connectSharedWorker({
+  const link = connectSharedWorker({
     worker,
     window,
     resolutionId: getResolutionId(),
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
     onIssue: wire.onIssue,
-    onOpen: (link, workerStatus) => {
-      // The worker reports what it refuses, so these calls skip this frame's refusal report.
-      registerWorkerRelay(serving, link, workerStatus, boot);
-    },
   });
+  // The worker reports what it refuses, so these calls skip this frame's refusal report.
+  registerWorkerRelay(serving, link.transport, link.status, boot);
+  await link.ready;
   boot.ready();
 }
 

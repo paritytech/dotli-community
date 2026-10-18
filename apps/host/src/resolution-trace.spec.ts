@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { m } from '@dotli/metrics';
-import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { FakePage, memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { markContinuation, peekContinuation } from './continuation.js';
 import {
   createChainPhaseTracker,
@@ -70,22 +70,17 @@ function span(name: string): RecordedSpan | undefined {
   return spans.find(s => s.name === `dotli.${name}`);
 }
 
-/** Node has no PageTransitionEvent, so `persisted` is set by hand. */
-function pagehide(persisted: boolean): Event {
-  return Object.assign(new Event('pagehide'), { persisted });
-}
-
 function names(): string[] {
   return spans.map(s => s.name);
 }
 
 /** The page the trace runs in: where the visitor leaves from, the loading store and the tab's session storage. */
-let page: EventTarget;
+let page: FakePage;
 let session: Storage;
 
 function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTrace {
   return startOnPage(opts, {
-    lifecycle: page,
+    lifecycle: page.window,
     isVisible: () => true,
     readProgress: () => getLoadingState().progress,
     peekContinuation: () => peekContinuation(session),
@@ -96,7 +91,7 @@ beforeEach(() => {
   const fake = fakeSentry();
   spans = fake.spans;
   m.bind(fake.sentry as Parameters<typeof m.bind>[0]);
-  page = new EventTarget();
+  page = new FakePage();
   session = memoryStorage();
   resetAllStoresForTests();
 });
@@ -420,7 +415,7 @@ describe('A resolution is one attempt of a journey', () => {
     startResolutionTrace(OPTS);
 
     // When
-    page.dispatchEvent(pagehide(true));
+    page.hide(true);
 
     // Then
     expect(span('resolution')?.attributes).toMatchObject({ outcome: 'abandoned', exit: 'bfcache' });
@@ -432,7 +427,7 @@ describe('A resolution is one attempt of a journey', () => {
     markContinuation('reload_button', session);
 
     // When
-    page.dispatchEvent(pagehide(false));
+    page.hide(false);
 
     // Then
     expect(span('resolution')?.attributes).toMatchObject({ outcome: 'abandoned', exit: 'reload_button' });
@@ -444,7 +439,7 @@ describe('A resolution is one attempt of a journey', () => {
     trace.finish('rendered');
 
     // When
-    page.dispatchEvent(pagehide(false));
+    page.hide(false);
 
     // Then
     expect(span('resolution')?.attributes['outcome']).toBe('rendered');

@@ -23,7 +23,6 @@ export function createRemoteResolve(rpc: FrameRpc) {
       dotName,
       (transport, signal) =>
         new Promise<string | null>((resolve, reject) => {
-          let answered = false;
           const stop = subscribe(
             transport,
             dotName,
@@ -34,16 +33,13 @@ export function createRemoteResolve(rpc: FrameRpc) {
                   onPhase?.(event.value);
                   return;
                 }
-                answered = true;
                 resolve(event.value);
                 // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
                 stop();
               },
-              // An end before the result is a failure.
+              // An end before the result is a failure. One after it leaves the settled promise as it is.
               end: error => {
-                if (!answered) {
-                  reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
-                }
+                reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
               },
             },
             { signal },

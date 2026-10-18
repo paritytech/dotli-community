@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A host page linked to this frame's transport over an in-memory pair, so specs drive the frame's handlers through the
-// wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any issue a
-// spec did not take, so none goes unseen.
+// wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any of
+// them, so none goes unseen.
 
 import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import { deferred } from '@dotli/shared';
@@ -28,18 +28,12 @@ export interface HostLink {
   serving: ProtocolTransport;
   /** The host page's end, which opens the handshake. */
   host: ProtocolTransport;
-  /**
-   * What either end, or a transport the spec handed `report`, could not handle itself, in order. A spec that expects an
-   * issue takes it from here, and any left fails the spec as its links close.
-   */
-  issues: TransportIssue[];
-  /** The issue hook of the link, for another transport of the spec. */
-  report: (issue: TransportIssue) => void;
   /** Disposes both ends. */
   close: () => void;
 }
 
-const links = new Set<HostLink>();
+/** Each open link, with what either end could not handle itself, in order. */
+const links = new Map<HostLink, TransportIssue[]>();
 
 /** Links a host page known by `origin`, which the frame's provider names, as the window provider names the parent's. */
 export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
@@ -62,8 +56,6 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
   const link: HostLink = {
     serving,
     host,
-    issues,
-    report: onIssue,
     close: () => {
       links.delete(link);
       const over = new Error('The spec is over');
@@ -71,14 +63,14 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
       serving.dispose(over);
     },
   };
-  links.add(link);
+  links.set(link, issues);
   return link;
 }
 
-/** Closes every link a spec left open, and throws when a link kept an issue the spec did not take. */
+/** Closes every link a spec left open, and throws when a link raised an issue. */
 export function closeHostLinks(): void {
-  const unseen = [...links].flatMap(link => link.issues.splice(0));
-  for (const link of [...links]) {
+  const unseen = [...links.values()].flat();
+  for (const link of [...links.keys()]) {
     link.close();
   }
   if (unseen.length > 0) {

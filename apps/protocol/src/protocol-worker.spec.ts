@@ -32,7 +32,7 @@ import {
   type WorkerScope,
 } from './protocol-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { connectSharedWorker, type SharedWorkerLinkDeps } from './shared-worker-link.js';
+import { connectSharedWorker, type SharedWorkerLink } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 import { registerWorkerRelay } from './worker-relay.js';
 import { HEARTBEAT_MISSED_BEATS } from './worker-port.js';
@@ -306,11 +306,8 @@ function spiedPort(
 interface Attached {
   /** The iframe speaks through a bare transport, as the specs drive it. */
   speak: (resolutionId?: string) => Tab;
-  /**
-   * The iframe speaks through its real link, whose timers never run, as in a page hidden for long. Given `onOpen`, the
-   * link hands it the transport and the worker status, as the iframe's relay takes them.
-   */
-  link: (onOpen?: SharedWorkerLinkDeps['onOpen']) => Promise<ProtocolTransport>;
+  /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
+  link: () => SharedWorkerLink;
   /** Settles once the worker handled the next message from this tab. */
   nextReceived: () => Promise<void>;
 }
@@ -414,17 +411,16 @@ async function bootWorker(
           },
         };
       },
-      link: async onOpen => {
-        const transport = await connectSharedWorker({
+      link: () => {
+        const linked = connectSharedWorker({
           worker: { port: channel.port2, addEventListener: () => undefined },
           window: new EventTarget(),
           resolutionId: null,
           readyTimeoutMs: 30_000,
           timers: manualTimers(),
-          onOpen,
         });
-        tabs.add(transport);
-        return transport;
+        tabs.add(linked.transport);
+        return linked;
       },
       nextReceived: () =>
         new Promise(resolve => {
@@ -610,15 +606,14 @@ describe('protocol SharedWorker', () => {
 
     // When the tab's iframe links, its relay sharing the link's status subscription as the iframe's does
     const iframe = linkHost();
-    const linked = attached.link((transport, status) => {
-      registerWorkerRelay(iframe.serving, transport, status, {
-        ...createFrameStatus(),
-        serveTelemetry: () => undefined,
-      });
+    const linked = attached.link();
+    registerWorkerRelay(iframe.serving, linked.transport, linked.status, {
+      ...createFrameStatus(),
+      serveTelemetry: () => undefined,
     });
 
     // Then the ready wait fails with the fatal, measured as the worker's report
-    await expect(linked).rejects.toMatchObject({ name: 'ProtocolFatalError', message: FATAL });
+    await expect(linked.ready).rejects.toMatchObject({ name: 'ProtocolFatalError', message: FATAL });
     expect(
       metrics.distributions
         .filter(metric => metric.name === `dotli.${S.PROTOCOL_SW_READY}`)
@@ -1105,7 +1100,9 @@ describe('protocol SharedWorker', () => {
     // Given a tab linked through the iframe's real link, whose timers never run, holding a chain connection
     const worker = await bootWorker(fakeLightClient());
     const attached = worker.attach();
-    const transport = await attached.link();
+    const linked = attached.link();
+    await linked.ready;
+    const { transport } = linked;
     const connected = record(transport, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
     await connected.until(1);
 

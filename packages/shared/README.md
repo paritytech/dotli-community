@@ -65,5 +65,6 @@ Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
 - `resetAllStoresForTests`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand, which count the
   timers still pending), `FakePage` (a page with a document and a window, each firing the events the browser fires on
-  it), `recordLog` with `LogLine` (what the shared log writes until a test ends, at one level if asked).
+  it, `pagehide` included), `recordLog` with `LogLine` (what the shared log writes until a test ends, at one level if
+  asked).
 - `untilDom` waits on the page for functional tests. It reads the DOM, so only they call it.

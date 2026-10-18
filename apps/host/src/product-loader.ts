@@ -32,14 +32,6 @@ import { startShieldAutoHide } from './shield-autohide.js';
 import { setVerificationShieldState, showProductPill, type ShieldState } from './state/url-pill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js';
 
-/** Ends the load from inside its render, once a failure the render heard was reported and shown. */
-class LoadEndedError extends Error {
-  constructor() {
-    super('The load ended during its render');
-    this.name = 'LoadEndedError';
-  }
-}
-
 /** The sandbox's one report on the content it was handed. */
 export type ContentOutcome = 'loaded' | 'failed';
 
@@ -247,7 +239,8 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
       trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
     });
   };
-  const render = async (cid: string, manifests: ProductManifests): Promise<void> => {
+  /** Resolves false when a failure heard during the render already ended the load, so nothing after it runs. */
+  const render = async (cid: string, manifests: ProductManifests): Promise<boolean> => {
     progress.contentFetch();
     enterStep('render_handoff');
     settleOnContent();
@@ -258,15 +251,15 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     options.onProtocolVersionMismatch(err => {
       failAfterHandoff(err, 'a protocol version mismatch');
     });
-    // A refusal during the render was heard just now and ended the load, so nothing after the render runs.
     if (resolveFailed) {
       sandbox.stop();
-      throw new LoadEndedError();
+      return false;
     }
     // From the handoff, since the render before it can wait on the shared store for as long as the protocol frame is down.
     void sandbox.expectWithin().catch((err: unknown) => {
       failAfterHandoff(err, 'a silent sandbox');
     });
+    return true;
   };
   const rendered = (manifests: ProductManifests): void => {
     options.failureScreen.forget();
@@ -313,10 +306,13 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
         cidCache.revalidateLater(label, cached.cid, false);
         throw err;
       }
-      await m.span(S.E2E_FAST, async () => {
+      const live = await m.span(S.E2E_FAST, () => {
         settleShield();
-        await render(cached.cid, cachedManifests);
+        return render(cached.cid, cachedManifests);
       });
+      if (!live) {
+        return;
+      }
       rendered(cachedManifests);
       performance.mark('dotli:main:end');
       log.event('Sandbox mounted', {
@@ -411,7 +407,9 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     }
 
     settleShield();
-    await render(cid, manifests);
+    if (!(await render(cid, manifests))) {
+      return;
+    }
     rendered(manifests);
 
     m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, 'millisecond', {
@@ -428,9 +426,6 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     ready('slow');
   } catch (err) {
     performance.mark('dotli:main:end');
-    if (err instanceof LoadEndedError) {
-      return;
-    }
     failLoad(err);
   }
 }

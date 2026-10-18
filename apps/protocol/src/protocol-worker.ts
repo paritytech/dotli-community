@@ -313,10 +313,13 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     });
   }
 
-  function endSpan(span: SpanHandle, error: Error | undefined): void {
-    span.setAttributes(
-      error === undefined ? { outcome: 'ok' } : { outcome: 'error', error_name: errorName(error) ?? 'NonError' },
-    );
+  /** Ends `span` as answered, failed with `error`, or cancelled by the tab. */
+  function endSpan(span: SpanHandle, error: Error | undefined | 'cancelled'): void {
+    if (error === undefined || error === 'cancelled') {
+      span.setAttributes({ outcome: error ?? 'ok' });
+    } else {
+      span.setAttributes({ outcome: 'error', error_name: errorName(error) ?? 'NonError' });
+    }
     span.end();
   }
 
@@ -352,7 +355,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     return (start, context, sink) => {
       const span = openRequestSpan(name, context.hello.resolutionId);
       let open = true;
-      const settle = (error: Error | undefined): void => {
+      const settle = (error: Error | undefined | 'cancelled'): void => {
         if (!open) {
           return;
         }
@@ -379,11 +382,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         throw error;
       }
       return () => {
-        if (open) {
-          open = false;
-          span.setAttributes({ outcome: 'cancelled' });
-          span.end();
-        }
+        settle('cancelled');
         stop();
       };
     };

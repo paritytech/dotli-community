@@ -300,13 +300,14 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       }
       let unsubscribe = (): void => undefined;
       let settled = false;
-      const onStatus = (next: ProtocolStatus): void => {
+      /** Whether `next` settled the wait. */
+      const onStatus = (next: ProtocolStatus): boolean => {
         const outcome = verdict(next);
-        if (outcome === true) {
-          settle(null);
-        } else if (outcome instanceof Error) {
-          settle(outcome);
+        if (outcome === false) {
+          return false;
         }
+        settle(outcome === true ? null : outcome);
+        return true;
       };
       const onAbort = (): void => {
         settle(toError(signal?.reason));
@@ -325,13 +326,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         }
       }
       // The status there is now settles the wait at once, so a frame already there costs no subscription.
-      const now = verdict(status.get());
-      if (now !== false) {
-        if (now === true) {
-          resolve();
-        } else {
-          reject(now);
-        }
+      if (onStatus(status.get())) {
         return;
       }
       unsubscribe = status.subscribe(onStatus);

@@ -63,11 +63,14 @@ export interface SharedWorkerLinkDeps {
   timers?: Timers;
   /** Hears what the link's transport cannot handle itself. Logged by the transport when unset. */
   onIssue?: (issue: TransportIssue) => void;
-  /**
-   * Hands over the transport and the worker's status before the ready wait, so what the worker reports while it syncs
-   * reaches the host live, and a worker that fails while it syncs ends the frame with its own end.
-   */
-  onOpen?: ((transport: ProtocolTransport, status: WorkerStatus) => void) | undefined;
+}
+
+/** A tab's link to the worker, handed over before the worker is ready so what it reports while it syncs is heard. */
+export interface SharedWorkerLink {
+  transport: ProtocolTransport;
+  status: WorkerStatus;
+  /** Resolves once the worker says it is ready, and rejects with why it never will be. */
+  ready: Promise<void>;
 }
 
 /**
@@ -146,8 +149,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
   status.onEnd(stop);
 }
 
-/** Resolves with the transport to the worker once the worker says it is ready, and rejects with why it never will be. */
-export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<ProtocolTransport> {
+export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLink {
   const { worker, readyTimeoutMs } = deps;
   const timers = deps.timers ?? realTimers;
   const startedAt = performance.now();
@@ -163,7 +165,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
   });
   // Why the wait failed, for the metric. A timeout carries none.
   let reason: string | undefined;
-  const ready = deferred<ProtocolTransport>();
+  const ready = deferred<undefined>();
   // Until the wait settles, so what is heard after it changes nothing.
   let waiting = true;
   const failReadyWait = (error: Error, why: string): void => {
@@ -195,14 +197,11 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
   // heard why, and would never answer a second.
   const status = watchWorkerStatus(transport, () => {
     waiting = false;
-    ready.resolve(transport);
+    ready.resolve(undefined);
   });
   // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
   answerBeats(transport, status);
 
-  // Before the ready wait hears the end, so a worker that fails while it syncs ends the caller's calls first, and the
-  // frame fails with the worker's own end rather than the failed boot that follows from it.
-  deps.onOpen?.(transport, status);
   status.onEnd(end => {
     failReadyWait(workerEndError(end), 'worker_reported');
   });
@@ -227,9 +226,8 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
     },
     timers,
   ).then(
-    readyTransport => {
+    () => {
       m.measure(S.PROTOCOL_SW_READY, record('ok'));
-      return readyTransport;
     },
     (error: unknown) => {
       record(error === timedOut ? 'timeout' : 'error');
@@ -240,5 +238,5 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
     },
   );
   transport.connect();
-  return waited;
+  return { transport, status, ready: waited };
 }

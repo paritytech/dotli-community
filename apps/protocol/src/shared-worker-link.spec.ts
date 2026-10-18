@@ -16,7 +16,7 @@ import {
   type FrameStatusEnd,
 } from '@dotli/protocol';
 import { deferred } from '@dotli/shared';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { FakePage, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
   createPortProvider,
   createTransport,
@@ -29,8 +29,7 @@ import {
   type Sink,
 } from '@dotli/transport';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { connectSharedWorker, workerEndError, type WorkerEnd, type WorkerStatus } from './shared-worker-link.js';
-import { createFramePage, type FramePage } from './worker-port.fake.js';
+import { connectSharedWorker, workerEndError, type WorkerEnd } from './shared-worker-link.js';
 
 const { frame } = protocolSchema.traits;
 
@@ -148,19 +147,17 @@ function fakeWorker(): FakeWorker {
 function link(
   fake: FakeWorker,
   options: {
-    page?: FramePage;
+    page?: FakePage;
     timers?: ManualTimers;
     resolutionId?: string | null;
-    onOpen?: (transport: ProtocolTransport, status: WorkerStatus) => void;
   } = {},
 ): ReturnType<typeof connectSharedWorker> {
   return connectSharedWorker({
     worker: fake.worker,
-    window: (options.page ?? createFramePage()).target,
+    window: (options.page ?? new FakePage()).window,
     resolutionId: options.resolutionId ?? null,
     readyTimeoutMs: READY_TIMEOUT_MS,
     timers: options.timers ?? manualTimers(),
-    onOpen: options.onOpen,
   });
 }
 
@@ -185,7 +182,8 @@ describe('connectSharedWorker', () => {
     worker.status.ready();
 
     // Then the link resolves with a transport that reaches the worker
-    const transport = await linked;
+    await linked.ready;
+    const { transport } = linked;
     await expect(transport.request(frame.heartbeat, undefined)).resolves.toEqual(ok());
   });
 
@@ -198,7 +196,7 @@ describe('connectSharedWorker', () => {
     worker.failToStart('script error');
 
     // Then
-    await expect(linked).rejects.toThrow('SharedWorker failed to start: script error');
+    await expect(linked.ready).rejects.toThrow('SharedWorker failed to start: script error');
   });
 
   it('As a tab whose worker cannot sync, my frame fails with the error the worker gave', async () => {
@@ -210,7 +208,7 @@ describe('connectSharedWorker', () => {
     worker.status.fail(new ProtocolInitFailedError('chainHead follow stopped'));
 
     // Then
-    await expect(linked).rejects.toMatchObject({
+    await expect(linked.ready).rejects.toMatchObject({
       name: 'ProtocolInitFailedError',
       message: 'chainHead follow stopped',
     });
@@ -222,14 +220,11 @@ describe('connectSharedWorker', () => {
     const worker = fakeWorker();
     const frameStatus = createFrameStatus();
     const failed = firstEnd(frameStatus);
-    const linked = link(worker, {
-      onOpen: (_transport, status) => {
-        status.onEnd(end => {
-          frameStatus.fail(workerEndError(end));
-        });
-      },
+    const linked = link(worker);
+    linked.status.onEnd(end => {
+      frameStatus.fail(workerEndError(end));
     });
-    void linked.catch((error: unknown) => {
+    void linked.ready.catch((error: unknown) => {
       frameStatus.fail(new ProtocolInitFailedError(String(error)));
     });
 
@@ -245,12 +240,9 @@ describe('connectSharedWorker', () => {
     const timers = manualTimers();
     const worker = fakeWorker();
     const handed = deferred<WorkerEnd>();
-    const linked = link(worker, {
-      timers,
-      onOpen: (_transport, status) => {
-        status.onEnd(handed.resolve);
-      },
-    }).catch((err: unknown) => err);
+    const linked = link(worker, { timers });
+    linked.status.onEnd(handed.resolve);
+    const failed = linked.ready.catch((err: unknown) => err);
     await worker.statusHeard;
 
     // When
@@ -258,7 +250,7 @@ describe('connectSharedWorker', () => {
 
     // Then the link fails as a failed init, the frame hears the same, and the worker hears the status subscription stop
     const timeout = { name: 'ProtocolInitFailedError', message: PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT };
-    await expect(linked).resolves.toMatchObject(timeout);
+    await expect(failed).resolves.toMatchObject(timeout);
     await expect(handed.promise.then(workerEndError)).resolves.toMatchObject(timeout);
     await worker.statusStopped;
   });
@@ -298,7 +290,7 @@ describe('connectSharedWorker', () => {
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const timers = manualTimers();
     const worker = fakeWorker();
-    const linked = link(worker, { timers }).catch(() => undefined);
+    const linked = link(worker, { timers }).ready.catch(() => undefined);
 
     // When
     await row.act(worker, timers);
@@ -324,7 +316,7 @@ describe('connectSharedWorker', () => {
     const worker = fakeWorker();
     const linked = link(worker);
     worker.status.ready();
-    await linked;
+    await linked.ready;
 
     // When
     worker.failToStart('late script error');
@@ -344,7 +336,7 @@ describe('connectSharedWorker', () => {
     worker.beatTab();
     await first;
     worker.status.ready();
-    await linked;
+    await linked.ready;
     const second = worker.nextHeartbeat();
     worker.beatTab();
     await second;
@@ -368,7 +360,8 @@ describe('connectSharedWorker', () => {
     const worker = fakeWorker();
     const linked = link(worker);
     worker.status.ready();
-    const transport = await linked;
+    await linked.ready;
+    const { transport } = linked;
     await worker.beatsHeard;
     worker.refuseHeartbeats();
 
@@ -390,11 +383,12 @@ describe('connectSharedWorker', () => {
 
   it('As a tab kept in the back-forward cache, I keep my worker transport', async () => {
     // Given a tab on a ready worker
-    const page = createFramePage();
+    const page = new FakePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
     worker.status.ready();
-    const transport = await linked;
+    await linked.ready;
+    const { transport } = linked;
 
     // When its page enters the back-forward cache
     page.hide(true);
@@ -405,11 +399,12 @@ describe('connectSharedWorker', () => {
 
   it('As a tab that leaves for good, I dispose my worker transport', async () => {
     // Given a tab on a ready worker
-    const page = createFramePage();
+    const page = new FakePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
     worker.status.ready();
-    const transport = await linked;
+    await linked.ready;
+    const { transport } = linked;
 
     // When its page hides for good
     page.hide(false);
@@ -433,7 +428,8 @@ describe('connectSharedWorker', () => {
     const worker = fakeWorker();
     const linked = link(worker);
     worker.status.ready();
-    const transport = await linked;
+    await linked.ready;
+    const { transport } = linked;
     await worker.beatsHeard;
     worker.holdHeartbeats();
     const asked = worker.nextHeartbeat();

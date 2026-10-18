@@ -29,4 +29,9 @@ export class FakePage {
     this.window.onLine = online;
     this.window.dispatchEvent(new Event(online ? 'online' : 'offline'));
   }
+
+  /** Hides the page, into the back/forward cache when `persisted`. Node has no PageTransitionEvent to carry it. */
+  hide(persisted: boolean): void {
+    this.window.dispatchEvent(Object.assign(new Event('pagehide'), { persisted }));
+  }
 }
