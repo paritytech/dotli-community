@@ -131,20 +131,23 @@ longer waiting is ignored without a count.
 - Remote chains: `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`.
 - Shared store: `SharedStoreStatus`, `SHARED_CORE_SESSION_KEY`, the key helpers `buildSharedAuthStorageKey`,
   `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the request guards
-  `isSharedAuthOriginAllowed`, `isSharedAuthSiteId`, and `isSharedAuthRequestMethod` and `isSharedModeRequestMethod`,
-  which tell the storage trait's methods of each store apart.
+  `isSharedAuthOriginAllowed`, `isSharedAuthSiteId` and `isSharedModeRequestMethod`, which tells the mode store's
+  methods from the rest of the storage trait.
 - Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
   the entropy and the cached identity).
 - The protocol as a transport schema: `protocolSchema`, its traits `frame`, `resolve`, `storage`, `wallet` and `chain`,
   with the resolution hello and the typed failures of the frame status, the resolve methods and chain connections.
   `ProtocolSchema`, `ProtocolTransport` and `ProtocolContext` type a transport over it and its handlers' context.
-  `TelemetryEvent` is what the frame reports on its telemetry feed.
+  `FrameFailure` and `RemoteFailure` are its typed failures, and `SubscriptionStart` and `SubscriptionValue` what a
+  subscription starts with and sends. `TelemetryEvent` is what the frame reports on its telemetry feed.
 - Budgets, for the frame to size its own work: `budgetOf` (a method's budget by its trait and method, or null for one
   waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
-- For the frame, which serves the schema and waits on or relays another frame's calls: `callName` (a method's one name
-  for metrics, the trail and spans), `failureOf` (a call's failure as the error host code sees, by its trait and method)
-  and `createIssueReporter` (what a transport cannot handle itself, counted and logged under the side that reports it,
-  as the host's own transport is).
+- For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a
+  method's one name for metrics, the trail and spans), the two sides of a failure's crossing, `frameStatusEnd` (how a
+  frame ends its status on an error) and `remoteFailureOf` (the typed failure of a resolver or chain error, or null)
+  beside `failureOf` (a call's failure as the error host code sees, by its trait and method), and `createIssueReporter`
+  (what a transport cannot handle itself, counted and logged under the side that reports it, as the host's own transport
+  is).
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 

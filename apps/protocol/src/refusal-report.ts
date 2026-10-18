@@ -7,20 +7,23 @@
 
 import { spans as S, type m } from '@dotli/metrics';
 import {
+  callName,
   createIssueReporter,
+  failureOf,
   isSharedModeRequestMethod,
+  type CallName,
   type ProtocolSchema,
   type ProtocolTransport,
 } from '@dotli/protocol';
-import type { CallError, Result, TraitName, TransportIssue } from '@dotli/transport';
+import type { CallError, DomainError, Result, TraitName, TransportIssue } from '@dotli/transport';
 
 export type FrameRoute = 'auth' | 'mode' | 'wallet' | 'chain';
 
 export interface FrameRefusal {
   route: FrameRoute;
-  /** The call as `<trait>.<method>`. */
-  method: string;
-  /** What the handler threw, or the failure it answered with. */
+  /** The call by the name the metrics and the trail know it by. */
+  method: CallName;
+  /** What the handler threw, or the failure it answered with as the error host code sees. */
   error: unknown;
 }
 
@@ -100,16 +103,19 @@ export function reportRefusals(serving: ProtocolTransport, report: (refusal: Fra
     handleRequest(trait, method, handler) {
       const refusal = (error: unknown): FrameRefusal => ({
         route: routeOf(trait, method),
-        method: `${trait}.${method}`,
+        method: callName(trait, method),
         error,
       });
       return serving.handleRequest(trait, method, async (payload, context) => {
         try {
           const answer = await handler(payload, context);
           // Every answer is a `Result`, which the method's deferred answer type does not show here.
-          const outcome = answer as Result<unknown, CallError<unknown>>;
+          const outcome = answer as Result<
+            unknown,
+            CallError<DomainError<ProtocolSchema, typeof trait, typeof method>>
+          >;
           if (!outcome.ok) {
-            report(refusal(outcome.error));
+            report(refusal(failureOf(trait, method, outcome.error)));
           }
           return answer;
         } catch (error) {
@@ -122,7 +128,7 @@ export function reportRefusals(serving: ProtocolTransport, report: (refusal: Fra
     handleSubscription(trait, method, handler) {
       const refusal = (error: unknown): FrameRefusal => ({
         route: routeOf(trait, method),
-        method: `${trait}.${method}`,
+        method: callName(trait, method),
         error,
       });
       return serving.handleSubscription(trait, method, (start, context, sink) => {
@@ -132,7 +138,7 @@ export function reportRefusals(serving: ProtocolTransport, report: (refusal: Fra
           },
           interrupt: error => {
             if (error !== undefined) {
-              report(refusal(error));
+              report(refusal(failureOf(trait, method, error)));
             }
             sink.interrupt(error);
           },

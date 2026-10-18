@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   protocolSchema,
+  ProtocolInitFailedError,
   ProtocolPortReleasedError,
   type ProtocolContext,
   type ProtocolSchema,
@@ -22,6 +23,7 @@ import {
   hostFailure,
   malformedFrame,
   ok,
+  unsupported,
   type MethodTypes,
 } from '@dotli/transport';
 import { createFrameStatus, type FrameStatus } from './frame-status.js';
@@ -36,6 +38,8 @@ interface Hops {
   host: ProtocolTransport;
   /** The worker's end, where a spec registers what the worker answers. */
   worker: ProtocolTransport;
+  /** The iframe's end toward the worker, which the relay calls through. */
+  link: ProtocolTransport;
   /** The worker's own status, which every subscription of the iframe's hears. */
   workerStatus: FrameStatus;
   /** Each call context the worker saw, by method. */
@@ -61,10 +65,12 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
   const worker = createTransport(protocolSchema, createPortProvider(channel.port1), {
     handshake: 'accept',
     hello: { resolutionId: null },
+    onIssue: frame.report,
   });
   const toWorker = createTransport(protocolSchema, createPortProvider(channel.port2), {
     handshake: 'open',
     hello: { resolutionId: null },
+    onIssue: frame.report,
   });
   toWorker.connect();
   closers.add(() => {
@@ -96,6 +102,7 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
   return {
     host: frame.host,
     worker,
+    link: toWorker,
     workerStatus,
     contexts,
     workerStatusHeard: heard.promise.then(() => undefined),
@@ -239,12 +246,13 @@ describe('the worker relay', () => {
       worker.handleRequest('resolve', 'rootManifest', () => err(denied()));
     });
 
-    // When
+    // When the host reads, including a manifest the worker does not serve
     const owner = await host.request('resolve', 'owner', { label: 'doom' });
     const root = await host.request('resolve', 'rootManifest', { label: 'doom' });
+    const executable = await host.request('resolve', 'executableManifest', { label: 'doom', kind: 'app' });
 
     // Then
-    expect([owner, root]).toEqual([err(syncTimeout), err(denied())]);
+    expect([owner, root, executable]).toEqual([err(syncTimeout), err(denied()), err(unsupported())]);
   });
 
   it('As the host, a subscription the worker interrupts reaches me through the iframe with the same variant and reason', async () => {
@@ -327,5 +335,30 @@ describe('the worker relay', () => {
 
     // Then the host's call fails with the release instead of waiting for good
     await expect(owner).resolves.toEqual(err(hostFailure('ProtocolPortReleasedError: The worker released this tab')));
+  });
+
+  it('As the host, my frame fails with why when the link to the worker closes, and a call the worker held fails with it', async () => {
+    // Given a ready frame whose worker holds an owner read
+    const asked = deferred<undefined>();
+    const { host, link, workerStatusHeard } = linkHops(served => {
+      served.handleRequest('resolve', 'owner', () => {
+        asked.resolve(undefined);
+        return new Promise<never>(() => undefined);
+      });
+    });
+    const status = record(host, 'frame', 'status', undefined);
+    const owner = host.request('resolve', 'owner', { label: 'doom' });
+    await Promise.all([status.until(1), asked.promise, workerStatusHeard]);
+
+    // When the link closes under the relay, as a ready wait that fails closes it
+    link.dispose(new ProtocolInitFailedError('SharedWorker did not signal ready within timeout'));
+
+    // Then the frame status ends as a failed init, and the held call fails with the closing error
+    await expect(status.ended).resolves.toEqual(
+      err(domain({ tag: 'initFailed', value: 'SharedWorker did not signal ready within timeout' })),
+    );
+    await expect(owner).resolves.toEqual(
+      err(hostFailure('ProtocolInitFailedError: SharedWorker did not signal ready within timeout')),
+    );
   });
 });

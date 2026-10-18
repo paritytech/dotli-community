@@ -6,7 +6,6 @@ import { SITE_ID } from '@dotli/config';
 import {
   buildSharedAuthStorageKey,
   isSharedAuthOriginAllowed,
-  isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
@@ -68,19 +67,6 @@ describe('shared auth storage helpers', () => {
     expect(buildSharedAuthStorageKey('dot.li', SHARED_CORE_SESSION_KEY)).toBe('TRUAPI_dot.li_session');
     expect(buildSharedAuthStorageKey('paseoli.dev', SHARED_CORE_SESSION_KEY)).toBe('TRUAPI_paseoli.dev_session');
     expect(buildSharedAuthStorageKey('dot.li', 'UserSecrets')).toBe('TRUAPI_dot.li_UserSecrets');
-  });
-
-  it('As the protocol frame, I route the shared auth methods to the auth store and nothing else', () => {
-    // Given
-    const auth = ['authRead', 'authWrite', 'authClear'] as const;
-
-    // When
-    const routed = auth.map(method => isSharedAuthRequestMethod(method));
-
-    // Then
-    expect(routed).toEqual([true, true, true]);
-    expect(isSharedAuthRequestMethod('authChanges')).toBe(false);
-    expect(isSharedAuthRequestMethod('modeRead')).toBe(false);
   });
 
   it('As the protocol frame, I route the shared mode methods to the mode store and nothing else', () => {

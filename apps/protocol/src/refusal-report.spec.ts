@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { spans as S, type m } from '@dotli/metrics';
-import { isSharedAuthOriginAllowed, protocolSchema } from '@dotli/protocol';
+import { isSharedAuthOriginAllowed, protocolSchema, type CallName } from '@dotli/protocol';
 import { memoryStorage } from '@dotli/shared/testing';
 import {
   createTransport,
@@ -32,11 +32,11 @@ afterEach(closeHostLinks);
 const STRANGER = 'https://evil.example';
 const FAILURE = new Error('storage read failed');
 
-const failedMethods: Record<FrameRoute, string> = {
-  auth: 'storage.authWrite',
-  mode: 'storage.modeWrite',
-  wallet: 'wallet.read',
-  chain: 'resolve.dotName',
+const failedMethods: Record<FrameRoute, CallName> = {
+  auth: 'authStorageWrite',
+  mode: 'modeStorageWrite',
+  wallet: 'localWalletRead',
+  chain: 'resolveDotName',
 };
 
 interface Row {
@@ -62,8 +62,8 @@ const TABLE: Row[] = [
     warned: [],
     counted: [[S.SHARED_STORAGE_REJECTED, { store: 'mode', reason: 'validation' }]],
   },
-  { refusal: failed('wallet'), warned: [['[dot.li protocol] wallet.read failed', FAILURE]], counted: [] },
-  { refusal: failed('chain'), warned: [['[dot.li protocol] resolve.dotName failed', FAILURE]], counted: [] },
+  { refusal: failed('wallet'), warned: [['[dot.li protocol] localWalletRead failed', FAILURE]], counted: [] },
+  { refusal: failed('chain'), warned: [['[dot.li protocol] resolveDotName failed', FAILURE]], counted: [] },
 ];
 
 /** A log and a counter that keep what they were handed. */
@@ -191,7 +191,13 @@ describe('the reporting transport', () => {
 
     // Then
     await expect(read).resolves.toEqual(err(denied()));
-    expect(refusals).toEqual([{ route: 'mode', method: 'storage.modeRead', error: denied() }]);
+    expect(refusals).toMatchObject([
+      {
+        route: 'mode',
+        method: 'modeStorageRead',
+        error: { name: 'Denied', message: 'The frame refused the call "modeStorageRead"' },
+      },
+    ]);
   });
 
   it('As a dotli operator, I see a failed request, a typed failure, a refused subscription and one that ends in error reported under their methods', async () => {
@@ -226,12 +232,18 @@ describe('the reporting transport', () => {
       err(hostFailure('Error: Connection limit reached (max 10)')),
       err(ended),
     ]);
-    expect(refusals).toEqual([
-      { route: 'wallet', method: 'wallet.read', error: failure },
-      { route: 'chain', method: 'resolve.owner', error: syncTimeout },
-      { route: 'chain', method: 'chain.connect', error: refused },
-      { route: 'chain', method: 'resolve.dotName', error: ended },
+    expect(refusals).toMatchObject([
+      { route: 'wallet', method: 'localWalletRead', error: failure },
+      {
+        route: 'chain',
+        method: 'resolveOwner',
+        error: { name: 'NetworkSyncTimeoutError', message: 'Asset Hub did not sync' },
+      },
+      { route: 'chain', method: 'chainConnect', error: refused },
+      { route: 'chain', method: 'resolveDotName', error: { name: 'Error', message: 'Asset Hub did not sync' } },
     ]);
+    expect(refusals[0]?.error).toBe(failure);
+    expect(refusals[2]?.error).toBe(refused);
   });
 
   it('As a dotli operator, I hear nothing of calls that succeed or subscriptions that end cleanly', async () => {

@@ -15,6 +15,8 @@ import {
   type Codec,
   type DomainError,
   type MethodTypes,
+  type SubscriptionMethodName,
+  type TraitName,
   type Transport,
 } from '@dotli/transport';
 import type { ExecutableManifest, RootManifest } from '@dotli/resolver';
@@ -134,5 +136,16 @@ export type ProtocolContext = CallContext<ProtocolSchema>;
 export type FrameFailure = DomainError<ProtocolSchema, 'frame', 'status'>;
 /** The remote errors name resolution and chain connections fail with. */
 export type RemoteFailure = DomainError<ProtocolSchema, 'resolve', 'owner'>;
+/** What a subscription of `method` in `trait` starts with. */
+export type SubscriptionStart<
+  T extends TraitName<ProtocolSchema>,
+  M extends SubscriptionMethodName<ProtocolSchema, T>,
+> = MethodTypes<ProtocolSchema, T, M> extends { start: infer St } ? St : never;
+/** What a subscription of `method` in `trait` sends. */
+export type SubscriptionValue<
+  T extends TraitName<ProtocolSchema>,
+  M extends SubscriptionMethodName<ProtocolSchema, T>,
+> = MethodTypes<ProtocolSchema, T, M> extends { receive: infer V } ? V : never;
+
 /** A shared auth write a sibling tab made. */
 export type SharedAuthChange = MethodTypes<ProtocolSchema, 'storage', 'authChanges'>['receive'];

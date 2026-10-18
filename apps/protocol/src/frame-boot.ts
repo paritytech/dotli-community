@@ -5,14 +5,13 @@
 // subscribes to both as soon as its handshake is answered, before the mode has loaded anything, and a subscription
 // left waiting would never end.
 
-import type { ProtocolSchema, TelemetryEvent } from '@dotli/protocol';
-import type { CallError, MethodTypes, SubscriptionHandler } from '@dotli/transport';
+import type { FrameFailure, ProtocolSchema, SubscriptionStart, TelemetryEvent } from '@dotli/protocol';
+import type { CallError, SubscriptionHandler } from '@dotli/transport';
 
 import { createDeferredSubscription } from './deferred-subscription.js';
-import { createFrameStatus, type FrameFailure } from './frame-status.js';
+import { createFrameStatus } from './frame-status.js';
 
 type Telemetry = SubscriptionHandler<ProtocolSchema, 'frame', 'telemetry'>;
-type TelemetryStart = MethodTypes<ProtocolSchema, 'frame', 'telemetry'>['start'];
 
 export interface FrameBoot {
   frameStatus: SubscriptionHandler<ProtocolSchema, 'frame', 'status'>;
@@ -34,7 +33,7 @@ const idleTelemetry: Telemetry = () => () => undefined;
 
 export function createFrameBoot(): FrameBoot {
   const status = createFrameStatus();
-  const telemetry = createDeferredSubscription<TelemetryStart, TelemetryEvent, never>();
+  const telemetry = createDeferredSubscription<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never>();
   return {
     frameStatus: status.handler,
     telemetry: telemetry.handler,

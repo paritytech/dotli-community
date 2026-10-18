@@ -5,7 +5,14 @@
 // fake frame's document loads this script, which answers the host through the real transport with the options its own
 // script tag carries as JSON.
 
-import { protocolSchema, type ProtocolSchema } from '@dotli/protocol';
+import {
+  protocolSchema,
+  remoteFailureOf,
+  type FrameFailure,
+  type ProtocolSchema,
+  type RemoteFailure,
+  type SubscriptionValue,
+} from '@dotli/protocol';
 import {
   createTransport,
   createWindowProvider,
@@ -13,15 +20,12 @@ import {
   hostFailure,
   ok,
   type CallError,
-  type DomainError,
   type MethodTypes,
   type Sink,
 } from '@dotli/transport';
 
-type ChainMessage = MethodTypes<ProtocolSchema, 'chain', 'connect'>['receive'];
+type ChainMessage = SubscriptionValue<'chain', 'connect'>;
 type RootManifest = Extract<MethodTypes<ProtocolSchema, 'resolve', 'rootManifest'>['response'], { ok: true }>['value'];
-type RemoteFailure = DomainError<ProtocolSchema, 'chain', 'connect'>;
-type FrameFailure = DomainError<ProtocolSchema, 'frame', 'status'>;
 
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';
@@ -63,14 +67,9 @@ export interface FakeProtocolControl {
  * cross as their typed failures, as the frame app sends them, and any other as the resolver's own failure.
  */
 function resolveFailure(message: string, name = 'Error'): CallError<RemoteFailure> {
-  switch (name) {
-    case 'NetworkSyncTimeoutError':
-      return domain({ tag: 'syncTimeout', value: message });
-    case 'ApiStoppedError':
-      return domain({ tag: 'apiStopped', value: message });
-    default:
-      return hostFailure(Object.assign(new Error(message), { name }));
-  }
+  const error = Object.assign(new Error(message), { name });
+  const typed = remoteFailureOf(error);
+  return typed === null ? hostFailure(error) : domain(typed);
 }
 
 function runFakeProtocol(options: FakeProtocolOptions): void {

@@ -7,16 +7,22 @@
 import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import { reportListener } from '@dotli/metrics';
-import { budgetOf, RESOLVE_BUDGET_MS, type ProtocolSchema, type ProtocolTransport } from '@dotli/protocol';
+import {
+  budgetOf,
+  remoteFailureOf,
+  RESOLVE_BUDGET_MS,
+  type ProtocolSchema,
+  type ProtocolTransport,
+  type RemoteFailure,
+} from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
-import { errorMessage, errorName, toError } from '@dotli/shared';
+import { toError } from '@dotli/shared';
 import {
   domain,
   err,
   hostFailure,
   ok,
   type CallError,
-  type DomainError,
   type RequestHandler,
   type Result,
   type SubscriptionHandler,
@@ -25,9 +31,6 @@ import {
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
 type S = ProtocolSchema;
-
-/** The resolver and chain failures the host's error screen tells apart. */
-type RemoteFailure = DomainError<S, 'resolve', 'owner'>;
 
 type ChainSink = Parameters<SubscriptionHandler<S, 'chain', 'connect'>>[2];
 
@@ -94,18 +97,6 @@ function assertStr(value: string, name: string): void {
   if (value.length === 0) {
     throw new Error(`Invalid ${name}: expected non-empty string`);
   }
-}
-
-/** A failure the host's error screen tells apart by name, typed, or null for any other, which crosses as thrown. */
-function remoteFailureOf(error: unknown): RemoteFailure | null {
-  const name = errorName(error);
-  if (name === 'NetworkSyncTimeoutError') {
-    return { tag: 'syncTimeout', value: errorMessage(error) };
-  }
-  if (name === 'ApiStoppedError') {
-    return { tag: 'apiStopped', value: errorMessage(error) };
-  }
-  return null;
 }
 
 /** Answers a read with its value or its typed failure. Any other failure is thrown, so it crosses as the handler's. */

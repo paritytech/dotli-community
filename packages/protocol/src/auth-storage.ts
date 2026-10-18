@@ -7,28 +7,16 @@ import type { ProtocolSchema } from './schema.js';
 
 type StorageMethod = MethodName<ProtocolSchema, 'storage'>;
 
-export type SharedAuthRequestMethod = Extract<StorageMethod, 'authRead' | 'authWrite' | 'authClear'>;
-
 export type SharedModeRequestMethod = Extract<StorageMethod, 'modeRead' | 'modeWrite' | 'modeClear'>;
 
 export const SHARED_CORE_SESSION_KEY = 'session';
 
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const SHARED_AUTH_METHODS: ReadonlySet<string> = new Set<SharedAuthRequestMethod>([
-  'authRead',
-  'authWrite',
-  'authClear',
-]);
 const SHARED_MODE_METHODS: ReadonlySet<string> = new Set<SharedModeRequestMethod>([
   'modeRead',
   'modeWrite',
   'modeClear',
 ]);
-
-/** Whether `method` is a request of the shared auth store, among the storage trait's methods. */
-export function isSharedAuthRequestMethod(method: string): method is SharedAuthRequestMethod {
-  return SHARED_AUTH_METHODS.has(method);
-}
 
 /** Whether `method` is a request of the shared mode store, among the storage trait's methods. */
 export function isSharedModeRequestMethod(method: string): method is SharedModeRequestMethod {

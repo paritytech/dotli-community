@@ -12,12 +12,15 @@ import { m, captureException, spans as S, type SpanHandle } from '@dotli/metrics
 import {
   callName,
   failureOf,
+  frameStatusEnd,
   protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
+  type CallName,
   type ProtocolSchema,
   type ProtocolTransport,
+  type SubscriptionValue,
 } from '@dotli/protocol';
 import { errorName, log, serializeError } from '@dotli/shared';
 import {
@@ -26,19 +29,16 @@ import {
   ok,
   type CallError,
   type DomainError,
-  type MethodName,
-  type MethodTypes,
   type RequestHandler,
   type RequestMethodName,
   type Result,
   type Sink,
   type SubscriptionHandler,
   type SubscriptionMethodName,
-  type TraitName,
 } from '@dotli/transport';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
-import { createFrameStatus, frameStatusEnd, type FrameStatusSink } from './frame-status.js';
+import { createFrameStatus, type FrameStatusSink } from './frame-status.js';
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -107,11 +107,8 @@ interface PortSession {
   unwatch: () => void;
 }
 
-/** A traced call's failure: no domain error but the one name resolution and chain connections declare. */
-type TracedFailure = CallError<DomainError<ProtocolSchema, 'resolve', 'owner'>>;
-
-type ValueOf<T extends TraitName<ProtocolSchema>, M extends SubscriptionMethodName<ProtocolSchema, T>> =
-  MethodTypes<ProtocolSchema, T, M> extends { receive: infer V } ? V : never;
+/** The requests a span follows. A chain message would swamp them, and a heartbeat says nothing of a load. */
+type TracedRequest<T extends 'frame' | 'resolve'> = Exclude<RequestMethodName<ProtocolSchema, T>, 'heartbeat'>;
 
 const TAG = '[dot.li SW]';
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
@@ -322,7 +319,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   /** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
-  function openRequestSpan(method: string, resolutionId: string | null) {
+  function openRequestSpan(method: CallName, resolutionId: string | null) {
     return openSpan(S.PROTOCOL_WORKER_REQUEST, {
       root: true,
       attributes: {
@@ -339,19 +336,8 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     span.end();
   }
 
-  /** Why an answer failed, as an error under its name, or undefined for one that succeeded. */
-  function failureOfAnswer<T extends TraitName<ProtocolSchema>>(
-    trait: T,
-    method: MethodName<ProtocolSchema, T>,
-    answer: unknown,
-  ): Error | undefined {
-    // Every answer is a `Result`, which the method's deferred answer type does not show where the method is generic.
-    const outcome = answer as Result<unknown, TracedFailure>;
-    return outcome.ok ? undefined : failureOf(trait, method, outcome.error);
-  }
-
   /** Spans a request, and logs one that fails, by the name dashboards know it by. */
-  function traced<T extends 'frame' | 'resolve', M extends RequestMethodName<ProtocolSchema, T>>(
+  function traced<T extends 'frame' | 'resolve', M extends TracedRequest<T>>(
     trait: T,
     method: M,
     handler: RequestHandler<ProtocolSchema, T, M>,
@@ -361,7 +347,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       const span = openRequestSpan(name, context.hello.resolutionId);
       try {
         const answer = await handler(payload, context);
-        const failure = failureOfAnswer(trait, method, answer);
+        // Every answer is a `Result`, which the method's deferred answer type does not show where the method is generic.
+        const outcome = answer as Result<unknown, CallError<DomainError<ProtocolSchema, T, M>>>;
+        const failure = outcome.ok ? undefined : failureOf(trait, method, outcome.error);
         endSpan(span, failure);
         if (failure !== undefined) {
           // The host rebuilds this failure from the answer and reports it.
@@ -398,7 +386,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   function tracedSubscription<T extends 'chain' | 'resolve', M extends SubscriptionMethodName<ProtocolSchema, T>>(
     trait: T,
     method: M,
-    answers: (value: ValueOf<T, M>) => boolean,
+    answers: (value: SubscriptionValue<T, M>) => boolean,
     handler: SubscriptionHandler<ProtocolSchema, T, M>,
   ): SubscriptionHandler<ProtocolSchema, T, M> {
     const name = callName(trait, method);
@@ -423,7 +411,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
           }
         },
         interrupt: error => {
-          settle(error === undefined ? undefined : failureOfAnswer(trait, method, { ok: false, error }));
+          settle(error === undefined ? undefined : failureOf(trait, method, error));
           sink.interrupt(error);
         },
       };

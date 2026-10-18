@@ -5,39 +5,10 @@
 // that subscribes late hears where the frame stands at once, so nothing said before it subscribed is lost.
 
 import { reportListener } from '@dotli/metrics';
-import {
-  ProtocolFatalError,
-  ProtocolInitFailedError,
-  ProtocolPortReleasedError,
-  type ProtocolSchema,
-} from '@dotli/protocol';
-import {
-  domain,
-  hostFailure,
-  type CallError,
-  type DomainError,
-  type Sink,
-  type SubscriptionHandler,
-} from '@dotli/transport';
-
-/** Why the frame's status ended, typed so the host tells a crash, a failed boot and a released port apart. */
-export type FrameFailure = DomainError<ProtocolSchema, 'frame', 'status'>;
+import { frameStatusEnd, type FrameFailure, type ProtocolSchema } from '@dotli/protocol';
+import type { CallError, Sink, SubscriptionHandler } from '@dotli/transport';
 
 export type FrameStatusSink = Sink<void, FrameFailure>;
-
-/** How the frame status ends on `error`: typed for a fatal, a failed init or a released port, else as its failure. */
-export function frameStatusEnd(error: Error): CallError<FrameFailure> {
-  if (error instanceof ProtocolFatalError) {
-    return domain({ tag: 'fatal', value: error.message });
-  }
-  if (error instanceof ProtocolInitFailedError) {
-    return domain({ tag: 'initFailed', value: error.message });
-  }
-  if (error instanceof ProtocolPortReleasedError) {
-    return domain({ tag: 'released', value: error.message });
-  }
-  return hostFailure(error);
-}
 
 /** Where the status stands. An end of undefined is a clean one. */
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: CallError<FrameFailure> | undefined };

@@ -2,25 +2,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ProtocolSchema, TelemetryEvent } from '@dotli/protocol';
+import type { SubscriptionStart, TelemetryEvent } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
-import { err, hostFailure, unsupported, type MethodTypes } from '@dotli/transport';
+import { err, hostFailure, unsupported } from '@dotli/transport';
 import { createDeferredSubscription, type DeferredSubscription, type Handler } from './deferred-subscription.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
-/** A call the frame does not serve, whose answer means every leg sent before it has reached the frame. */
+/** A call the frame does not serve, whose answer means every call sent before it has reached the frame. */
 async function roundTrip(link: HostLink): Promise<void> {
   await expect(link.host.request('frame', 'warmup', undefined)).resolves.toEqual(err(unsupported()));
 }
 
-type TelemetryStart = MethodTypes<ProtocolSchema, 'frame', 'telemetry'>['start'];
-type TelemetryHandler = Handler<TelemetryStart, TelemetryEvent, never>;
+type TelemetryHandler = Handler<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never>;
 
 /** A deferred telemetry the frame serves on `link`. */
-function telemetrySubscription(link: HostLink): DeferredSubscription<TelemetryStart, TelemetryEvent, never> {
-  const telemetry = createDeferredSubscription<TelemetryStart, TelemetryEvent, never>();
+function telemetrySubscription(
+  link: HostLink,
+): DeferredSubscription<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never> {
+  const telemetry = createDeferredSubscription<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never>();
   link.serving.handleSubscription('frame', 'telemetry', telemetry.handler);
   return telemetry;
 }

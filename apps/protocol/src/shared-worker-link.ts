@@ -5,7 +5,13 @@
 // ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { failureOf, protocolSchema, ProtocolInitFailedError, type ProtocolTransport } from '@dotli/protocol';
+import {
+  failureOf,
+  protocolSchema,
+  ProtocolInitFailedError,
+  type FrameFailure,
+  type ProtocolTransport,
+} from '@dotli/protocol';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import {
   createPortProvider,
@@ -16,7 +22,6 @@ import {
 } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import type { FrameFailure } from './frame-status.js';
 import { disposeOnPageHide } from './worker-port.js';
 
 /**
@@ -64,7 +69,7 @@ export interface SharedWorkerLinkDeps {
  * ready.
  */
 export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => void): WorkerStatus {
-  const report = reportListener('protocol', 'protocol.transport');
+  const report = reportListener('protocol', 'protocol.worker_status');
   const listeners: ((end: WorkerEnd) => void)[] = [];
   let ended: WorkerEnd | null = null;
   const tell = (listener: (end: WorkerEnd) => void, end: WorkerEnd): void => {

@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProtocolFatalError, ProtocolInitFailedError, ProtocolPortReleasedError } from '@dotli/protocol';
+import {
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  ProtocolPortReleasedError,
+  type FrameFailure,
+} from '@dotli/protocol';
 import { domain, err, hostFailure, ok, type CallError } from '@dotli/transport';
-import { createFrameStatus, type FrameFailure, type FrameStatusSink } from './frame-status.js';
+import { createFrameStatus, type FrameStatusSink } from './frame-status.js';
 import { closeHostLinks, linkHost, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);

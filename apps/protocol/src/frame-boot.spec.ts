@@ -18,7 +18,7 @@ function setup(): { boot: FrameBoot; link: HostLink } {
   return { boot, link };
 }
 
-/** A call the frame does not serve, whose answer means every leg sent before it has come back. */
+/** A call the frame does not serve, whose answer means every call sent before it has come back. */
 async function roundTrip(link: HostLink): Promise<void> {
   await expect(link.host.request('frame', 'warmup', undefined)).resolves.toEqual(err(unsupported()));
 }

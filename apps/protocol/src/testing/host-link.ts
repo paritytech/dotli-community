@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A host page linked to this frame's transport over a real port pair, so specs drive the frame's handlers through the
-// wire as the host does.
+// wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any issue a
+// spec did not take, so none goes unseen.
 
-import { protocolSchema, type ProtocolSchema, type ProtocolTransport } from '@dotli/protocol';
+import {
+  protocolSchema,
+  type ProtocolSchema,
+  type ProtocolTransport,
+  type SubscriptionStart,
+  type SubscriptionValue,
+} from '@dotli/protocol';
+import { errorMessage } from '@dotli/shared';
 import {
   createPortProvider,
   createTransport,
   type CallError,
   type DomainError,
-  type MethodTypes,
   type Result,
   type SubscriptionMethodName,
   type TraitName,
@@ -22,14 +29,6 @@ export const PRODUCT_ORIGIN = 'http://bafy.app.localhost:5173';
 
 type S = ProtocolSchema;
 
-/** What a subscription of `method` in `trait` starts with. */
-export type StartOf<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> =
-  MethodTypes<S, T, M> extends { start: infer St } ? St : never;
-
-/** What a subscription of `method` in `trait` sends. */
-export type ValueOf<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> =
-  MethodTypes<S, T, M> extends { receive: infer V } ? V : never;
-
 /** How a subscription of `method` in `trait` ended: the peer's interrupt, or the error its transport closed with. */
 export type EndOf<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> =
   Result<void, CallError<DomainError<S, T, M>>> | Error;
@@ -39,8 +38,13 @@ export interface HostLink {
   serving: ProtocolTransport;
   /** The host page's end, which opens the handshake. */
   host: ProtocolTransport;
-  /** What either end could not handle itself, in order. */
+  /**
+   * What either end, or a transport the spec handed `report`, could not handle itself, in order. A spec that expects an
+   * issue takes it from here, and any left fails the spec as its links close.
+   */
   issues: TransportIssue[];
+  /** The issue hook of the link, for another transport of the spec. */
+  report: (issue: TransportIssue) => void;
   /** Disposes both ends and closes the ports. */
   close: () => void;
 }
@@ -73,6 +77,7 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
     serving,
     host,
     issues,
+    report: onIssue,
     close: () => {
       links.delete(link);
       const over = new Error('The spec is over');
@@ -84,15 +89,35 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
   return link;
 }
 
-/** Closes every link a spec left open, so no port keeps the test run alive. */
+function describeIssue(issue: TransportIssue): string {
+  switch (issue.kind) {
+    case 'refused':
+      return `refused as ${issue.reason}${issue.cause === undefined ? '' : `, ${errorMessage(issue.cause)}`}`;
+    case 'post_failed':
+      return `a ${issue.leg} post failed, ${errorMessage(issue.error)}`;
+    case 'listener_threw':
+      return `a listener threw, ${errorMessage(issue.error)}`;
+  }
+}
+
+/**
+ * Closes every link a spec left open, so no port keeps the test run alive, and throws when a link kept an issue the
+ * spec did not take.
+ */
 export function closeHostLinks(): void {
+  const unseen = [...links].flatMap(link => link.issues.splice(0));
   for (const link of [...links]) {
     link.close();
+  }
+  if (unseen.length > 0) {
+    throw new Error(`The links raised issues the spec did not expect: ${unseen.map(describeIssue).join(' | ')}`, {
+      cause: unseen,
+    });
   }
 }
 
 export interface Recording<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> {
-  events: ValueOf<T, M>[];
+  events: SubscriptionValue<T, M>[];
   /** Settles with the end: the frame's interrupt, or the error the transport closed with. */
   ended: Promise<EndOf<T, M>>;
   /** Resolves once `count` events have arrived. */
@@ -105,9 +130,9 @@ export function record<T extends TraitName<S>, M extends SubscriptionMethodName<
   transport: ProtocolTransport,
   trait: T,
   method: M,
-  start: StartOf<T, M>,
+  start: SubscriptionStart<T, M>,
 ): Recording<T, M> {
-  const events: ValueOf<T, M>[] = [];
+  const events: SubscriptionValue<T, M>[] = [];
   const waiters: { count: number; resolve: () => void }[] = [];
   let end: (outcome: EndOf<T, M>) => void = () => undefined;
   const ended = new Promise<EndOf<T, M>>(resolve => {

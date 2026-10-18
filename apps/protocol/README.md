@@ -57,8 +57,10 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 - In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
   through its own transport, including the frame status and telemetry subscriptions. That transport opens the handshake
   toward the worker, with this page load's resolution id as its hello. The relay adds nothing to a call and passes each
-  answer, value and end on as the worker gave it. When the worker ends this tab's status, the relay ends the frame
-  status with the same end and closes its transport, so each call the worker still held fails.
+  answer, value and end on as the worker gave it. When this tab's status from the worker ends, the relay first closes
+  its transport, so each call the worker still held fails and each relayed subscription ends before the host hears the
+  frame end. It then ends the frame status: with the worker's own end as it is, or, when its transport closed under it,
+  with the closing error.
 - The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
   between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
   It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat
@@ -69,9 +71,10 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   worker closes.
 - A tab that leaves ends its subscriptions, which frees its connections at once. The worker then forgets its port and
   closes it at once: a live tab always holds a subscription, so a tab whose own stop leaves nothing running, with no
-  call of its in flight, has disposed its transport. A call from the tab after that keeps it. A port whose tab crashed
-  fires its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never
-  fires the event, the heartbeat release is the fallback.
+  call of its in flight, has disposed its transport. A call of the tab still in flight when its last subscription stops,
+  or one it makes before that call settles, keeps the port. A port whose tab crashed fires its close event, and the
+  worker forgets it, or closes it if it was released, at once. Where an engine never fires the event, the heartbeat
+  release is the fallback.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
   ends. A heartbeat it cannot send is captured, logged and counted, and the link stops answering, so the worker releases
   the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the

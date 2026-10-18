@@ -6,7 +6,6 @@ export {
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
-  isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
@@ -34,12 +33,16 @@ export {
 export { budgetOf, CONNECT_BUDGET_MS, RESOLVE_BUDGET_MS } from './method-timeouts.js';
 export {
   protocolSchema,
+  type FrameFailure,
   type LocalWalletIdentity,
   type ProtocolContext,
   type ProtocolSchema,
   type ProtocolTransport,
+  type RemoteFailure,
+  type SubscriptionStart,
+  type SubscriptionValue,
   type TelemetryEvent,
 } from './schema.js';
-export { callName } from './call-names.js';
-export { failureOf } from './outcomes.js';
+export { callName, type CallName } from './call-names.js';
+export { failureOf, frameStatusEnd, remoteFailureOf } from './outcomes.js';
 export { createIssueReporter } from './wire-issues.js';

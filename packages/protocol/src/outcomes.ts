@@ -1,17 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// How a call's failure reaches host code. Each becomes the error host code has always seen, so its class and name keep
-// matching the error screen, the metrics and the trail.
+// How a call's failure crosses and how it reaches host code. A frame types the failures the host branches on, and each
+// becomes the error host code has always seen, so its class and name keep matching the error screen, the metrics and
+// the trail.
 
 import {
   TransportHandshakeTimeoutError,
   TransportVersionMismatchError,
+  domain,
+  hostFailure,
   type CallError,
+  type DomainError,
   type MethodName,
   type TraitName,
 } from '@dotli/transport';
-import { toError } from '@dotli/shared';
+import { errorMessage, errorName, toError } from '@dotli/shared';
 import { callName, type CallName } from './call-names.js';
 import {
   ProtocolFatalError,
@@ -88,10 +92,43 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
  * The failure of a call of `method` in `trait` as the error the protocol's own code sees, for a frame that waits on or
  * relays another frame's calls.
  */
-export function failureOf<T extends TraitName<ProtocolSchema>>(
+export function failureOf<T extends TraitName<ProtocolSchema>, M extends MethodName<ProtocolSchema, T>>(
   trait: T,
-  method: MethodName<ProtocolSchema, T>,
-  error: CallError<DomainFailure>,
+  method: M,
+  error: CallError<DomainError<ProtocolSchema, T, M>>,
 ): Error {
-  return callFailure(error, callName(trait, method));
+  // Every domain error the schema declares is a `DomainFailure`.
+  return callFailure(error as CallError<DomainFailure>, callName(trait, method));
+}
+
+/**
+ * How a frame ends its status on `error`: typed for a fatal, a failed init or a released port, so the host tells them
+ * apart, and as the error's own failure for any other.
+ */
+export function frameStatusEnd(error: Error): CallError<FrameFailure> {
+  if (error instanceof ProtocolFatalError) {
+    return domain({ tag: 'fatal', value: error.message });
+  }
+  if (error instanceof ProtocolInitFailedError) {
+    return domain({ tag: 'initFailed', value: error.message });
+  }
+  if (error instanceof ProtocolPortReleasedError) {
+    return domain({ tag: 'released', value: error.message });
+  }
+  return hostFailure(error);
+}
+
+/**
+ * The typed failure of a resolver or chain error the host's error screen tells apart by name, or null for any other,
+ * which crosses as the handler's own failure.
+ */
+export function remoteFailureOf(error: unknown): RemoteFailure | null {
+  const name = errorName(error);
+  if (name === 'NetworkSyncTimeoutError') {
+    return { tag: 'syncTimeout', value: errorMessage(error) };
+  }
+  if (name === 'ApiStoppedError') {
+    return { tag: 'apiStopped', value: errorMessage(error) };
+  }
+  return null;
 }

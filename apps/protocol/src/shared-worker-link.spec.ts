@@ -6,7 +6,13 @@
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { protocolSchema, ProtocolFatalError, ProtocolInitFailedError, type ProtocolTransport } from '@dotli/protocol';
+import {
+  protocolSchema,
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  type FrameFailure,
+  type ProtocolTransport,
+} from '@dotli/protocol';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
   createPortProvider,
@@ -19,7 +25,7 @@ import {
   type Sink,
 } from '@dotli/transport';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { createFrameStatus, type FrameFailure, type FrameStatus } from './frame-status.js';
+import { createFrameStatus, type FrameStatus } from './frame-status.js';
 import { connectSharedWorker, workerEndError, type WorkerEnd, type WorkerStatus } from './shared-worker-link.js';
 
 const READY_TIMEOUT_MS = 30_000;

@@ -5,17 +5,12 @@
 // it, its one end is heard in one place, as the error host code sees.
 
 import { reportListener } from '@dotli/metrics';
-import type { CallError, MethodTypes, SubscriptionMethodName, TraitName } from '@dotli/transport';
+import type { CallError, SubscriptionMethodName, TraitName } from '@dotli/transport';
 import { callName } from './call-names.js';
 import { callFailure, fromTransportError, type DomainFailure } from './outcomes.js';
-import type { ProtocolSchema, ProtocolTransport } from './schema.js';
+import type { ProtocolSchema, ProtocolTransport, SubscriptionStart, SubscriptionValue } from './schema.js';
 
 type S = ProtocolSchema;
-
-type Start<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> =
-  MethodTypes<S, T, M> extends { start: infer St } ? St : never;
-type Value<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> =
-  MethodTypes<S, T, M> extends { receive: infer V } ? V : never;
 
 export interface Subscription {
   /** Ends the subscription without calling its end listeners, and tells the frame. */
@@ -45,8 +40,8 @@ export function subscribe<T extends TraitName<S>, M extends SubscriptionMethodNa
   transport: ProtocolTransport,
   trait: T,
   method: M,
-  start: Start<T, M>,
-  receive: (value: Value<T, M>) => void,
+  start: SubscriptionStart<T, M>,
+  receive: (value: SubscriptionValue<T, M>) => void,
   options: SubscribeOptions = {},
 ): Subscription {
   const name = callName(trait, method);

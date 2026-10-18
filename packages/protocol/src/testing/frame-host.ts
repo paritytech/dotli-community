@@ -12,14 +12,12 @@ import {
   createTransport,
   createWindowProvider,
   defineSchema,
-  domain,
-  hostFailure,
   type CallError,
   type Sink,
   type WindowLike,
 } from '@dotli/transport';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
-import { ProtocolFatalError, ProtocolInitFailedError, ProtocolPortReleasedError } from '../errors.js';
+import { frameStatusEnd } from '../outcomes.js';
 import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { protocolSchema, type FrameFailure, type ProtocolTransport } from '../schema.js';
 
@@ -185,20 +183,6 @@ export interface FrameStatusServer {
   interrupt(end?: CallError<FrameFailure>): void;
 }
 
-/** How a frame app ends its status on `error`. */
-function statusEnd(error: Error): CallError<FrameFailure> {
-  if (error instanceof ProtocolFatalError) {
-    return domain({ tag: 'fatal', value: error.message });
-  }
-  if (error instanceof ProtocolInitFailedError) {
-    return domain({ tag: 'initFailed', value: error.message });
-  }
-  if (error instanceof ProtocolPortReleasedError) {
-    return domain({ tag: 'released', value: error.message });
-  }
-  return hostFailure(error);
-}
-
 function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
   const sinks = new Set<Sink<void, FrameFailure>>();
   let state: 'booting' | 'ready' | { end: CallError<FrameFailure> | undefined } = 'booting';
@@ -229,7 +213,7 @@ function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
       }
     },
     fail(error) {
-      interrupt(statusEnd(error));
+      interrupt(frameStatusEnd(error));
     },
     interrupt,
   };
