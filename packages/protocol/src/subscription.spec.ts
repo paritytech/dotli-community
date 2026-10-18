@@ -5,30 +5,33 @@ import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { createTransport, defineSchema, domain, hostFailure, type Sink } from '@dotli/transport';
+import { _void } from 'scale-ts';
+import { createTransport, defineSchema, domain, hostFailure, type MethodTypes, type Sink } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import { ProtocolFatalError, ProtocolVersionMismatchError } from './errors.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type FrameFailure, type ProtocolTransport, type RemoteFailure } from './schema.js';
 import { subscribe } from './subscription.js';
 
+const { frame, resolve } = protocolSchema.traits;
+
 describe('subscribe', () => {
   let timers: ManualTimers;
   let statusSinks: Sink<void, FrameFailure>[];
-  let resolveSinks: Sink<unknown, RemoteFailure>[];
+  let resolveSinks: Sink<MethodTypes<typeof resolve.dotName>['receive'], RemoteFailure>[];
   let stops: number;
 
   const settle = (): Promise<void> => timers.advance(0);
 
   /** A frame app that keeps the sink of each status and name resolution it serves. */
   const serve = (serving: ProtocolTransport): void => {
-    serving.handleSubscription('frame', 'status', (_start, _context, sink) => {
+    serving.handleSubscription(frame.status, (_start, _context, sink) => {
       statusSinks.push(sink);
       return () => {
         stops += 1;
       };
     });
-    serving.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
+    serving.handleSubscription(resolve.dotName, (_start, _context, sink) => {
       resolveSinks.push(sink);
       return () => {
         stops += 1;
@@ -56,7 +59,7 @@ describe('subscribe', () => {
     const transport = await hostTransport();
     const heard: string[] = [];
     const ends: (Error | null)[] = [];
-    const status = subscribe(transport, 'frame', 'status', undefined, () => heard.push('ready'));
+    const status = subscribe(transport, frame.status, undefined, () => heard.push('ready'));
     status.onEnd(error => ends.push(error));
     await settle();
 
@@ -74,8 +77,8 @@ describe('subscribe', () => {
     // Given
     const transport = await hostTransport();
     const ends: (Error | null)[] = [];
-    subscribe(transport, 'frame', 'status', undefined, () => undefined).onEnd(error => ends.push(error));
-    subscribe(transport, 'resolve', 'dotName', { label: 'doom' }, () => undefined).onEnd(error => ends.push(error));
+    subscribe(transport, frame.status, undefined, () => undefined).onEnd(error => ends.push(error));
+    subscribe(transport, resolve.dotName, { label: 'doom' }, () => undefined).onEnd(error => ends.push(error));
     await settle();
 
     // When
@@ -94,7 +97,7 @@ describe('subscribe', () => {
     const transport = await hostTransport();
     const giveUp = new AbortController();
     const ends: (Error | null)[] = [];
-    subscribe(transport, 'resolve', 'dotName', { label: 'doom' }, () => undefined, {
+    subscribe(transport, resolve.dotName, { label: 'doom' }, () => undefined, {
       signal: giveUp.signal,
     }).onEnd(error => ends.push(error));
     await settle();
@@ -113,7 +116,7 @@ describe('subscribe', () => {
     // Given
     const transport = await hostTransport();
     const ends: (Error | null)[] = [];
-    subscribe(transport, 'frame', 'status', undefined, () => undefined).onEnd(error => ends.push(error));
+    subscribe(transport, frame.status, undefined, () => undefined).onEnd(error => ends.push(error));
     await settle();
     const loss = new ProtocolFatalError('boom');
 
@@ -128,14 +131,17 @@ describe('subscribe', () => {
   it('As the host, a subscription to a frame of a later release ends with the version mismatch my reload screen knows', async () => {
     // Given a frame that speaks a wire version the host cannot
     const { left, right } = createProviderPair();
-    createTransport(defineSchema({ version: 255, traits: {} }), right, { handshake: 'accept' });
+    createTransport(defineSchema({ version: 255, hello: _void, traits: {} }), right, {
+      handshake: 'accept',
+      hello: undefined,
+    });
     const transport = createTransport(protocolSchema, left, {
       handshake: 'open',
       hello: { resolutionId: null },
       timers,
     });
     const ends: (Error | null)[] = [];
-    subscribe(transport, 'frame', 'status', undefined, () => undefined).onEnd(error => ends.push(error));
+    subscribe(transport, frame.status, undefined, () => undefined).onEnd(error => ends.push(error));
 
     // When
     transport.connect();
@@ -150,7 +156,7 @@ describe('subscribe', () => {
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const transport = await hostTransport();
-    const status = subscribe(transport, 'frame', 'status', undefined, () => undefined);
+    const status = subscribe(transport, frame.status, undefined, () => undefined);
     const ends: (Error | null)[] = [];
     status.onEnd(() => {
       throw new TypeError('listener broke');
@@ -175,7 +181,7 @@ describe('subscribe', () => {
     // Given
     const transport = await hostTransport();
     const ends: (Error | null)[] = [];
-    const status = subscribe(transport, 'frame', 'status', undefined, () => undefined);
+    const status = subscribe(transport, frame.status, undefined, () => undefined);
     status.onEnd(error => ends.push(error));
     await settle();
 

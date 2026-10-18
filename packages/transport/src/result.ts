@@ -3,34 +3,37 @@
 
 import { failureReason } from './errors.js';
 
-/** The outcome of a call that can fail, told apart by its `ok` field. */
-export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+/** A record's entries as a tagged union, the shape a SCALE enum reads and writes. */
+export type Variant<T> = { [K in keyof T]: { tag: K; value: T[K] } }[keyof T];
+
+/** The outcome of a call that can fail, as truapi's `Result`. */
+export type Result<T, E> = Variant<{ Ok: T; Err: E }>;
 
 /** Wraps a value as a success. Called with no argument it is the success of a call that returns nothing. */
-export function ok(): Result<void, never>;
+export function ok(): Result<undefined, never>;
 export function ok<T>(value: T): Result<T, never>;
-export function ok(value?: unknown): Result<unknown, never> {
-  return { ok: true, value };
+export function ok<T>(value?: T): Result<T | undefined, never> {
+  return { tag: 'Ok', value };
 }
 
 /** Wraps an error as a failure. */
 export function err<E>(error: E): Result<never, E> {
-  return { ok: false, error };
+  return { tag: 'Err', value: error };
 }
 
 /**
  * Why a call did not return its value, as truapi's `CallError`. `Domain` carries the handler's own error, the rest are
  * the library's. `Cancelled` is raised by the caller's own side when it aborts.
  */
-export type CallError<E> =
-  | { tag: 'Domain'; value: E }
-  | { tag: 'Denied'; value: undefined }
-  | { tag: 'Unsupported'; value: undefined }
-  | { tag: 'MalformedFrame'; value: { reason: string } }
-  | { tag: 'HostFailure'; value: { reason: string } }
-  | { tag: 'Cancelled'; value: undefined };
+export type CallError<E> = Variant<{
+  Domain: E;
+  Denied: undefined;
+  Unsupported: undefined;
+  MalformedFrame: { reason: string };
+  HostFailure: { reason: string };
+  Cancelled: undefined;
+}>;
 
-// One constructor per variant, each building the plain tagged value.
 export const domain = <E>(value: E): CallError<E> => ({ tag: 'Domain', value });
 export const denied = (): CallError<never> => ({ tag: 'Denied', value: undefined });
 export const unsupported = (): CallError<never> => ({ tag: 'Unsupported', value: undefined });

@@ -1,168 +1,133 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A schema nests traits, then methods, then a request or a subscription. Wire ids are positions, fixed once by
-// `defineSchema`, which composes the message codec. The public types carry the payload types only, and the codecs stay
-// behind library accessors.
+// A schema nests traits, then methods. A method is a request or a subscription, built from the codecs of what its sides
+// send, and carries its types, so the transport calls and serves it by the method itself. Wire ids are positions.
 
-import { none, type Codec } from './codec.js';
-import type { CallError, Result } from './result.js';
-import { createWire, requestWire, subscriptionWire, type MethodWire, type Wire } from './wire.js';
+import { Enum, _void, type Codec } from 'scale-ts';
+import type { CallError, Result, Variant } from './result.js';
+import { callError, frameOf, noDomainError, outcome, type Frame } from './wire.js';
 
-// Phantom keys. No value ever holds them, so only these types can read what a def or a schema carries.
-declare const requestTypes: unique symbol;
-declare const subscriptionTypes: unique symbol;
-declare const schemaTypes: unique symbol;
+/** What a request's sides send: its payload, then the answer. */
+export type RequestMessage<P, R, E> = Variant<{ request: P; response: Result<R, CallError<E>> }>;
 
-/** A request method: one payload in, one `Result` back. Build it with `request`. */
-export interface RequestDef<P, R, E> {
-  readonly [requestTypes]: { request: P; response: R; error: E };
+/** What a subscription's sides send: its start, its values, then its end, or the caller's stop. */
+export type SubscriptionMessage<S, V, I> = Variant<{
+  start: S;
+  receive: V;
+  interrupt: Result<undefined, CallError<I>>;
+  stop: undefined;
+}>;
+
+/** A method: the codec of what its sides send, and of the frames that carry it. */
+interface Method<M> {
+  readonly message: Codec<M>;
+  readonly frame: Codec<Frame<M>>;
 }
 
-/** A subscription method: one start payload, then values until it is interrupted or stopped. */
-export interface SubscriptionDef<S, V, I> {
-  readonly [subscriptionTypes]: { start: S; receive: V; interrupt: I };
-}
+/** A request method. `E` is its own error, `never` when it declares none. */
+export type Request<P, R, E> = Method<RequestMessage<P, R, E>>;
 
-// Any def, typed loosely enough that a factory call inside `traits` infers nothing from it. A stricter context would
-// widen an omitted `error` or `interrupt` from `never` to `unknown`.
-export type MethodDef = { readonly [requestTypes]: object } | { readonly [subscriptionTypes]: object };
+/** A subscription method. `I` is its own end reason, `never` when it declares none. */
+export type Subscription<S, V, I> = Method<SubscriptionMessage<S, V, I>>;
 
-/** The record a schema author passes as `traits`: trait names to method names to defs. */
-export type Traits = Record<string, Record<string, MethodDef>>;
+const method = <M>(message: Codec<M>): Method<M> => ({ message, frame: frameOf(message) });
 
-/** A checked schema with fixed wire ids. Its names and payload types are read through the type helpers. */
-export interface Schema<T extends Traits = Traits, H = unknown> {
-  readonly [schemaTypes]: { traits: T; hello: H };
-}
-
-interface SchemaImpl {
-  readonly version: number;
-  readonly wire: Wire;
-}
-
-// Trait id 255 is the library's own, so user traits take 0 to 254, and methods take every u8.
-const MAX_TRAITS = 255;
-const MAX_METHODS = 256;
-const MAX_VERSION = 255;
-
-// An identifier keeps its written position among object keys, which an integer-like name would not, and never takes
-// the name of the library's own trait.
-const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
-
-function checkName(name: string, label: string): void {
-  if (!IDENTIFIER.test(name)) {
-    throw new RangeError(`${label} must be an identifier`);
-  }
-}
-
-/** Declares a request. `error` is the method's own error type and defaults to `never`. */
-export function request<P, R, E = never>(def: {
+/** Declares a request. `error` is the method's own error, and a method without one never answers `Domain`. */
+export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, never>;
+export function request<P, R, E>(def: { request: Codec<P>; response: Codec<R>; error: Codec<E> }): Request<P, R, E>;
+export function request<P, R, E>(def: {
   request: Codec<P>;
   response: Codec<R>;
   error?: Codec<E>;
-}): RequestDef<P, R, E> {
-  const wire = requestWire(def.request as Codec<unknown>, def.response as Codec<unknown>, def.error as Codec<unknown>);
-  return wire as unknown as RequestDef<P, R, E>;
+}): Request<P, R, E> | Request<P, R, never> {
+  const requestOf = <D>(error: Codec<D>): Request<P, R, D> =>
+    method(Enum({ request: def.request, response: outcome(def.response, callError(error)) }));
+  return def.error === undefined ? requestOf(noDomainError) : requestOf(def.error);
 }
 
-/** Declares a subscription. `interrupt` is the method's own end reason and defaults to `never`. */
-export function subscription<S, V, I = never>(def: {
+/** Declares a subscription. `interrupt` is the method's own end reason, and one without it never ends with `Domain`. */
+export function subscription<S, V>(def: { start: Codec<S>; receive: Codec<V> }): Subscription<S, V, never>;
+export function subscription<S, V, I>(def: {
+  start: Codec<S>;
+  receive: Codec<V>;
+  interrupt: Codec<I>;
+}): Subscription<S, V, I>;
+export function subscription<S, V, I>(def: {
   start: Codec<S>;
   receive: Codec<V>;
   interrupt?: Codec<I>;
-}): SubscriptionDef<S, V, I> {
-  const wire = subscriptionWire(
-    def.start as Codec<unknown>,
-    def.receive as Codec<unknown>,
-    def.interrupt as Codec<unknown>,
-  );
-  return wire as unknown as SubscriptionDef<S, V, I>;
+}): Subscription<S, V, I> | Subscription<S, V, never> {
+  const subscriptionOf = <D>(reason: Codec<D>): Subscription<S, V, D> =>
+    method(Enum({ start: def.start, receive: def.receive, interrupt: outcome(_void, callError(reason)), stop: _void }));
+  return def.interrupt === undefined ? subscriptionOf(noDomainError) : subscriptionOf(def.interrupt);
 }
 
+/** Any method, as a schema holds it. What its sides send is told apart by tag, whatever its payload types. */
+export interface AnyMethod {
+  readonly message: { readonly dec: (data: Uint8Array) => { tag: string } };
+}
+
+/** A schema's traits: trait names to method names to methods. */
+export type Traits = Readonly<Record<string, Readonly<Record<string, AnyMethod>>>>;
+
+/** Where a method sits: its names and its wire ids. */
+export interface Address {
+  trait: string;
+  method: string;
+  traitId: number;
+  methodId: number;
+}
+
+/** A checked schema. `addresses` places each of its methods. */
+export interface Schema<H, T extends Traits> {
+  readonly version: number;
+  readonly hello: Codec<H>;
+  readonly traits: T;
+  readonly addresses: ReadonlyMap<AnyMethod, Address>;
+}
+
+// Ids are bytes on the wire.
+const MAX_IDS = 256;
+const MAX_VERSION = 255;
+
 /**
- * Checks a schema and fixes its wire ids from the order of `traits` and of each trait's methods. Later changes to the
- * record do not move them.
+ * Checks a schema and fixes its wire ids from the order of `traits` and of each trait's methods. Each method may sit in
+ * one place only, since the transport finds its place by the method itself.
  */
-export function defineSchema<T extends Traits, H = void>(def: {
-  version: number;
-  hello?: Codec<H>;
-  traits: T;
-}): Schema<T, H> {
+export function defineSchema<H, T extends Traits>(def: { version: number; hello: Codec<H>; traits: T }): Schema<H, T> {
   if (!Number.isInteger(def.version) || def.version < 0 || def.version > MAX_VERSION) {
     throw new RangeError(`version must be an integer from 0 to ${String(MAX_VERSION)}, got ${String(def.version)}`);
   }
   const traits = Object.entries(def.traits);
-  if (traits.length > MAX_TRAITS) {
-    throw new RangeError(`a schema has at most ${String(MAX_TRAITS)} traits, got ${String(traits.length)}`);
+  if (traits.length > MAX_IDS) {
+    throw new RangeError(`a schema has at most ${String(MAX_IDS)} traits, got ${String(traits.length)}`);
   }
-  for (const [name, methods] of traits) {
-    checkName(name, `trait "${name}"`);
-    const methodNames = Object.keys(methods);
-    if (methodNames.length > MAX_METHODS) {
-      throw new RangeError(
-        `trait "${name}" has at most ${String(MAX_METHODS)} methods, got ${String(methodNames.length)}`,
-      );
+  const addresses = new Map<AnyMethod, Address>();
+  traits.forEach(([trait, methods], traitId) => {
+    const entries = Object.entries(methods);
+    if (entries.length > MAX_IDS) {
+      throw new RangeError(`trait "${trait}" has at most ${String(MAX_IDS)} methods, got ${String(entries.length)}`);
     }
-    for (const methodName of methodNames) {
-      checkName(methodName, `method "${methodName}" of trait "${name}"`);
-    }
-  }
-  const hello = (def.hello ?? none) as Codec<unknown>;
-  const impl: SchemaImpl = Object.freeze({
-    version: def.version,
-    wire: createWire(def.version, hello, def.traits as unknown as Record<string, Record<string, MethodWire>>),
+    entries.forEach(([name, method], methodId) => {
+      const placed = addresses.get(method);
+      if (placed !== undefined) {
+        throw new Error(`${trait}.${name} is the method already at ${placed.trait}.${placed.method}`);
+      }
+      addresses.set(method, { trait, method: name, traitId, methodId });
+    });
   });
-  return impl as unknown as Schema<T, H>;
+  return { version: def.version, hello: def.hello, traits: def.traits, addresses };
 }
 
-type TraitsOf<S extends Schema> = S[typeof schemaTypes]['traits'];
-type DefOf<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> = TraitsOf<S>[T][M];
-
-/** The names of a schema's traits. */
-export type TraitName<S extends Schema> = keyof TraitsOf<S> & string;
-
-/** The names of a trait's methods. */
-export type MethodName<S extends Schema, T extends TraitName<S>> = keyof TraitsOf<S>[T] & string;
-
-/** The names of a trait's request methods. */
-export type RequestMethodName<S extends Schema, T extends TraitName<S>> = {
-  [M in MethodName<S, T>]: TraitsOf<S>[T][M] extends RequestDef<unknown, unknown, unknown> ? M : never;
-}[MethodName<S, T>];
-
-/** The names of a trait's subscription methods. */
-export type SubscriptionMethodName<S extends Schema, T extends TraitName<S>> = {
-  [M in MethodName<S, T>]: TraitsOf<S>[T][M] extends SubscriptionDef<unknown, unknown, unknown> ? M : never;
-}[MethodName<S, T>];
-
-/** What each side of a method sends and receives. A request answers and a subscription ends with a `Result`. */
-export type MethodTypes<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
-  DefOf<S, T, M> extends RequestDef<infer P, infer R, infer E>
+/** What each side of a method sends, by name. */
+export type MethodTypes<M> =
+  M extends Request<infer P, infer R, infer E>
     ? { request: P; response: Result<R, CallError<E>> }
-    : DefOf<S, T, M> extends SubscriptionDef<infer St, infer V, infer I>
-      ? // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- stop carries no value by contract
-        { start: St; receive: V; interrupt: Result<void, CallError<I>>; stop: void }
+    : M extends Subscription<infer S, infer V, infer I>
+      ? { start: S; receive: V; interrupt: Result<undefined, CallError<I>>; stop: undefined }
       : never;
 
 /** A method's own error: a request's `error`, or a subscription's `interrupt` reason. */
-export type DomainError<S extends Schema, T extends TraitName<S>, M extends MethodName<S, T>> =
-  DefOf<S, T, M> extends RequestDef<unknown, unknown, infer E>
-    ? E
-    : DefOf<S, T, M> extends SubscriptionDef<unknown, unknown, infer I>
-      ? I
-      : never;
-
-/** The value each side sends in the handshake, or `void` when the schema declares no hello. */
-export type HelloOf<S extends Schema> = S[typeof schemaTypes]['hello'];
-
-const internals = (schema: Schema): SchemaImpl => schema as unknown as SchemaImpl;
-
-/** The schema's message codec. */
-export function wireOf(schema: Schema): Wire {
-  return internals(schema).wire;
-}
-
-/** The version the handshake carries. */
-export function schemaVersion(schema: Schema): number {
-  return internals(schema).version;
-}
+export type DomainError<M> =
+  M extends Request<infer _P, infer _R, infer E> ? E : M extends Subscription<infer _S, infer _V, infer I> ? I : never;

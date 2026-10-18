@@ -11,8 +11,23 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import { budgetOf, RESOLVE_BUDGET_MS, type ProtocolTransport } from '@dotli/protocol';
-import { domain, err, hostFailure, ok, type CallError, type Result } from '@dotli/transport';
+import {
+  budgetOf,
+  protocolSchema,
+  RESOLVE_BUDGET_MS,
+  type ProtocolTransport,
+  type RemoteFailure,
+} from '@dotli/protocol';
+import {
+  domain,
+  err,
+  hostFailure,
+  ok,
+  type CallError,
+  type DomainError,
+  type MethodTypes,
+  type Result,
+} from '@dotli/transport';
 import {
   createEngine,
   MAX_CONNS,
@@ -25,7 +40,9 @@ import {
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 
-type ChainRecording = Recording<'chain', 'connect'>;
+const { chain, resolve } = protocolSchema.traits;
+
+type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], DomainError<typeof chain.connect>>;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -76,7 +93,7 @@ interface Tab {
   scope: EngineScope;
   /** Settles once the chain is connected or the connect ended. */
   connect: (genesisHash: string, connectionId: string) => Promise<ChainRecording>;
-  send: (connectionId: string, message: string) => Promise<Result<void, CallError<unknown>>>;
+  send: (connectionId: string, message: string) => Promise<MethodTypes<typeof chain.send>['response']>;
 }
 
 function openTab(engine: ProtocolEngine): Tab {
@@ -86,11 +103,11 @@ function openTab(engine: ProtocolEngine): Tab {
     host,
     scope,
     connect: async (genesisHash, connectionId) => {
-      const chain = record(host, 'chain', 'connect', { genesisHash, connectionId });
-      await Promise.race([chain.until(1), chain.ended]);
-      return chain;
+      const connected = record(host, chain.connect, { genesisHash, connectionId });
+      await Promise.race([connected.until(1), connected.ended]);
+      return connected;
     },
-    send: (connectionId, message) => host.request('chain', 'send', { connectionId, message }),
+    send: (connectionId, message) => host.request(chain.send, { connectionId, message }),
   };
 }
 
@@ -284,7 +301,7 @@ describe('createEngine name reads', () => {
     });
 
     // When
-    const read = record(tab.host, 'resolve', 'dotName', { label: 'doom' });
+    const read = record(tab.host, resolve.dotName, { label: 'doom' });
 
     // Then
     expect(await read.ended).toEqual(ok());
@@ -300,7 +317,7 @@ describe('createEngine name reads', () => {
     const { tab } = setup({ resolver: resolverOf(() => Promise.reject(new TypeError('bad label'))) });
 
     // When
-    const read = record(tab.host, 'resolve', 'dotName', { label: 'doom' });
+    const read = record(tab.host, resolve.dotName, { label: 'doom' });
 
     // Then
     expect(await read.ended).toEqual(err(hostFailure('TypeError: bad label')));
@@ -314,12 +331,12 @@ describe('createEngine name reads', () => {
       report: error => reported.push(error),
     });
     const broken = new Error('sink is broken');
-    const ended = deferred<CallError<unknown> | undefined>();
+    const ended = deferred<CallError<RemoteFailure> | undefined>();
     const sink = {
       receive: () => {
         throw broken;
       },
-      interrupt: (error?: CallError<unknown>) => {
+      interrupt: (error?: CallError<RemoteFailure>) => {
         ended.resolve(error);
       },
     };
@@ -359,8 +376,8 @@ describe('createEngine name reads', () => {
     const { tab } = setup();
 
     // When
-    const read = record(tab.host, 'resolve', 'dotName', { label: 'doom' });
-    const owner = tab.host.request('resolve', 'owner', { label: 'doom' });
+    const read = record(tab.host, resolve.dotName, { label: 'doom' });
+    const owner = tab.host.request(resolve.owner, { label: 'doom' });
 
     // Then
     expect(await read.ended).toEqual(thrown(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED));
@@ -386,7 +403,7 @@ describe('createEngine name reads', () => {
     });
 
     // When
-    await record(tab.host, 'resolve', 'dotName', { label: 'doom' }).ended;
+    await record(tab.host, resolve.dotName, { label: 'doom' }).ended;
 
     // Then
     expect(seen).toEqual([expected]);
@@ -414,17 +431,17 @@ describe('createEngine name reads', () => {
     });
 
     // When the host reads, sending no deadline
-    const owner = await tab.host.request('resolve', 'owner', { label: 'doom' });
-    await tab.host.request('resolve', 'executableManifest', { label: 'doom', kind: 'app' });
-    await tab.host.request('resolve', 'rootManifest', { label: 'doom' });
+    const owner = await tab.host.request(resolve.owner, { label: 'doom' });
+    await tab.host.request(resolve.executableManifest, { label: 'doom', kind: 'app' });
+    await tab.host.request(resolve.rootManifest, { label: 'doom' });
 
     // Then each read has its method's budget, less the grace for the answer to cross back
     const grace = TIMEOUTS.RESPONSE_DELIVERY_GRACE;
     expect(owner).toEqual(ok('0xowner'));
     expect(seen).toEqual([
-      ['owner', { syncTimeoutMs: must(budgetOf('resolve', 'owner'), 'owner budget') - grace }],
-      ['executableManifest', { syncTimeoutMs: must(budgetOf('resolve', 'executableManifest'), 'budget') - grace }],
-      ['rootManifest', { syncTimeoutMs: must(budgetOf('resolve', 'rootManifest'), 'root budget') - grace }],
+      ['owner', { syncTimeoutMs: must(budgetOf(resolve.owner), 'owner budget') - grace }],
+      ['executableManifest', { syncTimeoutMs: must(budgetOf(resolve.executableManifest), 'budget') - grace }],
+      ['rootManifest', { syncTimeoutMs: must(budgetOf(resolve.rootManifest), 'root budget') - grace }],
     ]);
   });
 
@@ -439,8 +456,8 @@ describe('createEngine name reads', () => {
     });
 
     // When
-    const owner = await tab.host.request('resolve', 'owner', { label: 'doom' });
-    const name = await record(tab.host, 'resolve', 'dotName', { label: 'doom' }).ended;
+    const owner = await tab.host.request(resolve.owner, { label: 'doom' });
+    const name = await record(tab.host, resolve.dotName, { label: 'doom' }).ended;
 
     // Then
     expect(owner).toEqual(err(domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync in time' })));

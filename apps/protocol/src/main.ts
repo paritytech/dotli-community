@@ -28,9 +28,9 @@ import {
 import {
   backendOfFrameMode,
   isSharedAuthOriginAllowed,
-  protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
+  protocolSchema,
 } from '@dotli/protocol';
 import { DB_NAME } from '@dotli/storage';
 import { createTransport, createWindowProvider } from '@dotli/transport';
@@ -102,8 +102,8 @@ const serving = createTransport(
   }),
   { handshake: 'accept', hello: { resolutionId: null }, onIssue: wire.onIssue },
 );
-serving.handleSubscription('frame', 'status', boot.frameStatus);
-serving.handleSubscription('frame', 'telemetry', boot.telemetry);
+serving.handleSubscription(protocolSchema.traits.frame.status, boot.frameStatus);
+serving.handleSubscription(protocolSchema.traits.frame.telemetry, boot.telemetry);
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));

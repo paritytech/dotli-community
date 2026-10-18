@@ -5,10 +5,10 @@
 // that subscribes late hears where the frame stands at once, so nothing said before it subscribed is lost.
 
 import { reportListener } from '@dotli/metrics';
-import { frameStatusEnd, type FrameFailure, type ProtocolSchema } from '@dotli/protocol';
-import type { CallError, Sink, SubscriptionHandler } from '@dotli/transport';
+import { frameStatusEnd, type FrameFailure, type ProtocolHandler, type protocolSchema } from '@dotli/protocol';
+import type { CallError, Sink } from '@dotli/transport';
 
-export type FrameStatusSink = Sink<void, FrameFailure>;
+export type FrameStatusSink = Sink<undefined, FrameFailure>;
 
 /** Where the status stands. An end of undefined is a clean one. */
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: CallError<FrameFailure> | undefined };
@@ -23,7 +23,7 @@ export interface FrameStatus {
    * first end is heard.
    */
   interrupt(end?: CallError<FrameFailure>): void;
-  handler: SubscriptionHandler<ProtocolSchema, 'frame', 'status'>;
+  handler: ProtocolHandler<typeof protocolSchema.traits.frame.status>;
 }
 
 /** `report` hears a sink that throws, so each other host still hears the frame. Captured by default. */

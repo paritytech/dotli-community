@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { bindLogSink } from '@dotli/shared';
+import { bindLogSink, toError } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { domain, ok } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
@@ -21,8 +21,8 @@ import {
   ProtocolVersionMismatchError,
 } from './errors.js';
 import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame } from './frame.js';
-import type { ProtocolTransport } from './schema.js';
-import { describeWireMessage } from './testing/index.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
+import { recordWireMessage } from './testing/index.js';
 import {
   createFrameDom,
   createFrameHost,
@@ -32,6 +32,8 @@ import {
   type FrameHost,
   type FrameStatusServer,
 } from './testing/frame-host.js';
+
+const { resolve, storage, chain } = protocolSchema.traits;
 
 // The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
@@ -62,12 +64,12 @@ async function bringUp(dom: FrameDom): Promise<FrameStatusServer> {
   return status;
 }
 
-/** What the host sent `iframe`, as `leg:trait.method`, its handshakes left out. */
+/** What the host sent `iframe`, as `tag:trait.method`, its handshakes left out. */
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
-    const message = describeWireMessage(data);
+    const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
     return message !== null && isProtocolTrait(message.trait)
-      ? [`${message.leg}:${message.trait}.${message.method}`]
+      ? [`${message.tag}:${message.trait}.${message.method}`]
       : [];
   });
 }
@@ -83,7 +85,7 @@ async function whenListening(frame: ProtocolFrame): Promise<ProtocolTransport> {
  * What a frame app sends the host once its light client is ready, recorded from a frame of its own that went through
  * the same steps, so the bytes would be heard from the right frame.
  */
-async function recordedReady(): Promise<unknown[]> {
+async function recordedReady(): Promise<ArrayBuffer[]> {
   const other = createFrameDom(undefined, { timers });
   const frame = createProtocolFrame(other.deps);
   frame.configure(FRAME_CONFIG);
@@ -91,7 +93,11 @@ async function recordedReady(): Promise<unknown[]> {
   const status = await listen(other);
   status.ready();
   await advance();
-  return other.iframe().window.sent.filter(data => describeWireMessage(data)?.leg === 'receive');
+  return other
+    .iframe()
+    .window.sent.flatMap(data =>
+      data instanceof ArrayBuffer && recordWireMessage(data)?.tag === 'receive' ? [data] : [],
+    );
 }
 
 /** How a wait settled, read once it has, with its handler bound at once so a rejection is never unhandled. */
@@ -300,9 +306,9 @@ describe('createProtocolFrame', () => {
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
     const status = await listen(dom);
-    dom.serve().handleRequest('resolve', 'owner', () => new Promise(() => undefined));
+    dom.serve().handleRequest(resolve.owner, () => new Promise(() => undefined));
     const transport = await frame.transport();
-    const owner = transport.request('resolve', 'owner', { label: 'doom' }).catch((err: unknown) => err);
+    const owner = transport.request(resolve.owner, { label: 'doom' }).then(() => null, toError);
     await advance();
 
     // When its light client dies, which ends its status, and the loss disposes its transport
@@ -392,8 +398,8 @@ describe('createProtocolFrame', () => {
     void frame.whenReady().catch(() => undefined);
     const status = await bringUp(dom);
     const transport = await frame.transport();
-    dom.serve().handleRequest('resolve', 'owner', () => new Promise(() => undefined));
-    const owner = transport.request('resolve', 'owner', { label: 'doom' }).catch((err: unknown) => err);
+    dom.serve().handleRequest(resolve.owner, () => new Promise(() => undefined));
+    const owner = transport.request(resolve.owner, { label: 'doom' }).then(() => null, toError);
     await advance();
 
     // When the tab thaws and finds the SharedWorker let go of its port
@@ -405,7 +411,7 @@ describe('createProtocolFrame', () => {
     expect(captured).toEqual([]);
     expect(events).toContain('protocol frame released');
     expect(await owner).toBeInstanceOf(ProtocolPortReleasedError);
-    expect(((await owner) as Error).message).toBe('The worker released this tab');
+    expect((await owner)?.message).toBe('The worker released this tab');
     expect(frame.getStatus()).toBe('failed');
   });
 
@@ -418,8 +424,8 @@ describe('createProtocolFrame', () => {
     void frame.whenReady().catch(() => undefined);
     const status = await bringUp(dom);
     const transport = await frame.transport();
-    dom.serve().handleRequest('resolve', 'owner', () => new Promise(() => undefined));
-    const owner = transport.request('resolve', 'owner', { label: 'doom' }).catch((err: unknown) => err);
+    dom.serve().handleRequest(resolve.owner, () => new Promise(() => undefined));
+    const owner = transport.request(resolve.owner, { label: 'doom' }).then(() => null, toError);
     await advance();
 
     // When the frame ends its status with no failure
@@ -427,7 +433,7 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // Then
-    expect(((await owner) as Error).message).toBe(PROTOCOL_ERRORS.FRAME_STATUS_ENDED);
+    expect((await owner)?.message).toBe(PROTOCOL_ERRORS.FRAME_STATUS_ENDED);
     expect(metrics.counted(S.PROTOCOL_FRAME_LOST)).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(frame.getStatus()).toBe('failed');
   });
@@ -440,12 +446,12 @@ describe('createProtocolFrame', () => {
     void frame.whenReady().catch(() => undefined);
     const first = dom.iframe();
     const held = deferred<string | null>();
-    dom.serve(first).handleRequest('storage', 'authRead', () => held.promise.then(value => ok(value)));
+    dom.serve(first).handleRequest(storage.authRead, () => held.promise.then(value => ok(value)));
     const firstStatus = await bringUp(dom);
     const firstTransport = await frame.transport();
     // Enough reads that their ids reach past the one the rebuilt frame's read gets
     const oldReads = Array.from({ length: 16 }, () =>
-      firstTransport.request('storage', 'authRead', { siteId: SITE_ID, key: 'k' }).catch((err: unknown) => err),
+      firstTransport.request(storage.authRead, { siteId: SITE_ID, key: 'k' }).then(() => null, toError),
     );
     await advance();
     firstStatus.fail(new ProtocolFatalError('boom'));
@@ -453,10 +459,10 @@ describe('createProtocolFrame', () => {
 
     // And a read on the rebuilt frame, which it never answers
     const rebuilt = await frame.transport();
-    dom.serve().handleRequest('storage', 'authRead', () => new Promise(() => undefined));
+    dom.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
     await bringUp(dom);
-    const answered: unknown[] = [];
-    void rebuilt.request('storage', 'authRead', { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer));
+    const answered: string[] = [];
+    void rebuilt.request(storage.authRead, { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer.tag));
     await advance();
 
     // When the dropped frame answers every read late
@@ -465,7 +471,9 @@ describe('createProtocolFrame', () => {
 
     // Then
     expect(answered).toEqual([]);
-    expect(first.window.sent.filter(data => describeWireMessage(data)?.trait === 'storage')).toHaveLength(16);
+    expect(
+      first.window.sent.filter(data => data instanceof ArrayBuffer && recordWireMessage(data)?.trait === 'storage'),
+    ).toHaveLength(16);
     for (const read of oldReads) {
       expect(await read).toMatchObject({ message: 'boom' });
     }
@@ -857,7 +865,7 @@ describe('protocol status', () => {
     }
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     provider(() => undefined, onHalt);
-    host.serve().handleSubscription('chain', 'connect', (_start, _context, sink) => {
+    host.serve().handleSubscription(chain.connect, (_start, _context, sink) => {
       sink.receive({ tag: 'connected', value: undefined });
       return () => undefined;
     });
@@ -884,7 +892,7 @@ describe('protocol status', () => {
     // When
     host.client.configureProtocolFrame({ ...FRAME_CONFIG, backend: 'rpc-gateway' });
     const read = settledWith(host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY));
-    host.serve().handleRequest('storage', 'authRead', () => new Promise(() => undefined));
+    host.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
     await listen(host);
 
     // Then

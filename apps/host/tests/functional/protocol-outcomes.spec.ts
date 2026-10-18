@@ -18,12 +18,12 @@ const HOST_URL = `http://host-playground.localhost:${PORT}/`;
 const smoldotDb = (chain: string): MessageMatch => ({
   trait: 'frame',
   method: 'telemetry',
-  leg: 'receive',
+  tag: 'receive',
   body: { tag: 'smoldotDb', value: { chain } },
 });
 
 /** The frame status ending, as the frame's typed failure. */
-const frameStatusEnd: MessageMatch = { trait: 'frame', method: 'status', leg: 'interrupt' };
+const frameStatusEnd: MessageMatch = { trait: 'frame', method: 'status', tag: 'interrupt' };
 
 const isProviderWasm = (url: URL): boolean =>
   url.hostname === 'host.localhost' && url.pathname.includes('truapi_provider_bg');
@@ -42,8 +42,8 @@ test('As a user on a per-tab light client that cannot start, I see the crash the
   // Then
   const status = await waitForProtocolMessage(page, frameStatusEnd, 15_000);
   expect(status.body).toMatchObject({
-    ok: false,
-    error: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
+    tag: 'Err',
+    value: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
   });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
@@ -63,8 +63,8 @@ test('As a user on a shared light client that cannot start, I see the crash the 
   // Then
   const status = await waitForProtocolMessage(page, frameStatusEnd, 15_000);
   expect(status.body).toMatchObject({
-    ok: false,
-    error: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
+    tag: 'Err',
+    value: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
   });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);

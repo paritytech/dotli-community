@@ -3,12 +3,15 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
+import { protocolSchema } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
 import { err, hostFailure } from '@dotli/transport';
 import { createTelemetryHandler, type TelemetryDeps } from './telemetry-handler.js';
 import { closeHostLinks, linkHost, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
+
+const { frame } = protocolSchema.traits;
 
 type DbListener = (chain: SmoldotDbChain, outcome: SmoldotDbOutcome) => void;
 
@@ -87,10 +90,10 @@ describe('the telemetry handler', () => {
       ],
       bytes: 4096,
     });
-    link.serving.handleSubscription('frame', 'telemetry', createTelemetryHandler(deps));
+    link.serving.handleSubscription(frame.telemetry, createTelemetryHandler(deps));
 
     // When
-    const heard = record(link.host, 'frame', 'telemetry', undefined);
+    const heard = record(link.host, frame.telemetry, undefined);
     await heard.until(5);
     readDb('bulletin', 'unavailable');
     await heard.until(6);
@@ -114,10 +117,10 @@ describe('the telemetry handler', () => {
       db: [['relay', 'miss']],
       joinedSynced: true,
     });
-    link.serving.handleSubscription('frame', 'telemetry', createTelemetryHandler(deps));
+    link.serving.handleSubscription(frame.telemetry, createTelemetryHandler(deps));
 
     // When
-    const heard = record(link.host, 'frame', 'telemetry', undefined);
+    const heard = record(link.host, frame.telemetry, undefined);
     await heard.until(3);
     readDb('assethub', 'miss');
     await heard.until(4);
@@ -135,8 +138,8 @@ describe('the telemetry handler', () => {
     // Given
     const link = linkHost();
     const { deps, stopped } = sources({});
-    link.serving.handleSubscription('frame', 'telemetry', createTelemetryHandler(deps));
-    const heard = record(link.host, 'frame', 'telemetry', undefined);
+    link.serving.handleSubscription(frame.telemetry, createTelemetryHandler(deps));
+    const heard = record(link.host, frame.telemetry, undefined);
     await heard.until(1);
 
     // When
@@ -152,8 +155,7 @@ describe('the telemetry handler', () => {
     const { deps, stopped } = sources({});
     const broken = new Error('byte meter is gone');
     link.serving.handleSubscription(
-      'frame',
-      'telemetry',
+      frame.telemetry,
       createTelemetryHandler({
         ...deps,
         netBytes: () => {
@@ -163,7 +165,7 @@ describe('the telemetry handler', () => {
     );
 
     // When
-    const heard = record(link.host, 'frame', 'telemetry', undefined);
+    const heard = record(link.host, frame.telemetry, undefined);
 
     // Then
     expect(await heard.ended).toEqual(err(hostFailure('Error: byte meter is gone')));

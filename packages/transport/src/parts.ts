@@ -3,22 +3,34 @@
 
 // What the transport's parts share: the handshake, the calls this side makes and the calls it serves.
 
-import type { CallError, Result } from './result.js';
-
-/** How a call ends: the peer's `Result`, or one the library gives it. */
-export type Outcome = Result<unknown, CallError<unknown>>;
-
-/** A schema method by its names. */
-export interface Address {
-  trait: string;
-  method: string;
-}
+import type { Codec } from 'scale-ts';
+import type { Result } from './result.js';
+import type { Address } from './schema.js';
+import { encode, type Frame } from './wire.js';
 
 /**
- * Posts bytes, of a call on `address` when they belong to one. A post the provider throws on is already reported when
- * it returns the error.
+ * Posts bytes, of the call at `address` when they belong to one. A post the provider throws on is already reported
+ * when it returns the error.
  */
-export type Post = (data: ArrayBuffer, address?: Address) => Result<void, unknown>;
+export type Post = (data: ArrayBuffer, address?: Address) => Result<undefined, Error>;
+
+/** Reports a message that does not decode, or does not fit what it names. */
+export type Refuse = (reason: 'malformed' | 'invalid', cause: Error) => void;
+
+// The peer may still send on a call this side ended until it hears the end, so a message on a call ended lately is a
+// race and quiet. The ids of this many of the latest ends are kept.
+export const REMEMBERED_ENDS = 1_024;
+
+/** Encodes a message on call `id` of the method at `address`, or says why it cannot. */
+export function encodeCall<M>(
+  method: { readonly frame: Codec<Frame<M>> },
+  address: Address,
+  id: number,
+  message: M,
+): Result<ArrayBuffer, Error> {
+  const call = { trait: address.traitId, method: address.methodId, message };
+  return encode(method.frame, { id, body: { tag: 'call', value: call } });
+}
 
 /** Runs a callback of the owner's. One that throws is reported as `listener_threw`, and the transport carries on. */
 export type RunListener = (listener: () => void) => void;

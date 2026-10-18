@@ -8,6 +8,7 @@
 // the host through a real transport on it.
 
 import type { Timers } from '@dotli/shared';
+import { _void } from 'scale-ts';
 import {
   createTransport,
   createWindowProvider,
@@ -187,7 +188,7 @@ export interface FrameStatusServer {
 function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
   const sinks = new Set<Sink<void, FrameFailure>>();
   let state: 'booting' | 'ready' | { end: CallError<FrameFailure> | undefined } = 'booting';
-  serving.handleSubscription('frame', 'status', (_start, _context, sink) => {
+  serving.handleSubscription(protocolSchema.traits.frame.status, (_start, _context, sink) => {
     if (typeof state === 'object') {
       sink.interrupt(state.end);
       return () => undefined;
@@ -221,7 +222,7 @@ function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
 }
 
 /** A frame of a later release, whose wire the host cannot speak. */
-const newerSchema = defineSchema({ version: 255, traits: {} });
+const newerSchema = defineSchema({ version: 255, hello: _void, traits: {} });
 
 export interface FrameDom {
   /** What a frame or client is built on. */
@@ -285,8 +286,8 @@ export function createFrameDom(
         hello: { resolutionId: null },
       });
       // A frame app always serves the client's feeds, and these frames have nothing to report on them.
-      serving.handleSubscription('frame', 'telemetry', () => () => undefined);
-      serving.handleSubscription('storage', 'authChanges', () => () => undefined);
+      serving.handleSubscription(protocolSchema.traits.frame.telemetry, () => () => undefined);
+      serving.handleSubscription(protocolSchema.traits.storage.authChanges, () => () => undefined);
       entry = { serving, status: null };
       served.set(target, entry);
     }
@@ -308,7 +309,7 @@ export function createFrameDom(
     stranger: () => elsewhere.appendChild(new FakeIframe(toHost)),
     serve: (target = iframe()) => servedOn(target).serving,
     serveNewer(target = iframe()) {
-      createTransport(newerSchema, providerOn(target), { handshake: 'accept' });
+      createTransport(newerSchema, providerOn(target), { handshake: 'accept', hello: undefined });
     },
     status(target = iframe()) {
       const entry = servedOn(target);

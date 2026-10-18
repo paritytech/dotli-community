@@ -1,46 +1,75 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { wireOf, type Schema } from '../schema.js';
+import type { Codec } from 'scale-ts';
+import type { CallError, Result } from '../result.js';
+import { toError } from '@dotli/shared';
+import type { AnyMethod, Schema, Traits } from '../schema.js';
+import { decode, decodeAll, frame } from '../wire.js';
 
 export { createProviderPair } from '../provider.fake.js';
 
 /**
- * A message as a test reads it. The body is the leg's decoded value, left as it is. The library's own messages are on
- * the trait `#library`, and an address the schema lacks is named by its numeric ids, with no body.
+ * A frame as a test reads it. A call's message keeps its bytes, which `readMessage` decodes with its method, and its
+ * tag. A call to a method the schema lacks is named by its numeric ids, with no tag.
  */
-export interface DescribedMessage {
-  trait: string;
-  method: string;
-  leg: string;
-  id: number;
-  body: unknown;
-}
+export type RecordedFrame =
+  | { id: number; kind: 'open'; value: { version: number; hello: Uint8Array } }
+  | { id: number; kind: 'accept'; value: Result<Uint8Array, { version: number }> }
+  | { id: number; kind: 'failed'; value: CallError<never> }
+  | { id: number; kind: 'call'; trait: string; method: string; tag: string | null; message: Uint8Array };
 
-/** Recorded data the schema refuses. `reason` says how, and `cause` is why. */
-export class MessageRefusedError extends Error {
-  readonly reason: 'malformed' | 'invalid';
-
-  constructor(reason: 'malformed' | 'invalid', cause: unknown) {
-    super(`The data is refused as ${reason}`, { cause });
-    this.name = 'MessageRefusedError';
-    this.reason = reason;
+/** Recorded data that is no frame. `cause` is why. */
+export class FrameRefusedError extends Error {
+  constructor(cause: Error) {
+    super('The data is no frame', { cause });
+    this.name = 'FrameRefusedError';
   }
 }
 
-/** Describes a recorded message by its names, leg, id and decoded body. Throws a `MessageRefusedError` on refused data. */
-export function describeMessage(schema: Schema, data: ArrayBuffer): DescribedMessage {
-  const received = wireOf(schema).decode(data);
-  switch (received.kind) {
-    case 'message': {
-      const { value, ...header } = received.message;
-      return { ...header, body: value };
-    }
-    case 'unknownAddress': {
-      const { id, leg, trait, method } = received;
-      return { trait: String(trait), method: String(method), leg, id, body: undefined };
-    }
-    case 'refused':
-      throw new MessageRefusedError(received.reason, received.cause);
+/** A message's tag, read with the method it belongs to. */
+function tagOf(method: AnyMethod, message: Uint8Array): string {
+  try {
+    return method.message.dec(message).tag;
+  } catch (error) {
+    throw new FrameRefusedError(toError(error));
   }
+}
+
+/** Reads a recorded frame. Throws a `FrameRefusedError` on data that is no frame. */
+export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: ArrayBuffer): RecordedFrame {
+  const read = decode(frame, data);
+  if (read.tag === 'Err') {
+    throw new FrameRefusedError(read.value);
+  }
+  const { id, body } = read.value;
+  switch (body.tag) {
+    case 'open':
+      return { id, kind: 'open', value: body.value };
+    case 'accept':
+      return { id, kind: 'accept', value: body.value };
+    case 'failed':
+      return { id, kind: 'failed', value: body.value };
+    case 'call': {
+      const { trait, method, message } = body.value;
+      for (const [placed, address] of schema.addresses) {
+        if (address.traitId === trait && address.methodId === method) {
+          return {
+            id,
+            kind: 'call',
+            trait: address.trait,
+            method: address.method,
+            tag: tagOf(placed, message),
+            message,
+          };
+        }
+      }
+      return { id, kind: 'call', trait: String(trait), method: String(method), tag: null, message };
+    }
+  }
+}
+
+/** Decodes a recorded call's message with the method it belongs to. */
+export function readMessage<M>(method: { readonly message: Codec<M> }, message: Uint8Array): M {
+  return decodeAll(method.message, message);
 }

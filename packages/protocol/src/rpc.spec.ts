@@ -4,12 +4,16 @@
 import { beforeEach, describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
+import { toError } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { denied, domain, err, malformedFrame, ok, unsupported, type Result } from '@dotli/transport';
+import { denied, domain, err, malformedFrame, ok, unsupported, type Request } from '@dotli/transport';
+import { callName } from './call-names.js';
 import { PROTOCOL_ERRORS } from './errors.js';
-import { createFrameRpc, type Reply } from './rpc.js';
+import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ProtocolTransport } from './schema.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
+
+const { resolve, storage, wallet } = protocolSchema.traits;
 
 /** The metrics Sentry receives, recorded for each test. */
 let metrics: RecordingSentry;
@@ -19,26 +23,25 @@ let timers: ManualTimers;
 const settle = (): Promise<void> => timers.advance(0);
 
 /** The error a request failed with. */
-function failure(request: Promise<unknown>): Promise<Error> {
-  return request.then(
-    () => {
-      throw new Error('the request resolved');
-    },
-    (err: unknown) => err as Error,
-  );
+function failure<T>(request: Promise<T>): Promise<Error> {
+  return request.then(() => {
+    throw new Error('the request resolved');
+  }, toError);
 }
 
 /** A frame app that takes the store read and owner calls and never answers them, recording what it was asked. */
 function silentFrame(served: string[]): (serving: ProtocolTransport) => void {
   return serving => {
-    const hold = <T>(method: string): Promise<Result<T, never>> => {
-      served.push(method);
-      return new Promise(() => undefined);
+    const hold = <P, R, E>(method: Request<P, R, E>): void => {
+      serving.handleRequest(method, () => {
+        served.push(callName(method));
+        return new Promise(() => undefined);
+      });
     };
-    serving.handleRequest('storage', 'authRead', () => hold<string | null>('authStorageRead'));
-    serving.handleRequest('storage', 'modeWrite', () => hold<undefined>('modeStorageWrite'));
-    serving.handleRequest('wallet', 'read', () => hold<Reply<'wallet', 'read'>>('localWalletRead'));
-    serving.handleRequest('resolve', 'owner', () => hold<string | null>('resolveOwner'));
+    hold(storage.authRead);
+    hold(storage.modeWrite);
+    hold(wallet.read);
+    hold(resolve.owner);
   };
 }
 
@@ -48,8 +51,8 @@ describe('createFrameRpc', () => {
     const rpc = createFrameRpc(createFakeFrame(undefined, { timers }).frame, timers);
 
     // When
-    const resolveOwner = () => rpc.request('resolve', 'owner', { label: 'doom' });
-    const readWallet = () => rpc.request('wallet', 'read', { siteId: 'dot.li' });
+    const resolveOwner = () => rpc.request(resolve.owner, { label: 'doom' });
+    const readWallet = () => rpc.request(wallet.read, { siteId: 'dot.li' });
 
     // Then
     expectTypeOf(resolveOwner).returns.resolves.toEqualTypeOf<string | null>();
@@ -76,8 +79,8 @@ describe('createFrameRpc', () => {
     const served: string[] = [];
     const fake = createFakeFrame(silentFrame(served), { status: 'booting', timers });
     const rpc = createFrameRpc(fake.frame, timers);
-    void rpc.request('storage', 'authRead', { siteId: 'dotli', key: 'k' });
-    void rpc.request('resolve', 'owner', { label: 'doom' });
+    void rpc.request(storage.authRead, { siteId: 'dotli', key: 'k' });
+    void rpc.request(resolve.owner, { label: 'doom' });
 
     // When the frame listens
     fake.setStatus('listening');
@@ -98,14 +101,14 @@ describe('createFrameRpc', () => {
     // Given
     const fake = createFakeFrame(
       serving => {
-        serving.handleRequest('resolve', 'owner', ({ label }) => ok(label === 'doom' ? '5Grw' : null));
+        serving.handleRequest(resolve.owner, ({ label }) => ok(label === 'doom' ? '5Grw' : null));
       },
       { timers },
     );
     const rpc = createFrameRpc(fake.frame, timers);
 
     // When
-    const owner = rpc.request('resolve', 'owner', { label: 'doom' });
+    const owner = rpc.request(resolve.owner, { label: 'doom' });
     await settle();
 
     // Then
@@ -119,7 +122,7 @@ describe('createFrameRpc', () => {
     }
     const fake = createFakeFrame(
       serving => {
-        serving.handleRequest('resolve', 'owner', ({ label }) => {
+        serving.handleRequest(resolve.owner, ({ label }) => {
           throw label === 'a' ? new DotNsError('no') : new Error('no');
         });
       },
@@ -128,8 +131,8 @@ describe('createFrameRpc', () => {
     const rpc = createFrameRpc(fake.frame, timers);
 
     // When
-    const named = failure(rpc.request('resolve', 'owner', { label: 'a' }));
-    const bare = failure(rpc.request('resolve', 'owner', { label: 'b' }));
+    const named = failure(rpc.request(resolve.owner, { label: 'a' }));
+    const bare = failure(rpc.request(resolve.owner, { label: 'b' }));
     await settle();
 
     // Then
@@ -141,7 +144,7 @@ describe('createFrameRpc', () => {
     // Given a frame whose resolver ran out of sync time, and one whose light client stopped
     const fake = createFakeFrame(
       serving => {
-        serving.handleRequest('resolve', 'owner', ({ label }) =>
+        serving.handleRequest(resolve.owner, ({ label }) =>
           err(
             domain(
               label === 'slow'
@@ -156,8 +159,8 @@ describe('createFrameRpc', () => {
     const rpc = createFrameRpc(fake.frame, timers);
 
     // When
-    const slow = failure(rpc.request('resolve', 'owner', { label: 'slow' }));
-    const stopped = failure(rpc.request('resolve', 'owner', { label: 'gone' }));
+    const slow = failure(rpc.request(resolve.owner, { label: 'slow' }));
+    const stopped = failure(rpc.request(resolve.owner, { label: 'gone' }));
     await settle();
 
     // Then the error screen matches on the name and reads the message
@@ -177,9 +180,9 @@ describe('createFrameRpc', () => {
     // Given a frame that refuses the auth read, cannot read the mode write, and serves no wallet read
     const fake = createFakeFrame(
       serving => {
-        serving.handleRequest('storage', 'authRead', () => err(denied()));
-        serving.handleRequest('storage', 'modeWrite', () => err(malformedFrame('a key is missing')));
-        serving.handleRequest('storage', 'modeRead', () => err(unsupported()));
+        serving.handleRequest(storage.authRead, () => err(denied()));
+        serving.handleRequest(storage.modeWrite, () => err(malformedFrame('a key is missing')));
+        serving.handleRequest(storage.modeRead, () => err(unsupported()));
       },
       { timers },
     );
@@ -187,10 +190,10 @@ describe('createFrameRpc', () => {
 
     // When
     const failures = [
-      failure(rpc.request('storage', 'authRead', { siteId: 'dotli', key: 'k' })),
-      failure(rpc.request('storage', 'modeWrite', { siteId: 'dotli', key: 'k', value: 'v' })),
-      failure(rpc.request('storage', 'modeRead', { siteId: 'dotli', key: 'k' })),
-      failure(rpc.request('wallet', 'read', { siteId: 'dotli' })),
+      failure(rpc.request(storage.authRead, { siteId: 'dotli', key: 'k' })),
+      failure(rpc.request(storage.modeWrite, { siteId: 'dotli', key: 'k', value: 'v' })),
+      failure(rpc.request(storage.modeRead, { siteId: 'dotli', key: 'k' })),
+      failure(rpc.request(wallet.read, { siteId: 'dotli' })),
     ];
     await settle();
 
@@ -201,8 +204,8 @@ describe('createFrameRpc', () => {
       expect.objectContaining({ name: 'Unsupported', method: 'modeStorageRead' }),
       expect.objectContaining({ name: 'Unsupported', method: 'localWalletRead' }),
     ]);
-    const byMethod = (tags: Record<string, unknown> | undefined): string => String(tags?.['method']);
-    expect(metrics.counted(S.PROTOCOL_REQUEST).sort((a, b) => byMethod(a).localeCompare(byMethod(b)))).toEqual([
+    const counted = metrics.counted(S.PROTOCOL_REQUEST);
+    expect(counted.sort((a, b) => String(a?.['method']).localeCompare(String(b?.['method'])))).toEqual([
       { outcome: 'error', method: 'authStorageRead', reason: 'Denied' },
       { outcome: 'error', method: 'localWalletRead', reason: 'Unsupported' },
       { outcome: 'error', method: 'modeStorageRead', reason: 'Unsupported' },
@@ -214,7 +217,7 @@ describe('createFrameRpc', () => {
     // Given
     const fake = createFakeFrame(silentFrame([]), { timers });
     const rpc = createFrameRpc(fake.frame, timers);
-    const read = rpc.request('storage', 'authRead', { siteId: 'dotli', key: 'k' });
+    const read = rpc.request(storage.authRead, { siteId: 'dotli', key: 'k' });
     await settle();
 
     // When
@@ -231,7 +234,7 @@ describe('createFrameRpc', () => {
     const rpc = createFrameRpc(fake.frame, timers);
 
     // When a request is made, and the frame then comes up
-    void rpc.request('resolve', 'owner', { label: 'doom' });
+    void rpc.request(resolve.owner, { label: 'doom' });
     await settle();
     const statusWhileWaiting = fake.frame.getStatus();
     const servedWhileWaiting = [...served];
@@ -251,7 +254,7 @@ describe('createFrameRpc', () => {
       const served: string[] = [];
       const fake = createFakeFrame(silentFrame(served), { status: 'booting', timers });
       const rpc = createFrameRpc(fake.frame, timers);
-      const request = rpc.request('resolve', 'owner', { label: 'doom' });
+      const request = rpc.request(resolve.owner, { label: 'doom' });
 
       // When
       if (down === 'failed') {
@@ -271,7 +274,7 @@ describe('createFrameRpc', () => {
     const served: string[] = [];
     const fake = createFakeFrame(silentFrame(served), { timers });
     const rpc = createFrameRpc(fake.frame, timers);
-    const write = failure(rpc.request('storage', 'modeWrite', { siteId: 'dotli', key: 'k', value: 'v' }));
+    const write = failure(rpc.request(storage.modeWrite, { siteId: 'dotli', key: 'k', value: 'v' }));
 
     // When the frame is dropped before the write goes out
     fake.lose(new Error(PROTOCOL_ERRORS.FRAME_RESET));
@@ -287,7 +290,7 @@ describe('createFrameRpc', () => {
     // Given
     const fake = createFakeFrame(silentFrame([]), { timers });
     const rpc = createFrameRpc(fake.frame, timers);
-    const read = failure(rpc.request('storage', 'authRead', { siteId: 'dotli', key: 'k' }));
+    const read = failure(rpc.request(storage.authRead, { siteId: 'dotli', key: 'k' }));
     await settle();
 
     // When
@@ -307,7 +310,7 @@ describe('createFrameRpc', () => {
     const fake = createFakeFrame(silentFrame([]), { status: 'booting', timers });
     const rpc = createFrameRpc(fake.frame, timers);
     let settled = false;
-    const owner = failure(rpc.request('resolve', 'owner', { label: 'doom' })).finally(() => {
+    const owner = failure(rpc.request(resolve.owner, { label: 'doom' })).finally(() => {
       settled = true;
     });
     await timers.advance(10_000);
@@ -329,7 +332,7 @@ describe('createFrameRpc', () => {
     const served: string[] = [];
     const fake = createFakeFrame(silentFrame(served), { status: 'booting', timers });
     const rpc = createFrameRpc(fake.frame, timers);
-    const read = failure(rpc.request('wallet', 'read', { siteId: 'dotli' }));
+    const read = failure(rpc.request(wallet.read, { siteId: 'dotli' }));
 
     // When
     await timers.advance(5_000);
@@ -348,12 +351,12 @@ describe('createFrameRpc', () => {
     // Given a wallet read made while the frame boots, on a frame that answers at once
     const fake = createFakeFrame(
       serving => {
-        serving.handleRequest('wallet', 'read', () => ok({ tag: 'none' as const, value: undefined }));
+        serving.handleRequest(wallet.read, () => ok({ tag: 'none' as const, value: undefined }));
       },
       { status: 'booting', timers },
     );
     const rpc = createFrameRpc(fake.frame, timers, () => timers.now());
-    const read = rpc.request('wallet', 'read', { siteId: 'dotli' });
+    const read = rpc.request(wallet.read, { siteId: 'dotli' });
 
     // When the frame listens 3 s later
     await timers.advance(3_000);
@@ -372,13 +375,13 @@ describe('createFrameRpc', () => {
     const answer = deferred<string | null>();
     const fake = createFakeFrame(
       serving => {
-        serving.handleRequest('resolve', 'owner', () => answer.promise.then(value => ok(value)));
+        serving.handleRequest(resolve.owner, () => answer.promise.then(value => ok(value)));
       },
       { timers },
     );
     let clock = 0;
     const rpc = createFrameRpc(fake.frame, timers, () => clock);
-    const owner = rpc.request('resolve', 'owner', { label: 'doom' });
+    const owner = rpc.request(resolve.owner, { label: 'doom' });
     await settle();
 
     // When the clock moves 40 ms and the timers 5 s before the answer
@@ -398,8 +401,8 @@ describe('createFrameRpc', () => {
     // Given two shared store calls made while the frame boots
     const fake = createFakeFrame(silentFrame([]), { status: 'booting', timers });
     const rpc = createFrameRpc(fake.frame, timers);
-    const read = failure(rpc.request('storage', 'authRead', { siteId: 'dotli', key: 'k' }));
-    const write = failure(rpc.request('storage', 'modeWrite', { siteId: 'dotli', key: 'k', value: 'v' }));
+    const read = failure(rpc.request(storage.authRead, { siteId: 'dotli', key: 'k' }));
+    const write = failure(rpc.request(storage.modeWrite, { siteId: 'dotli', key: 'k', value: 'v' }));
     await settle();
 
     // When the boot fails
@@ -419,7 +422,7 @@ describe('createFrameRpc', () => {
     const fake = createFakeFrame(silentFrame(served), { status: 'booting', timers });
     const rpc = createFrameRpc(fake.frame, timers);
     let settled = false;
-    const read = failure(rpc.request('wallet', 'read', { siteId: 'dotli' })).finally(() => {
+    const read = failure(rpc.request(wallet.read, { siteId: 'dotli' })).finally(() => {
       settled = true;
     });
     await timers.advance(3_000);

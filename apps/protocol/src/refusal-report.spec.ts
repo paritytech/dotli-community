@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { spans as S, type m } from '@dotli/metrics';
-import { isSharedAuthOriginAllowed, protocolSchema, type CallName } from '@dotli/protocol';
+import { isSharedAuthOriginAllowed, protocolSchema, type CallName, type RemoteFailure } from '@dotli/protocol';
 import { memoryStorage } from '@dotli/shared/testing';
 import {
   createTransport,
@@ -14,6 +14,7 @@ import {
   err,
   hostFailure,
   ok,
+  type CallError,
   type MessageTarget,
   type WindowLike,
 } from '@dotli/transport';
@@ -28,6 +29,8 @@ import { createSharedStoreHandler } from './shared-store-handler.js';
 import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
+
+const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
 const STRANGER = 'https://evil.example';
 const FAILURE = new Error('storage read failed');
@@ -180,14 +183,14 @@ describe('the reporting transport', () => {
     // Given
     const link = linkHost(PRODUCT_ORIGIN);
     const refusals: FrameRefusal[] = [];
-    const storage = memoryStorage();
+    const pageStorage = memoryStorage();
     createSharedStoreHandler(
       reportRefusals(link.serving, refusal => refusals.push(refusal)),
-      { storage: () => storage, channel: null },
+      { storage: () => pageStorage, channel: null },
     );
 
     // When
-    const read = link.host.request('storage', 'modeRead', { siteId: SITE_ID, key: 'mode' });
+    const read = link.host.request(storage.modeRead, { siteId: SITE_ID, key: 'mode' });
 
     // Then
     await expect(read).resolves.toEqual(err(denied()));
@@ -206,27 +209,27 @@ describe('the reporting transport', () => {
     const refusals: FrameRefusal[] = [];
     const served = reportRefusals(link.serving, refusal => refusals.push(refusal));
     const failure = new Error('read failed');
-    const syncTimeout = domain({ tag: 'syncTimeout' as const, value: 'Asset Hub did not sync' });
+    const syncTimeout: CallError<RemoteFailure> = domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' });
     const refused = new Error('Connection limit reached (max 10)');
     const ended = hostFailure(new Error('Asset Hub did not sync'));
-    served.handleRequest('wallet', 'read', () => Promise.reject(failure));
-    served.handleRequest('resolve', 'owner', () => err(syncTimeout));
-    served.handleSubscription('chain', 'connect', () => {
+    served.handleRequest(wallet.read, () => Promise.reject(failure));
+    served.handleRequest(resolve.owner, () => err(syncTimeout));
+    served.handleSubscription(chain.connect, () => {
       throw refused;
     });
-    served.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
+    served.handleSubscription(resolve.dotName, (_start, _context, sink) => {
       sink.interrupt(ended);
       return () => undefined;
     });
 
     // When
-    const read = await link.host.request('wallet', 'read', { siteId: SITE_ID });
-    const owner = await link.host.request('resolve', 'owner', { label: 'doom' });
-    const chain = await record(link.host, 'chain', 'connect', { genesisHash: '0xaa', connectionId: 'c1' }).ended;
-    const name = await record(link.host, 'resolve', 'dotName', { label: 'doom' }).ended;
+    const read = await link.host.request(wallet.read, { siteId: SITE_ID });
+    const owner = await link.host.request(resolve.owner, { label: 'doom' });
+    const connected = await record(link.host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' }).ended;
+    const name = await record(link.host, resolve.dotName, { label: 'doom' }).ended;
 
     // Then the host hears each failure, and each was reported first
-    expect([read, owner, chain, name]).toEqual([
+    expect([read, owner, connected, name]).toEqual([
       err(hostFailure('Error: read failed')),
       err(syncTimeout),
       err(hostFailure('Error: Connection limit reached (max 10)')),
@@ -251,16 +254,16 @@ describe('the reporting transport', () => {
     const link = linkHost();
     const refusals: FrameRefusal[] = [];
     const served = reportRefusals(link.serving, refusal => refusals.push(refusal));
-    served.handleRequest('frame', 'warmup', () => ok());
-    served.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
+    served.handleRequest(frame.warmup, () => ok());
+    served.handleSubscription(resolve.dotName, (_start, _context, sink) => {
       sink.receive({ tag: 'resolved', value: null });
       sink.interrupt();
       return () => undefined;
     });
 
     // When
-    const warmed = await link.host.request('frame', 'warmup', undefined);
-    const read = record(link.host, 'resolve', 'dotName', { label: 'doom' });
+    const warmed = await link.host.request(frame.warmup, undefined);
+    const read = record(link.host, resolve.dotName, { label: 'doom' });
 
     // Then
     expect(warmed).toEqual(ok());

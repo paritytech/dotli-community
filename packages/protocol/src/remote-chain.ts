@@ -11,7 +11,9 @@ import type { ProtocolFrame } from './frame.js';
 import { CONNECT_BUDGET_MS } from './method-timeouts.js';
 import { isRemoteChainConnectable } from './remote-chain-support.js';
 import { callTimeoutError, createRequestId, type FrameRpc } from './rpc.js';
-import type { ProtocolTransport } from './schema.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
+
+const { chain } = protocolSchema.traits;
 import { subscribe, type Subscription } from './subscription.js';
 
 interface RemoteChainConnection {
@@ -109,7 +111,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
 
   /** Sends one message once the frame accepted the connection. A refusal reaches the consumer as its answer. */
   function send(connectionId: string, connection: RemoteChainConnection, message: JsonRpcRequest): void {
-    void rpc.request('chain', 'send', { connectionId, message: JSON.stringify(message) }).catch((error: unknown) => {
+    void rpc.request(chain.send, { connectionId, message: JSON.stringify(message) }).catch((error: unknown) => {
       // A papi client re-follows on the `stop` that comes before the halt, and the frame refuses that send for a
       // connection it has already forgotten.
       if (!isOpen(connectionId, connection)) {
@@ -134,7 +136,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
     remote: RemoteChainConnection,
   ) {
     const giveUp = new AbortController();
-    const trail = rpc.trail('chainConnect', CONNECT_BUDGET_MS);
+    const trail = rpc.trail(chain.connect, CONNECT_BUDGET_MS);
     let timedOut: Error | undefined;
     let settleConnect: (error: Error | null) => void = () => undefined;
     const connected = new Promise<void>((resolve, reject) => {
@@ -148,8 +150,7 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
     });
     const subscription = subscribe(
       transport,
-      'chain',
-      'connect',
+      chain.connect,
       { genesisHash, connectionId },
       event => {
         if (event.tag === 'message') {

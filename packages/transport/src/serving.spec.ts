@@ -17,17 +17,21 @@ import {
   type Result,
 } from './result.js';
 import {
-  NOTES,
-  PROTOCOL_ERROR,
-  READ,
-  VERSION,
-  WATCH,
   breakable,
+  CALL,
+  FAILED,
+  OPEN,
+  echo,
+  notes,
+  NOTES,
   outcomeOf,
   rawRig,
+  READ,
   rig,
   serveWatch,
   testSchema,
+  VERSION,
+  WATCH,
   watcher,
 } from './testing/rig.js';
 import { createTransport } from './transport.js';
@@ -39,8 +43,6 @@ async function acceptedRaw(wrap?: Parameters<typeof rawRig>[1], watched?: Parame
   await raw.timers.advance(0);
   return raw;
 }
-
-const answers = (messages: { id: number; body: unknown }[]) => messages.map(({ id, body }) => ({ id, body }));
 
 describe('serving', () => {
   it("As a handler, I read the caller's origin and hello", async () => {
@@ -59,12 +61,12 @@ describe('serving', () => {
     );
     const servedByAccepter = vi.fn(() => ok('a'));
     const servedByOpener = vi.fn(() => ok('b'));
-    accepter.handleRequest('echo', 'say', servedByAccepter);
-    opener.handleRequest('echo', 'say', servedByOpener);
+    accepter.handleRequest(echo.say, servedByAccepter);
+    opener.handleRequest(echo.say, servedByOpener);
     opener.connect();
 
     // When
-    const calls = [opener.request('echo', 'say', 'to the accepter'), accepter.request('echo', 'say', 'to the opener')];
+    const calls = [opener.request(echo.say, 'to the accepter'), accepter.request(echo.say, 'to the opener')];
     await timers.advance(0);
     await Promise.all(calls);
 
@@ -82,15 +84,15 @@ describe('serving', () => {
   it('As a serving side, a handler that throws or rejects answers HostFailure with its name and message, bounded', async () => {
     // Given
     const { opener, accepter, timers } = rig();
-    accepter.handleRequest('notes', 'read', () => {
+    accepter.handleRequest(notes.read, () => {
       throw new TypeError('bad key');
     });
-    accepter.handleRequest('echo', 'say', () => Promise.reject(new RangeError('x'.repeat(600))));
+    accepter.handleRequest(echo.say, () => Promise.reject(new RangeError('x'.repeat(600))));
     opener.connect();
 
     // When
-    const thrown = opener.request('notes', 'read', 'note');
-    const rejected = opener.request('echo', 'say', 'text');
+    const thrown = opener.request(notes.read, 'note');
+    const rejected = opener.request(echo.say, 'text');
     await timers.advance(0);
 
     // Then
@@ -101,11 +103,11 @@ describe('serving', () => {
   it('As a relaying handler, I answer with the Cancelled my own call ended with and the caller hears it', async () => {
     // Given
     const { opener, accepter, timers } = rig();
-    accepter.handleRequest('notes', 'read', () => err(cancelled()));
+    accepter.handleRequest(notes.read, () => err(cancelled()));
     opener.connect();
 
     // When
-    const read = opener.request('notes', 'read', 'note');
+    const read = opener.request(notes.read, 'note');
     await timers.advance(0);
 
     // Then
@@ -115,12 +117,12 @@ describe('serving', () => {
   it('As a serving side, I refuse a second handler for one method', () => {
     // Given
     const { accepter } = rig();
-    accepter.handleRequest('notes', 'read', () => ok('a'));
-    accepter.handleSubscription('notes', 'watch', () => () => undefined);
+    accepter.handleRequest(notes.read, () => ok('a'));
+    accepter.handleSubscription(notes.watch, () => () => undefined);
 
     // When
-    const second = () => accepter.handleRequest('notes', 'read', () => ok('b'));
-    const secondSubscription = () => accepter.handleSubscription('notes', 'watch', () => () => undefined);
+    const second = () => accepter.handleRequest(notes.read, () => ok('b'));
+    const secondSubscription = () => accepter.handleSubscription(notes.watch, () => () => undefined);
 
     // Then
     expect(second).toThrow('notes.read already has a handler');
@@ -131,15 +133,15 @@ describe('serving', () => {
     // Given
     const { opener, accepter, timers } = rig();
     const first = vi.fn(() => ok('first'));
-    const unregisterFirst = accepter.handleRequest('notes', 'read', first);
+    const unregisterFirst = accepter.handleRequest(notes.read, first);
     unregisterFirst();
     const second = vi.fn(() => ok('second'));
-    const unregisterSecond = accepter.handleRequest('notes', 'read', second);
+    const unregisterSecond = accepter.handleRequest(notes.read, second);
     opener.connect();
 
     // When
     unregisterFirst();
-    const answered = opener.request('notes', 'read', 'note');
+    const answered = opener.request(notes.read, 'note');
     await timers.advance(0);
 
     // Then
@@ -148,20 +150,20 @@ describe('serving', () => {
 
     // When
     unregisterSecond();
-    const refused = opener.request('notes', 'read', 'note');
+    const refused = opener.request(notes.read, 'note');
     await timers.advance(0);
 
     // Then
     expect(await refused).toEqual(err(unsupported()));
   });
 
-  it('As a handler, my answer after the transport is disposed is never posted', async () => {
+  it('As a caller, my call in flight when the peer disposes fails with the reason, and the late answer is never posted', async () => {
     // Given
     const { opener, accepter, timers, delivered, issues } = rig();
     const answer = deferred<Result<string, CallError<string>>>();
-    accepter.handleRequest('notes', 'read', () => answer.promise);
+    accepter.handleRequest(notes.read, () => answer.promise);
     opener.connect();
-    void opener.request('notes', 'read', 'note');
+    const call = opener.request(notes.read, 'note');
     await timers.advance(0);
     const posted = delivered.length;
 
@@ -171,7 +173,8 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then
-    expect(delivered).toHaveLength(posted);
+    expect(await call).toEqual(err(hostFailure('Error: the page is closing')));
+    expect(delivered).toHaveLength(posted + 1);
     expect(issues).toEqual([]);
   });
 
@@ -180,9 +183,9 @@ describe('serving', () => {
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts } = breakable(broken);
     const { transport, timers, peer, issues } = await acceptedRaw(wrap);
-    const answer = deferred<Result<void, CallError<never>>>();
-    transport.handleRequest('notes', 'touch', () => answer.promise);
-    peer.send({ leg: 'request', id: 7, trait: 'notes', method: 'touch', value: undefined });
+    const answer = deferred<Result<undefined, CallError<never>>>();
+    transport.handleRequest(notes.touch, () => answer.promise);
+    peer.call(notes.touch, 7, { tag: 'request', value: undefined });
     await timers.advance(0);
 
     // When
@@ -198,91 +201,94 @@ describe('serving', () => {
     // Given
     const { transport, timers, peer, issues } = await acceptedRaw();
     const handler = vi.fn(() => ok('never'));
-    transport.handleRequest('notes', 'read', handler);
+    transport.handleRequest(notes.read, handler);
 
     // When a request on notes.read carries a payload that is no UTF-8
-    peer.sendBytes(7, 0, 0, 0, NOTES, READ, 0, 0xff);
+    peer.sendBytes(7, 0, 0, 0, CALL, NOTES, READ, 0, 0xff);
     await timers.advance(0);
 
     // Then
-    expect(answers(peer.find('response:notes.read'))).toEqual([
-      { id: 7, body: err(malformedFrame('The encoded data was not valid for encoding utf-8')) },
+    expect(peer.failures()).toEqual([
+      { id: 7, value: malformedFrame('TypeError: The encoded data was not valid for encoding utf-8') },
     ]);
     expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError }]);
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('As a newer peer, my message for an unknown method is answered once on the protocol error address, and my reply to that is never answered', async () => {
+  it('As a serving side, a call to a method or a trait this schema lacks is answered Unsupported, and a failure about a call I never made is refused', async () => {
     // Given
     const { timers, peer, issues } = await acceptedRaw();
 
     // When a method and a trait this schema lacks are called
-    peer.sendBytes(9, 0, 0, 0, NOTES, 7, 0, 1, 2);
-    peer.sendBytes(10, 0, 0, 0, 7, 0, 0);
+    peer.sendBytes(9, 0, 0, 0, CALL, NOTES, 7, 0, 1, 2);
+    peer.sendBytes(11, 0, 0, 0, CALL, 7, 0, 0);
     await timers.advance(0);
 
     // Then
-    expect(answers(peer.find('response:#library.protocolError'))).toEqual([
-      { id: 9, body: { tag: 'UnsupportedMessage', value: { trait: NOTES, method: 7 } } },
-      { id: 10, body: { tag: 'UnsupportedMessage', value: { trait: 7, method: 0 } } },
+    expect(peer.failures()).toEqual([
+      { id: 9, value: unsupported() },
+      { id: 11, value: unsupported() },
     ]);
 
-    // When the peer replies on the protocol error address
-    peer.send({ ...PROTOCOL_ERROR, id: 9, value: { tag: 'UnsupportedMessage', value: { trait: 255, method: 255 } } });
-    peer.send({ ...PROTOCOL_ERROR, id: 10, value: { tag: 'UnsupportedMessage', value: { trait: 7, method: 0 } } });
+    // When the peer fails a call this side never made
+    peer.send(4, { tag: 'failed', value: unsupported() });
     await timers.advance(0);
 
     // Then
-    expect(peer.legs()).toEqual([
-      'response:#library.handshake',
-      'response:#library.protocolError',
-      'response:#library.protocolError',
-    ]);
-    expect(issues).toEqual([]);
+    expect(peer.names()).toEqual(['accept', 'failed', 'failed']);
+    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error }]);
   });
 
-  it('As a serving side, a request leg on a subscription method is refused as invalid with no reply', async () => {
+  it('As a serving side, a message of a kind its method lacks is answered MalformedFrame, and a response to the peer is refused as invalid', async () => {
     // Given
-    const { timers, peer, issues } = await acceptedRaw();
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    serveWatch(transport);
+    transport.handleRequest(notes.read, () => ok('never'));
 
-    // When
-    peer.sendBytes(5, 0, 0, 0, NOTES, WATCH, 0, 0x61);
+    // When a message on notes.watch has a kind no subscription has, and a response comes for a call of the peer's
+    peer.sendBytes(5, 0, 0, 0, CALL, NOTES, WATCH, 4, 0x61);
+    peer.call(notes.read, 7, { tag: 'response', value: ok('a note') });
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: expect.any(TypeError) as TypeError }]);
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    expect(peer.failures()).toEqual([{ id: 5, value: expect.objectContaining({ tag: 'MalformedFrame' }) as object }]);
+    expect(issues).toEqual([
+      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
+      { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
+    ]);
   });
 
   it('As a serving side, a start with no handler is answered Unsupported, and one that does not decode MalformedFrame', async () => {
     // Given
     const { transport, timers, peer } = await acceptedRaw();
-    const unregister = transport.handleSubscription('notes', 'watch', () => () => undefined);
+    const unregister = transport.handleSubscription(notes.watch, () => () => undefined);
     unregister();
+    peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
+    await timers.advance(0);
+    serveWatch(transport);
 
     // When
-    peer.send({ leg: 'start', id: 4, trait: 'notes', method: 'watch', value: 'from the top' });
-    peer.sendBytes(5, 0, 0, 0, NOTES, WATCH, 2, 0xff);
+    peer.sendBytes(7, 0, 0, 0, CALL, NOTES, WATCH, 0, 0xff);
     await timers.advance(0);
 
     // Then
-    expect(answers(peer.find('interrupt:notes.watch'))).toEqual([
-      { id: 4, body: err(unsupported()) },
-      { id: 5, body: err(malformedFrame('The encoded data was not valid for encoding utf-8')) },
+    expect(peer.failures()).toEqual([
+      { id: 5, value: unsupported() },
+      { id: 7, value: malformedFrame('TypeError: The encoded data was not valid for encoding utf-8') },
     ]);
   });
 
-  it('As a serving side, a request before the handshake is refused as invalid with no reply', async () => {
+  it('As a serving side, a call before the handshake is refused as invalid with no reply', async () => {
     // Given
     const { transport, timers, peer, issues } = rawRig('accept');
     const handler = vi.fn(() => ok());
-    transport.handleRequest('notes', 'touch', handler);
+    transport.handleRequest(notes.touch, handler);
 
     // When a request, a start, a request whose payload is no UTF-8 and a request to a method this schema lacks come first
-    peer.send({ leg: 'request', id: 3, trait: 'notes', method: 'touch', value: undefined });
-    peer.send({ leg: 'start', id: 4, trait: 'notes', method: 'watch', value: 'from the top' });
-    peer.sendBytes(5, 0, 0, 0, NOTES, READ, 0, 0xff);
-    peer.sendBytes(6, 0, 0, 0, NOTES, 7, 0, 1, 2);
+    peer.call(notes.touch, 3, { tag: 'request', value: undefined });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
+    peer.sendBytes(7, 0, 0, 0, CALL, NOTES, READ, 0, 0xff);
+    peer.sendBytes(9, 0, 0, 0, CALL, NOTES, 7, 0, 1, 2);
     await timers.advance(0);
 
     // Then
@@ -302,70 +308,41 @@ describe('serving', () => {
     openHandshake(VERSION + 1);
     await timers.advance(0);
 
-    // When
-    peer.send({ leg: 'request', id: 3, trait: 'notes', method: 'touch', value: undefined });
+    // When a call comes on a method of the schema and on one it lacks
+    peer.call(notes.touch, 3, { tag: 'request', value: undefined });
+    peer.sendBytes(5, 0, 0, 0, CALL, NOTES, 7, 1, 0);
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([
-      {
-        kind: 'refused',
-        reason: 'invalid',
-        cause: expect.objectContaining({
-          message: `A call came after the transport closed, TransportVersionMismatchError: The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
-        }) as Error,
-      },
-    ]);
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    const refused = {
+      kind: 'refused',
+      reason: 'invalid',
+      cause: expect.objectContaining({
+        message: `A call came after the transport closed, TransportVersionMismatchError: The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
+      }) as Error,
+    };
+    expect(issues).toEqual([refused, refused]);
+    expect(peer.names()).toEqual(['accept']);
   });
 
-  it('As a connected accepter, a malformed handshake request is reported with no reply', async () => {
+  it('As a connected accepter, a malformed handshake open is reported with no reply', async () => {
     // Given
     const { timers, peer, issues } = await acceptedRaw();
 
-    // When a handshake request carries no version, then one carries a hello that is no UTF-8
-    peer.sendBytes(2, 0, 0, 0, 255, 0, 0);
-    peer.sendBytes(3, 0, 0, 0, 255, 0, 0, VERSION, 0xff);
+    // When an open carries no version, then one carries a hello that is no UTF-8
+    peer.sendBytes(3, 0, 0, 0, OPEN);
+    peer.sendBytes(5, 0, 0, 0, OPEN, VERSION, 0xff);
     await timers.advance(0);
 
     // Then
     expect(issues).toEqual([
-      {
-        kind: 'refused',
-        reason: 'malformed',
-        cause: expect.any(RangeError) as RangeError,
-      },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
       { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
     ]);
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    expect(peer.names()).toEqual(['accept']);
   });
 
-  it('As a serving side, a message for an unknown address after my handshake failed is refused with no reply', async () => {
-    // Given
-    const { timers, peer, issues, openHandshake } = rawRig('accept');
-    openHandshake(VERSION + 1);
-    await timers.advance(0);
-
-    // When an answer comes for a method this schema lacks
-    peer.sendBytes(9, 0, 0, 0, NOTES, 7, 1, 0);
-    await timers.advance(0);
-
-    // Then
-    expect(issues).toEqual([
-      {
-        kind: 'refused',
-        reason: 'invalid',
-        cause: expect.objectContaining({
-          message: expect.stringMatching(
-            /^A message for an unknown address came after the transport closed, /,
-          ) as string,
-        }) as Error,
-      },
-    ]);
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
-  });
-
-  it('As an accepter, a malformed handshake request is reported with no reply', async () => {
+  it('As an accepter, a malformed handshake open is reported with no reply', async () => {
     // Given
     const { transport, timers, peer, issues } = rawRig('accept');
     let connected = false;
@@ -373,55 +350,45 @@ describe('serving', () => {
       connected = true;
     });
 
-    // When a handshake request carries no version, then one carries a hello that is no UTF-8
-    peer.sendBytes(1, 0, 0, 0, 255, 0, 0);
-    peer.sendBytes(2, 0, 0, 0, 255, 0, 0, VERSION, 0xff);
+    // When an open carries no version, then one carries a hello that is no UTF-8
+    peer.sendBytes(1, 0, 0, 0, OPEN);
+    peer.sendBytes(3, 0, 0, 0, OPEN, VERSION, 0xff);
     await timers.advance(0);
 
     // Then
     expect(issues).toEqual([
-      {
-        kind: 'refused',
-        reason: 'malformed',
-        cause: expect.any(RangeError) as RangeError,
-      },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
       { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
     ]);
     expect(peer.heard).toEqual([]);
     expect(connected).toBe(false);
   });
 
-  it('As either side, a malformed or wrong-leg message on the protocol error address is reported with no reply', async () => {
+  it('As either side, a frame of a kind the wire lacks is reported as malformed with no reply', async () => {
     // Given
     const { timers, peer, issues } = await acceptedRaw();
 
-    // When a protocol error has an unknown tag, then one comes on the request leg
-    peer.sendBytes(2, 0, 0, 0, 255, 255, 1, 9, 0, 0);
-    peer.sendBytes(3, 0, 0, 0, 255, 255, 0);
+    // When a frame has a kind past the call, then a failure has a variant CallError lacks
+    peer.sendBytes(3, 0, 0, 0, CALL + 1);
+    peer.sendBytes(5, 0, 0, 0, FAILED, 9);
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([
-      {
-        kind: 'refused',
-        reason: 'malformed',
-        cause: expect.any(TypeError) as TypeError,
-      },
-      { kind: 'refused', reason: 'invalid', cause: expect.any(TypeError) as TypeError },
-    ]);
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError };
+    expect(issues).toEqual([refused, refused]);
+    expect(peer.names()).toEqual(['accept']);
   });
 
   it('As a serving side, I answer each call of the peer side by side', async () => {
     // Given
     const { opener, accepter, timers } = rig();
     const slow = deferred<Result<string, CallError<never>>>();
-    accepter.handleRequest('echo', 'say', text => (text === 'slow' ? slow.promise : ok(text)));
+    accepter.handleRequest(echo.say, text => (text === 'slow' ? slow.promise : ok(text)));
     opener.connect();
-    const first = opener.request('echo', 'say', 'slow');
+    const first = opener.request(echo.say, 'slow');
 
     // When
-    const second = opener.request('echo', 'say', 'fast');
+    const second = opener.request(echo.say, 'fast');
     await timers.advance(0);
 
     // Then
@@ -439,27 +406,27 @@ describe('serving', () => {
     const { transport, timers, peer, issues } = await acceptedRaw();
     const started: unknown[] = [];
     const stop = vi.fn();
-    transport.handleSubscription('notes', 'watch', (start, context) => {
+    transport.handleSubscription(notes.watch, (start, context) => {
       started.push({ start, context });
       return stop;
     });
-    peer.send({ leg: 'start', id: 4, trait: 'notes', method: 'watch', value: 'from the top' });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
     await timers.advance(0);
 
     // When
-    peer.send({ leg: 'stop', id: 4, trait: 'notes', method: 'watch' });
-    peer.send({ leg: 'stop', id: 4, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 5, { tag: 'stop', value: undefined });
+    peer.call(notes.watch, 5, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then the second stop is the peer's fault
     expect(started).toEqual([{ start: 'from the top', context: { origin: null, hello: 'peer' } }]);
     expect(stop).toHaveBeenCalledOnce();
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    expect(peer.names()).toEqual(['accept']);
     expect(issues).toEqual([
       {
         kind: 'refused',
         reason: 'invalid',
-        cause: expect.objectContaining({ message: 'A stop names subscription 4, which is not running' }) as Error,
+        cause: expect.objectContaining({ message: 'A stop names subscription 5, which is not running' }) as Error,
       },
     ]);
   });
@@ -467,14 +434,14 @@ describe('serving', () => {
   it('As a serving side, a handler that throws on start interrupts with HostFailure', async () => {
     // Given
     const { opener, accepter, timers, issues } = rig();
-    accepter.handleSubscription('notes', 'watch', () => {
+    accepter.handleSubscription(notes.watch, () => {
       throw new TypeError('bad start');
     });
     opener.connect();
     const heard = watcher();
 
     // When
-    opener.subscribe('notes', 'watch', 'from the top', heard);
+    opener.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
 
     // Then
@@ -486,7 +453,7 @@ describe('serving', () => {
     // Given
     const { opener, accepter, timers, issues } = rig();
     const stop = vi.fn();
-    accepter.handleSubscription('notes', 'watch', (_start, _context, sink) => {
+    accepter.handleSubscription(notes.watch, (_start, _context, sink) => {
       sink.receive('only');
       sink.interrupt(domain('at once'));
       return stop;
@@ -495,7 +462,7 @@ describe('serving', () => {
     const heard = watcher();
 
     // When
-    opener.subscribe('notes', 'watch', 'from the top', heard);
+    opener.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
 
     // Then
@@ -511,7 +478,7 @@ describe('serving', () => {
     const { sinks, stops } = serveWatch(accepter);
     opener.connect();
     const heard = watcher();
-    const handle = opener.subscribe('notes', 'watch', 'from the top', heard);
+    const handle = opener.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
 
     // When
@@ -530,7 +497,7 @@ describe('serving', () => {
     const { opener, accepter, timers, delivered } = rig();
     const { sinks, stops } = serveWatch(accepter);
     opener.connect();
-    const handle = opener.subscribe('notes', 'watch', 'from the top', watcher());
+    const handle = opener.subscribe(notes.watch, 'from the top', watcher());
     await timers.advance(0);
     handle.stop();
     await timers.advance(0);
@@ -555,8 +522,8 @@ describe('serving', () => {
     opener.connect();
     const first = watcher();
     const second = watcher();
-    opener.subscribe('notes', 'watch', 'a', first);
-    opener.subscribe('notes', 'watch', 'b', second);
+    opener.subscribe(notes.watch, 'a', first);
+    opener.subscribe(notes.watch, 'b', second);
     await timers.advance(0);
 
     // When
@@ -576,7 +543,7 @@ describe('serving', () => {
     const { wrap, breakPosts } = breakable(broken);
     const { transport, timers, peer, issues } = await acceptedRaw(wrap);
     const { sinks, stops } = serveWatch(transport);
-    peer.send({ leg: 'start', id: 4, trait: 'notes', method: 'watch', value: 'from the top' });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
     await timers.advance(0);
     breakPosts();
     const sink = must(sinks[0], 'a sink');
@@ -607,7 +574,7 @@ describe('serving', () => {
     opener.connect();
     const heard = [watcher(), watcher()];
     for (const listeners of heard) {
-      opener.subscribe('notes', 'watch', 'from the top', listeners);
+      opener.subscribe(notes.watch, 'from the top', listeners);
     }
     await timers.advance(0);
 
@@ -634,14 +601,14 @@ describe('serving', () => {
       vi.fn(),
     ];
     let started = 0;
-    accepter.handleSubscription('notes', 'watch', () => {
+    accepter.handleSubscription(notes.watch, () => {
       const stop = stops[started] ?? (() => undefined);
       started += 1;
       return stop;
     });
     opener.connect();
-    opener.subscribe('notes', 'watch', 'a', watcher());
-    opener.subscribe('notes', 'watch', 'b', watcher());
+    opener.subscribe(notes.watch, 'a', watcher());
+    opener.subscribe(notes.watch, 'b', watcher());
     await timers.advance(0);
 
     // When
@@ -657,12 +624,12 @@ describe('serving', () => {
     // Given
     const { transport, timers, peer, issues } = await acceptedRaw();
     const { starts, stops } = serveWatch(transport);
-    peer.send({ leg: 'start', id: 4, trait: 'notes', method: 'watch', value: 'first' });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'first' });
     await timers.advance(0);
 
     // When
-    peer.send({ leg: 'start', id: 4, trait: 'notes', method: 'watch', value: 'second' });
-    peer.send({ leg: 'stop', id: 4, trait: 'echo', method: 'listen' });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'second' });
+    peer.call(echo.listen, 5, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then
@@ -670,7 +637,7 @@ describe('serving', () => {
     expect(stops).toEqual([0]);
     const refused = { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error };
     expect(issues).toEqual([refused, refused]);
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    expect(peer.names()).toEqual(['accept']);
   });
 
   it('As a serving side, I hear that a disposed peer left once its last stop and its last call are done', async () => {
@@ -678,12 +645,12 @@ describe('serving', () => {
     const onPeerIdle = vi.fn();
     const { opener, accepter, timers } = rig({ onPeerIdle });
     serveWatch(accepter);
-    const held = deferred<Result<void, CallError<never>>>();
-    accepter.handleRequest('notes', 'touch', () => held.promise);
+    const held = deferred<Result<undefined, CallError<never>>>();
+    accepter.handleRequest(notes.touch, () => held.promise);
     opener.connect();
-    opener.subscribe('notes', 'watch', 'status', watcher());
-    opener.subscribe('notes', 'watch', 'tick', watcher());
-    void outcomeOf(opener.request('notes', 'touch', undefined));
+    opener.subscribe(notes.watch, 'status', watcher());
+    opener.subscribe(notes.watch, 'tick', watcher());
+    void outcomeOf(opener.request(notes.touch, undefined));
     await timers.advance(0);
 
     // When the peer disposes its transport
@@ -709,7 +676,7 @@ describe('serving', () => {
     opener.connect();
     const heard = [watcher(), watcher()];
     for (const listeners of heard) {
-      opener.subscribe('notes', 'watch', 'tick', listeners);
+      opener.subscribe(notes.watch, 'tick', listeners);
     }
     await timers.advance(0);
 
@@ -726,7 +693,7 @@ describe('serving', () => {
     expect(onPeerIdle).not.toHaveBeenCalled();
 
     // When it subscribes again and leaves that one
-    const again = opener.subscribe('notes', 'watch', 'tick', watcher());
+    const again = opener.subscribe(notes.watch, 'tick', watcher());
     await timers.advance(0);
     again.stop();
     await timers.advance(0);
@@ -740,15 +707,15 @@ describe('serving', () => {
     const onPeerIdle = vi.fn();
     const { transport, timers, peer } = await acceptedRaw(undefined, { onPeerIdle });
     const { sinks } = serveWatch(transport);
-    peer.send({ leg: 'start', id: 1, trait: 'notes', method: 'watch', value: 'status' });
-    peer.send({ leg: 'start', id: 2, trait: 'notes', method: 'watch', value: 'read' });
+    peer.call(notes.watch, 1, { tag: 'start', value: 'status' });
+    peer.call(notes.watch, 3, { tag: 'start', value: 'read' });
     await timers.advance(0);
 
     // When the peer stops its status, the read ends here, and then the peer's stop for the read arrives
-    peer.send({ leg: 'stop', id: 1, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
     await timers.advance(0);
     must(sinks[1], 'the read').interrupt();
-    peer.send({ leg: 'stop', id: 2, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then the peer is gone, once
@@ -760,18 +727,18 @@ describe('serving', () => {
     const onPeerIdle = vi.fn();
     const { opener, accepter, timers } = rig({ onPeerIdle });
     serveWatch(accepter);
-    const held = deferred<Result<void, CallError<never>>>();
-    accepter.handleRequest('notes', 'touch', () => held.promise);
-    accepter.handleRequest('echo', 'say', text => ok(text));
+    const held = deferred<Result<undefined, CallError<never>>>();
+    accepter.handleRequest(notes.touch, () => held.promise);
+    accepter.handleRequest(echo.say, text => ok(text));
     opener.connect();
-    const ticks = opener.subscribe('notes', 'watch', 'tick', watcher());
-    const touched = opener.request('notes', 'touch', undefined);
+    const ticks = opener.subscribe(notes.watch, 'tick', watcher());
+    const touched = opener.request(notes.touch, undefined);
     await timers.advance(0);
     ticks.stop();
     await timers.advance(0);
 
     // When it makes another call, and both settle
-    await opener.request('echo', 'say', 'still here');
+    await opener.request(echo.say, 'still here');
     held.resolve(ok());
     await touched;
     await timers.advance(0);
@@ -788,13 +755,13 @@ describe('serving', () => {
     });
     const { transport, timers, peer, issues } = await acceptedRaw(undefined, { onPeerIdle });
     serveWatch(transport);
-    const held = deferred<Result<void, CallError<never>>>();
-    transport.handleRequest('notes', 'touch', () => held.promise);
-    peer.send({ leg: 'start', id: 1, trait: 'notes', method: 'watch', value: 'tick' });
+    const held = deferred<Result<undefined, CallError<never>>>();
+    transport.handleRequest(notes.touch, () => held.promise);
+    peer.call(notes.watch, 1, { tag: 'start', value: 'tick' });
     await timers.advance(0);
 
     // When the peer leaves
-    peer.send({ leg: 'stop', id: 1, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then
@@ -802,9 +769,9 @@ describe('serving', () => {
     expect(issues).toEqual([{ kind: 'listener_threw', error: bug }]);
 
     // When it calls, starts and leaves again, and this side is disposed before its call settles
-    peer.send({ leg: 'request', id: 2, trait: 'notes', method: 'touch', value: undefined });
-    peer.send({ leg: 'start', id: 3, trait: 'notes', method: 'watch', value: 'tick' });
-    peer.send({ leg: 'stop', id: 3, trait: 'notes', method: 'watch' });
+    peer.call(notes.touch, 3, { tag: 'request', value: undefined });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'tick' });
+    peer.call(notes.watch, 5, { tag: 'stop', value: undefined });
     await timers.advance(0);
     transport.dispose(new Error('the page is closing'));
     held.resolve(ok());
@@ -818,7 +785,7 @@ describe('serving', () => {
     // Given
     const { opener, accepter, timers, issues } = rig();
     const sinks: Sink<string, string>[] = [];
-    accepter.handleSubscription('notes', 'watch', (_start, _context, sink) => {
+    accepter.handleSubscription(notes.watch, (_start, _context, sink) => {
       sinks.push(sink);
       return () => {
         accepter.dispose(new Error('done here'));
@@ -827,8 +794,8 @@ describe('serving', () => {
     opener.connect();
     const ended = watcher();
     const other = watcher();
-    opener.subscribe('notes', 'watch', 'a', ended);
-    opener.subscribe('notes', 'watch', 'b', other);
+    opener.subscribe(notes.watch, 'a', ended);
+    opener.subscribe(notes.watch, 'b', other);
     await timers.advance(0);
 
     // When
@@ -846,22 +813,22 @@ describe('serving', () => {
     const onPeerIdle = vi.fn();
     const { transport, timers, peer } = await acceptedRaw(undefined, { onPeerIdle });
     const { sinks } = serveWatch(transport);
-    peer.send({ leg: 'start', id: 1, trait: 'notes', method: 'watch', value: 'status' });
-    peer.send({ leg: 'start', id: 2, trait: 'notes', method: 'watch', value: 'read' });
+    peer.call(notes.watch, 1, { tag: 'start', value: 'status' });
+    peer.call(notes.watch, 3, { tag: 'start', value: 'read' });
     await timers.advance(0);
 
     // When this side ends the read, and the peer's stops for both arrive after
     must(sinks[1], 'the read').interrupt();
-    peer.send({ leg: 'stop', id: 1, trait: 'notes', method: 'watch' });
-    peer.send({ leg: 'stop', id: 2, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
+    peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then
     expect(onPeerIdle).toHaveBeenCalledOnce();
 
     // When it starts and leaves again
-    peer.send({ leg: 'start', id: 3, trait: 'notes', method: 'watch', value: 'tick' });
-    peer.send({ leg: 'stop', id: 3, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 5, { tag: 'start', value: 'tick' });
+    peer.call(notes.watch, 5, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then
@@ -871,14 +838,15 @@ describe('serving', () => {
   it('As a serving side, a stop before the handshake or for a subscription that is not running is refused as invalid, and I hear no peer leave', async () => {
     // Given
     const onPeerIdle = vi.fn();
-    const { timers, peer, issues, openHandshake } = rawRig('accept', undefined, { onPeerIdle });
+    const { transport, timers, peer, issues, openHandshake } = rawRig('accept', undefined, { onPeerIdle });
+    serveWatch(transport);
 
     // When a stop comes before the handshake, then one names an id never started
-    peer.send({ leg: 'stop', id: 1, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
     await timers.advance(0);
     openHandshake();
     await timers.advance(0);
-    peer.send({ leg: 'stop', id: 2, trait: 'notes', method: 'watch' });
+    peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then
@@ -886,16 +854,16 @@ describe('serving', () => {
       {
         kind: 'refused',
         reason: 'invalid',
-        cause: expect.objectContaining({ message: 'A stop came before the handshake' }) as Error,
+        cause: expect.objectContaining({ message: 'A call came before the handshake' }) as Error,
       },
       {
         kind: 'refused',
         reason: 'invalid',
-        cause: expect.objectContaining({ message: 'A stop names subscription 2, which is not running' }) as Error,
+        cause: expect.objectContaining({ message: 'A stop names subscription 3, which is not running' }) as Error,
       },
     ]);
     expect(onPeerIdle).not.toHaveBeenCalled();
-    expect(peer.legs()).toEqual(['response:#library.handshake']);
+    expect(peer.names()).toEqual(['accept']);
   });
 
   it('As a serving side, a call that does not decode or names an address I lack still keeps the peer', async () => {
@@ -905,25 +873,24 @@ describe('serving', () => {
     serveWatch(transport);
     const releases: (() => void)[] = [];
     transport.handleRequest(
-      'notes',
-      'touch',
+      notes.touch,
       () =>
-        new Promise<Result<void, CallError<never>>>(resolve => {
+        new Promise<Result<undefined, CallError<never>>>(resolve => {
           releases.push(() => {
             resolve(ok());
           });
         }),
     );
     const leaveWithCallHeld = async (id: number): Promise<void> => {
-      peer.send({ leg: 'request', id, trait: 'notes', method: 'touch', value: undefined });
-      peer.send({ leg: 'start', id: id + 1, trait: 'notes', method: 'watch', value: 'tick' });
-      peer.send({ leg: 'stop', id: id + 1, trait: 'notes', method: 'watch' });
+      peer.call(notes.touch, id, { tag: 'request', value: undefined });
+      peer.call(notes.watch, id + 2, { tag: 'start', value: 'tick' });
+      peer.call(notes.watch, id + 2, { tag: 'stop', value: undefined });
       await timers.advance(0);
     };
     await leaveWithCallHeld(1);
 
     // When it makes a call whose payload is no UTF-8, and the held call settles
-    peer.sendBytes(5, 0, 0, 0, NOTES, READ, 0, 0xff);
+    peer.sendBytes(5, 0, 0, 0, CALL, NOTES, READ, 0, 0xff);
     await timers.advance(0);
     releases[0]?.();
     await timers.advance(0);
@@ -932,8 +899,8 @@ describe('serving', () => {
     expect(onPeerIdle).not.toHaveBeenCalled();
 
     // When it leaves again and then calls a method this schema lacks
-    await leaveWithCallHeld(6);
-    peer.sendBytes(9, 0, 0, 0, NOTES, 7, 0, 1, 2);
+    await leaveWithCallHeld(7);
+    peer.sendBytes(11, 0, 0, 0, CALL, NOTES, 7, 0, 1, 2);
     await timers.advance(0);
     releases[1]?.();
     await timers.advance(0);

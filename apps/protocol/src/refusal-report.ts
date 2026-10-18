@@ -8,14 +8,16 @@
 import { spans as S, type m } from '@dotli/metrics';
 import {
   callName,
+  type CallName,
   createIssueReporter,
   failureOf,
   isSharedModeRequestMethod,
-  type CallName,
-  type ProtocolSchema,
-  type ProtocolTransport,
+  protocolSchema,
+  type ProtocolServing,
+  type WireIssue,
 } from '@dotli/protocol';
-import type { CallError, DomainError, Result, TraitName, TransportIssue } from '@dotli/transport';
+import { toError } from '@dotli/shared';
+import type { AnyMethod } from '@dotli/transport';
 
 export type FrameRoute = 'auth' | 'mode' | 'wallet' | 'chain';
 
@@ -24,7 +26,7 @@ export interface FrameRefusal {
   /** The call by the name the metrics and the trail know it by. */
   method: CallName;
   /** What the handler threw, or the failure it answered with as the error host code sees. */
-  error: unknown;
+  error: Error;
 }
 
 export interface RefusalReportDeps {
@@ -35,7 +37,7 @@ export interface RefusalReportDeps {
 /** Where a side reports what its transport and its window provider drop. */
 export interface WireReport {
   /** The transport's issue hook. */
-  onIssue: (issue: TransportIssue) => void;
+  onIssue: (issue: WireIssue) => void;
   /** Data from the admitted peer that is not bytes, which the provider drops before the transport sees it. */
   onNotBytes: () => void;
   /** Bytes from a page at an origin the provider does not admit. */
@@ -79,66 +81,47 @@ export function createRefusalReporter({ warn, count }: RefusalReportDeps): (refu
   };
 }
 
-function routeOf(trait: TraitName<ProtocolSchema>, method: string): FrameRoute {
-  switch (trait) {
-    case 'storage':
-      return isSharedModeRequestMethod(method) ? 'mode' : 'auth';
-    case 'wallet':
-      return 'wallet';
-    case 'frame':
-    case 'resolve':
-    case 'chain':
-      return 'chain';
+function routeOf(method: AnyMethod): FrameRoute {
+  const address = protocolSchema.addresses.get(method);
+  if (address?.trait === 'storage') {
+    return isSharedModeRequestMethod(address.method) ? 'mode' : 'auth';
   }
+  return address?.trait === 'wallet' ? 'wallet' : 'chain';
 }
 
 /**
  * Serves on `serving` and tells `report` of each call a handler refuses or fails, before the host hears it: a handler
  * that throws or rejects, one that answers with a failure, and a subscription that ends with one.
  */
-export function reportRefusals(serving: ProtocolTransport, report: (refusal: FrameRefusal) => void): ProtocolTransport {
+export function reportRefusals(serving: ProtocolServing, report: (refusal: FrameRefusal) => void): ProtocolServing {
+  const refused = (method: AnyMethod, error: Error): void => {
+    report({ route: routeOf(method), method: callName(method), error });
+  };
   return {
-    ...serving,
-
-    handleRequest(trait, method, handler) {
-      const refusal = (error: unknown): FrameRefusal => ({
-        route: routeOf(trait, method),
-        method: callName(trait, method),
-        error,
-      });
-      return serving.handleRequest(trait, method, async (payload, context) => {
+    handleRequest(method, handler) {
+      return serving.handleRequest(method, async (payload, context) => {
         try {
           const answer = await handler(payload, context);
-          // Every answer is a `Result`, which the method's deferred answer type does not show here.
-          const outcome = answer as Result<
-            unknown,
-            CallError<DomainError<ProtocolSchema, typeof trait, typeof method>>
-          >;
-          if (!outcome.ok) {
-            report(refusal(failureOf(trait, method, outcome.error)));
+          if (answer.tag === 'Err') {
+            refused(method, failureOf(method, answer.value));
           }
           return answer;
         } catch (error) {
-          report(refusal(error));
+          refused(method, toError(error));
           throw error;
         }
       });
     },
 
-    handleSubscription(trait, method, handler) {
-      const refusal = (error: unknown): FrameRefusal => ({
-        route: routeOf(trait, method),
-        method: callName(trait, method),
-        error,
-      });
-      return serving.handleSubscription(trait, method, (start, context, sink) => {
+    handleSubscription(method, handler) {
+      return serving.handleSubscription(method, (start, context, sink) => {
         const reporting: typeof sink = {
           receive: value => {
             sink.receive(value);
           },
           interrupt: error => {
             if (error !== undefined) {
-              report(refusal(failureOf(trait, method, error)));
+              refused(method, failureOf(method, error));
             }
             sink.interrupt(error);
           },
@@ -146,7 +129,7 @@ export function reportRefusals(serving: ProtocolTransport, report: (refusal: Fra
         try {
           return handler(start, context, reporting);
         } catch (error) {
-          report(refusal(error));
+          refused(method, toError(error));
           throw error;
         }
       });

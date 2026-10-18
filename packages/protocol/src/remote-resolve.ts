@@ -4,12 +4,15 @@
 // Name and manifest resolution done by the protocol frame's light client.
 
 import type { ResolvePhase } from '@dotli/resolver';
-import { realTimers, withTimeout, type Timers } from '@dotli/shared';
+import { realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { PROTOCOL_ERRORS } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import { RESOLVE_BUDGET_MS } from './method-timeouts.js';
 import { asCallError, callTimeoutError, type FrameRpc } from './rpc.js';
+import { protocolSchema } from './schema.js';
 import { subscribe } from './subscription.js';
+
+const { dotName, owner, executableManifest, rootManifest } = protocolSchema.traits.resolve;
 
 export interface RemoteResolveDeps {
   frame: Pick<ProtocolFrame, 'whenReady'>;
@@ -25,14 +28,13 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
   async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
     const transport = await frame.whenReady();
     const giveUp = new AbortController();
-    const trail = rpc.trail('resolveDotName', RESOLVE_BUDGET_MS);
+    const trail = rpc.trail(dotName, RESOLVE_BUDGET_MS);
     let timedOut: Error | undefined;
     const resolved = new Promise<string | null>((resolve, reject) => {
       let answered = false;
       const resolution = subscribe(
         transport,
-        'resolve',
-        'dotName',
+        dotName,
         { label },
         event => {
           if (event.tag === 'phase') {
@@ -67,7 +69,7 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
       trail.settled('ok');
       return name;
     } catch (reason: unknown) {
-      const err = asCallError(reason);
+      const err = asCallError(toError(reason));
       trail.settled(reason === timedOut ? 'timeout' : 'error', err);
       throw err;
     }
@@ -75,12 +77,12 @@ export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteR
 
   return {
     async warmupProtocol(): Promise<void> {
-      await rpc.request('frame', 'warmup', undefined);
+      await rpc.request(protocolSchema.traits.frame.warmup, undefined);
     },
     resolveDotNameRemote: resolveDotName,
-    resolveOwnerRemote: (label: string) => rpc.request('resolve', 'owner', { label }),
+    resolveOwnerRemote: (label: string) => rpc.request(owner, { label }),
     resolveExecutableManifestRemote: (label: string, kind: 'app' | 'widget' | 'worker') =>
-      rpc.request('resolve', 'executableManifest', { label, kind }),
-    resolveRootManifestRemote: (label: string) => rpc.request('resolve', 'rootManifest', { label }),
+      rpc.request(executableManifest, { label, kind }),
+    resolveRootManifestRemote: (label: string) => rpc.request(rootManifest, { label }),
   };
 }

@@ -22,11 +22,15 @@ import {
   ok,
   unsupported,
   type CallError,
+  type DomainError,
+  type MethodTypes,
   type Sink,
 } from '@dotli/transport';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createFrameStatus, type FrameStatus } from './frame-status.js';
 import { connectSharedWorker, workerEndError, type WorkerEnd, type WorkerStatus } from './shared-worker-link.js';
+
+const { frame } = protocolSchema.traits;
 
 const READY_TIMEOUT_MS = 30_000;
 
@@ -77,7 +81,7 @@ function fakeWorker(): FakeWorker {
   const status = createFrameStatus();
   const stopped = deferred<undefined>();
   const statusHeard = deferred<undefined>();
-  serving.handleSubscription('frame', 'status', (start, context, sink) => {
+  serving.handleSubscription(frame.status, (start, context, sink) => {
     statusHeard.resolve(undefined);
     const stop = status.handler(start, context, sink);
     return () => {
@@ -90,7 +94,7 @@ function fakeWorker(): FakeWorker {
   let refusing = false;
   let holding = false;
   const held = deferred<undefined>();
-  serving.handleRequest('frame', 'heartbeat', (_payload, context) => {
+  serving.handleRequest(frame.heartbeat, (_payload, context) => {
     heartbeats.push(context.hello.resolutionId);
     beat.resolve(undefined);
     beat = deferred<undefined>();
@@ -99,9 +103,9 @@ function fakeWorker(): FakeWorker {
     }
     return holding ? held.promise.then(() => ok()) : ok();
   });
-  const beatSinks = new Set<Sink<void, never>>();
+  const beatSinks = new Set<Sink<MethodTypes<typeof frame.beat>['receive'], DomainError<typeof frame.beat>>>();
   const beatsHeard = deferred<undefined>();
-  serving.handleSubscription('frame', 'beat', (_start, _context, sink) => {
+  serving.handleSubscription(frame.beat, (_start, _context, sink) => {
     beatSinks.add(sink);
     beatsHeard.resolve(undefined);
     return () => {
@@ -191,7 +195,7 @@ describe('connectSharedWorker', () => {
 
     // Then the link resolves with a transport that reaches the worker
     const transport = await linked;
-    await expect(transport.request('frame', 'heartbeat', undefined)).resolves.toEqual(ok());
+    await expect(transport.request(frame.heartbeat, undefined)).resolves.toEqual(ok());
   });
 
   it('As a tab whose SharedWorker fails to start, my frame fails at once with why', async () => {
@@ -225,17 +229,17 @@ describe('connectSharedWorker', () => {
     // Given a frame that hears the worker's status through the subscription it is handed, and fails its boot when the
     // link fails
     const worker = fakeWorker();
-    const frame = createFrameStatus();
-    const failed = firstEnd(frame);
+    const frameStatus = createFrameStatus();
+    const failed = firstEnd(frameStatus);
     const linked = link(worker, {
       onOpen: (_transport, status) => {
         status.onEnd(end => {
-          frame.fail(workerEndError(end));
+          frameStatus.fail(workerEndError(end));
         });
       },
     });
     void linked.catch((error: unknown) => {
-      frame.fail(new ProtocolInitFailedError(String(error)));
+      frameStatus.fail(new ProtocolInitFailedError(String(error)));
     });
 
     // When the worker's light client dies before it is ready
@@ -381,11 +385,11 @@ describe('connectSharedWorker', () => {
     const refused = worker.nextHeartbeat();
     worker.beatTab();
     await refused;
-    await expect(transport.request('frame', 'warmup', undefined)).resolves.toEqual(err(unsupported()));
+    await expect(transport.request(frame.warmup, undefined)).resolves.toEqual(err(unsupported()));
     worker.beatTab();
     // A heartbeat answering the second beat would reach the worker within these two round trips.
-    await transport.request('frame', 'warmup', undefined);
-    await transport.request('frame', 'warmup', undefined);
+    await transport.request(frame.warmup, undefined);
+    await transport.request(frame.warmup, undefined);
 
     // Then the refusal was captured and counted once, and the second beat went unanswered
     expect(exceptions).toEqual(['worker_heartbeat']);
@@ -405,7 +409,7 @@ describe('connectSharedWorker', () => {
     page.hide(true);
 
     // Then its transport still reaches the worker
-    await expect(transport.request('frame', 'heartbeat', undefined)).resolves.toEqual(ok());
+    await expect(transport.request(frame.heartbeat, undefined)).resolves.toEqual(ok());
   });
 
   it('As a tab that leaves for good, I dispose my worker transport', async () => {
@@ -420,7 +424,7 @@ describe('connectSharedWorker', () => {
     page.hide(false);
 
     // Then its transport is closed, and the worker heard its subscription end
-    await expect(transport.request('frame', 'heartbeat', undefined)).rejects.toThrow(PROTOCOL_APP_ERRORS.PORT_CLOSED);
+    await expect(transport.request(frame.heartbeat, undefined)).rejects.toThrow(PROTOCOL_APP_ERRORS.PORT_CLOSED);
     await worker.statusStopped;
   });
 
@@ -447,12 +451,12 @@ describe('connectSharedWorker', () => {
 
     // When the worker ends my status, fails the held heartbeat and beats again, with round trips after each
     worker.status.fail(new ProtocolFatalError('wasm trap'));
-    await transport.request('frame', 'warmup', undefined);
+    await transport.request(frame.warmup, undefined);
     worker.failHeld(new Error('heartbeat dropped'));
-    await transport.request('frame', 'warmup', undefined);
+    await transport.request(frame.warmup, undefined);
     worker.beatTab();
-    await transport.request('frame', 'warmup', undefined);
-    await transport.request('frame', 'warmup', undefined);
+    await transport.request(frame.warmup, undefined);
+    await transport.request(frame.warmup, undefined);
 
     // Then the later beat went unanswered, and the failed heartbeat was not captured
     expect(worker.heartbeats).toHaveLength(1);

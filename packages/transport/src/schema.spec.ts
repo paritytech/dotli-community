@@ -1,212 +1,131 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Enum, Struct, _void, str, u32 } from 'scale-ts';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { codec, none } from './codec.js';
-import type { Codec } from './codec.js';
 import type { CallError, Result } from './result.js';
-import { defineSchema, request, schemaVersion, subscription, wireOf, type Schema } from './schema.js';
-import type {
-  DomainError,
-  HelloOf,
-  MethodName,
-  MethodTypes,
-  RequestMethodName,
-  SubscriptionMethodName,
-  TraitName,
-} from './schema.js';
+import { defineSchema, request, subscription, type DomainError, type MethodTypes, type Traits } from './schema.js';
 
-// The schema checks only the shape, so the codecs never run here.
-const fake = <T>(): Codec<T> =>
-  codec<T>(
-    () => new Uint8Array(0),
-    () => {
-      throw new Error('not decoded in these tests');
-    },
-  );
+const label = Struct({ label: str });
+const frameFailure = Enum({ fatal: _void, released: _void });
 
-const label = fake<{ label: string }>();
-const nullableString = fake<string | null>();
-const change = fake<{ owner: string }>();
-const frameFailure = fake<'fatal' | 'released'>();
-const peerId = fake<number>();
+const owner = request({ request: label, response: str });
+const changes = subscription({ start: label, receive: str });
+const status = subscription({ start: _void, receive: _void, interrupt: frameFailure });
+const reload = request({ request: _void, response: _void, error: frameFailure });
 
 const s = defineSchema({
   version: 2,
-  hello: peerId,
+  hello: u32,
   traits: {
-    resolve: {
-      owner: request({ request: label, response: nullableString }),
-      changes: subscription({ start: label, receive: change }),
-    },
-    frame: {
-      status: subscription({ start: none, receive: none, interrupt: frameFailure }),
-      reload: request({ request: none, response: none, error: frameFailure }),
-    },
+    resolve: { owner, changes },
+    frame: { status, reload },
   },
 });
 
-const withoutHello = defineSchema({
-  version: 1,
-  traits: { resolve: { owner: request({ request: label, response: nullableString }) } },
-});
-
-const traitsOf = (count: number, methods: number) =>
+const traitsOf = (count: number, methods: number): Traits =>
   Object.fromEntries(
     Array.from({ length: count }, (_, t) => [
       `trait${String(t)}`,
       Object.fromEntries(
-        Array.from({ length: methods }, (__, m) => [`method${String(m)}`, request({ request: none, response: none })]),
+        Array.from({ length: methods }, (__, m) => [
+          `method${String(m)}`,
+          request({ request: _void, response: _void }),
+        ]),
       ),
     ]),
   );
 
-/** The trait and method ids a message on the method goes out with. */
-const idsOf = (schema: Schema, trait: string, method: string, leg: 'request' | 'stop'): number[] => {
-  const data = wireOf(schema).encode({ trait, method, leg, id: 0, value: undefined });
-  return [...new Uint8Array(data).slice(4, 6)];
-};
-
 describe('schema', () => {
-  it('As a schema author, I nest traits and methods and the ids follow their order', () => {
+  it('As a schema author, I nest traits and methods and their places follow their order', () => {
     // Given
     const schema = s;
 
     // When
-    const ids = [
-      idsOf(schema, 'resolve', 'owner', 'request'),
-      idsOf(schema, 'resolve', 'changes', 'stop'),
-      idsOf(schema, 'frame', 'status', 'stop'),
-      idsOf(schema, 'frame', 'reload', 'request'),
-    ];
+    const places = [owner, changes, status, reload].map(method => schema.addresses.get(method));
 
     // Then
-    expect(ids).toEqual([
-      [0, 0],
-      [0, 1],
-      [1, 0],
-      [1, 1],
+    expect(places).toEqual([
+      { trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 },
+      { trait: 'resolve', method: 'changes', traitId: 0, methodId: 1 },
+      { trait: 'frame', method: 'status', traitId: 1, methodId: 0 },
+      { trait: 'frame', method: 'reload', traitId: 1, methodId: 1 },
     ]);
-    expect(schemaVersion(schema)).toBe(2);
-    expect(schemaVersion(withoutHello)).toBe(1);
+    expect(schema.traits.resolve.owner).toBe(owner);
+    expect(schema.version).toBe(2);
   });
 
-  it('As a schema author, I change my traits record after defining the schema and its ids stay as they were', () => {
+  it('As a schema author, I change my traits record after defining the schema and its places stay as they were', () => {
     // Given
-    const owner = request({ request: label, response: nullableString });
-    const status = subscription({ start: none, receive: none, interrupt: frameFailure });
-    const traits: Record<string, Record<string, typeof owner | typeof status>> = {
+    const traits: Record<string, Record<string, typeof owner | typeof status | typeof reload>> = {
       resolve: { owner },
       frame: { status },
     };
-    const schema = defineSchema({ version: 0, traits });
+    const schema = defineSchema({ version: 0, hello: _void, traits });
 
     // When
     delete traits['resolve'];
-    traits['later'] = { owner };
+    traits['later'] = { owner: reload };
 
     // Then
-    expect(idsOf(schema, 'resolve', 'owner', 'request')).toEqual([0, 0]);
-    expect(idsOf(schema, 'frame', 'status', 'stop')).toEqual([1, 0]);
-    expect(() => idsOf(schema, 'later', 'owner', 'request')).toThrow();
+    expect(schema.addresses.get(owner)).toEqual({ trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 });
+    expect(schema.addresses.get(reload)).toBeUndefined();
   });
 
   it('As a schema author, I am refused a schema with too many traits or methods, or a version that is not 0 to 255', () => {
     // Given
-    const fits = { version: 255, traits: traitsOf(255, 1) };
-    const fitsMethods = { version: 0, traits: traitsOf(1, 256) };
+    const fits = { version: 255, hello: _void, traits: traitsOf(256, 1) };
+    const fitsMethods = { version: 0, hello: _void, traits: traitsOf(1, 256) };
 
     // When
-    const tooManyTraits = () => defineSchema({ version: 0, traits: traitsOf(256, 1) });
-    const tooManyMethods = () => defineSchema({ version: 0, traits: traitsOf(1, 257) });
-    const versionOver = () => defineSchema({ version: 256, traits: {} });
-    const versionUnder = () => defineSchema({ version: -1, traits: {} });
-    const versionFraction = () => defineSchema({ version: 1.5, traits: {} });
+    const tooManyTraits = () => defineSchema({ version: 0, hello: _void, traits: traitsOf(257, 1) });
+    const tooManyMethods = () => defineSchema({ version: 0, hello: _void, traits: traitsOf(1, 257) });
+    const versionOver = () => defineSchema({ version: 256, hello: _void, traits: {} });
+    const versionUnder = () => defineSchema({ version: -1, hello: _void, traits: {} });
+    const versionFraction = () => defineSchema({ version: 1.5, hello: _void, traits: {} });
 
     // Then
     expect(() => defineSchema(fits)).not.toThrow();
     expect(() => defineSchema(fitsMethods)).not.toThrow();
-    expect(idsOf(defineSchema(fits), 'trait254', 'method0', 'request')).toEqual([254, 0]);
-    expect(idsOf(defineSchema(fitsMethods), 'trait0', 'method255', 'request')).toEqual([0, 255]);
-    expect(tooManyTraits).toThrow('at most 255 traits, got 256');
+    expect(tooManyTraits).toThrow('at most 256 traits, got 257');
     expect(tooManyMethods).toThrow('trait "trait0" has at most 256 methods, got 257');
     expect(versionOver).toThrow('version must be an integer from 0 to 255, got 256');
     expect(versionUnder).toThrow('got -1');
     expect(versionFraction).toThrow('got 1.5');
   });
 
-  it('As a schema author, I am refused a trait or method name that is no identifier, so no id can leave its place', () => {
+  it('As a schema author, I am refused a method placed twice, since the transport finds a method by itself', () => {
     // Given
-    const method = request({ request: none, response: none });
+    const traits = { resolve: { owner }, frame: { reload: owner } };
 
     // When
-    const integerTrait = () => defineSchema({ version: 0, traits: { names: { method }, '3': { method } } });
-    const integerMethod = () => defineSchema({ version: 0, traits: { names: { first: method, '0': method } } });
-    const dotted = () => defineSchema({ version: 0, traits: { 'a.b': { method } } });
-    const empty = () => defineSchema({ version: 0, traits: { names: { '': method } } });
-    const identifiers = () => defineSchema({ version: 0, traits: { v2: { m1: method }, _$x: { method } } });
+    const twice = () => defineSchema({ version: 0, hello: _void, traits });
 
     // Then
-    expect(integerTrait).toThrow('trait "3" must be an identifier');
-    expect(integerMethod).toThrow('method "0" of trait "names" must be an identifier');
-    expect(dotted).toThrow('trait "a.b" must be an identifier');
-    expect(empty).toThrow('method "" of trait "names" must be an identifier');
-    expect(identifiers).not.toThrow();
+    expect(twice).toThrow('frame.reload is the method already at resolve.owner');
   });
 
-  it('As a schema author, I define a schema without type arguments and read every name, payload and answer type from it', () => {
+  it('As a schema author, I read what each side of a method sends, and its own error, from the method', () => {
     // Given
-    type S = typeof s;
-
-    // When
-    type Owner = MethodTypes<S, 'resolve', 'owner'>;
-    type Changes = MethodTypes<S, 'resolve', 'changes'>;
-    type Status = MethodTypes<S, 'frame', 'status'>;
-    type Reload = MethodTypes<S, 'frame', 'reload'>;
+    type Owner = MethodTypes<typeof owner>;
+    type Changes = MethodTypes<typeof changes>;
+    type FrameFailure = { tag: 'fatal'; value: undefined } | { tag: 'released'; value: undefined };
 
     // Then
-    expectTypeOf<TraitName<S>>().toEqualTypeOf<'resolve' | 'frame'>();
-    expectTypeOf<MethodName<S, 'resolve'>>().toEqualTypeOf<'owner' | 'changes'>();
-    expectTypeOf<RequestMethodName<S, 'resolve'>>().toEqualTypeOf<'owner'>();
-    expectTypeOf<SubscriptionMethodName<S, 'resolve'>>().toEqualTypeOf<'changes'>();
-    expectTypeOf<RequestMethodName<S, 'frame'>>().toEqualTypeOf<'reload'>();
-    expectTypeOf<SubscriptionMethodName<S, 'frame'>>().toEqualTypeOf<'status'>();
     expectTypeOf<Owner>().toEqualTypeOf<{
       request: { label: string };
-      response: Result<string | null, CallError<never>>;
+      response: Result<string, CallError<never>>;
     }>();
     expectTypeOf<Changes>().toEqualTypeOf<{
       start: { label: string };
-      receive: { owner: string };
-      interrupt: Result<void, CallError<never>>;
-      // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- a stop carries no value, which is the shape under test
-      stop: void;
+      receive: string;
+      interrupt: Result<undefined, CallError<never>>;
+      stop: undefined;
     }>();
-    expectTypeOf<Status['interrupt']>().toEqualTypeOf<Result<void, CallError<'fatal' | 'released'>>>();
-    expectTypeOf<Reload['response']>().toEqualTypeOf<Result<void, CallError<'fatal' | 'released'>>>();
-    expectTypeOf<DomainError<S, 'frame', 'status'>>().toEqualTypeOf<'fatal' | 'released'>();
-    expectTypeOf<DomainError<S, 'frame', 'reload'>>().toEqualTypeOf<'fatal' | 'released'>();
-    expectTypeOf<DomainError<S, 'resolve', 'owner'>>().toBeNever();
-    expectTypeOf<HelloOf<S>>().toEqualTypeOf<number>();
-    // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- a schema without hello sends none
-    expectTypeOf<HelloOf<typeof withoutHello>>().toEqualTypeOf<void>();
-  });
-
-  it('As a schema author, I misspell a trait or method and get a type error', () => {
-    // Given
-    type S = typeof s;
-
-    // When
-    // @ts-expect-error a method of another trait
-    type Misspelt = MethodTypes<S, 'frame', 'owner'>;
-
-    // Then
-    expectTypeOf<Misspelt>().toBeNever();
-    // @ts-expect-error a trait the schema lacks
-    expectTypeOf<MethodTypes<S, 'resolv', 'owner'>>();
-    // @ts-expect-error a method the trait lacks
-    expectTypeOf<MethodTypes<S, 'resolve', 'ownr'>>();
-    // @ts-expect-error a trait the schema lacks
-    expectTypeOf<MethodName<S, 'resolv'>>();
+    expectTypeOf<MethodTypes<typeof status>['interrupt']>().toEqualTypeOf<Result<undefined, CallError<FrameFailure>>>();
+    expectTypeOf<DomainError<typeof status>>().toEqualTypeOf<FrameFailure>();
+    expectTypeOf<DomainError<typeof reload>>().toEqualTypeOf<FrameFailure>();
+    expectTypeOf<DomainError<typeof owner>>().toBeNever();
+    expect(s.hello).toBe(u32);
   });
 });

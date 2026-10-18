@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
-import type { MethodName } from '@dotli/transport';
 import type { ProtocolSchema } from './schema.js';
 
-type StorageMethod = MethodName<ProtocolSchema, 'storage'>;
+type StorageMethod = keyof ProtocolSchema['traits']['storage'];
 
 export type SharedModeRequestMethod = Extract<StorageMethod, 'modeRead' | 'modeWrite' | 'modeClear'>;
 

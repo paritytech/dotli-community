@@ -11,15 +11,18 @@ import {
   ProtocolVersionMismatchError,
 } from './errors.js';
 import { failureOf, frameStatusEnd, fromTransportError, remoteFailureOf } from './outcomes.js';
+import { protocolSchema } from './schema.js';
+
+const { frame, resolve, wallet } = protocolSchema.traits;
 
 describe('failureOf', () => {
   it("As a frame that waits on another, I read its frame status end as the protocol's error classes", () => {
     // When
     const ends = [
-      failureOf('frame', 'status', domain({ tag: 'fatal', value: 'wasm trap' })),
-      failureOf('frame', 'status', domain({ tag: 'initFailed', value: 'chainHead follow stopped' })),
-      failureOf('frame', 'status', domain({ tag: 'released', value: 'The worker let go of this tab' })),
-      failureOf('frame', 'status', domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' })),
+      failureOf(frame.status, domain({ tag: 'fatal', value: 'wasm trap' })),
+      failureOf(frame.status, domain({ tag: 'initFailed', value: 'chainHead follow stopped' })),
+      failureOf(frame.status, domain({ tag: 'released', value: 'The worker let go of this tab' })),
+      failureOf(frame.status, domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' })),
     ];
 
     // Then
@@ -38,9 +41,9 @@ describe('failureOf', () => {
   it('As a frame that relays another, I read its failures under the names they crossed with and its call name', () => {
     // When
     const failures = [
-      failureOf('resolve', 'owner', domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' })),
-      failureOf('frame', 'heartbeat', hostFailure('TypeError: heartbeat refused')),
-      failureOf('wallet', 'read', denied()),
+      failureOf(resolve.owner, domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' })),
+      failureOf(frame.heartbeat, hostFailure('TypeError: heartbeat refused')),
+      failureOf(wallet.read, denied()),
     ];
 
     // Then
@@ -77,7 +80,7 @@ describe('frameStatusEnd', () => {
       domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' }),
       hostFailure('TypeError: boot broke'),
     ]);
-    const read = ends.map(end => failureOf('frame', 'status', end));
+    const read = ends.map(end => failureOf(frame.status, end));
     expect(read.map(error => [error.name, error.message])).toEqual(errors.map(error => [error.name, error.message]));
   });
 });
@@ -89,7 +92,7 @@ describe('fromTransportError', () => {
 
     // When
     const end = frameStatusEnd(fromTransportError(mismatch));
-    const read = failureOf('frame', 'status', end);
+    const read = failureOf(frame.status, end);
 
     // Then
     expect(end).toEqual(domain({ tag: 'versionMismatch', value: mismatch.message }));
@@ -108,14 +111,12 @@ describe('remoteFailureOf', () => {
       remoteFailureOf(named('NetworkSyncTimeoutError', 'Asset Hub did not sync')),
       remoteFailureOf(named('ApiStoppedError', 'The light client stopped')),
       remoteFailureOf(new TypeError('bad label')),
-      remoteFailureOf('not an error'),
     ];
 
     // Then
     expect(failures).toEqual([
       { tag: 'syncTimeout', value: 'Asset Hub did not sync' },
       { tag: 'apiStopped', value: 'The light client stopped' },
-      null,
       null,
     ]);
   });

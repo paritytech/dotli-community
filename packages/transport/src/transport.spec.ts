@@ -3,101 +3,77 @@
 
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { manualTimers } from '@dotli/shared/testing';
+import type { SubscriptionHandle } from './calls.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
-import { none } from './codec.js';
 import { err, hostFailure, ok, type CallError, type Result } from './result.js';
-import { defineSchema, request, wireOf } from './schema.js';
 import type { CallContext, Sink } from './serving.js';
 import {
-  HANDSHAKE,
-  VERSION,
+  echo,
   errorLog,
   issueLog,
+  notes,
   rawRig,
   rig,
   serveWatch,
   testSchema,
+  text,
+  VERSION,
   watcher,
-  type TestSchema,
 } from './testing/rig.js';
-import type { SubscriptionHandle } from './calls.js';
-import {
-  createTransport,
-  type RequestHandler,
-  type SubscriptionHandler,
-  type Transport,
-  type TransportOptions,
-} from './transport.js';
-import type { Header } from './wire.js';
+import { createTransport, type Transport, type TransportOptions } from './transport.js';
+import { encodeFrame, frame } from './wire.js';
 
-/** Collects what the shared log records as errors. */
 describe('createTransport', () => {
-  it('As a schema author, I pass a hello exactly when my schema declares one, and my calls are typed from the schema', () => {
+  it('As a schema author, my calls and handlers are typed by the method I pass', () => {
     // Given
-    const plain = defineSchema({
-      version: 1,
-      traits: { notes: { touch: request({ request: none, response: none }) } },
-    });
-    type Notes = Transport<TestSchema>;
+    type Notes = Transport<string>;
 
-    // When a transport over the schema with no hello is made without one
-    const withoutHello = (): void => {
-      createTransport(plain, createProviderPair().left, { handshake: 'accept' }).dispose(new Error('done'));
-    };
-
-    // Then
-    expectTypeOf<{ handshake: 'open'; hello: string }>().toExtend<TransportOptions<TestSchema>>();
-    expectTypeOf<{ handshake: 'open' }>().not.toExtend<TransportOptions<TestSchema>>();
-    expectTypeOf<{ handshake: 'accept' }>().toExtend<TransportOptions<typeof plain>>();
-    expectTypeOf<{ handshake: 'accept'; hello: string }>().not.toExtend<TransportOptions<typeof plain>>();
-    expectTypeOf<RequestHandler<TestSchema, 'notes', 'read'>>().toEqualTypeOf<
-      (
-        payload: string,
-        context: CallContext<TestSchema>,
-      ) => Result<string, CallError<string>> | PromiseLike<Result<string, CallError<string>>>
-    >();
-    expectTypeOf<SubscriptionHandler<TestSchema, 'notes', 'watch'>>().toEqualTypeOf<
-      (start: string, context: CallContext<TestSchema>, sink: Sink<string, string>) => () => void
-    >();
-    expectTypeOf<Parameters<SubscriptionHandler<TestSchema, 'echo', 'listen'>>[0]>().toBeVoid();
-    expectTypeOf<Parameters<SubscriptionHandler<TestSchema, 'echo', 'listen'>>[2]>().toEqualTypeOf<
-      Sink<string, never>
-    >();
-    expectTypeOf<CallContext<TestSchema>['hello']>().toEqualTypeOf<string>();
+    // When
     const typeOnly = (transport: Notes): void => {
-      expectTypeOf(transport.request('notes', 'read', 'a note')).resolves.toEqualTypeOf<
-        Result<string, CallError<string>>
-      >();
+      expectTypeOf(transport.request(notes.read, 'a note')).resolves.toEqualTypeOf<Result<string, CallError<string>>>();
       // @ts-expect-error a subscription is not a request
-      void transport.request('notes', 'watch', 'from the top');
+      void transport.request(notes.watch, 'from the top');
       // @ts-expect-error the payload is text
-      void transport.request('echo', 'say', 1);
-      const handle = transport.subscribe('notes', 'watch', 'from the top', {
+      void transport.request(echo.say, 1);
+      const handle = transport.subscribe(notes.watch, 'from the top', {
         receive: value => {
           expectTypeOf(value).toEqualTypeOf<string>();
         },
         interrupt: outcome => {
-          expectTypeOf(outcome).toEqualTypeOf<Result<void, CallError<string>>>();
+          expectTypeOf(outcome).toEqualTypeOf<Result<undefined, CallError<string>>>();
         },
       });
       expectTypeOf(handle).toEqualTypeOf<SubscriptionHandle>();
       // @ts-expect-error a request is not a subscription
-      transport.subscribe('notes', 'read', 'a note', watcher());
+      transport.subscribe(notes.read, 'a note', watcher());
       // @ts-expect-error a subscription is not served as a request
-      transport.handleRequest('notes', 'watch', () => ok());
+      transport.handleRequest(notes.watch, () => ok());
+      transport.handleRequest(notes.read, (payload, context) => {
+        expectTypeOf(payload).toEqualTypeOf<string>();
+        expectTypeOf(context).toEqualTypeOf<CallContext<string>>();
+        return ok(payload);
+      });
+      transport.handleSubscription(echo.listen, (start, _context, sink) => {
+        expectTypeOf(start).toEqualTypeOf<undefined>();
+        expectTypeOf(sink).toEqualTypeOf<Sink<string, never>>();
+        return () => undefined;
+      });
     };
+
+    // Then
+    expectTypeOf<{ handshake: 'open'; hello: string }>().toExtend<TransportOptions<string>>();
+    expectTypeOf<{ handshake: 'open' }>().not.toExtend<TransportOptions<string>>();
     expect(typeOnly).toBeTypeOf('function');
-    expect(withoutHello).not.toThrow();
   });
 
   it('As a peer, I serve and call over the same transport, and both directions work at once', async () => {
     // Given
     const { opener, accepter, timers, issues } = rig();
-    opener.handleRequest('echo', 'say', (text, { hello }) => ok(`the opener heard ${text} from the ${hello}`));
-    accepter.handleRequest('echo', 'say', (text, { hello }) => ok(`the accepter heard ${text} from the ${hello}`));
-    const fromAccepter = accepter.request('echo', 'say', 'ping');
-    const fromOpener = opener.request('echo', 'say', 'pong');
+    opener.handleRequest(echo.say, (text, { hello }) => ok(`the opener heard ${text} from the ${hello}`));
+    accepter.handleRequest(echo.say, (text, { hello }) => ok(`the accepter heard ${text} from the ${hello}`));
+    const fromAccepter = accepter.request(echo.say, 'ping');
+    const fromOpener = opener.request(echo.say, 'pong');
 
     // When
     opener.connect();
@@ -117,16 +93,16 @@ describe('createTransport', () => {
     const relayServing = downstream.accepter;
     const relayCalling = upstream.opener;
     serveWatch(upstream.accepter);
-    relayServing.handleSubscription('notes', 'watch', (start, _context, sink) => {
-      const onward = relayCalling.subscribe('notes', 'watch', start, {
+    relayServing.handleSubscription(notes.watch, (start, _context, sink) => {
+      const onward = relayCalling.subscribe(notes.watch, start, {
         receive: value => {
           sink.receive(value);
         },
         interrupt: outcome => {
-          if (outcome.ok) {
+          if (outcome.tag === 'Ok') {
             sink.interrupt();
           } else {
-            sink.interrupt(outcome.error);
+            sink.interrupt(outcome.value);
           }
         },
       });
@@ -137,7 +113,7 @@ describe('createTransport', () => {
     caller.connect();
     relayCalling.connect();
     const heard = watcher();
-    caller.subscribe('notes', 'watch', 'from the top', heard);
+    caller.subscribe(notes.watch, 'from the top', heard);
     await downstream.timers.advance(0);
     await upstream.timers.advance(0);
 
@@ -149,30 +125,6 @@ describe('createTransport', () => {
     // Then
     expect(heard.ends).toEqual([err(hostFailure('RangeError: upstream gone'))]);
     expect([...downstream.issues, ...upstream.issues]).toEqual([]);
-  });
-
-  it('As a receiver, data that is not bytes is refused as not_bytes', () => {
-    // Given
-    const listeners: ((data: ArrayBuffer) => void)[] = [];
-    const provider: Provider = {
-      post: () => undefined,
-      subscribe: listener => {
-        listeners.push(listener);
-        return () => undefined;
-      },
-      peerOrigin: () => null,
-      dispose: () => undefined,
-    };
-    const { issues, onIssue } = issueLog();
-    createTransport(testSchema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
-
-    // When a provider of the owner's hands over text
-    for (const listener of listeners) {
-      listener('no bytes' as unknown as ArrayBuffer);
-    }
-
-    // Then
-    expect(issues).toEqual([{ kind: 'refused', reason: 'not_bytes', cause: expect.any(TypeError) as TypeError }]);
   });
 
   it('As a receiver, a throw while I handle a message is reported and never reaches the provider', () => {
@@ -192,17 +144,18 @@ describe('createTransport', () => {
     };
     const { issues, onIssue } = issueLog();
     const transport = createTransport(testSchema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
-    transport.handleRequest('notes', 'touch', () => ok());
-    const hear = (message: Header & { value?: unknown }): void => {
+    transport.handleRequest(notes.touch, () => ok());
+    const hear = (data: ArrayBuffer): void => {
       for (const listener of listeners) {
-        listener(wireOf(testSchema).encode({ ...message, value: message.value }));
+        listener(data);
       }
     };
-    hear({ ...HANDSHAKE, id: 1, leg: 'request', value: { version: VERSION, hello: 'peer' } });
+    hear(encodeFrame(frame, { id: 1, body: { tag: 'open', value: { version: VERSION, hello: text.enc('peer') } } }));
 
     // When
     const call = (): void => {
-      hear({ leg: 'request', id: 2, trait: 'notes', method: 'touch', value: undefined });
+      const message = { tag: 'request' as const, value: undefined };
+      hear(encodeFrame(notes.touch.frame, { id: 3, body: { tag: 'call', value: { trait: 0, method: 1, message } } }));
     };
 
     // Then
@@ -260,8 +213,8 @@ describe('createTransport', () => {
     answerHandshake();
 
     // When
-    peer.send({ leg: 'receive', id: 40, trait: 'notes', method: 'watch', value: 'a line' });
-    peer.send({ leg: 'interrupt', id: 40, trait: 'notes', method: 'watch', value: ok() });
+    peer.call(notes.watch, 41, { tag: 'receive', value: 'a line' });
+    peer.call(notes.watch, 41, { tag: 'interrupt', value: ok() });
     await timers.advance(0);
 
     // Then
@@ -269,7 +222,7 @@ describe('createTransport', () => {
       { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
       { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
     ]);
-    expect(peer.legs()).toEqual(['request:#library.handshake']);
+    expect(peer.names()).toEqual(['open']);
   });
 
   it('As an owner with no issue hook, each issue is logged as one bounded error', async () => {

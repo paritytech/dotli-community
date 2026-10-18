@@ -1,21 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The calls this side makes: requests and subscriptions. Each waits in a task pool until the handshake is over, then
-// goes out, and what comes back is matched to it by id. Every post encodes a fresh buffer, since a transferred one is
-// detached.
+// The calls this side makes: requests and subscriptions. Each waits for the handshake to be over, then goes out. What
+// comes back carries the call's id, and the call decodes it with its own method's codec.
 
-import { createAsyncTaskPool, toError } from '@dotli/shared';
-import { decodeReason } from './errors.js';
-import { createRecentIds, type Address, type Outcome, type Post, type RunListener } from './parts.js';
-import { cancelled, err, malformedFrame, unsupported, type CallError, type Result } from './result.js';
-import type { Header, Message, Wire } from './wire.js';
+import { failureReason } from './errors.js';
+import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
+import { cancelled, err, malformedFrame, type CallError, type Result } from './result.js';
+import type { Address, Request, Subscription } from './schema.js';
+import { decode, type Call } from './wire.js';
 
 /** What a subscriber hears: each value, then one end. */
 export interface SubscriptionListeners<V, I> {
   receive(value: V): void;
-  /** The peer's end, or `Cancelled` or `MalformedFrame` raised on this side. */
-  interrupt(outcome: Result<void, CallError<I>>): void;
+  /** The peer's end, a failure the library answered with, or `Cancelled` or `MalformedFrame` raised on this side. */
+  interrupt(outcome: Result<undefined, CallError<I>>): void;
 }
 
 /** A subscription this side made. */
@@ -31,216 +30,90 @@ export interface SubscriptionHandle {
 }
 
 export interface CallsDeps {
-  wire: Wire;
   nextId: () => number;
   post: Post;
   /** Settles once the handshake succeeds or fails, or the transport closes. */
   handshakeOver: Promise<void>;
   /** The error the transport closed with, or null while it is open. */
   closedBy: () => Error | null;
-  /** Reports a message that does not fit the call it names. */
-  refuse: (cause: Error) => void;
+  refuse: Refuse;
   runListener: RunListener;
 }
 
 export interface Calls {
   /** Resolves to the peer's outcome or `Cancelled`. Rejects with the closing error, or when the call cannot go out. */
-  request(address: Address, payload: unknown, signal: AbortSignal | undefined): Promise<Outcome>;
-  /** Opens a subscription. Throws when the start does not encode. */
-  subscribe(
+  request<P, R, E>(
+    method: Request<P, R, E>,
     address: Address,
-    start: unknown,
-    listeners: SubscriptionListeners<unknown, unknown>,
+    payload: P,
+    signal: AbortSignal | undefined,
+  ): Promise<Result<R, CallError<E>>>;
+  /** Opens a subscription. Throws when the start does not encode. */
+  subscribe<S, V, I>(
+    method: Subscription<S, V, I>,
+    address: Address,
+    start: S,
+    listeners: SubscriptionListeners<V, I>,
     signal: AbortSignal | undefined,
   ): SubscriptionHandle;
-  onResponse(message: Message): void;
-  onReceive(message: Message): void;
-  onInterrupt(message: Message): void;
-  /** Ends the call an answer, value or end that did not decode names, as `MalformedFrame` with why. */
-  onUndecodable(header: Header, cause: unknown): void;
-  /** Ends the call `id` names as `Unsupported`, since the peer lacks its address. */
-  onProtocolError(id: number): void;
+  /** Hands a message the peer sent on call `id` to the call. */
+  hear(id: number, call: Call<Uint8Array>): void;
+  /** Ends call `id` with a failure the peer answered it with. */
+  fail(id: number, error: CallError<never>): void;
   /**
    * Rejects every call that went out and is still waiting with `error`, and closes every subscription with it, telling
-   * the peer to stop each open one. Calls still queued find the error as they leave.
+   * the peer to stop each open one. Calls still waiting for the handshake find the error as they leave.
    */
   close(error: Error): void;
 }
 
-interface PendingRequest extends Address {
-  id: number;
-  /** Settles the call once. Later outcomes change nothing. */
-  settle: (outcome: Outcome | Error) => void;
+/** A call that went out, as the peer's messages reach it. */
+interface OutCall {
+  address: Address;
+  hear(message: Uint8Array): void;
+  fail(error: CallError<never>): void;
+  close(error: Error): void;
 }
-
-type SubscriptionState = { name: 'queued' | 'open' | 'ended' } | { name: 'closed'; error: Error };
-
-interface Subscription extends Address {
-  id: number;
-  state: SubscriptionState;
-  listeners: SubscriptionListeners<unknown, unknown>;
-  closeListeners: ((error: Error) => void)[];
-  /** Aborted once the subscription leaves, so one still queued leaves the pool and never goes out. */
-  over: AbortController;
-  /** Stops listening to the caller's signal. */
-  detach: () => void;
-}
-
-// The peer may send on a subscription until it hears this side's stop, so a message on one stopped lately is a race and
-// dropped quietly. A message on any other subscription that is not open is the peer's fault. The ids of this many of
-// the latest stops are kept.
-const REMEMBERED_STOPS = 1_024;
 
 export function createCalls(deps: CallsDeps): Calls {
-  const { wire, post, handshakeOver, closedBy, refuse, runListener } = deps;
-  const waiting = new Map<number, PendingRequest>();
-  // Queued and open subscriptions. Messages from the peer reach only the open ones.
-  const subscriptions = new Map<number, Subscription>();
-  const lateStops = createRecentIds(REMEMBERED_STOPS);
-  // Every call waits here for the handshake to be over. It is unbounded, so calls run side by side once it is. Each call
-  // is posted one step after it was made or after the handshake ended, whichever is later, so calls go out in call order
-  // across the handshake, and a call made while the queue flushes goes out behind it.
-  const queue = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
-
-  /** Runs `send` once the handshake is over, unless the call settled meanwhile, or fails with why it cannot go out. */
-  const place = (over: AbortSignal, send: () => void, fail: (error: Error) => void): void => {
-    queue
-      .call(
-        async () => {
-          await handshakeOver;
-          // The queue has already rejected a call settled while it waited, and whatever settled it is its outcome.
-          if (over.aborted) {
-            return;
-          }
-          const closedNow = closedBy();
-          if (closedNow !== null) {
-            throw closedNow;
-          }
-          send();
-        },
-        { signal: over },
-      )
-      .catch((error: unknown) => {
-        fail(toError(error));
-      });
-  };
-
-  const send = (call: PendingRequest, payload: unknown): void => {
-    let data: ArrayBuffer;
-    try {
-      const { id, trait, method } = call;
-      data = wire.encode({ id, trait, method, leg: 'request', value: payload });
-    } catch (error) {
-      call.settle(toError(error));
-      return;
-    }
-    waiting.set(call.id, call);
-    const posted = post(data, call);
-    if (!posted.ok) {
-      call.settle(new Error('The request could not be posted', { cause: posted.error }));
-    }
-  };
-
-  /** The call waiting under the answer's id, or undefined for a late answer to a call that gave up. */
-  const answered = (id: number, address: Address): PendingRequest | undefined => {
-    const call = waiting.get(id);
-    if (call !== undefined && (call.trait !== address.trait || call.method !== address.method)) {
-      refuse(new Error(`The answer to call ${String(id)} names another method than the call`));
-      return undefined;
-    }
-    return call;
-  };
-
-  /** Takes a queued or open subscription out as `next`. Returns what it was, or null when it had already left. */
-  const leave = (subscription: Subscription, next: SubscriptionState): 'queued' | 'open' | null => {
-    const was = subscription.state.name;
-    if (was !== 'queued' && was !== 'open') {
-      return null;
-    }
-    subscription.state = next;
-    subscription.over.abort();
-    subscription.detach();
-    if (subscriptions.get(subscription.id) === subscription) {
-      subscriptions.delete(subscription.id);
-    }
-    return was;
-  };
-
-  const postStop = ({ id, trait, method }: Subscription): void => {
-    lateStops.add(id);
-    post(wire.encode({ id, trait, method, leg: 'stop', value: undefined }), { trait, method });
-  };
+  const { post, handshakeOver, closedBy, refuse, runListener } = deps;
+  // The calls that went out and wait for the peer.
+  const out = new Map<number, OutCall>();
+  const ended = createRecentIds(REMEMBERED_ENDS);
 
   /**
-   * Ends a subscription once. `outcome` is what its listener hears, or null for none. `tellPeer` stops it at the peer,
-   * when this side ends one that went out.
+   * Runs `send` once the handshake is over, unless the call ended meanwhile, or fails with the error the transport
+   * closed with. Callbacks on one promise run in the order they were added, so calls go out in call order.
    */
-  const finish = (subscription: Subscription, outcome: Outcome | null, tellPeer: boolean): void => {
-    const was = leave(subscription, { name: 'ended' });
-    if (was === null) {
-      return;
-    }
-    subscription.closeListeners.length = 0;
-    if (tellPeer && was === 'open') {
-      postStop(subscription);
-    }
-    if (outcome !== null) {
-      // An interrupt carries no value, which the wire has already checked.
-      const end = outcome as Result<void, CallError<unknown>>;
-      runListener(() => {
-        subscription.listeners.interrupt(end);
-      });
-    }
+  const place = (over: AbortSignal, send: () => void, fail: (error: Error) => void): void => {
+    void handshakeOver.then(() => {
+      if (over.aborted) {
+        return;
+      }
+      const closed = closedBy();
+      if (closed === null) {
+        send();
+      } else {
+        fail(closed);
+      }
+    });
   };
 
-  /** Closes subscriptions with `error`, which their `onClose` listeners hear. Each open one is stopped first. */
-  const shut = (closing: Subscription[], error: Error): void => {
-    const closed: Subscription[] = [];
-    for (const subscription of closing) {
-      const was = leave(subscription, { name: 'closed', error });
-      if (was === 'open') {
-        postStop(subscription);
-      }
-      if (was !== null) {
-        closed.push(subscription);
-      }
+  /** Reports a message on a call this side is not waiting on, unless it ended that call lately. */
+  const refuseStray = (id: number): void => {
+    if (!ended.has(id)) {
+      refuse('invalid', new Error(`A message names call ${String(id)}, which this side is not waiting on`));
     }
-    for (const subscription of closed) {
-      for (const listener of subscription.closeListeners.splice(0)) {
-        runListener(() => {
-          listener(error);
-        });
-      }
-    }
-  };
-
-  /** The open subscription at `id` on `address`, or undefined. */
-  const openAt = (id: number, address: Address): Subscription | undefined => {
-    const subscription = subscriptions.get(id);
-    return subscription?.state.name === 'open' &&
-      subscription.trait === address.trait &&
-      subscription.method === address.method
-      ? subscription
-      : undefined;
-  };
-
-  /** Reports a message on no open subscription of its method, unless it may have crossed this side's stop. */
-  const refuseStray = ({ id, leg }: Header): void => {
-    if (lateStops.has(id)) {
-      return;
-    }
-    refuse(
-      new Error(
-        subscriptions.get(id)?.state.name === 'open'
-          ? `The ${leg} leg for subscription ${String(id)} names another method than the subscription`
-          : `A ${leg} leg names subscription ${String(id)}, which is not open on this side`,
-      ),
-    );
   };
 
   return {
-    request(address, payload, signal) {
-      return new Promise<Outcome>((resolve, reject) => {
+    request<P, R, E>(
+      method: Request<P, R, E>,
+      address: Address,
+      payload: P,
+      signal: AbortSignal | undefined,
+    ): Promise<Result<R, CallError<E>>> {
+      return new Promise<Result<R, CallError<E>>>((resolve, reject) => {
         const closed = closedBy();
         if (closed !== null) {
           reject(closed);
@@ -250,166 +123,259 @@ export function createCalls(deps: CallsDeps): Calls {
           resolve(err(cancelled()));
           return;
         }
-        // Aborted once the call settles, so a call settled while it waits leaves the queue and never goes out.
+        const id = deps.nextId();
+        // Aborted once the call ends, so a call that ends while it waits never goes out.
         const over = new AbortController();
-        const onAbort = (): void => {
-          call.settle(err(cancelled()));
+        /** Ends the call once. Returns whether it was still going. */
+        const leave = (): boolean => {
+          if (over.signal.aborted) {
+            return false;
+          }
+          over.abort();
+          signal?.removeEventListener('abort', onAbort);
+          if (out.delete(id)) {
+            ended.add(id);
+          }
+          return true;
         };
-        const call: PendingRequest = {
-          id: deps.nextId(),
-          ...address,
-          settle: outcome => {
-            if (over.signal.aborted) {
-              return;
-            }
-            over.abort();
-            signal?.removeEventListener('abort', onAbort);
-            if (waiting.get(call.id) === call) {
-              waiting.delete(call.id);
-            }
-            if (outcome instanceof Error) {
-              reject(outcome);
+        const answer = (outcome: Result<R, CallError<E>>): void => {
+          if (leave()) {
+            resolve(outcome);
+          }
+        };
+        const abandon = (error: Error): void => {
+          if (leave()) {
+            reject(error);
+          }
+        };
+        const onAbort = (): void => {
+          answer(err(cancelled()));
+        };
+        const call: OutCall = {
+          address,
+          hear(bytes) {
+            const message = decode(method.message, bytes);
+            if (message.tag === 'Err') {
+              refuse('malformed', message.value);
+              answer(err(malformedFrame(failureReason(message.value))));
+            } else if (message.value.tag === 'response') {
+              answer(message.value.value);
             } else {
-              resolve(outcome);
+              refuse('invalid', new Error(`A request names call ${String(id)}, which this side made`));
             }
           },
+          fail(error) {
+            answer(err(error));
+          },
+          close: abandon,
         };
         signal?.addEventListener('abort', onAbort, { once: true });
         place(
           over.signal,
           () => {
-            send(call, payload);
+            const data = encodeCall(method, address, id, { tag: 'request', value: payload });
+            if (data.tag === 'Err') {
+              abandon(data.value);
+              return;
+            }
+            out.set(id, call);
+            const posted = post(data.value, address);
+            if (posted.tag === 'Err') {
+              abandon(new Error('The request could not be posted', { cause: posted.value }));
+            }
           },
-          call.settle,
+          abandon,
         );
       });
     },
 
-    subscribe(address, start, listeners, signal) {
+    subscribe<S, V, I>(
+      method: Subscription<S, V, I>,
+      address: Address,
+      start: S,
+      listeners: SubscriptionListeners<V, I>,
+      signal: AbortSignal | undefined,
+    ): SubscriptionHandle {
       const closed = closedBy();
-      const subscription: Subscription = {
-        id: deps.nextId(),
-        ...address,
-        state: closed === null ? { name: 'queued' } : { name: 'closed', error: closed },
-        listeners,
-        closeListeners: [],
-        over: new AbortController(),
-        detach: () => undefined,
+      if (closed !== null) {
+        return {
+          stop: () => undefined,
+          onClose(listener) {
+            runListener(() => {
+              listener(closed);
+            });
+          },
+        };
+      }
+      let state: { name: 'queued' | 'open' | 'ended' } | { name: 'closed'; error: Error } = { name: 'queued' };
+      const closeListeners: ((error: Error) => void)[] = [];
+      const id = deps.nextId();
+      // Aborted once the subscription leaves, so one still queued never goes out.
+      const over = new AbortController();
+
+      /** Takes the subscription out as `next`. Returns what it was, or null when it had already left. */
+      const leave = (next: typeof state): 'queued' | 'open' | null => {
+        const was = state.name;
+        if (was !== 'queued' && was !== 'open') {
+          return null;
+        }
+        state = next;
+        over.abort();
+        signal?.removeEventListener('abort', onAbort);
+        out.delete(id);
+        return was;
       };
+
+      const postStop = (): void => {
+        ended.add(id);
+        const data = encodeCall(method, address, id, { tag: 'stop', value: undefined });
+        if (data.tag === 'Ok') {
+          post(data.value, address);
+        }
+      };
+
+      /** Ends the subscription once, with `outcome` for the listener, or none. `tellPeer` stops it at the peer. */
+      const finish = (outcome: Result<undefined, CallError<I>> | null, tellPeer: boolean): void => {
+        const was = leave({ name: 'ended' });
+        if (was === null) {
+          return;
+        }
+        closeListeners.length = 0;
+        if (tellPeer && was === 'open') {
+          postStop();
+        }
+        if (outcome !== null) {
+          runListener(() => {
+            listeners.interrupt(outcome);
+          });
+        }
+      };
+
+      /** Closes the subscription with `error`, which its `onClose` listeners hear. An open one is stopped first. */
+      const shut = (error: Error): void => {
+        const was = leave({ name: 'closed', error });
+        if (was === null) {
+          return;
+        }
+        if (was === 'open') {
+          postStop();
+        }
+        for (const listener of closeListeners.splice(0)) {
+          runListener(() => {
+            listener(error);
+          });
+        }
+      };
+
+      const onAbort = (): void => {
+        finish(err(cancelled()), true);
+      };
+
       const handle: SubscriptionHandle = {
         stop() {
-          finish(subscription, null, true);
+          finish(null, true);
         },
         onClose(listener) {
-          const { state } = subscription;
           if (state.name === 'closed') {
+            const { error } = state;
             runListener(() => {
-              listener(state.error);
+              listener(error);
             });
           } else if (state.name !== 'ended') {
-            subscription.closeListeners.push(listener);
+            closeListeners.push(listener);
           }
         },
       };
-      if (closed !== null) {
-        return handle;
-      }
-      // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
-      const { id } = subscription;
-      const data = wire.encode({ id, ...address, leg: 'start', value: start });
-      const onAbort = (): void => {
-        finish(subscription, err(cancelled()), true);
+
+      const call: OutCall = {
+        address,
+        hear(bytes) {
+          const message = decode(method.message, bytes);
+          if (message.tag === 'Err') {
+            // What was lost may be a value, which leaves the subscriber behind the peer, so the subscription ends and the
+            // peer is told to stop. A stop after the peer's own end is a race it drops.
+            refuse('malformed', message.value);
+            finish(err(malformedFrame(failureReason(message.value))), true);
+            return;
+          }
+          const sent = message.value;
+          switch (sent.tag) {
+            case 'receive':
+              runListener(() => {
+                listeners.receive(sent.value);
+              });
+              return;
+            case 'interrupt':
+              finish(sent.value, false);
+              return;
+            case 'start':
+            case 'stop':
+              refuse('invalid', new Error(`A ${sent.tag} names subscription ${String(id)}, which this side made`));
+          }
+        },
+        fail(error) {
+          finish(err(error), false);
+        },
+        close: shut,
       };
-      subscriptions.set(id, subscription);
+
+      // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
+      const data = encodeCall(method, address, id, { tag: 'start', value: start });
+      if (data.tag === 'Err') {
+        throw data.value;
+      }
       if (signal?.aborted === true) {
         // Heard on a microtask, so no listener runs before the caller holds its handle.
         queueMicrotask(onAbort);
         return handle;
       }
       signal?.addEventListener('abort', onAbort, { once: true });
-      subscription.detach = () => {
-        signal?.removeEventListener('abort', onAbort);
-      };
       place(
-        subscription.over.signal,
+        over.signal,
         () => {
-          lateStops.delete(id);
-          const posted = post(data, address);
-          if (!posted.ok) {
-            shut([subscription], new Error('The start could not be posted', { cause: posted.error }));
+          out.set(id, call);
+          const posted = post(data.value, address);
+          if (posted.tag === 'Err') {
+            shut(new Error('The start could not be posted', { cause: posted.value }));
             return;
           }
           // Open only once the start went out, so a stop or a close from the issue hook of a failed post sees nothing
           // the peer could stop.
-          if (subscription.state.name === 'queued') {
-            subscription.state = { name: 'open' };
+          if (state.name === 'queued') {
+            state = { name: 'open' };
           }
         },
-        error => {
-          shut([subscription], error);
-        },
+        shut,
       );
       return handle;
     },
 
-    onResponse(message) {
-      // The wire decoded the value as the method's outcome.
-      answered(message.id, message)?.settle(message.value as Outcome);
+    hear(id, call) {
+      const outCall = out.get(id);
+      if (outCall === undefined) {
+        refuseStray(id);
+        return;
+      }
+      if (outCall.address.traitId !== call.trait || outCall.address.methodId !== call.method) {
+        refuse('invalid', new Error(`A message for call ${String(id)} names another method than the call`));
+        return;
+      }
+      outCall.hear(call.message);
     },
 
-    onReceive(message) {
-      const subscription = openAt(message.id, message);
-      if (subscription === undefined) {
-        refuseStray(message);
+    fail(id, error) {
+      const outCall = out.get(id);
+      if (outCall === undefined) {
+        refuseStray(id);
         return;
       }
-      runListener(() => {
-        subscription.listeners.receive(message.value);
-      });
-    },
-
-    onInterrupt(message) {
-      const subscription = openAt(message.id, message);
-      if (subscription === undefined) {
-        refuseStray(message);
-        return;
-      }
-      finish(subscription, message.value as Outcome, false);
-    },
-
-    onUndecodable(header, cause) {
-      const outcome = err(malformedFrame(decodeReason(cause)));
-      if (header.leg === 'response') {
-        answered(header.id, header)?.settle(outcome);
-        return;
-      }
-      if (header.leg !== 'interrupt' && header.leg !== 'receive') {
-        return;
-      }
-      const subscription = openAt(header.id, header);
-      if (subscription !== undefined) {
-        // A lost value leaves the subscriber behind the peer, so the subscription ends and the peer is told to stop.
-        finish(subscription, outcome, header.leg === 'receive');
-      }
-    },
-
-    onProtocolError(id) {
-      const call = waiting.get(id);
-      if (call !== undefined) {
-        call.settle(err(unsupported()));
-        return;
-      }
-      const subscription = subscriptions.get(id);
-      if (subscription?.state.name === 'open') {
-        finish(subscription, err(unsupported()), false);
-      }
+      outCall.fail(error);
     },
 
     close(error) {
-      for (const call of [...waiting.values()]) {
-        call.settle(error);
+      for (const outCall of [...out.values()]) {
+        outCall.close(error);
       }
-      shut([...subscriptions.values()], error);
     },
   };
 }

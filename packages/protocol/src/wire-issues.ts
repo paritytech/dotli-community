@@ -4,38 +4,42 @@
 // What a transport cannot handle itself, reported as the protocol has always counted and logged it.
 
 import { captureException, reportListener, spans as S, type m } from '@dotli/metrics';
-import { errorName, log, toError } from '@dotli/shared';
+import { errorName, log } from '@dotli/shared';
 import type { TransportIssue } from '@dotli/transport';
-import { callNameOf } from './call-names.js';
+import { callNameAt } from './call-names.js';
 
 // A refused message's cause in the log, enough to tell decode failures apart.
 const MAX_CAUSE_CHARS = 200;
 
 type WireSide = 'host' | 'frame' | 'worker';
 
+/** What the transport hands its owner, and data a provider dropped as no bytes, which only the owner hears. */
+export type WireIssue = TransportIssue | { kind: 'refused'; reason: 'not_bytes' };
+
 /**
  * Counts and logs each issue of the transport on `side`. A refused message is counted once with its reason, a post the
  * provider threw on is captured, logged and counted, and a listener that threw is reported as a listener.
  */
-export function createIssueReporter(side: WireSide, count: typeof m.count): (issue: TransportIssue) => void {
+export function createIssueReporter(side: WireSide, count: typeof m.count): (issue: WireIssue) => void {
   const listenerThrew = reportListener('protocol', 'protocol.transport');
   return issue => {
     switch (issue.kind) {
       case 'refused': {
-        const { reason, cause } = issue;
+        const { reason } = issue;
         count(S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason, side });
-        const failure = cause === undefined ? null : toError(cause);
         log.event('protocol message refused', {
           flow: 'protocol',
           reason,
           side,
-          ...(failure === null ? {} : { cause: `${failure.name}: ${failure.message}`.slice(0, MAX_CAUSE_CHARS) }),
+          ...('cause' in issue
+            ? { cause: `${issue.cause.name}: ${issue.cause.message}`.slice(0, MAX_CAUSE_CHARS) }
+            : {}),
         });
         return;
       }
       case 'post_failed': {
         const { error, call } = issue;
-        const method = call === undefined ? null : callNameOf(call.trait, call.method);
+        const method = call === undefined ? null : callNameAt(call.trait, call.method);
         captureException(error, {
           flow: 'protocol',
           step: 'serve_post',

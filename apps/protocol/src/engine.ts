@@ -9,35 +9,27 @@ import { TIMEOUTS } from '@dotli/config';
 import { reportListener } from '@dotli/metrics';
 import {
   budgetOf,
+  type ProtocolHandler,
+  protocolSchema,
+  type ProtocolServing,
+  type RemoteFailure,
   remoteFailureOf,
   RESOLVE_BUDGET_MS,
-  type ProtocolSchema,
-  type ProtocolTransport,
-  type RemoteFailure,
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
-import {
-  domain,
-  err,
-  hostFailure,
-  ok,
-  type CallError,
-  type RequestHandler,
-  type Result,
-  type SubscriptionHandler,
-} from '@dotli/transport';
+import { domain, err, hostFailure, ok, type CallError, type Result } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
-type S = ProtocolSchema;
+const methods = protocolSchema.traits;
 
-type ChainSink = Parameters<SubscriptionHandler<S, 'chain', 'connect'>>[2];
+type ChainSink = Parameters<ProtocolHandler<typeof methods.chain.connect>>[2];
 
 export interface EngineScope {
   /** Opens a chain connection for the subscription. Stopping it disconnects it, and a chain halt ends it cleanly. */
-  connect: SubscriptionHandler<S, 'chain', 'connect'>;
-  send: RequestHandler<S, 'chain', 'send'>;
+  connect: ProtocolHandler<typeof methods.chain.connect>;
+  send: ProtocolHandler<typeof methods.chain.send>;
   /**
    * Ends each connection's subscription cleanly, releases it and returns how many there were. The scope stays
    * usable.
@@ -48,12 +40,12 @@ export interface EngineScope {
 export interface ProtocolEngine {
   /** A new tab's scope. The iframe modes serve one tab, the SharedWorker one per port. */
   openScope: () => EngineScope;
-  warmup: RequestHandler<S, 'frame', 'warmup'>;
+  warmup: ProtocolHandler<typeof methods.frame.warmup>;
   /** Sends each phase, then the result, then ends cleanly. */
-  resolveDotName: SubscriptionHandler<S, 'resolve', 'dotName'>;
-  resolveOwner: RequestHandler<S, 'resolve', 'owner'>;
-  resolveExecutableManifest: RequestHandler<S, 'resolve', 'executableManifest'>;
-  resolveRootManifest: RequestHandler<S, 'resolve', 'rootManifest'>;
+  resolveDotName: ProtocolHandler<typeof methods.resolve.dotName>;
+  resolveOwner: ProtocolHandler<typeof methods.resolve.owner>;
+  resolveExecutableManifest: ProtocolHandler<typeof methods.resolve.executableManifest>;
+  resolveRootManifest: ProtocolHandler<typeof methods.resolve.rootManifest>;
   cleanup: () => void;
 }
 
@@ -104,7 +96,7 @@ async function answerRead<T>(read: () => Promise<T>): Promise<Result<T, CallErro
   try {
     return ok(await read());
   } catch (error) {
-    const failure = remoteFailureOf(error);
+    const failure = remoteFailureOf(toError(error));
     if (failure === null) {
       throw error;
     }
@@ -113,21 +105,21 @@ async function answerRead<T>(read: () => Promise<T>): Promise<Result<T, CallErro
 }
 
 /** How a read that failed with `error` ends its subscription. */
-function readEnd(error: unknown): CallError<RemoteFailure> {
+function readEnd(error: Error): CallError<RemoteFailure> {
   const failure = remoteFailureOf(error);
-  return failure === null ? hostFailure(toError(error)) : domain(failure);
+  return failure === null ? hostFailure(error) : domain(failure);
 }
 
 /** Serves a new scope of `engine` on `serving`: that scope's chain connections, and the engine's name reads. */
-export function serveEngineScope(serving: ProtocolTransport, engine: ProtocolEngine): EngineScope {
+export function serveEngineScope(serving: ProtocolServing, engine: ProtocolEngine): EngineScope {
   const scope = engine.openScope();
-  serving.handleRequest('frame', 'warmup', engine.warmup);
-  serving.handleSubscription('resolve', 'dotName', engine.resolveDotName);
-  serving.handleRequest('resolve', 'owner', engine.resolveOwner);
-  serving.handleRequest('resolve', 'executableManifest', engine.resolveExecutableManifest);
-  serving.handleRequest('resolve', 'rootManifest', engine.resolveRootManifest);
-  serving.handleSubscription('chain', 'connect', scope.connect);
-  serving.handleRequest('chain', 'send', scope.send);
+  serving.handleRequest(methods.frame.warmup, engine.warmup);
+  serving.handleSubscription(methods.resolve.dotName, engine.resolveDotName);
+  serving.handleRequest(methods.resolve.owner, engine.resolveOwner);
+  serving.handleRequest(methods.resolve.executableManifest, engine.resolveExecutableManifest);
+  serving.handleRequest(methods.resolve.rootManifest, engine.resolveRootManifest);
+  serving.handleSubscription(methods.chain.connect, scope.connect);
+  serving.handleRequest(methods.chain.send, scope.send);
   return scope;
 }
 
@@ -301,13 +293,13 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
             } catch (error) {
               report(error);
               // The host hears a failure instead of waiting on a read that is over.
-              end(readEnd(error));
+              end(readEnd(toError(error)));
               return;
             }
             end();
           },
           (error: unknown) => {
-            end(readEnd(error));
+            end(readEnd(toError(error)));
           },
         );
       // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.
@@ -317,19 +309,23 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       answerRead(() => {
         const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
         assertStr(label, 'label');
-        return resolver.resolveOwner(label, syncOptions(budgetOf('resolve', 'owner')));
+        return resolver.resolveOwner(label, syncOptions(budgetOf(methods.resolve.owner)));
       }),
     resolveExecutableManifest: ({ label, kind }) =>
       answerRead(() => {
         const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
         assertStr(label, 'label');
-        return resolver.resolveExecutableManifest(label, kind, syncOptions(budgetOf('resolve', 'executableManifest')));
+        return resolver.resolveExecutableManifest(
+          label,
+          kind,
+          syncOptions(budgetOf(methods.resolve.executableManifest)),
+        );
       }),
     resolveRootManifest: ({ label }) =>
       answerRead(() => {
         const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
         assertStr(label, 'label');
-        return resolver.resolveRootManifest(label, syncOptions(budgetOf('resolve', 'rootManifest')));
+        return resolver.resolveRootManifest(label, syncOptions(budgetOf(methods.resolve.rootManifest)));
       }),
     cleanup,
   };

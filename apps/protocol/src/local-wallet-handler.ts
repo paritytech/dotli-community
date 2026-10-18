@@ -7,9 +7,9 @@
 import {
   isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
+  protocolSchema,
   type ProtocolContext,
-  type ProtocolSchema,
-  type ProtocolTransport,
+  type ProtocolServing,
 } from '@dotli/protocol';
 import {
   forgetLocalWallet,
@@ -19,9 +19,11 @@ import {
   updateLocalWalletIdentity,
   type LocalWalletStore,
 } from '@dotli/storage';
-import { denied, err, ok, type CallError, type MethodTypes, type Result } from '@dotli/transport';
+import { type CallError, denied, err, type MethodTypes, ok, type Result } from '@dotli/transport';
 
-type WalletRead = Extract<MethodTypes<ProtocolSchema, 'wallet', 'read'>['response'], { ok: true }>['value'];
+const { wallet } = protocolSchema.traits;
+
+type WalletRead = Extract<MethodTypes<typeof wallet.read>['response'], { tag: 'Ok' }>['value'];
 
 const pageWallet: LocalWalletStore = { forgetLocalWallet, loadLocalWallet, saveLocalWallet, updateLocalWalletIdentity };
 
@@ -34,21 +36,17 @@ function assertEntropy(value: Uint8Array): void {
 }
 
 /**
- * Runs `use` once the call's origin and site check, or answers the call's refusal. Holds the shared-auth trust boundary
- * on any transport the wallet is served over.
+ * The refusal of a call whose origin does not check, or null to serve it. A site that does not check throws. Holds the
+ * shared-auth trust boundary on any transport the wallet is served over.
  */
-async function admitted<T>(
-  payload: { siteId: string },
-  context: ProtocolContext,
-  use: () => Promise<T>,
-): Promise<Result<T, CallError<never>>> {
+function refusalOf(payload: { siteId: string }, context: ProtocolContext): Result<never, CallError<never>> | null {
   if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
     return err(denied());
   }
   if (!isSharedAuthSiteId(payload.siteId)) {
     throw new Error(`Invalid siteId: ${String(payload.siteId)}`);
   }
-  return ok(await use());
+  return null;
 }
 
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
@@ -68,18 +66,31 @@ async function read(store: LocalWalletStore): Promise<WalletRead> {
 }
 
 /** Serves the wallet to host pages on `serving`, over the page's own wallet store by default. */
-export function serveLocalWallet(serving: ProtocolTransport, store: LocalWalletStore = pageWallet): void {
-  serving.handleRequest('wallet', 'read', (payload, context) => admitted(payload, context, () => read(store)));
-  serving.handleRequest('wallet', 'save', (payload, context) =>
-    admitted(payload, context, async () => {
-      assertEntropy(payload.entropy);
-      await store.saveLocalWallet(payload.entropy);
-    }),
-  );
-  serving.handleRequest('wallet', 'identity', (payload, context) =>
-    admitted(payload, context, () => store.updateLocalWalletIdentity(payload.identity)),
-  );
-  serving.handleRequest('wallet', 'forget', (payload, context) =>
-    admitted(payload, context, () => store.forgetLocalWallet()),
-  );
+export function serveLocalWallet(serving: ProtocolServing, store: LocalWalletStore = pageWallet): void {
+  serving.handleRequest(wallet.read, async (payload, context) => refusalOf(payload, context) ?? ok(await read(store)));
+  serving.handleRequest(wallet.save, async (payload, context) => {
+    const refusal = refusalOf(payload, context);
+    if (refusal !== null) {
+      return refusal;
+    }
+    assertEntropy(payload.entropy);
+    await store.saveLocalWallet(payload.entropy);
+    return ok();
+  });
+  serving.handleRequest(wallet.identity, async (payload, context) => {
+    const refusal = refusalOf(payload, context);
+    if (refusal !== null) {
+      return refusal;
+    }
+    await store.updateLocalWalletIdentity(payload.identity);
+    return ok();
+  });
+  serving.handleRequest(wallet.forget, async (payload, context) => {
+    const refusal = refusalOf(payload, context);
+    if (refusal !== null) {
+      return refusal;
+    }
+    await store.forgetLocalWallet();
+    return ok();
+  });
 }

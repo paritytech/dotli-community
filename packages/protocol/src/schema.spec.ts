@@ -2,61 +2,149 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { fromHex, toError } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
 import {
   createTransport,
   domain,
   err,
+  hostFailure,
   malformedFrame,
   ok,
+  type AnyMethod,
   type CallError,
   type DomainError,
-  type MethodName,
-  type MethodTypes,
+  type Request,
   type Result,
-  type Sink,
-  type SubscriptionHandle,
-  type TraitName,
+  type Subscription,
+  type TransportIssue,
 } from '@dotli/transport';
-import { MessageRefusedError, createProviderPair, describeMessage } from '@dotli/transport/testing';
-import { protocolSchema, type ProtocolSchema } from './schema.js';
+import { FrameRefusedError, createProviderPair, readFrame, readMessage } from '@dotli/transport/testing';
+import { protocolSchema, type ProtocolHello, type ProtocolSchema, type ProtocolTransport } from './schema.js';
+import { messagesOf, recordWireMessage, type RecordedWireMessage } from './testing/index.js';
 
-type S = ProtocolSchema;
+const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
-/** What one method sends in a test: a request with each answer it tries, or a start with its values and each end. */
-type SampleOf<T extends TraitName<S>, M extends MethodName<S, T>> =
-  MethodTypes<S, T, M> extends { request: infer P; response: infer R }
-    ? { request: P; responses: R[] }
-    : MethodTypes<S, T, M> extends { start: infer St; receive: infer V; interrupt: infer I }
-      ? { start: St; values: V[]; interrupts: I[] }
-      : never;
+type Traits = ProtocolSchema['traits'];
 
-// Typed against the schema, so a method without a sample, or a sample of the wrong shape, fails to compile.
-type Samples = { [T in TraitName<S>]: { [M in MethodName<S, T>]: SampleOf<T, M> } };
+/** What a call heard: how many calls it made, and the check of what they heard and sent. */
+interface Heard {
+  calls: number;
+  check(recorded: RecordedWireMessage[]): void;
+}
 
-type AnySample =
-  | { request: unknown; responses: unknown[] }
-  | { start: unknown; values: unknown[]; interrupts: Result<void, CallError<unknown>>[] };
+/** One method with its samples: served by the accepter, then called by the opener once per sample. */
+interface Case {
+  method: AnyMethod;
+  serve(server: ProtocolTransport, hellos: ProtocolHello[]): void;
+  call(caller: ProtocolTransport): Promise<Heard>;
+}
 
-/** The transport with its names and payloads untyped, so a test can walk the schema by its sample table. */
-interface LooseTransport {
-  request(trait: string, method: string, payload: unknown): Promise<unknown>;
-  handleRequest(
-    trait: string,
-    method: string,
-    handler: (payload: unknown, context: { hello: unknown }) => unknown,
-  ): void;
-  subscribe(
-    trait: string,
-    method: string,
-    start: unknown,
-    listeners: { receive(value: unknown): void; interrupt(outcome: Result<void, CallError<unknown>>): void },
-  ): SubscriptionHandle;
-  handleSubscription(
-    trait: string,
-    method: string,
-    handler: (start: unknown, context: { hello: unknown }, sink: Sink<unknown, unknown>) => () => void,
-  ): void;
+// Typed against the schema, so a method without a case fails to compile.
+type Cases = { [T in keyof Traits]: { [M in keyof Traits[T]]: Case } };
+
+/** A sample that is missing, which fails the test that reads it. */
+const NO_SAMPLE = hostFailure('Error: no sample left');
+
+/** A request with each answer it tries. */
+function requestCase<P, R, E>(
+  method: Request<P, R, E>,
+  sample: { request: NoInfer<P>; responses: Result<NoInfer<R>, CallError<NoInfer<E>>>[] },
+): Case {
+  return {
+    method,
+    serve(server, hellos) {
+      let run = 0;
+      server.handleRequest(method, (_payload, context) => {
+        hellos.push(context.hello);
+        return sample.responses[run++] ?? err(NO_SAMPLE);
+      });
+    },
+    async call(caller) {
+      const outcomes: Result<R, CallError<E>>[] = [];
+      for (const _ of sample.responses) {
+        outcomes.push(await caller.request(method, sample.request));
+      }
+      return {
+        calls: outcomes.length,
+        check(recorded) {
+          expect(outcomes).toEqual(sample.responses);
+          expect(messagesOf(method, recorded)).toEqual(
+            sample.responses.flatMap(response => [
+              { tag: 'request', value: sample.request },
+              { tag: 'response', value: response },
+            ]),
+          );
+        },
+      };
+    },
+  };
+}
+
+/** Subscribes once and settles with the values heard and the one end. */
+function heardUntilEnd<S, V, I>(
+  transport: ProtocolTransport,
+  method: Subscription<S, V, I>,
+  start: NoInfer<S>,
+): Promise<{ values: V[]; end: Result<undefined, CallError<I>> }> {
+  const values: V[] = [];
+  return new Promise(settle => {
+    transport.subscribe(method, start, {
+      receive: value => values.push(value),
+      interrupt: end => {
+        settle({ values, end });
+      },
+    });
+  });
+}
+
+/** A subscription with the values it sends before each of its ends. */
+function subscriptionCase<S, V, I>(
+  method: Subscription<S, V, I>,
+  sample: {
+    start: NoInfer<S>;
+    values: NoInfer<V>[];
+    interrupts: Result<undefined, CallError<NoInfer<I>>>[];
+  },
+): Case {
+  return {
+    method,
+    serve(server, hellos) {
+      let run = 0;
+      server.handleSubscription(method, (_start, context, sink) => {
+        hellos.push(context.hello);
+        for (const value of sample.values) {
+          sink.receive(value);
+        }
+        const end = sample.interrupts[run++] ?? err(NO_SAMPLE);
+        if (end.tag === 'Err') {
+          sink.interrupt(end.value);
+        } else {
+          sink.interrupt();
+        }
+        return () => undefined;
+      });
+    },
+    async call(caller) {
+      const heard: { values: V[]; end: Result<undefined, CallError<I>> }[] = [];
+      for (const _ of sample.interrupts) {
+        heard.push(await heardUntilEnd(caller, method, sample.start));
+      }
+      return {
+        calls: heard.length,
+        check(recorded) {
+          expect(heard).toEqual(sample.interrupts.map(end => ({ values: sample.values, end })));
+          expect(messagesOf(method, recorded)).toEqual(
+            sample.interrupts.flatMap(end => [
+              { tag: 'start', value: sample.start },
+              ...sample.values.map(value => ({ tag: 'receive', value })),
+              { tag: 'interrupt', value: end },
+            ]),
+          );
+        },
+      };
+    },
+  };
 }
 
 const siteKey = { siteId: 'app.dot', key: 'session' };
@@ -64,9 +152,9 @@ const siteKeyValue = { ...siteKey, value: 'token' };
 const syncTimeout = domain({ tag: 'syncTimeout' as const, value: 'Asset Hub did not sync in time' });
 const apiStopped = domain({ tag: 'apiStopped' as const, value: 'The light client stopped' });
 
-const samples: Samples = {
+const cases: Cases = {
   frame: {
-    status: {
+    status: subscriptionCase(frame.status, {
       start: undefined,
       values: [undefined],
       interrupts: [
@@ -75,11 +163,11 @@ const samples: Samples = {
         err(domain({ tag: 'initFailed', value: 'the database did not open' })),
         err(domain({ tag: 'released', value: 'the port was released' })),
       ],
-    },
-    heartbeat: { request: undefined, responses: [ok()] },
-    beat: { start: undefined, values: [undefined, undefined], interrupts: [ok()] },
-    warmup: { request: undefined, responses: [ok()] },
-    telemetry: {
+    }),
+    heartbeat: requestCase(frame.heartbeat, { request: undefined, responses: [ok()] }),
+    beat: subscriptionCase(frame.beat, { start: undefined, values: [undefined, undefined], interrupts: [ok()] }),
+    warmup: requestCase(frame.warmup, { request: undefined, responses: [ok()] }),
+    telemetry: subscriptionCase(frame.telemetry, {
       start: undefined,
       values: [
         { tag: 'chainSync', value: { chain: 'relay', kind: 'peers', peers: 8, isSyncing: true } },
@@ -91,11 +179,14 @@ const samples: Samples = {
         { tag: 'smoldotDb', value: { chain: 'bulletin', outcome: 'miss' } },
       ],
       interrupts: [ok()],
-    },
+    }),
   },
   resolve: {
-    owner: { request: { label: 'app' }, responses: [ok('5Grwva'), ok(null), err(syncTimeout), err(apiStopped)] },
-    executableManifest: {
+    owner: requestCase(resolve.owner, {
+      request: { label: 'app' },
+      responses: [ok('5Grwva'), ok(null), err(syncTimeout), err(apiStopped)],
+    }),
+    executableManifest: requestCase(resolve.executableManifest, {
       request: { label: 'app', kind: 'worker' },
       responses: [
         ok({
@@ -106,8 +197,8 @@ const samples: Samples = {
         ok({ kind: 'empty' }),
         err(apiStopped),
       ],
-    },
-    rootManifest: {
+    }),
+    rootManifest: requestCase(resolve.rootManifest, {
       request: { label: 'app' },
       responses: [
         ok({
@@ -117,8 +208,8 @@ const samples: Samples = {
         }),
         err(syncTimeout),
       ],
-    },
-    dotName: {
+    }),
+    dotName: subscriptionCase(resolve.dotName, {
       start: { label: 'app' },
       values: [
         { tag: 'phase', value: 'asset-hub-syncing' },
@@ -126,23 +217,23 @@ const samples: Samples = {
         { tag: 'resolved', value: null },
       ],
       interrupts: [ok(), err(syncTimeout), err(apiStopped)],
-    },
+    }),
   },
   storage: {
-    authRead: { request: siteKey, responses: [ok('token'), ok(null)] },
-    authWrite: { request: siteKeyValue, responses: [ok()] },
-    authClear: { request: siteKey, responses: [ok()] },
-    authChanges: {
+    authRead: requestCase(storage.authRead, { request: siteKey, responses: [ok('token'), ok(null)] }),
+    authWrite: requestCase(storage.authWrite, { request: siteKeyValue, responses: [ok()] }),
+    authClear: requestCase(storage.authClear, { request: siteKey, responses: [ok()] }),
+    authChanges: subscriptionCase(storage.authChanges, {
       start: undefined,
       values: [siteKeyValue, { ...siteKey, value: null }],
       interrupts: [ok()],
-    },
-    modeRead: { request: siteKey, responses: [ok('wallet'), ok(null)] },
-    modeWrite: { request: siteKeyValue, responses: [ok()] },
-    modeClear: { request: siteKey, responses: [ok()] },
+    }),
+    modeRead: requestCase(storage.modeRead, { request: siteKey, responses: [ok('wallet'), ok(null)] }),
+    modeWrite: requestCase(storage.modeWrite, { request: siteKeyValue, responses: [ok()] }),
+    modeClear: requestCase(storage.modeClear, { request: siteKey, responses: [ok()] }),
   },
   wallet: {
-    read: {
+    read: requestCase(wallet.read, {
       request: { siteId: 'app.dot' },
       responses: [
         ok({ tag: 'none', value: undefined }),
@@ -153,26 +244,34 @@ const samples: Samples = {
         }),
         ok({ tag: 'ok', value: { entropy: Uint8Array.of(4, 5, 6), identity: null } }),
       ],
-    },
-    save: { request: { siteId: 'app.dot', entropy: Uint8Array.of(9, 8, 7) }, responses: [ok()] },
-    identity: {
+    }),
+    save: requestCase(wallet.save, {
+      request: { siteId: 'app.dot', entropy: Uint8Array.of(9, 8, 7) },
+      responses: [ok()],
+    }),
+    identity: requestCase(wallet.identity, {
       request: { siteId: 'app.dot', identity: { identityAccountId: '5Grwva', liteUsername: 'alice' } },
       responses: [ok()],
-    },
-    forget: { request: { siteId: 'app.dot' }, responses: [ok()] },
+    }),
+    forget: requestCase(wallet.forget, { request: { siteId: 'app.dot' }, responses: [ok()] }),
   },
   chain: {
-    send: { request: { connectionId: 'c1', message: '{"jsonrpc":"2.0","id":1}' }, responses: [ok()] },
-    connect: {
+    send: requestCase(chain.send, {
+      request: { connectionId: 'c1', message: '{"jsonrpc":"2.0","id":1}' },
+      responses: [ok()],
+    }),
+    connect: subscriptionCase(chain.connect, {
       start: { genesisHash: '0x91b171bb', connectionId: 'c1' },
       values: [
         { tag: 'connected', value: undefined },
         { tag: 'message', value: '{"jsonrpc":"2.0","id":1,"result":null}' },
       ],
       interrupts: [ok(), err(apiStopped)],
-    },
+    }),
   },
 };
+
+const allCases: Case[] = Object.values(cases).flatMap(methods => Object.values(methods));
 
 const OPENER_HELLO = { resolutionId: 'resolution-1' };
 const ACCEPTER_HELLO = { resolutionId: null };
@@ -180,128 +279,76 @@ const ACCEPTER_HELLO = { resolutionId: null };
 /** An opener on the left and an accepter on the right of one in-memory channel, both over the protocol schema. */
 function protocolRig() {
   const { left, right, delivered } = createProviderPair();
+  const issues: TransportIssue[] = [];
   const opener = createTransport(protocolSchema, left, {
     handshake: 'open',
     hello: OPENER_HELLO,
     timers: manualTimers(),
+    onIssue: issue => issues.push(issue),
   });
   const accepter = createTransport(protocolSchema, right, { handshake: 'accept', hello: ACCEPTER_HELLO });
-  return { opener, accepter, delivered };
+  return { opener, accepter, delivered, issues };
 }
 
-/** Subscribes once and settles with the values heard and the one end. */
-async function heardUntilEnd(transport: LooseTransport, trait: string, method: string, start: unknown) {
-  const values: unknown[] = [];
-  const end = await new Promise<Result<void, CallError<unknown>>>(resolve => {
-    transport.subscribe(trait, method, start, {
-      receive: value => values.push(value),
-      interrupt: resolve,
-    });
+/** A handshake frame with its hello decoded. */
+type HandshakeFrame =
+  { open: { version: number; hello: ProtocolHello } } | { accept: Result<ProtocolHello, { version: number }> };
+
+/** The handshake frames in `delivered`. */
+function handshakeOf(delivered: ArrayBuffer[]): HandshakeFrame[] {
+  return delivered.flatMap((data): HandshakeFrame[] => {
+    const read = readFrame(protocolSchema, data);
+    switch (read.kind) {
+      case 'open':
+        return [{ open: { version: read.value.version, hello: protocolSchema.hello.dec(read.value.hello) } }];
+      case 'accept':
+        return [
+          { accept: read.value.tag === 'Ok' ? ok(protocolSchema.hello.dec(read.value.value)) : err(read.value.value) },
+        ];
+      case 'failed':
+      case 'call':
+        return [];
+    }
   });
-  return { values, end };
-}
-
-function entries(): [string, string, AnySample][] {
-  return Object.entries(samples).flatMap(([trait, methods]) =>
-    Object.entries(methods as Record<string, AnySample>).map(([method, sample]): [string, string, AnySample] => [
-      trait,
-      method,
-      sample,
-    ]),
-  );
 }
 
 describe('protocolSchema', () => {
   it('As the protocol, every method round trips its values through the schema', async () => {
     // Given an opener and an accepter that serves every method with its samples
     const { opener, accepter, delivered } = protocolRig();
-    const caller: LooseTransport = opener;
-    const server: LooseTransport = accepter;
-    const hellos: unknown[] = [];
-    for (const [trait, method, sample] of entries()) {
-      if ('request' in sample) {
-        let run = 0;
-        server.handleRequest(trait, method, (_payload, context) => {
-          hellos.push(context.hello);
-          return sample.responses[run++];
-        });
-      } else {
-        let run = 0;
-        server.handleSubscription(trait, method, (_start, context, sink) => {
-          hellos.push(context.hello);
-          for (const value of sample.values) {
-            sink.receive(value);
-          }
-          const end = sample.interrupts[run++];
-          if (end?.ok === false) {
-            sink.interrupt(end.error);
-          } else {
-            sink.interrupt();
-          }
-          return () => undefined;
-        });
-      }
+    const hellos: ProtocolHello[] = [];
+    for (const sample of allCases) {
+      sample.serve(accepter, hellos);
     }
     opener.connect();
     await opener.whenConnected();
 
     // When every method is called with each of its samples
-    const heard = new Map<string, unknown[]>();
-    for (const [trait, method, sample] of entries()) {
-      const outcomes: unknown[] = [];
-      if ('request' in sample) {
-        for (const _ of sample.responses) {
-          outcomes.push(await caller.request(trait, method, sample.request));
-        }
-      } else {
-        for (const _ of sample.interrupts) {
-          outcomes.push(await heardUntilEnd(caller, trait, method, sample.start));
-        }
-      }
-      heard.set(`${trait}.${method}`, outcomes);
+    const heard: Heard[] = [];
+    for (const sample of allCases) {
+      heard.push(await sample.call(opener));
     }
 
     // Then each side reads what the other sent, and the recorded messages carry the same values
-    const described = delivered.map(data => describeMessage(protocolSchema, data));
-    for (const [trait, method, sample] of entries()) {
-      const address = `${trait}.${method}`;
-      const messages = described
-        .filter(message => `${message.trait}.${message.method}` === address)
-        .map(({ leg, body }) => ({ leg, body }));
-      if ('request' in sample) {
-        expect(heard.get(address), address).toEqual(sample.responses);
-        expect(messages, address).toEqual(
-          sample.responses.flatMap(response => [
-            { leg: 'request', body: sample.request },
-            { leg: 'response', body: response },
-          ]),
-        );
-      } else {
-        expect(heard.get(address), address).toEqual(sample.interrupts.map(end => ({ values: sample.values, end })));
-        expect(messages, address).toEqual(
-          sample.interrupts.flatMap(end => [
-            { leg: 'start', body: sample.start },
-            ...sample.values.map(value => ({ leg: 'receive', body: value })),
-            { leg: 'interrupt', body: end },
-          ]),
-        );
-      }
+    expect(allCases.map(sample => sample.method)).toEqual([...protocolSchema.addresses.keys()]);
+    const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
+    for (const calls of heard) {
+      calls.check(recorded);
     }
     // Every call and every start reached a handler that read the opener's hello.
-    expect(hellos).toEqual([...heard.values()].flat().map(() => OPENER_HELLO));
-    // The handshake is the library's own, so it is every message outside the protocol's traits.
-    const traits = new Set(Object.keys(samples));
-    const handshake = described.filter(message => !traits.has(message.trait)).map(({ leg, body }) => ({ leg, body }));
-    expect(handshake).toEqual([
-      { leg: 'request', body: { version: 3, hello: OPENER_HELLO } },
-      { leg: 'response', body: ok(ACCEPTER_HELLO) },
+    const callCount = heard.reduce((sum, calls) => sum + calls.calls, 0);
+    expect(hellos).toEqual(Array.from({ length: callCount }, () => OPENER_HELLO));
+    // The handshake is the library's own, so its frames carry no call.
+    expect(handshakeOf(delivered)).toEqual([
+      { open: { version: protocolSchema.version, hello: OPENER_HELLO } },
+      { accept: ok(ACCEPTER_HELLO) },
     ]);
   });
 
   it('As a facade, I match a remote failure by its tag, not by a remote error name', () => {
     // Given the failure types of the frame status and the resolve methods
-    type FrameFailure = DomainError<S, 'frame', 'status'>;
-    type RemoteFailure = DomainError<S, 'resolve', 'owner'>;
+    type FrameFailure = DomainError<typeof frame.status>;
+    type RemoteFailure = DomainError<typeof resolve.owner>;
 
     // Then
     expectTypeOf<FrameFailure>().toEqualTypeOf<
@@ -313,60 +360,62 @@ describe('protocolSchema', () => {
     expectTypeOf<RemoteFailure>().toEqualTypeOf<
       { tag: 'syncTimeout'; value: string } | { tag: 'apiStopped'; value: string }
     >();
-    expectTypeOf<DomainError<S, 'resolve', 'executableManifest'>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<S, 'resolve', 'rootManifest'>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<S, 'resolve', 'dotName'>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<S, 'chain', 'connect'>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<S, 'chain', 'send'>>().toBeNever();
-    expectTypeOf<DomainError<S, 'storage', 'authRead'>>().toBeNever();
+    expectTypeOf<DomainError<typeof resolve.executableManifest>>().toEqualTypeOf<RemoteFailure>();
+    expectTypeOf<DomainError<typeof resolve.rootManifest>>().toEqualTypeOf<RemoteFailure>();
+    expectTypeOf<DomainError<typeof resolve.dotName>>().toEqualTypeOf<RemoteFailure>();
+    expectTypeOf<DomainError<typeof chain.connect>>().toEqualTypeOf<RemoteFailure>();
+    expectTypeOf<DomainError<typeof chain.send>>().toBeNever();
+    expectTypeOf<DomainError<typeof storage.authRead>>().toBeNever();
   });
 
   it('As the protocol, a value codec decodes a payload that sits after a header in the message', async () => {
     // Given a recorded owner request, whose label sits after the header in its buffer
     const { opener, accepter, delivered } = protocolRig();
-    accepter.handleRequest('resolve', 'owner', ({ label }) => ok(`owner of ${label}`));
+    accepter.handleRequest(resolve.owner, ({ label }) => ok(`owner of ${label}`));
     opener.connect();
 
     // When
-    const answer = await opener.request('resolve', 'owner', { label: 'app' });
+    const answer = await opener.request(resolve.owner, { label: 'app' });
 
     // Then
     expect(answer).toEqual(ok('owner of app'));
-    const request = delivered
-      .map(data => describeMessage(protocolSchema, data))
-      .find(message => message.method === 'owner' && message.leg === 'request');
-    expect(request?.body).toEqual({ label: 'app' });
+    const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
+    const request = messagesOf(resolve.owner, recorded).find(message => message.tag === 'request');
+    expect(request?.value).toEqual({ label: 'app' });
   });
 
   it('As the protocol, a value codec refuses a payload with bytes after its value', async () => {
     // Given a recorded owner request with one byte appended
     const { opener, accepter, delivered } = protocolRig();
-    accepter.handleRequest('resolve', 'owner', () => ok(null));
+    accepter.handleRequest(resolve.owner, () => ok(null));
     opener.connect();
-    await opener.request('resolve', 'owner', { label: 'app' });
-    const recorded = delivered.find(data => describeMessage(protocolSchema, data).method === 'owner');
+    await opener.request(resolve.owner, { label: 'app' });
+    const recorded = delivered
+      .flatMap(data => recordWireMessage(data) ?? [])
+      .find(message => message.method === 'owner' && message.tag === 'request');
     if (recorded === undefined) {
       throw new Error('no owner request was recorded');
     }
-    const padded = new Uint8Array(recorded.byteLength + 1);
-    padded.set(new Uint8Array(recorded));
+    const message = fromHex(recorded.message);
+    const padded = new Uint8Array(message.byteLength + 1);
+    padded.set(message);
 
     // When
-    const decodePadded = (): unknown => describeMessage(protocolSchema, padded.buffer);
+    const decodePadded = () => readMessage(resolve.owner, padded);
 
     // Then
-    expect(decodePadded).toThrow(/refused as malformed/);
+    expect(decodePadded).toThrow(/bytes follow the end of the value/);
   });
 
   it('As the protocol, an invalid telemetry event is refused', async () => {
     // Given a frame that sends a valid event, then a peer list past the limit
-    const { opener, accepter, delivered } = protocolRig();
+    const { opener, accepter, delivered, issues } = protocolRig();
     const tooManyPeers = Array.from({ length: 51 }, (_, index) => ({
       peerId: `peer-${String(index)}`,
       roles: 'full',
       bestNumber: index,
     }));
-    accepter.handleSubscription('frame', 'telemetry', (_start, _context, sink) => {
+    accepter.handleSubscription(frame.telemetry, (_start, _context, sink) => {
       sink.receive({ tag: 'netBytes', value: 512 });
       sink.receive({ tag: 'chainDetail', value: { chain: 'relay', peers: tooManyPeers } });
       // Ends cleanly, so an event let through would end the subscription as Ok.
@@ -376,21 +425,20 @@ describe('protocolSchema', () => {
     opener.connect();
 
     // When
-    const { values, end } = await heardUntilEnd(opener, 'frame', 'telemetry', undefined);
+    const { values, end } = await heardUntilEnd(opener, frame.telemetry, undefined);
 
     // Then
     expect(values).toEqual([{ tag: 'netBytes', value: 512 }]);
-    expect(end).toEqual(err(malformedFrame('a chainDetail event is past the telemetry limits')));
+    expect(end).toEqual(err(malformedFrame('RangeError: a chainDetail event is past the telemetry limits')));
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
     const refusals = delivered.flatMap(data => {
       try {
-        describeMessage(protocolSchema, data);
+        readFrame(protocolSchema, data);
         return [];
       } catch (error) {
-        return [error];
+        return [toError(error)];
       }
     });
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0]).toBeInstanceOf(MessageRefusedError);
-    expect((refusals[0] as MessageRefusedError).reason).toBe('malformed');
+    expect(refusals).toEqual([expect.any(FrameRefusedError) as FrameRefusedError]);
   });
 });

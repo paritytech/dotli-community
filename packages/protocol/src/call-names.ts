@@ -1,66 +1,59 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Each method of the schema by the one name the host's metrics, trail, budgets and errors know it by. The names predate
-// the grouping into traits, and dashboards filter on them, so they stay.
+// Each method by the one name the host's metrics, trail and errors know it by. The names predate the grouping into
+// traits, and dashboards filter on them, so they stay.
 
-import type { MethodName, TraitName } from '@dotli/transport';
-import type { ProtocolSchema } from './schema.js';
+import type { AnyMethod } from '@dotli/transport';
+import { protocolSchema, type ProtocolSchema } from './schema.js';
 
-type Trait = TraitName<ProtocolSchema>;
+type Traits = ProtocolSchema['traits'];
+
+/** A method's place as `<trait>.<method>`. */
+type Path = { [T in keyof Traits]: `${T}.${Extract<keyof Traits[T], string>}` }[keyof Traits];
 
 const CALL_NAMES = {
-  frame: {
-    status: 'frameStatus',
-    heartbeat: 'heartbeat',
-    beat: 'beat',
-    warmup: 'warmup',
-    telemetry: 'telemetry',
-  },
-  resolve: {
-    owner: 'resolveOwner',
-    executableManifest: 'resolveExecutableManifest',
-    rootManifest: 'resolveRootManifest',
-    dotName: 'resolveDotName',
-  },
-  storage: {
-    authRead: 'authStorageRead',
-    authWrite: 'authStorageWrite',
-    authClear: 'authStorageClear',
-    authChanges: 'sharedAuthChanges',
-    modeRead: 'modeStorageRead',
-    modeWrite: 'modeStorageWrite',
-    modeClear: 'modeStorageClear',
-  },
-  wallet: {
-    read: 'localWalletRead',
-    save: 'localWalletSave',
-    identity: 'localWalletIdentity',
-    forget: 'localWalletForget',
-  },
-  chain: {
-    send: 'chainSend',
-    connect: 'chainConnect',
-  },
-} as const satisfies { [T in Trait]: Record<MethodName<ProtocolSchema, T>, string> };
+  'frame.status': 'frameStatus',
+  'frame.heartbeat': 'heartbeat',
+  'frame.beat': 'beat',
+  'frame.warmup': 'warmup',
+  'frame.telemetry': 'telemetry',
+  'resolve.owner': 'resolveOwner',
+  'resolve.executableManifest': 'resolveExecutableManifest',
+  'resolve.rootManifest': 'resolveRootManifest',
+  'resolve.dotName': 'resolveDotName',
+  'storage.authRead': 'authStorageRead',
+  'storage.authWrite': 'authStorageWrite',
+  'storage.authClear': 'authStorageClear',
+  'storage.authChanges': 'sharedAuthChanges',
+  'storage.modeRead': 'modeStorageRead',
+  'storage.modeWrite': 'modeStorageWrite',
+  'storage.modeClear': 'modeStorageClear',
+  'wallet.read': 'localWalletRead',
+  'wallet.save': 'localWalletSave',
+  'wallet.identity': 'localWalletIdentity',
+  'wallet.forget': 'localWalletForget',
+  'chain.send': 'chainSend',
+  'chain.connect': 'chainConnect',
+} as const satisfies Record<Path, string>;
 
-type Names = typeof CALL_NAMES;
+/** A method's name in metrics, the trail and errors. */
+export type CallName = (typeof CALL_NAMES)[Path];
 
-/** A method's name in metrics, the trail, budgets and errors. */
-export type CallName = { [T in Trait]: Names[T][keyof Names[T]] }[Trait];
+const isPath = (path: string): path is Path => Object.hasOwn(CALL_NAMES, path);
 
-// The same table, typed so a trait and a method of it index it.
-const BY_ADDRESS: { readonly [T in Trait]: Readonly<Record<MethodName<ProtocolSchema, T>, CallName>> } = CALL_NAMES;
-
-/** The one name of `method` in `trait`, the flat name it had before the methods were grouped into traits. */
-export function callName<T extends Trait>(trait: T, method: MethodName<ProtocolSchema, T>): CallName {
-  return BY_ADDRESS[trait][method];
+/** The name of the method at `trait` and `method`, or its place for one the schema lacks. */
+export function callNameAt(trait: string, method: string): string {
+  const path = `${trait}.${method}`;
+  return isPath(path) ? CALL_NAMES[path] : path;
 }
 
-/** The one name of a call the transport names by strings, or `<trait>.<method>` for one the schema lacks. */
-export function callNameOf(trait: string, method: string): string {
-  const methods: Readonly<Record<string, string>> | undefined = Object.hasOwn(CALL_NAMES, trait)
-    ? CALL_NAMES[trait as Trait]
-    : undefined;
-  return methods !== undefined && Object.hasOwn(methods, method) ? (methods[method] ?? method) : `${trait}.${method}`;
+/** The name of a protocol method. */
+export function callName(method: AnyMethod): CallName {
+  const address = protocolSchema.addresses.get(method);
+  const path = address === undefined ? '' : `${address.trait}.${address.method}`;
+  if (!isPath(path)) {
+    throw new Error('The method is not one of the protocol');
+  }
+  return CALL_NAMES[path];
 }

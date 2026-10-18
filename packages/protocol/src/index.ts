@@ -39,10 +39,13 @@ export {
   type ProtocolSchema,
   type ProtocolTransport,
   type RemoteFailure,
-  type SubscriptionStart,
-  type SubscriptionValue,
+  type DomainFailure,
+  type ProtocolHandler,
+  type ProtocolHello,
+  type ProtocolServing,
+  type SharedAuthChange,
   type TelemetryEvent,
 } from './schema.js';
 export { callName, type CallName } from './call-names.js';
 export { failureOf, frameStatusEnd, fromTransportError, remoteFailureOf } from './outcomes.js';
-export { createIssueReporter } from './wire-issues.js';
+export { createIssueReporter, type WireIssue } from './wire-issues.js';

@@ -11,7 +11,8 @@ import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import { isProtocolTrait } from './testing/traits.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
-import { describeWireMessage } from './testing/index.js';
+import { protocolSchema } from './schema.js';
+import { recordWireMessage } from './testing/index.js';
 import {
   createFrameHost,
   FRAME_CONFIG,
@@ -20,6 +21,8 @@ import {
   type FrameDom,
   type FrameHost,
 } from './testing/frame-host.js';
+
+const { storage } = protocolSchema.traits;
 
 // The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
@@ -40,8 +43,8 @@ async function listen(dom: FrameDom): Promise<void> {
 /** The requests the host sent `iframe`, as `trait.method`, its handshakes left out. */
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
-    const message = describeWireMessage(data);
-    return message?.leg === 'request' && isProtocolTrait(message.trait) ? [`${message.trait}.${message.method}`] : [];
+    const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
+    return message?.tag === 'request' && isProtocolTrait(message.trait) ? [`${message.trait}.${message.method}`] : [];
   });
 }
 
@@ -158,7 +161,7 @@ describe('configureProtocolFrame', () => {
     host.client.configureProtocolFrame(FRAME_CONFIG);
     await timers.advance(0);
     const served: string[] = [];
-    host.serve().handleRequest('storage', 'authRead', ({ key }) => {
+    host.serve().handleRequest(storage.authRead, ({ key }) => {
       served.push(key);
       return ok('session');
     });
@@ -279,7 +282,7 @@ describe('protocol iframe listening handshake', () => {
     const read = host.client.readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
 
     // When
-    host.serve().handleRequest('storage', 'authRead', () => ok('0x0102'));
+    host.serve().handleRequest(storage.authRead, () => ok('0x0102'));
     await listen(host);
 
     // Then
@@ -338,7 +341,7 @@ describe('protocol iframe listening handshake', () => {
       () => settled.push('resolved'),
       (err: unknown) => settled.push(err instanceof Error ? err.message : String(err)),
     );
-    host.serve().handleRequest('storage', 'authRead', () => new Promise(() => undefined));
+    host.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
     await listen(host);
 
     // When
@@ -361,7 +364,7 @@ describe('protocol iframe listening handshake', () => {
   it('As a returning user, I write a setting and change the frame config in the same turn, and the write fails at once instead of going to a frame that cannot hear it', async () => {
     // Given a listening frame
     void host.client.readSharedModeStorage(SITE_ID, 'backend').catch(() => undefined);
-    host.serve().handleRequest('storage', 'modeRead', () => ok(null));
+    host.serve().handleRequest(storage.modeRead, () => ok(null));
     await listen(host);
     const settled: string[] = [];
 

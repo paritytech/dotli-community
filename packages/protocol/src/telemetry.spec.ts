@@ -9,14 +9,16 @@ import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { Sink } from '@dotli/transport';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ProtocolTransport, TelemetryEvent } from './schema.js';
+import { protocolSchema, type ProtocolTransport, type TelemetryEvent } from './schema.js';
+
+const { frame } = protocolSchema.traits;
 
 type TelemetrySink = Sink<TelemetryEvent, never>;
 
 /** A frame app that reports telemetry to each subscriber, keeping its sink. */
 function reporting(sinks: TelemetrySink[]): (serving: ProtocolTransport) => void {
   return serving => {
-    serving.handleSubscription('frame', 'telemetry', (_start, _context, sink) => {
+    serving.handleSubscription(frame.telemetry, (_start, _context, sink) => {
       sinks.push(sink);
       return () => undefined;
     });

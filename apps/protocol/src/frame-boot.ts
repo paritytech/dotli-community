@@ -5,16 +5,16 @@
 // subscribes to both as soon as its handshake is answered, before the mode has loaded anything, and a subscription
 // left waiting would never end.
 
-import type { FrameFailure, ProtocolSchema, SubscriptionStart, TelemetryEvent } from '@dotli/protocol';
-import type { CallError, SubscriptionHandler } from '@dotli/transport';
+import type { FrameFailure, ProtocolHandler, protocolSchema, TelemetryEvent } from '@dotli/protocol';
+import type { CallError } from '@dotli/transport';
 
 import { createDeferredSubscription } from './deferred-subscription.js';
 import { createFrameStatus } from './frame-status.js';
 
-type Telemetry = SubscriptionHandler<ProtocolSchema, 'frame', 'telemetry'>;
+type Telemetry = ProtocolHandler<typeof protocolSchema.traits.frame.telemetry>;
 
 export interface FrameBoot {
-  frameStatus: SubscriptionHandler<ProtocolSchema, 'frame', 'status'>;
+  frameStatus: ProtocolHandler<typeof protocolSchema.traits.frame.status>;
   telemetry: Telemetry;
   /** Feeds the telemetry from the mode's light client. Only the first source, or the idle feed of `ready`, counts. */
   serveTelemetry(source: Telemetry): void;
@@ -33,7 +33,7 @@ const idleTelemetry: Telemetry = () => () => undefined;
 
 export function createFrameBoot(): FrameBoot {
   const status = createFrameStatus();
-  const telemetry = createDeferredSubscription<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never>();
+  const telemetry = createDeferredSubscription<undefined, TelemetryEvent, never>();
   return {
     frameStatus: status.handler,
     telemetry: telemetry.handler,

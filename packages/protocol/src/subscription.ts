@@ -5,12 +5,10 @@
 // it, its one end is heard in one place, as the error host code sees.
 
 import { reportListener } from '@dotli/metrics';
-import type { CallError, SubscriptionMethodName, TraitName } from '@dotli/transport';
+import type { Subscription as Method } from '@dotli/transport';
 import { callName } from './call-names.js';
-import { callFailure, fromTransportError, type DomainFailure } from './outcomes.js';
-import type { ProtocolSchema, ProtocolTransport, SubscriptionStart, SubscriptionValue } from './schema.js';
-
-type S = ProtocolSchema;
+import { callFailure, fromTransportError } from './outcomes.js';
+import type { DomainFailure, ProtocolTransport } from './schema.js';
 
 export interface Subscription {
   /** Ends the subscription without calling its end listeners, and tells the frame. */
@@ -35,16 +33,15 @@ function heard(listener: (error: Error | null) => void, error: Error | null): vo
   }
 }
 
-/** Subscribes `method` of `trait` on `transport`, and hears each value with `receive`. Throws when `start` is refused. */
-export function subscribe<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>>(
+/** Subscribes `method` on `transport`, and hears each value with `receive`. Throws when `start` is refused. */
+export function subscribe<S, V, I extends DomainFailure>(
   transport: ProtocolTransport,
-  trait: T,
-  method: M,
-  start: SubscriptionStart<T, M>,
-  receive: (value: SubscriptionValue<T, M>) => void,
+  method: Method<S, V, I>,
+  start: NoInfer<S>,
+  receive: (value: V) => void,
   options: SubscribeOptions = {},
 ): Subscription {
-  const name = callName(trait, method);
+  const name = callName(method);
   const { signal } = options;
   let state: { name: 'open' | 'unsubscribed' } | { name: 'ended'; error: Error | null } = { name: 'open' };
   const listeners: ((error: Error | null) => void)[] = [];
@@ -58,15 +55,12 @@ export function subscribe<T extends TraitName<S>, M extends SubscriptionMethodNa
     }
   };
   const handle = transport.subscribe(
-    trait,
     method,
     start,
     {
       receive,
       interrupt: outcome => {
-        // Every domain error the schema declares is a `DomainFailure`.
-        const failure = outcome.ok ? null : (outcome.error as CallError<DomainFailure>);
-        end(failure === null ? null : callFailure(failure, name, signal));
+        end(outcome.tag === 'Ok' ? null : callFailure(outcome.value, name, signal));
       },
     },
     signal === undefined ? {} : { signal },

@@ -8,7 +8,7 @@ import { log, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
-import type { ProtocolTransport } from './schema.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscription.js';
 
 /** A frame that is booting or up has a transport to hear. */
@@ -42,7 +42,7 @@ export function createFrameTelemetry(
     let lastNetBytesTotal = 0;
     reports.hold(
       () =>
-        subscribe(transport, 'frame', 'telemetry', undefined, event => {
+        subscribe(transport, protocolSchema.traits.frame.telemetry, undefined, event => {
           switch (event.tag) {
             case 'chainSync':
               chainSyncListeners.emit(event.value);

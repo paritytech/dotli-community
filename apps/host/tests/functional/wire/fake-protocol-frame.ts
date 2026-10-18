@@ -5,14 +5,7 @@
 // fake frame's document loads this script, which answers the host through the real transport with the options its own
 // script tag carries as JSON.
 
-import {
-  protocolSchema,
-  remoteFailureOf,
-  type FrameFailure,
-  type ProtocolSchema,
-  type RemoteFailure,
-  type SubscriptionValue,
-} from '@dotli/protocol';
+import { protocolSchema, remoteFailureOf, type FrameFailure, type RemoteFailure } from '@dotli/protocol';
 import {
   createTransport,
   createWindowProvider,
@@ -24,8 +17,10 @@ import {
   type Sink,
 } from '@dotli/transport';
 
-type ChainMessage = SubscriptionValue<'chain', 'connect'>;
-type RootManifest = Extract<MethodTypes<ProtocolSchema, 'resolve', 'rootManifest'>['response'], { ok: true }>['value'];
+const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
+
+type ChainMessage = MethodTypes<typeof chain.connect>['receive'];
+type RootManifest = Extract<MethodTypes<typeof resolve.rootManifest>['response'], { tag: 'Ok' }>['value'];
 
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';
@@ -78,7 +73,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   const gets: Record<string, number> = {};
   const held: { cid: string; connectionId: string; rpcId: unknown }[] = [];
   const connections = new Map<string, Sink<ChainMessage, RemoteFailure>>();
-  const statuses = new Set<Sink<void, FrameFailure>>();
+  const statuses = new Set<Sink<undefined, FrameFailure>>();
   const stopNothing = (): void => undefined;
 
   const reply = (connectionId: string, message: unknown): void => {
@@ -133,7 +128,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     { handshake: 'accept', hello: { resolutionId: null } },
   );
 
-  serving.handleSubscription('frame', 'status', (_start, _context, sink) => {
+  serving.handleSubscription(frame.status, (_start, _context, sink) => {
     if (options.initFailed !== undefined) {
       sink.interrupt(domain({ tag: 'initFailed', value: options.initFailed }));
       return stopNothing;
@@ -145,47 +140,47 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     };
   });
   // The fake has no light client to report on and no other tab signing in.
-  serving.handleSubscription('frame', 'telemetry', () => stopNothing);
-  serving.handleSubscription('storage', 'authChanges', () => stopNothing);
+  serving.handleSubscription(frame.telemetry, () => stopNothing);
+  serving.handleSubscription(storage.authChanges, () => stopNothing);
 
-  serving.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
-    const resolve = options.resolve;
-    if (resolve === undefined) {
+  serving.handleSubscription(resolve.dotName, (_start, _context, sink) => {
+    const resolution = options.resolve;
+    if (resolution === undefined) {
       return stopNothing;
     }
-    switch (resolve.kind) {
+    switch (resolution.kind) {
       case 'cid':
       case 'none':
-        sink.receive({ tag: 'resolved', value: resolve.kind === 'cid' ? resolve.cid : null });
+        sink.receive({ tag: 'resolved', value: resolution.kind === 'cid' ? resolution.cid : null });
         sink.interrupt();
         return stopNothing;
       case 'fatal':
         for (const status of [...statuses]) {
-          status.interrupt(domain({ tag: 'fatal', value: resolve.message }));
+          status.interrupt(domain({ tag: 'fatal', value: resolution.message }));
         }
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          sink.interrupt(resolveFailure(resolve.message, resolve.name));
-        }, resolve.delayMs ?? 0);
+          sink.interrupt(resolveFailure(resolution.message, resolution.name));
+        }, resolution.delayMs ?? 0);
         return () => {
           clearTimeout(timer);
         };
       }
     }
   });
-  serving.handleRequest('resolve', 'rootManifest', () => ok(options.rootManifest ?? { kind: 'empty' as const }));
-  serving.handleRequest('resolve', 'executableManifest', () => ok({ kind: 'empty' as const }));
-  serving.handleRequest('wallet', 'read', () => ok({ tag: 'none' as const, value: undefined }));
+  serving.handleRequest(resolve.rootManifest, () => ok(options.rootManifest ?? { kind: 'empty' as const }));
+  serving.handleRequest(resolve.executableManifest, () => ok({ kind: 'empty' as const }));
+  serving.handleRequest(wallet.read, () => ok({ tag: 'none' as const, value: undefined }));
 
-  serving.handleSubscription('chain', 'connect', ({ connectionId }, _context, sink) => {
+  serving.handleSubscription(chain.connect, ({ connectionId }, _context, sink) => {
     connections.set(connectionId, sink);
     sink.receive({ tag: 'connected', value: undefined });
     return () => {
       connections.delete(connectionId);
     };
   });
-  serving.handleRequest('chain', 'send', ({ connectionId, message }) => {
+  serving.handleRequest(chain.send, ({ connectionId, message }) => {
     // After the send's own answer, as a light client's reply comes.
     setTimeout(() => {
       askBlock(connectionId, message);
@@ -194,17 +189,17 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   });
 
   // Storage reads and the owner lookup find nothing, and writes and the warmup succeed.
-  serving.handleRequest('resolve', 'owner', () => ok(null));
-  serving.handleRequest('frame', 'warmup', () => ok());
-  for (const method of ['authRead', 'modeRead'] as const) {
-    serving.handleRequest('storage', method, () => ok(null));
-  }
-  for (const method of ['authWrite', 'authClear', 'modeWrite', 'modeClear'] as const) {
-    serving.handleRequest('storage', method, () => ok());
-  }
-  for (const method of ['save', 'identity', 'forget'] as const) {
-    serving.handleRequest('wallet', method, () => ok());
-  }
+  serving.handleRequest(resolve.owner, () => ok(null));
+  serving.handleRequest(frame.warmup, () => ok());
+  serving.handleRequest(storage.authRead, () => ok(null));
+  serving.handleRequest(storage.modeRead, () => ok(null));
+  serving.handleRequest(storage.authWrite, () => ok());
+  serving.handleRequest(storage.authClear, () => ok());
+  serving.handleRequest(storage.modeWrite, () => ok());
+  serving.handleRequest(storage.modeClear, () => ok());
+  serving.handleRequest(wallet.save, () => ok());
+  serving.handleRequest(wallet.identity, () => ok());
+  serving.handleRequest(wallet.forget, () => ok());
 }
 
 // Read while the script runs, the only time its own tag is `currentScript`.

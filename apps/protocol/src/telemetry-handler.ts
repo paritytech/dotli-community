@@ -5,8 +5,7 @@
 // that comes late hears where things stand first, so nothing reported before it subscribed is lost.
 
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import type { ProtocolSchema } from '@dotli/protocol';
-import type { SubscriptionHandler } from '@dotli/transport';
+import type { ProtocolHandler, protocolSchema } from '@dotli/protocol';
 
 import { chainDetailTelemetry, chainSyncTelemetry, netBytesTelemetry, smoldotDbTelemetry } from './telemetry-events.js';
 
@@ -28,7 +27,9 @@ export interface TelemetryDeps {
   joinedSynced: () => boolean;
 }
 
-export function createTelemetryHandler(deps: TelemetryDeps): SubscriptionHandler<ProtocolSchema, 'frame', 'telemetry'> {
+export function createTelemetryHandler(
+  deps: TelemetryDeps,
+): ProtocolHandler<typeof protocolSchema.traits.frame.telemetry> {
   return (_payload, _context, sink) => {
     const stops: (() => void)[] = [];
     const stopAll = (): void => {

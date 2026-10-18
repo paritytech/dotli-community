@@ -19,10 +19,12 @@ import { ProtocolFatalError } from './errors.js';
 import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame, type FakeFrame } from './frame.fake.js';
-import type { ProtocolSchema, ProtocolTransport, RemoteFailure } from './schema.js';
+import { protocolSchema, type ProtocolTransport, type RemoteFailure } from './schema.js';
 import { createFrameHost, FRAME_CONFIG, type FrameHost, type FrameStatusServer } from './testing/frame-host.js';
 
-type Connect = MethodTypes<ProtocolSchema, 'chain', 'connect'>;
+const { chain } = protocolSchema.traits;
+
+type Connect = MethodTypes<typeof chain.connect>;
 
 // The host posts its handshake again this often until it is answered.
 const HANDSHAKE_RETRY_MS = 50;
@@ -44,7 +46,7 @@ interface ServedConnect {
 interface ServedSend {
   connectionId: string;
   message: string;
-  answer: { resolve: (value: undefined) => void; reject: (reason: unknown) => void };
+  answer: { resolve: (value: undefined) => void; reject: (reason: Error) => void };
 }
 
 /** A frame app's side of chain connections: what it was asked, and the sinks and answers to reply with. */
@@ -55,14 +57,14 @@ interface ChainServer {
 
 function serveChains(serving: ProtocolTransport): ChainServer {
   const server: ChainServer = { connects: [], sends: [] };
-  serving.handleSubscription('chain', 'connect', (payload, _context, sink) => {
+  serving.handleSubscription(chain.connect, (payload, _context, sink) => {
     const connect: ServedConnect = { payload, sink, stopped: false };
     server.connects.push(connect);
     return () => {
       connect.stopped = true;
     };
   });
-  serving.handleRequest('chain', 'send', ({ connectionId, message }) => {
+  serving.handleRequest(chain.send, ({ connectionId, message }) => {
     const answer = deferred<undefined>();
     server.sends.push({ connectionId, message, answer });
     return answer.promise.then(() => ok());

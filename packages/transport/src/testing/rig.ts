@@ -3,19 +3,20 @@
 
 // A test schema and two transports over one in-memory channel, or one transport facing a raw peer the test speaks for.
 
-import { bindLogSink } from '@dotli/shared';
+import { bindLogSink, toError } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
+import { _void, type Codec } from 'scale-ts';
 import { onTestFinished } from 'vitest';
-import { codec, none } from '../codec.js';
+import { codec } from '../codec.js';
 import type { TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
-import { defineSchema, request, subscription, wireOf } from '../schema.js';
 import type { CallError, Result } from '../result.js';
+import { defineSchema, request, subscription, type Address, type AnyMethod } from '../schema.js';
 import type { Sink } from '../serving.js';
 import { createTransport, type Transport } from '../transport.js';
-import { LIBRARY_TRAIT, type Header } from '../wire.js';
-import { describeMessage, type DescribedMessage } from './index.js';
+import { encodeFrame, frame, type Frame } from '../wire.js';
+import { readFrame, readMessage, type RecordedFrame } from './index.js';
 
 export const RETRY_MS = 50;
 export const TIMEOUT_MS = 5_000;
@@ -25,7 +26,7 @@ const encoder = new TextEncoder();
 // Fatal, so bytes that are no UTF-8 fail to decode as a peer's payload can.
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-const text = codec<string>(
+export const text = codec<string>(
   value => encoder.encode(value),
   bytes => decoder.decode(bytes),
 );
@@ -47,45 +48,56 @@ export const testSchema = defineSchema({
   traits: {
     notes: {
       read: request({ request: word, response: text, error: text }),
-      touch: request({ request: none, response: none }),
+      touch: request({ request: _void, response: _void }),
       watch: subscription({ start: word, receive: word, interrupt: text }),
     },
     echo: {
       say: request({ request: text, response: text }),
-      listen: subscription({ start: none, receive: text }),
+      listen: subscription({ start: _void, receive: text }),
     },
   },
 });
 
-// Wire ids are positions in the schema above, for tests that write bytes by hand.
-export const NOTES = 0;
-export const READ = 0;
-export const WATCH = 2;
+export const { notes, echo } = testSchema.traits;
 
-export type TestSchema = typeof testSchema;
+const idsOf = (method: AnyMethod): Address => {
+  const address = testSchema.addresses.get(method);
+  if (address === undefined) {
+    throw new Error('the method is not one of the test schema');
+  }
+  return address;
+};
+
+// A frame's tags and the schema's wire ids, for tests that write bytes by hand.
+export const OPEN = 0;
+export const FAILED = 2;
+export const CALL = 3;
+export const NOTES = idsOf(notes.read).traitId;
+export const READ = idsOf(notes.read).methodId;
+export const WATCH = idsOf(notes.watch).methodId;
 
 /** Listeners of a `notes.watch` subscription that record the values and the ends it hears. */
 export function watcher() {
   const values: string[] = [];
-  const ends: Result<void, CallError<string>>[] = [];
+  const ends: Result<undefined, CallError<string>>[] = [];
   return {
     values,
     ends,
     receive: (value: string) => {
       values.push(value);
     },
-    interrupt: (outcome: Result<void, CallError<string>>) => {
+    interrupt: (outcome: Result<undefined, CallError<string>>) => {
       ends.push(outcome);
     },
   };
 }
 
 /** Serves `notes.watch` on a transport, keeping each subscription's start and sink and counting its stops. */
-export function serveWatch(transport: Transport<TestSchema>) {
+export function serveWatch(transport: Transport<string>) {
   const starts: string[] = [];
   const sinks: Sink<string, string>[] = [];
   const stops: number[] = [];
-  transport.handleSubscription('notes', 'watch', (start, _context, sink) => {
+  transport.handleSubscription(notes.watch, (start, _context, sink) => {
     const index = sinks.length;
     starts.push(start);
     sinks.push(sink);
@@ -127,34 +139,44 @@ export function rig(watched: WatchedSide = {}) {
   return { opener, accepter, timers, issues, delivered, left, right };
 }
 
-/** How a test names a message: its leg and address, such as `request:notes.read`. */
-const legOf = (message: DescribedMessage): string => `${message.leg}:${message.trait}.${message.method}`;
+/** How a test names a frame: its kind, or a call's tag and method, such as `request:notes.read`. */
+const nameOf = (heard: RecordedFrame): string =>
+  heard.kind === 'call' ? `${heard.tag ?? 'unknown'}:${heard.trait}.${heard.method}` : heard.kind;
 
-/** A peer the test speaks for, message by message, in place of a transport. */
+/** A peer the test speaks for, frame by frame, in place of a transport. */
 function rawPeer(provider: Provider) {
-  const heard: DescribedMessage[] = [];
-  provider.subscribe(data => heard.push(describeMessage(testSchema, data)));
+  const heard: RecordedFrame[] = [];
+  provider.subscribe(data => heard.push(readFrame(testSchema, data)));
   return {
     heard,
-    /** Posts a message. A stop carries no value. */
-    send: (message: Header & { value?: unknown }) => {
-      provider.post(wireOf(testSchema).encode({ ...message, value: message.value }));
+    /** Posts a message on a call `id` of `method`. */
+    call: <M>(method: AnyMethod & { readonly frame: Codec<Frame<M>> }, id: number, message: M) => {
+      const address = idsOf(method);
+      const value = { trait: address.traitId, method: address.methodId, message };
+      provider.post(encodeFrame(method.frame, { id, body: { tag: 'call', value } }));
+    },
+    /** Posts one of the library's own frames. */
+    send: (id: number, body: Frame<Uint8Array>['body']) => {
+      provider.post(encodeFrame(frame, { id, body }));
     },
     /** Posts bytes the test wrote by hand. */
     sendBytes: (...bytes: number[]) => {
       provider.post(Uint8Array.from(bytes).buffer);
     },
-    legs: () => heard.map(legOf),
-    /** The messages heard on one leg and address. */
-    find: (leg: string) => heard.filter(message => legOf(message) === leg),
+    names: () => heard.map(nameOf),
+    /** The handshake answers heard, by id. */
+    accepts: () => heard.flatMap(frame => (frame.kind === 'accept' ? [{ id: frame.id, value: frame.value }] : [])),
+    /** The failures heard, by id. */
+    failures: () => heard.flatMap(frame => (frame.kind === 'failed' ? [{ id: frame.id, value: frame.value }] : [])),
+    /** What the calls heard by one name carry, decoded with their method. */
+    values: <M extends { value: V }, V>(method: { readonly message: Codec<M> }, name: string): V[] =>
+      heard.flatMap(frame =>
+        frame.kind === 'call' && nameOf(frame) === name ? [readMessage(method, frame.message).value] : [],
+      ),
+    /** The frames heard by one name. */
+    find: (name: string) => heard.filter(frame => nameOf(frame) === name),
   };
 }
-
-/** The address of the library's handshake. */
-export const HANDSHAKE = { trait: LIBRARY_TRAIT, method: 'handshake' } as const;
-
-/** The address of the library's protocol error, which names an address the receiver lacks by its ids. */
-export const PROTOCOL_ERROR = { trait: LIBRARY_TRAIT, method: 'protocolError', leg: 'response' } as const;
 
 /** A transport facing a raw peer, which answers nothing until the test says so. `wrap` stands between it and its side. */
 export function rawRig(
@@ -177,20 +199,19 @@ export function rawRig(
   });
   /** Answers the first handshake the transport posted, as an accepter of the same version. */
   const answerHandshake = (): void => {
-    const [attempt] = peer.find(`request:${LIBRARY_TRAIT}.handshake`);
+    const [attempt] = peer.find('open');
     if (attempt === undefined) {
       throw new Error('no handshake heard yet');
     }
-    peer.send({ ...HANDSHAKE, id: attempt.id, leg: 'response', value: { ok: true, value: 'peer' } });
+    peer.send(attempt.id, { tag: 'accept', value: { tag: 'Ok', value: text.enc('peer') } });
   };
   /** Opens the handshake toward the transport, as an opener of `version`. */
   const openHandshake = (version = VERSION, id = 1): void => {
-    peer.send({ ...HANDSHAKE, id, leg: 'request', value: { version, hello: 'peer' } });
+    peer.send(id, { tag: 'open', value: { version, hello: text.enc('peer') } });
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }
 
-/** A promise's outcome as a value: `{ value }` when it resolved, or the very error it rejected with. */
 /** Each error line the shared log writes during the current test. */
 export function errorLog(): string[] {
   const errors: string[] = [];
@@ -206,10 +227,11 @@ export function errorLog(): string[] {
   return errors;
 }
 
-export async function outcomeOf(promise: Promise<unknown>): Promise<unknown> {
+/** A promise's outcome as a value: `{ value }` when it resolved, or the error it rejected with. */
+export async function outcomeOf<T>(promise: Promise<T>): Promise<{ value: T } | Error> {
   return promise.then(
     value => ({ value }),
-    (error: unknown) => error,
+    (error: unknown) => toError(error),
   );
 }
 

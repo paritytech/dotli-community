@@ -11,9 +11,10 @@ import {
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
+  type FrameFailure,
   type ProtocolContext,
-  type ProtocolSchema,
   type ProtocolTransport,
+  type RemoteFailure,
 } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
 import {
@@ -27,6 +28,7 @@ import {
   malformedFrame,
   ok,
   unsupported,
+  type CallError,
   type MethodTypes,
 } from '@dotli/transport';
 import { createFrameStatus, type FrameStatus } from './frame-status.js';
@@ -34,8 +36,12 @@ import { watchWorkerStatus } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
 
-type ExecutableAnswer = Extract<MethodTypes<ProtocolSchema, 'resolve', 'executableManifest'>['response'], { ok: true }>;
-type RootAnswer = Extract<MethodTypes<ProtocolSchema, 'resolve', 'rootManifest'>['response'], { ok: true }>;
+const { frame, resolve, chain } = protocolSchema.traits;
+
+type Executable = MethodTypes<typeof resolve.executableManifest>;
+type Root = MethodTypes<typeof resolve.rootManifest>;
+type ExecutableAnswer = Extract<Executable['response'], { tag: 'Ok' }>;
+type RootAnswer = Extract<Root['response'], { tag: 'Ok' }>;
 
 interface Hops {
   host: ProtocolTransport;
@@ -63,17 +69,17 @@ afterEach(() => {
 
 /** Links a host to an iframe in shared-worker mode, whose worker answers with what `serveWorker` registers. */
 function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string, ProtocolContext>) => void): Hops {
-  const frame: HostLink = linkHost();
+  const iframe: HostLink = linkHost();
   const channel = new MessageChannel();
   const worker = createTransport(protocolSchema, createPortProvider(channel.port1), {
     handshake: 'accept',
     hello: { resolutionId: null },
-    onIssue: frame.report,
+    onIssue: iframe.report,
   });
   const toWorker = createTransport(protocolSchema, createPortProvider(channel.port2), {
     handshake: 'open',
     hello: { resolutionId: null },
-    onIssue: frame.report,
+    onIssue: iframe.report,
   });
   toWorker.connect();
   closers.add(() => {
@@ -85,25 +91,25 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
   serveWorker(worker, contexts);
   const workerStatus = createFrameStatus();
   const heard = deferred<undefined>();
-  worker.handleSubscription('frame', 'status', (start, context, sink) => {
+  worker.handleSubscription(frame.status, (start, context, sink) => {
     const stop = workerStatus.handler(start, context, sink);
     heard.resolve(undefined);
     return stop;
   });
   workerStatus.ready();
   const status = createFrameStatus();
-  frame.serving.handleSubscription('frame', 'status', status.handler);
-  frame.serving.handleSubscription('frame', 'telemetry', relayTelemetry(toWorker));
+  iframe.serving.handleSubscription(frame.status, status.handler);
+  iframe.serving.handleSubscription(frame.telemetry, relayTelemetry(toWorker));
   // The iframe's link holds the one status subscription to the worker and shares it with the relay.
   registerWorkerRelay(
-    frame.serving,
+    iframe.serving,
     toWorker,
     watchWorkerStatus(toWorker, () => undefined),
     status,
   );
   status.ready();
   return {
-    host: frame.host,
+    host: iframe.host,
     worker,
     link: toWorker,
     workerStatus,
@@ -120,44 +126,44 @@ describe('the worker relay', () => {
     // Given a worker that serves a chain, names and telemetry
     const sent: string[] = [];
     const { host, contexts } = linkHops((worker, seen) => {
-      worker.handleSubscription('chain', 'connect', (_start, context, sink) => {
+      worker.handleSubscription(chain.connect, (_start, context, sink) => {
         seen.set('chain.connect', context);
         sink.receive({ tag: 'connected', value: undefined });
         return () => undefined;
       });
-      worker.handleRequest('chain', 'send', ({ message }) => {
+      worker.handleRequest(chain.send, ({ message }) => {
         sent.push(message);
         return ok();
       });
-      worker.handleRequest('resolve', 'owner', ({ label }, context) => {
+      worker.handleRequest(resolve.owner, ({ label }, context) => {
         seen.set('resolve.owner', context);
         return ok(label === 'doom' ? '0xowner' : null);
       });
-      worker.handleRequest('frame', 'warmup', () => ok());
-      worker.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
+      worker.handleRequest(frame.warmup, () => ok());
+      worker.handleSubscription(resolve.dotName, (_start, _context, sink) => {
         sink.receive({ tag: 'phase', value: 'resolving-content' });
         sink.receive({ tag: 'resolved', value: 'bafycid' });
         sink.interrupt();
         return () => undefined;
       });
-      worker.handleSubscription('frame', 'telemetry', (_start, _context, sink) => {
+      worker.handleSubscription(frame.telemetry, (_start, _context, sink) => {
         sink.receive({ tag: 'netBytes', value: 4_000 });
         return () => undefined;
       });
     });
 
     // When the host connects a chain, sends on it, resolves a name and its owner, and hears telemetry
-    const chain = record(host, 'chain', 'connect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await chain.until(1);
-    const sentAnswer = await host.request('chain', 'send', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' });
-    const owner = await host.request('resolve', 'owner', { label: 'doom' });
-    const warmed = await host.request('frame', 'warmup', undefined);
-    const name = record(host, 'resolve', 'dotName', { label: 'doom' });
-    const telemetry = record(host, 'frame', 'telemetry', undefined);
+    const connected = record(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
+    await connected.until(1);
+    const sentAnswer = await host.request(chain.send, { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' });
+    const owner = await host.request(resolve.owner, { label: 'doom' });
+    const warmed = await host.request(frame.warmup, undefined);
+    const name = record(host, resolve.dotName, { label: 'doom' });
+    const telemetry = record(host, frame.telemetry, undefined);
     await telemetry.until(1);
 
     // Then the worker's answers, values and ends reached the host, and the worker heard nothing of the host's call
-    expect(chain.events).toEqual([{ tag: 'connected', value: undefined }]);
+    expect(connected.events).toEqual([{ tag: 'connected', value: undefined }]);
     expect(sent).toEqual(['{"jsonrpc":"2.0"}']);
     expect([sentAnswer, owner, warmed]).toEqual([ok(), ok('0xowner'), ok()]);
     await expect(name.ended).resolves.toEqual(ok());
@@ -178,14 +184,14 @@ describe('the worker relay', () => {
       raw: '{"$v":1}',
     };
     const rootAnswer: RootAnswer['value'] = { kind: 'unsupported', reason: 'no slot' };
-    const asked: unknown[] = [];
+    const asked: (Executable['request'] | Root['request'])[] = [];
     const { host, contexts } = linkHops((served, seen) => {
-      served.handleRequest('resolve', 'executableManifest', (payload, context) => {
+      served.handleRequest(resolve.executableManifest, (payload, context) => {
         asked.push(payload);
         seen.set('resolve.executableManifest', context);
         return ok(executableAnswer);
       });
-      served.handleRequest('resolve', 'rootManifest', (payload, context) => {
+      served.handleRequest(resolve.rootManifest, (payload, context) => {
         asked.push(payload);
         seen.set('resolve.rootManifest', context);
         return ok(rootAnswer);
@@ -193,8 +199,8 @@ describe('the worker relay', () => {
     });
 
     // When
-    const executable = await host.request('resolve', 'executableManifest', { label: 'doom', kind: 'worker' });
-    const root = await host.request('resolve', 'rootManifest', { label: 'doom' });
+    const executable = await host.request(resolve.executableManifest, { label: 'doom', kind: 'worker' });
+    const root = await host.request(resolve.rootManifest, { label: 'doom' });
 
     // Then
     expect(executable).toEqual(ok(executableAnswer));
@@ -207,20 +213,20 @@ describe('the worker relay', () => {
   it('As the host, my disconnect reaches the worker', async () => {
     // Given a chain the worker holds for the host
     let stopped: () => void = () => undefined;
-    const disconnected = new Promise<void>(resolve => {
-      stopped = resolve;
+    const disconnected = new Promise<void>(done => {
+      stopped = done;
     });
     const { host } = linkHops(worker => {
-      worker.handleSubscription('chain', 'connect', (_start, _context, sink) => {
+      worker.handleSubscription(chain.connect, (_start, _context, sink) => {
         sink.receive({ tag: 'connected', value: undefined });
         return stopped;
       });
     });
-    const chain = record(host, 'chain', 'connect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await chain.until(1);
+    const connected = record(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
+    await connected.until(1);
 
     // When the host disconnects
-    chain.unsubscribe();
+    connected.unsubscribe();
 
     // Then the worker stops the chain
     await disconnected;
@@ -229,13 +235,13 @@ describe('the worker relay', () => {
   it("As a dotli maintainer, a call the worker fails reaches the host under the worker's error name", async () => {
     // Given a worker whose owner read fails
     const { host } = linkHops(worker => {
-      worker.handleRequest('resolve', 'owner', () => {
+      worker.handleRequest(resolve.owner, () => {
         throw new TypeError('storage read failed');
       });
     });
 
     // When the host asks for an owner
-    const owner = await host.request('resolve', 'owner', { label: 'doom' });
+    const owner = await host.request(resolve.owner, { label: 'doom' });
 
     // Then the host hears the worker's failure as the worker answered it
     expect(owner).toEqual(err(hostFailure('TypeError: storage read failed')));
@@ -243,16 +249,16 @@ describe('the worker relay', () => {
 
   it('As the host, a request the worker answers with a failure reaches me through the iframe unchanged', async () => {
     // Given a worker whose reads fail in each way a handler can answer
-    const syncTimeout = domain({ tag: 'syncTimeout' as const, value: 'Asset Hub did not sync' });
+    const syncTimeout: CallError<RemoteFailure> = domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' });
     const { host } = linkHops(worker => {
-      worker.handleRequest('resolve', 'owner', () => err(syncTimeout));
-      worker.handleRequest('resolve', 'rootManifest', () => err(denied()));
+      worker.handleRequest(resolve.owner, () => err(syncTimeout));
+      worker.handleRequest(resolve.rootManifest, () => err(denied()));
     });
 
     // When the host reads, including a manifest the worker does not serve
-    const owner = await host.request('resolve', 'owner', { label: 'doom' });
-    const root = await host.request('resolve', 'rootManifest', { label: 'doom' });
-    const executable = await host.request('resolve', 'executableManifest', { label: 'doom', kind: 'app' });
+    const owner = await host.request(resolve.owner, { label: 'doom' });
+    const root = await host.request(resolve.rootManifest, { label: 'doom' });
+    const executable = await host.request(resolve.executableManifest, { label: 'doom', kind: 'app' });
 
     // Then
     expect([owner, root, executable]).toEqual([err(syncTimeout), err(denied()), err(unsupported())]);
@@ -260,39 +266,39 @@ describe('the worker relay', () => {
 
   it('As the host, a subscription the worker interrupts reaches me through the iframe with the same variant and reason', async () => {
     // Given a worker that ends a name read typed, a chain with its handler's failure, and its telemetry as malformed
-    const apiStopped = domain({ tag: 'apiStopped' as const, value: 'The light client stopped' });
+    const apiStopped: CallError<RemoteFailure> = domain({ tag: 'apiStopped', value: 'The light client stopped' });
     const { host } = linkHops(worker => {
-      worker.handleSubscription('resolve', 'dotName', (_start, _context, sink) => {
+      worker.handleSubscription(resolve.dotName, (_start, _context, sink) => {
         sink.interrupt(apiStopped);
         return () => undefined;
       });
-      worker.handleSubscription('chain', 'connect', (_start, _context, sink) => {
+      worker.handleSubscription(chain.connect, (_start, _context, sink) => {
         sink.receive({ tag: 'connected', value: undefined });
         sink.interrupt(hostFailure('TypeError: the chain broke'));
         return () => undefined;
       });
-      worker.handleSubscription('frame', 'telemetry', (_start, _context, sink) => {
+      worker.handleSubscription(frame.telemetry, (_start, _context, sink) => {
         sink.interrupt(malformedFrame('a value past the limits'));
         return () => undefined;
       });
     });
 
     // When
-    const name = record(host, 'resolve', 'dotName', { label: 'doom' });
-    const chain = record(host, 'chain', 'connect', { genesisHash: '0xaa', connectionId: 'c1' });
-    const telemetry = record(host, 'frame', 'telemetry', undefined);
+    const name = record(host, resolve.dotName, { label: 'doom' });
+    const connected = record(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
+    const telemetry = record(host, frame.telemetry, undefined);
 
     // Then each end is the worker's, variant and reason alike
     expect(await name.ended).toEqual(err(apiStopped));
-    expect(await chain.ended).toEqual(err(hostFailure('TypeError: the chain broke')));
-    expect(chain.events).toEqual([{ tag: 'connected', value: undefined }]);
+    expect(await connected.ended).toEqual(err(hostFailure('TypeError: the chain broke')));
+    expect(connected.events).toEqual([{ tag: 'connected', value: undefined }]);
     expect(await telemetry.ended).toEqual(err(malformedFrame('a value past the limits')));
   });
 
   it('As the host, I hear my frame failed when the worker released my port', async () => {
     // Given a host that heard its frame is ready, on an iframe whose status subscription the worker holds
     const { host, worker, workerStatus, workerStatusHeard } = linkHops(() => undefined);
-    const status = record(host, 'frame', 'status', undefined);
+    const status = record(host, frame.status, undefined);
     await Promise.all([status.until(1), workerStatusHeard]);
 
     // When the worker releases the iframe's port, ending its status first as the worker does
@@ -309,7 +315,7 @@ describe('the worker relay', () => {
   it('As the host, my frame status ends cleanly when the worker ends its own cleanly', async () => {
     // Given a host that heard its frame is ready
     const { host, workerStatus, workerStatusHeard } = linkHops(() => undefined);
-    const status = record(host, 'frame', 'status', undefined);
+    const status = record(host, frame.status, undefined);
     await Promise.all([status.until(1), workerStatusHeard]);
 
     // When
@@ -323,12 +329,12 @@ describe('the worker relay', () => {
     // Given a worker that holds an owner read
     const asked = deferred<undefined>();
     const { host, worker, workerStatus, workerStatusHeard } = linkHops(served => {
-      served.handleRequest('resolve', 'owner', () => {
+      served.handleRequest(resolve.owner, () => {
         asked.resolve(undefined);
         return new Promise<never>(() => undefined);
       });
     });
-    const owner = host.request('resolve', 'owner', { label: 'doom' });
+    const owner = host.request(resolve.owner, { label: 'doom' });
     await Promise.all([asked.promise, workerStatusHeard]);
 
     // When the worker releases the iframe's port
@@ -344,13 +350,13 @@ describe('the worker relay', () => {
     // Given a ready frame whose worker holds an owner read
     const asked = deferred<undefined>();
     const { host, link, workerStatusHeard } = linkHops(served => {
-      served.handleRequest('resolve', 'owner', () => {
+      served.handleRequest(resolve.owner, () => {
         asked.resolve(undefined);
         return new Promise<never>(() => undefined);
       });
     });
-    const status = record(host, 'frame', 'status', undefined);
-    const owner = host.request('resolve', 'owner', { label: 'doom' });
+    const status = record(host, frame.status, undefined);
+    const owner = host.request(resolve.owner, { label: 'doom' });
     await Promise.all([status.until(1), asked.promise, workerStatusHeard]);
 
     // When the link closes on a version mismatch, as its handshake with a worker of another release does
@@ -359,9 +365,9 @@ describe('the worker relay', () => {
 
     // Then the frame status ends typed, the host reads it as the protocol's mismatch, and the held call fails with it
     const ended = await status.ended;
-    const failure = domain({ tag: 'versionMismatch' as const, value: mismatch.message });
+    const failure: CallError<FrameFailure> = domain({ tag: 'versionMismatch', value: mismatch.message });
     expect(ended).toEqual(err(failure));
-    expect(failureOf('frame', 'status', failure)).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(failureOf(frame.status, failure)).toBeInstanceOf(ProtocolVersionMismatchError);
     await expect(owner).resolves.toEqual(err(hostFailure(`ProtocolVersionMismatchError: ${mismatch.message}`)));
   });
 
@@ -369,13 +375,13 @@ describe('the worker relay', () => {
     // Given a ready frame whose worker holds an owner read
     const asked = deferred<undefined>();
     const { host, link, workerStatusHeard } = linkHops(served => {
-      served.handleRequest('resolve', 'owner', () => {
+      served.handleRequest(resolve.owner, () => {
         asked.resolve(undefined);
         return new Promise<never>(() => undefined);
       });
     });
-    const status = record(host, 'frame', 'status', undefined);
-    const owner = host.request('resolve', 'owner', { label: 'doom' });
+    const status = record(host, frame.status, undefined);
+    const owner = host.request(resolve.owner, { label: 'doom' });
     await Promise.all([status.until(1), asked.promise, workerStatusHeard]);
 
     // When the link closes under the relay, as a ready wait that fails closes it

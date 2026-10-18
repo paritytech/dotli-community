@@ -5,16 +5,30 @@
 // what a test reads to see a message cross from the frame to the host.
 
 import type { BrowserContext, Page } from '@playwright/test';
-import type { DescribedWireMessage } from '@dotli/protocol/testing';
+import type { RecordedWireMessage } from '@dotli/protocol/testing';
 import { RECORDER_BUNDLE_PATH } from './wire-bundles.js';
+
+declare global {
+  interface Window {
+    /** What the recorder kept, in the host page's top window. */
+    __dotliProtocolMessages?: RecordedWireMessage[];
+  }
+}
 
 /** What a recorded message must be. `body` matches when each of its fields does, at any depth. */
 export interface MessageMatch {
   /** Any trait when unset. */
   trait?: string;
   method: string;
-  leg: string;
+  /** The message's kind, such as `receive` or `interrupt`. */
+  tag: string;
   body?: Record<string, unknown>;
+}
+
+/** A recorded message, and what it carries as the page decoded it. */
+export interface MatchedMessage {
+  recorded: RecordedWireMessage;
+  body: unknown;
 }
 
 /**
@@ -30,7 +44,7 @@ export async function waitForProtocolMessage(
   page: Page,
   match: MessageMatch,
   timeout: number,
-): Promise<DescribedWireMessage> {
+): Promise<MatchedMessage> {
   const handle = await page.waitForFunction(
     wanted => {
       const contains = (actual: unknown, expected: unknown): boolean => {
@@ -40,18 +54,21 @@ export async function waitForProtocolMessage(
         return (
           typeof actual === 'object' &&
           actual !== null &&
-          Object.entries(expected).every(([key, value]) => contains((actual as Record<string, unknown>)[key], value))
+          Object.entries(expected).every(([key, value]) => contains(Reflect.get(actual, key), value))
         );
       };
-      const seen =
-        (window as unknown as { __dotliProtocolMessages?: DescribedWireMessage[] }).__dotliProtocolMessages ?? [];
-      return seen.find(
+      const bodyOf = (recorded: RecordedWireMessage): unknown => {
+        const message: unknown = JSON.parse(recorded.json);
+        return typeof message === 'object' && message !== null ? Reflect.get(message, 'value') : undefined;
+      };
+      const found = (window.__dotliProtocolMessages ?? []).find(
         message =>
           (wanted.trait === undefined || message.trait === wanted.trait) &&
           message.method === wanted.method &&
-          message.leg === wanted.leg &&
-          contains(message.body, wanted.body ?? {}),
+          message.tag === wanted.tag &&
+          contains(bodyOf(message), wanted.body ?? {}),
       );
+      return found === undefined ? undefined : { recorded: found, body: bodyOf(found) };
     },
     match,
     { timeout },
@@ -59,7 +76,7 @@ export async function waitForProtocolMessage(
   const message = await handle.jsonValue();
   // The wait settles only on a message the find returned.
   if (message === undefined) {
-    throw new Error(`no ${match.method} ${match.leg} message was recorded`);
+    throw new Error(`no ${match.method} ${match.tag} message was recorded`);
   }
   return message;
 }

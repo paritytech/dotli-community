@@ -5,33 +5,21 @@
 // wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any issue a
 // spec did not take, so none goes unseen.
 
-import {
-  protocolSchema,
-  type ProtocolSchema,
-  type ProtocolTransport,
-  type SubscriptionStart,
-  type SubscriptionValue,
-} from '@dotli/protocol';
-import { errorMessage } from '@dotli/shared';
+import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import {
   createPortProvider,
   createTransport,
   type CallError,
-  type DomainError,
   type Result,
-  type SubscriptionMethodName,
-  type TraitName,
+  type Subscription,
   type TransportIssue,
 } from '@dotli/transport';
 
 export const HOST_ORIGIN = 'http://host-playground.localhost:5173';
 export const PRODUCT_ORIGIN = 'http://bafy.app.localhost:5173';
 
-type S = ProtocolSchema;
-
-/** How a subscription of `method` in `trait` ended: the peer's interrupt, or the error its transport closed with. */
-export type EndOf<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> =
-  Result<void, CallError<DomainError<S, T, M>>> | Error;
+/** How a subscription whose own end reason is `I` ended: the peer's interrupt, or the error its transport closed with. */
+export type EndOf<I> = Result<undefined, CallError<I>> | Error;
 
 export interface HostLink {
   /** The frame's end, where a spec registers the handlers under test. */
@@ -92,11 +80,11 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
 function describeIssue(issue: TransportIssue): string {
   switch (issue.kind) {
     case 'refused':
-      return `refused as ${issue.reason}${issue.cause === undefined ? '' : `, ${errorMessage(issue.cause)}`}`;
+      return `refused as ${issue.reason}, ${issue.cause.message}`;
     case 'post_failed':
-      return `a post failed, ${errorMessage(issue.error)}`;
+      return `a post failed, ${issue.error.message}`;
     case 'listener_threw':
-      return `a listener threw, ${errorMessage(issue.error)}`;
+      return `a listener threw, ${issue.error.message}`;
   }
 }
 
@@ -116,29 +104,28 @@ export function closeHostLinks(): void {
   }
 }
 
-export interface Recording<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>> {
-  events: SubscriptionValue<T, M>[];
+export interface Recording<V, I> {
+  events: V[];
   /** Settles with the end: the frame's interrupt, or the error the transport closed with. */
-  ended: Promise<EndOf<T, M>>;
+  ended: Promise<EndOf<I>>;
   /** Resolves once `count` events have arrived. */
   until: (count: number) => Promise<void>;
   unsubscribe: () => void;
 }
 
 /** Subscribes on `transport` and records every value and the end. */
-export function record<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>>(
+export function record<S, V, I>(
   transport: ProtocolTransport,
-  trait: T,
-  method: M,
-  start: SubscriptionStart<T, M>,
-): Recording<T, M> {
-  const events: SubscriptionValue<T, M>[] = [];
+  method: Subscription<S, V, I>,
+  start: NoInfer<S>,
+): Recording<V, I> {
+  const events: V[] = [];
   const waiters: { count: number; resolve: () => void }[] = [];
-  let end: (outcome: EndOf<T, M>) => void = () => undefined;
-  const ended = new Promise<EndOf<T, M>>(resolve => {
+  let end: (outcome: EndOf<I>) => void = () => undefined;
+  const ended = new Promise<EndOf<I>>(resolve => {
     end = resolve;
   });
-  const handle = transport.subscribe(trait, method, start, {
+  const handle = transport.subscribe(method, start, {
     receive: value => {
       events.push(value);
       for (const waiter of [...waiters]) {

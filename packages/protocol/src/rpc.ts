@@ -5,35 +5,27 @@
 
 import { m, spans as S } from '@dotli/metrics';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
-import type { CallError, MethodTypes, RequestMethodName, Result, TraitName } from '@dotli/transport';
+import type { AnyMethod, Request } from '@dotli/transport';
 import { callName, type CallName } from './call-names.js';
 import { ProtocolRequestError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import { budgetOf } from './method-timeouts.js';
-import { callFailure, fromTransportError, type DomainFailure } from './outcomes.js';
-import type { ProtocolSchema, ProtocolTransport } from './schema.js';
+import { callFailure, fromTransportError } from './outcomes.js';
+import { protocolSchema, type DomainFailure, type ProtocolTransport } from './schema.js';
 
-type S = ProtocolSchema;
-
-/** What a request of `method` in `trait` sends. */
-export type RequestPayload<T extends TraitName<S>, M extends RequestMethodName<S, T>> =
-  MethodTypes<S, T, M> extends { request: infer P } ? P : never;
-
-/** What a request of `method` in `trait` answers when it succeeds. */
-export type Reply<T extends TraitName<S>, M extends RequestMethodName<S, T>> =
-  MethodTypes<S, T, M> extends { response: Result<infer R, CallError<unknown>> } ? R : never;
+const { frame, resolve, chain } = protocolSchema.traits;
 
 /**
  * Page load steps, breadcrumbed when sent and settled so a failed load's trail names what it waited on.
  * Storage and chain traffic is per product call and would crowd them out.
  */
-const TRAILED_METHODS: ReadonlySet<CallName> = new Set<CallName>([
-  'warmup',
-  'chainConnect',
-  'resolveDotName',
-  'resolveOwner',
-  'resolveExecutableManifest',
-  'resolveRootManifest',
+const TRAILED_METHODS: ReadonlySet<AnyMethod> = new Set<AnyMethod>([
+  frame.warmup,
+  chain.connect,
+  resolve.dotName,
+  resolve.owner,
+  resolve.executableManifest,
+  resolve.rootManifest,
 ]);
 
 export function createRequestId(): string {
@@ -53,11 +45,10 @@ export function callTimeoutError(method: CallName, budgetMs: number): ProtocolRe
  * A remote failure as callers see it. A bare `"Error"` carries nothing, and would cost the "crossed the protocol
  * boundary" signal dashboards filter on.
  */
-export function asCallError(error: unknown): Error {
-  const err = toError(error);
-  return err instanceof ProtocolRequestError && err.name === 'Error'
-    ? new ProtocolRequestError(err.message, 'ProtocolResponseError', err.method)
-    : err;
+export function asCallError(error: Error): Error {
+  return error instanceof ProtocolRequestError && error.name === 'Error'
+    ? new ProtocolRequestError(error.message, 'ProtocolResponseError', error.method)
+    : error;
 }
 
 export type CallOutcome = 'ok' | 'error' | 'timeout';
@@ -68,11 +59,12 @@ export interface CallTrail {
 }
 
 /** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
-function startCallTrail(method: CallName, budgetMs: number | null, now: () => number): CallTrail {
-  // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
+function startCallTrail(called: AnyMethod, budgetMs: number | null, now: () => number): CallTrail {
+  const method = callName(called);
+  // `chain.send` is fire-and-ack, one per product JSON-RPC message: timed, it would swamp the resolution and connect
   // round trips this span measures.
-  const stop = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST, now);
-  const trailed = TRAILED_METHODS.has(method);
+  const stop = called === chain.send ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST, now);
+  const trailed = TRAILED_METHODS.has(called);
   const sentAt = now();
   if (trailed) {
     log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });
@@ -111,17 +103,14 @@ export interface FrameRpc {
    * whose budget runs out before it goes out is counted as a timeout. A boot that fails is otherwise counted once, by
    * the frame.
    */
-  request<T extends TraitName<S>, M extends RequestMethodName<S, T>>(
-    trait: T,
-    method: M,
-    payload: RequestPayload<T, M>,
-  ): Promise<Reply<T, M>>;
+  request<P, R, E extends DomainFailure>(method: Request<P, R, E>, payload: NoInfer<P>): Promise<R>;
   /** Starts the trail of a call made on the transport itself, timed on the same clock as every request. */
-  trail(method: CallName, budgetMs: number | null): CallTrail;
+  trail(method: AnyMethod, budgetMs: number | null): CallTrail;
 }
 
 /** The shared store answers once the frame listens, long before its light client is ready. */
-function isSharedStoreTrait(trait: TraitName<S>): boolean {
+function isSharedStore(method: AnyMethod): boolean {
+  const trait = protocolSchema.addresses.get(method)?.trait;
   return trait === 'storage' || trait === 'wallet';
 }
 
@@ -133,13 +122,9 @@ export function createFrameRpc(
 ): FrameRpc {
   return {
     trail: (method, budgetMs) => startCallTrail(method, budgetMs, now),
-    async request<T extends TraitName<S>, M extends RequestMethodName<S, T>>(
-      trait: T,
-      method: M,
-      payload: RequestPayload<T, M>,
-    ): Promise<Reply<T, M>> {
-      const name = callName(trait, method);
-      const budgetMs = budgetOf(trait, method);
+    async request<P, R, E extends DomainFailure>(method: Request<P, R, E>, payload: P): Promise<R> {
+      const name = callName(method);
+      const budgetMs = budgetOf(method);
       // Ends the call on its budget. The transport drops it, and a late answer is ignored.
       const giveUp = new AbortController();
       let timedOut: Error | undefined;
@@ -158,26 +143,22 @@ export function createFrameRpc(
               },
               timers,
             );
-      const send = async (transport: ProtocolTransport): Promise<Reply<T, M>> => {
+      const send = async (transport: ProtocolTransport): Promise<R> => {
         // The budget ran out while the frame was asked for, so nothing goes out.
         if (giveUp.signal.aborted) {
           throw toError(giveUp.signal.reason);
         }
-        sent.trail = startCallTrail(name, budgetMs, now);
-        // Every domain error the schema declares is a `DomainFailure`.
-        const outcome = (await transport.request(trait, method, payload, { signal: giveUp.signal })) as Result<
-          Reply<T, M>,
-          CallError<DomainFailure>
-        >;
-        if (outcome.ok) {
+        sent.trail = startCallTrail(method, budgetMs, now);
+        const outcome = await transport.request(method, payload, { signal: giveUp.signal });
+        if (outcome.tag === 'Ok') {
           return outcome.value;
         }
-        throw callFailure(outcome.error, name, giveUp.signal);
+        throw callFailure(outcome.value, name, giveUp.signal);
       };
 
       try {
-        let answer: Reply<T, M>;
-        if (isSharedStoreTrait(trait)) {
+        let answer: R;
+        if (isSharedStore(method)) {
           // The transport queues a call until its handshake, and the wait for it is the boot's, not the call's.
           answer = await bounded(
             frame.transport().then(async transport => {
@@ -193,7 +174,7 @@ export function createFrameRpc(
         return answer;
       } catch (reason: unknown) {
         // A transport that closed rejects with its own error, which the host knows by the protocol's class.
-        const err = asCallError(reason instanceof Error ? fromTransportError(reason) : reason);
+        const err = asCallError(fromTransportError(toError(reason)));
         const outcome: CallOutcome = reason === timedOut ? 'timeout' : 'error';
         if (sent.trail !== null) {
           sent.trail.settled(outcome, err);

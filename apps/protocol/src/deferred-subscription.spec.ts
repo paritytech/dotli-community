@@ -2,27 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
-import type { SubscriptionStart, TelemetryEvent } from '@dotli/protocol';
+import { protocolSchema, type ProtocolHandler } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
-import { err, hostFailure, unsupported } from '@dotli/transport';
-import { createDeferredSubscription, type DeferredSubscription, type Handler } from './deferred-subscription.js';
+import { err, hostFailure, unsupported, type DomainError, type MethodTypes } from '@dotli/transport';
+import { createDeferredSubscription, type DeferredSubscription } from './deferred-subscription.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
+const { frame } = protocolSchema.traits;
+
 /** A call the frame does not serve, whose answer means every call sent before it has reached the frame. */
 async function roundTrip(link: HostLink): Promise<void> {
-  await expect(link.host.request('frame', 'warmup', undefined)).resolves.toEqual(err(unsupported()));
+  await expect(link.host.request(frame.warmup, undefined)).resolves.toEqual(err(unsupported()));
 }
 
-type TelemetryHandler = Handler<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never>;
+type Telemetry = MethodTypes<typeof frame.telemetry>;
+type TelemetryHandler = ProtocolHandler<typeof frame.telemetry>;
+type DeferredTelemetry = DeferredSubscription<
+  Telemetry['start'],
+  Telemetry['receive'],
+  DomainError<typeof frame.telemetry>
+>;
 
 /** A deferred telemetry the frame serves on `link`. */
-function telemetrySubscription(
-  link: HostLink,
-): DeferredSubscription<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never> {
-  const telemetry = createDeferredSubscription<SubscriptionStart<'frame', 'telemetry'>, TelemetryEvent, never>();
-  link.serving.handleSubscription('frame', 'telemetry', telemetry.handler);
+function telemetrySubscription(link: HostLink): DeferredTelemetry {
+  const telemetry: DeferredTelemetry = createDeferredSubscription();
+  link.serving.handleSubscription(frame.telemetry, telemetry.handler);
   return telemetry;
 }
 
@@ -48,12 +54,12 @@ describe('a subscription served before its source exists', () => {
     // Given
     const link = linkHost();
     const telemetry = telemetrySubscription(link);
-    const early = record(link.host, 'frame', 'telemetry', undefined);
+    const early = record(link.host, frame.telemetry, undefined);
     await roundTrip(link);
 
     // When
     telemetry.serve(source().handler);
-    const late = record(link.host, 'frame', 'telemetry', undefined);
+    const late = record(link.host, frame.telemetry, undefined);
 
     // Then
     await early.until(1);
@@ -66,7 +72,7 @@ describe('a subscription served before its source exists', () => {
     // Given
     const link = linkHost();
     const telemetry = telemetrySubscription(link);
-    const early = record(link.host, 'frame', 'telemetry', undefined);
+    const early = record(link.host, frame.telemetry, undefined);
     await roundTrip(link);
 
     // When
@@ -84,7 +90,7 @@ describe('a subscription served before its source exists', () => {
     const link = linkHost();
     const telemetry = telemetrySubscription(link);
     const fed = source();
-    const heard = record(link.host, 'frame', 'telemetry', undefined);
+    const heard = record(link.host, frame.telemetry, undefined);
     await roundTrip(link);
     telemetry.serve(fed.handler);
     await heard.until(1);
@@ -100,14 +106,14 @@ describe('a subscription served before its source exists', () => {
     // Given
     const link = linkHost();
     const telemetry = telemetrySubscription(link);
-    const early = record(link.host, 'frame', 'telemetry', undefined);
+    const early = record(link.host, frame.telemetry, undefined);
     await roundTrip(link);
 
     // When
     telemetry.fail(new Error('Unknown protocol mode: "nope"'));
     const fed = source();
     telemetry.serve(fed.handler);
-    const late = record(link.host, 'frame', 'telemetry', undefined);
+    const late = record(link.host, frame.telemetry, undefined);
 
     // Then the failure holds, and the source served after it is never started
     const failure = err(hostFailure('Error: Unknown protocol mode: "nope"'));

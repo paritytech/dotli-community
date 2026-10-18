@@ -263,7 +263,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
         { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: reportIssue },
       ),
     );
-    const frameStatus = subscribe(kept.transport, 'frame', 'status', undefined, () => {
+    const frameStatus = subscribe(kept.transport, protocolSchema.traits.frame.status, undefined, () => {
       if (slot === kept) {
         setStatus('ready');
       }

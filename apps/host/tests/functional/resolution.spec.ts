@@ -59,7 +59,7 @@ test.describe('Resolution across chain backends', () => {
       // Then
       const sawPeers = waitForProtocolMessage(
         page,
-        { trait: 'frame', method: 'telemetry', leg: 'receive', body: { tag: 'chainSync', value: { kind: 'peers' } } },
+        { trait: 'frame', method: 'telemetry', tag: 'receive', body: { tag: 'chainSync', value: { kind: 'peers' } } },
         TIMEOUT_MS,
       );
       const [peers] = await Promise.all([sawPeers, waitForResolutionOutcome(page, TIMEOUT_MS, 'smoldot-direct')]);

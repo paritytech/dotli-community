@@ -10,12 +10,10 @@ import {
   TransportVersionMismatchError,
   domain,
   hostFailure,
+  type AnyMethod,
   type CallError,
-  type DomainError,
-  type MethodName,
-  type TraitName,
 } from '@dotli/transport';
-import { errorMessage, errorName, toError } from '@dotli/shared';
+import { toError } from '@dotli/shared';
 import { callName, type CallName } from './call-names.js';
 import {
   ProtocolFatalError,
@@ -25,10 +23,7 @@ import {
   ProtocolRequestError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import type { FrameFailure, ProtocolSchema, RemoteFailure } from './schema.js';
-
-/** Every domain error the schema declares. */
-export type DomainFailure = FrameFailure | RemoteFailure;
+import type { DomainFailure, FrameFailure, RemoteFailure } from './schema.js';
 
 /** The error a transport closed with, under the protocol's own class when it is one of the transport's. */
 export function fromTransportError(error: Error): Error {
@@ -91,16 +86,11 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
 }
 
 /**
- * The failure of a call of `method` in `trait` as the error the protocol's own code sees, for a frame that waits on or
- * relays another frame's calls.
+ * The failure of a call of `method` as the error the protocol's own code sees, for a frame that waits on or relays
+ * another frame's calls.
  */
-export function failureOf<T extends TraitName<ProtocolSchema>, M extends MethodName<ProtocolSchema, T>>(
-  trait: T,
-  method: M,
-  error: CallError<DomainError<ProtocolSchema, T, M>>,
-): Error {
-  // Every domain error the schema declares is a `DomainFailure`.
-  return callFailure(error as CallError<DomainFailure>, callName(trait, method));
+export function failureOf<E extends DomainFailure>(method: AnyMethod, error: CallError<E>): Error {
+  return callFailure(error, callName(method));
 }
 
 /**
@@ -129,13 +119,13 @@ export function frameStatusEnd(closing: Error): CallError<FrameFailure> {
  * The typed failure of a resolver or chain error the host's error screen tells apart by name, or null for any other,
  * which crosses as the handler's own failure.
  */
-export function remoteFailureOf(error: unknown): RemoteFailure | null {
-  const name = errorName(error);
-  if (name === 'NetworkSyncTimeoutError') {
-    return { tag: 'syncTimeout', value: errorMessage(error) };
+export function remoteFailureOf(error: Error): RemoteFailure | null {
+  switch (error.name) {
+    case 'NetworkSyncTimeoutError':
+      return { tag: 'syncTimeout', value: error.message };
+    case 'ApiStoppedError':
+      return { tag: 'apiStopped', value: error.message };
+    default:
+      return null;
   }
-  if (name === 'ApiStoppedError') {
-    return { tag: 'apiStopped', value: errorMessage(error) };
-  }
-  return null;
 }

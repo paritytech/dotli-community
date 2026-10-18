@@ -6,6 +6,7 @@ import {
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
+  protocolSchema,
   type FrameFailure,
 } from '@dotli/protocol';
 import { domain, err, hostFailure, ok, type CallError } from '@dotli/transport';
@@ -14,10 +15,12 @@ import { closeHostLinks, linkHost, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
+const { frame } = protocolSchema.traits;
+
 function setup(): { status: ReturnType<typeof createFrameStatus>; link: ReturnType<typeof linkHost> } {
   const status = createFrameStatus();
   const link = linkHost();
-  link.serving.handleSubscription('frame', 'status', status.handler);
+  link.serving.handleSubscription(frame.status, status.handler);
   return { status, link };
 }
 
@@ -30,7 +33,7 @@ describe('the frame status', () => {
     status.fail(new ProtocolInitFailedError('Unknown protocol mode: "nope"'));
 
     // When
-    const heard = record(link.host, 'frame', 'status', undefined);
+    const heard = record(link.host, frame.status, undefined);
 
     // Then
     expect(await heard.ended).toEqual(err(domain({ tag: 'initFailed', value: 'Unknown protocol mode: "nope"' })));
@@ -43,7 +46,7 @@ describe('the frame status', () => {
     status.ready();
 
     // When
-    const heard = record(link.host, 'frame', 'status', undefined);
+    const heard = record(link.host, frame.status, undefined);
 
     // Then
     await heard.until(1);
@@ -53,7 +56,7 @@ describe('the frame status', () => {
   it('As the host, I wait while my frame boots and hear ready once it is', async () => {
     // Given
     const { status, link } = setup();
-    const heard = record(link.host, 'frame', 'status', undefined);
+    const heard = record(link.host, frame.status, undefined);
     await link.host.whenConnected();
 
     // When
@@ -69,7 +72,7 @@ describe('the frame status', () => {
     // Given
     const { status, link } = setup();
     status.ready();
-    const heard = record(link.host, 'frame', 'status', undefined);
+    const heard = record(link.host, frame.status, undefined);
     await heard.until(1);
 
     // When
@@ -81,7 +84,7 @@ describe('the frame status', () => {
     // Then
     const fatal = err(domain({ tag: 'fatal', value: 'Light client died' }));
     expect(await heard.ended).toEqual(fatal);
-    const late = record(link.host, 'frame', 'status', undefined);
+    const late = record(link.host, frame.status, undefined);
     expect(await late.ended).toEqual(fatal);
   });
 
@@ -95,8 +98,8 @@ describe('the frame status', () => {
     stopped.status.interrupt();
 
     // Then a protocol failure keeps its type, any other its name, and a clean end is clean
-    const failed = [released, broken].map(({ link }) => record(link.host, 'frame', 'status', undefined).ended);
-    const clean = record(stopped.link.host, 'frame', 'status', undefined).ended;
+    const failed = [released, broken].map(({ link }) => record(link.host, frame.status, undefined).ended);
+    const clean = record(stopped.link.host, frame.status, undefined).ended;
     expect(await Promise.all(failed)).toEqual([
       err(domain({ tag: 'released', value: 'The worker released this tab' })),
       err(hostFailure('TypeError: boot broke')),
@@ -107,7 +110,7 @@ describe('the frame status', () => {
   it("As a relay, I end the status with another frame's end as it is", async () => {
     // Given
     const { status, link } = setup();
-    const heard = record(link.host, 'frame', 'status', undefined);
+    const heard = record(link.host, frame.status, undefined);
     await link.host.whenConnected();
     const workerEnd: CallError<FrameFailure> = hostFailure('ProtocolRequestError: the worker gave up');
 

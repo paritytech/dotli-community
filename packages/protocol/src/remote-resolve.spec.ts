@@ -2,29 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { toError } from '@dotli/shared';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { domain, hostFailure, type SubscriptionHandler } from '@dotli/transport';
+import { domain, hostFailure } from '@dotli/transport';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remote-resolve.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { ProtocolSchema, ProtocolTransport } from './schema.js';
+import { protocolSchema, type ProtocolHandler, type ProtocolTransport } from './schema.js';
+
+const { dotName } = protocolSchema.traits.resolve;
 
 /** A frame app that resolves names with `handler`. */
-function resolving(
-  handler: SubscriptionHandler<ProtocolSchema, 'resolve', 'dotName'>,
-): (serving: ProtocolTransport) => void {
+function resolving(handler: ProtocolHandler<typeof dotName>): (serving: ProtocolTransport) => void {
   return serving => {
-    serving.handleSubscription('resolve', 'dotName', handler);
+    serving.handleSubscription(dotName, handler);
   };
 }
 
 /** How a resolution failed, read once it has. */
-function failure(resolution: Promise<unknown>): Promise<Error> {
-  return resolution.then(
-    () => new Error('the resolution succeeded'),
-    (err: unknown) => err as Error,
-  );
+function failure<T>(resolution: Promise<T>): Promise<Error> {
+  return resolution.then(() => new Error('the resolution succeeded'), toError);
 }
 
 describe('createRemoteResolve', () => {
@@ -96,10 +94,7 @@ describe('createRemoteResolve', () => {
     );
 
     // When
-    const cid = resolve.resolveDotNameRemote('doom').then(
-      () => new Error('the resolution succeeded'),
-      (err: unknown) => err as Error,
-    );
+    const cid = failure(resolve.resolveDotNameRemote('doom'));
     await timers.advance(0);
 
     // Then
@@ -151,10 +146,7 @@ describe('createRemoteResolve', () => {
         stopped = true;
       }),
     );
-    const cid = resolve.resolveDotNameRemote('doom').then(
-      () => new Error('the resolution succeeded'),
-      (err: unknown) => err as Error,
-    );
+    const cid = failure(resolve.resolveDotNameRemote('doom'));
     await timers.advance(0);
 
     // When

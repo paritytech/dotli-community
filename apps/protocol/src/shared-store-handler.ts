@@ -13,11 +13,11 @@ import {
   isSharedAuthSiteId,
   isValidSharedAuthKey,
   isValidSharedModeKey,
+  protocolSchema,
   type ProtocolContext,
-  type ProtocolSchema,
-  type ProtocolTransport,
+  type ProtocolServing,
 } from '@dotli/protocol';
-import { denied, err, ok, type CallError, type MethodTypes, type Result, type Sink } from '@dotli/transport';
+import { type CallError, denied, err, type MethodTypes, ok, type Result, type Sink } from '@dotli/transport';
 
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
@@ -39,7 +39,9 @@ export interface SharedStoreDeps {
   channel: SharedAuthChannel | null;
 }
 
-type SharedAuthChange = MethodTypes<ProtocolSchema, 'storage', 'authChanges'>['receive'];
+const { storage } = protocolSchema.traits;
+
+type SharedAuthChange = MethodTypes<typeof storage.authChanges>['receive'];
 
 export interface SharedStoreHandler {
   /** Stops serving the stores and hearing other tabs. */
@@ -100,24 +102,37 @@ function modeKeyOf(
   return storeKey(payload, context, assertModeKey, buildSharedModeStorageKey);
 }
 
-/** Runs `use` on the call's storage key, or answers the call's refusal. */
-function withKey<T>(key: Result<string, CallError<never>>, use: (key: string) => T): Result<T, CallError<never>> {
-  return key.ok ? ok(use(key.value)) : key;
+/** Reads with the call's storage key, or answers the call's refusal. */
+function readWith<T>(key: Result<string, CallError<never>>, read: (key: string) => T): Result<T, CallError<never>> {
+  return key.tag === 'Ok' ? ok(read(key.value)) : key;
 }
 
-function isBroadcastMessage(value: unknown): value is SharedAuthBroadcastMessage {
-  if (typeof value !== 'object' || value === null) {
-    return false;
+/** Writes with the call's storage key, or answers the call's refusal. */
+function writeWith(
+  key: Result<string, CallError<never>>,
+  write: (key: string) => void,
+): Result<undefined, CallError<never>> {
+  if (key.tag === 'Err') {
+    return key;
   }
-  const obj = value as { siteId?: unknown; key?: unknown; value?: unknown };
+  write(key.value);
+  return ok();
+}
+
+function isBroadcastMessage(data: unknown): data is SharedAuthBroadcastMessage {
   return (
-    typeof obj.siteId === 'string' &&
-    typeof obj.key === 'string' &&
-    (obj.value === null || typeof obj.value === 'string')
+    typeof data === 'object' &&
+    data !== null &&
+    'siteId' in data &&
+    typeof data.siteId === 'string' &&
+    'key' in data &&
+    typeof data.key === 'string' &&
+    'value' in data &&
+    (data.value === null || typeof data.value === 'string')
   );
 }
 
-export function createSharedStoreHandler(serving: ProtocolTransport, deps: SharedStoreDeps): SharedStoreHandler {
+export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedStoreDeps): SharedStoreHandler {
   const { channel } = deps;
   const subscribers = new Set<Sink<SharedAuthChange, never>>();
 
@@ -135,8 +150,8 @@ export function createSharedStoreHandler(serving: ProtocolTransport, deps: Share
   }
 
   // BroadcastChannel skips the sender, whose adapter emits locally, so nothing is dispatched twice.
-  function relay(event: MessageEvent): void {
-    const data: unknown = event.data;
+  function relay(event: MessageEvent<unknown>): void {
+    const { data } = event;
     // The site check is defensive, the channel is already origin-scoped.
     if (!isBroadcastMessage(data) || data.siteId !== SITE_ID) {
       return;
@@ -149,35 +164,35 @@ export function createSharedStoreHandler(serving: ProtocolTransport, deps: Share
   channel?.addEventListener('message', relay);
 
   const unregister = [
-    serving.handleRequest('storage', 'authRead', (payload, context) =>
-      withKey(authKeyOf(payload, context), key => deps.storage().getItem(key)),
+    serving.handleRequest(storage.authRead, (payload, context) =>
+      readWith(authKeyOf(payload, context), key => deps.storage().getItem(key)),
     ),
-    serving.handleRequest('storage', 'authWrite', (payload, context) =>
-      withKey(authKeyOf(payload, context), key => {
+    serving.handleRequest(storage.authWrite, (payload, context) =>
+      writeWith(authKeyOf(payload, context), key => {
         deps.storage().setItem(key, payload.value);
         broadcast(payload.siteId, payload.key, payload.value);
       }),
     ),
-    serving.handleRequest('storage', 'authClear', (payload, context) =>
-      withKey(authKeyOf(payload, context), key => {
+    serving.handleRequest(storage.authClear, (payload, context) =>
+      writeWith(authKeyOf(payload, context), key => {
         deps.storage().removeItem(key);
         broadcast(payload.siteId, payload.key, null);
       }),
     ),
-    serving.handleRequest('storage', 'modeRead', (payload, context) =>
-      withKey(modeKeyOf(payload, context), key => deps.storage().getItem(key)),
+    serving.handleRequest(storage.modeRead, (payload, context) =>
+      readWith(modeKeyOf(payload, context), key => deps.storage().getItem(key)),
     ),
-    serving.handleRequest('storage', 'modeWrite', (payload, context) =>
-      withKey(modeKeyOf(payload, context), key => {
+    serving.handleRequest(storage.modeWrite, (payload, context) =>
+      writeWith(modeKeyOf(payload, context), key => {
         deps.storage().setItem(key, payload.value);
       }),
     ),
-    serving.handleRequest('storage', 'modeClear', (payload, context) =>
-      withKey(modeKeyOf(payload, context), key => {
+    serving.handleRequest(storage.modeClear, (payload, context) =>
+      writeWith(modeKeyOf(payload, context), key => {
         deps.storage().removeItem(key);
       }),
     ),
-    serving.handleSubscription('storage', 'authChanges', (_start, context, sink) => {
+    serving.handleSubscription(storage.authChanges, (_start, context, sink) => {
       if (!isOriginAllowed(context)) {
         sink.interrupt(denied());
         return () => undefined;

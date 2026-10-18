@@ -6,8 +6,8 @@
 
 /** Where a window provider hears messages. The page's `window` in the browser. */
 export interface MessageTarget {
-  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-  removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void;
+  removeEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void;
 }
 
 export interface Provider {
@@ -28,7 +28,7 @@ export interface Provider {
 }
 
 export interface WindowLike {
-  postMessage(message: unknown, targetOrigin: string, transfer: Transferable[]): void;
+  postMessage(message: ArrayBuffer, targetOrigin: string, transfer: Transferable[]): void;
 }
 
 export type PortLike = Pick<
@@ -50,15 +50,57 @@ export interface WindowProviderDeps {
   onRefusedOrigin?: (origin: string) => void;
 }
 
+/** A provider's listeners, which hear nothing once it is disposed. */
+interface Listeners {
+  deliver: (data: ArrayBuffer) => void;
+  subscribe: (listener: (data: ArrayBuffer) => void) => () => void;
+  /** Drops every listener. Returns false when already disposed. */
+  dispose: () => boolean;
+  disposed: () => boolean;
+}
+
+function createListeners(): Listeners {
+  const listeners = new Set<(data: ArrayBuffer) => void>();
+  let disposed = false;
+  return {
+    deliver: data => {
+      for (const listener of [...listeners]) {
+        // A listener may dispose the provider, after which the rest hear nothing.
+        if (disposed) {
+          return;
+        }
+        listener(data);
+      }
+    },
+    subscribe: listener => {
+      if (disposed) {
+        return () => undefined;
+      }
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    dispose: () => {
+      if (disposed) {
+        return false;
+      }
+      disposed = true;
+      listeners.clear();
+      return true;
+    },
+    disposed: () => disposed,
+  };
+}
+
 /** Hears its peer from the moment it is created, and delivers only to listeners subscribed by then. */
 export function createWindowProvider(deps: WindowProviderDeps): Provider {
   const { listen, peer, origin, onNotBytes, onRefusedOrigin } = deps;
-  const listeners = new Set<(data: ArrayBuffer) => void>();
+  const listeners = createListeners();
   let locked: string | null = typeof origin === 'string' ? origin : null;
-  let disposed = false;
 
-  const onMessage = (event: MessageEvent): void => {
-    const data: unknown = event.data;
+  const onMessage = (event: MessageEvent<unknown>): void => {
+    const { data } = event;
     const admitted = locked === null ? typeof origin !== 'string' && origin(event.origin) : event.origin === locked;
     if (!admitted) {
       if (data instanceof ArrayBuffer) {
@@ -76,18 +118,13 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
     }
     // Only bytes lock the origin, so an object from an allowed origin leaves the lock to the peer that speaks the wire.
     locked ??= event.origin;
-    for (const listener of [...listeners]) {
-      if (disposed) {
-        return;
-      }
-      listener(data);
-    }
+    listeners.deliver(data);
   };
   listen.addEventListener('message', onMessage);
 
   return {
     post(data) {
-      if (disposed) {
+      if (listeners.disposed()) {
         throw new Error('The provider is disposed');
       }
       const target = peer();
@@ -99,23 +136,12 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
       }
       target.postMessage(data, locked, [data]);
     },
-    subscribe(listener) {
-      if (disposed) {
-        return () => undefined;
-      }
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
     peerOrigin: () => locked,
     dispose() {
-      if (disposed) {
-        return;
+      if (listeners.dispose()) {
+        listen.removeEventListener('message', onMessage);
       }
-      disposed = true;
-      listeners.clear();
-      listen.removeEventListener('message', onMessage);
     },
   };
 }
@@ -128,19 +154,11 @@ interface PortProviderOptions {
 /** Starts the port, so it hears from the moment it is created and delivers only to listeners subscribed by then. */
 export function createPortProvider(port: PortLike, options: PortProviderOptions = {}): Provider {
   const closeOnDispose = options.closeOnDispose ?? true;
-  const listeners = new Set<(data: ArrayBuffer) => void>();
-  let disposed = false;
+  const listeners = createListeners();
 
-  const onMessage = (event: MessageEvent): void => {
-    const data: unknown = event.data;
-    if (!(data instanceof ArrayBuffer)) {
-      return;
-    }
-    for (const listener of [...listeners]) {
-      if (disposed) {
-        return;
-      }
-      listener(data);
+  const onMessage = (event: MessageEvent<unknown>): void => {
+    if (event.data instanceof ArrayBuffer) {
+      listeners.deliver(event.data);
     }
   };
   port.addEventListener('message', onMessage);
@@ -148,27 +166,17 @@ export function createPortProvider(port: PortLike, options: PortProviderOptions 
 
   return {
     post(data) {
-      if (disposed) {
+      if (listeners.disposed()) {
         throw new Error('The provider is disposed');
       }
       port.postMessage(data, [data]);
     },
-    subscribe(listener) {
-      if (disposed) {
-        return () => undefined;
-      }
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
     peerOrigin: () => null,
     dispose() {
-      if (disposed) {
+      if (!listeners.dispose()) {
         return;
       }
-      disposed = true;
-      listeners.clear();
       port.removeEventListener('message', onMessage);
       if (closeOnDispose) {
         port.close();

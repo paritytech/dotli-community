@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
 
 describe('result', () => {
-  it('As a caller, I tell ok from err by the ok field', () => {
+  it('As a caller, I tell ok from err by the tag', () => {
     // Given
     const good = ok(7);
     const bad = err('nope');
@@ -14,9 +14,9 @@ describe('result', () => {
     const empty = ok();
 
     // Then
-    expect(good).toEqual({ ok: true, value: 7 });
-    expect(bad).toEqual({ ok: false, error: 'nope' });
-    expect(empty.ok).toBe(true);
+    expect(good).toEqual({ tag: 'Ok', value: 7 });
+    expect(bad).toEqual({ tag: 'Err', value: 'nope' });
+    expect(empty).toEqual({ tag: 'Ok', value: undefined });
   });
 
   it('As a handler, I build each CallError variant with its constructor', () => {

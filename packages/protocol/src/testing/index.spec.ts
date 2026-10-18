@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { createTransport, ok } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import { protocolSchema, type ProtocolTransport } from '../schema.js';
-import { describeWireMessage } from './index.js';
+import { messagesOf, recordWireMessage } from './index.js';
+
+const { frame: frameTrait, wallet } = protocolSchema.traits;
 
 /** The host and a frame app over one in-memory channel, with every message either side received. */
 function wire(): { host: ProtocolTransport; frame: ProtocolTransport; delivered: ArrayBuffer[] } {
@@ -17,16 +19,16 @@ function wire(): { host: ProtocolTransport; frame: ProtocolTransport; delivered:
   return { host, frame, delivered };
 }
 
-describe('describeWireMessage', () => {
-  it('As a test, I describe a recorded wire message as its trait, method, leg and body', async () => {
+describe('recordWireMessage', () => {
+  it("As a test, I record a call's message by its trait, method and tag, as JSON, and decode it with its method", async () => {
     // Given a frame app that reports one telemetry event to the host
     const { host, frame, delivered } = wire();
-    frame.handleSubscription('frame', 'telemetry', (_start, _context, sink) => {
+    frame.handleSubscription(frameTrait.telemetry, (_start, _context, sink) => {
       sink.receive({ tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } });
       return () => undefined;
     });
     await new Promise<void>(resolve => {
-      host.subscribe('frame', 'telemetry', undefined, {
+      host.subscribe(frameTrait.telemetry, undefined, {
         receive: () => {
           resolve();
         },
@@ -35,41 +37,56 @@ describe('describeWireMessage', () => {
     });
 
     // When
-    const described = delivered.map(describeWireMessage).filter(message => message?.leg === 'receive');
+    const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
 
     // Then
-    expect(described).toEqual([
+    expect(recorded.filter(message => message.tag === 'receive')).toEqual([
       {
+        id: expect.any(Number) as number,
         trait: 'frame',
         method: 'telemetry',
-        leg: 'receive',
-        id: expect.any(Number) as number,
-        body: { tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } },
+        tag: 'receive',
+        message: expect.any(String) as string,
+        json: JSON.stringify({
+          tag: 'receive',
+          value: { tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } },
+        }),
       },
+    ]);
+    expect(messagesOf(frameTrait.telemetry, recorded)).toEqual([
+      { tag: 'start', value: undefined },
+      { tag: 'receive', value: { tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } } },
     ]);
   });
 
-  it('As a test, I get null for data that is no wire message', () => {
-    // Given an object, as a page of an earlier release posts, and bytes too short to hold a message
-    const data = [{ namespace: 'dotli:protocol', kind: 'ready' }, new Uint8Array([1, 2]).buffer];
+  it("As a test, I get null for data that is no frame and for the library's own frames", async () => {
+    // Given a handshake both sides heard, and bytes too short to hold a frame
+    const { host, delivered } = wire();
+    await host.whenConnected();
+    const data = [...delivered, new Uint8Array([1, 2]).buffer];
 
     // When
-    const described = data.map(describeWireMessage);
+    const recorded = data.map(recordWireMessage);
 
     // Then
-    expect(described).toEqual([null, null]);
+    expect(delivered.length).toBeGreaterThan(0);
+    expect(recorded).toEqual(data.map(() => null));
   });
 
-  it('As a test, I read the bytes in a recorded wire message as hex, so the record stays plain JSON', async () => {
+  it('As a test, I record the bytes of a message as hex, so the record stays plain JSON and decodes back', async () => {
     // Given a frame app that saves the host's wallet
     const { host, frame, delivered } = wire();
-    frame.handleRequest('wallet', 'save', () => ok());
-    await host.request('wallet', 'save', { siteId: 's', entropy: new Uint8Array([1, 2, 255]) });
+    frame.handleRequest(wallet.save, () => ok());
+    await host.request(wallet.save, { siteId: 's', entropy: new Uint8Array([1, 2, 255]) });
 
     // When
-    const described = delivered.map(describeWireMessage).find(message => message?.trait === 'wallet');
+    const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
 
     // Then
-    expect(described).toMatchObject({ trait: 'wallet', method: 'save', body: { siteId: 's', entropy: '0x0102ff' } });
+    expect(JSON.parse(JSON.stringify(recorded))).toEqual(recorded);
+    expect(messagesOf(wallet.save, recorded)).toEqual([
+      { tag: 'request', value: { siteId: 's', entropy: new Uint8Array([1, 2, 255]) } },
+      { tag: 'response', value: ok() },
+    ]);
   });
 });

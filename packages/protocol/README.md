@@ -138,19 +138,21 @@ to one. A late answer to a call that is no longer waiting is ignored without a c
   methods from the rest of the storage trait.
 - Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
   the entropy and the cached identity).
-- The protocol as a transport schema: `protocolSchema`, its traits `frame`, `resolve`, `storage`, `wallet` and `chain`,
-  with the resolution hello and the typed failures of the frame status, the resolve methods and chain connections.
-  `ProtocolSchema`, `ProtocolTransport` and `ProtocolContext` type a transport over it and its handlers' context.
-  `FrameFailure` and `RemoteFailure` are its typed failures, and `SubscriptionStart` and `SubscriptionValue` what a
-  subscription starts with and sends. `TelemetryEvent` is what the frame reports on its telemetry feed.
-- Budgets, for the frame to size its own work: `budgetOf` (a method's budget by its trait and method, or null for one
-  waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
+- The protocol as a transport schema: `protocolSchema`, whose `traits` `frame`, `resolve`, `storage`, `wallet` and
+  `chain` hold the method objects every call and handler is made with, with the resolution hello and the typed failures
+  of the frame status, the resolve methods and chain connections. `ProtocolSchema`, `ProtocolHello`, `ProtocolTransport`
+  and `ProtocolContext` type a transport over it and its handlers' context. `ProtocolServing` is the serving half of a
+  transport for the schema's own errors, and `ProtocolHandler<typeof method>` a method's handler. `FrameFailure` and
+  `RemoteFailure` are its typed failures, `DomainFailure` both, `SharedAuthChange` what the shared auth feed sends, and
+  `TelemetryEvent` what the frame reports on its telemetry feed.
+- Budgets, for the frame to size its own work: `budgetOf` (a method's budget, or null for one waited on without a
+  timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
 - For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a
   method's one name for metrics, the trail and spans), the two sides of a failure's crossing, `frameStatusEnd` (how a
   frame ends its status on an error), `fromTransportError` (a transport's closing error under the protocol's class) and
   `remoteFailureOf` (the typed failure of a resolver or chain error, or null) beside `failureOf` (a call's failure as
-  the error host code sees, by its trait and method), and `createIssueReporter` (what a transport cannot handle itself,
-  counted and logged under the side that reports it, as the host's own transport is).
+  the error host code sees, by its method), and `createIssueReporter` with `WireIssue` (what a transport or its window
+  provider cannot handle itself, counted and logged under the side that reports it, as the host's own transport is).
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 
@@ -158,9 +160,9 @@ to one. A late answer to a call that is no longer waiting is ignored without a c
 
 Test-only, for functional tests that read the protocol frame's traffic in a real page. Never imported by shipped code.
 
-- `describeWireMessage`: a wire message as its trait, method, leg, id and decoded body, with bytes as hex, or null for
-  data that does not decode as one. The trait and method are the schema's names, such as `frame` and `status`, and the
-  leg is the transport's: `request`, `response`, `start`, `receive`, `interrupt` or `stop`. An answer or an interrupt
-  reads as its outcome, so the frame status ending as fatal is `{ ok: false, error: { tag: 'Domain', value } }` with the
-  `fatal` failure as its value.
-- `DescribedWireMessage`: the type of what `describeWireMessage` returns.
+- `recordWireMessage`: a call's message the frame sent as a `RecordedWireMessage`, or null for the library's own frames
+  and data that is no frame. It names the call by the schema's trait and method, such as `frame` and `status`, and the
+  message's tag: `request`, `response`, `start`, `receive`, `interrupt` or `stop`. It keeps the message's bytes as hex,
+  and the message as JSON with bytes as hex, so a page can match it. The frame status ending as fatal is
+  `{ tag: 'interrupt', value: { tag: 'Err', value: { tag: 'Domain', value } } }` with the `fatal` failure as its value.
+- `messagesOf(method, recorded)`: the recorded messages of a method, decoded typed with it.

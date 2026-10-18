@@ -7,10 +7,10 @@
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   failureOf,
-  fromTransportError,
-  protocolSchema,
-  ProtocolInitFailedError,
   type FrameFailure,
+  fromTransportError,
+  ProtocolInitFailedError,
+  protocolSchema,
   type ProtocolTransport,
 } from '@dotli/protocol';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
@@ -30,7 +30,7 @@ import { disposeOnPageHide } from './worker-port.js';
  * transport closing under it.
  */
 export type WorkerEnd =
-  { kind: 'interrupt'; outcome: Result<void, CallError<FrameFailure>> } | { kind: 'close'; error: Error };
+  { kind: 'interrupt'; outcome: Result<undefined, CallError<FrameFailure>> } | { kind: 'close'; error: Error };
 
 /** The one `frame.status` subscription to the worker. */
 export interface WorkerStatus {
@@ -46,9 +46,9 @@ export function workerEndError(end: WorkerEnd): Error {
   if (end.kind === 'close') {
     return fromTransportError(end.error);
   }
-  return end.outcome.ok
+  return end.outcome.tag === 'Ok'
     ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED)
-    : failureOf('frame', 'status', end.outcome.error);
+    : failureOf(protocolSchema.traits.frame.status, end.outcome.value);
 }
 
 export interface SharedWorkerLinkDeps {
@@ -92,7 +92,7 @@ export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => v
       tell(listener, end);
     }
   };
-  const handle = transport.subscribe('frame', 'status', undefined, {
+  const handle = transport.subscribe(protocolSchema.traits.frame.status, undefined, {
     receive: onReady,
     interrupt: outcome => {
       finish({ kind: 'interrupt', outcome });
@@ -123,7 +123,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     answering = false;
     beats.stop();
   };
-  const failed = (error: unknown): void => {
+  const failed = (error: Error): void => {
     // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
     if (!answering) {
       return;
@@ -133,13 +133,18 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     log.error('[dot.li protocol] Worker heartbeat failed', error);
     m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
   };
-  const beats = transport.subscribe('frame', 'beat', undefined, {
+  const beats = transport.subscribe(protocolSchema.traits.frame.beat, undefined, {
     receive: () => {
-      void transport.request('frame', 'heartbeat', undefined).then(outcome => {
-        if (!outcome.ok) {
-          failed(failureOf('frame', 'heartbeat', outcome.error));
-        }
-      }, failed);
+      void transport.request(protocolSchema.traits.frame.heartbeat, undefined).then(
+        outcome => {
+          if (outcome.tag === 'Err') {
+            failed(failureOf(protocolSchema.traits.frame.heartbeat, outcome.value));
+          }
+        },
+        (error: unknown) => {
+          failed(toError(error));
+        },
+      );
     },
     interrupt: () => {
       answering = false;

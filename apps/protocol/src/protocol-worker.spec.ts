@@ -11,7 +11,16 @@ import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
-import { createPortProvider, createTransport, domain, err, hostFailure, ok } from '@dotli/transport';
+import {
+  createPortProvider,
+  createTransport,
+  domain,
+  err,
+  hostFailure,
+  ok,
+  type DomainError,
+  type MethodTypes,
+} from '@dotli/transport';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { bindLogSink, type LogLevel } from '@dotli/shared';
 import type { Ticker } from './net-bytes.js';
@@ -28,6 +37,11 @@ import { connectSharedWorker, type SharedWorkerLinkDeps } from './shared-worker-
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 import { registerWorkerRelay } from './worker-relay.js';
 import { HEARTBEAT_MISSED_BEATS } from './worker-port.js';
+
+const { frame, chain, resolve: names } = protocolSchema.traits;
+
+type StatusRecording = Recording<MethodTypes<typeof frame.status>['receive'], DomainError<typeof frame.status>>;
+type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], DomainError<typeof chain.connect>>;
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
 type ChainDetail = Parameters<Parameters<WorkerResolver['onChainDetail']>[0]>[0];
@@ -173,7 +187,7 @@ function fakeLightClient(
 interface Tab {
   transport: ProtocolTransport;
   /** The worker's status as the tab hears it, subscribed on connect as an iframe does. */
-  status: Recording<'frame', 'status'>;
+  status: StatusRecording;
   /** Every buffer the worker posted to this tab, as it was before the transfer detached it. */
   posted: ArrayBuffer[];
   /** How many times the worker closed its end of this tab's port. */
@@ -400,7 +414,7 @@ async function bootWorker(
         tabs.add(transport);
         return {
           transport,
-          status: record(transport, 'frame', 'status', undefined),
+          status: record(transport, frame.status, undefined),
           posted,
           closes: () => closes,
           crash: () => {
@@ -468,14 +482,14 @@ const afterQueuedTimers = (): Promise<void> =>
   });
 
 /** Connects a chain on the tab and settles once the worker answered it is connected. */
-async function connectChain(tab: Tab, connectionId: string): Promise<Recording<'chain', 'connect'>> {
-  const chain = record(tab.transport, 'chain', 'connect', { genesisHash: '0xaa', connectionId });
-  await chain.until(1);
-  return chain;
+async function connectChain(tab: Tab, connectionId: string): Promise<ChainRecording> {
+  const connected = record(tab.transport, chain.connect, { genesisHash: '0xaa', connectionId });
+  await connected.until(1);
+  return connected;
 }
 
 /** The tab's status, once the worker said it is ready. */
-async function readyStatus(tab: Tab): Promise<Recording<'frame', 'status'>> {
+async function readyStatus(tab: Tab): Promise<StatusRecording> {
   await tab.status.until(1);
   return tab.status;
 }
@@ -609,9 +623,9 @@ describe('protocol SharedWorker', () => {
     await afterQueuedTimers();
 
     // When the tab's iframe links, its relay sharing the link's status subscription as the iframe's does
-    const frame = linkHost();
+    const iframe = linkHost();
     const linked = attached.link((transport, status) => {
-      registerWorkerRelay(frame.serving, transport, status, createFrameStatus());
+      registerWorkerRelay(iframe.serving, transport, status, createFrameStatus());
     });
 
     // Then the ready wait fails with the fatal, measured as the worker's report
@@ -702,8 +716,8 @@ describe('protocol SharedWorker', () => {
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
     const tab = worker.connect();
-    const telemetry = record(tab.transport, 'frame', 'telemetry', undefined);
-    await tab.transport.request('frame', 'heartbeat', undefined);
+    const telemetry = record(tab.transport, frame.telemetry, undefined);
+    await tab.transport.request(frame.heartbeat, undefined);
 
     // When the light client reads the relay's database
     light.readDb('relay', 'miss');
@@ -721,7 +735,7 @@ describe('protocol SharedWorker', () => {
     light.readDb('relay', 'unavailable');
 
     // When a tab connects and hears telemetry
-    const telemetry = record(worker.connect().transport, 'frame', 'telemetry', undefined);
+    const telemetry = record(worker.connect().transport, frame.telemetry, undefined);
     await telemetry.until(1);
 
     // Then it hears the read as it was, since it waits on the same sync
@@ -735,7 +749,7 @@ describe('protocol SharedWorker', () => {
     light.readDb('relay', 'miss');
 
     // When a tab connects and hears telemetry
-    const telemetry = record(worker.connect().transport, 'frame', 'telemetry', undefined);
+    const telemetry = record(worker.connect().transport, frame.telemetry, undefined);
     await telemetry.until(1);
 
     // Then this tab paid no sync cost
@@ -766,8 +780,8 @@ describe('protocol SharedWorker', () => {
     const light = fakeLightClient({ presync: () => new Promise<void>(() => undefined) });
     const worker = await bootWorker(light);
     const tab = worker.connect();
-    const telemetry = record(tab.transport, 'frame', 'telemetry', undefined);
-    await tab.transport.request('frame', 'heartbeat', undefined);
+    const telemetry = record(tab.transport, frame.telemetry, undefined);
+    await tab.transport.request(frame.heartbeat, undefined);
 
     // When the relay reports its warp progress
     for (const listener of light.syncListeners) {
@@ -825,7 +839,7 @@ describe('protocol SharedWorker', () => {
     );
 
     // When another tab connects and hears telemetry
-    const telemetry = record(worker.connect().transport, 'frame', 'telemetry', undefined);
+    const telemetry = record(worker.connect().transport, frame.telemetry, undefined);
     await telemetry.until(2);
 
     // Then it hears the chain is up, and pays no sync cost for it
@@ -841,9 +855,9 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(light);
     const leaving = worker.connect();
     const staying = worker.connect();
-    record(leaving.transport, 'frame', 'telemetry', undefined);
-    record(staying.transport, 'frame', 'telemetry', undefined);
-    await Promise.all([leaving, staying].map(tab => tab.transport.request('frame', 'heartbeat', undefined)));
+    record(leaving.transport, frame.telemetry, undefined);
+    record(staying.transport, frame.telemetry, undefined);
+    await Promise.all([leaving, staying].map(tab => tab.transport.request(frame.heartbeat, undefined)));
     expect(light.syncListeners.size).toBe(2);
 
     // When the first tab leaves
@@ -861,7 +875,7 @@ describe('protocol SharedWorker', () => {
     const tab = worker.connect();
 
     // When the tab asks to resolve a name
-    const resolution = record(tab.transport, 'resolve', 'dotName', { label: 'doom' });
+    const resolution = record(tab.transport, names.dotName, { label: 'doom' });
 
     // Then the end carries the failure's name and message
     await expect(resolution.ended).resolves.toEqual(err(hostFailure(failure)));
@@ -874,7 +888,10 @@ describe('protocol SharedWorker', () => {
     await readyStatus(tab);
 
     // When the tab sends on a connection the worker does not hold
-    const sent = tab.transport.request('chain', 'send', { connectionId: 'gone', message: '{"jsonrpc":"2.0"}' });
+    const sent = tab.transport.request(chain.send, {
+      connectionId: 'gone',
+      message: '{"jsonrpc":"2.0"}',
+    });
 
     // Then the tab hears the refusal, and the worker logged it
     await expect(sent).resolves.toEqual(err(hostFailure('Error: Unknown chain connection: gone')));
@@ -891,11 +908,14 @@ describe('protocol SharedWorker', () => {
     const second = worker.connect('not a resolution id!');
 
     // When each sends a request, and the first a chain message and a heartbeat
-    await record(first.transport, 'resolve', 'dotName', { label: 'doom' }).ended;
-    await second.transport.request('frame', 'warmup', undefined);
+    await record(first.transport, names.dotName, { label: 'doom' }).ended;
+    await second.transport.request(frame.warmup, undefined);
     await connectChain(first, 'c1');
-    await first.transport.request('chain', 'send', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' });
-    await first.transport.request('frame', 'heartbeat', undefined);
+    await first.transport.request(chain.send, {
+      connectionId: 'c1',
+      message: '{"jsonrpc":"2.0"}',
+    });
+    await first.transport.request(frame.heartbeat, undefined);
 
     // Then only a well-formed id is recorded, only on that request's span, and a chain message or heartbeat has none
     expect(worker.open.mock.calls).toEqual([
@@ -927,7 +947,7 @@ describe('protocol SharedWorker', () => {
     }
     // And the other tab's connection still carries its messages
     await expect(
-      staying.transport.request('chain', 'send', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
+      staying.transport.request(chain.send, { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
     ).resolves.toEqual(ok());
   });
 
@@ -936,7 +956,7 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(fakeLightClient());
     const tab = worker.connect();
     const status = await readyStatus(tab);
-    const chain = await connectChain(tab, 'c1');
+    const connected = await connectChain(tab, 'c1');
 
     // When it is frozen, so it sends nothing for longer than the heartbeat allows
     outlastHeartbeat(worker);
@@ -945,7 +965,7 @@ describe('protocol SharedWorker', () => {
     expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
     // And once it thaws, its queued messages end its status and its chain with the release, not a halt
     await expect(status.ended).resolves.toEqual(releasedStatus);
-    await expect(chain.ended).resolves.toEqual(released);
+    await expect(connected.ended).resolves.toEqual(released);
   });
 
   it('As a frozen tab, my released port stays open so I hear the release whenever I thaw', async () => {
@@ -973,7 +993,7 @@ describe('protocol SharedWorker', () => {
 
     // When the thawed tab sends a message the worker no longer serves
     const received = attached.nextReceived();
-    tab.transport.request('frame', 'heartbeat', undefined).catch(() => undefined);
+    tab.transport.request(frame.heartbeat, undefined).catch(() => undefined);
     await received;
 
     // Then the port stays open, so the ends queued at the release still reach the tab
@@ -997,7 +1017,7 @@ describe('protocol SharedWorker', () => {
       worker.beat();
     }
     const received = attached.nextReceived();
-    tab.transport.request('frame', 'heartbeat', undefined).catch(() => undefined);
+    tab.transport.request(frame.heartbeat, undefined).catch(() => undefined);
 
     // When the worker releases it before that message arrives
     worker.beat();
@@ -1063,7 +1083,7 @@ describe('protocol SharedWorker', () => {
     // Then its port was closed at once, with no beat, and the other tab is still served
     expect(leaving.closes()).toBe(1);
     expect(worker.beating()).toBe(true);
-    await expect(staying.transport.request('frame', 'heartbeat', undefined)).resolves.toEqual(ok());
+    await expect(staying.transport.request(frame.heartbeat, undefined)).resolves.toEqual(ok());
 
     // When the heartbeat outlasts both tabs
     outlastHeartbeat(worker);
@@ -1097,8 +1117,8 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(fakeLightClient());
     const attached = worker.attach();
     const transport = await attached.link();
-    const chain = record(transport, 'chain', 'connect', { genesisHash: '0xaa', connectionId: 'c1' });
-    await chain.until(1);
+    const connected = record(transport, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
+    await connected.until(1);
 
     // When the worker beats many times, and the tab answers each beat as it arrives
     for (let i = 0; i < 3 * HEARTBEAT_MISSED_BEATS; i++) {
@@ -1109,17 +1129,17 @@ describe('protocol SharedWorker', () => {
 
     // Then its port was never released, and its connection still carries its messages
     expect(worker.logs.map(line => line.message)).not.toContain('Port released');
-    await expect(
-      transport.request('chain', 'send', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
-    ).resolves.toEqual(ok());
+    await expect(transport.request(chain.send, { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' })).resolves.toEqual(
+      ok(),
+    );
   });
 
   it('As a frozen tab, I am released after the missed beats', async () => {
     // Given a tab that hears the worker's beats but, frozen, answers none of them
     const worker = await bootWorker(fakeLightClient());
     const tab = worker.connect();
-    const beats = record(tab.transport, 'frame', 'beat', undefined);
-    await tab.transport.request('frame', 'heartbeat', undefined);
+    const beats = record(tab.transport, frame.beat, undefined);
+    await tab.transport.request(frame.heartbeat, undefined);
 
     // When the worker beats as many times as it allows
     for (let i = 0; i < HEARTBEAT_MISSED_BEATS; i++) {
@@ -1142,13 +1162,13 @@ describe('protocol SharedWorker', () => {
 
     // When it sends a request every beat but no heartbeat
     for (let i = 0; i < 3 * HEARTBEAT_MISSED_BEATS; i++) {
-      await tab.transport.request('frame', 'warmup', undefined);
+      await tab.transport.request(frame.warmup, undefined);
       worker.beat();
     }
 
     // Then its connection was never released, and a later request is served
     await expect(
-      tab.transport.request('chain', 'send', { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
+      tab.transport.request(chain.send, { connectionId: 'c1', message: '{"jsonrpc":"2.0"}' }),
     ).resolves.toEqual(ok());
     expect(worker.logs.map(line => line.message)).not.toContain('Chain disconnected: c1 (0 remaining)');
   });
@@ -1172,7 +1192,7 @@ describe('protocol SharedWorker', () => {
     // Given a tab hearing telemetry on a worker whose light client has received bytes
     let total = 1_000;
     const worker = await bootWorker(fakeLightClient(), undefined, undefined, () => total);
-    const telemetry = record(worker.connect().transport, 'frame', 'telemetry', undefined);
+    const telemetry = record(worker.connect().transport, frame.telemetry, undefined);
     await telemetry.until(1);
 
     // When the next report interval passes
@@ -1193,8 +1213,8 @@ describe('protocol SharedWorker', () => {
     const worker = await bootWorker(fakeLightClient(), undefined, undefined, () => total);
     const first = worker.connect();
     const second = worker.connect();
-    const heardFirst = record(first.transport, 'frame', 'telemetry', undefined);
-    const heardSecond = record(second.transport, 'frame', 'telemetry', undefined);
+    const heardFirst = record(first.transport, frame.telemetry, undefined);
+    const heardSecond = record(second.transport, frame.telemetry, undefined);
     await Promise.all([heardFirst.until(1), heardSecond.until(1)]);
 
     // When the next report interval passes
@@ -1209,7 +1229,7 @@ describe('protocol SharedWorker', () => {
     // When both tabs stop listening, with a round trip after
     heardFirst.unsubscribe();
     heardSecond.unsubscribe();
-    await Promise.all([first, second].map(tab => tab.transport.request('frame', 'heartbeat', undefined)));
+    await Promise.all([first, second].map(tab => tab.transport.request(frame.heartbeat, undefined)));
 
     // Then the ticker stopped
     expect(worker.netBytesTickers()).toBe(0);
@@ -1219,7 +1239,7 @@ describe('protocol SharedWorker', () => {
     // Given a tab on a worker that reports bytes, which heard the baseline
     const light = fakeLightClient();
     const worker = await bootWorker(light, undefined, undefined, () => 1_000);
-    const telemetry = record(worker.connect().transport, 'frame', 'telemetry', undefined);
+    const telemetry = record(worker.connect().transport, frame.telemetry, undefined);
     await telemetry.until(1);
 
     // When the light client dies, the worker closes, and an interval passes

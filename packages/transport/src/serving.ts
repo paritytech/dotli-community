@@ -1,24 +1,24 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The calls this side serves. It runs the handler registered for each method, answers a request with its `Result` and
-// streams a subscription until one side ends it. It answers the library's own outcomes itself: no handler, a payload
-// that does not decode, a handler that throws, and an address this schema lacks. The transport hands it only calls it
-// admitted, once the handshake told who the peer is.
+// The calls this side serves. Each method's handler decodes the peer's messages with the method's own codec, answers a
+// request with its `Result` and streams a subscription until one side ends it. The library's own outcomes, no handler, a
+// message that does not decode and a handler that throws, go back as a failure frame. The transport hands this side
+// only calls it admitted, once the handshake told who the peer is.
 
-import { createAsyncTaskPool } from '@dotli/shared';
-import { decodeReason, failureReason } from './errors.js';
-import { createRecentIds, type Address, type Outcome, type Post, type RunListener } from './parts.js';
-import { err, hostFailure, malformedFrame, ok, unsupported, type CallError } from './result.js';
-import type { HelloOf, Schema } from './schema.js';
-import { LIBRARY_TRAIT, type Header, type Message, type Received, type Wire } from './wire.js';
+import { createAsyncTaskPool, toError } from '@dotli/shared';
+import { failureReason } from './errors.js';
+import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
+import { err, hostFailure, malformedFrame, ok, unsupported, type CallError, type Result } from './result.js';
+import type { Address, Request, Subscription } from './schema.js';
+import { decode, encodeFrame, frame, type Call } from './wire.js';
 
 /** What a handler knows about the peer that called it. */
-export interface CallContext<S extends Schema> {
+export interface CallContext<H> {
   /** The peer's origin when the call arrived, or null when it has none. */
   origin: string | null;
   /** The peer's handshake hello. */
-  hello: HelloOf<S>;
+  hello: H;
 }
 
 /** What a subscription handler sends on. Both do nothing once the subscription has ended. */
@@ -29,133 +29,101 @@ export interface Sink<V, I> {
   interrupt(error?: CallError<I>): void;
 }
 
-type UnknownAddress = Extract<Received, { kind: 'unknownAddress' }>;
+/** Serves one request method. It answers with a `Result`, and a throw or rejection answers `HostFailure`. */
+export type RequestHandler<P, R, E, H> = (
+  payload: P,
+  context: CallContext<H>,
+) => Result<R, CallError<E>> | PromiseLike<Result<R, CallError<E>>>;
 
-export type AnyHandler = (payload: unknown, context: CallContext<Schema>) => Outcome | PromiseLike<Outcome>;
-export type AnySubscriptionHandler = (
-  start: unknown,
-  context: CallContext<Schema>,
-  sink: Sink<unknown, unknown>,
-) => () => void;
+/**
+ * Serves one subscription method. It starts the subscription, sends on the sink, and returns what stops it, which runs
+ * once on the peer's stop, an interrupt or a dispose. A throw on start interrupts with `HostFailure`.
+ */
+export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>, sink: Sink<V, I>) => () => void;
 
 export interface ServingDeps {
-  wire: Wire;
   post: Post;
-  /** The context of an admitted call. */
-  context: () => CallContext<Schema>;
   /** Whether the transport has closed, after which the peer hears no answer. */
   closed: () => boolean;
-  /** Reports a message that does not fit what it names. */
-  refuse: (cause: Error) => void;
+  refuse: Refuse;
   runListener: RunListener;
   /** Hears that the peer left: its own stop left nothing running, and its calls have settled. Once per departure. */
   onPeerIdle: (() => void) | undefined;
 }
 
-export interface Serving {
+export interface Serving<H> {
   /** One handler per method. Returns what unregisters it. */
-  handleRequest(address: Address, handler: AnyHandler): () => void;
-  handleSubscription(address: Address, handler: AnySubscriptionHandler): () => void;
-  onRequest(message: Message): void;
-  onStart(message: Message): void;
-  /** Runs the stop function. Refused when the stop names nothing running and nothing this side ended lately. */
-  onStop(message: Message): void;
-  /** Answers a call on a schema method whose payload did not decode. Its refusal is already reported. */
-  onMalformed(header: Header, cause: unknown): void;
-  /** Answers a message for an address this schema lacks on the protocol error address. */
-  onUnknownAddress(message: UnknownAddress): void;
-  /** Interrupts every running subscription with `HostFailure` carrying `error`, and runs its stop function. */
+  handleRequest<P, R, E>(method: Request<P, R, E>, address: Address, handler: RequestHandler<P, R, E, H>): () => void;
+  handleSubscription<S, V, I>(
+    method: Subscription<S, V, I>,
+    address: Address,
+    handler: SubscriptionHandler<S, V, I, H>,
+  ): () => void;
+  /** Hands a message of the peer's call `id` to what serves it. */
+  hear(id: number, call: Call<Uint8Array>, context: CallContext<H>): void;
+  /** Answers every call in flight with `HostFailure` carrying `error`, and stops every running subscription. */
   close(error: Error): void;
 }
 
-interface Running extends Address {
-  /** Null until the handler returns it. */
-  stop: (() => void) | null;
+/** A method's handler, as the peer's calls reach it. */
+interface Served<H> {
+  hear(id: number, message: Uint8Array, context: CallContext<H>): void;
 }
 
-// The peer may stop a subscription until it hears this side's interrupt, so a stop on one ended here lately is a race
-// and quiet. A stop on any other subscription that is not running was never started. The ids of this many of the
-// latest ends are kept.
-const REMEMBERED_ENDS = 1_024;
-
-// Names are identifiers, so this key is unique per method.
-const keyOf = ({ trait, method }: Address): string => `${trait}.${method}`;
-
-/** Stores one handler per method, and returns what unregisters it. */
-function register<H>(handlers: Map<string, H>, address: Address, handler: H): () => void {
-  const key = keyOf(address);
-  if (handlers.has(key)) {
-    throw new Error(`${key} already has a handler`);
-  }
-  handlers.set(key, handler);
-  return () => {
-    if (handlers.get(key) === handler) {
-      handlers.delete(key);
-    }
-  };
+/** A subscription the peer opened, as its stop reaches it. */
+interface Running {
+  address: Address;
+  hear(message: Uint8Array): void;
+  end(error: CallError<never>): void;
 }
 
-export function createServing(deps: ServingDeps): Serving {
-  const { wire, post, context, closed, refuse, runListener, onPeerIdle } = deps;
-  const requestHandlers = new Map<string, AnyHandler>();
-  const subscriptionHandlers = new Map<string, AnySubscriptionHandler>();
+// Trait and method ids are each a byte, so this key is unique per method.
+const keyOf = (traitId: number, methodId: number): number => traitId * 256 + methodId;
+
+export function createServing<H>(deps: ServingDeps): Serving<H> {
+  const { post, closed, refuse, runListener, onPeerIdle } = deps;
+  const handlers = new Map<number, Served<H>>();
+  // The peer's requests whose handlers have not settled, which a close answers.
+  const inFlight = new Map<number, Address>();
   const running = new Map<number, Running>();
   // Runs the request handlers, so the wait for a peer that left is a wait for every call of its to settle. The pool
   // answers a handler that throws at once like one that rejects.
-  const handlers = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
+  const handlerCalls = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
   const lateEnds = createRecentIds(REMEMBERED_ENDS);
-  // How many calls the peer has made so far, admitted or not. It only grows, so a wait that read it can tell whether the
-  // peer called again since.
+  // How many calls the peer has made so far. It only grows, so a wait that read it can tell whether the peer called
+  // again since.
   let peerCalls = 0;
   // The count `onPeerIdle` last fired at, so one departure fires it once and the peer's next call arms it again.
   let idleHeardAt: number | null = null;
 
-  /** An outcome as bytes. One the wire cannot carry, such as an undeclared domain error, is the handler's fault. */
-  const encodeOutcome = (header: Header & { leg: 'response' | 'interrupt' }, outcome: Outcome): ArrayBuffer => {
-    try {
-      return wire.encode({ ...header, value: outcome });
-    } catch (error) {
-      return wire.encode({ ...header, value: err(hostFailure(failureReason(error))) });
+  /** Stores one handler per method, and returns what unregisters it. */
+  const register = (address: Address, served: Served<H>): (() => void) => {
+    const key = keyOf(address.traitId, address.methodId);
+    if (handlers.has(key)) {
+      throw new Error(`${address.trait}.${address.method} already has a handler`);
     }
+    handlers.set(key, served);
+    return () => {
+      if (handlers.get(key) === served) {
+        handlers.delete(key);
+      }
+    };
   };
 
-  const answerCall = (header: Header, outcome: Outcome): void => {
-    // A handler that settles once the transport closed has no peer left to hear it.
-    if (closed()) {
-      return;
-    }
-    const { id, trait, method } = header;
-    if (header.leg === 'request') {
-      post(encodeOutcome({ id, trait, method, leg: 'response' }, outcome), header);
-    } else if (header.leg === 'start') {
-      lateEnds.add(id);
-      post(encodeOutcome({ id, trait, method, leg: 'interrupt' }, outcome), header);
-    }
+  /** Answers call `id` with a failure of the library's own. */
+  const fail = (id: number, error: CallError<never>, address?: Address): void => {
+    post(encodeFrame(frame, { id, body: { tag: 'failed', value: error } }), address);
   };
 
-  const runStop = ({ stop }: Running): void => {
-    if (stop !== null) {
-      runListener(stop);
-    }
-  };
-
-  /**
-   * Ends a running subscription once: the peer hears `outcome`, then the stop function runs. The interrupt goes first,
-   * so a stop function that disposes the transport cannot keep it from the peer.
-   */
-  const finish = (id: number, entry: Running, outcome: Outcome): void => {
-    if (running.get(id) !== entry) {
-      return;
-    }
-    running.delete(id);
-    lateEnds.add(id);
-    post(encodeOutcome({ id, trait: entry.trait, method: entry.method, leg: 'interrupt' }, outcome), entry);
-    runStop(entry);
+  /** Answers a call whose message does not decode. */
+  const malformed = (id: number, cause: Error, address: Address): void => {
+    refuse('malformed', cause);
+    fail(id, malformedFrame(failureReason(cause)), address);
   };
 
   /** Tells `onPeerIdle` once the peer's calls have settled, unless it called again meanwhile or the transport closed. */
   const whenPeerIdle = async (seen: number): Promise<void> => {
-    await handlers.settle();
+    await handlerCalls.settle();
     if (closed() || peerCalls !== seen || idleHeardAt === seen || onPeerIdle === undefined) {
       return;
     }
@@ -163,133 +131,215 @@ export function createServing(deps: ServingDeps): Serving {
     runListener(onPeerIdle);
   };
 
-  return {
-    handleRequest(address, handler) {
-      return register(requestHandlers, address, handler);
-    },
+  /** The peer's own stop leaves nothing it opened running, even when this side ended a subscription before it came. */
+  const onPeerStop = (): void => {
+    if (running.size === 0) {
+      void whenPeerIdle(peerCalls);
+    }
+  };
 
-    handleSubscription(address, handler) {
-      return register(subscriptionHandlers, address, handler);
-    },
+  /**
+   * Answers request `id` with the handler's outcome, or with `HostFailure` for a handler that threw or an outcome the
+   * wire cannot carry. A handler that settles once the transport closed was answered by the close.
+   */
+  function reply<P, R, E>(
+    method: Request<P, R, E>,
+    address: Address,
+    id: number,
+    handled: Result<Result<R, CallError<E>>, Error>,
+  ): void {
+    if (!inFlight.delete(id) || closed()) {
+      return;
+    }
+    if (handled.tag === 'Err') {
+      fail(id, hostFailure(handled.value), address);
+      return;
+    }
+    const data = encodeCall(method, address, id, { tag: 'response', value: handled.value });
+    if (data.tag === 'Err') {
+      fail(id, hostFailure(data.value), address);
+      return;
+    }
+    post(data.value, address);
+  }
 
-    onRequest(message) {
-      const callContext = context();
-      // A peer that calls is still here, whatever it stopped before.
-      peerCalls += 1;
-      const handler = requestHandlers.get(keyOf(message));
-      if (handler === undefined) {
-        answerCall(message, err(unsupported()));
-        return;
-      }
-      void handlers
-        .call(() => handler(message.value, callContext))
-        .then(
-          outcome => {
-            answerCall(message, outcome);
-          },
-          (error: unknown) => {
-            answerCall(message, err(hostFailure(failureReason(error))));
-          },
-        );
-    },
-
-    onStart(message) {
-      const { id } = message;
-      const callContext = context();
-      peerCalls += 1;
-      if (running.has(id)) {
-        refuse(new Error(`A start names subscription ${String(id)}, which is already running`));
-        return;
-      }
-      const handler = subscriptionHandlers.get(keyOf(message));
-      if (handler === undefined) {
-        answerCall(message, err(unsupported()));
-        return;
-      }
-      const entry: Running = { trait: message.trait, method: message.method, stop: null };
-      running.set(id, entry);
-      const sink: Sink<unknown, unknown> = {
-        receive(value) {
-          if (running.get(id) !== entry) {
-            return;
-          }
-          let data: ArrayBuffer;
-          try {
-            data = wire.encode({ ...message, leg: 'receive', value });
-          } catch (error) {
-            finish(id, entry, err(hostFailure(failureReason(error))));
-            return;
-          }
-          post(data, entry);
-        },
-        interrupt(error) {
-          finish(id, entry, error === undefined ? ok() : err(error));
-        },
-      };
-      let stop: () => void;
-      try {
-        stop = handler(message.value, callContext, sink);
-      } catch (error) {
-        finish(id, entry, err(hostFailure(failureReason(error))));
-        return;
-      }
-      if (running.get(id) === entry) {
-        entry.stop = stop;
-      } else {
-        // Ended while the handler ran, before it could say how to stop.
+  /** Runs a subscription's handler, and keeps it running until either side ends it. */
+  function start<S, V, I>(
+    method: Subscription<S, V, I>,
+    address: Address,
+    handler: SubscriptionHandler<S, V, I, H>,
+    id: number,
+    startValue: S,
+    context: CallContext<H>,
+  ): void {
+    let stop: (() => void) | null = null;
+    const runStop = (): void => {
+      if (stop !== null) {
         runListener(stop);
       }
-    },
+    };
 
-    onStop(message) {
-      const { id } = message;
-      const entry = running.get(id);
-      if (entry === undefined) {
-        if (!lateEnds.has(id)) {
-          refuse(new Error(`A stop names subscription ${String(id)}, which is not running`));
+    /**
+     * Ends the subscription once: `send` tells the peer, then the stop function runs. The peer hears it first, so a
+     * stop function that disposes the transport cannot keep it from the peer.
+     */
+    const finish = (send: () => void): void => {
+      if (running.get(id) !== entry) {
+        return;
+      }
+      running.delete(id);
+      lateEnds.add(id);
+      send();
+      runStop();
+    };
+
+    const entry: Running = {
+      address,
+      hear(bytes) {
+        const message = decode(method.message, bytes);
+        if (message.tag === 'Err') {
+          refuse('malformed', message.value);
           return;
         }
-        // The peer stopped it before it heard this side's interrupt. A second stop for it is no race.
-        lateEnds.delete(id);
-      } else {
-        if (entry.trait !== message.trait || entry.method !== message.method) {
-          refuse(new Error(`The stop for subscription ${String(id)} names another method than the subscription`));
+        if (message.value.tag !== 'stop') {
+          refuse('invalid', new Error(`A ${message.value.tag} names subscription ${String(id)}, which is running`));
           return;
         }
         running.delete(id);
-        runStop(entry);
-      }
-      // Only the peer stops, so its own stop leaves nothing it opened running, even when this side ended that
-      // subscription before the stop arrived.
-      if (running.size === 0) {
-        void whenPeerIdle(peerCalls);
-      }
-    },
+        runStop();
+        onPeerStop();
+      },
+      end(error) {
+        finish(() => {
+          fail(id, error, address);
+        });
+      },
+    };
+    running.set(id, entry);
 
-    onMalformed(header, cause) {
-      // A call whose payload did not decode still tells that the peer is here.
-      peerCalls += 1;
-      answerCall(header, err(malformedFrame(decodeReason(cause))));
-    },
+    const sink: Sink<V, I> = {
+      receive(value) {
+        if (running.get(id) !== entry) {
+          return;
+        }
+        const data = encodeCall(method, address, id, { tag: 'receive', value });
+        if (data.tag === 'Err') {
+          entry.end(hostFailure(data.value));
+          return;
+        }
+        post(data.value, address);
+      },
+      interrupt(error) {
+        finish(() => {
+          const outcome: Result<undefined, CallError<I>> = error === undefined ? ok() : err(error);
+          const data = encodeCall(method, address, id, { tag: 'interrupt', value: outcome });
+          if (data.tag === 'Err') {
+            fail(id, hostFailure(data.value), address);
+          } else {
+            post(data.value, address);
+          }
+        });
+      },
+    };
+    let stopIt: () => void;
+    try {
+      stopIt = handler(startValue, context, sink);
+    } catch (error) {
+      entry.end(hostFailure(toError(error)));
+      return;
+    }
+    if (running.get(id) === entry) {
+      stop = stopIt;
+    } else {
+      // Ended while the handler ran, before it could say how to stop.
+      runListener(stopIt);
+    }
+  }
 
-    onUnknownAddress(message) {
-      if (message.leg === 'request' || message.leg === 'start') {
-        peerCalls += 1;
-      }
-      const data = wire.encode({
-        id: message.id,
-        trait: LIBRARY_TRAIT,
-        method: 'protocolError',
-        leg: 'response',
-        value: { tag: 'UnsupportedMessage', value: { trait: message.trait, method: message.method } },
+  return {
+    handleRequest(method, address, handler) {
+      return register(address, {
+        hear(id, bytes, context) {
+          // A call that does not decode still tells that the peer is here.
+          peerCalls += 1;
+          const message = decode(method.message, bytes);
+          if (message.tag === 'Err') {
+            malformed(id, message.value, address);
+            return;
+          }
+          if (message.value.tag !== 'request') {
+            refuse('invalid', new Error(`A response names call ${String(id)}, which the peer made`));
+            return;
+          }
+          const payload = message.value.value;
+          inFlight.set(id, address);
+          void handlerCalls
+            .call(() => handler(payload, context))
+            .then(
+              outcome => {
+                reply(method, address, id, ok(outcome));
+              },
+              (error: unknown) => {
+                reply(method, address, id, err(toError(error)));
+              },
+            );
+        },
       });
-      post(data);
+    },
+
+    handleSubscription(method, address, handler) {
+      return register(address, {
+        hear(id, bytes, context) {
+          const message = decode(method.message, bytes);
+          if (message.tag === 'Err') {
+            peerCalls += 1;
+            malformed(id, message.value, address);
+            return;
+          }
+          const sent = message.value;
+          if (sent.tag !== 'start') {
+            refuse('invalid', new Error(`A ${sent.tag} names subscription ${String(id)}, which is not running`));
+            return;
+          }
+          peerCalls += 1;
+          start(method, address, handler, id, sent.value, context);
+        },
+      });
+    },
+
+    hear(id, call, context) {
+      const entry = running.get(id);
+      if (entry !== undefined) {
+        if (entry.address.traitId !== call.trait || entry.address.methodId !== call.method) {
+          refuse('invalid', new Error(`A message for subscription ${String(id)} names another method`));
+          return;
+        }
+        entry.hear(call.message);
+        return;
+      }
+      if (lateEnds.has(id)) {
+        // The peer stopped it before it heard this side's end. A second stop for it is no race.
+        lateEnds.delete(id);
+        onPeerStop();
+        return;
+      }
+      const served = handlers.get(keyOf(call.trait, call.method));
+      if (served === undefined) {
+        peerCalls += 1;
+        fail(id, unsupported());
+        return;
+      }
+      served.hear(id, call.message, context);
     },
 
     close(error) {
-      const outcome = err(hostFailure(failureReason(error)));
-      for (const [id, entry] of [...running]) {
-        finish(id, entry, outcome);
+      const failure = hostFailure(error);
+      for (const [id, address] of [...inFlight]) {
+        fail(id, failure, address);
+      }
+      inFlight.clear();
+      for (const entry of [...running.values()]) {
+        entry.end(failure);
       }
     },
   };

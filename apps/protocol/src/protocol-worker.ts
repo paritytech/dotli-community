@@ -13,28 +13,25 @@ import {
   callName,
   failureOf,
   frameStatusEnd,
-  protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
+  protocolSchema,
   type CallName,
-  type ProtocolSchema,
+  type DomainFailure,
+  type ProtocolHello,
   type ProtocolTransport,
-  type SubscriptionValue,
 } from '@dotli/protocol';
-import { errorName, log, serializeError } from '@dotli/shared';
+import { errorName, log, serializeError, toError } from '@dotli/shared';
 import {
   createPortProvider,
   createTransport,
   ok,
-  type CallError,
-  type DomainError,
+  type Request,
   type RequestHandler,
-  type RequestMethodName,
-  type Result,
   type Sink,
+  type Subscription,
   type SubscriptionHandler,
-  type SubscriptionMethodName,
 } from '@dotli/transport';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
@@ -42,6 +39,8 @@ import { createFrameStatus, type FrameStatusSink } from './frame-status.js';
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+
+const { frame, resolve, chain } = protocolSchema.traits;
 import { createWireReport } from './refusal-report.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
 import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
@@ -106,9 +105,6 @@ interface PortSession {
   /** Stops hearing the port close. */
   unwatch: () => void;
 }
-
-/** The requests a span follows. A chain message would swamp them, and a heartbeat says nothing of a load. */
-type TracedRequest<T extends 'frame' | 'resolve'> = Exclude<RequestMethodName<ProtocolSchema, T>, 'heartbeat'>;
 
 const TAG = '[dot.li SW]';
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
@@ -329,7 +325,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     });
   }
 
-  function endSpan(span: SpanHandle, error: unknown): void {
+  function endSpan(span: SpanHandle, error: Error | undefined): void {
     span.setAttributes(
       error === undefined ? { outcome: 'ok' } : { outcome: 'error', error_name: errorName(error) ?? 'NonError' },
     );
@@ -337,19 +333,16 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   /** Spans a request, and logs one that fails, by the name dashboards know it by. */
-  function traced<T extends 'frame' | 'resolve', M extends TracedRequest<T>>(
-    trait: T,
-    method: M,
-    handler: RequestHandler<ProtocolSchema, T, M>,
-  ): RequestHandler<ProtocolSchema, T, M> {
-    const name = callName(trait, method);
+  function traced<P, R, E extends DomainFailure>(
+    method: Request<P, R, E>,
+    handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
+  ): RequestHandler<P, R, E, ProtocolHello> {
+    const name = callName(method);
     return async (payload, context) => {
       const span = openRequestSpan(name, context.hello.resolutionId);
       try {
         const answer = await handler(payload, context);
-        // Every answer is a `Result`, which the method's deferred answer type does not show where the method is generic.
-        const outcome = answer as Result<unknown, CallError<DomainError<ProtocolSchema, T, M>>>;
-        const failure = outcome.ok ? undefined : failureOf(trait, method, outcome.error);
+        const failure = answer.tag === 'Ok' ? undefined : failureOf(method, answer.value);
         endSpan(span, failure);
         if (failure !== undefined) {
           // The host rebuilds this failure from the answer and reports it.
@@ -357,7 +350,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         }
         return answer;
       } catch (error) {
-        endSpan(span, error);
+        endSpan(span, toError(error));
         log.warn(`${TAG} ${name} failed`, error);
         throw error;
       }
@@ -365,35 +358,36 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   /** A chain message gets no span, which would swamp the request spans, but its failure is logged as theirs are. */
-  function loggedChainSend(
-    handler: RequestHandler<ProtocolSchema, 'chain', 'send'>,
-  ): RequestHandler<ProtocolSchema, 'chain', 'send'> {
+  function logged<P, R, E extends DomainFailure>(
+    method: Request<P, R, E>,
+    handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
+  ): RequestHandler<P, R, E, ProtocolHello> {
+    const name = callName(method);
     return async (payload, context) => {
       try {
         const answer = await handler(payload, context);
-        if (!answer.ok) {
-          log.warn(`${TAG} chainSend failed`, failureOf('chain', 'send', answer.error));
+        if (answer.tag === 'Err') {
+          log.warn(`${TAG} ${name} failed`, failureOf(method, answer.value));
         }
         return answer;
       } catch (error) {
-        log.warn(`${TAG} chainSend failed`, error);
+        log.warn(`${TAG} ${name} failed`, error);
         throw error;
       }
     };
   }
 
   /** Spans a subscription until the value that answers it, or its end, or the tab stopping it first. */
-  function tracedSubscription<T extends 'chain' | 'resolve', M extends SubscriptionMethodName<ProtocolSchema, T>>(
-    trait: T,
-    method: M,
-    answers: (value: SubscriptionValue<T, M>) => boolean,
-    handler: SubscriptionHandler<ProtocolSchema, T, M>,
-  ): SubscriptionHandler<ProtocolSchema, T, M> {
-    const name = callName(trait, method);
+  function tracedSubscription<S, V, I extends DomainFailure>(
+    method: Subscription<S, V, I>,
+    answers: (value: NoInfer<V>) => boolean,
+    handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
+  ): SubscriptionHandler<S, V, I, ProtocolHello> {
+    const name = callName(method);
     return (start, context, sink) => {
       const span = openRequestSpan(name, context.hello.resolutionId);
       let open = true;
-      const settle = (error: unknown): void => {
+      const settle = (error: Error | undefined): void => {
         if (!open) {
           return;
         }
@@ -403,7 +397,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
           log.warn(`${TAG} ${name} failed`, error);
         }
       };
-      const spanned: typeof sink = {
+      const spanned: Sink<V, I> = {
         receive: value => {
           sink.receive(value);
           if (answers(value)) {
@@ -411,7 +405,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
           }
         },
         interrupt: error => {
-          settle(error === undefined ? undefined : failureOf(trait, method, error));
+          settle(error === undefined ? undefined : failureOf(method, error));
           sink.interrupt(error);
         },
       };
@@ -419,7 +413,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       try {
         stop = handler(start, context, spanned);
       } catch (error) {
-        settle(error);
+        settle(toError(error));
         throw error;
       }
       return () => {
@@ -435,7 +429,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
 
   function serve(session: PortSession): void {
     const { transport } = session;
-    transport.handleSubscription('frame', 'status', (start, context, sink) => {
+    transport.handleSubscription(frame.status, (start, context, sink) => {
       session.statuses.add(sink);
       // Ended at once if the worker already failed, and told of a later failure the moment it happens.
       const stop = status.handler(start, context, sink);
@@ -445,61 +439,52 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         stop();
       };
     });
-    transport.handleSubscription('frame', 'telemetry', telemetry);
-    transport.handleSubscription('frame', 'beat', (_start, _context, sink) => {
+    transport.handleSubscription(frame.telemetry, telemetry);
+    transport.handleSubscription(frame.beat, (_start, _context, sink) => {
       session.beats.add(sink);
       return () => {
         session.beats.delete(sink);
       };
     });
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
-    transport.handleRequest('frame', 'heartbeat', () => ok());
+    transport.handleRequest(frame.heartbeat, () => ok());
     transport.handleRequest(
-      'frame',
-      'warmup',
-      traced('frame', 'warmup', (payload, context) => requireEngine().warmup(payload, context)),
+      frame.warmup,
+      traced(frame.warmup, (payload, context) => requireEngine().warmup(payload, context)),
     );
     transport.handleRequest(
-      'resolve',
-      'owner',
-      traced('resolve', 'owner', (payload, context) => requireEngine().resolveOwner(payload, context)),
+      resolve.owner,
+      traced(resolve.owner, (payload, context) => requireEngine().resolveOwner(payload, context)),
     );
     transport.handleRequest(
-      'resolve',
-      'executableManifest',
-      traced('resolve', 'executableManifest', (payload, context) =>
+      resolve.executableManifest,
+      traced(resolve.executableManifest, (payload, context) =>
         requireEngine().resolveExecutableManifest(payload, context),
       ),
     );
     transport.handleRequest(
-      'resolve',
-      'rootManifest',
-      traced('resolve', 'rootManifest', (payload, context) => requireEngine().resolveRootManifest(payload, context)),
+      resolve.rootManifest,
+      traced(resolve.rootManifest, (payload, context) => requireEngine().resolveRootManifest(payload, context)),
     );
     transport.handleSubscription(
-      'resolve',
-      'dotName',
+      resolve.dotName,
       tracedSubscription(
-        'resolve',
-        'dotName',
+        resolve.dotName,
         value => value.tag === 'resolved',
         (start, context, sink) => requireEngine().resolveDotName(start, context, sink),
       ),
     );
     transport.handleSubscription(
-      'chain',
-      'connect',
+      chain.connect,
       tracedSubscription(
-        'chain',
-        'connect',
+        chain.connect,
         value => value.tag === 'connected',
         (start, context, sink) => scopeOf(session).connect(start, context, sink),
       ),
     );
     transport.handleRequest(
-      'chain',
-      'send',
-      loggedChainSend((payload, context) => scopeOf(session).send(payload, context)),
+      chain.send,
+      logged(chain.send, (payload, context) => scopeOf(session).send(payload, context)),
     );
   }
 

@@ -3,47 +3,58 @@
 
 // What a functional test needs to read the protocol frame's traffic in a real page. Never imported by shipped code.
 
-import { toHex } from '@dotli/shared';
-import { MessageRefusedError, describeMessage } from '@dotli/transport/testing';
+import { fromHex, toHex } from '@dotli/shared';
+import type { AnyMethod, Codec } from '@dotli/transport';
+import { FrameRefusedError, readFrame, readMessage } from '@dotli/transport/testing';
 import { protocolSchema } from '../schema.js';
 
-export interface DescribedWireMessage {
+/**
+ * A call's message as a recording keeps it: by its method's names and tag, with its bytes as hex, and as JSON with bytes
+ * as hex, so a page can match it.
+ */
+export interface RecordedWireMessage {
+  id: number;
   trait: string;
   method: string;
-  leg: string;
-  id: number;
-  /** The leg's decoded value, such as a payload or an outcome, with bytes as hex. */
-  body: unknown;
+  tag: string;
+  message: string;
+  json: string;
 }
 
-/** Bytes become hex, so a record crosses out of the page as plain JSON. */
-function plain(value: unknown): unknown {
-  if (value instanceof Uint8Array) {
-    return toHex(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(plain);
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, plain(field)]));
-  }
-  return value;
-}
+/** Bytes and big integers as JSON keeps them. */
+const plain = (_key: string, value: unknown): unknown =>
+  value instanceof Uint8Array ? toHex(value) : typeof value === 'bigint' ? value.toString() : value;
 
-/** A wire message as a test reads it, or null for data that does not decode as one. */
-export function describeWireMessage(data: unknown): DescribedWireMessage | null {
-  if (!(data instanceof ArrayBuffer)) {
-    return null;
-  }
-  let described: DescribedWireMessage;
+/** Records a call's message the frame sent, or gives null for the library's own frames and data that is no frame. */
+export function recordWireMessage(data: ArrayBuffer): RecordedWireMessage | null {
+  let frame;
   try {
-    described = describeMessage(protocolSchema, data);
+    frame = readFrame(protocolSchema, data);
   } catch (error) {
-    // Refused data is no message, and a recording keeps only messages. Any other throw is a fault.
-    if (error instanceof MessageRefusedError) {
+    // Data that is no frame is not recorded. Any other throw is a fault.
+    if (error instanceof FrameRefusedError) {
       return null;
     }
     throw error;
   }
-  return { ...described, body: plain(described.body) };
+  if (frame.kind !== 'call' || frame.tag === null) {
+    return null;
+  }
+  const { id, trait, method, tag, message } = frame;
+  const placed = [...protocolSchema.addresses].find(
+    ([, address]) => address.trait === trait && address.method === method,
+  );
+  const json = placed === undefined ? 'null' : JSON.stringify(placed[0].message.dec(message), plain);
+  return { id, trait, method, tag, message: toHex(message), json };
+}
+
+/** The recorded messages of `method`, decoded with it. */
+export function messagesOf<M>(
+  method: AnyMethod & { readonly message: Codec<M> },
+  recorded: readonly RecordedWireMessage[],
+): M[] {
+  const address = protocolSchema.addresses.get(method);
+  return recorded
+    .filter(message => message.trait === address?.trait && message.method === address.method)
+    .map(message => readMessage(method, fromHex(message.message)));
 }

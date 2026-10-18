@@ -3,11 +3,14 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
+import { protocolSchema } from '@dotli/protocol';
 import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
 import { memoryIdb } from '@dotli/storage/testing';
 import { denied, err, hostFailure, ok } from '@dotli/transport';
 import { serveLocalWallet } from './local-wallet-handler.js';
 import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, type HostLink } from './testing/host-link.js';
+
+const { wallet } = protocolSchema.traits;
 
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const IDENTITY = { identityAccountId: `0x${'22'.repeat(32)}`, liteUsername: 'bob.7' };
@@ -21,9 +24,9 @@ beforeEach(() => {
 
 afterEach(closeHostLinks);
 
-function served(origin: string | null = HOST_ORIGIN, wallet: LocalWalletStore = store): HostLink {
+function served(origin: string | null = HOST_ORIGIN, walletStore: LocalWalletStore = store): HostLink {
   const link = linkHost(origin);
-  serveLocalWallet(link.serving, wallet);
+  serveLocalWallet(link.serving, walletStore);
   return link;
 }
 
@@ -33,7 +36,7 @@ describe('the local wallet', () => {
     const { host } = served();
 
     // When
-    const result = await host.request('wallet', 'read', { siteId: SITE_ID });
+    const result = await host.request(wallet.read, { siteId: SITE_ID });
 
     // Then
     expect(result).toEqual(ok({ tag: 'none', value: undefined }));
@@ -42,10 +45,10 @@ describe('the local wallet', () => {
   it('As a host page, I read back the entropy another app saved', async () => {
     // Given
     const { host } = served();
-    await host.request('wallet', 'save', { siteId: SITE_ID, entropy: ENTROPY });
+    await host.request(wallet.save, { siteId: SITE_ID, entropy: ENTROPY });
 
     // When
-    const result = await host.request('wallet', 'read', { siteId: SITE_ID });
+    const result = await host.request(wallet.read, { siteId: SITE_ID });
 
     // Then
     expect(result).toEqual(ok({ tag: 'ok', value: { entropy: ENTROPY, identity: null } }));
@@ -57,11 +60,11 @@ describe('the local wallet', () => {
     await store.saveLocalWallet(ENTROPY);
 
     // When
-    await host.request('wallet', 'identity', { siteId: SITE_ID, identity: IDENTITY });
+    await host.request(wallet.identity, { siteId: SITE_ID, identity: IDENTITY });
 
     // Then
     expect(await store.loadLocalWallet()).toEqual({ entropy: ENTROPY, identity: IDENTITY });
-    expect(await host.request('wallet', 'read', { siteId: SITE_ID })).toEqual(
+    expect(await host.request(wallet.read, { siteId: SITE_ID })).toEqual(
       ok({ tag: 'ok', value: { entropy: ENTROPY, identity: IDENTITY } }),
     );
   });
@@ -72,7 +75,7 @@ describe('the local wallet', () => {
     await store.saveLocalWallet(ENTROPY);
 
     // When
-    await host.request('wallet', 'forget', { siteId: SITE_ID });
+    await host.request(wallet.forget, { siteId: SITE_ID });
 
     // Then
     expect(await store.loadLocalWallet()).toBeNull();
@@ -84,7 +87,7 @@ describe('the local wallet', () => {
     await store.saveLocalWallet(ENTROPY);
 
     // When
-    const read = host.request('wallet', 'read', { siteId: SITE_ID });
+    const read = host.request(wallet.read, { siteId: SITE_ID });
 
     // Then
     await expect(read).resolves.toEqual(err(denied()));
@@ -96,7 +99,7 @@ describe('the local wallet', () => {
     await store.saveLocalWallet(ENTROPY);
 
     // When
-    const forget = host.request('wallet', 'forget', { siteId: SITE_ID });
+    const forget = host.request(wallet.forget, { siteId: SITE_ID });
 
     // Then
     await expect(forget).resolves.toEqual(err(denied()));
@@ -109,7 +112,7 @@ describe('the local wallet', () => {
     await store.saveLocalWallet(ENTROPY);
 
     // When
-    const read = host.request('wallet', 'read', { siteId: 'evil.li' });
+    const read = host.request(wallet.read, { siteId: 'evil.li' });
 
     // Then
     await expect(read).resolves.toEqual(err(hostFailure('Error: Invalid siteId: evil.li')));
@@ -120,7 +123,7 @@ describe('the local wallet', () => {
     const { host } = served();
 
     // When
-    const save = host.request('wallet', 'save', { siteId: SITE_ID, entropy: new Uint8Array(5) });
+    const save = host.request(wallet.save, { siteId: SITE_ID, entropy: new Uint8Array(5) });
 
     // Then
     await expect(save).resolves.toEqual(err(hostFailure('Error: Invalid local wallet entropy')));
@@ -137,7 +140,7 @@ describe('the local wallet', () => {
     const { host } = served(HOST_ORIGIN, unreadable);
 
     // When
-    const result = await host.request('wallet', 'read', { siteId: SITE_ID });
+    const result = await host.request(wallet.read, { siteId: SITE_ID });
 
     // Then
     expect(result).toEqual(ok({ tag: 'unreadable', value: undefined }));

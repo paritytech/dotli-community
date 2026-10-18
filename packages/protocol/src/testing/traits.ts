@@ -4,10 +4,9 @@
 // Which traits a recorded message names, for specs that keep only the protocol's own calls. Never imported by shipped
 // code.
 
-import type { TraitName } from '@dotli/transport';
 import type { ProtocolSchema } from '../schema.js';
 
-type Trait = TraitName<ProtocolSchema>;
+type Trait = keyof ProtocolSchema['traits'];
 
 // Held to the schema's traits, so a trait added to it fails the build until it is listed here.
 const TRAITS = { frame: true, resolve: true, storage: true, wallet: true, chain: true } satisfies Record<Trait, true>;
