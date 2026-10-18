@@ -17,11 +17,6 @@
   },
   "devDependencies": {
     "@config/eslint": "*",
-    "@config/typescript": "*",
-    "@config/vite": "*"
-  },
-  "dependencies": {
-    "@dotli/shared": "*",
-    "scale-ts": "^1.6.1"
+    "@config/typescript": "*"
   }
 }

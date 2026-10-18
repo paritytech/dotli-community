@@ -5,7 +5,7 @@ declare const brand: unique symbol;
 
 /** An opaque byte codec for one value type. Build one with `codec`; only the library reads it. */
 export interface Codec<T> {
-  readonly [brand]: T;
+  readonly [brand]?: (value: T) => T;
 }
 
 interface CodecImpl<T> {
@@ -19,10 +19,12 @@ export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8
   return impl as unknown as Codec<T>;
 }
 
+/** Turns a value into bytes. A library-internal accessor, so it stays out of the index and schema code cannot call it. */
 export function encodeValue<T>(c: Codec<T>, value: T): Uint8Array {
   return (c as unknown as CodecImpl<T>).encode(value);
 }
 
+/** Turns bytes into a value. A library-internal accessor, so it stays out of the index and schema code cannot call it. */
 export function decodeValue<T>(c: Codec<T>, bytes: Uint8Array): T {
   return (c as unknown as CodecImpl<T>).decode(bytes);
 }

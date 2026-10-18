@@ -8,7 +8,8 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
 - A codec is an opaque value built from two plain functions, one that turns a value into bytes and one that turns bytes
   back. Code outside the library cannot read it, so the wire format stays a private detail.
 - A call returns a `Result`. Its error side is a `CallError`, tagged by `tag`: the handler's own `Domain` error, plus
-  the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`.
+  the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` and `Cancelled`. `Cancelled` is raised by the
+  caller's own side and never reaches a handler.
 
 ## Public API
 

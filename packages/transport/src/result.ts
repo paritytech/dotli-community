@@ -1,19 +1,25 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/** The outcome of a call that can fail, told apart by its `ok` field. */
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
+/** Wraps a value as a success. Called with no argument it is the success of a call that returns nothing. */
 export function ok(): Result<void, never>;
 export function ok<T>(value: T): Result<T, never>;
 export function ok(value?: unknown): Result<unknown, never> {
   return { ok: true, value };
 }
 
+/** Wraps an error as a failure. */
 export function err<E>(error: E): Result<never, E> {
   return { ok: false, error };
 }
 
-/** Why a call did not return its value. `Domain` carries the handler's own error, the rest are the library's. */
+/**
+ * Why a call did not return its value. `Domain` carries the handler's own error, the rest are the library's.
+ * `Cancelled` is raised by the caller's own side and never reaches a handler.
+ */
 export type CallError<E> =
   | { tag: 'Domain'; value: E }
   | { tag: 'Denied' }
@@ -22,6 +28,7 @@ export type CallError<E> =
   | { tag: 'HostFailure'; reason: string }
   | { tag: 'Cancelled' };
 
+// One constructor per variant, each building the plain tagged value.
 export const domain = <E>(value: E): CallError<E> => ({ tag: 'Domain', value });
 export const denied = (): CallError<never> => ({ tag: 'Denied' });
 export const unsupported = (): CallError<never> => ({ tag: 'Unsupported' });

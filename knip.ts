@@ -30,10 +30,6 @@ export default {
       // global setup bundles the `wire` scripts for its pages.
       entry: ['src/main.ts', 'src/landing.ts', 'sentry-check.ts', 'tests/functional/wire/*.ts'],
     },
-    'packages/transport': {
-      // The task pool and the built-in codecs land in the following changes of the package.
-      ignoreDependencies: ['@dotli/shared', 'scale-ts'],
-    },
     'apps/sandbox': {
       // The service worker is the PWA plugin's source, named in vite.config.ts.
       entry: ['src/app-sw.ts'],

@@ -29,11 +29,14 @@ describe('codec', () => {
 
     // Then
     expect(bytes.length).toBe(0);
+    // The call is wrapped only because lint forbids using a void value inside an expression.
     expect(() => {
       decodeValue(none, empty);
     }).not.toThrow();
-    expect(() => {
-      decodeValue(none, new Uint8Array([0]));
-    }).toThrow();
+    for (const payload of [[0], [1, 2, 3]]) {
+      expect(() => {
+        decodeValue(none, new Uint8Array(payload));
+      }).toThrow(`got ${String(payload.length)} bytes`);
+    }
   });
 });
