@@ -1,7 +1,8 @@
 # @dotli/transport
 
-A generic, bi-directional transport between documents. A schema author describes calls, streams and events in plain
-TypeScript. The library moves them across a frame and owns correlation, cancellation and failure.
+A generic, bi-directional transport between documents. A schema author describes requests and subscriptions in plain
+TypeScript. The library carries them between two documents, over a window or a port, and owns the handshake,
+correlation, cancellation and failure.
 
 ## Design
 
@@ -57,9 +58,27 @@ sequenceDiagram
 ```
 
 - Calls made before the handshake wait in a queue and go out in call order once it succeeds, then run side by side. A
-  call resolves to the peer's `Result`, or to `MalformedFrame` with the decode error's message when the peer's answer
-  does not decode. Aborting its signal resolves it as `Cancelled`, whether it waits or is out, and a late answer is
-  ignored. The peer is not told.
+  call resolves to the peer's `Result`, to `Unsupported` when the peer's schema lacks the method and answers with a
+  protocol error, or to `MalformedFrame` with the decode error's message when the peer's answer does not decode.
+  Aborting its signal resolves it as `Cancelled`, whether it waits or is out, and a late answer is ignored. The peer is
+  not told.
+
+```mermaid
+sequenceDiagram
+  participant C as Caller
+  participant H as Serving side
+  Note over C: waits in the queue until the handshake succeeds
+  C->>H: request
+  alt a handler answers
+    H-->>C: response, Ok or Err
+  else no handler for the method
+    H-->>C: response, Err(Unsupported)
+  else the peer's schema lacks the method
+    H-->>C: protocol error, read as Unsupported
+  end
+  Note over C: an aborted signal settles the call as Cancelled at once
+```
+
 - A subscription waits in the same queue as the requests and goes out in call order with them. Its subscriber hears each
   value, then one end: the peer's interrupt, `Cancelled` once its signal aborts, `Unsupported` when the peer lacks the
   method, or `MalformedFrame` with the decode error's message when an interrupt or a value does not decode. A lost value
@@ -205,7 +224,7 @@ Test helpers for code that uses the library.
 
 - `createProviderPair()` returns two connected providers, `left` and `right`, and the `delivered` buffers. They deliver
   on a microtask, in order, and detach each buffer as a browser transfer does.
-- `describeMessage(schema, data)` reads a recorded message as `{ trait, method, leg, id, body }`. The body is the leg's
-  decoded value, left as it is: a payload, an outcome, a handshake's `{ version, hello }`, or a protocol error's
-  `{ trait, method }`. A library message or one for an address the schema lacks is named by its numeric ids, and the
-  latter keeps its body as bytes. It throws on data the schema refuses, with the refusal as the cause.
+- `describeMessage(schema, data)` reads a recorded message as a `DescribedMessage`, `{ trait, method, leg, id, body }`.
+  The body is the leg's decoded value, left as it is: a payload, an outcome, a handshake's `{ version, hello }`, or a
+  protocol error's `{ trait, method }`. A library message or one for an address the schema lacks is named by its numeric
+  ids, and the latter keeps its body as bytes. It throws on data the schema refuses, with the refusal as the cause.

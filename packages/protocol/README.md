@@ -156,5 +156,8 @@ longer waiting is ignored without a count.
 Test-only, for functional tests that read the protocol frame's traffic in a real page. Never imported by shipped code.
 
 - `describeWireMessage`: a wire message as its trait, method, leg, id and decoded body, with bytes as hex, or null for
-  data that does not decode as one.
+  data that does not decode as one. The trait and method are the schema's names, such as `frame` and `status`, and the
+  leg is the transport's: `request`, `response`, `start`, `receive`, `interrupt` or `stop`. An answer or an interrupt
+  reads as its outcome, so the frame status ending as fatal is `{ ok: false, error: { tag: 'Domain', value } }` with the
+  `fatal` failure as its value.
 - `DescribedWireMessage`: the type of what `describeWireMessage` returns.
