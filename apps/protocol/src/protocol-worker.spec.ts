@@ -10,7 +10,7 @@ import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
+import { protocolSchema, type ProtocolTransport, createFrameStatus } from '@dotli/protocol';
 import {
   createPortProvider,
   createTransport,
@@ -33,7 +33,6 @@ import {
   type WorkerScope,
 } from './protocol-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { createFrameStatus } from './frame-status.js';
 import { connectSharedWorker, type SharedWorkerLinkDeps } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 import { registerWorkerRelay } from './worker-relay.js';
@@ -380,7 +379,7 @@ async function bootWorker(
     openSpan: open,
     heartbeat,
     flush,
-    ...(readNetBytes === undefined ? {} : { netBytes: { read: readNetBytes, ticker: netBytesTicker } }),
+    netBytes: readNetBytes === undefined ? undefined : { read: readNetBytes, ticker: netBytesTicker },
   });
   await light.presyncDone;
   const attach = ({ closeEvent = true }: { closeEvent?: boolean } = {}): Attached => {
@@ -437,7 +436,7 @@ async function bootWorker(
           resolutionId: null,
           readyTimeoutMs: 30_000,
           timers: manualTimers(),
-          ...(onOpen === undefined ? {} : { onOpen }),
+          onOpen,
         });
         tabs.add(transport);
         return transport;

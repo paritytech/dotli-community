@@ -1,21 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { _void, u8, type Codec } from 'scale-ts';
+import { _void, str, u8, type Codec } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 import { codec } from './codec.js';
 import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
 import { request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
 import { decode, encodeFrame, frame, type Frame } from './wire.js';
 
-const text = codec<string>(
-  value => new TextEncoder().encode(value),
-  bytes => new TextDecoder().decode(bytes),
-);
-
-const read = request({ request: text, response: text, error: u8 });
+const read = request({ request: str, response: str, error: u8 });
 const touch = request({ request: _void, response: _void });
-const watch = subscription({ start: text, receive: u8, interrupt: text });
+const watch = subscription({ start: str, receive: u8, interrupt: str });
 
 const listed = (data: ArrayBuffer): number[] => [...new Uint8Array(data)];
 const callOf = <M>(message: M): Frame<M>['body'] => ({ tag: 'call', value: { trait: 1, method: 2, message } });

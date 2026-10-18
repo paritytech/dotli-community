@@ -5,14 +5,13 @@
 
 import { bindLogSink, toError } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
-import { Bytes, _void, type Codec, type ResultPayload } from 'scale-ts';
+import { Bytes, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
 import { onTestFinished } from 'vitest';
-import { codec } from '../codec.js';
 import type { TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
 import { ok, type CallError } from '../result.js';
-import { defineSchema, request, subscription, type Address, type AnyMethod } from '../schema.js';
+import { defineSchema, request, subscription, type AnyMethod } from '../schema.js';
 import type { Sink } from '../serving.js';
 import { createTransport, type Transport } from '../transport.js';
 import { encodeFrame, frame, type Frame } from '../wire.js';
@@ -22,62 +21,46 @@ export const RETRY_MS = 50;
 export const TIMEOUT_MS = 5_000;
 export const VERSION = 3;
 
-const encoder = new TextEncoder();
-// Fatal, so bytes that are no UTF-8 fail to decode as a peer's payload can.
-const decoder = new TextDecoder('utf-8', { fatal: true });
-
-export const text = codec<string>(
-  value => encoder.encode(value),
-  bytes => decoder.decode(bytes),
-);
-
 /** Text that is never empty, so a test can make a payload that does not encode. */
-const word = codec<string>(
-  value => {
+const word = enhanceCodec(
+  str,
+  (value: string) => {
     if (value === '') {
       throw new RangeError('A word is never empty');
     }
-    return encoder.encode(value);
+    return value;
   },
-  bytes => decoder.decode(bytes),
+  (value: string) => value,
 );
 
 export const testSchema = defineSchema({
   version: VERSION,
-  hello: text,
+  hello: str,
   traits: {
     notes: {
-      read: request({ request: word, response: text, error: text }),
+      read: request({ request: word, response: str, error: str }),
       touch: request({ request: _void, response: _void }),
-      watch: subscription({ start: word, receive: word, interrupt: text }),
+      watch: subscription({ start: word, receive: word, interrupt: str }),
     },
     echo: {
-      say: request({ request: text, response: text }),
-      listen: subscription({ start: _void, receive: text }),
+      say: request({ request: str, response: str }),
+      listen: subscription({ start: _void, receive: str }),
     },
   },
 });
 
 export const { notes, echo } = testSchema.traits;
 
-const idsOf = (method: AnyMethod): Address => {
-  const address = testSchema.addresses.get(method);
-  if (address === undefined) {
-    throw new Error('the method is not one of the test schema');
-  }
-  return address;
-};
-
 /** The wire id of the `notes` trait, for a test that calls a method the trait lacks. */
-export const NOTES = idsOf(notes.read).traitId;
+export const NOTES = testSchema.addressOf(notes.read).traitId;
 
 // `notes.read` and `notes.watch` with every payload as bytes, so a test can send what their codecs refuse.
 const bytes = Bytes(Infinity);
 export const rawRead = request({ request: bytes, response: bytes, error: bytes });
 export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: bytes });
 
-/** Bytes that are no UTF-8, which `text` refuses. */
-export const NOT_UTF8 = Uint8Array.of(0xff);
+/** Text cut short: its length says two bytes and none follow, so `str` refuses it. */
+export const CUT_SHORT_TEXT = Uint8Array.of(8);
 
 /** Listeners of a `notes.watch` subscription that record the values and the ends it hears. */
 export function watcher() {
@@ -159,7 +142,7 @@ function rawPeer(provider: Provider) {
       message: M,
       at: AnyMethod = method,
     ) => {
-      const address = idsOf(at);
+      const address = testSchema.addressOf(at);
       const value = { trait: address.traitId, method: address.methodId, message };
       provider.post(encodeFrame(method.frame, { id, body: { tag: 'call', value } }));
     },
@@ -211,11 +194,11 @@ export function rawRig(
     if (attempt === undefined) {
       throw new Error('no handshake heard yet');
     }
-    peer.send(attempt.id, { tag: 'accept', value: ok(text.enc('peer')) });
+    peer.send(attempt.id, { tag: 'accept', value: ok(str.enc('peer')) });
   };
   /** Opens the handshake toward the transport, as an opener of `version`. */
   const openHandshake = (version = VERSION, id = 1): void => {
-    peer.send(id, { tag: 'open', value: { version, hello: text.enc('peer') } });
+    peer.send(id, { tag: 'open', value: { version, hello: str.enc('peer') } });
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }

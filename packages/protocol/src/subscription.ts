@@ -5,7 +5,7 @@
 // it, its one end is heard in one place, as the error host code sees.
 
 import { reportListener } from '@dotli/metrics';
-import type { Subscription as Method } from '@dotli/transport';
+import type { SubscribeOptions, Subscription as Method } from '@dotli/transport';
 import { callName } from './call-names.js';
 import { callFailure, fromTransportError } from './outcomes.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
@@ -15,11 +15,6 @@ export interface Subscription {
   unsubscribe(): void;
   /** Hears the one end: null when the frame ended it cleanly, else why it ended. Called at once if it has. */
   onEnd(listener: (error: Error | null) => void): void;
-}
-
-export interface SubscribeOptions {
-  /** Gives up on the subscription, which ends with the signal's reason and tells the frame. */
-  signal?: AbortSignal;
 }
 
 const report = reportListener('protocol', 'protocol.transport');
@@ -63,7 +58,7 @@ export function subscribe<S, V, I extends DomainFailure>(
         end(outcome.success ? null : callFailure(outcome.value, name, signal));
       },
     },
-    signal === undefined ? {} : { signal },
+    options,
   );
   handle.onClose(error => {
     end(fromTransportError(error));

@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { toError } from '@dotli/shared';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { domain, hostFailure } from '@dotli/transport';
+import { ok, err, domain, hostFailure } from '@dotli/transport';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remote-resolve.js';
 import { createFrameRpc } from './rpc.js';
@@ -46,7 +46,7 @@ describe('createRemoteResolve', () => {
         sink.receive({ tag: 'phase', value: 'asset-hub-syncing' });
         sink.receive({ tag: 'phase', value: 'resolving-content' });
         sink.receive({ tag: 'resolved', value: '0xcid' });
-        sink.interrupt();
+        sink.interrupt(ok());
         return () => undefined;
       }),
     );
@@ -88,7 +88,7 @@ describe('createRemoteResolve', () => {
     const resolve = resolveOver(
       resolving((_payload, _context, sink) => {
         sink.receive({ tag: 'phase', value: 'asset-hub-syncing' });
-        sink.interrupt();
+        sink.interrupt(ok());
         return () => undefined;
       }),
     );
@@ -106,7 +106,7 @@ describe('createRemoteResolve', () => {
     const message = 'Sync to Asset Hub Paseo timed out after 45s. Unable to reach peers.';
     const resolve = resolveOver(
       resolving((_payload, _context, sink) => {
-        sink.interrupt(domain({ tag: 'syncTimeout', value: message }));
+        sink.interrupt(err(domain({ tag: 'syncTimeout', value: message })));
         return () => undefined;
       }),
     );
@@ -123,7 +123,7 @@ describe('createRemoteResolve', () => {
     // Given a frame app whose resolver throws a named error for one name and a bare one for another
     const resolve = resolveOver(
       resolving(({ label }, _context, sink) => {
-        sink.interrupt(hostFailure(label === 'named' ? 'DotNsError: no' : 'Error: no'));
+        sink.interrupt(err(hostFailure(label === 'named' ? 'DotNsError: no' : 'Error: no')));
         return () => undefined;
       }),
     );

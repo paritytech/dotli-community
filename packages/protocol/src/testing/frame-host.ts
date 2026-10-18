@@ -13,16 +13,14 @@ import {
   createTransport,
   createWindowProvider,
   defineSchema,
-  type CallError,
   type MessageTarget,
-  type Sink,
   type WindowLike,
   type WindowMessage,
 } from '@dotli/transport';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
-import { frameStatusEnd } from '../outcomes.js';
+import { createFrameStatus, type FrameStatus } from '../frame-status.js';
 import type { ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
-import { protocolSchema, type FrameFailure, type ProtocolTransport } from '../schema.js';
+import { protocolSchema, type ProtocolTransport } from '../schema.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
 
@@ -172,53 +170,11 @@ function createMount(fires: MountEvent): FakeMount {
   };
 }
 
-/** The frame's status as a frame app serves it: told at once to a late subscriber, as the real one is. */
-export interface FrameStatusServer {
-  /** The light client is ready, which every subscriber hears, now and later. */
-  ready(): void;
-  /**
-   * The frame failed, which ends every subscription, now and later. A fatal, a failed init or a released port ends it
-   * with its typed failure, as the frame app does, and any other error as the handler's own failure.
-   */
-  fail(error: Error): void;
-  /** Ends every subscription with `end`, now and later, or cleanly with none. */
-  interrupt(end?: CallError<FrameFailure>): void;
-}
-
-function serveFrameStatus(serving: ProtocolTransport): FrameStatusServer {
-  const sinks = new Set<Sink<void, FrameFailure>>();
-  let state: 'booting' | 'ready' | { end: CallError<FrameFailure> | undefined } = 'booting';
-  serving.handleSubscription(protocolSchema.traits.frame.status, (_start, _context, sink) => {
-    if (typeof state === 'object') {
-      sink.interrupt(state.end);
-      return () => undefined;
-    }
-    if (state === 'ready') {
-      sink.receive(undefined);
-    }
-    sinks.add(sink);
-    return () => {
-      sinks.delete(sink);
-    };
-  });
-  const interrupt = (end?: CallError<FrameFailure>): void => {
-    state = { end };
-    for (const sink of [...sinks]) {
-      sink.interrupt(end);
-    }
-  };
-  return {
-    ready() {
-      state = 'ready';
-      for (const sink of [...sinks]) {
-        sink.receive(undefined);
-      }
-    },
-    fail(error) {
-      interrupt(frameStatusEnd(error));
-    },
-    interrupt,
-  };
+/** Serves the frame's status on `serving` as a frame app does. */
+function serveFrameStatus(serving: ProtocolTransport): FrameStatus {
+  const status = createFrameStatus();
+  serving.handleSubscription(protocolSchema.traits.frame.status, status.handler);
+  return status;
 }
 
 /** A frame of a later release, whose wire the host cannot speak. */
@@ -241,7 +197,7 @@ export interface FrameDom {
   /** Answers the host's handshake on `iframe` (the current one by default) as a frame of a later release. */
   serveNewer(iframe?: FakeIframe): void;
   /** The frame status `iframe` (the current one by default) serves, on its serving transport. */
-  status(iframe?: FakeIframe): FrameStatusServer;
+  status(iframe?: FakeIframe): FrameStatus;
   /** Data sent by `iframe` (the current one by default) as it is, from the frame's origin unless told otherwise. */
   deliverRaw(data: unknown, iframe?: FakeIframe, origin?: string): void;
 }
@@ -266,7 +222,7 @@ export function createFrameDom(
   };
   const mount = createMount(options.mount === undefined ? 'load' : options.mount);
   const elsewhere = createMount('load');
-  const served = new Map<FakeIframe, { serving: ProtocolTransport; status: FrameStatusServer | null }>();
+  const served = new Map<FakeIframe, { serving: ProtocolTransport; status: FrameStatus | null }>();
   const iframe = (): FakeIframe => {
     const [found] = mount.iframes;
     if (found === undefined) {
@@ -278,7 +234,7 @@ export function createFrameDom(
     const window = target.window;
     return createWindowProvider({ listen: window, peer: () => window.parent, origin: HOST_ORIGIN });
   };
-  const servedOn = (target: FakeIframe): { serving: ProtocolTransport; status: FrameStatusServer | null } => {
+  const servedOn = (target: FakeIframe): { serving: ProtocolTransport; status: FrameStatus | null } => {
     let entry = served.get(target);
     if (entry === undefined) {
       const serving = createTransport(protocolSchema, providerOn(target), {

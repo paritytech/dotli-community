@@ -1,16 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { FrameStatus } from './frame-status.js';
 import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink, toError } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { domain, ok } from '@dotli/transport';
+import { domain, ok, err } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
-import { isProtocolTrait } from './testing/traits.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
 import {
   PROTOCOL_ERRORS,
@@ -30,7 +30,6 @@ import {
   type FakeIframe,
   type FrameDom,
   type FrameHost,
-  type FrameStatusServer,
 } from './testing/frame-host.js';
 
 const { resolve, storage, chain } = protocolSchema.traits;
@@ -50,14 +49,14 @@ beforeEach(() => {
 const advance = (ms = 0): Promise<void> => timers.advance(ms);
 
 /** Answers the current iframe as the frame app would, so it listens once its handshake is answered. */
-async function listen(dom: FrameDom): Promise<FrameStatusServer> {
+async function listen(dom: FrameDom): Promise<FrameStatus> {
   const status = dom.status();
   await advance(HANDSHAKE_RETRY_MS);
   return status;
 }
 
 /** Answers the current iframe and reports its light client ready. */
-async function bringUp(dom: FrameDom): Promise<FrameStatusServer> {
+async function bringUp(dom: FrameDom): Promise<FrameStatus> {
   const status = await listen(dom);
   status.ready();
   await advance();
@@ -68,9 +67,7 @@ async function bringUp(dom: FrameDom): Promise<FrameStatusServer> {
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
     const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
-    return message !== null && isProtocolTrait(message.trait)
-      ? [`${message.tag}:${message.trait}.${message.method}`]
-      : [];
+    return message === null ? [] : [`${message.tag}:${message.trait}.${message.method}`];
   });
 }
 
@@ -403,7 +400,7 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // When the tab thaws and finds the SharedWorker let go of its port
-    status.interrupt(domain({ tag: 'released', value: 'The worker released this tab' }));
+    status.interrupt(err(domain({ tag: 'released', value: 'The worker released this tab' })));
     await advance();
 
     // Then
@@ -429,7 +426,7 @@ describe('createProtocolFrame', () => {
     await advance();
 
     // When the frame ends its status with no failure
-    status.interrupt();
+    status.interrupt(ok());
     await advance();
 
     // Then

@@ -5,12 +5,11 @@
 // the layers above the transport to the frame there is now. Each iframe gets its own provider and transport, so a
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
-import type { Backend, Network } from '@dotli/config';
+import { parseBackend, type Backend, type Network } from '@dotli/config';
 import { captureException, getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createStatusCell,
-  errorName,
   log,
   realTimers,
   serializeError,
@@ -46,7 +45,7 @@ const FRAME_MODES = {
 
 /** The backend a frame URL's `mode` names, or null for a word this build does not know. */
 export function backendOfFrameMode(mode: string): Backend | null {
-  return (Object.keys(FRAME_MODES) as Backend[]).find(backend => FRAME_MODES[backend] === mode) ?? null;
+  return parseBackend(Object.entries(FRAME_MODES).find(([, word]) => word === mode)?.[0] ?? null);
 }
 
 /** What the frame is built with. A change rebuilds it. */
@@ -169,8 +168,9 @@ function sameFrameConfig(a: ProtocolFrameConfig, b: ProtocolFrameConfig): boolea
 /** The frame's step that failed, so a failure is counted where it happened. */
 type BootPhase = 'load' | 'listen' | 'ready';
 
-function reportBootFailure(phase: BootPhase, error: unknown, count: typeof m.count): void {
-  count(S.PROTOCOL_IFRAME_READY, { outcome: 'error', phase, reason: errorName(error) ?? 'unknown' });
+/** `name` is the name of what was thrown, which is `unknown` for a value that is no `Error`. */
+function reportBootFailure(phase: BootPhase, error: Error, name: string, count: typeof m.count): void {
+  count(S.PROTOCOL_IFRAME_READY, { outcome: 'error', phase, reason: name });
   m.breadcrumb(phase === 'ready' ? 'protocol iframe ready wait failed' : 'protocol iframe load failed', {
     reason: serializeError(error),
   });
@@ -186,7 +186,7 @@ function reportBootFailure(phase: BootPhase, error: unknown, count: typeof m.cou
  * loss is counted and left in the trail but never captured.
  */
 function reportFrameLost(error: Error, count: typeof m.count, capture: boolean): boolean {
-  const reason = errorName(error) ?? 'unknown';
+  const reason = error.name;
   count(S.PROTOCOL_FRAME_LOST, { outcome: 'error', reason });
   if (reason === 'ProtocolPortReleasedError') {
     log.event('protocol frame released', { flow: 'protocol', reason });
@@ -432,12 +432,11 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       await untilStatus(() => false, kept.loss.signal);
     } catch (thrown: unknown) {
       // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
-      const error = thrown instanceof Error ? fromTransportError(thrown) : thrown;
-      const reason = toError(error);
+      const reason = fromTransportError(toError(thrown));
       // Still the frame, so this keeper found the failure, not a config change.
       if (slot === kept) {
         if (readyAt === null) {
-          reportBootFailure(phase, error, count);
+          reportBootFailure(phase, reason, thrown instanceof Error ? reason.name : 'unknown', count);
         } else {
           const stable = timers.now() - readyAt >= timeouts.stableMs;
           if (reportFrameLost(reason, count, stable || !lossCapturedSinceStable)) {

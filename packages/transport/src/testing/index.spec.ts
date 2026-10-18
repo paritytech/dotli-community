@@ -1,26 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { _void } from 'scale-ts';
+import { _void, str } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { codec } from '../codec.js';
+
 import { err, unsupported } from '../result.js';
 import { defineSchema, request, subscription } from '../schema.js';
 import { encodeFrame, frame } from '../wire.js';
 import { FrameRefusedError, readFrame, readMessage } from './index.js';
 
-const text = codec<string>(
-  value => new TextEncoder().encode(value),
-  bytes => new TextDecoder().decode(bytes),
-);
-
 const schema = defineSchema({
   version: 2,
-  hello: text,
+  hello: str,
   traits: {
     notes: {
-      read: request({ request: text, response: text }),
-      watch: subscription({ start: _void, receive: text }),
+      read: request({ request: str, response: str }),
+      watch: subscription({ start: _void, receive: str }),
     },
   },
 });
@@ -72,7 +67,7 @@ describe('readFrame', () => {
   it("As a test, I read the library's own frames as they are", () => {
     // Given
     const data = [
-      encodeFrame(frame, { id: 3, body: { tag: 'open', value: { version: 2, hello: text.enc('opener') } } }),
+      encodeFrame(frame, { id: 3, body: { tag: 'open', value: { version: 2, hello: str.enc('opener') } } }),
       encodeFrame(frame, { id: 3, body: { tag: 'accept', value: err({ version: 5 }) } }),
       encodeFrame(frame, { id: 4, body: { tag: 'failed', value: unsupported() } }),
     ];
@@ -82,7 +77,7 @@ describe('readFrame', () => {
 
     // Then
     expect(recorded).toEqual([
-      { id: 3, kind: 'open', value: { version: 2, hello: text.enc('opener') } },
+      { id: 3, kind: 'open', value: { version: 2, hello: str.enc('opener') } },
       { id: 3, kind: 'accept', value: err({ version: 5 }) },
       { id: 4, kind: 'failed', value: unsupported() },
     ]);

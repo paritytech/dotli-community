@@ -82,11 +82,11 @@ export function createRefusalReporter({ warn, count }: RefusalReportDeps): (refu
 }
 
 function routeOf(method: AnyMethod): FrameRoute {
-  const address = protocolSchema.addresses.get(method);
-  if (address?.trait === 'storage') {
+  const address = protocolSchema.addressOf(method);
+  if (address.trait === 'storage') {
     return isSharedModeRequestMethod(address.method) ? 'mode' : 'auth';
   }
-  return address?.trait === 'wallet' ? 'wallet' : 'chain';
+  return address.trait === 'wallet' ? 'wallet' : 'chain';
 }
 
 /**
@@ -119,11 +119,11 @@ export function reportRefusals(serving: ProtocolServing, report: (refusal: Frame
           receive: value => {
             sink.receive(value);
           },
-          interrupt: error => {
-            if (error !== undefined) {
-              refused(method, failureOf(method, error));
+          interrupt: outcome => {
+            if (!outcome.success) {
+              refused(method, failureOf(method, outcome.value));
             }
-            sink.interrupt(error);
+            sink.interrupt(outcome);
           },
         };
         try {

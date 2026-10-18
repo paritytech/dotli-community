@@ -8,7 +8,7 @@
 
 import { Bytes, Enum, Result, Struct, u32, u8, type Codec, type CodecType, type ResultPayload } from 'scale-ts';
 import { toError } from '@dotli/shared';
-import { err, failure, ok, type Failure } from './result.js';
+import { err, failure, ok } from './result.js';
 
 // A hello stays bytes, since another release's may not decode.
 const open = Struct({ version: u8, hello: Bytes(Infinity) });
@@ -20,29 +20,18 @@ export type Open = CodecType<typeof open>;
 /** The accepter's answer: its hello, or the version it speaks. */
 export type Accept = CodecType<typeof accept>;
 
-/** A message on a call, with the ids of its method. */
-export interface Call<M> {
-  trait: number;
-  method: number;
-  message: M;
-}
-
-/** What crosses the wire, about the call or the handshake attempt `id` names. */
-export interface Frame<M> {
-  id: number;
-  body:
-    | { tag: 'open'; value: Open }
-    | { tag: 'accept'; value: Accept }
-    | { tag: 'failed'; value: Failure }
-    | { tag: 'call'; value: Call<M> };
-}
-
-/** Frames whose calls carry `message`. */
-export const frameOf = <M>(message: Codec<M>): Codec<Frame<M>> =>
+/** Frames whose calls carry `message`, with the ids of the call's method. */
+export const frameOf = <M>(message: Codec<M>) =>
   Struct({
     id: u32,
     body: Enum({ open, accept, failed: failure, call: Struct({ trait: u8, method: u8, message }) }),
   });
+
+/** What crosses the wire, about the call or the handshake attempt `id` names. */
+export type Frame<M> = CodecType<ReturnType<typeof frameOf<M>>>;
+
+/** A message on a call, with the ids of its method. */
+export type Call<M> = Extract<Frame<M>['body'], { tag: 'call' }>['value'];
 
 /** Frames as they arrive, and as the library writes its own, with a call's message as bytes. */
 export const frame = frameOf(Bytes(Infinity));

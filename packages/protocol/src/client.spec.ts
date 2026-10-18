@@ -8,7 +8,6 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
-import { isProtocolTrait } from './testing/traits.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
 import { protocolSchema } from './schema.js';
@@ -44,7 +43,7 @@ async function listen(dom: FrameDom): Promise<void> {
 function sent(iframe: FakeIframe): string[] {
   return iframe.window.posted.flatMap(data => {
     const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
-    return message?.tag === 'request' && isProtocolTrait(message.trait) ? [`${message.trait}.${message.method}`] : [];
+    return message?.tag === 'request' ? [`${message.trait}.${message.method}`] : [];
   });
 }
 

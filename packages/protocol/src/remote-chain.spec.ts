@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { FrameStatus } from './frame-status.js';
 import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
@@ -14,13 +15,13 @@ import {
 import { bindLogSink } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
-import { hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
+import { err, hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
 import { ProtocolFatalError } from './errors.js';
 import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js';
 import { createFrameRpc } from './rpc.js';
 import { createFakeFrame, type FakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport, type RemoteFailure } from './schema.js';
-import { createFrameHost, FRAME_CONFIG, type FrameHost, type FrameStatusServer } from './testing/frame-host.js';
+import { createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-host.js';
 
 const { chain } = protocolSchema.traits;
 
@@ -307,7 +308,7 @@ describe('createRemoteChains', () => {
     await settle();
 
     // When
-    server().connects[0]?.sink.interrupt();
+    server().connects[0]?.sink.interrupt(ok());
     await settle();
     fake.lose(new ProtocolFatalError('boom'));
     survivor.send(genesisRequest(2));
@@ -352,7 +353,7 @@ describe('createRemoteChains', () => {
     await settle();
 
     // When the chain halts, then the frame refuses the send for a connection it forgot
-    server().connects[0]?.sink.interrupt();
+    server().connects[0]?.sink.interrupt(ok());
     await settle();
     server().sends[0]?.answer.reject(new Error('Unknown chain connection'));
     await settle();
@@ -405,7 +406,7 @@ function peopleProvider(): RemoteChainProvider {
 }
 
 interface Frame {
-  status: FrameStatusServer;
+  status: FrameStatus;
   chains: ChainServer;
 }
 
@@ -467,7 +468,7 @@ describe('createRemoteChainProvider halts', () => {
     const { received, connection, connect } = await connectRemote(onHalt);
 
     // When
-    connect.sink.interrupt();
+    connect.sink.interrupt(ok());
     await settle();
     connection.send(genesisRequest(7));
 
@@ -485,7 +486,7 @@ describe('createRemoteChainProvider halts', () => {
     const frame = await bootFrame();
 
     // When
-    frame.chains.connects[0]?.sink.interrupt();
+    frame.chains.connects[0]?.sink.interrupt(ok());
     await settle();
 
     // Then
@@ -508,7 +509,7 @@ describe('createRemoteChainProvider halts', () => {
     });
 
     // When
-    connect.sink.interrupt();
+    connect.sink.interrupt(ok());
     await settle();
     connection.send(genesisRequest(9));
 
@@ -531,8 +532,8 @@ describe('createRemoteChainProvider halts', () => {
     await settle();
 
     // When
-    closedRemote.connect.sink.interrupt();
-    open.connect.sink.interrupt();
+    closedRemote.connect.sink.interrupt(ok());
+    open.connect.sink.interrupt(ok());
     await settle();
 
     // Then
@@ -794,7 +795,7 @@ describe('createRemoteChainProvider halts', () => {
 
     // When
     connection.disconnect();
-    connect?.sink.interrupt(hostFailure('Error: Too many chain connections'));
+    connect?.sink.interrupt(err(hostFailure('Error: Too many chain connections')));
     await settle();
 
     // Then
@@ -811,7 +812,7 @@ describe('createRemoteChainProvider halts', () => {
     const frame = await bootFrame();
 
     // When
-    frame.chains.connects[0]?.sink.interrupt(hostFailure('Error: Too many chain connections'));
+    frame.chains.connects[0]?.sink.interrupt(err(hostFailure('Error: Too many chain connections')));
     await settle();
     connection.send(genesisRequest(7));
 

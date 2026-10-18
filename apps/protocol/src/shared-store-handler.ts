@@ -192,7 +192,7 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
     ),
     serving.handleSubscription(storage.authChanges, (_start, context, sink) => {
       if (!isOriginAllowed(context)) {
-        sink.interrupt(denied());
+        sink.interrupt(err(denied()));
         return () => undefined;
       }
       subscribers.add(sink);

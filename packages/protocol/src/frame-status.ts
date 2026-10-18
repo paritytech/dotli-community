@@ -5,24 +5,24 @@
 // that subscribes late hears where the frame stands at once, so nothing said before it subscribed is lost.
 
 import { reportListener } from '@dotli/metrics';
-import { frameStatusEnd, type FrameFailure, type ProtocolHandler, type protocolSchema } from '@dotli/protocol';
-import type { CallError, Sink } from '@dotli/transport';
+import { frameStatusEnd } from './outcomes.js';
+import type { FrameFailure, ProtocolHandler, protocolSchema } from './schema.js';
+import { err, type CallError, type ResultPayload, type Sink } from '@dotli/transport';
 
 export type FrameStatusSink = Sink<undefined, FrameFailure>;
 
-/** Where the status stands. An end of undefined is a clean one. */
-type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: CallError<FrameFailure> | undefined };
+/** How the status ends, as its subscribers hear it. */
+export type FrameStatusEnd = ResultPayload<undefined, CallError<FrameFailure>>;
+
+type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: FrameStatusEnd };
 
 export interface FrameStatus {
   /** The frame serves every method from now on. Does nothing once ready or ended. */
   ready(): void;
   /** The frame will never serve, or has stopped for good. Only the first end is heard. */
   fail(error: Error): void;
-  /**
-   * Ends the status with `end` as it is, or cleanly with none, for a relay that passes on another frame's end. Only the
-   * first end is heard.
-   */
-  interrupt(end?: CallError<FrameFailure>): void;
+  /** Ends the status with `end` as it is, for a relay that passes on another frame's end. Only the first end is heard. */
+  interrupt(end: FrameStatusEnd): void;
   handler: ProtocolHandler<typeof protocolSchema.traits.frame.status>;
 }
 
@@ -43,7 +43,7 @@ export function createFrameStatus(
     }
   };
 
-  const interrupt = (end?: CallError<FrameFailure>): void => {
+  const interrupt = (end: FrameStatusEnd): void => {
     if (state.name === 'ended') {
       return;
     }
@@ -67,7 +67,7 @@ export function createFrameStatus(
     },
 
     fail(error) {
-      interrupt(frameStatusEnd(error));
+      interrupt(err(frameStatusEnd(error)));
     },
 
     interrupt,

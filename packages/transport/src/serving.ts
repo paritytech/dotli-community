@@ -10,7 +10,7 @@ import { createAsyncTaskPool, toError } from '@dotli/shared';
 import type { ResultPayload } from 'scale-ts';
 import { failureReason } from './errors.js';
 import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
-import { err, hostFailure, malformedFrame, ok, unsupported, type CallError, type Failure } from './result.js';
+import { hostFailure, malformedFrame, unsupported, type CallError, type Failure } from './result.js';
 import type { Address, AnyMethod, Request, Subscription } from './schema.js';
 import { decode, encodeFrame, frame, type Call } from './wire.js';
 
@@ -26,8 +26,8 @@ export interface CallContext<H> {
 export interface Sink<V, I> {
   /** Sends a value. One the wire cannot carry ends the subscription with `HostFailure`. */
   receive(value: V): void;
-  /** Ends the subscription: cleanly with no argument, or with `error`, any variant a relay passes on. */
-  interrupt(error?: CallError<I>): void;
+  /** Ends the subscription with `outcome`, as the subscriber hears it: `ok()`, or an error a relay may pass on as is. */
+  interrupt(outcome: ResultPayload<undefined, CallError<I>>): void;
 }
 
 /** Serves one request method. It answers with a `Result`, and a throw or rejection answers `HostFailure`. */
@@ -137,24 +137,17 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
     }
   };
 
-  /**
-   * Answers request `id` with the handler's outcome, or with `HostFailure` for a handler that threw or an outcome the
-   * wire cannot carry. A handler that settles once the transport closed was answered by the close.
-   */
-  function reply<P, R, E>(
+  /** Whether request `id` still waits for its answer. One whose handler settles once the transport closed has it. */
+  const settles = (id: number): boolean => inFlight.delete(id) && !closed();
+
+  /** Answers request `id` with the handler's outcome, or with `HostFailure` for one the wire cannot carry. */
+  function respond<P, R, E>(
     method: Request<P, R, E>,
     address: Address,
     id: number,
-    handled: ResultPayload<ResultPayload<R, CallError<E>>, Error>,
+    outcome: ResultPayload<R, CallError<E>>,
   ): void {
-    if (!inFlight.delete(id) || closed()) {
-      return;
-    }
-    if (!handled.success) {
-      fail(id, hostFailure(handled.value), address);
-      return;
-    }
-    const data = encodeCall(method, address, id, { tag: 'response', value: handled.value });
+    const data = encodeCall(method, address, id, { tag: 'response', value: outcome });
     if (!data.success) {
       fail(id, hostFailure(data.value), address);
       return;
@@ -228,9 +221,8 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
         }
         post(data.value, address);
       },
-      interrupt(error) {
+      interrupt(outcome) {
         finish(() => {
-          const outcome: ResultPayload<undefined, CallError<I>> = error === undefined ? ok() : err(error);
           const data = encodeCall(method, address, id, { tag: 'interrupt', value: outcome });
           if (!data.success) {
             fail(id, hostFailure(data.value), address);
@@ -276,10 +268,14 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
             .call(() => handler(payload, context))
             .then(
               outcome => {
-                reply(method, address, id, ok(outcome));
+                if (settles(id)) {
+                  respond(method, address, id, outcome);
+                }
               },
               (error: unknown) => {
-                reply(method, address, id, err(toError(error)));
+                if (settles(id)) {
+                  fail(id, hostFailure(toError(error)), address);
+                }
               },
             );
         },

@@ -332,21 +332,19 @@ describe('createEngine name reads', () => {
       report: error => reported.push(error),
     });
     const broken = new Error('sink is broken');
-    const ended = deferred<CallError<RemoteFailure> | undefined>();
+    const ended = deferred<ResultPayload<undefined, CallError<RemoteFailure>>>();
     const sink = {
       receive: () => {
         throw broken;
       },
-      interrupt: (error?: CallError<RemoteFailure>) => {
-        ended.resolve(error);
-      },
+      interrupt: ended.resolve,
     };
 
     // When
     engine.resolveDotName({ label: 'doom' }, context, sink);
 
     // Then
-    expect(await ended.promise).toEqual(hostFailure('Error: sink is broken'));
+    expect(await ended.promise).toEqual(err(hostFailure('Error: sink is broken')));
     expect(reported).toEqual([broken]);
   });
 

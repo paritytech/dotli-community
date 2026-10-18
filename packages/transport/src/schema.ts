@@ -80,6 +80,9 @@ export interface AnyMethod {
 /** A schema's traits: trait names to method names to methods. */
 export type Traits = Readonly<Record<string, Readonly<Record<string, AnyMethod>>>>;
 
+/** Any one method of `T`, as a union. */
+export type MethodOf<T extends Traits> = { [K in keyof T]: T[K][keyof T[K]] }[keyof T];
+
 /** Where a method sits: its names and its wire ids. */
 export interface Address {
   trait: string;
@@ -88,12 +91,16 @@ export interface Address {
   methodId: number;
 }
 
-/** A checked schema. `addresses` places each of its methods, and `methodAt` finds the method at a place. */
+/** A checked schema, which places each of its methods. */
 export interface Schema<H, T extends Traits> {
   readonly version: number;
   readonly hello: Codec<H>;
   readonly traits: T;
-  readonly addresses: ReadonlyMap<AnyMethod, Address>;
+  /** Every method, in wire order. */
+  readonly methods: readonly AnyMethod[];
+  /** Where `method` sits. Throws for a method of another schema, which is the caller's mistake. */
+  readonly addressOf: (method: AnyMethod) => Address;
+  /** The method at a place, or undefined when the schema has none there. */
   readonly methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
 }
 
@@ -132,7 +139,14 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
     version: def.version,
     hello: def.hello,
     traits: def.traits,
-    addresses,
+    methods: byId.flat(),
+    addressOf(method) {
+      const address = addresses.get(method);
+      if (address === undefined) {
+        throw new Error('The method is not one of this schema');
+      }
+      return address;
+    },
     methodAt: (traitId, methodId) => byId[traitId]?.[methodId],
   };
 }

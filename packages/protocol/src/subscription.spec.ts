@@ -6,7 +6,16 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { _void } from 'scale-ts';
-import { createTransport, defineSchema, domain, hostFailure, type MethodTypes, type Sink } from '@dotli/transport';
+import {
+  ok,
+  err,
+  createTransport,
+  defineSchema,
+  domain,
+  hostFailure,
+  type MethodTypes,
+  type Sink,
+} from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import { ProtocolFatalError, ProtocolVersionMismatchError } from './errors.js';
 import { createFakeFrame } from './frame.fake.js';
@@ -65,7 +74,7 @@ describe('subscribe', () => {
 
     // When
     statusSinks[0]?.receive(undefined);
-    statusSinks[0]?.interrupt();
+    statusSinks[0]?.interrupt(ok());
     await settle();
 
     // Then
@@ -82,8 +91,8 @@ describe('subscribe', () => {
     await settle();
 
     // When
-    statusSinks[0]?.interrupt(domain({ tag: 'fatal', value: 'wasm trap' }));
-    resolveSinks[0]?.interrupt(hostFailure('DotNsError: no owner'));
+    statusSinks[0]?.interrupt(err(domain({ tag: 'fatal', value: 'wasm trap' })));
+    resolveSinks[0]?.interrupt(err(hostFailure('DotNsError: no owner')));
     await settle();
 
     // Then
@@ -165,7 +174,7 @@ describe('subscribe', () => {
     await settle();
 
     // When
-    statusSinks[0]?.interrupt();
+    statusSinks[0]?.interrupt(ok());
     await settle();
     status.onEnd(error => ends.push(error));
 
@@ -188,7 +197,7 @@ describe('subscribe', () => {
     // When
     status.unsubscribe();
     status.onEnd(error => ends.push(error));
-    statusSinks[0]?.interrupt();
+    statusSinks[0]?.interrupt(ok());
     await settle();
 
     // Then

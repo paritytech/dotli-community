@@ -42,7 +42,7 @@ describe('schema', () => {
     const schema = s;
 
     // When
-    const places = [owner, changes, status, reload].map(method => schema.addresses.get(method));
+    const places = [owner, changes, status, reload].map(schema.addressOf);
 
     // Then
     expect(places).toEqual([
@@ -68,8 +68,9 @@ describe('schema', () => {
     traits['later'] = { owner: reload };
 
     // Then
-    expect(schema.addresses.get(owner)).toEqual({ trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 });
-    expect(schema.addresses.get(reload)).toBeUndefined();
+    expect(schema.addressOf(owner)).toEqual({ trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 });
+    expect(() => schema.addressOf(reload)).toThrow('The method is not one of this schema');
+    expect(schema.methods).toEqual([owner, status]);
   });
 
   it('As a schema author, I am refused a schema with too many traits or methods, or a version that is not 0 to 255', () => {

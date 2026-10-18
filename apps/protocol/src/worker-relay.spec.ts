@@ -15,6 +15,8 @@ import {
   type ProtocolContext,
   type ProtocolTransport,
   type RemoteFailure,
+  createFrameStatus,
+  type FrameStatus,
 } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
 import {
@@ -31,7 +33,6 @@ import {
   type CallError,
   type MethodTypes,
 } from '@dotli/transport';
-import { createFrameStatus, type FrameStatus } from './frame-status.js';
 import { watchWorkerStatus } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 import { registerWorkerRelay, relayTelemetry } from './worker-relay.js';
@@ -143,7 +144,7 @@ describe('the worker relay', () => {
       worker.handleSubscription(resolve.dotName, (_start, _context, sink) => {
         sink.receive({ tag: 'phase', value: 'resolving-content' });
         sink.receive({ tag: 'resolved', value: 'bafycid' });
-        sink.interrupt();
+        sink.interrupt(ok());
         return () => undefined;
       });
       worker.handleSubscription(frame.telemetry, (_start, _context, sink) => {
@@ -269,16 +270,16 @@ describe('the worker relay', () => {
     const apiStopped: CallError<RemoteFailure> = domain({ tag: 'apiStopped', value: 'The light client stopped' });
     const { host } = linkHops(worker => {
       worker.handleSubscription(resolve.dotName, (_start, _context, sink) => {
-        sink.interrupt(apiStopped);
+        sink.interrupt(err(apiStopped));
         return () => undefined;
       });
       worker.handleSubscription(chain.connect, (_start, _context, sink) => {
         sink.receive({ tag: 'connected', value: undefined });
-        sink.interrupt(hostFailure('TypeError: the chain broke'));
+        sink.interrupt(err(hostFailure('TypeError: the chain broke')));
         return () => undefined;
       });
       worker.handleSubscription(frame.telemetry, (_start, _context, sink) => {
-        sink.interrupt(malformedFrame('a value past the limits'));
+        sink.interrupt(err(malformedFrame('a value past the limits')));
         return () => undefined;
       });
     });
@@ -319,7 +320,7 @@ describe('the worker relay', () => {
     await Promise.all([status.until(1), workerStatusHeard]);
 
     // When
-    workerStatus.interrupt();
+    workerStatus.interrupt(ok());
 
     // Then
     await expect(status.ended).resolves.toEqual(ok());

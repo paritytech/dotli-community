@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { str } from 'scale-ts';
 import { describe, expect, it, vi } from 'vitest';
 import { manualTimers, must } from '@dotli/shared/testing';
 import { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
@@ -18,7 +19,6 @@ import {
   RETRY_MS,
   rig,
   testSchema,
-  text,
   TIMEOUT_MS,
   VERSION,
 } from './testing/rig.js';
@@ -213,8 +213,8 @@ describe('the handshake', () => {
 
     // Then
     expect(peer.accepts()).toEqual([
-      { id: 1, value: ok(text.enc('accepter')) },
-      { id: 3, value: ok(text.enc('accepter')) },
+      { id: 1, value: ok(str.enc('accepter')) },
+      { id: 3, value: ok(str.enc('accepter')) },
     ]);
     await expect(transport.whenConnected()).resolves.toBeUndefined();
   });
@@ -250,7 +250,7 @@ describe('the handshake', () => {
     });
 
     // When
-    peer.send(1, { tag: 'accept', value: ok(text.enc('peer')) });
+    peer.send(1, { tag: 'accept', value: ok(str.enc('peer')) });
     await timers.advance(0);
 
     // Then
@@ -284,7 +284,7 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.accepts()).toEqual([{ id: 3, value: ok(text.enc('accepter')) }]);
+    expect(peer.accepts()).toEqual([{ id: 3, value: ok(str.enc('accepter')) }]);
     expect(connected).toBe(true);
     expect(peer.names()).toEqual(['accept', 'request:notes.touch']);
   });
@@ -296,7 +296,7 @@ describe('the handshake', () => {
 
     // When
     opening.openHandshake();
-    accepting.peer.send(1, { tag: 'accept', value: ok(text.enc('peer')) });
+    accepting.peer.send(1, { tag: 'accept', value: ok(str.enc('peer')) });
     await opening.timers.advance(0);
 
     // Then

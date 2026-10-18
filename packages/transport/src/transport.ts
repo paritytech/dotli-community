@@ -14,7 +14,7 @@ import { createAccepter, createOpener } from './handshake.js';
 import type { Post, Refuse, RunListener } from './parts.js';
 import type { Provider } from './provider.js';
 import { err, ok, type CallError } from './result.js';
-import type { Address, AnyMethod, Request, Schema, Subscription, Traits } from './schema.js';
+import type { Request, Schema, Subscription, Traits } from './schema.js';
 import { createServing, type RequestHandler, type SubscriptionHandler } from './serving.js';
 import { decode, frame } from './wire.js';
 
@@ -29,12 +29,12 @@ export interface TransportOptions<H> {
   /** This side's handshake value. */
   hello: H;
   /** How often the opener posts a fresh handshake until it is answered. */
-  retryMs?: number;
+  retryMs?: number | undefined;
   /** How long the opener waits for an answer, on the running clock. */
-  timeoutMs?: number;
-  timers?: Timers;
+  timeoutMs?: number | undefined;
+  timers?: Timers | undefined;
   /** Hears what the transport cannot handle itself. With none, each issue is logged as an error. */
-  onIssue?: (issue: TransportIssue) => void;
+  onIssue?: ((issue: TransportIssue) => void) | undefined;
   /**
    * Called when the peer's own stop leaves nothing it opened running and no request of the peer is in flight, which is
    * how a peer that disposes leaves. A live peer keeps at least one subscription open, so dropping to none is taken as
@@ -42,7 +42,7 @@ export interface TransportOptions<H> {
    * that does not decode or that names a method this side does not serve. Ends this side posted never count, since the
    * peer may not have heard them yet.
    */
-  onPeerIdle?: () => void;
+  onPeerIdle?: (() => void) | undefined;
 }
 
 export interface RequestOptions {
@@ -156,22 +156,12 @@ export function createTransport<H, T extends Traits>(
       return ok();
     } catch (thrown) {
       const error = toError(thrown);
-      report(
-        address === undefined
-          ? { kind: 'post_failed', error }
-          : { kind: 'post_failed', error, call: { trait: address.trait, method: address.method } },
-      );
+      const call = address === undefined ? undefined : { trait: address.trait, method: address.method };
+      report({ kind: 'post_failed', error, call });
       return err(error);
     }
   };
-  /** Where `method` sits in the schema. A method of another schema is the caller's mistake. */
-  const addressOf = (method: AnyMethod): Address => {
-    const address = schema.addresses.get(method);
-    if (address === undefined) {
-      throw new Error('The method is not one of this schema');
-    }
-    return address;
-  };
+  const { addressOf } = schema;
 
   const calls = createCalls({
     nextId,

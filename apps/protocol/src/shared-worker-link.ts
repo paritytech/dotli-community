@@ -65,7 +65,7 @@ export interface SharedWorkerLinkDeps {
    * Hands over the transport and the worker's status before the ready wait, so what the worker reports while it syncs
    * reaches the host live, and a worker that fails while it syncs ends the frame with its own end.
    */
-  onOpen?: (transport: ProtocolTransport, status: WorkerStatus) => void;
+  onOpen?: ((transport: ProtocolTransport, status: WorkerStatus) => void) | undefined;
 }
 
 /**
@@ -169,7 +169,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): Promise<Protoco
     timers,
     retryMs: readyTimeoutMs,
     timeoutMs: readyTimeoutMs,
-    ...(deps.onIssue === undefined ? {} : { onIssue: deps.onIssue }),
+    onIssue: deps.onIssue,
   });
   let failReadyWait: ((error: Error, why: string) => void) | null = null;
 

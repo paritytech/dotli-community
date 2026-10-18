@@ -11,7 +11,7 @@ import {
   breakable,
   echo,
   notes,
-  NOT_UTF8,
+  CUT_SHORT_TEXT,
   NOTES,
   outcomeOf,
   rawRig,
@@ -192,15 +192,13 @@ describe('serving', () => {
     const handler = vi.fn(() => ok('never'));
     transport.handleRequest(notes.read, handler);
 
-    // When a request on notes.read carries a payload that is no UTF-8
-    peer.call(rawRead, 7, { tag: 'request', value: NOT_UTF8 }, notes.read);
+    // When a request on notes.read carries a payload that is cut short
+    peer.call(rawRead, 7, { tag: 'request', value: CUT_SHORT_TEXT }, notes.read);
     await timers.advance(0);
 
     // Then
-    expect(peer.failures()).toEqual([
-      { id: 7, value: malformedFrame('TypeError: The encoded data was not valid for encoding utf-8') },
-    ]);
-    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError }]);
+    expect(peer.failures()).toEqual([{ id: 7, value: malformedFrame('RangeError: Invalid DataView length 2') }]);
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -257,13 +255,13 @@ describe('serving', () => {
     serveWatch(transport);
 
     // When
-    peer.call(rawWatch, 7, { tag: 'start', value: NOT_UTF8 }, notes.watch);
+    peer.call(rawWatch, 7, { tag: 'start', value: CUT_SHORT_TEXT }, notes.watch);
     await timers.advance(0);
 
     // Then
     expect(peer.failures()).toEqual([
       { id: 5, value: unsupported() },
-      { id: 7, value: malformedFrame('TypeError: The encoded data was not valid for encoding utf-8') },
+      { id: 7, value: malformedFrame('RangeError: Invalid DataView length 2') },
     ]);
   });
 
@@ -273,10 +271,10 @@ describe('serving', () => {
     const handler = vi.fn(() => ok());
     transport.handleRequest(notes.touch, handler);
 
-    // When a request, a start, a request whose payload is no UTF-8 and a request to a method this schema lacks come first
+    // When a request, a start, a request whose payload is cut short and a request to a method this schema lacks come first
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
     peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
-    peer.call(rawRead, 7, { tag: 'request', value: NOT_UTF8 }, notes.read);
+    peer.call(rawRead, 7, { tag: 'request', value: CUT_SHORT_TEXT }, notes.read);
     peer.send(9, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
 
@@ -318,15 +316,15 @@ describe('serving', () => {
     // Given
     const { timers, peer, issues } = await acceptedRaw();
 
-    // When an open carries no version, then one carries a hello that is no UTF-8
+    // When an open carries no version, then one carries a hello that is cut short
     peer.sendBytes(3, 0, 0, 0, 0);
-    peer.send(5, { tag: 'open', value: { version: VERSION, hello: NOT_UTF8 } });
+    peer.send(5, { tag: 'open', value: { version: VERSION, hello: CUT_SHORT_TEXT } });
     await timers.advance(0);
 
     // Then
     expect(issues).toEqual([
       { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
-      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
     ]);
     expect(peer.names()).toEqual(['accept']);
   });
@@ -339,15 +337,15 @@ describe('serving', () => {
       connected = true;
     });
 
-    // When an open carries no version, then one carries a hello that is no UTF-8
+    // When an open carries no version, then one carries a hello that is cut short
     peer.sendBytes(1, 0, 0, 0, 0);
-    peer.send(3, { tag: 'open', value: { version: VERSION, hello: NOT_UTF8 } });
+    peer.send(3, { tag: 'open', value: { version: VERSION, hello: CUT_SHORT_TEXT } });
     await timers.advance(0);
 
     // Then
     expect(issues).toEqual([
       { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
-      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
     ]);
     expect(peer.heard).toEqual([]);
     expect(connected).toBe(false);
@@ -444,7 +442,7 @@ describe('serving', () => {
     const stop = vi.fn();
     accepter.handleSubscription(notes.watch, (_start, _context, sink) => {
       sink.receive('only');
-      sink.interrupt(domain('at once'));
+      sink.interrupt(err(domain('at once')));
       return stop;
     });
     opener.connect();
@@ -472,7 +470,7 @@ describe('serving', () => {
 
     // When
     handle.stop();
-    must(sinks[0], 'a sink').interrupt();
+    must(sinks[0], 'a sink').interrupt(ok());
     await timers.advance(0);
 
     // Then
@@ -495,8 +493,8 @@ describe('serving', () => {
     // When
     const sink = must(sinks[0], 'a sink');
     sink.receive('late');
-    sink.interrupt();
-    sink.interrupt(domain('again'));
+    sink.interrupt(ok());
+    sink.interrupt(err(domain('again')));
     await timers.advance(0);
 
     // Then
@@ -517,7 +515,7 @@ describe('serving', () => {
 
     // When
     must(sinks[0], 'the first sink').receive('');
-    must(sinks[1], 'the second sink').interrupt(cancelled());
+    must(sinks[1], 'the second sink').interrupt(err(cancelled()));
     await timers.advance(0);
 
     // Then
@@ -542,7 +540,7 @@ describe('serving', () => {
       sink.receive('a line');
     };
     const interrupt = (): void => {
-      sink.interrupt();
+      sink.interrupt(ok());
     };
 
     // Then
@@ -671,7 +669,7 @@ describe('serving', () => {
 
     // When this side ends both
     for (const sink of sinks) {
-      sink.interrupt();
+      sink.interrupt(ok());
     }
     await timers.advance(0);
 
@@ -703,7 +701,7 @@ describe('serving', () => {
     // When the peer stops its status, the read ends here, and then the peer's stop for the read arrives
     peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
     await timers.advance(0);
-    must(sinks[1], 'the read').interrupt();
+    must(sinks[1], 'the read').interrupt(ok());
     peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
@@ -788,7 +786,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // When
-    must(sinks[0], 'the first sink').interrupt(domain('finished'));
+    must(sinks[0], 'the first sink').interrupt(err(domain('finished')));
     await timers.advance(0);
 
     // Then
@@ -807,7 +805,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // When this side ends the read, and the peer's stops for both arrive after
-    must(sinks[1], 'the read').interrupt();
+    must(sinks[1], 'the read').interrupt(ok());
     peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
     peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
     await timers.advance(0);
@@ -878,8 +876,8 @@ describe('serving', () => {
     };
     await leaveWithCallHeld(1);
 
-    // When it makes a call whose payload is no UTF-8, and the held call settles
-    peer.call(rawRead, 5, { tag: 'request', value: NOT_UTF8 }, notes.read);
+    // When it makes a call whose payload is cut short, and the held call settles
+    peer.call(rawRead, 5, { tag: 'request', value: CUT_SHORT_TEXT }, notes.read);
     await timers.advance(0);
     releases[0]?.();
     await timers.advance(0);

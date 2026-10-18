@@ -10,8 +10,10 @@ import {
   protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
-  type FrameFailure,
   type ProtocolTransport,
+  createFrameStatus,
+  type FrameStatus,
+  type FrameStatusEnd,
 } from '@dotli/protocol';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
@@ -21,13 +23,11 @@ import {
   err,
   ok,
   unsupported,
-  type CallError,
   type DomainError,
   type MethodTypes,
   type Sink,
 } from '@dotli/transport';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { createFrameStatus, type FrameStatus } from './frame-status.js';
 import { connectSharedWorker, workerEndError, type WorkerEnd, type WorkerStatus } from './shared-worker-link.js';
 
 const { frame } = protocolSchema.traits;
@@ -169,12 +169,12 @@ function link(
     resolutionId: options.resolutionId ?? null,
     readyTimeoutMs: READY_TIMEOUT_MS,
     timers: options.timers ?? manualTimers(),
-    ...(options.onOpen === undefined ? {} : { onOpen: options.onOpen }),
+    onOpen: options.onOpen,
   });
 }
 
 /** The first end a frame status hears. */
-function firstEnd(status: FrameStatus): Promise<CallError<FrameFailure> | undefined> {
+function firstEnd(status: FrameStatus): Promise<FrameStatusEnd> {
   return new Promise(resolve => {
     status.handler(
       undefined,
@@ -246,7 +246,7 @@ describe('connectSharedWorker', () => {
     worker.status.fail(new ProtocolFatalError('wasm trap'));
 
     // Then the frame fails with the fatal
-    await expect(failed).resolves.toEqual(domain({ tag: 'fatal', value: 'wasm trap' }));
+    await expect(failed).resolves.toEqual(err(domain({ tag: 'fatal', value: 'wasm trap' })));
   });
 
   it('As a tab whose worker never says ready, my frame fails after the ready wait and lets go of the worker', async () => {

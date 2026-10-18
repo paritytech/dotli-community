@@ -50,7 +50,7 @@ export const unsupported = (): Failure => ({ tag: 'Unsupported', value: undefine
 export const malformedFrame = (why: string): Failure => ({ tag: 'MalformedFrame', value: { reason: why } });
 /**
  * A handler's failure. Given an `Error`, the reason is the one a handler that throws it answers with, `"<name>:
- * <message>"`, bounded, so a peer reads the error's name back.
+ * <message>"`, bounded. truapi's `HostFailure` has one reason and no name, so the name rides in it.
  */
 export const hostFailure = (why: string | Error): Failure => ({
   tag: 'HostFailure',

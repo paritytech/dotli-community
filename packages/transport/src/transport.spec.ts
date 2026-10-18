@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ResultPayload } from 'scale-ts';
+import { type ResultPayload, str } from 'scale-ts';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { manualTimers } from '@dotli/shared/testing';
 import type { SubscriptionHandle } from './calls.js';
@@ -18,7 +18,6 @@ import {
   rig,
   serveWatch,
   testSchema,
-  text,
   VERSION,
   watcher,
 } from './testing/rig.js';
@@ -103,9 +102,9 @@ describe('createTransport', () => {
         },
         interrupt: outcome => {
           if (outcome.success) {
-            sink.interrupt();
+            sink.interrupt(ok());
           } else {
-            sink.interrupt(outcome.value);
+            sink.interrupt(err(outcome.value));
           }
         },
       });
@@ -153,7 +152,7 @@ describe('createTransport', () => {
         listener(data);
       }
     };
-    hear(encodeFrame(frame, { id: 1, body: { tag: 'open', value: { version: VERSION, hello: text.enc('peer') } } }));
+    hear(encodeFrame(frame, { id: 1, body: { tag: 'open', value: { version: VERSION, hello: str.enc('peer') } } }));
 
     // When
     const call = (): void => {

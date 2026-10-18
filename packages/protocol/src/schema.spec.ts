@@ -20,7 +20,13 @@ import {
   type TransportIssue,
 } from '@dotli/transport';
 import { FrameRefusedError, createProviderPair, readFrame } from '@dotli/transport/testing';
-import { protocolSchema, type ProtocolHello, type ProtocolSchema, type ProtocolTransport } from './schema.js';
+import {
+  protocolSchema,
+  type DomainFailure,
+  type ProtocolHello,
+  type ProtocolSchema,
+  type ProtocolTransport,
+} from './schema.js';
 import { messagesOf, recordWireMessage, type RecordedWireMessage } from './testing/index.js';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
@@ -118,9 +124,9 @@ function subscriptionCase<S, V, I>(
         }
         const end = sample.interrupts[run++] ?? err(NO_SAMPLE);
         if (!end.success) {
-          sink.interrupt(end.value);
+          sink.interrupt(err(end.value));
         } else {
-          sink.interrupt();
+          sink.interrupt(ok());
         }
         return () => undefined;
       });
@@ -330,7 +336,7 @@ describe('protocolSchema', () => {
     }
 
     // Then each side reads what the other sent, and the recorded messages carry the same values
-    expect(allCases.map(sample => sample.method)).toEqual([...protocolSchema.addresses.keys()]);
+    expect(allCases.map(sample => sample.method)).toEqual(protocolSchema.methods);
     const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
     for (const calls of heard) {
       calls.check(recorded);
@@ -360,6 +366,7 @@ describe('protocolSchema', () => {
     expectTypeOf<RemoteFailure>().toEqualTypeOf<
       { tag: 'syncTimeout'; value: string } | { tag: 'apiStopped'; value: string }
     >();
+    expectTypeOf<DomainFailure>().toEqualTypeOf<FrameFailure | RemoteFailure | undefined>();
     expectTypeOf<DomainError<typeof resolve.executableManifest>>().toEqualTypeOf<RemoteFailure>();
     expectTypeOf<DomainError<typeof resolve.rootManifest>>().toEqualTypeOf<RemoteFailure>();
     expectTypeOf<DomainError<typeof resolve.dotName>>().toEqualTypeOf<RemoteFailure>();
@@ -396,7 +403,7 @@ describe('protocolSchema', () => {
       sink.receive({ tag: 'netBytes', value: 512 });
       sink.receive({ tag: 'chainDetail', value: { chain: 'relay', peers: tooManyPeers } });
       // Ends cleanly, so an event let through would end the subscription as Ok.
-      sink.interrupt();
+      sink.interrupt(ok());
       return () => undefined;
     });
     opener.connect();

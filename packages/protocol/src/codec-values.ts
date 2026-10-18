@@ -60,17 +60,11 @@ export function nullable<T>(inner: Codec<T>): Codec<T | null> {
 /** A whole number of any size, as SCALE's compact. */
 const count: Codec<number> = enhanceCodec(compact, (value: number) => value, Number);
 
-export const chainRoleCodec = names<ChainRole>(
-  Enum({ relay: _void, assethub: _void, bulletin: _void, people: _void } satisfies Record<ChainRole, Codec<undefined>>),
-);
+export const chainRoleCodec = names<ChainRole>(Enum({ relay: _void, assethub: _void, bulletin: _void, people: _void }));
 
-export const smoldotDbChainCodec = names<SmoldotDbChain>(
-  Enum({ relay: _void, assethub: _void, bulletin: _void } satisfies Record<SmoldotDbChain, Codec<undefined>>),
-);
+export const smoldotDbChainCodec = names<SmoldotDbChain>(Enum({ relay: _void, assethub: _void, bulletin: _void }));
 
-export const smoldotDbOutcomeCodec = names<SmoldotDbOutcome>(
-  Enum({ hit: _void, miss: _void, unavailable: _void } satisfies Record<SmoldotDbOutcome, Codec<undefined>>),
-);
+export const smoldotDbOutcomeCodec = names<SmoldotDbOutcome>(Enum({ hit: _void, miss: _void, unavailable: _void }));
 
 export const chainSyncKindCodec = names<ChainSyncKind>(
   Enum({
@@ -82,7 +76,7 @@ export const chainSyncKindCodec = names<ChainSyncKind>(
     connecting: _void,
     warpSyncProgress: _void,
     warpSyncFinished: _void,
-  } satisfies Record<ChainSyncKind, Codec<undefined>>),
+  }),
 );
 
 export const resolvePhaseCodec = names<ResolvePhase>(
@@ -91,7 +85,7 @@ export const resolvePhaseCodec = names<ResolvePhase>(
     'asset-hub-syncing': _void,
     'asset-hub-ready': _void,
     'resolving-content': _void,
-  } satisfies Record<ResolvePhase, Codec<undefined>>),
+  }),
 );
 
 const dbCacheCodec = names<NonNullable<ChainDetail['dbCache']>>(Enum({ hit: _void, miss: _void }));

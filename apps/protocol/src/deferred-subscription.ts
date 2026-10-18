@@ -4,12 +4,11 @@
 // A subscription the frame accepts before what feeds it has loaded. The host subscribes as soon as the handshake is
 // answered, and a refusal then would never be retried on that frame.
 
-import type { ProtocolContext } from '@dotli/protocol';
+import type { ProtocolContext, ProtocolHello } from '@dotli/protocol';
 import { toError } from '@dotli/shared';
-import { hostFailure, type Sink } from '@dotli/transport';
+import { err, hostFailure, type Sink, type SubscriptionHandler } from '@dotli/transport';
 
-/** A subscription handler that starts with `St`, sends `V` and may end with `I`. */
-export type Handler<St, V, I> = (start: St, context: ProtocolContext, sink: Sink<V, I>) => () => void;
+type Handler<St, V, I> = SubscriptionHandler<St, V, I, ProtocolHello>;
 
 interface Waiting<St, V, I> {
   start: St;
@@ -55,7 +54,7 @@ export function createDeferredSubscription<St, V, I>(): DeferredSubscription<St,
         run(entry, handler);
       } catch (error) {
         // Ends it as the transport ends a subscription whose handler throws on start.
-        entry.sink.interrupt(hostFailure(toError(error)));
+        entry.sink.interrupt(err(hostFailure(toError(error))));
       }
     }
   };

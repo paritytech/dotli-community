@@ -6,7 +6,7 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import type { Sink } from '@dotli/transport';
+import { ok, type Sink } from '@dotli/transport';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport, type TelemetryEvent } from './schema.js';
@@ -77,7 +77,7 @@ describe('createFrameTelemetry', () => {
     report({ tag: 'netBytes', value: 100 });
 
     // When the frame ends the feed, and the reopened one reports a later total
-    sinks.at(-1)?.interrupt();
+    sinks.at(-1)?.interrupt(ok());
     await timers.advance(999);
     const openedBeforeWait = sinks.length;
     await timers.advance(1);

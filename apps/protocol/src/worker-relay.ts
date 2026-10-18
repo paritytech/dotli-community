@@ -14,6 +14,7 @@ import {
 } from '@dotli/protocol';
 import { toError } from '@dotli/shared';
 import {
+  err,
   hostFailure,
   type Request,
   type RequestHandler,
@@ -57,11 +58,11 @@ function relaySubscription<S, V, I>(
         sink.receive(value);
       },
       interrupt: outcome => {
-        sink.interrupt(outcome.success ? undefined : outcome.value);
+        sink.interrupt(outcome);
       },
     });
     subscription.onClose(error => {
-      sink.interrupt(hostFailure(fromTransportError(error)));
+      sink.interrupt(err(hostFailure(fromTransportError(error))));
     });
     return () => {
       subscription.stop();
@@ -94,7 +95,7 @@ export function registerWorkerRelay(
     // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
     worker.dispose(workerEndError(end));
     if (end.kind === 'interrupt') {
-      status.interrupt(end.outcome.success ? undefined : end.outcome.value);
+      status.interrupt(end.outcome);
     } else {
       status.fail(end.error);
     }

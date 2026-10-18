@@ -117,8 +117,9 @@ sequenceDiagram
   `subscription({ start, receive, interrupt? })` a `Subscription<S, V, I>`. Without `error` or `interrupt`, `E` or `I`
   is `undefined`. `RequestMessage<P, R, E>` and `SubscriptionMessage<S, V, I>` are what their sides send.
 - `defineSchema({ version, hello, traits })` checks the record and returns a `Schema<H, T>`: its `version`, `hello`
-  codec, `traits`, `addresses`, which maps each method to its `Address` (`{ trait, method, traitId, methodId }`), and
-  `methodAt(traitId, methodId)`, the method at a place. `Traits` is the record it takes, of `AnyMethod`.
+  codec, `traits`, `methods` in wire order, `addressOf(method)`, its `Address` (`{ trait, method, traitId, methodId }`),
+  which throws for a method of another schema, and `methodAt(traitId, methodId)`, the method at a place. `Traits` is the
+  record it takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
 - `MethodTypes<M>` is what each side of method `M` sends: `{ request: P; response: ResultPayload<R, CallError<E>> }` or
   `{ start: S; receive: V; interrupt: ResultPayload<undefined, CallError<I>>; stop: undefined }`. `DomainError<M>` is
   its own error, `E` or `I`.

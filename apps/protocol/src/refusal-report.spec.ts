@@ -218,7 +218,7 @@ describe('the reporting transport', () => {
       throw refused;
     });
     served.handleSubscription(resolve.dotName, (_start, _context, sink) => {
-      sink.interrupt(ended);
+      sink.interrupt(err(ended));
       return () => undefined;
     });
 
@@ -257,7 +257,7 @@ describe('the reporting transport', () => {
     served.handleRequest(frame.warmup, () => ok());
     served.handleSubscription(resolve.dotName, (_start, _context, sink) => {
       sink.receive({ tag: 'resolved', value: null });
-      sink.interrupt();
+      sink.interrupt(ok());
       return () => undefined;
     });
 

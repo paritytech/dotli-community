@@ -8,7 +8,7 @@ import { protocolSchema } from './schema.js';
 describe('call names', () => {
   it('As a dotli operator, I read each protocol method under its flat name', () => {
     // Given
-    const methods = [...protocolSchema.addresses.keys()];
+    const methods = protocolSchema.methods;
 
     // When
     const names = methods.map(callName);

@@ -16,7 +16,7 @@ import {
   serveWatch,
   TIMEOUT_MS,
   watcher,
-  NOT_UTF8,
+  CUT_SHORT_TEXT,
   rawRead,
   rawWatch,
 } from './testing/rig.js';
@@ -234,13 +234,13 @@ describe('calls', () => {
     await timers.advance(0);
     const asked = must(peer.find('request:notes.read')[0], 'the call');
 
-    // When an Ok answer to the call carries text that is no UTF-8
-    peer.call(rawRead, asked.id, { tag: 'response', value: ok(NOT_UTF8) }, notes.read);
+    // When an Ok answer to the call carries text that is cut short
+    peer.call(rawRead, asked.id, { tag: 'response', value: ok(CUT_SHORT_TEXT) }, notes.read);
     await timers.advance(0);
 
     // Then
-    expect(await call).toEqual(err(malformedFrame('TypeError: The encoded data was not valid for encoding utf-8')));
-    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError }]);
+    expect(await call).toEqual(err(malformedFrame('RangeError: Invalid DataView length 2')));
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
   });
 
   it('As a caller, a payload that cannot be encoded rejects my call and posts nothing', async () => {
@@ -370,11 +370,11 @@ describe('calls', () => {
     // When
     first.receive('one');
     first.receive('two');
-    first.interrupt();
-    first.interrupt(domain('twice'));
+    first.interrupt(ok());
+    first.interrupt(err(domain('twice')));
     first.receive('late');
-    second.interrupt(domain('no such note'));
-    second.interrupt();
+    second.interrupt(err(domain('no such note')));
+    second.interrupt(ok());
     await timers.advance(0);
 
     // Then
@@ -616,8 +616,8 @@ describe('calls', () => {
       sink.receive('one');
       sink.receive('two');
     }
-    must(sinks[0], 'the first sink').interrupt();
-    must(sinks[1], 'the second sink').interrupt();
+    must(sinks[0], 'the first sink').interrupt(ok());
+    must(sinks[1], 'the second sink').interrupt(ok());
     await timers.advance(0);
     opener.dispose(new Error('done'));
 
@@ -753,17 +753,17 @@ describe('calls', () => {
     await timers.advance(0);
     const [a = 0, b = 0] = startIds(peer);
 
-    // When an interrupt carries a domain error that is no UTF-8, and a value is no UTF-8
-    peer.call(rawWatch, a, { tag: 'interrupt', value: err(domain(NOT_UTF8)) }, notes.watch);
-    peer.call(rawWatch, b, { tag: 'receive', value: NOT_UTF8 }, notes.watch);
+    // When an interrupt carries a domain error that is cut short, and a value is cut short
+    peer.call(rawWatch, a, { tag: 'interrupt', value: err(domain(CUT_SHORT_TEXT)) }, notes.watch);
+    peer.call(rawWatch, b, { tag: 'receive', value: CUT_SHORT_TEXT }, notes.watch);
     await timers.advance(0);
 
     // Then both end, and each is stopped, since what did not decode may have been a value
-    const malformed = err(malformedFrame('TypeError: The encoded data was not valid for encoding utf-8'));
+    const malformed = err(malformedFrame('RangeError: Invalid DataView length 2'));
     expect(first.ends).toEqual([malformed]);
     expect(second.ends).toEqual([malformed]);
     expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([a, b]);
-    const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError };
+    const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError };
     expect(issues).toEqual([refused, refused]);
   });
 

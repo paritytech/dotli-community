@@ -15,6 +15,7 @@ export type {
   Address,
   AnyMethod,
   DomainError,
+  MethodOf,
   MethodTypes,
   Request,
   RequestMessage,

@@ -21,6 +21,8 @@ import {
   type DomainFailure,
   type ProtocolHello,
   type ProtocolTransport,
+  createFrameStatus,
+  type FrameStatusSink,
 } from '@dotli/protocol';
 import { errorName, log, serializeError, toError } from '@dotli/shared';
 import {
@@ -38,15 +40,14 @@ import {
 } from '@dotli/transport';
 
 import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
-import { createFrameStatus, type FrameStatusSink } from './frame-status.js';
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-
-const { frame, resolve, chain } = protocolSchema.traits;
 import { createWireReport } from './refusal-report.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
 import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
+
+const { frame, resolve, chain } = protocolSchema.traits;
 
 /** A tab's port, as much of it as the worker uses. A `MessagePort` is one. */
 export interface WorkerPort extends PortLike {
@@ -97,7 +98,7 @@ export interface ProtocolWorkerDeps {
   /** Defaults to a `HEARTBEAT_INTERVAL_MS` interval. */
   heartbeat?: HeartbeatClock;
   /** The light client's inbound byte total, which every tab hears for its speed readout. Unset, nothing is reported. */
-  netBytes?: { read: () => number; ticker?: Ticker };
+  netBytes?: { read: () => number; ticker?: Ticker | undefined } | undefined;
   /** Sends buffered telemetry before the worker closes. Never rejects. */
   flush: () => Promise<void>;
 }
@@ -198,7 +199,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     }
     const end = frameStatusEnd(reason);
     for (const sink of [...session.statuses]) {
-      sink.interrupt(end);
+      sink.interrupt(err(end));
     }
     session.transport.dispose(reason);
     session.scope?.close();
@@ -400,9 +401,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
             settle(undefined);
           }
         },
-        interrupt: error => {
-          settle(error === undefined ? undefined : failureOf(method, error));
-          sink.interrupt(error);
+        interrupt: outcome => {
+          settle(outcome.success ? undefined : failureOf(method, outcome.value));
+          sink.interrupt(outcome);
         },
       };
       let stop: () => void;

@@ -185,7 +185,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
             return;
           }
           note(`Chain halted: ${connectionId} (${String(totalConnections())} remaining)`);
-          sink.interrupt();
+          sink.interrupt(ok());
         },
       );
       if (connection === null) {
@@ -221,7 +221,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       for (const held of [...connections.values()]) {
         // Forgotten first, so neither the end nor a halt the disconnect causes releases it again.
         forget(held);
-        held.sink.interrupt();
+        held.sink.interrupt(ok());
         held.connection.disconnect();
         released += 1;
       }
@@ -272,9 +272,9 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     resolveDotName: ({ label }, _context, sink) => {
       const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
       assertStr(label, 'label');
-      const end = (error?: CallError<RemoteFailure>): void => {
+      const end = (outcome: ResultPayload<undefined, CallError<RemoteFailure>>): void => {
         try {
-          sink.interrupt(error);
+          sink.interrupt(outcome);
         } catch (endError) {
           report(endError);
         }
@@ -293,13 +293,13 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
             } catch (error) {
               report(error);
               // The host hears a failure instead of waiting on a read that is over.
-              end(readEnd(toError(error)));
+              end(err(readEnd(toError(error))));
               return;
             }
-            end();
+            end(ok());
           },
           (error: unknown) => {
-            end(readEnd(toError(error)));
+            end(err(readEnd(toError(error))));
           },
         );
       // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.

@@ -6,7 +6,7 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink, createStatusCell } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
-import { hostFailure, ok, type Sink } from '@dotli/transport';
+import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import type { SharedAuthChange } from './schema.js';
@@ -218,12 +218,12 @@ describe('createSharedStore', () => {
     await timers.advance(0);
 
     // When the frame ends it cleanly, and then ends the reopened one with an error
-    opened[0]?.interrupt();
+    opened[0]?.interrupt(ok());
     await timers.advance(999);
     const openedBeforeFirstWait = opened.length;
     await timers.advance(1);
     const openedAfterFirstWait = opened.length;
-    opened[1]?.interrupt(hostFailure('TypeError: relay broke'));
+    opened[1]?.interrupt(err(hostFailure('TypeError: relay broke')));
     await timers.advance(1_999);
     const openedBeforeSecondWait = opened.length;
     await timers.advance(1);
@@ -286,7 +286,7 @@ describe('createSharedStore', () => {
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
     const unsubscribe = store.subscribeSharedAuthStorage(() => undefined);
     await timers.advance(0);
-    opened[0]?.interrupt();
+    opened[0]?.interrupt(ok());
     await timers.advance(0);
 
     // When

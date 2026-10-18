@@ -110,7 +110,7 @@ export interface FrameRpc {
 
 /** The shared store answers once the frame listens, long before its light client is ready. */
 function isSharedStore(method: AnyMethod): boolean {
-  const trait = protocolSchema.addresses.get(method)?.trait;
+  const { trait } = protocolSchema.addressOf(method);
   return trait === 'storage' || trait === 'wallet';
 }
 

@@ -49,8 +49,8 @@ export function messagesOf<M>(
   method: AnyMethod & { readonly message: Codec<M> },
   recorded: readonly RecordedWireMessage[],
 ): M[] {
-  const address = protocolSchema.addresses.get(method);
+  const address = protocolSchema.addressOf(method);
   return recorded
-    .filter(message => message.trait === address?.trait && message.method === address.method)
+    .filter(message => message.trait === address.trait && message.method === address.method)
     .map(message => readMessage(method, fromHex(message.message)));
 }

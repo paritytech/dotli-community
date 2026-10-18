@@ -15,6 +15,7 @@ import {
   type CallError,
   type MethodTypes,
   type Sink,
+  err,
 } from '@dotli/transport';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
@@ -137,7 +138,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
 
   serving.handleSubscription(frame.status, (_start, _context, sink) => {
     if (options.initFailed !== undefined) {
-      sink.interrupt(domain({ tag: 'initFailed', value: options.initFailed }));
+      sink.interrupt(err(domain({ tag: 'initFailed', value: options.initFailed })));
       return stopNothing;
     }
     sink.receive(undefined);
@@ -159,16 +160,16 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
       case 'cid':
       case 'none':
         sink.receive({ tag: 'resolved', value: resolution.kind === 'cid' ? resolution.cid : null });
-        sink.interrupt();
+        sink.interrupt(ok());
         return stopNothing;
       case 'fatal':
         for (const status of [...statuses]) {
-          status.interrupt(domain({ tag: 'fatal', value: resolution.message }));
+          status.interrupt(err(domain({ tag: 'fatal', value: resolution.message })));
         }
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          sink.interrupt(resolveFailure(resolution.message, resolution.name));
+          sink.interrupt(err(resolveFailure(resolution.message, resolution.name)));
         }, resolution.delayMs ?? 0);
         return () => {
           clearTimeout(timer);

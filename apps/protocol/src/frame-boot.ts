@@ -5,11 +5,15 @@
 // subscribes to both as soon as its handshake is answered, before the mode has loaded anything, and a subscription
 // left waiting would never end.
 
-import type { FrameFailure, ProtocolHandler, protocolSchema, TelemetryEvent } from '@dotli/protocol';
-import type { CallError } from '@dotli/transport';
+import {
+  type ProtocolHandler,
+  type protocolSchema,
+  type TelemetryEvent,
+  createFrameStatus,
+  type FrameStatusEnd,
+} from '@dotli/protocol';
 
 import { createDeferredSubscription } from './deferred-subscription.js';
-import { createFrameStatus } from './frame-status.js';
 
 type Telemetry = ProtocolHandler<typeof protocolSchema.traits.frame.telemetry>;
 
@@ -26,7 +30,7 @@ export interface FrameBoot {
    * Ends the status with another frame's end as it is, for the relay. The relay serves the telemetry before it can hear
    * an end, so none waits.
    */
-  interrupt(end?: CallError<FrameFailure>): void;
+  interrupt(end: FrameStatusEnd): void;
 }
 
 const idleTelemetry: Telemetry = () => () => undefined;

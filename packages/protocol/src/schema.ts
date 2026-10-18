@@ -4,13 +4,14 @@
 // The protocol's methods as traits of a transport schema. New traits and methods go at the end, and any change to them
 // bumps the version.
 
-import { Bytes, Enum, Struct, _void, str, type Codec, type CodecType } from 'scale-ts';
+import { Bytes, Enum, Struct, _void, str, type CodecType } from 'scale-ts';
 import {
   defineSchema,
   request,
   subscription,
   type CallContext,
   type DomainError,
+  type MethodOf,
   type MethodTypes,
   type Request,
   type RequestHandler,
@@ -78,9 +79,7 @@ export const protocolSchema = defineSchema({
       executableManifest: request({
         request: Struct({
           label: str,
-          kind: names<ExecutableKind>(
-            Enum({ app: _void, widget: _void, worker: _void } satisfies Record<ExecutableKind, Codec<undefined>>),
-          ),
+          kind: names<ExecutableKind>(Enum({ app: _void, widget: _void, worker: _void })),
         }),
         response: manifestResultCodec<ExecutableManifest>(executableManifestCodec),
         error: remoteFailure,
@@ -141,7 +140,7 @@ export type RemoteFailure = DomainError<typeof protocolSchema.traits.resolve.own
 /** A shared auth write a sibling tab made. */
 export type SharedAuthChange = MethodTypes<typeof protocolSchema.traits.storage.authChanges>['receive'];
 /** Every domain error the schema declares, and the empty one of a method that declares none. */
-export type DomainFailure = FrameFailure | RemoteFailure | undefined;
+export type DomainFailure = DomainError<MethodOf<ProtocolSchema['traits']>>;
 
 /** What serves `method` of the protocol. */
 export type ProtocolHandler<M> =

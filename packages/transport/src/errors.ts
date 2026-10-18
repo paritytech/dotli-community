@@ -31,7 +31,7 @@ export class TransportVersionMismatchError extends Error {
  */
 export type TransportIssue =
   | { kind: 'refused'; reason: 'malformed' | 'invalid'; cause: Error }
-  | { kind: 'post_failed'; error: Error; call?: { trait: string; method: string } }
+  | { kind: 'post_failed'; error: Error; call?: { trait: string; method: string } | undefined }
   | { kind: 'listener_threw'; error: Error };
 
 // A reason crosses the wire and may end up in a metric label, so it stays short.
