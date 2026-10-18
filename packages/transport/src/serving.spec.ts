@@ -261,19 +261,20 @@ describe('serving', () => {
     const handler = vi.fn(() => ok());
     transport.handleRequest('notes', 'touch', handler);
 
-    // When a request, a start and a request whose payload is no UTF-8 come first
+    // When a request, a start, a request whose payload is no UTF-8 and a request to a method this schema lacks come first
     peer.send({ kind: 'method', leg: 'request', id: 3, trait: NOTES, method: TOUCH, payload: undefined });
     peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'from the top' });
     peer.sendBytes(5, 0, 0, 0, NOTES, READ, 0, 0xff);
+    peer.sendBytes(6, 0, 0, 0, NOTES, 7, 0, 1, 2);
     await timers.advance(0);
 
     // Then
-    const beforeHandshake = expect.objectContaining({ message: 'A call came before the handshake' }) as Error;
-    expect(issues).toEqual([
-      { kind: 'refused', reason: 'invalid', cause: beforeHandshake },
-      { kind: 'refused', reason: 'invalid', cause: beforeHandshake },
-      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
-    ]);
+    const refused = {
+      kind: 'refused',
+      reason: 'invalid',
+      cause: expect.objectContaining({ message: 'A call came before the handshake' }) as Error,
+    };
+    expect(issues).toEqual([refused, refused, refused, refused]);
     expect(peer.heard).toEqual([]);
     expect(handler).not.toHaveBeenCalled();
   });
@@ -295,6 +296,48 @@ describe('serving', () => {
         reason: 'invalid',
         cause: expect.objectContaining({
           message: `A call came after the transport closed, TransportVersionMismatchError: The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
+        }) as Error,
+      },
+    ]);
+    expect(peer.legs()).toEqual(['response:255.0']);
+  });
+
+  it('As a connected accepter, a malformed handshake request is reported with no reply', async () => {
+    // Given
+    const { timers, peer, issues } = await acceptedRaw();
+
+    // When a handshake request carries no version, then one carries a hello that is no UTF-8
+    peer.sendBytes(2, 0, 0, 0, 255, 0, 0);
+    peer.sendBytes(3, 0, 0, 0, 255, 0, 0, VERSION, 0xff);
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
+    ]);
+    expect(peer.legs()).toEqual(['response:255.0']);
+  });
+
+  it('As a serving side, a message for an unknown address after my handshake failed is refused with no reply', async () => {
+    // Given
+    const { timers, peer, issues, openHandshake } = rawRig('accept');
+    openHandshake(VERSION + 1);
+    await timers.advance(0);
+
+    // When an answer comes for a method this schema lacks
+    peer.sendBytes(9, 0, 0, 0, NOTES, 7, 1, 0);
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'invalid',
+        cause: expect.objectContaining({
+          message: expect.stringMatching(
+            /^A message for an unknown address came after the transport closed, /,
+          ) as string,
         }) as Error,
       },
     ]);

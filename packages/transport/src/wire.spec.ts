@@ -5,7 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { codec, none } from './codec.js';
 import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
 import { defineSchema, request, subscription } from './schema.js';
-import { decodeMessage, encodeMessage, type DecodedMessage, type Refusal, type WireMessage } from './wire.js';
+import {
+  decodeMessage,
+  encodeMessage,
+  readHeader,
+  type DecodedMessage,
+  type Refusal,
+  type WireMessage,
+} from './wire.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -423,5 +430,20 @@ describe('wire messages', () => {
     expect(seen[0]?.buffer).toBe(data);
     expect(seen[0]?.byteOffset).toBe(7);
     expect([...(seen[0] ?? [])]).toEqual([0x61, 0x62, 0x63]);
+  });
+
+  it('As a transport, I read a header alone, and none from data too short or with a leg byte that names no leg', () => {
+    // Given
+    const message = bytes(7, 1, 0, 0, NOTES, WATCH, 2, 0xff);
+
+    // When
+    const read = [
+      readHeader(message),
+      readHeader(bytes(7, 0, 0, 0, NOTES, WATCH)),
+      readHeader(bytes(7, 0, 0, 0, 0, 0, 6)),
+    ];
+
+    // Then
+    expect(read).toEqual([{ id: 263, trait: NOTES, method: WATCH, leg: 'start' }, undefined, undefined]);
   });
 });

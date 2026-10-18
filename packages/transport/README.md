@@ -58,14 +58,17 @@ sequenceDiagram
 - The serving side answers outcomes of its own: `Unsupported` for a method with no handler, `MalformedFrame` with the
   decode error's message for a payload that does not decode, and `HostFailure` with `"<name>: <message>"`, bounded to
   500 characters, for a handler that throws or rejects or an answer the wire cannot carry. A message for an address the
-  schema lacks gets one protocol error reply, and nothing ever answers a protocol error or a refused message on the
-  library's own addresses. A call before the handshake, or after a failed one, is refused with no reply, whether its
-  payload decodes or not.
+  schema lacks gets one protocol error reply while the transport is open, and is refused after it closes. Nothing ever
+  answers a protocol error or a refused message on the library's own addresses. A call (a request or a start) before the
+  handshake, or after a failed one, is refused on its header alone with no reply, whether its payload decodes and
+  whether the schema has its address or not.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed`, `invalid` or
   `not_bytes`, with its cause), a post the provider threw on (with its leg), and a callback of the owner's that threw. A
-  throw while a message is handled is reported as a refusal too and never reaches the provider. With no hook, each issue
-  is logged as one bounded error. Only expected messages are dropped without an issue: a late answer to a settled call,
-  a handshake answer once the handshake is over, and a stop that crosses the interrupt it would end.
+  throw while a message is handled is reported as a refusal too and never reaches the provider, and neither does a throw
+  from the hook itself, which is logged with the issue it was handed. With no hook, each issue is logged as one bounded
+  error. Only expected messages are dropped without an issue: an answer or protocol error whose id names no waiting
+  call, such as a late answer to a settled one, a handshake answer once the handshake is over, and a stop, which may
+  cross the interrupt that ended its subscription.
 
 ## Public API
 

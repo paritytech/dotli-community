@@ -280,6 +280,22 @@ export function encodeMessage(schema: Schema, message: WireMessage): ArrayBuffer
   return out.buffer;
 }
 
+/**
+ * The header alone, read before any body, or `undefined` for data too short to hold one or a leg byte that names no
+ * leg. It lets a receiver turn a message away before it decodes the payload.
+ */
+export function readHeader(data: ArrayBuffer): Header | undefined {
+  if (data.byteLength < HEADER_BYTES) {
+    return undefined;
+  }
+  const view = new DataView(data);
+  const leg = LEGS[view.getUint8(6)];
+  if (leg === undefined) {
+    return undefined;
+  }
+  return { id: view.getUint32(0, true), trait: view.getUint8(4), method: view.getUint8(5), leg };
+}
+
 function end(cursor: Cursor): void {
   if (cursor.i !== cursor.byteLength) {
     throw new RangeError(`${String(cursor.byteLength - cursor.i)} bytes follow a body that has ended`);

@@ -151,6 +151,42 @@ describe('createTransport', () => {
     ]);
   });
 
+  it('As an owner, an issue hook that throws never reaches the provider, and the issue and the throw are logged', () => {
+    // Given
+    const errors = errorLog();
+    const listeners: ((data: ArrayBuffer) => void)[] = [];
+    const provider: Provider = {
+      post: () => undefined,
+      subscribe: listener => {
+        listeners.push(listener);
+        return () => undefined;
+      },
+      peerOrigin: () => null,
+      dispose: () => undefined,
+    };
+    createTransport(testSchema, provider, {
+      handshake: 'accept',
+      hello: 'accepter',
+      onIssue: () => {
+        throw new Error('hook bug');
+      },
+    });
+
+    // When
+    const hear = (): void => {
+      for (const listener of listeners) {
+        listener(Uint8Array.of(0xff, 0xff, 0xff).buffer);
+      }
+    };
+
+    // Then
+    expect(hear).not.toThrow();
+    expect(errors).toEqual([
+      '[transport] A message was refused as malformed, RangeError: expected a 7-byte header, got 3 bytes',
+      '[transport] A listener threw, Error: The issue hook threw, Error: hook bug',
+    ]);
+  });
+
   it('As a caller, a receive or interrupt for a subscription I never opened is refused as invalid', async () => {
     // Given
     const { transport, timers, peer, issues, answerHandshake } = rawRig('open');

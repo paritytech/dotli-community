@@ -22,7 +22,7 @@ import {
   type TraitName,
 } from './schema.js';
 import { createServing, type AnyHandler, type CallContext } from './serving.js';
-import { RESERVED_TRAIT, decodeMessage, type Refusal } from './wire.js';
+import { HANDSHAKE_METHOD, RESERVED_TRAIT, decodeMessage, readHeader, type Header, type Refusal } from './wire.js';
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -95,7 +95,22 @@ export function createTransport<S extends Schema>(
   provider: Provider,
   options: TransportOptions<S>,
 ): Transport<S> {
-  const report = options.onIssue ?? logIssue;
+  // The owner's hook must not throw into a provider's listener, so a throw is logged with the issue it was handed.
+  const report = (issue: TransportIssue): void => {
+    if (options.onIssue === undefined) {
+      logIssue(issue);
+      return;
+    }
+    try {
+      options.onIssue(issue);
+    } catch (error) {
+      logIssue(issue);
+      logIssue({
+        kind: 'listener_threw',
+        error: new Error(`The issue hook threw, ${failureReason(error)}`, { cause: error }),
+      });
+    }
+  };
   // The option exists exactly when the schema declares a hello, which its type has already checked.
   const { hello } = options as { hello?: unknown };
 
@@ -158,19 +173,26 @@ export function createTransport<S extends Schema>(
   const serving = createServing({
     schema,
     post,
-    context: () => {
-      switch (phase.name) {
-        case 'connected':
-          return ok({ origin: provider.peerOrigin(), hello: phase.peerHello });
-        case 'connecting':
-          return err(new Error('A call came before the handshake'));
-        case 'closed':
-          return err(new Error(`A call came after the transport closed, ${failureReason(phase.error)}`));
-      }
-    },
+    // Called only for an admitted call, so the phase holds the peer's hello.
+    context: () => ({ origin: provider.peerOrigin(), hello: phase.name === 'connected' ? phase.peerHello : undefined }),
     closed: () => phase.name === 'closed',
-    refuse,
   });
+
+  /** Why a call of the peer is not served, or null once the handshake told who the peer is. */
+  const notAdmitted = (): Error | null => {
+    switch (phase.name) {
+      case 'connected':
+        return null;
+      case 'connecting':
+        return new Error('A call came before the handshake');
+      case 'closed':
+        return new Error(`A call came after the transport closed, ${failureReason(phase.error)}`);
+    }
+  };
+
+  // A request or a start opens a call, at a schema address or one it lacks. The handshake is the library's own call.
+  const isPeerCall = ({ trait, method, leg }: Header): boolean =>
+    (leg === 'request' || leg === 'start') && !(trait === RESERVED_TRAIT && method === HANDSHAKE_METHOD);
 
   /** Hands a refused message on to the part that can still answer or settle what it names. */
   const onRefused = (refusal: Refusal): void => {
@@ -193,6 +215,13 @@ export function createTransport<S extends Schema>(
       report({ kind: 'refused', reason: 'not_bytes', cause: new TypeError(`Expected bytes, got ${typeof data}`) });
       return;
     }
+    // A call that is not admitted is refused on its header alone, whatever its payload holds.
+    const header = readHeader(data);
+    const refusal = header !== undefined && isPeerCall(header) ? notAdmitted() : null;
+    if (refusal !== null) {
+      refuse(refusal);
+      return;
+    }
     const decoded = decodeMessage(schema, data);
     if ('refused' in decoded) {
       onRefused(decoded);
@@ -207,7 +236,15 @@ export function createTransport<S extends Schema>(
         calls.onProtocolError(decoded);
         return;
       case 'unknownAddress':
-        serving.onUnknownAddress(decoded);
+        if (phase.name === 'closed') {
+          refuse(
+            new Error(
+              `A message for an unknown address came after the transport closed, ${failureReason(phase.error)}`,
+            ),
+          );
+        } else {
+          serving.onUnknownAddress(decoded);
+        }
         return;
       case 'method':
         switch (decoded.leg) {
