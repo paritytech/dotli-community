@@ -94,7 +94,7 @@ function describeIssue(issue: TransportIssue): string {
     case 'refused':
       return `refused as ${issue.reason}${issue.cause === undefined ? '' : `, ${errorMessage(issue.cause)}`}`;
     case 'post_failed':
-      return `a ${issue.leg} post failed, ${errorMessage(issue.error)}`;
+      return `a post failed, ${errorMessage(issue.error)}`;
     case 'listener_threw':
       return `a listener threw, ${errorMessage(issue.error)}`;
   }

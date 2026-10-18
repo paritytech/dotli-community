@@ -191,11 +191,12 @@ afterEach(() => {
     transport.dispose(over);
   }
   tabs.clear();
-  closeHostLinks();
   for (const port of openPorts) {
     port.close();
   }
   openPorts.clear();
+  // Last, since it throws on an issue no spec took, and the ports above must close either way.
+  closeHostLinks();
 });
 
 type Presync = ReturnType<typeof deferred<undefined>>;

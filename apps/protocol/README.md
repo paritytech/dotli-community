@@ -71,10 +71,10 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   worker closes.
 - A tab that leaves ends its subscriptions, which frees its connections at once. The worker then forgets its port and
   closes it at once: a live tab always holds a subscription, so a tab whose own stop leaves nothing running, with no
-  call of its in flight, has disposed its transport. A call of the tab still in flight when its last subscription stops,
-  or one it makes before that call settles, keeps the port. A port whose tab crashed fires its close event, and the
-  worker forgets it, or closes it if it was released, at once. Where an engine never fires the event, the heartbeat
-  release is the fallback.
+  call of its in flight, has disposed its transport. The worker waits for a call still in flight to settle first, and a
+  call the tab makes meanwhile keeps the port. A port whose tab crashed fires its close event, and the worker forgets
+  it, or closes it if it was released, at once. Where an engine never fires the event, the heartbeat release is the
+  fallback.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
   ends. A heartbeat it cannot send is captured, logged and counted, and the link stops answering, so the worker releases
   the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the
