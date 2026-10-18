@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { deferred, must } from '@dotli/shared/testing';
+import { must } from '@dotli/shared/testing';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -11,19 +11,12 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import {
-  budgetOf,
-  protocolSchema,
-  RESOLVE_BUDGET_MS,
-  type ProtocolTransport,
-  type RemoteFailure,
-} from '@dotli/protocol';
+import { budgetOf, protocolSchema, RESOLVE_BUDGET_MS, type ProtocolTransport } from '@dotli/protocol';
 import {
   domain,
   err,
   hostFailure,
   ok,
-  type CallError,
   type Failure,
   type DomainError,
   type MethodTypes,
@@ -135,8 +128,6 @@ const CONNECTED = { tag: 'connected' };
 
 /** How the frame answers a call whose handler threw `message`. */
 const thrown = (message: string): ResultPayload<never, Failure> => err(hostFailure(`Error: ${message}`));
-
-const context = { origin: null, hello: { resolutionId: null } };
 
 /** The transport reports itself dead, as a smoldot chain does. */
 function haltTransport(transport: TransportRecord): void {
@@ -322,52 +313,6 @@ describe('createEngine name reads', () => {
 
     // Then
     expect(await read.ended).toEqual(err(hostFailure('TypeError: bad label')));
-  });
-
-  it('As a dotli operator, a sink that throws on the name is reported and the read still ends with that error', async () => {
-    // Given a sink that throws on the resolved name
-    const reported: unknown[] = [];
-    const { engine } = setup({
-      resolver: resolverOf(() => Promise.resolve('bafy-doom')),
-      report: error => reported.push(error),
-    });
-    const broken = new Error('sink is broken');
-    const ended = deferred<ResultPayload<undefined, CallError<RemoteFailure>>>();
-    const sink = {
-      receive: () => {
-        throw broken;
-      },
-      interrupt: ended.resolve,
-    };
-
-    // When
-    engine.resolveDotName({ label: 'doom' }, context, sink);
-
-    // Then
-    expect(await ended.promise).toEqual(err(hostFailure('Error: sink is broken')));
-    expect(reported).toEqual([broken]);
-  });
-
-  it('As a dotli operator, a sink that throws on the end of a failed read is reported, not left unhandled', async () => {
-    // Given a sink whose end throws
-    const reported = deferred<unknown>();
-    const { engine } = setup({
-      resolver: resolverOf(() => Promise.reject(new Error('Asset Hub did not sync'))),
-      report: reported.resolve,
-    });
-    const broken = new Error('sink is broken');
-    const sink = {
-      receive: () => undefined,
-      interrupt: () => {
-        throw broken;
-      },
-    };
-
-    // When
-    engine.resolveDotName({ label: 'doom' }, context, sink);
-
-    // Then
-    expect(await reported.promise).toBe(broken);
   });
 
   it('As the host in gateway mode, every name read is refused at once', async () => {

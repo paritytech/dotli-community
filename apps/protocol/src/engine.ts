@@ -6,19 +6,18 @@
 
 import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import { reportListener } from '@dotli/metrics';
 import {
   budgetOf,
   type ProtocolHandler,
   protocolSchema,
   type ProtocolServing,
   type RemoteFailure,
-  remoteFailureOf,
+  remoteEnd,
   RESOLVE_BUDGET_MS,
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
-import { domain, err, hostFailure, ok, type CallError, type ResultPayload } from '@dotli/transport';
+import { err, ok, type CallError, type ResultPayload } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
@@ -66,8 +65,6 @@ export interface EngineOptions {
   resolver?: EngineResolver;
   /** Caps each read's sync budget, for a tester who needs a timeout to show quickly. */
   syncBudgetCapMs?: number | undefined;
-  /** Hears a sink that throws as a name read settles, which no caller is left to catch. Captured by default. */
-  report?: (error: unknown) => void;
 }
 
 export type EngineResolver = Pick<
@@ -91,23 +88,13 @@ function assertStr(value: string, name: string): void {
   }
 }
 
-/** Answers a read with its value or its typed failure. Any other failure is thrown, so it crosses as the handler's. */
+/** Answers a read with its value, or with its failure as a remote error ends a call. */
 async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, CallError<RemoteFailure>>> {
   try {
     return ok(await read());
   } catch (error) {
-    const failure = remoteFailureOf(toError(error));
-    if (failure === null) {
-      throw error;
-    }
-    return err(domain(failure));
+    return err(remoteEnd(toError(error)));
   }
-}
-
-/** How a read that failed with `error` ends its subscription. */
-function readEnd(error: Error): CallError<RemoteFailure> {
-  const failure = remoteFailureOf(error);
-  return failure === null ? hostFailure(error) : domain(failure);
 }
 
 /** Serves a new scope of `engine` on `serving`: that scope's chain connections, and the engine's name reads. */
@@ -126,7 +113,6 @@ export function serveEngineScope(serving: ProtocolServing, engine: ProtocolEngin
 export function createEngine(options: EngineOptions): ProtocolEngine {
   const { pool } = options;
   const note = options.log ?? ((): void => undefined);
-  const report = options.report ?? reportListener('protocol', 'protocol.engine');
 
   const scopes = new Set<Map<string, Connection>>();
   let scopeCount = 0;
@@ -272,13 +258,6 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
     resolveDotName: ({ label }, _context, sink) => {
       const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
       assertStr(label, 'label');
-      const end = (outcome: ResultPayload<undefined, CallError<RemoteFailure>>): void => {
-        try {
-          sink.interrupt(outcome);
-        } catch (endError) {
-          report(endError);
-        }
-      };
       void resolver
         .resolveDotName(label, {
           onPhase: phase => {
@@ -288,18 +267,11 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         })
         .then(
           resolved => {
-            try {
-              sink.receive({ tag: 'resolved', value: resolved });
-            } catch (error) {
-              report(error);
-              // The host hears a failure instead of waiting on a read that is over.
-              end(err(readEnd(toError(error))));
-              return;
-            }
-            end(ok());
+            sink.receive({ tag: 'resolved', value: resolved });
+            sink.interrupt(ok());
           },
           (error: unknown) => {
-            end(err(readEnd(toError(error))));
+            sink.interrupt(err(remoteEnd(toError(error))));
           },
         );
       // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.

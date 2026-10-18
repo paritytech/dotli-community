@@ -30,7 +30,7 @@ describe('createRemoteResolve', () => {
 
   function resolveOver(serve: (serving: ProtocolTransport) => void) {
     const fake = createFakeFrame(serve, { timers });
-    return createRemoteResolve({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+    return createRemoteResolve({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
   }
 
   beforeEach(() => {

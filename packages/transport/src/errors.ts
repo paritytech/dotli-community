@@ -39,7 +39,8 @@ export function failureReason(error: Error): string {
   return `${error.name}: ${error.message}`.slice(0, MAX_REASON_CHARS);
 }
 
-function describeIssue(issue: TransportIssue): string {
+/** An issue as one line of text, with the name of each error in it. */
+export function describeIssue(issue: TransportIssue): string {
   switch (issue.kind) {
     case 'refused':
       return `A message was refused as ${issue.reason}, ${failureReason(issue.cause)}`;

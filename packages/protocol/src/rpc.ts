@@ -54,7 +54,7 @@ export function asCallError(error: Error): Error {
 export type CallOutcome = 'ok' | 'error' | 'timeout';
 
 /** Measures one call from when it is handed to the transport, and settles once. */
-export interface CallTrail {
+interface CallTrail {
   settled(outcome: CallOutcome, error?: Error): void;
 }
 
@@ -104,8 +104,48 @@ export interface FrameRpc {
    * the frame.
    */
   request<P, R, E extends DomainFailure>(method: Request<P, R, E>, payload: NoInfer<P>): Promise<R>;
-  /** Starts the trail of a call made on the transport itself, timed on the same clock as every request. */
-  trail(method: AnyMethod, budgetMs: number | null): CallTrail;
+  /**
+   * Runs a call made on the transport itself, such as a subscription, within `method`'s budget, on the same trail as
+   * every request. `run` gets the signal that aborts once the budget runs out, and settles with the call.
+   */
+  call<V>(method: AnyMethod, run: (signal: AbortSignal) => Promise<V>): Promise<V>;
+}
+
+/** A call's budget. Once it runs out, `signal` aborts with the timeout error, which `bounded` rejects with. */
+interface Budget {
+  signal: AbortSignal;
+  bounded: <V>(work: Promise<V>) => Promise<V>;
+  /** Whether `reason` is the timeout this budget raised. */
+  timedOut: (reason: unknown) => boolean;
+}
+
+function startBudget(method: AnyMethod, timers: Timers): Budget {
+  const name = callName(method);
+  const budgetMs = budgetOf(method);
+  const giveUp = new AbortController();
+  let timeout: Error | undefined;
+  return {
+    signal: giveUp.signal,
+    bounded: work =>
+      budgetMs === null
+        ? work
+        : withTimeout(
+            work,
+            budgetMs,
+            () => {
+              timeout = callTimeoutError(name, budgetMs);
+              giveUp.abort(timeout);
+              return timeout;
+            },
+            timers,
+          ),
+    timedOut: reason => timeout !== undefined && reason === timeout,
+  };
+}
+
+/** A call's failure as callers see it, under the protocol's class for a transport that closed. */
+function callError(reason: unknown): Error {
+  return asCallError(fromTransportError(toError(reason)));
 }
 
 /** The shared store answers once the frame listens, long before its light client is ready. */
@@ -121,39 +161,36 @@ export function createFrameRpc(
   now: () => number = () => performance.now(),
 ): FrameRpc {
   return {
-    trail: (method, budgetMs) => startCallTrail(method, budgetMs, now),
+    async call(method, run) {
+      const budget = startBudget(method, timers);
+      const trail = startCallTrail(method, budgetOf(method), now);
+      try {
+        const value = await budget.bounded(run(budget.signal));
+        trail.settled('ok');
+        return value;
+      } catch (reason: unknown) {
+        const error = callError(reason);
+        trail.settled(budget.timedOut(reason) ? 'timeout' : 'error', error);
+        throw error;
+      }
+    },
     async request<P, R, E extends DomainFailure>(method: Request<P, R, E>, payload: P): Promise<R> {
       const name = callName(method);
-      const budgetMs = budgetOf(method);
       // Ends the call on its budget. The transport drops it, and a late answer is ignored.
-      const giveUp = new AbortController();
-      let timedOut: Error | undefined;
+      const { signal, bounded, timedOut } = startBudget(method, timers);
       // Set once the call is handed to a connected transport, which the frame wait may never reach.
       const sent: { trail: CallTrail | null } = { trail: null };
-      const bounded = <V>(work: Promise<V>): Promise<V> =>
-        budgetMs === null
-          ? work
-          : withTimeout(
-              work,
-              budgetMs,
-              () => {
-                timedOut = callTimeoutError(name, budgetMs);
-                giveUp.abort(timedOut);
-                return timedOut;
-              },
-              timers,
-            );
       const send = async (transport: ProtocolTransport): Promise<R> => {
         // The budget ran out while the frame was asked for, so nothing goes out.
-        if (giveUp.signal.aborted) {
-          throw toError(giveUp.signal.reason);
+        if (signal.aborted) {
+          throw toError(signal.reason);
         }
-        sent.trail = startCallTrail(method, budgetMs, now);
-        const outcome = await transport.request(method, payload, { signal: giveUp.signal });
+        sent.trail = startCallTrail(method, budgetOf(method), now);
+        const outcome = await transport.request(method, payload, { signal });
         if (outcome.success) {
           return outcome.value;
         }
-        throw callFailure(outcome.value, name, giveUp.signal);
+        throw callFailure(outcome.value, name, signal);
       };
 
       try {
@@ -173,9 +210,8 @@ export function createFrameRpc(
         sent.trail?.settled('ok');
         return answer;
       } catch (reason: unknown) {
-        // A transport that closed rejects with its own error, which the host knows by the protocol's class.
-        const err = asCallError(fromTransportError(toError(reason)));
-        const outcome: CallOutcome = reason === timedOut ? 'timeout' : 'error';
+        const err = callError(reason);
+        const outcome: CallOutcome = timedOut(reason) ? 'timeout' : 'error';
         if (sent.trail !== null) {
           sent.trail.settled(outcome, err);
         } else if (outcome === 'timeout') {

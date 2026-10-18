@@ -5,18 +5,16 @@
 // fake frame's document loads this script, which answers the host through the real transport with the options its own
 // script tag carries as JSON.
 
-import { protocolSchema, remoteFailureOf, type FrameFailure, type RemoteFailure } from '@dotli/protocol';
+import { named } from '@dotli/shared';
 import {
-  createTransport,
-  createWindowProvider,
-  domain,
-  err,
-  hostFailure,
-  ok,
-  type CallError,
-  type MethodTypes,
-  type Sink,
-} from '@dotli/transport';
+  createFrameStatus,
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  protocolSchema,
+  remoteEnd,
+  type RemoteFailure,
+} from '@dotli/protocol';
+import { createTransport, createWindowProvider, err, ok, type MethodTypes, type Sink } from '@dotli/transport';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
@@ -65,23 +63,13 @@ export interface FakeProtocolControl {
   release: (cid: string) => void;
 }
 
-/**
- * How the frame ends a resolution that failed with `message` under `name`. The two the host's error screen tells apart
- * cross as their typed failures, as the frame app sends them, and any other as the resolver's own failure.
- */
-function resolveFailure(message: string, name = 'Error'): CallError<RemoteFailure> {
-  const error = Object.assign(new Error(message), { name });
-  const typed = remoteFailureOf(error);
-  return typed === null ? hostFailure(error) : domain(typed);
-}
-
 function runFakeProtocol(options: FakeProtocolOptions): void {
   const blocks = options.blocks ?? {};
   const modes: Record<string, BlockMode> = { ...options.modes };
   const gets: Record<string, number> = {};
   const held: { cid: string; connectionId: string; rpcId: unknown }[] = [];
   const connections = new Map<string, Sink<ChainMessage, RemoteFailure>>();
-  const statuses = new Set<Sink<undefined, FrameFailure>>();
+  const status = createFrameStatus();
   const stopNothing = (): void => undefined;
 
   const reply = (connectionId: string, message: unknown): void => {
@@ -136,17 +124,12 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     { handshake: 'accept', hello: { resolutionId: null } },
   );
 
-  serving.handleSubscription(frame.status, (_start, _context, sink) => {
-    if (options.initFailed !== undefined) {
-      sink.interrupt(err(domain({ tag: 'initFailed', value: options.initFailed })));
-      return stopNothing;
-    }
-    sink.receive(undefined);
-    statuses.add(sink);
-    return () => {
-      statuses.delete(sink);
-    };
-  });
+  serving.handleSubscription(frame.status, status.handler);
+  if (options.initFailed === undefined) {
+    status.ready();
+  } else {
+    status.fail(new ProtocolInitFailedError(options.initFailed));
+  }
   // The fake has no light client to report on and no other tab signing in.
   serving.handleSubscription(frame.telemetry, () => stopNothing);
   serving.handleSubscription(storage.authChanges, () => stopNothing);
@@ -163,13 +146,11 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
         sink.interrupt(ok());
         return stopNothing;
       case 'fatal':
-        for (const status of [...statuses]) {
-          status.interrupt(err(domain({ tag: 'fatal', value: resolution.message })));
-        }
+        status.fail(new ProtocolFatalError(resolution.message));
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          sink.interrupt(err(resolveFailure(resolution.message, resolution.name)));
+          sink.interrupt(err(remoteEnd(named(new Error(resolution.message), resolution.name ?? 'Error'))));
         }, resolution.delayMs ?? 0);
         return () => {
           clearTimeout(timer);

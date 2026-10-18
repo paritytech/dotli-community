@@ -143,7 +143,7 @@ describe('createRemoteChains', () => {
       },
       { timers },
     );
-    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
+    const chains = createRemoteChains({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
     const provider = chains.createRemoteChainProvider(getActiveServicesConfig().people.genesis);
     if (provider === null) {
       throw new Error('People is not remote-connectable');

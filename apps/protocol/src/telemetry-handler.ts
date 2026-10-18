@@ -7,8 +7,6 @@
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import type { ProtocolHandler, protocolSchema } from '@dotli/protocol';
 
-import { chainDetailTelemetry, chainSyncTelemetry, netBytesTelemetry, smoldotDbTelemetry } from './telemetry-events.js';
-
 export interface TelemetryDeps {
   /** Replays each chain's latest state to a new listener, then hears each change. */
   onChainSync: (listener: (event: ChainSyncEvent) => void) => () => void;
@@ -42,28 +40,28 @@ export function createTelemetryHandler(
       let replaying = true;
       stops.push(
         deps.onChainSync(event => {
-          sink.receive(chainSyncTelemetry(event));
+          sink.receive({ tag: 'chainSync', value: event });
         }),
       );
       stops.push(
         deps.onChainDetail(detail => {
           const reported =
             replaying && synced && detail.dbCache !== undefined ? { ...detail, dbCache: 'hit' as const } : detail;
-          sink.receive(chainDetailTelemetry(reported));
+          sink.receive({ tag: 'chainDetail', value: reported });
         }),
       );
       replaying = false;
       for (const [chain, outcome] of deps.dbOutcomes()) {
-        sink.receive(smoldotDbTelemetry(chain, synced ? 'hit' : outcome));
+        sink.receive({ tag: 'smoldotDb', value: { chain, outcome: synced ? 'hit' : outcome } });
       }
       stops.push(
         deps.onDbOutcome((chain, outcome) => {
-          sink.receive(smoldotDbTelemetry(chain, outcome));
+          sink.receive({ tag: 'smoldotDb', value: { chain, outcome } });
         }),
       );
       stops.push(
         deps.netBytes(total => {
-          sink.receive(netBytesTelemetry(total));
+          sink.receive({ tag: 'netBytes', value: total });
         }),
       );
     } catch (error) {

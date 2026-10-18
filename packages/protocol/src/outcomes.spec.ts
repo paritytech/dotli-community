@@ -10,7 +10,7 @@ import {
   ProtocolRequestError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import { failureOf, frameStatusEnd, fromTransportError, remoteFailureOf } from './outcomes.js';
+import { failureOf, frameStatusEnd, fromTransportError, remoteEnd } from './outcomes.js';
 import { protocolSchema } from './schema.js';
 
 const { frame, resolve, wallet } = protocolSchema.traits;
@@ -101,23 +101,23 @@ describe('fromTransportError', () => {
   });
 });
 
-describe('remoteFailureOf', () => {
-  it("As a frame, I type the resolver failures the host's error screen tells apart by name, and no other", () => {
+describe('remoteEnd', () => {
+  it("As a frame, I type the resolver failures the host's error screen tells apart by name, and end any other as my own", () => {
     // Given
     const named = (name: string, message: string): Error => Object.assign(new Error(message), { name });
 
     // When
     const failures = [
-      remoteFailureOf(named('NetworkSyncTimeoutError', 'Asset Hub did not sync')),
-      remoteFailureOf(named('ApiStoppedError', 'The light client stopped')),
-      remoteFailureOf(new TypeError('bad label')),
+      remoteEnd(named('NetworkSyncTimeoutError', 'Asset Hub did not sync')),
+      remoteEnd(named('ApiStoppedError', 'The light client stopped')),
+      remoteEnd(new TypeError('bad label')),
     ];
 
     // Then
     expect(failures).toEqual([
-      { tag: 'syncTimeout', value: 'Asset Hub did not sync' },
-      { tag: 'apiStopped', value: 'The light client stopped' },
-      null,
+      domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' }),
+      domain({ tag: 'apiStopped', value: 'The light client stopped' }),
+      hostFailure('TypeError: bad label'),
     ]);
   });
 });

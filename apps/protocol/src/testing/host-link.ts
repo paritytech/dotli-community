@@ -10,6 +10,7 @@ import { deferred } from '@dotli/shared/testing';
 import {
   createPortProvider,
   createTransport,
+  describeIssue,
   type CallError,
   type ResultPayload,
   type Subscription,
@@ -76,17 +77,6 @@ export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
   };
   links.add(link);
   return link;
-}
-
-function describeIssue(issue: TransportIssue): string {
-  switch (issue.kind) {
-    case 'refused':
-      return `refused as ${issue.reason}, ${issue.cause.message}`;
-    case 'post_failed':
-      return `a post failed, ${issue.error.message}`;
-    case 'listener_threw':
-      return `a listener threw, ${issue.error.message}`;
-  }
 }
 
 /**

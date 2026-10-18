@@ -4,7 +4,7 @@
 // The light client's inbound byte total, reported for the host's speed readout from wherever the light client runs.
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { createListenerSet, errorName, log } from '@dotli/shared';
 
 /** How often the total is reported. The host averages over these readings. */
 export const NET_BYTES_INTERVAL_MS = 500;
@@ -46,19 +46,13 @@ export function shareNetBytes(
   ticker: Ticker,
   options: ShareNetBytesOptions = {},
 ): (post: (total: number) => void) => () => void {
-  const report = options.report ?? reportListener('protocol', 'protocol.net_bytes');
   const reportRead = options.reportRead ?? reportFailedRead;
   // Whether the last tick's read failed, so a run of failures is reported once and a good read rearms the report.
   let readFailing = false;
-  const posts = new Set<(total: number) => void>();
+  const posts = createListenerSet<number>({
+    onListenerError: options.report ?? reportListener('protocol', 'protocol.net_bytes'),
+  });
   let stopTicker: (() => void) | null = null;
-  const tell = (post: (total: number) => void, total: number): void => {
-    try {
-      post(total);
-    } catch (error) {
-      report(error);
-    }
-  };
   const tick = (): void => {
     let total: number;
     try {
@@ -72,33 +66,27 @@ export function shareNetBytes(
       return;
     }
     readFailing = false;
-    for (const post of [...posts]) {
-      tell(post, total);
-    }
+    posts.emit(total);
   };
   return post => {
     // Read first, so a subscribe that throws leaves nothing behind.
     const baseline = read();
-    // Wrapped so one listener subscribed twice is two subscribers.
-    const subscriber = (total: number): void => {
-      post(total);
-    };
-    posts.add(subscriber);
+    const unsubscribe = posts.subscribe(post);
     if (stopTicker === null) {
       try {
         stopTicker = ticker(tick);
       } catch (error) {
-        posts.delete(subscriber);
+        unsubscribe();
         throw error;
       }
     }
-    tell(subscriber, baseline);
+    posts.deliver(post, baseline);
     return () => {
-      if (!posts.delete(subscriber) || posts.size > 0) {
-        return;
+      unsubscribe();
+      if (posts.size === 0) {
+        stopTicker?.();
+        stopTicker = null;
       }
-      stopTicker?.();
-      stopTicker = null;
     };
   };
 }

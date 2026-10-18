@@ -48,6 +48,6 @@ export {
   type TelemetryEvent,
 } from './schema.js';
 export { callName, type CallName } from './call-names.js';
-export { failureOf, frameStatusEnd, fromTransportError, remoteFailureOf } from './outcomes.js';
+export { failureOf, frameStatusEnd, fromTransportError, remoteEnd } from './outcomes.js';
 export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
 export { createIssueReporter, type WireIssue } from './wire-issues.js';

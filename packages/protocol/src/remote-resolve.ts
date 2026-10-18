@@ -4,11 +4,11 @@
 // Name and manifest resolution done by the protocol frame's light client.
 
 import type { ResolvePhase } from '@dotli/resolver';
-import { realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+
 import { PROTOCOL_ERRORS } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
-import { RESOLVE_BUDGET_MS } from './method-timeouts.js';
-import { asCallError, callTimeoutError, type FrameRpc } from './rpc.js';
+
+import type { FrameRpc } from './rpc.js';
 import { protocolSchema } from './schema.js';
 import { subscribe } from './subscription.js';
 
@@ -17,64 +17,46 @@ const { dotName, owner, executableManifest, rootManifest } = protocolSchema.trai
 export interface RemoteResolveDeps {
   frame: Pick<ProtocolFrame, 'whenReady'>;
   rpc: FrameRpc;
-  timers?: Timers;
 }
 
-export function createRemoteResolve({ frame, rpc, timers = realTimers }: RemoteResolveDeps) {
+export function createRemoteResolve({ frame, rpc }: RemoteResolveDeps) {
   /**
    * Hears the frame's resolve phases, then its result, and unsubscribes on the result. The budget runs once the frame
    * is ready, and a resolution that outlives it is unsubscribed, so the frame stops it.
    */
   async function resolveDotName(label: string, onPhase?: (phase: ResolvePhase) => void): Promise<string | null> {
     const transport = await frame.whenReady();
-    const giveUp = new AbortController();
-    const trail = rpc.trail(dotName, RESOLVE_BUDGET_MS);
-    let timedOut: Error | undefined;
-    const resolved = new Promise<string | null>((resolve, reject) => {
-      let answered = false;
-      const stop = subscribe(
-        transport,
-        dotName,
-        { label },
-        {
-          receive: event => {
-            if (event.tag === 'phase') {
-              onPhase?.(event.value);
-              return;
-            }
-            answered = true;
-            resolve(event.value);
-            // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
-            stop();
-          },
-          // An end before the result is a failure.
-          end: error => {
-            if (!answered) {
-              reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
-            }
-          },
-        },
-        { signal: giveUp.signal },
-      );
-    });
-    try {
-      const name = await withTimeout(
-        resolved,
-        RESOLVE_BUDGET_MS,
-        () => {
-          timedOut = callTimeoutError('resolveDotName', RESOLVE_BUDGET_MS);
-          giveUp.abort(timedOut);
-          return timedOut;
-        },
-        timers,
-      );
-      trail.settled('ok');
-      return name;
-    } catch (reason: unknown) {
-      const err = asCallError(toError(reason));
-      trail.settled(reason === timedOut ? 'timeout' : 'error', err);
-      throw err;
-    }
+    return rpc.call(
+      dotName,
+      signal =>
+        new Promise<string | null>((resolve, reject) => {
+          let answered = false;
+          const stop = subscribe(
+            transport,
+            dotName,
+            { label },
+            {
+              receive: event => {
+                if (event.tag === 'phase') {
+                  onPhase?.(event.value);
+                  return;
+                }
+                answered = true;
+                resolve(event.value);
+                // The result is all the host waits for, so the frame stops whether or not it ends the resolution itself.
+                stop();
+              },
+              // An end before the result is a failure.
+              end: error => {
+                if (!answered) {
+                  reject(error ?? new Error(PROTOCOL_ERRORS.RESOLUTION_ENDED));
+                }
+              },
+            },
+            { signal },
+          );
+        }),
+    );
   }
 
   return {

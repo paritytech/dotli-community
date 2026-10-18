@@ -127,7 +127,8 @@ sequenceDiagram
   - `handshake: 'open' | 'accept'` sets which side opens the handshake, and `hello` is this side's.
   - `retryMs` (50 by default) and `timeoutMs` (5000 by default) pace the opener, on `timers`.
   - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause }`,
-    `{ kind: 'post_failed', error, call? }` or `{ kind: 'listener_threw', error }`.
+    `{ kind: 'post_failed', error, call? }` or `{ kind: 'listener_threw', error }`. `describeIssue(issue)` is one as a
+    line of text, and `failureReason(error)` an error as `"<name>: <message>"`, bounded.
   - `onPeerIdle()` hears that the peer left.
 - `Transport<H>`:
   - `connect()` starts the handshake on the opener, and `whenConnected()` resolves once it succeeds or rejects with the

@@ -5,12 +5,12 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { errorName, log, named, realTimers, serializeError, toError, withTimeout, type Timers } from '@dotli/shared';
+import { errorName, log, named, serializeError } from '@dotli/shared';
 import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { ProtocolFrame } from './frame.js';
-import { CONNECT_BUDGET_MS } from './method-timeouts.js';
+
 import { isRemoteChainConnectable } from './remote-chain-support.js';
-import { callTimeoutError, createRequestId, type FrameRpc } from './rpc.js';
+import { createRequestId, type FrameRpc } from './rpc.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 import { subscribe } from './subscription.js';
@@ -81,10 +81,9 @@ export type RemoteChainProvider = (
 export interface RemoteChainsDeps {
   frame: Pick<ProtocolFrame, 'whenReady'>;
   rpc: FrameRpc;
-  timers?: Timers;
 }
 
-export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteChainsDeps) {
+export function createRemoteChains({ frame, rpc }: RemoteChainsDeps) {
   const chainConnections = new Map<string, RemoteChainConnection>();
 
   /** Hands one chain message to its connection. One that is not JSON is reported and dropped. */
@@ -134,9 +133,6 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
     connectionId: string,
     remote: RemoteChainConnection,
   ) {
-    const giveUp = new AbortController();
-    const trail = rpc.trail(chain.connect, CONNECT_BUDGET_MS);
-    let timedOut: Error | undefined;
     let settleConnect: (error: Error | null) => void = () => undefined;
     const connected = new Promise<void>((resolve, reject) => {
       settleConnect = error => {
@@ -147,62 +143,51 @@ export function createRemoteChains({ frame, rpc, timers = realTimers }: RemoteCh
         }
       };
     });
-    const unsubscribe = subscribe(
-      transport,
-      chain.connect,
-      { genesisHash, connectionId },
-      {
-        receive: event => {
-          if (event.tag === 'message') {
-            deliver(connectionId, remote, event.value);
-            return;
-          }
-          if (remote.connected || !isOpen(connectionId, remote)) {
-            return;
-          }
-          remote.connected = true;
-          settleConnect(null);
-          for (const message of remote.pendingMessages.splice(0)) {
-            send(connectionId, remote, message);
-          }
+    let unsubscribe = (): void => undefined;
+    const connect = (signal: AbortSignal): Promise<void> => {
+      unsubscribe = subscribe(
+        transport,
+        chain.connect,
+        { genesisHash, connectionId },
+        {
+          receive: event => {
+            if (event.tag === 'message') {
+              deliver(connectionId, remote, event.value);
+              return;
+            }
+            if (remote.connected || !isOpen(connectionId, remote)) {
+              return;
+            }
+            remote.connected = true;
+            settleConnect(null);
+            for (const message of remote.pendingMessages.splice(0)) {
+              send(connectionId, remote, message);
+            }
+          },
+          // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that
+          // went down, and halts like a dead frame so a caching consumer drops it.
+          end: error => {
+            if (!remote.connected) {
+              settleConnect(error ?? new Error('Chain halted before it connected'));
+            }
+            if (!isOpen(connectionId, remote)) {
+              return;
+            }
+            // Removed first, so a send made during the halt is answered at once, not queued and lost.
+            chainConnections.delete(connectionId);
+            if (error !== null && !remote.connected) {
+              log.error('[dot.li protocol] Failed to connect remote chain:', error);
+            }
+            haltRemote(remote, error === null ? 'chain' : 'frame');
+          },
         },
-        // A clean end is the chain halting. An error is a refusal, a connect that ran out of budget, or a frame that
-        // went down, and halts like a dead frame so a caching consumer drops it.
-        end: error => {
-          if (!remote.connected) {
-            settleConnect(error ?? new Error('Chain halted before it connected'));
-          }
-          if (!isOpen(connectionId, remote)) {
-            return;
-          }
-          // Removed first, so a send made during the halt is answered at once, not queued and lost.
-          chainConnections.delete(connectionId);
-          if (error !== null && !remote.connected) {
-            log.error('[dot.li protocol] Failed to connect remote chain:', error);
-          }
-          haltRemote(remote, error === null ? 'chain' : 'frame');
-        },
-      },
-      { signal: giveUp.signal },
-    );
-    void withTimeout(
-      connected,
-      CONNECT_BUDGET_MS,
-      () => {
-        timedOut = callTimeoutError('chainConnect', CONNECT_BUDGET_MS);
-        return timedOut;
-      },
-      timers,
-    ).then(
-      () => {
-        trail.settled('ok');
-      },
-      (error: unknown) => {
-        const err = toError(error);
-        trail.settled(err === timedOut ? 'timeout' : 'error', err);
-        giveUp.abort(err);
-      },
-    );
+        { signal },
+      );
+      return connected;
+    };
+    void rpc.call(chain.connect, connect).catch(() => {
+      // Counted on the call's trail. The subscription's end, or the consumer's disconnect, already acted on it.
+    });
     // A consumer that leaves before `connected` settles the connect as a disconnect, so its trail still ends. A connect
     // still queued is never sent, and one the frame has is closed there.
     return () => {

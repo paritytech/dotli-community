@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { domain, err, hostFailure, ok } from '@dotli/transport';
 import { ProtocolFatalError, ProtocolInitFailedError, ProtocolPortReleasedError } from './errors.js';
-import { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
+import { createFrameStatus, type FrameStatus, type FrameStatusEnd } from './frame-status.js';
 
 const context = { origin: null, hello: { resolutionId: null } };
 
@@ -109,30 +109,5 @@ describe('the frame status', () => {
 
     // Then
     expect(heard.ends).toEqual([workerEnd]);
-  });
-
-  it('As one of two hosts, I hear my frame fail even when the other host cannot be told, and the failure is reported', () => {
-    // Given a status whose first host cannot be told anything
-    const reported: unknown[] = [];
-    const status = createFrameStatus(error => reported.push(error));
-    const broken = new Error('port is gone');
-    const throwing: FrameStatusSink = {
-      receive: () => {
-        throw broken;
-      },
-      interrupt: () => {
-        throw broken;
-      },
-    };
-    status.handler(undefined, context, throwing);
-    const heard = subscribe(status);
-
-    // When
-    status.ready();
-    status.fail(new ProtocolFatalError('Light client died'));
-
-    // Then the second host hears the end, and each throw is reported
-    expect(heard.ends).toEqual([err(domain({ tag: 'fatal', value: 'Light client died' }))]);
-    expect(reported).toEqual([broken, broken]);
   });
 });

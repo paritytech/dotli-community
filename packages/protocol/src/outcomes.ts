@@ -119,16 +119,16 @@ export function frameStatusEnd(closing: Error): CallError<FrameFailure> {
 }
 
 /**
- * The typed failure of a resolver or chain error the host's error screen tells apart by name, or null for any other,
- * which crosses as the handler's own failure.
+ * How a resolver or chain error ends a call: typed for the two the host's error screen tells apart by name, and as the
+ * handler's own failure for any other.
  */
-export function remoteFailureOf(error: Error): RemoteFailure | null {
+export function remoteEnd(error: Error): CallError<RemoteFailure> {
   switch (error.name) {
     case 'NetworkSyncTimeoutError':
-      return { tag: 'syncTimeout', value: error.message };
+      return domain({ tag: 'syncTimeout', value: error.message });
     case 'ApiStoppedError':
-      return { tag: 'apiStopped', value: error.message };
+      return domain({ tag: 'apiStopped', value: error.message });
     default:
-      return null;
+      return hostFailure(error);
   }
 }

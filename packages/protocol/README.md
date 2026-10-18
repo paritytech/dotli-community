@@ -149,10 +149,10 @@ a call that is no longer waiting is ignored without a count.
   method's one name for metrics, the trail and spans), `createFrameStatus` with `FrameStatus`, `FrameStatusSink` and
   `FrameStatusEnd` (the `frame.status` subscription a frame serves, which tells a late subscriber where the frame stands
   at once), the two sides of a failure's crossing, `frameStatusEnd` (how a frame ends its status on an error),
-  `fromTransportError` (a transport's closing error under the protocol's class) and `remoteFailureOf` (the typed failure
-  of a resolver or chain error, or null) beside `failureOf` (a call's failure as the error host code sees, by its
-  method), and `createIssueReporter` with `WireIssue` (what a transport or its window provider cannot handle itself,
-  counted and logged under the side that reports it, as the host's own transport is).
+  `fromTransportError` (a transport's closing error under the protocol's class) and `remoteEnd` (how a resolver or chain
+  error ends a call, typed or as the handler's own failure) beside `failureOf` (a call's failure as the error host code
+  sees, by its method), and `createIssueReporter` with `WireIssue` (what a transport or its window provider cannot
+  handle itself, counted and logged under the side that reports it, as the host's own transport is).
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 

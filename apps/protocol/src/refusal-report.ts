@@ -116,9 +116,7 @@ export function reportRefusals(serving: ProtocolServing, report: (refusal: Frame
     handleSubscription(method, handler) {
       return serving.handleSubscription(method, (start, context, sink) => {
         const reporting: typeof sink = {
-          receive: value => {
-            sink.receive(value);
-          },
+          ...sink,
           interrupt: outcome => {
             if (!outcome.success) {
               refused(method, failureOf(method, outcome.value));

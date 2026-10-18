@@ -4,7 +4,12 @@
 export type { SubscriptionListeners } from './calls.js';
 export { codec } from './codec.js';
 export type { Codec, ResultPayload } from 'scale-ts';
-export { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
+export {
+  TransportHandshakeTimeoutError,
+  TransportVersionMismatchError,
+  describeIssue,
+  failureReason,
+} from './errors.js';
 export type { TransportIssue } from './errors.js';
 export { createPortProvider, createWindowProvider } from './provider.js';
 export type { MessageTarget, PortLike, Provider, WindowLike, WindowMessage, WindowProviderDeps } from './provider.js';

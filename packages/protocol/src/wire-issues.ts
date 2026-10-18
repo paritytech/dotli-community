@@ -5,7 +5,7 @@
 
 import { captureException, reportListener, spans as S, type m } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
-import type { TransportIssue } from '@dotli/transport';
+import { failureReason, type TransportIssue } from '@dotli/transport';
 import { callNameAt } from './call-names.js';
 
 // A refused message's cause in the log, enough to tell decode failures apart.
@@ -31,9 +31,7 @@ export function createIssueReporter(side: WireSide, count: typeof m.count): (iss
           flow: 'protocol',
           reason,
           side,
-          ...('cause' in issue
-            ? { cause: `${issue.cause.name}: ${issue.cause.message}`.slice(0, MAX_CAUSE_CHARS) }
-            : {}),
+          ...('cause' in issue ? { cause: failureReason(issue.cause).slice(0, MAX_CAUSE_CHARS) } : {}),
         });
         return;
       }

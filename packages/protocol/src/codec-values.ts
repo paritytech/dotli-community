@@ -60,13 +60,13 @@ export function nullable<T>(inner: Codec<T>): Codec<T | null> {
 /** A whole number of any size, as SCALE's compact. */
 const count: Codec<number> = enhanceCodec(compact, (value: number) => value, Number);
 
-export const chainRoleCodec = names<ChainRole>(Enum({ relay: _void, assethub: _void, bulletin: _void, people: _void }));
+const chainRoleCodec = names<ChainRole>(Enum({ relay: _void, assethub: _void, bulletin: _void, people: _void }));
 
-export const smoldotDbChainCodec = names<SmoldotDbChain>(Enum({ relay: _void, assethub: _void, bulletin: _void }));
+const smoldotDbChainCodec = names<SmoldotDbChain>(Enum({ relay: _void, assethub: _void, bulletin: _void }));
 
-export const smoldotDbOutcomeCodec = names<SmoldotDbOutcome>(Enum({ hit: _void, miss: _void, unavailable: _void }));
+const smoldotDbOutcomeCodec = names<SmoldotDbOutcome>(Enum({ hit: _void, miss: _void, unavailable: _void }));
 
-export const chainSyncKindCodec = names<ChainSyncKind>(
+const chainSyncKindCodec = names<ChainSyncKind>(
   Enum({
     firstPeer: _void,
     bootstrapComplete: _void,
@@ -91,7 +91,7 @@ export const resolvePhaseCodec = names<ResolvePhase>(
 const dbCacheCodec = names<NonNullable<ChainDetail['dbCache']>>(Enum({ hit: _void, miss: _void }));
 
 // An event leaves out the fields its kind does not use, which the wire still carries as none.
-export const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
+const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
   Struct({
     chain: chainRoleCodec,
     kind: chainSyncKindCodec,
