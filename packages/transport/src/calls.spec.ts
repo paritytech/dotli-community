@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
 import { TransportHandshakeTimeoutError } from './errors.js';
-import { cancelled, domain, err, ok, unsupported } from './result.js';
+import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import { NOTES, READ, TIMEOUT_MS, breakable, outcomeOf, rawRig, rig } from './testing/rig.js';
 
 /** A transport that opened toward a raw peer, with the handshake answered. */
@@ -215,11 +215,27 @@ describe('calls', () => {
 
     // When
     const call = transport.request('notes', 'touch', undefined, { signal: AbortSignal.abort() });
+
+    // Then a marker settled after the call loses the race, so the call settled before any queue step
+    expect(await Promise.race([call, Promise.resolve('still waiting')])).toEqual(err(cancelled()));
+    await timers.advance(0);
+    expect(peer.legs()).toEqual(['request:255.0']);
+  });
+
+  it('As a caller, an answer that does not decode resolves my call as MalformedFrame and is reported', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await connectedRaw();
+    const call = transport.request('notes', 'read', 'note');
+    await timers.advance(0);
+    const asked = must(peer.find('request:notes.read')[0], 'the call');
+
+    // When an Ok answer to the call carries text that is no UTF-8
+    peer.sendBytes(asked.id, 0, 0, 0, NOTES, READ, 1, 0, 0xff);
     await timers.advance(0);
 
     // Then
-    expect(await call).toEqual(err(cancelled()));
-    expect(peer.legs()).toEqual(['request:255.0']);
+    expect(await call).toEqual(err(malformedFrame('The encoded data was not valid for encoding utf-8')));
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError }]);
   });
 
   it('As a caller, a payload that cannot be encoded rejects my call and posts nothing', async () => {

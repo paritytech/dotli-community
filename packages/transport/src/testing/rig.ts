@@ -142,7 +142,7 @@ export async function outcomeOf(promise: Promise<unknown>): Promise<unknown> {
   );
 }
 
-/** Wraps a provider so its posts throw `broken` once the test breaks it. */
+/** Wraps a provider so its posts throw `broken` while the test has it broken. */
 export function breakable(broken: Error) {
   let posting = true;
   return {
@@ -157,6 +157,9 @@ export function breakable(broken: Error) {
     }),
     breakPosts: () => {
       posting = false;
+    },
+    mendPosts: () => {
+      posting = true;
     },
   };
 }

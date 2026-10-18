@@ -5,22 +5,16 @@
 // matched to it by id. Every post encodes a fresh buffer, since a transferred one is detached.
 
 import { createAsyncTaskPool, toError } from '@dotli/shared';
-import { cancelled, err, unsupported, type CallError, type Result } from './result.js';
+import { decodeReason } from './errors.js';
+import type { Address, Outcome, Post } from './parts.js';
+import { cancelled, err, malformedFrame, unsupported } from './result.js';
 import type { Schema } from './schema.js';
-import { encodeMessage, type Leg, type MethodMessage, type ProtocolErrorMessage } from './wire.js';
-
-type Outcome = Result<unknown, CallError<unknown>>;
-
-export interface Address {
-  trait: number;
-  method: number;
-}
+import { encodeMessage, type Header, type MethodMessage, type ProtocolErrorMessage } from './wire.js';
 
 export interface CallsDeps {
   schema: Schema;
   nextId: () => number;
-  /** Posts bytes. A post the provider throws on is already reported when it returns the error. */
-  post: (data: ArrayBuffer, leg: Leg) => Result<void, unknown>;
+  post: Post;
   /** Settles once the handshake succeeds or fails, or the transport closes. */
   handshakeOver: Promise<void>;
   /** The error the transport closed with, or null while it is open. */
@@ -33,6 +27,8 @@ export interface Calls {
   /** Resolves to the peer's outcome or `Cancelled`. Rejects with the closing error, or when the call cannot go out. */
   request(address: Address, payload: unknown, signal: AbortSignal | undefined): Promise<Outcome>;
   onResponse(message: Extract<MethodMessage, { outcome: unknown }>): void;
+  /** Settles the call an answer that did not decode names, as `MalformedFrame` with why. */
+  onUndecodableResponse(header: Header, cause: unknown): void;
   onProtocolError(message: ProtocolErrorMessage): void;
   /** Rejects every call that went out and is still waiting with `error`. Calls still queued find it as they leave. */
   close(error: Error): void;
@@ -139,6 +135,10 @@ export function createCalls(deps: CallsDeps): Calls {
 
     onResponse(message) {
       answered(message.id, message)?.settle(message.outcome);
+    },
+
+    onUndecodableResponse(header, cause) {
+      answered(header.id, header)?.settle(err(malformedFrame(decodeReason(cause))));
     },
 
     onProtocolError(message) {

@@ -3,16 +3,15 @@
 
 // The calls this side serves. It runs the handler registered for each method and answers with its `Result`, and
 // answers the library's own outcomes itself: no handler, a payload that does not decode, a handler that throws, and an
-// address this schema lacks.
+// address this schema lacks. A call is served only once the handshake has told who the peer is, so a call before it, or
+// after a failed one, is refused with no answer.
 
 import { createAsyncTaskPool } from '@dotli/shared';
-import type { Address } from './calls.js';
 import { decodeReason, failureReason } from './errors.js';
-import { err, hostFailure, malformedFrame, unsupported, type CallError, type Result } from './result.js';
+import type { Address, Outcome, Post } from './parts.js';
+import { err, hostFailure, malformedFrame, unsupported, type Result } from './result.js';
 import type { HelloOf, Schema } from './schema.js';
-import { encodeMessage, type Header, type Leg, type MethodMessage, type UnknownAddressMessage } from './wire.js';
-
-type Outcome = Result<unknown, CallError<unknown>>;
+import { encodeMessage, type Header, type MethodMessage, type UnknownAddressMessage } from './wire.js';
 
 /** What a handler knows about the peer that called it. */
 export interface CallContext<S extends Schema> {
@@ -29,10 +28,9 @@ export type AnyHandler = (payload: unknown, context: CallContext<Schema>) => Out
 
 export interface ServingDeps {
   schema: Schema;
-  /** Posts bytes. A post the provider throws on is already reported when it returns the error. */
-  post: (data: ArrayBuffer, leg: Leg) => Result<void, unknown>;
-  /** The context of a call from the peer, or null before the handshake has told who the peer is. */
-  context: () => CallContext<Schema> | null;
+  post: Post;
+  /** The context of a call from the peer, or why there is none: no handshake yet, or one that failed. */
+  context: () => Result<CallContext<Schema>, Error>;
   /** Whether the transport has closed, after which the peer hears nothing. */
   closed: () => boolean;
   /** Reports a call this side cannot serve and must not answer. */
@@ -44,7 +42,7 @@ export interface Serving {
   handleRequest(address: Address, name: string, handler: AnyHandler): () => void;
   onRequest(message: CallMessage): void;
   onStart(message: CallMessage): void;
-  /** Answers a call whose payload did not decode. */
+  /** Answers a call on a schema method whose payload did not decode. Its refusal is already reported. */
   onMalformed(header: Header, cause: unknown): void;
   /** Answers a message for an address this schema lacks on the protocol error address. */
   onUnknownAddress(message: UnknownAddressMessage): void;
@@ -74,6 +72,16 @@ export function createServing(deps: ServingDeps): Serving {
     post(data, header.leg);
   };
 
+  /** The context of a call to serve, or undefined for a call refused before or after the handshake. */
+  const admitted = (): CallContext<Schema> | undefined => {
+    const callContext = context();
+    if (!callContext.ok) {
+      refuse(callContext.error);
+      return undefined;
+    }
+    return callContext.value;
+  };
+
   const answerCall = (header: Header, outcome: Outcome): void => {
     const { id, trait, method } = header;
     if (header.leg === 'request') {
@@ -98,9 +106,8 @@ export function createServing(deps: ServingDeps): Serving {
     },
 
     onRequest(message) {
-      const callContext = context();
-      if (callContext === null) {
-        refuse(new Error('A request came before the handshake'));
+      const callContext = admitted();
+      if (callContext === undefined) {
         return;
       }
       const handler = requestHandlers.get(keyOf(message));
@@ -121,11 +128,16 @@ export function createServing(deps: ServingDeps): Serving {
     },
 
     onStart(message) {
-      answerCall(message, err(unsupported()));
+      if (admitted() !== undefined) {
+        answerCall(message, err(unsupported()));
+      }
     },
 
     onMalformed(header, cause) {
-      answerCall(header, err(malformedFrame(decodeReason(cause))));
+      // Refused as malformed already, so a call before the handshake is not reported a second time.
+      if (context().ok) {
+        answerCall(header, err(malformedFrame(decodeReason(cause))));
+      }
     },
 
     onUnknownAddress(message) {

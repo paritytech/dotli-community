@@ -7,10 +7,11 @@
 
 import { realTimers, type Timers } from '@dotli/shared';
 import { createCalls } from './calls.js';
-import { logIssue, type TransportIssue } from './errors.js';
+import { failureReason, logIssue, type TransportIssue } from './errors.js';
 import { createAccepter, createOpener } from './handshake.js';
 import type { Provider } from './provider.js';
-import { err, ok, type Result } from './result.js';
+import type { Post } from './parts.js';
+import { err, ok } from './result.js';
 import {
   methodAddress,
   type HelloOf,
@@ -21,7 +22,7 @@ import {
   type TraitName,
 } from './schema.js';
 import { createServing, type AnyHandler, type CallContext } from './serving.js';
-import { decodeMessage, type Leg } from './wire.js';
+import { RESERVED_TRAIT, decodeMessage, type Refusal } from './wire.js';
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -115,7 +116,7 @@ export function createTransport<S extends Schema>(
   const refuse = (cause: Error): void => {
     report({ kind: 'refused', reason: 'invalid', cause });
   };
-  const post = (data: ArrayBuffer, leg: Leg): Result<void, unknown> => {
+  const post: Post = (data, leg) => {
     try {
       provider.post(data);
       return ok();
@@ -157,23 +158,44 @@ export function createTransport<S extends Schema>(
   const serving = createServing({
     schema,
     post,
-    context: () => (phase.name === 'connected' ? { origin: provider.peerOrigin(), hello: phase.peerHello } : null),
+    context: () => {
+      switch (phase.name) {
+        case 'connected':
+          return ok({ origin: provider.peerOrigin(), hello: phase.peerHello });
+        case 'connecting':
+          return err(new Error('A call came before the handshake'));
+        case 'closed':
+          return err(new Error(`A call came after the transport closed, ${failureReason(phase.error)}`));
+      }
+    },
     closed: () => phase.name === 'closed',
     refuse,
   });
 
+  /** Hands a refused message on to the part that can still answer or settle what it names. */
+  const onRefused = (refusal: Refusal): void => {
+    report({ kind: 'refused', reason: refusal.refused, cause: refusal.cause });
+    const { header } = refusal;
+    // A library message is never answered, so a peer of another release cannot be drawn into a loop.
+    if (refusal.refused !== 'malformed' || header === undefined || header.trait === RESERVED_TRAIT) {
+      return;
+    }
+    if (header.leg === 'response') {
+      calls.onUndecodableResponse(header, refusal.cause);
+    } else if (header.leg === 'request' || header.leg === 'start') {
+      serving.onMalformed(header, refusal.cause);
+    }
+  };
+
   // Typed as unknown, since a provider of the owner's may hand over anything.
-  const onData = (data: unknown): void => {
+  const receive = (data: unknown): void => {
     if (!(data instanceof ArrayBuffer)) {
       report({ kind: 'refused', reason: 'not_bytes', cause: new TypeError(`Expected bytes, got ${typeof data}`) });
       return;
     }
     const decoded = decodeMessage(schema, data);
     if ('refused' in decoded) {
-      report({ kind: 'refused', reason: decoded.refused, cause: decoded.cause });
-      if (decoded.refused === 'malformed' && decoded.header !== undefined) {
-        serving.onMalformed(decoded.header, decoded.cause);
-      }
+      onRefused(decoded);
       return;
     }
     switch (decoded.kind) {
@@ -208,6 +230,18 @@ export function createTransport<S extends Schema>(
             // This side runs no subscription, and a stop may cross the interrupt that answered its start.
             return;
         }
+    }
+  };
+  // Nothing thrown while a message is handled reaches the provider, whose other listeners must still hear it.
+  const onData = (data: unknown): void => {
+    try {
+      receive(data);
+    } catch (error) {
+      report({
+        kind: 'refused',
+        reason: 'invalid',
+        cause: new Error('The message could not be handled', { cause: error }),
+      });
     }
   };
   // Providers do not buffer, so the listener is bound before anything can arrive.

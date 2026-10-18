@@ -33,7 +33,9 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
   object with the same four methods works.
 - One transport serves every side, and both sides call and serve over it. One side opens the handshake and the other
   accepts it. The opener posts a fresh attempt every `retryMs` until it is answered or `timeoutMs` passes on the running
-  clock. The accepter answers every attempt with the outcome of the first. A version mismatch closes both sides.
+  clock. The accepter answers every attempt with the outcome of the first answer it could post, and counts as connected
+  only once that answer is posted. A version mismatch closes both sides. A malformed handshake is refused with no
+  answer.
 
 ```mermaid
 sequenceDiagram
@@ -48,18 +50,22 @@ sequenceDiagram
 ```
 
 - Calls made before the handshake wait in a queue and go out in call order once it succeeds, then run side by side. A
-  call resolves to the peer's `Result`. Aborting its signal resolves it as `Cancelled`, whether it waits or is out, and
-  a late answer is ignored. The peer is not told.
+  call resolves to the peer's `Result`, or to `MalformedFrame` with the decode error's message when the peer's answer
+  does not decode. Aborting its signal resolves it as `Cancelled`, whether it waits or is out, and a late answer is
+  ignored. The peer is not told.
 - A transport closes when the handshake fails or times out, the versions differ, or its owner disposes it. Every pending
   and later call then rejects with that error itself, so a closed transport is never a call outcome.
 - The serving side answers outcomes of its own: `Unsupported` for a method with no handler, `MalformedFrame` with the
   decode error's message for a payload that does not decode, and `HostFailure` with `"<name>: <message>"`, bounded to
   500 characters, for a handler that throws or rejects or an answer the wire cannot carry. A message for an address the
-  schema lacks gets one protocol error reply, and nothing ever answers a protocol error. A request before the handshake
-  is refused with no reply.
+  schema lacks gets one protocol error reply, and nothing ever answers a protocol error or a refused message on the
+  library's own addresses. A call before the handshake, or after a failed one, is refused with no reply, whether its
+  payload decodes or not.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed`, `invalid` or
-  `not_bytes`, with its cause), a post the provider threw on (with its leg), and a callback of the owner's that threw.
-  With no hook, each issue is logged as one bounded error. Nothing is dropped unseen.
+  `not_bytes`, with its cause), a post the provider threw on (with its leg), and a callback of the owner's that threw. A
+  throw while a message is handled is reported as a refusal too and never reaches the provider. With no hook, each issue
+  is logged as one bounded error. Only expected messages are dropped without an issue: a late answer to a settled call,
+  a handshake answer once the handshake is over, and a stop that crosses the interrupt it would end.
 
 ## Public API
 
@@ -96,8 +102,9 @@ sequenceDiagram
 - `Transport`:
   - `connect()` starts the handshake on the opener and does nothing on the accepter.
   - `whenConnected()` resolves once the handshake succeeds and rejects with the closing error.
-  - `request(trait, method, payload, { signal? })` resolves to `Result<R, CallError<E>>`. It rejects only with the
-    closing error, or when the call cannot go out: a payload that does not encode or a post the provider throws on.
+  - `request(trait, method, payload, { signal? })` resolves to `Result<R, CallError<E>>`, the peer's or a local
+    `Cancelled` or `MalformedFrame`. It rejects only with the closing error, or when the call cannot go out: a payload
+    that does not encode or a post the provider throws on.
   - `handleRequest(trait, method, handler)` serves a method and returns what unregisters it. The handler gets the
     payload and a `CallContext` and returns a `Result`, sync or async. A second handler for one method throws.
   - `dispose(reason)` closes the transport with `reason` and disposes the provider.

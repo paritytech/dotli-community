@@ -7,7 +7,17 @@ import { TransportHandshakeTimeoutError, TransportVersionMismatchError } from '.
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { err, ok } from './result.js';
-import { RETRY_MS, TIMEOUT_MS, VERSION, issueLog, outcomeOf, rawRig, rig, testSchema } from './testing/rig.js';
+import {
+  RETRY_MS,
+  TIMEOUT_MS,
+  VERSION,
+  breakable,
+  issueLog,
+  outcomeOf,
+  rawRig,
+  rig,
+  testSchema,
+} from './testing/rig.js';
 import { createTransport } from './transport.js';
 
 describe('the handshake', () => {
@@ -194,6 +204,56 @@ describe('the handshake', () => {
     expect(failure).toMatchObject({ ours: VERSION, theirs: VERSION + 1 });
     expect(await call).toBe(failure);
     expect(peer.legs()).not.toContain('request:notes.touch');
+  });
+
+  it('As an opener, a handshake answer before I connect is refused as invalid', async () => {
+    // Given
+    const { transport, timers, peer, issues } = rawRig('open');
+    let connected = false;
+    void transport.whenConnected().then(() => {
+      connected = true;
+    });
+
+    // When
+    peer.send({ kind: 'handshake', leg: 'response', id: 1, outcome: ok('peer') });
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error }]);
+    expect(connected).toBe(false);
+  });
+
+  it('As an accepter, an answer I cannot post leaves me unconnected and the next attempt is answered afresh', async () => {
+    // Given
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts, mendPosts } = breakable(broken);
+    const { transport, timers, peer, issues, openHandshake } = rawRig('accept', wrap);
+    void transport.request('notes', 'touch', undefined);
+    let connected = false;
+    void transport.whenConnected().then(() => {
+      connected = true;
+    });
+    breakPosts();
+
+    // When
+    openHandshake(VERSION, 1);
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([{ kind: 'post_failed', leg: 'response', error: broken }]);
+    expect(connected).toBe(false);
+
+    // When
+    mendPosts();
+    openHandshake(VERSION, 2);
+    await timers.advance(0);
+
+    // Then
+    expect(peer.find('response:255.0').map(({ id, body }) => ({ id, body }))).toEqual([
+      { id: 2, body: ok('accepter') },
+    ]);
+    expect(connected).toBe(true);
+    expect(peer.legs()).toEqual(['response:255.0', 'request:notes.touch']);
   });
 
   it('As either side, a handshake leg meant for the other side is refused as invalid', async () => {

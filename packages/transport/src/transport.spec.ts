@@ -10,8 +10,9 @@ import { none } from './codec.js';
 import { ok, type CallError, type Result } from './result.js';
 import { defineSchema, request } from './schema.js';
 import type { CallContext } from './serving.js';
-import { NOTES, WATCH, issueLog, rawRig, rig, testSchema, type TestSchema } from './testing/rig.js';
+import { NOTES, TOUCH, VERSION, WATCH, issueLog, rawRig, rig, testSchema, type TestSchema } from './testing/rig.js';
 import { createTransport, type RequestHandler, type Transport, type TransportOptions } from './transport.js';
+import { encodeMessage, type WireMessage } from './wire.js';
 
 /** Collects what the shared log records as errors. */
 function errorLog(): string[] {
@@ -107,6 +108,47 @@ describe('createTransport', () => {
 
     // Then
     expect(issues).toEqual([{ kind: 'refused', reason: 'not_bytes', cause: expect.any(TypeError) as TypeError }]);
+  });
+
+  it('As a receiver, a throw while I handle a message is reported and never reaches the provider', () => {
+    // Given a provider of the owner's whose peer origin throws
+    const listeners: ((data: ArrayBuffer) => void)[] = [];
+    const bug = new Error('no origin today');
+    const provider: Provider = {
+      post: () => undefined,
+      subscribe: listener => {
+        listeners.push(listener);
+        return () => undefined;
+      },
+      peerOrigin: () => {
+        throw bug;
+      },
+      dispose: () => undefined,
+    };
+    const { issues, onIssue } = issueLog();
+    const transport = createTransport(testSchema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
+    transport.handleRequest('notes', 'touch', () => ok());
+    const hear = (message: WireMessage): void => {
+      for (const listener of listeners) {
+        listener(encodeMessage(testSchema, message));
+      }
+    };
+    hear({ kind: 'handshake', leg: 'request', id: 1, version: VERSION, hello: 'peer' });
+
+    // When
+    const call = (): void => {
+      hear({ kind: 'method', leg: 'request', id: 2, trait: NOTES, method: TOUCH, payload: undefined });
+    };
+
+    // Then
+    expect(call).not.toThrow();
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'invalid',
+        cause: expect.objectContaining({ message: 'The message could not be handled', cause: bug }) as Error,
+      },
+    ]);
   });
 
   it('As a caller, a receive or interrupt for a subscription I never opened is refused as invalid', async () => {
