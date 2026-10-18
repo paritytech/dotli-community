@@ -39,6 +39,11 @@ flowchart TB
   codecs and sent as a transferred `ArrayBuffer`. Each leg is typed by its method, so a payload, answer or event that
   does not fit its method fails to compile. Codecs, the table and the framing never leave the package, so callers see
   only typed requests and subscriptions.
+- The protocol schema groups the same methods into traits: the frame, name resolution, the shared store, the local
+  wallet and chains. Each handshake carries the resolution id as its hello. A remote failure the host branches on is a
+  typed error there: the frame status ends as fatal, as a failed init or as a released port, and name resolution and
+  chain connections fail with a sync timeout or a stopped light client. A telemetry event past the limits fails to
+  decode, so it is refused as malformed. Its value codecs refuse trailing bytes as the method table's do.
 - Every integer goes through a codec that throws on a value it cannot carry exactly, and a message that is truncated,
   has trailing bytes, names an unknown variant or holds an option or bool byte other than 0 or 1 fails to decode.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
@@ -141,6 +146,9 @@ unsubscribe for a subscription that already ended, and a repeat handshake answer
 - Providers: `createWindowProvider` (with `onNotBytes` and `onRefusedOrigin` for what it drops), `createPortProvider`.
 - Method names and their types: `RequestMethod`, `SubscriptionMethod`, `SubscribePayload`, `Answer`,
   `SubscriptionEvent`, `TelemetryEvent`.
+- The protocol as a transport schema: `protocolSchema`, its traits `frame`, `resolve`, `storage`, `wallet` and `chain`,
+  with the resolution hello and the typed failures of the frame status, the resolve methods and chain connections.
+  `ProtocolSchema`, `ProtocolTransport` and `ProtocolContext` type a transport over it and its handlers' context.
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 

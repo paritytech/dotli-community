@@ -43,6 +43,7 @@ export type {
   TelemetryEvent,
 } from './methods.js';
 export { createPortProvider, createWindowProvider } from './provider.js';
+export { protocolSchema, type ProtocolContext, type ProtocolSchema, type ProtocolTransport } from './schema.js';
 export { createConsumerTransport, type ConsumerTransport } from './transport-consumer.js';
 export {
   createServingTransport,
