@@ -59,11 +59,11 @@ test.describe('Resolution across chain backends', () => {
       // Then
       const sawPeers = waitForProtocolMessage(
         page,
-        { method: 'telemetry', leg: 'event', body: { event: { tag: 'chainSync', value: { kind: 'peers' } } } },
+        { trait: 'frame', method: 'telemetry', leg: 'receive', body: { tag: 'chainSync', value: { kind: 'peers' } } },
         TIMEOUT_MS,
       );
       const [peers] = await Promise.all([sawPeers, waitForResolutionOutcome(page, TIMEOUT_MS, 'smoldot-direct')]);
-      expect(peers.body).toMatchObject({ event: { value: { peers: expect.any(Number) } } });
+      expect(peers.body).toMatchObject({ value: { peers: expect.any(Number) } });
     } finally {
       await context.close();
     }

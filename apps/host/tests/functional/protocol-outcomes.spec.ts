@@ -16,10 +16,14 @@ const HOST_URL = `http://host-playground.localhost:${PORT}/`;
 
 /** The telemetry event that tells how `chain` started from its stored database. */
 const smoldotDb = (chain: string): MessageMatch => ({
+  trait: 'frame',
   method: 'telemetry',
-  leg: 'event',
-  body: { event: { tag: 'smoldotDb', value: { chain } } },
+  leg: 'receive',
+  body: { tag: 'smoldotDb', value: { chain } },
 });
+
+/** The frame status ending, as the frame's typed failure. */
+const frameStatusEnd: MessageMatch = { trait: 'frame', method: 'status', leg: 'interrupt' };
 
 const isProviderWasm = (url: URL): boolean =>
   url.hostname === 'host.localhost' && url.pathname.includes('truapi_provider_bg');
@@ -36,9 +40,10 @@ test('As a user on a per-tab light client that cannot start, I see the crash the
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  const status = await waitForProtocolMessage(page, { method: 'frameStatus', leg: 'end' }, 15_000);
+  const status = await waitForProtocolMessage(page, frameStatusEnd, 15_000);
   expect(status.body).toMatchObject({
-    error: { name: 'ProtocolFatalError', message: expect.stringContaining('connection failed') },
+    ok: false,
+    error: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
   });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
@@ -56,9 +61,10 @@ test('As a user on a shared light client that cannot start, I see the crash the 
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  const status = await waitForProtocolMessage(page, { method: 'frameStatus', leg: 'end' }, 15_000);
+  const status = await waitForProtocolMessage(page, frameStatusEnd, 15_000);
   expect(status.body).toMatchObject({
-    error: { name: 'ProtocolFatalError', message: expect.stringContaining('connection failed') },
+    ok: false,
+    error: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
   });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
   await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
@@ -83,8 +89,8 @@ for (const [label, backend] of [
     const relay = await waitForProtocolMessage(page, smoldotDb('relay'), 15_000);
     const hub = await waitForProtocolMessage(page, smoldotDb('assethub'), 15_000);
     expect([relay.body, hub.body]).toEqual([
-      { event: { tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } } },
-      { event: { tag: 'smoldotDb', value: { chain: 'assethub', outcome: 'miss' } } },
+      { tag: 'smoldotDb', value: { chain: 'relay', outcome: 'miss' } },
+      { tag: 'smoldotDb', value: { chain: 'assethub', outcome: 'miss' } },
     ]);
   });
 }
