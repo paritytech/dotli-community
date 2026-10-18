@@ -3,8 +3,7 @@
 
 // What the transport's parts share: the handshake, the calls this side makes and the calls it serves.
 
-import type { Codec } from 'scale-ts';
-import type { Result } from './result.js';
+import type { Codec, ResultPayload } from 'scale-ts';
 import type { Address } from './schema.js';
 import { encode, type Frame } from './wire.js';
 
@@ -12,7 +11,7 @@ import { encode, type Frame } from './wire.js';
  * Posts bytes, of the call at `address` when they belong to one. A post the provider throws on is already reported
  * when it returns the error.
  */
-export type Post = (data: ArrayBuffer, address?: Address) => Result<undefined, Error>;
+export type Post = (data: ArrayBuffer, address?: Address) => ResultPayload<undefined, Error>;
 
 /** Reports a message that does not decode, or does not fit what it names. */
 export type Refuse = (reason: 'malformed' | 'invalid', cause: Error) => void;
@@ -27,7 +26,7 @@ export function encodeCall<M>(
   address: Address,
   id: number,
   message: M,
-): Result<ArrayBuffer, Error> {
+): ResultPayload<ArrayBuffer, Error> {
   const call = { trait: address.traitId, method: address.methodId, message };
   return encode(method.frame, { id, body: { tag: 'call', value: call } });
 }

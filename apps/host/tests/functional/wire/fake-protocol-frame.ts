@@ -20,7 +20,7 @@ import {
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
 type ChainMessage = MethodTypes<typeof chain.connect>['receive'];
-type RootManifest = Extract<MethodTypes<typeof resolve.rootManifest>['response'], { tag: 'Ok' }>['value'];
+type RootManifest = Extract<MethodTypes<typeof resolve.rootManifest>['response'], { success: true }>['value'];
 
 /** How the fake answers `bitswap_v1_get` for one CID. `hold-first` holds the first ask and serves every later one. */
 export type BlockMode = 'serve' | 'hold' | 'hold-first' | 'fail';

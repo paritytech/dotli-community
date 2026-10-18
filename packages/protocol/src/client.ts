@@ -6,7 +6,13 @@
 import { BASE_DOMAIN, DEV_PROTOCOL_PORT, isLocalhost } from '@dotli/config';
 import { realTimers } from '@dotli/shared';
 import type { ProtocolVersionMismatchError } from './errors.js';
-import { createProtocolFrame, type ProtocolFrameConfig, type ProtocolFrameDeps, type ProtocolStatus } from './frame.js';
+import {
+  createProtocolFrame,
+  type FrameElement,
+  type ProtocolFrameConfig,
+  type ProtocolFrameDeps,
+  type ProtocolStatus,
+} from './frame.js';
 import { createFrameRpc } from './rpc.js';
 import { createRemoteChains } from './remote-chain.js';
 import { createRemoteResolve } from './remote-resolve.js';
@@ -32,7 +38,7 @@ export function getProtocolOrigin(): string {
 }
 
 /** The host page's side of the protocol frame, on `deps`. The page builds one, and a spec builds one per test. */
-export function createProtocolClient(deps: ProtocolFrameDeps) {
+export function createProtocolClient<E extends FrameElement>(deps: ProtocolFrameDeps<E>) {
   const frame = createProtocolFrame(deps);
   const timers = deps.timers ?? realTimers;
   const rpc = createFrameRpc(frame, timers);
@@ -74,6 +80,6 @@ let page: ProtocolClient | null = null;
 
 /** The page's one client, built on first use so a worker that imports this package never touches `window`. */
 export function protocolClient(): ProtocolClient {
-  page ??= createProtocolClient({ origin: getProtocolOrigin(), document, window });
+  page ??= createProtocolClient<HTMLIFrameElement>({ origin: getProtocolOrigin(), document, window });
   return page;
 }

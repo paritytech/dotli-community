@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { fromHex, toError } from '@dotli/shared';
+import { toError } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
 import {
   createTransport,
@@ -15,11 +15,11 @@ import {
   type CallError,
   type DomainError,
   type Request,
-  type Result,
+  type ResultPayload,
   type Subscription,
   type TransportIssue,
 } from '@dotli/transport';
-import { FrameRefusedError, createProviderPair, readFrame, readMessage } from '@dotli/transport/testing';
+import { FrameRefusedError, createProviderPair, readFrame } from '@dotli/transport/testing';
 import { protocolSchema, type ProtocolHello, type ProtocolSchema, type ProtocolTransport } from './schema.js';
 import { messagesOf, recordWireMessage, type RecordedWireMessage } from './testing/index.js';
 
@@ -49,7 +49,7 @@ const NO_SAMPLE = hostFailure('Error: no sample left');
 /** A request with each answer it tries. */
 function requestCase<P, R, E>(
   method: Request<P, R, E>,
-  sample: { request: NoInfer<P>; responses: Result<NoInfer<R>, CallError<NoInfer<E>>>[] },
+  sample: { request: NoInfer<P>; responses: ResultPayload<NoInfer<R>, CallError<NoInfer<E>>>[] },
 ): Case {
   return {
     method,
@@ -61,7 +61,7 @@ function requestCase<P, R, E>(
       });
     },
     async call(caller) {
-      const outcomes: Result<R, CallError<E>>[] = [];
+      const outcomes: ResultPayload<R, CallError<E>>[] = [];
       for (const _ of sample.responses) {
         outcomes.push(await caller.request(method, sample.request));
       }
@@ -86,7 +86,7 @@ function heardUntilEnd<S, V, I>(
   transport: ProtocolTransport,
   method: Subscription<S, V, I>,
   start: NoInfer<S>,
-): Promise<{ values: V[]; end: Result<undefined, CallError<I>> }> {
+): Promise<{ values: V[]; end: ResultPayload<undefined, CallError<I>> }> {
   const values: V[] = [];
   return new Promise(settle => {
     transport.subscribe(method, start, {
@@ -104,7 +104,7 @@ function subscriptionCase<S, V, I>(
   sample: {
     start: NoInfer<S>;
     values: NoInfer<V>[];
-    interrupts: Result<undefined, CallError<NoInfer<I>>>[];
+    interrupts: ResultPayload<undefined, CallError<NoInfer<I>>>[];
   },
 ): Case {
   return {
@@ -117,7 +117,7 @@ function subscriptionCase<S, V, I>(
           sink.receive(value);
         }
         const end = sample.interrupts[run++] ?? err(NO_SAMPLE);
-        if (end.tag === 'Err') {
+        if (!end.success) {
           sink.interrupt(end.value);
         } else {
           sink.interrupt();
@@ -126,7 +126,7 @@ function subscriptionCase<S, V, I>(
       });
     },
     async call(caller) {
-      const heard: { values: V[]; end: Result<undefined, CallError<I>> }[] = [];
+      const heard: { values: V[]; end: ResultPayload<undefined, CallError<I>> }[] = [];
       for (const _ of sample.interrupts) {
         heard.push(await heardUntilEnd(caller, method, sample.start));
       }
@@ -292,7 +292,7 @@ function protocolRig() {
 
 /** A handshake frame with its hello decoded. */
 type HandshakeFrame =
-  { open: { version: number; hello: ProtocolHello } } | { accept: Result<ProtocolHello, { version: number }> };
+  { open: { version: number; hello: ProtocolHello } } | { accept: ResultPayload<ProtocolHello, { version: number }> };
 
 /** The handshake frames in `delivered`. */
 function handshakeOf(delivered: ArrayBuffer[]): HandshakeFrame[] {
@@ -303,7 +303,7 @@ function handshakeOf(delivered: ArrayBuffer[]): HandshakeFrame[] {
         return [{ open: { version: read.value.version, hello: protocolSchema.hello.dec(read.value.hello) } }];
       case 'accept':
         return [
-          { accept: read.value.tag === 'Ok' ? ok(protocolSchema.hello.dec(read.value.value)) : err(read.value.value) },
+          { accept: read.value.success ? ok(protocolSchema.hello.dec(read.value.value)) : err(read.value.value) },
         ];
       case 'failed':
       case 'call':
@@ -364,8 +364,8 @@ describe('protocolSchema', () => {
     expectTypeOf<DomainError<typeof resolve.rootManifest>>().toEqualTypeOf<RemoteFailure>();
     expectTypeOf<DomainError<typeof resolve.dotName>>().toEqualTypeOf<RemoteFailure>();
     expectTypeOf<DomainError<typeof chain.connect>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<typeof chain.send>>().toBeNever();
-    expectTypeOf<DomainError<typeof storage.authRead>>().toBeNever();
+    expectTypeOf<DomainError<typeof chain.send>>().toBeUndefined();
+    expectTypeOf<DomainError<typeof storage.authRead>>().toBeUndefined();
   });
 
   it('As the protocol, a value codec decodes a payload that sits after a header in the message', async () => {
@@ -382,29 +382,6 @@ describe('protocolSchema', () => {
     const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
     const request = messagesOf(resolve.owner, recorded).find(message => message.tag === 'request');
     expect(request?.value).toEqual({ label: 'app' });
-  });
-
-  it('As the protocol, a value codec refuses a payload with bytes after its value', async () => {
-    // Given a recorded owner request with one byte appended
-    const { opener, accepter, delivered } = protocolRig();
-    accepter.handleRequest(resolve.owner, () => ok(null));
-    opener.connect();
-    await opener.request(resolve.owner, { label: 'app' });
-    const recorded = delivered
-      .flatMap(data => recordWireMessage(data) ?? [])
-      .find(message => message.method === 'owner' && message.tag === 'request');
-    if (recorded === undefined) {
-      throw new Error('no owner request was recorded');
-    }
-    const message = fromHex(recorded.message);
-    const padded = new Uint8Array(message.byteLength + 1);
-    padded.set(message);
-
-    // When
-    const decodePadded = () => readMessage(resolve.owner, padded);
-
-    // Then
-    expect(decodePadded).toThrow(/bytes follow the end of the value/);
   });
 
   it('As the protocol, an invalid telemetry event is refused', async () => {

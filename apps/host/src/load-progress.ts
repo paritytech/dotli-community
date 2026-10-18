@@ -37,8 +37,8 @@ const SPEED_WINDOW_MS = 3_000;
 
 export interface ChainDetailFacts {
   chain: ChainRole;
-  dbCache?: CacheResult;
-  peers?: ChainPeer[];
+  dbCache?: CacheResult | undefined;
+  peers?: ChainPeer[] | undefined;
 }
 
 export interface ContentProgressFacts {

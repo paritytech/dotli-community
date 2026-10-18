@@ -18,7 +18,7 @@ import {
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
-import { domain, err, hostFailure, ok, type CallError, type Result } from '@dotli/transport';
+import { domain, err, hostFailure, ok, type CallError, type ResultPayload } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
@@ -92,7 +92,7 @@ function assertStr(value: string, name: string): void {
 }
 
 /** Answers a read with its value or its typed failure. Any other failure is thrown, so it crosses as the handler's. */
-async function answerRead<T>(read: () => Promise<T>): Promise<Result<T, CallError<RemoteFailure>>> {
+async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, CallError<RemoteFailure>>> {
   try {
     return ok(await read());
   } catch (error) {

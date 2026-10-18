@@ -1,38 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ResultPayload } from 'scale-ts';
 import { describe, expect, it, vi } from 'vitest';
 import { deferred, manualTimers, must } from '@dotli/shared/testing';
 import { createProviderPair } from './provider.fake.js';
 import type { Sink } from './serving.js';
-import {
-  cancelled,
-  domain,
-  err,
-  hostFailure,
-  malformedFrame,
-  ok,
-  unsupported,
-  type CallError,
-  type Result,
-} from './result.js';
+import { cancelled, domain, err, hostFailure, malformedFrame, ok, unsupported, type CallError } from './result.js';
 import {
   breakable,
-  CALL,
-  FAILED,
-  OPEN,
   echo,
   notes,
+  NOT_UTF8,
   NOTES,
   outcomeOf,
   rawRig,
-  READ,
   rig,
   serveWatch,
   testSchema,
   VERSION,
-  WATCH,
   watcher,
+  rawRead,
+  rawWatch,
 } from './testing/rig.js';
 import { createTransport } from './transport.js';
 
@@ -160,7 +149,7 @@ describe('serving', () => {
   it('As a caller, my call in flight when the peer disposes fails with the reason, and the late answer is never posted', async () => {
     // Given
     const { opener, accepter, timers, delivered, issues } = rig();
-    const answer = deferred<Result<string, CallError<string>>>();
+    const answer = deferred<ResultPayload<string, CallError<string>>>();
     accepter.handleRequest(notes.read, () => answer.promise);
     opener.connect();
     const call = opener.request(notes.read, 'note');
@@ -183,7 +172,7 @@ describe('serving', () => {
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts } = breakable(broken);
     const { transport, timers, peer, issues } = await acceptedRaw(wrap);
-    const answer = deferred<Result<undefined, CallError<never>>>();
+    const answer = deferred<ResultPayload<undefined, CallError<undefined>>>();
     transport.handleRequest(notes.touch, () => answer.promise);
     peer.call(notes.touch, 7, { tag: 'request', value: undefined });
     await timers.advance(0);
@@ -204,7 +193,7 @@ describe('serving', () => {
     transport.handleRequest(notes.read, handler);
 
     // When a request on notes.read carries a payload that is no UTF-8
-    peer.sendBytes(7, 0, 0, 0, CALL, NOTES, READ, 0, 0xff);
+    peer.call(rawRead, 7, { tag: 'request', value: NOT_UTF8 }, notes.read);
     await timers.advance(0);
 
     // Then
@@ -220,8 +209,8 @@ describe('serving', () => {
     const { timers, peer, issues } = await acceptedRaw();
 
     // When a method and a trait this schema lacks are called
-    peer.sendBytes(9, 0, 0, 0, CALL, NOTES, 7, 0, 1, 2);
-    peer.sendBytes(11, 0, 0, 0, CALL, 7, 0, 0);
+    peer.send(9, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(11, { tag: 'call', value: { trait: 7, method: 0, message: Uint8Array.of(0) } });
     await timers.advance(0);
 
     // Then
@@ -246,7 +235,7 @@ describe('serving', () => {
     transport.handleRequest(notes.read, () => ok('never'));
 
     // When a message on notes.watch has a kind no subscription has, and a response comes for a call of the peer's
-    peer.sendBytes(5, 0, 0, 0, CALL, NOTES, WATCH, 4, 0x61);
+    peer.send(5, { tag: 'call', value: { trait: NOTES, method: 2, message: Uint8Array.of(4, 0x61) } });
     peer.call(notes.read, 7, { tag: 'response', value: ok('a note') });
     await timers.advance(0);
 
@@ -268,7 +257,7 @@ describe('serving', () => {
     serveWatch(transport);
 
     // When
-    peer.sendBytes(7, 0, 0, 0, CALL, NOTES, WATCH, 0, 0xff);
+    peer.call(rawWatch, 7, { tag: 'start', value: NOT_UTF8 }, notes.watch);
     await timers.advance(0);
 
     // Then
@@ -287,8 +276,8 @@ describe('serving', () => {
     // When a request, a start, a request whose payload is no UTF-8 and a request to a method this schema lacks come first
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
     peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
-    peer.sendBytes(7, 0, 0, 0, CALL, NOTES, READ, 0, 0xff);
-    peer.sendBytes(9, 0, 0, 0, CALL, NOTES, 7, 0, 1, 2);
+    peer.call(rawRead, 7, { tag: 'request', value: NOT_UTF8 }, notes.read);
+    peer.send(9, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
 
     // Then
@@ -310,7 +299,7 @@ describe('serving', () => {
 
     // When a call comes on a method of the schema and on one it lacks
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
-    peer.sendBytes(5, 0, 0, 0, CALL, NOTES, 7, 1, 0);
+    peer.send(5, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(1, 0) } });
     await timers.advance(0);
 
     // Then
@@ -330,8 +319,8 @@ describe('serving', () => {
     const { timers, peer, issues } = await acceptedRaw();
 
     // When an open carries no version, then one carries a hello that is no UTF-8
-    peer.sendBytes(3, 0, 0, 0, OPEN);
-    peer.sendBytes(5, 0, 0, 0, OPEN, VERSION, 0xff);
+    peer.sendBytes(3, 0, 0, 0, 0);
+    peer.send(5, { tag: 'open', value: { version: VERSION, hello: NOT_UTF8 } });
     await timers.advance(0);
 
     // Then
@@ -351,8 +340,8 @@ describe('serving', () => {
     });
 
     // When an open carries no version, then one carries a hello that is no UTF-8
-    peer.sendBytes(1, 0, 0, 0, OPEN);
-    peer.sendBytes(3, 0, 0, 0, OPEN, VERSION, 0xff);
+    peer.sendBytes(1, 0, 0, 0, 0);
+    peer.send(3, { tag: 'open', value: { version: VERSION, hello: NOT_UTF8 } });
     await timers.advance(0);
 
     // Then
@@ -369,8 +358,8 @@ describe('serving', () => {
     const { timers, peer, issues } = await acceptedRaw();
 
     // When a frame has a kind past the call, then a failure has a variant CallError lacks
-    peer.sendBytes(3, 0, 0, 0, CALL + 1);
-    peer.sendBytes(5, 0, 0, 0, FAILED, 9);
+    peer.sendBytes(3, 0, 0, 0, 4);
+    peer.sendBytes(5, 0, 0, 0, 2, 9);
     await timers.advance(0);
 
     // Then
@@ -382,7 +371,7 @@ describe('serving', () => {
   it('As a serving side, I answer each call of the peer side by side', async () => {
     // Given
     const { opener, accepter, timers } = rig();
-    const slow = deferred<Result<string, CallError<never>>>();
+    const slow = deferred<ResultPayload<string, CallError<undefined>>>();
     accepter.handleRequest(echo.say, text => (text === 'slow' ? slow.promise : ok(text)));
     opener.connect();
     const first = opener.request(echo.say, 'slow');
@@ -645,7 +634,7 @@ describe('serving', () => {
     const onPeerIdle = vi.fn();
     const { opener, accepter, timers } = rig({ onPeerIdle });
     serveWatch(accepter);
-    const held = deferred<Result<undefined, CallError<never>>>();
+    const held = deferred<ResultPayload<undefined, CallError<undefined>>>();
     accepter.handleRequest(notes.touch, () => held.promise);
     opener.connect();
     opener.subscribe(notes.watch, 'status', watcher());
@@ -727,7 +716,7 @@ describe('serving', () => {
     const onPeerIdle = vi.fn();
     const { opener, accepter, timers } = rig({ onPeerIdle });
     serveWatch(accepter);
-    const held = deferred<Result<undefined, CallError<never>>>();
+    const held = deferred<ResultPayload<undefined, CallError<undefined>>>();
     accepter.handleRequest(notes.touch, () => held.promise);
     accepter.handleRequest(echo.say, text => ok(text));
     opener.connect();
@@ -755,7 +744,7 @@ describe('serving', () => {
     });
     const { transport, timers, peer, issues } = await acceptedRaw(undefined, { onPeerIdle });
     serveWatch(transport);
-    const held = deferred<Result<undefined, CallError<never>>>();
+    const held = deferred<ResultPayload<undefined, CallError<undefined>>>();
     transport.handleRequest(notes.touch, () => held.promise);
     peer.call(notes.watch, 1, { tag: 'start', value: 'tick' });
     await timers.advance(0);
@@ -875,7 +864,7 @@ describe('serving', () => {
     transport.handleRequest(
       notes.touch,
       () =>
-        new Promise<Result<undefined, CallError<never>>>(resolve => {
+        new Promise<ResultPayload<undefined, CallError<undefined>>>(resolve => {
           releases.push(() => {
             resolve(ok());
           });
@@ -890,7 +879,7 @@ describe('serving', () => {
     await leaveWithCallHeld(1);
 
     // When it makes a call whose payload is no UTF-8, and the held call settles
-    peer.sendBytes(5, 0, 0, 0, CALL, NOTES, READ, 0, 0xff);
+    peer.call(rawRead, 5, { tag: 'request', value: NOT_UTF8 }, notes.read);
     await timers.advance(0);
     releases[0]?.();
     await timers.advance(0);
@@ -900,7 +889,7 @@ describe('serving', () => {
 
     // When it leaves again and then calls a method this schema lacks
     await leaveWithCallHeld(7);
-    peer.sendBytes(11, 0, 0, 0, CALL, NOTES, 7, 0, 1, 2);
+    peer.send(11, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
     releases[1]?.();
     await timers.advance(0);

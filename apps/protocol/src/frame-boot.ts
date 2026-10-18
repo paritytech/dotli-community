@@ -33,7 +33,7 @@ const idleTelemetry: Telemetry = () => () => undefined;
 
 export function createFrameBoot(): FrameBoot {
   const status = createFrameStatus();
-  const telemetry = createDeferredSubscription<undefined, TelemetryEvent, never>();
+  const telemetry = createDeferredSubscription<undefined, TelemetryEvent, undefined>();
   return {
     frameStatus: status.handler,
     telemetry: telemetry.handler,

@@ -60,7 +60,7 @@ export function subscribe<S, V, I extends DomainFailure>(
     {
       receive,
       interrupt: outcome => {
-        end(outcome.tag === 'Ok' ? null : callFailure(outcome.value, name, signal));
+        end(outcome.success ? null : callFailure(outcome.value, name, signal));
       },
     },
     signal === undefined ? {} : { signal },

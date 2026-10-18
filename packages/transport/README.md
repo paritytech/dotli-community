@@ -16,15 +16,16 @@ and failure.
   is its place in its trait, so new traits and methods go at the end. A schema holds up to 256 traits of up to 256
   methods each, a version from 0 to 255, and the codec of the hello each side sends in the handshake. Each method sits
   in one place only.
-- `Result` and `CallError` are truapi's, as tagged unions of `{ tag, value }`. A `CallError` is the handler's own
-  `Domain` error, or the library's `Denied`, `Unsupported`, `MalformedFrame`, `HostFailure` or `Cancelled`. A method
-  that declares no error never answers `Domain`.
+- `Result` is scale-ts's own, `{ success, value }`. `CallError` is truapi's, a tagged union of `{ tag, value }`: the
+  handler's own `Domain` error, or a `Failure` of the library's, `Denied`, `Unsupported`, `MalformedFrame`,
+  `HostFailure` or `Cancelled`. The library's failures are an enum of their own, so it answers any call with one. A
+  method that declares no error has an empty one, `undefined`.
 - A frame is a SCALE struct of a call id (`u32`) and one enum: the handshake's `open` and `accept`, a `failed` that
   answers a call with a `CallError` of the library's own, or a `call` that carries the trait and method ids and the
   method's own message. A message is its method's enum: `request` and `response` for a request, and `start`, `receive`,
   `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from its method's. A
-  received frame keeps the message as bytes until the method it names decodes it, and a message must end where its data
-  does. The id and the handshake variants never change, so a peer of any release reads the version it refuses.
+  received frame keeps the message as bytes until the method it names decodes it. The id and the handshake variants
+  never change, so a peer of any release reads the version it refuses.
 - Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
   one of this side's calls hears the peer's answers, values and ends, and one of the peer's reaches the handler.
 - A provider moves bytes between two contexts and knows nothing of their meaning. The window provider admits one peer
@@ -107,19 +108,20 @@ sequenceDiagram
 ### `.`
 
 - `codec(encode, decode)` wraps two functions as a `Codec<T>`, which is a SCALE codec.
-- `Result<T, E>` with `ok(value)`, `ok()` and `err(error)`. `Variant<T>` is a record's entries as a tagged union.
-- `CallError<E>` with the constructors `domain`, `denied`, `unsupported`, `malformedFrame`, `hostFailure` and
-  `cancelled`. `hostFailure` takes a reason, or an `Error`, whose reason is `"<name>: <message>"`, bounded to 500
-  characters.
+- `ResultPayload<T, E>`, scale-ts's `Result`, with `ok(value)`, `ok()` and `err(error)`. `Variant<T>` is a record's
+  entries as a tagged union.
+- `CallError<E>` with the constructor `domain`, and `Failure` with `denied`, `unsupported`, `malformedFrame`,
+  `hostFailure` and `cancelled`. `hostFailure` takes a reason, or an `Error`, whose reason is `"<name>: <message>"`,
+  bounded to 500 characters.
 - `request({ request, response, error? })` declares a `Request<P, R, E>`, and
   `subscription({ start, receive, interrupt? })` a `Subscription<S, V, I>`. Without `error` or `interrupt`, `E` or `I`
-  is `never`. `RequestMessage<P, R, E>` and `SubscriptionMessage<S, V, I>` are what their sides send.
+  is `undefined`. `RequestMessage<P, R, E>` and `SubscriptionMessage<S, V, I>` are what their sides send.
 - `defineSchema({ version, hello, traits })` checks the record and returns a `Schema<H, T>`: its `version`, `hello`
-  codec, `traits`, and `addresses`, which maps each method to its `Address` (`{ trait, method, traitId, methodId }`).
-  `Traits` is the record it takes, of `AnyMethod`.
-- `MethodTypes<M>` is what each side of method `M` sends: `{ request: P; response: Result<R, CallError<E>> }` or
-  `{ start: S; receive: V; interrupt: Result<undefined, CallError<I>>; stop: undefined }`. `DomainError<M>` is its own
-  error, `E` or `I`.
+  codec, `traits`, `addresses`, which maps each method to its `Address` (`{ trait, method, traitId, methodId }`), and
+  `methodAt(traitId, methodId)`, the method at a place. `Traits` is the record it takes, of `AnyMethod`.
+- `MethodTypes<M>` is what each side of method `M` sends: `{ request: P; response: ResultPayload<R, CallError<E>> }` or
+  `{ start: S; receive: V; interrupt: ResultPayload<undefined, CallError<I>>; stop: undefined }`. `DomainError<M>` is
+  its own error, `E` or `I`.
 - `createTransport(schema, provider, options)` returns a `Transport<H>`. `TransportOptions<H>`:
   - `handshake: 'open' | 'accept'` sets which side opens the handshake, and `hello` is this side's.
   - `retryMs` (50 by default) and `timeoutMs` (5000 by default) pace the opener, on `timers`.
@@ -129,10 +131,10 @@ sequenceDiagram
 - `Transport<H>`:
   - `connect()` starts the handshake on the opener, and `whenConnected()` resolves once it succeeds or rejects with the
     closing error.
-  - `request(method, payload, { signal? })` resolves to `Result<R, CallError<E>>`. It rejects only with the closing
-    error, or when the call cannot go out.
+  - `request(method, payload, { signal? })` resolves to `ResultPayload<R, CallError<E>>`. It rejects only with the
+    closing error, or when the call cannot go out.
   - `handleRequest(method, handler)` serves a request method and returns what unregisters it. A `RequestHandler` gets
-    the payload and a `CallContext` and returns a `Result`, sync or async.
+    the payload and a `CallContext` and returns a `ResultPayload`, sync or async.
   - `subscribe(method, start, { receive, interrupt }, { signal? })` returns a `SubscriptionHandle` with `stop()` and
     `onClose(listener)`.
   - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
@@ -144,7 +146,9 @@ sequenceDiagram
 - `Provider` is `post(data)`, `subscribe(listener)`, `peerOrigin()` and `dispose()`. `post` transfers the buffer and
   never delivers to the provider's own listeners before it returns.
 - `createWindowProvider({ listen, peer, origin, onNotBytes?, onRefusedOrigin? })` and
-  `createPortProvider(port, { closeOnDispose? })` are the two providers.
+  `createPortProvider(port, { closeOnDispose? })` are the two providers. Each takes only as much of a window or a port
+  as it uses: a `MessageTarget` that delivers each `WindowMessage` (`{ data, origin, source }`), a `WindowLike` to post
+  to, and a `PortLike`. A browser's own window, `MessageEvent` and `MessagePort` are each one.
 
 ```ts
 const schema = defineSchema({

@@ -22,19 +22,18 @@ flowchart TB
 ```
 
 - The page speaks to the frame through the transport library, over the protocol schema. The library owns the framing,
-  the handshake, the queue, the request and subscription ids and the strict decoding. This package owns the schema, the
-  frame's lifecycle, the facades and how every outcome reaches host code.
+  the handshake, the queue, the request and subscription ids and the decoding. This package owns the schema, the frame's
+  lifecycle, the facades and how every outcome reaches host code.
 - The protocol schema is where the wire types come from. It groups the methods into traits: the frame, name resolution,
   the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its
   payloads, and each handshake's hello has a resolution id field, null from the host and the page load's id from the
   iframe toward the SharedWorker. Each payload is typed by its method, so a payload, answer or value that does not fit
-  its method fails to compile. Its value codecs are the protocol's own checked SCALE codecs.
+  its method fails to compile. Its value codecs are composed from scale-ts: a string union is an enum of empty variants,
+  an optional field is an `Option`, a whole number of any size is a compact, and a record crosses as entries.
 - A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed
   init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
   or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
   refused as malformed.
-- Every integer goes through a codec that throws on a value it cannot carry exactly, and a payload that is truncated,
-  has trailing bytes, names an unknown variant or holds an option or bool byte other than 0 or 1 fails to decode.
 - Every method keeps one name for the metrics, the trail, the budgets and the errors, the flat name it had before the
   methods were grouped into traits, such as `resolveOwner` or `authStorageRead`, so dashboards read on unchanged.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
@@ -163,5 +162,6 @@ Test-only, for functional tests that read the protocol frame's traffic in a real
   and data that is no frame. It names the call by the schema's trait and method, such as `frame` and `status`, and the
   message's tag: `request`, `response`, `start`, `receive`, `interrupt` or `stop`. It keeps the message's bytes as hex,
   and the message as JSON with bytes as hex, so a page can match it. The frame status ending as fatal is
-  `{ tag: 'interrupt', value: { tag: 'Err', value: { tag: 'Domain', value } } }` with the `fatal` failure as its value.
+  `{ tag: 'interrupt', value: { success: false, value: { tag: 'Domain', value } } }` with the `fatal` failure as its
+  value.
 - `messagesOf(method, recorded)`: the recorded messages of a method, decoded typed with it.

@@ -58,11 +58,7 @@ function present(result: ManifestResult<unknown>): boolean {
 
 function assertReadable(result: ManifestResult<unknown>, record: 'root' | 'app'): void {
   if (result.kind === 'unsupported-version') {
-    throw new ManifestRejectedError(
-      'unsupported-version',
-      record,
-      `$v ${result.version === undefined ? 'undefined' : JSON.stringify(result.version)}`,
-    );
+    throw new ManifestRejectedError('unsupported-version', record, `$v ${result.version}`);
   }
   if (result.kind === 'invalid') {
     throw new ManifestRejectedError('invalid', record, result.errors.join('; '));

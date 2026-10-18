@@ -26,17 +26,17 @@ export interface ChainSyncEvent {
   chain: ChainRole;
   kind: ChainSyncKind;
   /** On `stalled` and `recovered`. */
-  reason?: string;
+  reason?: string | undefined;
   /** On `peers`. */
-  peers?: number;
+  peers?: number | undefined;
   /** On `peers`. */
-  isSyncing?: boolean;
+  isSyncing?: boolean | undefined;
   /** Block proven so far, on `warpSyncProgress`. */
-  at?: number;
+  at?: number | undefined;
   /** On `warpSyncProgress`. */
-  target?: number;
+  target?: number | undefined;
   /** On `warpSyncFinished`. */
-  finalized?: number;
+  finalized?: number | undefined;
 }
 
 /** `peerId` ships as-is, since it is a public node identity and never identifies the visitor. */
@@ -49,9 +49,9 @@ export interface ChainPeer {
 /** Telemetry-only facts, kept out of `ChainSyncEvent` so UI subscribers need not filter them. */
 export interface ChainDetail {
   chain: ChainRole;
-  dbCache?: 'hit' | 'miss';
+  dbCache?: 'hit' | 'miss' | undefined;
   /** Peers held when the chain reported ready. */
-  peers?: ChainPeer[];
+  peers?: ChainPeer[] | undefined;
 }
 
 // A string, so it cannot collide with polkadot-api's numeric ids.

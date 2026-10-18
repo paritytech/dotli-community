@@ -43,6 +43,9 @@ function splitReason(reason: string): { name: string; message: string } {
 }
 
 function domainFailure(failure: DomainFailure, method: CallName): Error {
+  if (failure === undefined) {
+    return new ProtocolRequestError(`The frame failed the call "${method}"`, 'Domain', method);
+  }
   switch (failure.tag) {
     case 'fatal':
       return new ProtocolFatalError(failure.value);

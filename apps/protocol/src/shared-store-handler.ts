@@ -18,7 +18,7 @@ import {
   type SharedAuthChange,
   type ProtocolServing,
 } from '@dotli/protocol';
-import { type CallError, denied, err, ok, type Result, type Sink } from '@dotli/transport';
+import { denied, err, ok, type Failure, type ResultPayload, type Sink } from '@dotli/transport';
 
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
@@ -31,7 +31,12 @@ interface SharedAuthBroadcastMessage {
 }
 
 /** The channel the iframes of every tab on this origin share. */
-export type SharedAuthChannel = Pick<BroadcastChannel, 'postMessage' | 'addEventListener' | 'removeEventListener'>;
+/** The tabs' broadcast channel, as much of it as the store uses. A `BroadcastChannel` is one. */
+export interface SharedAuthChannel {
+  postMessage(message: SharedAuthBroadcastMessage): void;
+  addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+  removeEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+}
 
 export interface SharedStoreDeps {
   /** Read per call, because touching `localStorage` can throw where the browser blocks storage. */
@@ -76,7 +81,7 @@ function storeKey(
   context: ProtocolContext,
   assertKey: (key: string) => void,
   build: (siteId: SiteId, key: string) => string,
-): Result<string, CallError<never>> {
+): ResultPayload<string, Failure> {
   if (!isOriginAllowed(context)) {
     return err(denied());
   }
@@ -86,32 +91,26 @@ function storeKey(
 }
 
 /** Checks a call's origin, site and auth key, and returns its storage key. */
-function authKeyOf(
-  payload: { siteId: string; key: string },
-  context: ProtocolContext,
-): Result<string, CallError<never>> {
+function authKeyOf(payload: { siteId: string; key: string }, context: ProtocolContext): ResultPayload<string, Failure> {
   return storeKey(payload, context, assertAuthKey, buildSharedAuthStorageKey);
 }
 
 /** Checks a call's origin, site and mode key, and returns its storage key. */
-function modeKeyOf(
-  payload: { siteId: string; key: string },
-  context: ProtocolContext,
-): Result<string, CallError<never>> {
+function modeKeyOf(payload: { siteId: string; key: string }, context: ProtocolContext): ResultPayload<string, Failure> {
   return storeKey(payload, context, assertModeKey, buildSharedModeStorageKey);
 }
 
 /** Reads with the call's storage key, or answers the call's refusal. */
-function readWith<T>(key: Result<string, CallError<never>>, read: (key: string) => T): Result<T, CallError<never>> {
-  return key.tag === 'Ok' ? ok(read(key.value)) : key;
+function readWith<T>(key: ResultPayload<string, Failure>, read: (key: string) => T): ResultPayload<T, Failure> {
+  return key.success ? ok(read(key.value)) : key;
 }
 
 /** Writes with the call's storage key, or answers the call's refusal. */
 function writeWith(
-  key: Result<string, CallError<never>>,
+  key: ResultPayload<string, Failure>,
   write: (key: string) => void,
-): Result<undefined, CallError<never>> {
-  if (key.tag === 'Err') {
+): ResultPayload<undefined, Failure> {
+  if (!key.success) {
     return key;
   }
   write(key.value);
@@ -133,7 +132,7 @@ function isBroadcastMessage(data: unknown): data is SharedAuthBroadcastMessage {
 
 export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedStoreDeps): SharedStoreHandler {
   const { channel } = deps;
-  const subscribers = new Set<Sink<SharedAuthChange, never>>();
+  const subscribers = new Set<Sink<SharedAuthChange, undefined>>();
 
   function broadcast(siteId: string, key: string, value: string | null): void {
     if (channel === null) {
@@ -149,7 +148,7 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
   }
 
   // BroadcastChannel skips the sender, whose adapter emits locally, so nothing is dispatched twice.
-  function relay(event: MessageEvent<unknown>): void {
+  function relay(event: { readonly data: unknown }): void {
     const { data } = event;
     // The site check is defensive, the channel is already origin-scoped.
     if (!isBroadcastMessage(data) || data.siteId !== SITE_ID) {

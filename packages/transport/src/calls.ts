@@ -4,9 +4,10 @@
 // The calls this side makes: requests and subscriptions. Each waits for the handshake to be over, then goes out. What
 // comes back carries the call's id, and the call decodes it with its own method's codec.
 
+import type { ResultPayload } from 'scale-ts';
 import { failureReason } from './errors.js';
 import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
-import { cancelled, err, malformedFrame, type CallError, type Result } from './result.js';
+import { cancelled, err, malformedFrame, type CallError, type Failure } from './result.js';
 import type { Address, Request, Subscription } from './schema.js';
 import { decode, type Call } from './wire.js';
 
@@ -14,7 +15,7 @@ import { decode, type Call } from './wire.js';
 export interface SubscriptionListeners<V, I> {
   receive(value: V): void;
   /** The peer's end, a failure the library answered with, or `Cancelled` or `MalformedFrame` raised on this side. */
-  interrupt(outcome: Result<undefined, CallError<I>>): void;
+  interrupt(outcome: ResultPayload<undefined, CallError<I>>): void;
 }
 
 /** A subscription this side made. */
@@ -47,7 +48,7 @@ export interface Calls {
     address: Address,
     payload: P,
     signal: AbortSignal | undefined,
-  ): Promise<Result<R, CallError<E>>>;
+  ): Promise<ResultPayload<R, CallError<E>>>;
   /** Opens a subscription. Throws when the start does not encode. */
   subscribe<S, V, I>(
     method: Subscription<S, V, I>,
@@ -59,7 +60,7 @@ export interface Calls {
   /** Hands a message the peer sent on call `id` to the call. */
   hear(id: number, call: Call<Uint8Array>): void;
   /** Ends call `id` with a failure the peer answered it with. */
-  fail(id: number, error: CallError<never>): void;
+  fail(id: number, error: Failure): void;
   /**
    * Rejects every call that went out and is still waiting with `error`, and closes every subscription with it, telling
    * the peer to stop each open one. Calls still waiting for the handshake find the error as they leave.
@@ -71,7 +72,7 @@ export interface Calls {
 interface OutCall {
   address: Address;
   hear(message: Uint8Array): void;
-  fail(error: CallError<never>): void;
+  fail(error: Failure): void;
   close(error: Error): void;
 }
 
@@ -112,8 +113,8 @@ export function createCalls(deps: CallsDeps): Calls {
       address: Address,
       payload: P,
       signal: AbortSignal | undefined,
-    ): Promise<Result<R, CallError<E>>> {
-      return new Promise<Result<R, CallError<E>>>((resolve, reject) => {
+    ): Promise<ResultPayload<R, CallError<E>>> {
+      return new Promise<ResultPayload<R, CallError<E>>>((resolve, reject) => {
         const closed = closedBy();
         if (closed !== null) {
           reject(closed);
@@ -138,7 +139,7 @@ export function createCalls(deps: CallsDeps): Calls {
           }
           return true;
         };
-        const answer = (outcome: Result<R, CallError<E>>): void => {
+        const answer = (outcome: ResultPayload<R, CallError<E>>): void => {
           if (leave()) {
             resolve(outcome);
           }
@@ -155,7 +156,7 @@ export function createCalls(deps: CallsDeps): Calls {
           address,
           hear(bytes) {
             const message = decode(method.message, bytes);
-            if (message.tag === 'Err') {
+            if (!message.success) {
               refuse('malformed', message.value);
               answer(err(malformedFrame(failureReason(message.value))));
             } else if (message.value.tag === 'response') {
@@ -174,13 +175,13 @@ export function createCalls(deps: CallsDeps): Calls {
           over.signal,
           () => {
             const data = encodeCall(method, address, id, { tag: 'request', value: payload });
-            if (data.tag === 'Err') {
+            if (!data.success) {
               abandon(data.value);
               return;
             }
             out.set(id, call);
             const posted = post(data.value, address);
-            if (posted.tag === 'Err') {
+            if (!posted.success) {
               abandon(new Error('The request could not be posted', { cause: posted.value }));
             }
           },
@@ -229,13 +230,13 @@ export function createCalls(deps: CallsDeps): Calls {
       const postStop = (): void => {
         ended.add(id);
         const data = encodeCall(method, address, id, { tag: 'stop', value: undefined });
-        if (data.tag === 'Ok') {
+        if (data.success) {
           post(data.value, address);
         }
       };
 
       /** Ends the subscription once, with `outcome` for the listener, or none. `tellPeer` stops it at the peer. */
-      const finish = (outcome: Result<undefined, CallError<I>> | null, tellPeer: boolean): void => {
+      const finish = (outcome: ResultPayload<undefined, CallError<I>> | null, tellPeer: boolean): void => {
         const was = leave({ name: 'ended' });
         if (was === null) {
           return;
@@ -291,7 +292,7 @@ export function createCalls(deps: CallsDeps): Calls {
         address,
         hear(bytes) {
           const message = decode(method.message, bytes);
-          if (message.tag === 'Err') {
+          if (!message.success) {
             // What was lost may be a value, which leaves the subscriber behind the peer, so the subscription ends and the
             // peer is told to stop. A stop after the peer's own end is a race it drops.
             refuse('malformed', message.value);
@@ -321,7 +322,7 @@ export function createCalls(deps: CallsDeps): Calls {
 
       // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
       const data = encodeCall(method, address, id, { tag: 'start', value: start });
-      if (data.tag === 'Err') {
+      if (!data.success) {
         throw data.value;
       }
       if (signal?.aborted === true) {
@@ -335,7 +336,7 @@ export function createCalls(deps: CallsDeps): Calls {
         () => {
           out.set(id, call);
           const posted = post(data.value, address);
-          if (posted.tag === 'Err') {
+          if (!posted.success) {
             shut(new Error('The start could not be posted', { cause: posted.value }));
             return;
           }

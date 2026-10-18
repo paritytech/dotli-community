@@ -7,10 +7,11 @@
 // only calls it admitted, once the handshake told who the peer is.
 
 import { createAsyncTaskPool, toError } from '@dotli/shared';
+import type { ResultPayload } from 'scale-ts';
 import { failureReason } from './errors.js';
 import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
-import { err, hostFailure, malformedFrame, ok, unsupported, type CallError, type Result } from './result.js';
-import type { Address, Request, Subscription } from './schema.js';
+import { err, hostFailure, malformedFrame, ok, unsupported, type CallError, type Failure } from './result.js';
+import type { Address, AnyMethod, Request, Subscription } from './schema.js';
 import { decode, encodeFrame, frame, type Call } from './wire.js';
 
 /** What a handler knows about the peer that called it. */
@@ -33,7 +34,7 @@ export interface Sink<V, I> {
 export type RequestHandler<P, R, E, H> = (
   payload: P,
   context: CallContext<H>,
-) => Result<R, CallError<E>> | PromiseLike<Result<R, CallError<E>>>;
+) => ResultPayload<R, CallError<E>> | PromiseLike<ResultPayload<R, CallError<E>>>;
 
 /**
  * Serves one subscription method. It starts the subscription, sends on the sink, and returns what stops it, which runs
@@ -42,6 +43,8 @@ export type RequestHandler<P, R, E, H> = (
 export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>, sink: Sink<V, I>) => () => void;
 
 export interface ServingDeps {
+  /** The method at a place in the schema. */
+  methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
   post: Post;
   /** Whether the transport has closed, after which the peer hears no answer. */
   closed: () => boolean;
@@ -74,15 +77,12 @@ interface Served<H> {
 interface Running {
   address: Address;
   hear(message: Uint8Array): void;
-  end(error: CallError<never>): void;
+  end(error: Failure): void;
 }
 
-// Trait and method ids are each a byte, so this key is unique per method.
-const keyOf = (traitId: number, methodId: number): number => traitId * 256 + methodId;
-
 export function createServing<H>(deps: ServingDeps): Serving<H> {
-  const { post, closed, refuse, runListener, onPeerIdle } = deps;
-  const handlers = new Map<number, Served<H>>();
+  const { methodAt, post, closed, refuse, runListener, onPeerIdle } = deps;
+  const handlers = new Map<AnyMethod, Served<H>>();
   // The peer's requests whose handlers have not settled, which a close answers.
   const inFlight = new Map<number, Address>();
   const running = new Map<number, Running>();
@@ -97,21 +97,20 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
   let idleHeardAt: number | null = null;
 
   /** Stores one handler per method, and returns what unregisters it. */
-  const register = (address: Address, served: Served<H>): (() => void) => {
-    const key = keyOf(address.traitId, address.methodId);
-    if (handlers.has(key)) {
+  const register = (method: AnyMethod, address: Address, served: Served<H>): (() => void) => {
+    if (handlers.has(method)) {
       throw new Error(`${address.trait}.${address.method} already has a handler`);
     }
-    handlers.set(key, served);
+    handlers.set(method, served);
     return () => {
-      if (handlers.get(key) === served) {
-        handlers.delete(key);
+      if (handlers.get(method) === served) {
+        handlers.delete(method);
       }
     };
   };
 
   /** Answers call `id` with a failure of the library's own. */
-  const fail = (id: number, error: CallError<never>, address?: Address): void => {
+  const fail = (id: number, error: Failure, address?: Address): void => {
     post(encodeFrame(frame, { id, body: { tag: 'failed', value: error } }), address);
   };
 
@@ -146,17 +145,17 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
     method: Request<P, R, E>,
     address: Address,
     id: number,
-    handled: Result<Result<R, CallError<E>>, Error>,
+    handled: ResultPayload<ResultPayload<R, CallError<E>>, Error>,
   ): void {
     if (!inFlight.delete(id) || closed()) {
       return;
     }
-    if (handled.tag === 'Err') {
+    if (!handled.success) {
       fail(id, hostFailure(handled.value), address);
       return;
     }
     const data = encodeCall(method, address, id, { tag: 'response', value: handled.value });
-    if (data.tag === 'Err') {
+    if (!data.success) {
       fail(id, hostFailure(data.value), address);
       return;
     }
@@ -197,7 +196,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
       address,
       hear(bytes) {
         const message = decode(method.message, bytes);
-        if (message.tag === 'Err') {
+        if (!message.success) {
           refuse('malformed', message.value);
           return;
         }
@@ -223,7 +222,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
           return;
         }
         const data = encodeCall(method, address, id, { tag: 'receive', value });
-        if (data.tag === 'Err') {
+        if (!data.success) {
           entry.end(hostFailure(data.value));
           return;
         }
@@ -231,9 +230,9 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
       },
       interrupt(error) {
         finish(() => {
-          const outcome: Result<undefined, CallError<I>> = error === undefined ? ok() : err(error);
+          const outcome: ResultPayload<undefined, CallError<I>> = error === undefined ? ok() : err(error);
           const data = encodeCall(method, address, id, { tag: 'interrupt', value: outcome });
-          if (data.tag === 'Err') {
+          if (!data.success) {
             fail(id, hostFailure(data.value), address);
           } else {
             post(data.value, address);
@@ -258,12 +257,12 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
 
   return {
     handleRequest(method, address, handler) {
-      return register(address, {
+      return register(method, address, {
         hear(id, bytes, context) {
           // A call that does not decode still tells that the peer is here.
           peerCalls += 1;
           const message = decode(method.message, bytes);
-          if (message.tag === 'Err') {
+          if (!message.success) {
             malformed(id, message.value, address);
             return;
           }
@@ -288,10 +287,10 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
     },
 
     handleSubscription(method, address, handler) {
-      return register(address, {
+      return register(method, address, {
         hear(id, bytes, context) {
           const message = decode(method.message, bytes);
-          if (message.tag === 'Err') {
+          if (!message.success) {
             peerCalls += 1;
             malformed(id, message.value, address);
             return;
@@ -323,7 +322,8 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
         onPeerStop();
         return;
       }
-      const served = handlers.get(keyOf(call.trait, call.method));
+      const method = methodAt(call.trait, call.method);
+      const served = method === undefined ? undefined : handlers.get(method);
       if (served === undefined) {
         peerCalls += 1;
         fail(id, unsupported());

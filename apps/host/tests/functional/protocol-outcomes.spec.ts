@@ -42,7 +42,7 @@ test('As a user on a per-tab light client that cannot start, I see the crash the
   // Then
   const status = await waitForProtocolMessage(page, frameStatusEnd, 15_000);
   expect(status.body).toMatchObject({
-    tag: 'Err',
+    success: false,
     value: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
   });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);
@@ -63,7 +63,7 @@ test('As a user on a shared light client that cannot start, I see the crash the 
   // Then
   const status = await waitForProtocolMessage(page, frameStatusEnd, 15_000);
   expect(status.body).toMatchObject({
-    tag: 'Err',
+    success: false,
     value: { tag: 'Domain', value: { tag: 'fatal', value: expect.stringContaining('connection failed') } },
   });
   await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE);

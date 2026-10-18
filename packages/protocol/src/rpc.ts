@@ -150,7 +150,7 @@ export function createFrameRpc(
         }
         sent.trail = startCallTrail(method, budgetMs, now);
         const outcome = await transport.request(method, payload, { signal: giveUp.signal });
-        if (outcome.tag === 'Ok') {
+        if (outcome.success) {
           return outcome.value;
         }
         throw callFailure(outcome.value, name, giveUp.signal);

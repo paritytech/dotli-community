@@ -1,12 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ResultPayload } from 'scale-ts';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { manualTimers } from '@dotli/shared/testing';
 import type { SubscriptionHandle } from './calls.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
-import { err, hostFailure, ok, type CallError, type Result } from './result.js';
+import { err, hostFailure, ok, type CallError } from './result.js';
 import type { CallContext, Sink } from './serving.js';
 import {
   echo,
@@ -31,7 +32,9 @@ describe('createTransport', () => {
 
     // When
     const typeOnly = (transport: Notes): void => {
-      expectTypeOf(transport.request(notes.read, 'a note')).resolves.toEqualTypeOf<Result<string, CallError<string>>>();
+      expectTypeOf(transport.request(notes.read, 'a note')).resolves.toEqualTypeOf<
+        ResultPayload<string, CallError<string>>
+      >();
       // @ts-expect-error a subscription is not a request
       void transport.request(notes.watch, 'from the top');
       // @ts-expect-error the payload is text
@@ -41,7 +44,7 @@ describe('createTransport', () => {
           expectTypeOf(value).toEqualTypeOf<string>();
         },
         interrupt: outcome => {
-          expectTypeOf(outcome).toEqualTypeOf<Result<undefined, CallError<string>>>();
+          expectTypeOf(outcome).toEqualTypeOf<ResultPayload<undefined, CallError<string>>>();
         },
       });
       expectTypeOf(handle).toEqualTypeOf<SubscriptionHandle>();
@@ -56,7 +59,7 @@ describe('createTransport', () => {
       });
       transport.handleSubscription(echo.listen, (start, _context, sink) => {
         expectTypeOf(start).toEqualTypeOf<undefined>();
-        expectTypeOf(sink).toEqualTypeOf<Sink<string, never>>();
+        expectTypeOf(sink).toEqualTypeOf<Sink<string, undefined>>();
         return () => undefined;
       });
     };
@@ -99,7 +102,7 @@ describe('createTransport', () => {
           sink.receive(value);
         },
         interrupt: outcome => {
-          if (outcome.tag === 'Ok') {
+          if (outcome.success) {
             sink.interrupt();
           } else {
             sink.interrupt(outcome.value);

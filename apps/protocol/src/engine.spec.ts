@@ -24,9 +24,10 @@ import {
   hostFailure,
   ok,
   type CallError,
+  type Failure,
   type DomainError,
   type MethodTypes,
-  type Result,
+  type ResultPayload,
 } from '@dotli/transport';
 import {
   createEngine,
@@ -133,7 +134,7 @@ function setup(
 const CONNECTED = { tag: 'connected' };
 
 /** How the frame answers a call whose handler threw `message`. */
-const thrown = (message: string): Result<never, CallError<never>> => err(hostFailure(`Error: ${message}`));
+const thrown = (message: string): ResultPayload<never, Failure> => err(hostFailure(`Error: ${message}`));
 
 const context = { origin: null, hello: { resolutionId: null } };
 

@@ -20,7 +20,7 @@ import {
   updateLocalWalletIdentity,
   type LocalWalletStore,
 } from '@dotli/storage';
-import { denied, err, ok, type CallError, type Result } from '@dotli/transport';
+import { denied, err, ok, type Failure, type ResultPayload } from '@dotli/transport';
 
 const { wallet } = protocolSchema.traits;
 
@@ -38,7 +38,7 @@ function assertEntropy(value: Uint8Array): void {
  * The refusal of a call whose origin does not check, or null to serve it. A site that does not check throws. Holds the
  * shared-auth trust boundary on any transport the wallet is served over.
  */
-function refusalOf(payload: { siteId: string }, context: ProtocolContext): Result<never, CallError<never>> | null {
+function refusalOf(payload: { siteId: string }, context: ProtocolContext): ResultPayload<never, Failure> | null {
   if (context.origin === null || !isSharedAuthOriginAllowed(context.origin)) {
     return err(denied());
   }
@@ -69,7 +69,7 @@ async function admittedWrite(
   payload: { siteId: string },
   context: ProtocolContext,
   write: () => Promise<void>,
-): Promise<Result<undefined, CallError<never>>> {
+): Promise<ResultPayload<undefined, Failure>> {
   const refusal = refusalOf(payload, context);
   if (refusal !== null) {
     return refusal;

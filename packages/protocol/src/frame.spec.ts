@@ -461,8 +461,8 @@ describe('createProtocolFrame', () => {
     const rebuilt = await frame.transport();
     dom.serve().handleRequest(storage.authRead, () => new Promise(() => undefined));
     await bringUp(dom);
-    const answered: string[] = [];
-    void rebuilt.request(storage.authRead, { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer.tag));
+    const answered: boolean[] = [];
+    void rebuilt.request(storage.authRead, { siteId: SITE_ID, key: 'k' }).then(answer => answered.push(answer.success));
     await advance();
 
     // When the dropped frame answers every read late

@@ -4,21 +4,21 @@
 // A schema nests traits, then methods. A method is a request or a subscription, built from the codecs of what its sides
 // send, and carries its types, so the transport calls and serves it by the method itself. Wire ids are positions.
 
-import { Enum, _void, type Codec } from 'scale-ts';
-import type { CallError, Result, Variant } from './result.js';
-import { callError, frameOf, noDomainError, outcome, type Frame } from './wire.js';
+import { Enum, Result, _void, type Codec, type ResultPayload } from 'scale-ts';
+import { callError, type CallError, type Variant } from './result.js';
+import { frameOf, type Frame } from './wire.js';
 
 /** What a request's sides send: its payload, then the answer. */
 export interface RequestTypes<P, R, E> {
   request: P;
-  response: Result<R, CallError<E>>;
+  response: ResultPayload<R, CallError<E>>;
 }
 
 /** What a subscription's sides send: its start, its values, then its end, or the caller's stop. */
 export interface SubscriptionTypes<S, V, I> {
   start: S;
   receive: V;
-  interrupt: Result<undefined, CallError<I>>;
+  interrupt: ResultPayload<undefined, CallError<I>>;
   stop: undefined;
 }
 
@@ -34,29 +34,29 @@ interface Method<M> {
   readonly frame: Codec<Frame<M>>;
 }
 
-/** A request method. `E` is its own error, `never` when it declares none. */
+/** A request method. `E` is its own error, `undefined` when it declares none. */
 export type Request<P, R, E> = Method<RequestMessage<P, R, E>>;
 
-/** A subscription method. `I` is its own end reason, `never` when it declares none. */
+/** A subscription method. `I` is its own end reason, `undefined` when it declares none. */
 export type Subscription<S, V, I> = Method<SubscriptionMessage<S, V, I>>;
 
 const method = <M>(message: Codec<M>): Method<M> => ({ message, frame: frameOf(message) });
 
-/** Declares a request. `error` is the method's own error, and a method without one never answers `Domain`. */
-export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, never>;
+/** Declares a request. `error` is the method's own error, and a method without one has an empty one. */
+export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, undefined>;
 export function request<P, R, E>(def: { request: Codec<P>; response: Codec<R>; error: Codec<E> }): Request<P, R, E>;
 export function request<P, R, E>(def: {
   request: Codec<P>;
   response: Codec<R>;
   error?: Codec<E>;
-}): Request<P, R, E> | Request<P, R, never> {
+}): Request<P, R, E> | Request<P, R, undefined> {
   const requestOf = <D>(error: Codec<D>): Request<P, R, D> =>
-    method(Enum({ request: def.request, response: outcome(def.response, callError(error)) }));
-  return def.error === undefined ? requestOf(noDomainError) : requestOf(def.error);
+    method(Enum({ request: def.request, response: Result(def.response, callError(error)) }));
+  return def.error === undefined ? requestOf(_void) : requestOf(def.error);
 }
 
-/** Declares a subscription. `interrupt` is the method's own end reason, and one without it never ends with `Domain`. */
-export function subscription<S, V>(def: { start: Codec<S>; receive: Codec<V> }): Subscription<S, V, never>;
+/** Declares a subscription. `interrupt` is the method's own end reason, and one without it has an empty one. */
+export function subscription<S, V>(def: { start: Codec<S>; receive: Codec<V> }): Subscription<S, V, undefined>;
 export function subscription<S, V, I>(def: {
   start: Codec<S>;
   receive: Codec<V>;
@@ -66,10 +66,10 @@ export function subscription<S, V, I>(def: {
   start: Codec<S>;
   receive: Codec<V>;
   interrupt?: Codec<I>;
-}): Subscription<S, V, I> | Subscription<S, V, never> {
+}): Subscription<S, V, I> | Subscription<S, V, undefined> {
   const subscriptionOf = <D>(reason: Codec<D>): Subscription<S, V, D> =>
-    method(Enum({ start: def.start, receive: def.receive, interrupt: outcome(_void, callError(reason)), stop: _void }));
-  return def.interrupt === undefined ? subscriptionOf(noDomainError) : subscriptionOf(def.interrupt);
+    method(Enum({ start: def.start, receive: def.receive, interrupt: Result(_void, callError(reason)), stop: _void }));
+  return def.interrupt === undefined ? subscriptionOf(_void) : subscriptionOf(def.interrupt);
 }
 
 /** Any method, as a schema holds it. What its sides send is told apart by tag, whatever its payload types. */
@@ -88,12 +88,13 @@ export interface Address {
   methodId: number;
 }
 
-/** A checked schema. `addresses` places each of its methods. */
+/** A checked schema. `addresses` places each of its methods, and `methodAt` finds the method at a place. */
 export interface Schema<H, T extends Traits> {
   readonly version: number;
   readonly hello: Codec<H>;
   readonly traits: T;
   readonly addresses: ReadonlyMap<AnyMethod, Address>;
+  readonly methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
 }
 
 // Ids are bytes on the wire.
@@ -113,6 +114,7 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
     throw new RangeError(`a schema has at most ${String(MAX_IDS)} traits, got ${String(traits.length)}`);
   }
   const addresses = new Map<AnyMethod, Address>();
+  const byId = traits.map(([, methods]) => Object.values(methods));
   traits.forEach(([trait, methods], traitId) => {
     const entries = Object.entries(methods);
     if (entries.length > MAX_IDS) {
@@ -126,7 +128,13 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
       addresses.set(method, { trait, method: name, traitId, methodId });
     });
   });
-  return { version: def.version, hello: def.hello, traits: def.traits, addresses };
+  return {
+    version: def.version,
+    hello: def.hello,
+    traits: def.traits,
+    addresses,
+    methodAt: (traitId, methodId) => byId[traitId]?.[methodId],
+  };
 }
 
 /** What each side of a method sends, by name. */

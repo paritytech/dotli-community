@@ -17,6 +17,7 @@ import {
   type MessageTarget,
   type Sink,
   type WindowLike,
+  type WindowMessage,
 } from '@dotli/transport';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import { frameStatusEnd } from '../outcomes.js';
@@ -34,14 +35,13 @@ export const FRAME_CONFIG: ProtocolFrameConfig = {
   skipWorkerCache: false,
 };
 
-type Listener = (event: MessageEvent) => void;
+type Listener = (event: WindowMessage) => void;
 
 /** What a mounted iframe fires on its own. */
 type MountEvent = 'load' | 'error' | null;
 
-function messageEvent(data: unknown, origin: string, source: unknown): MessageEvent {
-  // The frame reads only these, and Node's MessageEvent refuses a source that is not a port.
-  return { data, origin, source } as unknown as MessageEvent;
+function messageEvent(data: unknown, origin: string, source: unknown): WindowMessage {
+  return { data, origin, source };
 }
 
 /** What a transfer leaves the receiver. The sender's buffer is detached, so posting it again fails as in a browser. */
@@ -226,7 +226,7 @@ const newerSchema = defineSchema({ version: 255, hello: _void, traits: {} });
 
 export interface FrameDom {
   /** What a frame or client is built on. */
-  deps: ProtocolFrameDeps;
+  deps: ProtocolFrameDeps<FakeIframe>;
   /** The mounted iframe, or throws when there is none. */
   iframe(): FakeIframe;
   /** How many iframes are mounted now. */
@@ -297,8 +297,8 @@ export function createFrameDom(
     deps: {
       origin: FRAME_ORIGIN,
       document: {
-        createElement: () => new FakeIframe(toHost) as unknown as HTMLIFrameElement,
-        body: mount as unknown as HTMLElement,
+        createElement: () => new FakeIframe(toHost),
+        body: mount,
       },
       window: messages,
       timeouts,

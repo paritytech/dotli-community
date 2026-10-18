@@ -16,7 +16,7 @@ import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 const { storage, wallet } = protocolSchema.traits;
 
-type ChangeSink = Sink<SharedAuthChange, never>;
+type ChangeSink = Sink<SharedAuthChange, undefined>;
 
 /** A frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is subscribed. */
 function relayingChanges(sinks: Set<ChangeSink>): (serving: ProtocolTransport) => void {

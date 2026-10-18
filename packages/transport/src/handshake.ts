@@ -6,10 +6,10 @@
 // whether the peer is there and what its hello is.
 
 import { createAsyncTaskPool, toError, withTimeout, type Timers } from '@dotli/shared';
-import type { Codec } from 'scale-ts';
+import type { Codec, ResultPayload } from 'scale-ts';
 import { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
 import type { Post, Refuse } from './parts.js';
-import { err, ok, type Result } from './result.js';
+import { err, ok } from './result.js';
 import { decode, encodeFrame, frame, type Accept, type Open } from './wire.js';
 
 export interface HandshakeDeps<H> {
@@ -59,12 +59,12 @@ export function createOpener<H>(
 
   // Settles the handshake once. An answer settles it in the turn it arrives, so a call the accepter makes right after
   // its answer finds this side open.
-  const finish = (outcome: Result<H, Error>): void => {
+  const finish = (outcome: ResultPayload<H, Error>): void => {
     if (phase !== 'waiting') {
       return;
     }
     phase = 'over';
-    if (outcome.tag === 'Ok') {
+    if (outcome.success) {
       stopAttempts.abort();
       deps.onOpen(outcome.value);
     } else {
@@ -78,7 +78,7 @@ export function createOpener<H>(
     const hello = deps.helloCodec.enc(deps.hello);
     const data = encodeFrame(frame, { id: 0, body: { tag: 'open', value: { version, hello } } });
     const posted = deps.post(data);
-    if (posted.tag === 'Err') {
+    if (!posted.success) {
       throw new Error('The handshake could not be posted', { cause: posted.value });
     }
     throw new HandshakeUnansweredError('The handshake is not answered yet');
@@ -113,12 +113,12 @@ export function createOpener<H>(
         return;
       }
       // Only the first answer counts. The rest answer attempts already in flight.
-      if (accept.tag === 'Err') {
+      if (!accept.success) {
         finish(err(new TransportVersionMismatchError(version, accept.value.version)));
         return;
       }
       const hello = decode(deps.helloCodec, accept.value);
-      if (hello.tag === 'Err') {
+      if (!hello.success) {
         deps.refuse('malformed', hello.value);
         return;
       }
@@ -140,7 +140,7 @@ export function createAccepter<H>(deps: HandshakeDeps<H>): Handshake {
     heardOpen(id, open) {
       const sameVersion = open.version === version;
       const peerHello = sameVersion ? decode(deps.helloCodec, open.hello) : undefined;
-      if (peerHello?.tag === 'Err') {
+      if (peerHello?.success === false) {
         deps.refuse('malformed', peerHello.value);
         return;
       }
@@ -154,7 +154,7 @@ export function createAccepter<H>(deps: HandshakeDeps<H>): Handshake {
       }
       // An answer the opener never heard decides nothing, so its next attempt is answered afresh.
       const posted = deps.post(encodeFrame(frame, { id, body: { tag: 'accept', value: answer } }));
-      if (posted.tag === 'Err' || !deciding) {
+      if (!posted.success || !deciding) {
         return;
       }
       first = answer;

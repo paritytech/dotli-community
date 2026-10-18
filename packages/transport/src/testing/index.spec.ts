@@ -4,7 +4,7 @@
 import { _void } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 import { codec } from '../codec.js';
-import { err, ok, unsupported } from '../result.js';
+import { err, unsupported } from '../result.js';
 import { defineSchema, request, subscription } from '../schema.js';
 import { encodeFrame, frame } from '../wire.js';
 import { FrameRefusedError, readFrame, readMessage } from './index.js';
@@ -86,12 +86,14 @@ describe('readFrame', () => {
       { id: 3, kind: 'accept', value: err({ version: 5 }) },
       { id: 4, kind: 'failed', value: unsupported() },
     ]);
-    expect(ok(1)).toEqual({ tag: 'Ok', value: 1 });
   });
 
   it('As a test, I read a call to a method the schema lacks and get its numeric ids with no decoded message', () => {
     // Given
-    const data = Uint8Array.of(5, 0, 0, 0, 3, 9, 1, 2, 0xde).buffer;
+    const data = encodeFrame(frame, {
+      id: 5,
+      body: { tag: 'call', value: { trait: 9, method: 1, message: Uint8Array.of(2, 0xde) } },
+    });
 
     // When
     const recorded = readFrame(schema, data);

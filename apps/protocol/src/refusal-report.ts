@@ -102,7 +102,7 @@ export function reportRefusals(serving: ProtocolServing, report: (refusal: Frame
       return serving.handleRequest(method, async (payload, context) => {
         try {
           const answer = await handler(payload, context);
-          if (answer.tag === 'Err') {
+          if (!answer.success) {
             refused(method, failureOf(method, answer.value));
           }
           return answer;

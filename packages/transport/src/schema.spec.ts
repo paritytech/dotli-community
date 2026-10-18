@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Enum, Struct, _void, str, u32 } from 'scale-ts';
+import { Enum, Struct, _void, str, u32, type ResultPayload } from 'scale-ts';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CallError, Result } from './result.js';
+import type { CallError } from './result.js';
 import { defineSchema, request, subscription, type DomainError, type MethodTypes, type Traits } from './schema.js';
 
 const label = Struct({ label: str });
@@ -114,18 +114,20 @@ describe('schema', () => {
     // Then
     expectTypeOf<Owner>().toEqualTypeOf<{
       request: { label: string };
-      response: Result<string, CallError<never>>;
+      response: ResultPayload<string, CallError<undefined>>;
     }>();
     expectTypeOf<Changes>().toEqualTypeOf<{
       start: { label: string };
       receive: string;
-      interrupt: Result<undefined, CallError<never>>;
+      interrupt: ResultPayload<undefined, CallError<undefined>>;
       stop: undefined;
     }>();
-    expectTypeOf<MethodTypes<typeof status>['interrupt']>().toEqualTypeOf<Result<undefined, CallError<FrameFailure>>>();
+    expectTypeOf<MethodTypes<typeof status>['interrupt']>().toEqualTypeOf<
+      ResultPayload<undefined, CallError<FrameFailure>>
+    >();
     expectTypeOf<DomainError<typeof status>>().toEqualTypeOf<FrameFailure>();
     expectTypeOf<DomainError<typeof reload>>().toEqualTypeOf<FrameFailure>();
-    expectTypeOf<DomainError<typeof owner>>().toBeNever();
+    expectTypeOf<DomainError<typeof owner>>().toBeUndefined();
     expect(s.hello).toBe(u32);
   });
 });

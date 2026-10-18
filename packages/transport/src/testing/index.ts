@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Codec } from 'scale-ts';
-import type { CallError, Result } from '../result.js';
 import { toError } from '@dotli/shared';
+import type { Codec } from 'scale-ts';
+import type { Failure } from '../result.js';
 import type { AnyMethod, Schema, Traits } from '../schema.js';
-import { decode, decodeAll, frame } from '../wire.js';
+import { decode, frame, type Accept, type Open } from '../wire.js';
 
 export { createProviderPair } from '../provider.fake.js';
 
@@ -15,9 +15,9 @@ export { createProviderPair } from '../provider.fake.js';
  * ids, with no decoded message.
  */
 export type RecordedFrame =
-  | { id: number; kind: 'open'; value: { version: number; hello: Uint8Array } }
-  | { id: number; kind: 'accept'; value: Result<Uint8Array, { version: number }> }
-  | { id: number; kind: 'failed'; value: CallError<never> }
+  | { id: number; kind: 'open'; value: Open }
+  | { id: number; kind: 'accept'; value: Accept }
+  | { id: number; kind: 'failed'; value: Failure }
   | { id: number; kind: 'call'; trait: string; method: string; message: Uint8Array; decoded: { tag: string } | null };
 
 /** Recorded data that is no frame. `cause` is why. */
@@ -40,7 +40,7 @@ function decodedBy(method: AnyMethod, message: Uint8Array): { tag: string } {
 /** Reads a recorded frame. Throws a `FrameRefusedError` on data that is no frame. */
 export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: ArrayBuffer): RecordedFrame {
   const read = decode(frame, data);
-  if (read.tag === 'Err') {
+  if (!read.success) {
     throw new FrameRefusedError(read.value);
   }
   const { id, body } = read.value;
@@ -53,24 +53,24 @@ export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: Array
       return { id, kind: 'failed', value: body.value };
     case 'call': {
       const { trait, method, message } = body.value;
-      for (const [placed, address] of schema.addresses) {
-        if (address.traitId === trait && address.methodId === method) {
-          return {
-            id,
-            kind: 'call',
-            trait: address.trait,
-            method: address.method,
-            message,
-            decoded: decodedBy(placed, message),
-          };
-        }
+      const placed = schema.methodAt(trait, method);
+      const address = placed === undefined ? undefined : schema.addresses.get(placed);
+      if (placed === undefined || address === undefined) {
+        return { id, kind: 'call', trait: String(trait), method: String(method), message, decoded: null };
       }
-      return { id, kind: 'call', trait: String(trait), method: String(method), message, decoded: null };
+      return {
+        id,
+        kind: 'call',
+        trait: address.trait,
+        method: address.method,
+        message,
+        decoded: decodedBy(placed, message),
+      };
     }
   }
 }
 
 /** Decodes a recorded call's message with the method it belongs to. */
 export function readMessage<M>(method: { readonly message: Codec<M> }, message: Uint8Array): M {
-  return decodeAll(method.message, message);
+  return method.message.dec(message);
 }

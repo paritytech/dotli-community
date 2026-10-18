@@ -20,31 +20,31 @@ bindCaptureSink(captures);
 interface FakeChannel {
   channel: SharedAuthChannel;
   posted: unknown[];
-  /** A message another tab's iframe broadcast. */
+  /** A message another tab's iframe broadcast, which may be anything. */
   deliver: (data: unknown) => void;
 }
 
-function fakeChannel(post: (message: unknown) => void = () => undefined): FakeChannel {
-  const listeners = new Set<(event: MessageEvent) => void>();
+function fakeChannel(post: () => void = () => undefined): FakeChannel {
+  const listeners = new Set<(event: { readonly data: unknown }) => void>();
   const posted: unknown[] = [];
-  const channel = {
-    postMessage: (message: unknown) => {
-      post(message);
+  const channel: SharedAuthChannel = {
+    postMessage: message => {
+      post();
       posted.push(message);
     },
-    addEventListener: (_type: string, listener: (event: MessageEvent) => void) => {
+    addEventListener: (_type, listener) => {
       listeners.add(listener);
     },
-    removeEventListener: (_type: string, listener: (event: MessageEvent) => void) => {
+    removeEventListener: (_type, listener) => {
       listeners.delete(listener);
     },
-  } as unknown as SharedAuthChannel;
+  };
   return {
     channel,
     posted,
     deliver: data => {
       for (const listener of listeners) {
-        listener(new MessageEvent('message', { data }));
+        listener({ data });
       }
     },
   };

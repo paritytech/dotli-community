@@ -17,6 +17,7 @@ import {
   type CallError,
   type MessageTarget,
   type WindowLike,
+  type WindowMessage,
 } from '@dotli/transport';
 import {
   createRefusalReporter,
@@ -125,7 +126,7 @@ describe('the wire report', () => {
     // Given the frame's provider and transport on one report, as the frame wires them
     const sinks = recorded();
     const report = createWireReport('frame', sinks);
-    const listeners = new Set<(event: MessageEvent) => void>();
+    const listeners = new Set<(event: WindowMessage) => void>();
     const page: MessageTarget = {
       addEventListener: (_type, listener) => listeners.add(listener),
       removeEventListener: (_type, listener) => listeners.delete(listener),
@@ -144,8 +145,7 @@ describe('the wire report', () => {
     );
     const deliver = (data: unknown, origin: string, source: unknown): void => {
       for (const listener of [...listeners]) {
-        // The provider reads only these.
-        listener({ data, origin, source } as unknown as MessageEvent);
+        listener({ data, origin, source });
       }
     };
 

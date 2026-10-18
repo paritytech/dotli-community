@@ -29,6 +29,7 @@ import {
   workerNetwork,
   type HeartbeatClock,
   type WorkerResolver,
+  type WorkerPort,
   type WorkerScope,
 } from './protocol-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -142,42 +143,41 @@ function fakeLightClient(
         };
       },
     },
-    resolver: undefined as unknown as WorkerResolver,
-  };
-  light.resolver = {
-    enableSyncReporting: chains => {
-      light.syncReporting.push({ chains, openBefore: light.chains.length });
-    },
-    onChainSync: cb => {
-      light.sync.forEach(cb);
-      light.syncListeners.add(cb);
-      return () => {
-        light.syncListeners.delete(cb);
-        for (const waiter of syncWaiters.filter(w => light.syncListeners.size <= w.count)) {
-          syncWaiters.splice(syncWaiters.indexOf(waiter), 1);
-          waiter.resolve();
-        }
-      };
-    },
-    onChainDetail: cb => {
-      light.detail.forEach(cb);
-      return () => undefined;
-    },
-    createDotnsResolver: deps => {
-      light.dotnsDeps = deps;
-      return {
-        status: { get: () => 'idle', subscribe: () => () => undefined },
-        resolveDotName: options.resolveDotName ?? (() => Promise.resolve(null)),
-        resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
-        resolveOwner: () => Promise.resolve(null),
-        resolveRootManifest: () => Promise.reject(new Error('no manifests in this test')),
-        waitForAssetHubFinalized: options.presync ?? (() => defaultPresync),
-        // Never settles, as People warms in the background.
-        waitForPeopleFinalized: () => {
-          light.peopleWarms += 1;
-          return new Promise<void>(() => undefined);
-        },
-      };
+    resolver: {
+      enableSyncReporting: chains => {
+        light.syncReporting.push({ chains, openBefore: light.chains.length });
+      },
+      onChainSync: cb => {
+        light.sync.forEach(cb);
+        light.syncListeners.add(cb);
+        return () => {
+          light.syncListeners.delete(cb);
+          for (const waiter of syncWaiters.filter(w => light.syncListeners.size <= w.count)) {
+            syncWaiters.splice(syncWaiters.indexOf(waiter), 1);
+            waiter.resolve();
+          }
+        };
+      },
+      onChainDetail: cb => {
+        light.detail.forEach(cb);
+        return () => undefined;
+      },
+      createDotnsResolver: deps => {
+        light.dotnsDeps = deps;
+        return {
+          status: { get: () => 'idle', subscribe: () => () => undefined },
+          resolveDotName: options.resolveDotName ?? (() => Promise.resolve(null)),
+          resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
+          resolveOwner: () => Promise.resolve(null),
+          resolveRootManifest: () => Promise.reject(new Error('no manifests in this test')),
+          waitForAssetHubFinalized: options.presync ?? (() => defaultPresync),
+          // Never settles, as People warms in the background.
+          waitForPeopleFinalized: () => {
+            light.peopleWarms += 1;
+            return new Promise<void>(() => undefined);
+          },
+        };
+      },
     },
   };
   return light;
@@ -267,33 +267,41 @@ function spiedPort(
   received: () => void,
   closed: () => void,
   closeEvent: boolean,
-): MessagePort {
-  const wrapped = new Map<EventListener, EventListener>();
+): WorkerPort {
+  type Listener = (event: { readonly data: unknown }) => void;
+  const wrapped = new Map<Listener, (event: Event) => void>();
+  const listen = (type: 'message' | 'close', listener: Listener): void => {
+    if (type === 'close' && !closeEvent) {
+      return;
+    }
+    const wrapper = (event: Event): void => {
+      listener({ data: 'data' in event ? event.data : undefined });
+      received();
+    };
+    wrapped.set(listener, wrapper);
+    port.addEventListener(type, wrapper);
+  };
+  const unlisten = (type: 'message' | 'close', listener: Listener): void => {
+    const wrapper = wrapped.get(listener);
+    if (wrapper !== undefined) {
+      port.removeEventListener(type, wrapper);
+    }
+  };
   return {
-    postMessage: (data: ArrayBuffer, transfer: Transferable[]) => {
+    postMessage: (data, transfer) => {
       posted.push(data);
       port.postMessage(data, transfer);
     },
-    addEventListener: (type: string, listener: EventListener) => {
-      if (type === 'close' && !closeEvent) {
-        return;
-      }
-      const wrapper: EventListener = event => {
-        listener(event);
-        received();
-      };
-      wrapped.set(listener, wrapper);
-      port.addEventListener(type, wrapper);
+    addEventListener: listen,
+    removeEventListener: unlisten,
+    start: () => {
+      port.start();
     },
-    removeEventListener: (type: string, listener: EventListener) => {
-      port.removeEventListener(type, wrapped.get(listener) ?? listener);
-    },
-    start: port.start.bind(port),
     close: () => {
       closed();
       port.close();
     },
-  } as unknown as MessagePort;
+  };
 }
 
 /** A tab's port that reached the worker, before its iframe speaks. */
@@ -346,7 +354,7 @@ async function bootWorker(
       }
     },
   });
-  const connectListeners: ((event: MessageEvent) => void)[] = [];
+  const connectListeners: ((event: { readonly ports: readonly WorkerPort[] }) => void)[] = [];
   const closing = deferred<undefined>();
   const close = vi.fn<() => void>(() => {
     closing.resolve(undefined);
@@ -402,7 +410,7 @@ async function bootWorker(
             closeEvent,
           ),
         ],
-      } as unknown as MessageEvent);
+      });
     }
     return {
       speak: resolutionId => {

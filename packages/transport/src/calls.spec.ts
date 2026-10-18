@@ -8,18 +8,17 @@ import { TransportHandshakeTimeoutError, type TransportIssue } from './errors.js
 import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import {
   breakable,
-  CALL,
   echo,
   notes,
-  NOTES,
   outcomeOf,
   rawRig,
-  READ,
   rig,
   serveWatch,
   TIMEOUT_MS,
-  WATCH,
   watcher,
+  NOT_UTF8,
+  rawRead,
+  rawWatch,
 } from './testing/rig.js';
 
 /** The ids of the subscriptions a raw peer heard start, in order. */
@@ -236,7 +235,7 @@ describe('calls', () => {
     const asked = must(peer.find('request:notes.read')[0], 'the call');
 
     // When an Ok answer to the call carries text that is no UTF-8
-    peer.sendBytes(asked.id, 0, 0, 0, CALL, NOTES, READ, 1, 0, 0xff);
+    peer.call(rawRead, asked.id, { tag: 'response', value: ok(NOT_UTF8) }, notes.read);
     await timers.advance(0);
 
     // Then
@@ -755,8 +754,8 @@ describe('calls', () => {
     const [a = 0, b = 0] = startIds(peer);
 
     // When an interrupt carries a domain error that is no UTF-8, and a value is no UTF-8
-    peer.sendBytes(a, 0, 0, 0, CALL, NOTES, WATCH, 2, 1, 0, 0xff);
-    peer.sendBytes(b, 0, 0, 0, CALL, NOTES, WATCH, 1, 0xff);
+    peer.call(rawWatch, a, { tag: 'interrupt', value: err(domain(NOT_UTF8)) }, notes.watch);
+    peer.call(rawWatch, b, { tag: 'receive', value: NOT_UTF8 }, notes.watch);
     await timers.advance(0);
 
     // Then both end, and each is stopped, since what did not decode may have been a value

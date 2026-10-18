@@ -7,12 +7,13 @@
 // everything the parts cannot handle goes to the owner's issue hook.
 
 import { realTimers, toError, type Timers } from '@dotli/shared';
+import type { ResultPayload } from 'scale-ts';
 import { createCalls, type SubscriptionHandle, type SubscriptionListeners } from './calls.js';
 import { failureReason, logIssue, type TransportIssue } from './errors.js';
 import { createAccepter, createOpener } from './handshake.js';
 import type { Post, Refuse, RunListener } from './parts.js';
 import type { Provider } from './provider.js';
-import { err, ok, type CallError, type Result } from './result.js';
+import { err, ok, type CallError } from './result.js';
 import type { Address, AnyMethod, Request, Schema, Subscription, Traits } from './schema.js';
 import { createServing, type RequestHandler, type SubscriptionHandler } from './serving.js';
 import { decode, frame } from './wire.js';
@@ -69,7 +70,7 @@ export interface Transport<H> {
     method: Request<P, R, E>,
     payload: NoInfer<P>,
     options?: RequestOptions,
-  ): Promise<Result<R, CallError<E>>>;
+  ): Promise<ResultPayload<R, CallError<E>>>;
   /** Serves one method. One handler per method, and calling the returned function unregisters it. */
   handleRequest<P, R, E>(
     method: Request<P, R, E>,
@@ -181,6 +182,7 @@ export function createTransport<H, T extends Traits>(
     runListener,
   });
   const serving = createServing<H>({
+    methodAt: schema.methodAt,
     post,
     closed: () => phase.name === 'closed',
     refuse,
@@ -227,7 +229,7 @@ export function createTransport<H, T extends Traits>(
 
   const receive = (data: ArrayBuffer): void => {
     const received = decode(frame, data);
-    if (received.tag === 'Err') {
+    if (!received.success) {
       refuse('malformed', received.value);
       return;
     }

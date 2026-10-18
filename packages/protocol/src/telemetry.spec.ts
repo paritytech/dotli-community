@@ -13,7 +13,7 @@ import { protocolSchema, type ProtocolTransport, type TelemetryEvent } from './s
 
 const { frame } = protocolSchema.traits;
 
-type TelemetrySink = Sink<TelemetryEvent, never>;
+type TelemetrySink = Sink<TelemetryEvent, undefined>;
 
 /** A frame app that reports telemetry to each subscriber, keeping its sink. */
 function reporting(sinks: TelemetrySink[]): (serving: ProtocolTransport) => void {

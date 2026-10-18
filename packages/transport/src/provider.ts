@@ -4,10 +4,17 @@
 // Providers move bytes between two contexts and know nothing about their meaning. The transport above them encodes and
 // decodes messages.
 
+/** A message a window delivers, as much of it as the window provider reads. A `MessageEvent` is one. */
+export interface WindowMessage {
+  readonly data: unknown;
+  readonly origin: string;
+  readonly source: unknown;
+}
+
 /** Where a window provider hears messages. The page's `window` in the browser. */
 export interface MessageTarget {
-  addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void;
-  removeEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void;
+  addEventListener(type: 'message', listener: (event: WindowMessage) => void): void;
+  removeEventListener(type: 'message', listener: (event: WindowMessage) => void): void;
 }
 
 export interface Provider {
@@ -31,10 +38,14 @@ export interface WindowLike {
   postMessage(message: ArrayBuffer, targetOrigin: string, transfer: Transferable[]): void;
 }
 
-export type PortLike = Pick<
-  MessagePort,
-  'postMessage' | 'addEventListener' | 'removeEventListener' | 'start' | 'close'
->;
+/** A message port, as much of it as the port provider uses. A `MessagePort` is one. */
+export interface PortLike {
+  postMessage(message: ArrayBuffer, transfer: Transferable[]): void;
+  addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+  removeEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+  start(): void;
+  close(): void;
+}
 
 export interface WindowProviderDeps {
   listen: MessageTarget;
@@ -99,7 +110,7 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
   const listeners = createListeners();
   let locked: string | null = typeof origin === 'string' ? origin : null;
 
-  const onMessage = (event: MessageEvent<unknown>): void => {
+  const onMessage = (event: WindowMessage): void => {
     const { data } = event;
     const admitted = locked === null ? typeof origin !== 'string' && origin(event.origin) : event.origin === locked;
     if (!admitted) {
@@ -156,7 +167,7 @@ export function createPortProvider(port: PortLike, options: PortProviderOptions 
   const closeOnDispose = options.closeOnDispose ?? true;
   const listeners = createListeners();
 
-  const onMessage = (event: MessageEvent<unknown>): void => {
+  const onMessage = (event: { readonly data: unknown }): void => {
     if (event.data instanceof ArrayBuffer) {
       listeners.deliver(event.data);
     }

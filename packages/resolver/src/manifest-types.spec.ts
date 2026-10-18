@@ -131,9 +131,10 @@ describe('validateExecutableManifest', () => {
     expect(validateExecutableManifest(VALID_WORKER).ok).toBe(true);
   });
 
-  it('As the host validating an executable manifest, I refuse an app version of the wrong length', () => {
+  it('As the host validating an executable manifest, I refuse an app version of the wrong length or with a part that is no whole number', () => {
     // When / Then
     expect(validateExecutableManifest({ ...VALID_APP, appVersion: [1, 0] }).ok).toBe(false);
+    expect(validateExecutableManifest({ ...VALID_APP, appVersion: [1.5, 0, 0] }).ok).toBe(false);
     expect(validateExecutableManifest({ ...VALID_APP, appVersion: [1, 0, 0, 0, 0] }).ok).toBe(false);
   });
 
@@ -239,7 +240,7 @@ describe('toRootManifestResult', () => {
     const raw = JSON.stringify({ $v: 3 });
 
     // When / Then
-    expect(toRootManifestResult(raw)).toEqual({ kind: 'unsupported-version', version: 3, raw });
+    expect(toRootManifestResult(raw)).toEqual({ kind: 'unsupported-version', version: '3', raw });
   });
 
   it('As the host reading a root manifest record, I report text that is not JSON as invalid', () => {
@@ -256,7 +257,11 @@ describe('toExecutableManifestResult', () => {
 
   it('As the host reading an executable manifest record, I report a v2 manifest as an unsupported version', () => {
     // When / Then
-    expect(toExecutableManifestResult(APP_V2, 'app')).toEqual({ kind: 'unsupported-version', version: 2, raw: APP_V2 });
+    expect(toExecutableManifestResult(APP_V2, 'app')).toEqual({
+      kind: 'unsupported-version',
+      version: '2',
+      raw: APP_V2,
+    });
   });
 
   it('As the host reading an executable manifest record, I report a manifest read from the wrong subname as invalid', () => {

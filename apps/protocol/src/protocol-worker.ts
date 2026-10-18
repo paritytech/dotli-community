@@ -28,9 +28,10 @@ import {
   createTransport,
   err,
   ok,
+  type PortLike,
   type Request,
   type RequestHandler,
-  type Result,
+  type ResultPayload,
   type Sink,
   type Subscription,
   type SubscriptionHandler,
@@ -47,9 +48,17 @@ import { createWireReport } from './refusal-report.js';
 import { createTelemetryHandler } from './telemetry-handler.js';
 import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
+/** A tab's port, as much of it as the worker uses. A `MessagePort` is one. */
+export interface WorkerPort extends PortLike {
+  addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+  addEventListener(type: 'close', listener: () => void): void;
+  removeEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+  removeEventListener(type: 'close', listener: () => void): void;
+}
+
 /** The worker global, narrowed to what the worker uses. */
 export interface WorkerScope {
-  addEventListener: (type: 'connect', listener: (event: MessageEvent) => void) => void;
+  addEventListener: (type: 'connect', listener: (event: { readonly ports: readonly WorkerPort[] }) => void) => void;
   close: () => void;
 }
 
@@ -74,7 +83,7 @@ function intervalClock(intervalMs: number): HeartbeatClock {
 }
 
 /** The network a worker serves, or why it cannot serve one. */
-export type WorkerNetwork = Result<Network, string>;
+export type WorkerNetwork = ResultPayload<Network, string>;
 
 export interface ProtocolWorkerDeps {
   scope: WorkerScope;
@@ -94,14 +103,14 @@ export interface ProtocolWorkerDeps {
 }
 
 interface PortSession {
-  port: MessagePort;
+  port: WorkerPort;
   transport: ProtocolTransport;
   /** Opened by the tab's first chain call. */
   scope: EngineScope | null;
   /** Beats since the port last sent anything. */
   missed: number;
   /** The tab's open `frame.beat` subscriptions, which each beat reaches. */
-  beats: Set<Sink<void, never>>;
+  beats: Set<Sink<undefined, undefined>>;
   /** The tab's open `frame.status` subscriptions, which a release ends before the transport goes. */
   statuses: Set<FrameStatusSink>;
   /** Stops hearing the port close. */
@@ -138,9 +147,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
   // it. So a released port stays open until the beat after its tab speaks again, or until the worker closes. Each maps
   // to its close.
-  const released = new Map<MessagePort, () => void>();
+  const released = new Map<WorkerPort, () => void>();
   // Released ports whose tab spoke since the last beat, which the next beat closes.
-  const spoke = new Set<MessagePort>();
+  const spoke = new Set<WorkerPort>();
   let engine: ProtocolEngine | null = null;
   // The tab that starts the worker connects in a later task, so a failure before then waits for it to close.
   let reached = false;
@@ -153,7 +162,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   // What every port hears through its `frame.status` subscription, each on its own transport.
   const status = createFrameStatus();
 
-  const networkInitFailure = deps.network.tag === 'Err' ? deps.network.value : null;
+  const networkInitFailure = !deps.network.success ? deps.network.value : null;
   if (networkInitFailure !== null) {
     phase = { name: 'failed', error: new ProtocolInitFailedError(networkInitFailure) };
     status.fail(phase.error);
@@ -345,7 +354,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       const span = spanned ? openRequestSpan(name, context.hello.resolutionId) : null;
       try {
         const answer = await handler(payload, context);
-        const failure = answer.tag === 'Ok' ? undefined : failureOf(method, answer.value);
+        const failure = answer.success ? undefined : failureOf(method, answer.value);
         if (span !== null) {
           endSpan(span, failure);
         }
@@ -493,7 +502,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     }
   }
 
-  function onConnect(port: MessagePort): void {
+  function onConnect(port: WorkerPort): void {
     reached = true;
     // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
     const provider = createPortProvider(port, { closeOnDispose: false });
@@ -605,7 +614,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   });
 
   const { network } = deps;
-  if (network.tag === 'Err') {
+  if (!network.success) {
     // Every tab hears this as the reason the worker never became ready, and the host reports it.
     log.error(`${TAG} ${network.value}`);
     return;

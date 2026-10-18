@@ -1,10 +1,24 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Wire codecs for the chain, resolver and manifest values the frame carries. An absent optional field stays absent
-// after decoding, and a manifest's `$v` is not sent because only version 1 is carried.
+// Wire codecs for the chain, resolver and manifest values the frame carries, composed from scale-ts. A manifest's `$v`
+// is not sent because only version 1 is carried.
 
-import { Enum, Struct, Tuple, Vector, _void, enhanceCodec, str, type Codec, type CodecType } from 'scale-ts';
+import {
+  Enum,
+  Option,
+  Struct,
+  Tuple,
+  Vector,
+  _void,
+  bool,
+  compact,
+  enhanceCodec,
+  str,
+  u32,
+  type Codec,
+  type CodecType,
+} from 'scale-ts';
 import type {
   ChainDetail,
   ChainPeer,
@@ -14,86 +28,86 @@ import type {
   SmoldotDbOutcome,
 } from '@dotli/chains';
 import type { ChainRole } from '@dotli/config';
-import type { ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
-import { f64, oneOf, safeInteger, strictBool, strictOption, u32Exact } from './codec-primitives.js';
-
-const CHAIN_ROLES = Object.keys({
-  relay: true,
-  assethub: true,
-  bulletin: true,
-  people: true,
-} satisfies Record<ChainRole, true>) as ChainRole[];
-
-const SMOLDOT_DB_CHAINS = Object.keys({
-  relay: true,
-  assethub: true,
-  bulletin: true,
-} satisfies Record<SmoldotDbChain, true>) as SmoldotDbChain[];
-
-const SMOLDOT_DB_OUTCOMES = Object.keys({
-  hit: true,
-  miss: true,
-  unavailable: true,
-} satisfies Record<SmoldotDbOutcome, true>) as SmoldotDbOutcome[];
-
-const CHAIN_SYNC_KINDS = Object.keys({
-  firstPeer: true,
-  bootstrapComplete: true,
-  stalled: true,
-  recovered: true,
-  peers: true,
-  connecting: true,
-  warpSyncProgress: true,
-  warpSyncFinished: true,
-} satisfies Record<ChainSyncKind, true>) as ChainSyncKind[];
-
-const RESOLVE_PHASES = Object.keys({
-  'asset-hub-connecting': true,
-  'asset-hub-syncing': true,
-  'asset-hub-ready': true,
-  'resolving-content': true,
-} satisfies Record<ResolvePhase, true>) as ResolvePhase[];
-
-type DbCache = NonNullable<ChainDetail['dbCache']>;
-
-const DB_CACHE_OUTCOMES = Object.keys({ hit: true, miss: true } satisfies Record<DbCache, true>) as DbCache[];
+import type { AppVersion, ExecutableManifest, ManifestResult, ResolvePhase, RootManifest } from '@dotli/resolver';
 
 /**
- * The fields of a wire struct for a type owned elsewhere. Held to the type's keys with `satisfies`, so a field added
- * to the type, optional ones included, fails the build until the wire carries it or names it in `Omitted`.
+ * The codec of each field of `T`. Held to the type with `satisfies`, so a field added to the type fails the build until
+ * the wire carries it.
  */
-type FieldsOf<T, Omitted extends keyof T = never> = Record<Exclude<keyof T, Omitted>, unknown>;
+type CodecsOf<T> = { [K in keyof T]-?: Codec<T[K]> };
 
 type WidgetManifest = Extract<ExecutableManifest, { kind: 'widget' }>;
 type WorkerManifest = Extract<ExecutableManifest, { kind: 'worker' }>;
-type ManifestVariant<T, K extends ManifestResult<T>['kind']> = Extract<ManifestResult<T>, { kind: K }>;
 
-export const chainRoleCodec: Codec<ChainRole> = oneOf(CHAIN_ROLES);
-export const smoldotDbChainCodec: Codec<SmoldotDbChain> = oneOf(SMOLDOT_DB_CHAINS);
-export const smoldotDbOutcomeCodec: Codec<SmoldotDbOutcome> = oneOf(SMOLDOT_DB_OUTCOMES);
-export const chainSyncKindCodec: Codec<ChainSyncKind> = oneOf(CHAIN_SYNC_KINDS);
-export const resolvePhaseCodec: Codec<ResolvePhase> = oneOf(RESOLVE_PHASES);
-
-/** `Option` decodes to `undefined`, which `exactOptionalPropertyTypes` does not accept as an absent field. */
-// The result type is the caller's claim, since the filter cannot prove which keys survive.
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T only names the caller's target type
-function dropUndefined<T>(wire: object): T {
-  return Object.fromEntries(Object.entries(wire).filter(([, value]) => value !== undefined)) as T;
+/** A string union as an enum of empty variants, read and written as the variant's name. */
+export function names<T extends string>(variants: Codec<{ tag: T; value: undefined }>): Codec<T> {
+  return enhanceCodec(
+    variants,
+    (tag: T) => ({ tag, value: undefined }),
+    ({ tag }) => tag,
+  );
 }
 
-const chainSyncEventWire = Struct({
-  chain: chainRoleCodec,
-  kind: chainSyncKindCodec,
-  reason: strictOption(str),
-  peers: strictOption(u32Exact),
-  isSyncing: strictOption(strictBool),
-  at: strictOption(u32Exact),
-  target: strictOption(u32Exact),
-  finalized: strictOption(u32Exact),
-} satisfies FieldsOf<ChainSyncEvent>);
+/** An `Option` read and written as `null` for none. */
+export function nullable<T>(inner: Codec<T>): Codec<T | null> {
+  return enhanceCodec<T | undefined, T | null>(
+    Option(inner),
+    value => value ?? undefined,
+    value => value ?? null,
+  );
+}
 
+/** A whole number of any size, as SCALE's compact. */
+const count: Codec<number> = enhanceCodec(compact, (value: number) => value, Number);
+
+export const chainRoleCodec = names<ChainRole>(
+  Enum({ relay: _void, assethub: _void, bulletin: _void, people: _void } satisfies Record<ChainRole, Codec<undefined>>),
+);
+
+export const smoldotDbChainCodec = names<SmoldotDbChain>(
+  Enum({ relay: _void, assethub: _void, bulletin: _void } satisfies Record<SmoldotDbChain, Codec<undefined>>),
+);
+
+export const smoldotDbOutcomeCodec = names<SmoldotDbOutcome>(
+  Enum({ hit: _void, miss: _void, unavailable: _void } satisfies Record<SmoldotDbOutcome, Codec<undefined>>),
+);
+
+export const chainSyncKindCodec = names<ChainSyncKind>(
+  Enum({
+    firstPeer: _void,
+    bootstrapComplete: _void,
+    stalled: _void,
+    recovered: _void,
+    peers: _void,
+    connecting: _void,
+    warpSyncProgress: _void,
+    warpSyncFinished: _void,
+  } satisfies Record<ChainSyncKind, Codec<undefined>>),
+);
+
+export const resolvePhaseCodec = names<ResolvePhase>(
+  Enum({
+    'asset-hub-connecting': _void,
+    'asset-hub-syncing': _void,
+    'asset-hub-ready': _void,
+    'resolving-content': _void,
+  } satisfies Record<ResolvePhase, Codec<undefined>>),
+);
+
+const dbCacheCodec = names<NonNullable<ChainDetail['dbCache']>>(Enum({ hit: _void, miss: _void }));
+
+// An event leaves out the fields its kind does not use, which the wire still carries as none.
 export const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
-  chainSyncEventWire,
+  Struct({
+    chain: chainRoleCodec,
+    kind: chainSyncKindCodec,
+    reason: Option(str),
+    peers: Option(u32),
+    isSyncing: Option(bool),
+    at: Option(u32),
+    target: Option(u32),
+    finalized: Option(u32),
+  } satisfies CodecsOf<ChainSyncEvent>),
   (event: ChainSyncEvent) => ({
     chain: event.chain,
     kind: event.kind,
@@ -104,36 +118,29 @@ export const chainSyncEventCodec: Codec<ChainSyncEvent> = enhanceCodec(
     target: event.target,
     finalized: event.finalized,
   }),
-  wire => dropUndefined<ChainSyncEvent>(wire),
+  (event): ChainSyncEvent => event,
 );
 
-const chainPeerCodec: Codec<ChainPeer> = Struct({
-  peerId: str,
-  roles: str,
-  bestNumber: u32Exact,
-} satisfies FieldsOf<ChainPeer>);
-
-const chainDetailWire = Struct({
-  chain: chainRoleCodec,
-  dbCache: strictOption(oneOf(DB_CACHE_OUTCOMES)),
-  peers: strictOption(Vector(chainPeerCodec)),
-} satisfies FieldsOf<ChainDetail>);
+const chainPeerCodec = Struct({ peerId: str, roles: str, bestNumber: u32 } satisfies CodecsOf<ChainPeer>);
 
 const chainDetailCodec: Codec<ChainDetail> = enhanceCodec(
-  chainDetailWire,
+  Struct({
+    chain: chainRoleCodec,
+    dbCache: Option(dbCacheCodec),
+    peers: Option(Vector(chainPeerCodec)),
+  } satisfies CodecsOf<ChainDetail>),
   (detail: ChainDetail) => ({ chain: detail.chain, dbCache: detail.dbCache, peers: detail.peers }),
-  wire => dropUndefined<ChainDetail>(wire),
+  (detail): ChainDetail => detail,
 );
 
-const rootManifestWire = Struct({
-  displayName: str,
-  description: str,
-  icon: Struct({ cid: str, format: str } satisfies FieldsOf<RootManifest['icon']>),
-  trustedProducts: strictOption(Vector(Tuple(str, Vector(str)))),
-} satisfies FieldsOf<RootManifest, '$v'>);
-
+// Trusted products cross as entries, since a record has no SCALE form of its own.
 export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
-  rootManifestWire,
+  Struct({
+    displayName: str,
+    description: str,
+    icon: Struct({ cid: str, format: str }),
+    trustedProducts: Option(Vector(Tuple(str, Vector(str)))),
+  }),
   (manifest: RootManifest) => ({
     displayName: manifest.displayName,
     description: manifest.description,
@@ -146,71 +153,53 @@ export const rootManifestCodec: Codec<RootManifest> = enhanceCodec(
             [...grants],
           ]),
   }),
-  (wire): RootManifest => {
-    const { trustedProducts, ...rest } = wire;
-    return {
-      $v: 1,
-      ...rest,
-      ...(trustedProducts === undefined ? {} : { trustedProducts: Object.fromEntries(trustedProducts) }),
-    };
-  },
+  ({ trustedProducts, ...manifest }): RootManifest => ({
+    $v: 1,
+    ...manifest,
+    trustedProducts: trustedProducts === undefined ? undefined : Object.fromEntries(trustedProducts),
+  }),
 );
 
-const appVersionCodec = Tuple(f64, f64, f64, strictOption(str));
-
-type WidgetDimensions = WidgetManifest['dimensions'];
-
-const widgetDimensionsCodec: Codec<WidgetDimensions> = enhanceCodec(
-  Struct({ height: Vector(f64), width: strictOption(f64) } satisfies FieldsOf<WidgetDimensions>),
-  (dimensions: WidgetDimensions) => ({ height: [...dimensions.height], width: dimensions.width }),
-  ({ height, width }): WidgetDimensions => (width === undefined ? { height } : { height, width }),
+// An app version has three numbers and an optional build, which crosses as an option.
+const appVersionCodec: Codec<AppVersion> = enhanceCodec(
+  Tuple(count, count, count, Option(str)),
+  (version: AppVersion): [number, number, number, string | undefined] => [
+    version[0],
+    version[1],
+    version[2],
+    version[3],
+  ],
+  ([major, minor, patch, build]): AppVersion =>
+    build === undefined ? [major, minor, patch] : [major, minor, patch, build],
 );
 
-const workerIncludesCodec = Struct({
-  chat: strictOption(strictBool),
-  pocket: strictOption(strictBool),
-  input: strictOption(strictBool),
-} satisfies FieldsOf<WorkerManifest['includes']>);
+const dimensionsCodec: Codec<WidgetManifest['dimensions']> = enhanceCodec(
+  Struct({ height: Vector(count), width: Option(count) }),
+  (dimensions: WidgetManifest['dimensions']) => ({ height: [...dimensions.height], width: dimensions.width }),
+  (dimensions): WidgetManifest['dimensions'] => dimensions,
+);
 
-const executableManifestWire = Enum({
-  app: Struct({ appVersion: appVersionCodec } satisfies FieldsOf<
-    Extract<ExecutableManifest, { kind: 'app' }>,
-    '$v' | 'kind'
-  >),
-  widget: Struct({
-    appVersion: appVersionCodec,
-    description: strictOption(str),
-    dimensions: widgetDimensionsCodec,
-  } satisfies FieldsOf<WidgetManifest, '$v' | 'kind'>),
-  worker: Struct({
-    appVersion: appVersionCodec,
-    entrypoint: str,
-    includes: workerIncludesCodec,
-  } satisfies FieldsOf<WorkerManifest, '$v' | 'kind'>),
-});
-
-type WireAppVersion = [number, number, number, string | undefined];
-
-function toWireAppVersion(version: ExecutableManifest['appVersion']): WireAppVersion {
-  return [version[0], version[1], version[2], version.length === 4 ? version[3] : undefined];
-}
-
-function fromWireAppVersion([major, minor, patch, build]: WireAppVersion): ExecutableManifest['appVersion'] {
-  return build === undefined ? [major, minor, patch] : [major, minor, patch, build];
-}
+const includesCodec: Codec<WorkerManifest['includes']> = enhanceCodec(
+  Struct({ chat: Option(bool), pocket: Option(bool), input: Option(bool) }),
+  (includes: WorkerManifest['includes']) => ({ chat: includes.chat, pocket: includes.pocket, input: includes.input }),
+  (includes): WorkerManifest['includes'] => includes,
+);
 
 export const executableManifestCodec: Codec<ExecutableManifest> = enhanceCodec(
-  executableManifestWire,
+  Enum({
+    app: Struct({ appVersion: appVersionCodec }),
+    widget: Struct({ appVersion: appVersionCodec, description: Option(str), dimensions: dimensionsCodec }),
+    worker: Struct({ appVersion: appVersionCodec, entrypoint: str, includes: includesCodec }),
+  }),
   (manifest: ExecutableManifest) => {
-    const appVersion = toWireAppVersion(manifest.appVersion);
     switch (manifest.kind) {
       case 'app':
-        return { tag: 'app' as const, value: { appVersion } };
+        return { tag: 'app' as const, value: { appVersion: manifest.appVersion } };
       case 'widget':
         return {
           tag: 'widget' as const,
           value: {
-            appVersion,
+            appVersion: manifest.appVersion,
             description: manifest.description,
             dimensions: manifest.dimensions,
           },
@@ -218,63 +207,31 @@ export const executableManifestCodec: Codec<ExecutableManifest> = enhanceCodec(
       case 'worker':
         return {
           tag: 'worker' as const,
-          value: {
-            appVersion,
-            entrypoint: manifest.entrypoint,
-            includes: {
-              chat: manifest.includes.chat,
-              pocket: manifest.includes.pocket,
-              input: manifest.includes.input,
-            },
-          },
+          value: { appVersion: manifest.appVersion, entrypoint: manifest.entrypoint, includes: manifest.includes },
         };
     }
   },
   (wire): ExecutableManifest => {
-    const appVersion = fromWireAppVersion(wire.value.appVersion);
     switch (wire.tag) {
       case 'app':
-        return { $v: 1, kind: 'app', appVersion };
+        return { $v: 1, kind: 'app', ...wire.value };
       case 'widget':
-        return {
-          $v: 1,
-          kind: 'widget',
-          appVersion,
-          ...dropUndefined<{ description?: string }>({ description: wire.value.description }),
-          dimensions: wire.value.dimensions,
-        };
+        return { $v: 1, kind: 'widget', ...wire.value };
       case 'worker':
-        return {
-          $v: 1,
-          kind: 'worker',
-          appVersion,
-          entrypoint: wire.value.entrypoint,
-          includes: dropUndefined({ ...wire.value.includes }),
-        };
+        return { $v: 1, kind: 'worker', ...wire.value };
     }
   },
 );
 
-/** `unsupported-version.version` is any JSON value. Empty text stands for `undefined`, which JSON cannot spell. */
-const jsonTextCodec: Codec<unknown> = enhanceCodec(
-  str,
-  (value: unknown) => (value === undefined ? '' : ((JSON.stringify(value) as string | undefined) ?? '')),
-  (text: string): unknown => (text === '' ? undefined : JSON.parse(text)),
-);
-
 export function manifestResultCodec<T>(value: Codec<T>): Codec<ManifestResult<T>> {
-  const wire = Enum({
-    ok: Struct({ value, raw: str } satisfies FieldsOf<ManifestVariant<T, 'ok'>, 'kind'>),
-    empty: _void,
-    unsupported: Struct({ reason: str } satisfies FieldsOf<ManifestVariant<T, 'unsupported'>, 'kind'>),
-    'unsupported-version': Struct({
-      version: jsonTextCodec,
-      raw: str,
-    } satisfies FieldsOf<ManifestVariant<T, 'unsupported-version'>, 'kind'>),
-    invalid: Struct({ errors: Vector(str), raw: str } satisfies FieldsOf<ManifestVariant<T, 'invalid'>, 'kind'>),
-  });
   return enhanceCodec(
-    wire,
+    Enum({
+      ok: Struct({ value, raw: str }),
+      empty: _void,
+      unsupported: Struct({ reason: str }),
+      'unsupported-version': Struct({ version: str, raw: str }),
+      invalid: Struct({ errors: Vector(str), raw: str }),
+    }),
     (result: ManifestResult<T>) => {
       switch (result.kind) {
         case 'ok':
@@ -284,10 +241,7 @@ export function manifestResultCodec<T>(value: Codec<T>): Codec<ManifestResult<T>
         case 'unsupported':
           return { tag: 'unsupported' as const, value: { reason: result.reason } };
         case 'unsupported-version':
-          return {
-            tag: 'unsupported-version' as const,
-            value: { version: result.version, raw: result.raw },
-          };
+          return { tag: 'unsupported-version' as const, value: { version: result.version, raw: result.raw } };
         case 'invalid':
           return { tag: 'invalid' as const, value: { errors: result.errors, raw: result.raw } };
       }
@@ -295,15 +249,15 @@ export function manifestResultCodec<T>(value: Codec<T>): Codec<ManifestResult<T>
     (decoded): ManifestResult<T> => {
       switch (decoded.tag) {
         case 'ok':
-          return { kind: 'ok', value: decoded.value.value, raw: decoded.value.raw };
+          return { kind: 'ok', ...decoded.value };
         case 'empty':
           return { kind: 'empty' };
         case 'unsupported':
-          return { kind: 'unsupported', reason: decoded.value.reason };
+          return { kind: 'unsupported', ...decoded.value };
         case 'unsupported-version':
-          return { kind: 'unsupported-version', version: decoded.value.version, raw: decoded.value.raw };
+          return { kind: 'unsupported-version', ...decoded.value };
         case 'invalid':
-          return { kind: 'invalid', errors: decoded.value.errors, raw: decoded.value.raw };
+          return { kind: 'invalid', ...decoded.value };
       }
     },
   );
@@ -312,7 +266,7 @@ export function manifestResultCodec<T>(value: Codec<T>): Codec<ManifestResult<T>
 const telemetryEventWire = Enum({
   chainSync: chainSyncEventCodec,
   chainDetail: chainDetailCodec,
-  netBytes: safeInteger,
+  netBytes: count,
   smoldotDb: Struct({ chain: smoldotDbChainCodec, outcome: smoldotDbOutcomeCodec }),
 });
 

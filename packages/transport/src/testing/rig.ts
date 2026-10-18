@@ -5,13 +5,13 @@
 
 import { bindLogSink, toError } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
-import { _void, type Codec } from 'scale-ts';
+import { Bytes, _void, type Codec, type ResultPayload } from 'scale-ts';
 import { onTestFinished } from 'vitest';
 import { codec } from '../codec.js';
 import type { TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
-import type { CallError, Result } from '../result.js';
+import { ok, type CallError } from '../result.js';
 import { defineSchema, request, subscription, type Address, type AnyMethod } from '../schema.js';
 import type { Sink } from '../serving.js';
 import { createTransport, type Transport } from '../transport.js';
@@ -68,25 +68,28 @@ const idsOf = (method: AnyMethod): Address => {
   return address;
 };
 
-// A frame's tags and the schema's wire ids, for tests that write bytes by hand.
-export const OPEN = 0;
-export const FAILED = 2;
-export const CALL = 3;
+/** The wire id of the `notes` trait, for a test that calls a method the trait lacks. */
 export const NOTES = idsOf(notes.read).traitId;
-export const READ = idsOf(notes.read).methodId;
-export const WATCH = idsOf(notes.watch).methodId;
+
+// `notes.read` and `notes.watch` with every payload as bytes, so a test can send what their codecs refuse.
+const bytes = Bytes(Infinity);
+export const rawRead = request({ request: bytes, response: bytes, error: bytes });
+export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: bytes });
+
+/** Bytes that are no UTF-8, which `text` refuses. */
+export const NOT_UTF8 = Uint8Array.of(0xff);
 
 /** Listeners of a `notes.watch` subscription that record the values and the ends it hears. */
 export function watcher() {
   const values: string[] = [];
-  const ends: Result<undefined, CallError<string>>[] = [];
+  const ends: ResultPayload<undefined, CallError<string>>[] = [];
   return {
     values,
     ends,
     receive: (value: string) => {
       values.push(value);
     },
-    interrupt: (outcome: Result<undefined, CallError<string>>) => {
+    interrupt: (outcome: ResultPayload<undefined, CallError<string>>) => {
       ends.push(outcome);
     },
   };
@@ -149,9 +152,14 @@ function rawPeer(provider: Provider) {
   provider.subscribe(data => heard.push(readFrame(testSchema, data)));
   return {
     heard,
-    /** Posts a message on a call `id` of `method`. */
-    call: <M>(method: AnyMethod & { readonly frame: Codec<Frame<M>> }, id: number, message: M) => {
-      const address = idsOf(method);
+    /** Posts a message on a call `id` of `method`, at the place of `at`, which is `method` unless given. */
+    call: <M>(
+      method: AnyMethod & { readonly frame: Codec<Frame<M>> },
+      id: number,
+      message: M,
+      at: AnyMethod = method,
+    ) => {
+      const address = idsOf(at);
       const value = { trait: address.traitId, method: address.methodId, message };
       provider.post(encodeFrame(method.frame, { id, body: { tag: 'call', value } }));
     },
@@ -159,7 +167,7 @@ function rawPeer(provider: Provider) {
     send: (id: number, body: Frame<Uint8Array>['body']) => {
       provider.post(encodeFrame(frame, { id, body }));
     },
-    /** Posts bytes the test wrote by hand. */
+    /** Posts bytes that are no frame. */
     sendBytes: (...bytes: number[]) => {
       provider.post(Uint8Array.from(bytes).buffer);
     },
@@ -203,7 +211,7 @@ export function rawRig(
     if (attempt === undefined) {
       throw new Error('no handshake heard yet');
     }
-    peer.send(attempt.id, { tag: 'accept', value: { tag: 'Ok', value: text.enc('peer') } });
+    peer.send(attempt.id, { tag: 'accept', value: ok(text.enc('peer')) });
   };
   /** Opens the handshake toward the transport, as an opener of `version`. */
   const openHandshake = (version = VERSION, id = 1): void => {

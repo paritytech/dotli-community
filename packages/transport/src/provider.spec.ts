@@ -3,7 +3,13 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createProviderPair } from './provider.fake.js';
-import { createPortProvider, createWindowProvider, type MessageTarget, type WindowLike } from './provider.js';
+import {
+  createPortProvider,
+  createWindowProvider,
+  type MessageTarget,
+  type WindowLike,
+  type WindowMessage,
+} from './provider.js';
 
 interface FakeWindow extends WindowLike {
   posted: { message: unknown; targetOrigin: string; transfer: Transferable[] }[];
@@ -20,28 +26,26 @@ function createFakeWindow(): FakeWindow {
 }
 
 /** A page's message target, driven from the test. */
-function createTarget(): MessageTarget & { dispatchEvent(event: Event): boolean } {
-  const target = new EventTarget();
+function createTarget(): MessageTarget & { dispatchEvent(message: WindowMessage): void } {
+  const listeners = new Set<(message: WindowMessage) => void>();
   return {
-    addEventListener: (type, listener) => {
-      target.addEventListener(type, listener as EventListener);
+    addEventListener: (_type, listener) => {
+      listeners.add(listener);
     },
-    removeEventListener: (type, listener) => {
-      target.removeEventListener(type, listener as EventListener);
+    removeEventListener: (_type, listener) => {
+      listeners.delete(listener);
     },
-    dispatchEvent: event => target.dispatchEvent(event),
+    dispatchEvent: message => {
+      for (const listener of [...listeners]) {
+        listener(message);
+      }
+    },
   };
 }
 
-/** A message event with the `source` and `origin` a browser would set. */
-function messageFrom(source: unknown, origin: string, data: unknown): MessageEvent {
-  const event = new Event('message');
-  Object.defineProperties(event, {
-    source: { value: source },
-    origin: { value: origin },
-    data: { value: data },
-  });
-  return event as MessageEvent;
+/** A message with the `source` and `origin` a browser would set. */
+function messageFrom(source: unknown, origin: string, data: unknown): WindowMessage {
+  return { source, origin, data };
 }
 
 describe('createWindowProvider', () => {

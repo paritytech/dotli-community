@@ -3,13 +3,13 @@
 
 export type { SubscriptionHandle, SubscriptionListeners } from './calls.js';
 export { codec } from './codec.js';
-export type { Codec } from './codec.js';
+export type { Codec, ResultPayload } from 'scale-ts';
 export { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
 export type { TransportIssue } from './errors.js';
 export { createPortProvider, createWindowProvider } from './provider.js';
-export type { MessageTarget, PortLike, Provider, WindowLike, WindowProviderDeps } from './provider.js';
+export type { MessageTarget, PortLike, Provider, WindowLike, WindowMessage, WindowProviderDeps } from './provider.js';
 export { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
-export type { CallError, Result, Variant } from './result.js';
+export type { CallError, Failure, Variant } from './result.js';
 export { defineSchema, request, subscription } from './schema.js';
 export type {
   Address,

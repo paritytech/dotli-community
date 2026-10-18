@@ -57,7 +57,7 @@ function relaySubscription<S, V, I>(
         sink.receive(value);
       },
       interrupt: outcome => {
-        sink.interrupt(outcome.tag === 'Ok' ? undefined : outcome.value);
+        sink.interrupt(outcome.success ? undefined : outcome.value);
       },
     });
     subscription.onClose(error => {
@@ -94,7 +94,7 @@ export function registerWorkerRelay(
     // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
     worker.dispose(workerEndError(end));
     if (end.kind === 'interrupt') {
-      status.interrupt(end.outcome.tag === 'Ok' ? undefined : end.outcome.value);
+      status.interrupt(end.outcome.success ? undefined : end.outcome.value);
     } else {
       status.fail(end.error);
     }

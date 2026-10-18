@@ -18,7 +18,7 @@ import {
   createPortProvider,
   createTransport,
   type CallError,
-  type Result,
+  type ResultPayload,
   type TransportIssue,
 } from '@dotli/transport';
 
@@ -30,7 +30,7 @@ import { disposeOnPageHide } from './worker-port.js';
  * transport closing under it.
  */
 export type WorkerEnd =
-  { kind: 'interrupt'; outcome: Result<undefined, CallError<FrameFailure>> } | { kind: 'close'; error: Error };
+  { kind: 'interrupt'; outcome: ResultPayload<undefined, CallError<FrameFailure>> } | { kind: 'close'; error: Error };
 
 /** The one `frame.status` subscription to the worker. */
 export interface WorkerStatus {
@@ -46,7 +46,7 @@ export function workerEndError(end: WorkerEnd): Error {
   if (end.kind === 'close') {
     return fromTransportError(end.error);
   }
-  return end.outcome.tag === 'Ok'
+  return end.outcome.success
     ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED)
     : failureOf(protocolSchema.traits.frame.status, end.outcome.value);
 }
@@ -137,7 +137,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     receive: () => {
       void transport.request(protocolSchema.traits.frame.heartbeat, undefined).then(
         outcome => {
-          if (outcome.tag === 'Err') {
+          if (!outcome.success) {
             failed(failureOf(protocolSchema.traits.frame.heartbeat, outcome.value));
           }
         },

@@ -82,16 +82,28 @@ const DEFAULT_FRAME_TIMEOUTS: ProtocolFrameTimeouts = {
   stableMs: 30_000,
 };
 
-/** Builds and mounts the hidden frame. The page's `document` in the browser. */
-export interface FrameDocument {
-  createElement(tagName: 'iframe'): HTMLIFrameElement;
-  readonly body: HTMLElement;
+/** The hidden iframe, as much of it as the frame uses. An `HTMLIFrameElement` is one. */
+export interface FrameElement {
+  src: string;
+  tabIndex: number;
+  readonly style: { cssText: string };
+  readonly contentWindow: WindowLike | null;
+  setAttribute(name: string, value: string): void;
+  addEventListener(type: 'load' | 'error', listener: () => void, options: { once: true }): void;
+  removeEventListener(type: 'load' | 'error', listener: () => void): void;
+  remove(): void;
 }
 
-export interface ProtocolFrameDeps {
+/** Builds and mounts the hidden frame's iframe, an `E`. The page's `document` in the browser. */
+export interface FrameDocument<E extends FrameElement> {
+  createElement(tagName: 'iframe'): E;
+  readonly body: { appendChild(node: E): E };
+}
+
+export interface ProtocolFrameDeps<E extends FrameElement> {
   /** The protocol frame's origin. Messages from any other origin are ignored. */
   origin: string;
-  document: FrameDocument;
+  document: FrameDocument<E>;
   /** Where the frame's messages arrive. The page's `window` in the browser. */
   window: MessageTarget;
   timeouts?: Partial<ProtocolFrameTimeouts> | undefined;
@@ -138,9 +150,9 @@ export interface ProtocolFrame {
 }
 
 /** One iframe and the transport to it. The transport exists before the iframe, so a `booting` listener can reach it. */
-class FrameSlot {
+class FrameSlot<E extends FrameElement> {
   /** Null until it is built. */
-  iframe: HTMLIFrameElement | null = null;
+  iframe: E | null = null;
   /** Aborted with why the frame is gone, which ends whatever its keeper waits on. */
   readonly loss = new AbortController();
   readonly transport: ProtocolTransport;
@@ -188,7 +200,7 @@ function reportFrameLost(error: Error, count: typeof m.count, capture: boolean):
   return capture;
 }
 
-export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
+export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameDeps<E>): ProtocolFrame {
   const { origin, document: frameDocument, window: messages } = deps;
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...deps.timeouts };
   const timers = deps.timers ?? realTimers;
@@ -202,7 +214,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   // Why the frame is down, for a caller that asks before it is back.
   let downReason: Error = new Error(PROTOCOL_ERRORS.FRAME_RESET);
   // The frame being booted or kept, and nothing while the frame is down.
-  let slot: FrameSlot | null = null;
+  let slot: FrameSlot<E> | null = null;
   // Stops the keeper when the host drops the frame on purpose.
   let keeper: AbortController | null = null;
   let losses = 0;
@@ -246,8 +258,8 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
   }
 
   /** A slot with its transport, which hears the frame's status from the start. */
-  function openSlot(): FrameSlot {
-    const kept = new FrameSlot(peer =>
+  function openSlot(): FrameSlot<E> {
+    const kept = new FrameSlot<E>(peer =>
       createTransport(
         protocolSchema,
         createWindowProvider({
@@ -320,7 +332,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
     });
   }
 
-  function createIframe(config: ProtocolFrameConfig): HTMLIFrameElement {
+  function createIframe(config: ProtocolFrameConfig): E {
     const iframe = frameDocument.createElement('iframe');
     const params = new URLSearchParams();
     params.set('mode', FRAME_MODES[config.backend]);
@@ -346,7 +358,7 @@ export function createProtocolFrame(deps: ProtocolFrameDeps): ProtocolFrame {
    * committed its document is dropped. `load` also fires when the frame's script failed, which the handshake's own
    * timeout then finds.
    */
-  function untilLoaded(kept: FrameSlot, iframe: HTMLIFrameElement): Promise<void> {
+  function untilLoaded(kept: FrameSlot<E>, iframe: E): Promise<void> {
     const signal = kept.loss.signal;
     return new Promise<void>((resolve, reject) => {
       const onLoad = (): void => {

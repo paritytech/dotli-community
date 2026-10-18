@@ -40,8 +40,8 @@ const { frame, resolve, chain } = protocolSchema.traits;
 
 type Executable = MethodTypes<typeof resolve.executableManifest>;
 type Root = MethodTypes<typeof resolve.rootManifest>;
-type ExecutableAnswer = Extract<Executable['response'], { tag: 'Ok' }>;
-type RootAnswer = Extract<Root['response'], { tag: 'Ok' }>;
+type ExecutableAnswer = Extract<Executable['response'], { success: true }>;
+type RootAnswer = Extract<Root['response'], { success: true }>;
 
 interface Hops {
   host: ProtocolTransport;

@@ -10,7 +10,7 @@ import {
   createPortProvider,
   createTransport,
   type CallError,
-  type Result,
+  type ResultPayload,
   type Subscription,
   type TransportIssue,
 } from '@dotli/transport';
@@ -19,7 +19,7 @@ export const HOST_ORIGIN = 'http://host-playground.localhost:5173';
 export const PRODUCT_ORIGIN = 'http://bafy.app.localhost:5173';
 
 /** How a subscription whose own end reason is `I` ended: the peer's interrupt, or the error its transport closed with. */
-export type EndOf<I> = Result<undefined, CallError<I>> | Error;
+export type EndOf<I> = ResultPayload<undefined, CallError<I>> | Error;
 
 export interface HostLink {
   /** The frame's end, where a spec registers the handlers under test. */

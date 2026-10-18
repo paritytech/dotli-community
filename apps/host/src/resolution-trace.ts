@@ -121,16 +121,20 @@ function newChainState(): ChainState {
 export interface ChainSyncFacts {
   chain: ChainRole;
   syncKind: ChainSyncKind;
-  peers?: number;
-  reason?: string;
-  at?: number;
-  target?: number;
+  peers?: number | undefined;
+  reason?: string | undefined;
+  at?: number | undefined;
+  target?: number | undefined;
 }
 
 export interface ResolutionTrace {
   chainSync: (event: ChainSyncFacts) => void;
   /** A telemetry-only fact about one chain. */
-  chainDetail: (event: { chain: ChainRole; dbCache?: CacheResult; peers?: ChainPeer[] }) => void;
+  chainDetail: (event: {
+    chain: ChainRole;
+    dbCache?: CacheResult | undefined;
+    peers?: ChainPeer[] | undefined;
+  }) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;

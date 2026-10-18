@@ -3,8 +3,6 @@
 
 import { Bytes, enhanceCodec, type Codec } from 'scale-ts';
 
-export type { Codec };
-
 /** Wraps plain encode and decode functions as a codec. A payload ends its message, so it takes the rest of the bytes. */
 export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8Array) => T): Codec<T> {
   return enhanceCodec(Bytes(Infinity), encode, decode);
