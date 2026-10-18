@@ -35,10 +35,8 @@ export class WireDecodeError extends Error {
   }
 }
 
-/**
- * Names a scale-ts decode failure in `what`, keeping it as the cause. A read past the end is a `RangeError` in scale-ts,
- * so it is told apart. A failure already named passes unchanged.
- */
+// The transport keeps its scale-ts helpers private, since its codecs are opaque, so the protocol has its own wrapper.
+/** Names a decode failure in `what`, keeping it as the cause. A failure already named passes unchanged. */
 function named<T>(c: Codec<T>, what: string): Codec<T> {
   return createCodec(
     c.enc,
@@ -49,9 +47,7 @@ function named<T>(c: Codec<T>, what: string): Codec<T> {
         if (cause instanceof WireDecodeError) {
           throw cause;
         }
-        throw new WireDecodeError(`${what} ${cause instanceof RangeError ? 'ends early' : 'does not decode'}`, {
-          cause,
-        });
+        throw new WireDecodeError(`${what} could not be decoded`, { cause });
       }
     }),
   );

@@ -92,9 +92,29 @@ describe('codec primitives', () => {
     // When / Then
     for (const decoder of options) {
       expect(() => decodeExact(decoder, tagged)).toThrow(WireDecodeError);
-      expect(() => decodeExact(decoder, tagged)).toThrow('the option does not decode');
+      expect(() => decodeExact(decoder, tagged)).toThrow('the option could not be decoded');
     }
     expect(() => decodeExact(strictBool.dec, toBuffer(u8.enc(2)))).toThrow(new RangeError('2 is not a bool'));
+  });
+
+  it('As a receiver, I decode an option holding a bool byte of 2 and refuse it with the bool check as the cause', () => {
+    // Given
+    const option = strictOption(strictBool);
+
+    // When
+    let caught: unknown;
+    try {
+      decodeExact(option.dec, toBuffer(Uint8Array.of(1, 2)));
+    } catch (error) {
+      caught = error;
+    }
+
+    // Then
+    expect(caught).toBeInstanceOf(WireDecodeError);
+    expect(caught).toMatchObject({
+      message: 'the option could not be decoded',
+      cause: new RangeError('2 is not a bool'),
+    });
   });
 
   it('As a sender, I send options and bools and they arrive as sent', () => {
@@ -138,7 +158,7 @@ describe('codec primitives', () => {
 
     // When / Then
     expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow(WireDecodeError);
-    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow('the listed value does not decode');
+    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow('the listed value could not be decoded');
   });
 
   it('As a sender, I send listed values that look like integers and each keeps its place in the list', () => {
