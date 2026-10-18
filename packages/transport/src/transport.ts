@@ -14,6 +14,7 @@ import type { Post, RunListener } from './parts.js';
 import { err, ok } from './result.js';
 import {
   methodAddress,
+  methodNamesAt,
   type DomainError,
   type HelloOf,
   type MethodName,
@@ -189,12 +190,13 @@ export function createTransport<S extends Schema>(
       report({ kind: 'listener_threw', error });
     }
   };
-  const post: Post = data => {
+  const post: Post = (data, address) => {
     try {
       provider.post(data);
       return ok();
     } catch (error) {
-      report({ kind: 'post_failed', error });
+      const call = address === undefined ? undefined : methodNamesAt(schema, address.trait, address.method);
+      report(call === undefined ? { kind: 'post_failed', error } : { kind: 'post_failed', error, call });
       return err(error);
     }
   };

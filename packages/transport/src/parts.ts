@@ -14,8 +14,11 @@ export interface Address {
   method: number;
 }
 
-/** Posts bytes. A post the provider throws on is already reported when it returns the error. */
-export type Post = (data: ArrayBuffer) => Result<void, unknown>;
+/**
+ * Posts bytes, of a call on `address` when they belong to one. A post the provider throws on is already reported when
+ * it returns the error.
+ */
+export type Post = (data: ArrayBuffer, address?: Address) => Result<void, unknown>;
 
 /** Runs a callback of the owner's. One that throws is reported as `listener_threw`, and the transport carries on. */
 export type RunListener = (listener: () => void) => void;

@@ -64,14 +64,25 @@ function describeDecoded(schema: Schema, message: DecodedMessage, data: ArrayBuf
   }
 }
 
+/** Recorded data the schema refuses. `reason` says how, and `cause` is why. */
+export class MessageRefusedError extends Error {
+  readonly reason: 'malformed' | 'invalid';
+
+  constructor(reason: 'malformed' | 'invalid', cause: unknown) {
+    super(`The data is refused as ${reason}`, { cause });
+    this.name = 'MessageRefusedError';
+    this.reason = reason;
+  }
+}
+
 /**
  * Describes a recorded message by its names, leg, id and decoded body. A reserved or unknown address is named by its
- * numeric ids. Throws on data the schema refuses, with the refusal as the cause.
+ * numeric ids. Throws a `MessageRefusedError` on data the schema refuses.
  */
 export function describeMessage(schema: Schema, data: ArrayBuffer): DescribedMessage {
   const decoded = decodeMessage(schema, data);
   if ('refused' in decoded) {
-    throw new Error(`the data is refused as ${decoded.refused}`, { cause: decoded });
+    throw new MessageRefusedError(decoded.refused, decoded.cause);
   }
   return describeDecoded(schema, decoded, data);
 }

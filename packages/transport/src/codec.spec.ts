@@ -3,7 +3,7 @@
 
 import { Tuple, u8 } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { codec, isPayloadFailure, none, scaleOf, thrownBy } from './codec.js';
+import { codec, isPayloadFailure, none, scaleOf, thrownBy, type Codec } from './codec.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -85,6 +85,19 @@ describe('codec', () => {
     // Then
     expect(isPayloadFailure(caught)).toBe(true);
     expect(thrownBy(caught)).toBe(42);
+  });
+
+  it('As a schema author, I can only pass a codec built by codec where a codec is due', () => {
+    // Given
+    const built: Codec<string> = text;
+
+    // When
+    // @ts-expect-error an empty object is no codec, so a schema cannot hold one by mistake
+    const empty: Codec<string> = {};
+
+    // Then
+    expect(scaleOf(built).enc('a')).toEqual(Uint8Array.of(0x61));
+    expect(empty).toEqual({});
   });
 
   it('As a schema author, I use none for an empty payload and it refuses any byte', () => {

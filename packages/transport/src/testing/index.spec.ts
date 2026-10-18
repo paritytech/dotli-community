@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { codec, none } from '../codec.js';
 import { err, ok } from '../result.js';
 import { defineSchema, request, subscription } from '../schema.js';
-import { encodeMessage, type Refusal } from '../wire.js';
-import { describeMessage } from './index.js';
+import { encodeMessage } from '../wire.js';
+import { MessageRefusedError, describeMessage } from './index.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -74,7 +74,7 @@ describe('describeMessage', () => {
     expect(described).toEqual({ trait: '9', method: '1', leg: 'start', id: 5, body: Uint8Array.of(0xde, 0xad) });
   });
 
-  it('As a test, I describe recorded data that is no message and am told why, with the refusal as the cause', () => {
+  it('As a test, I describe recorded data that is no message and am told why, as a refusal I can tell apart', () => {
     // Given
     const data = Uint8Array.of(1, 0, 0).buffer;
 
@@ -87,9 +87,10 @@ describe('describeMessage', () => {
     }
 
     // Then
-    expect(thrown).toBeInstanceOf(Error);
-    const refusal = (thrown as Error).cause as Refusal;
-    expect(refusal.refused).toBe('malformed');
-    expect(refusal.cause).toMatchObject({ name: 'WireDecodeError', message: 'the header could not be decoded' });
+    expect(thrown).toBeInstanceOf(MessageRefusedError);
+    const refused = thrown as MessageRefusedError;
+    expect(refused.reason).toBe('malformed');
+    expect(refused.message).toBe('The data is refused as malformed');
+    expect(refused.cause).toMatchObject({ name: 'WireDecodeError', message: 'the header could not be decoded' });
   });
 });

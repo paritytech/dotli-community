@@ -17,7 +17,7 @@ import {
   type SubscriptionHandle,
   type TraitName,
 } from '@dotli/transport';
-import { createProviderPair, describeMessage } from '@dotli/transport/testing';
+import { MessageRefusedError, createProviderPair, describeMessage } from '@dotli/transport/testing';
 import { protocolSchema, type ProtocolSchema } from './schema.js';
 
 type S = ProtocolSchema;
@@ -385,6 +385,8 @@ describe('protocolSchema', () => {
         return [error];
       }
     });
-    expect(refusals).toEqual([expect.objectContaining({ message: 'the data is refused as malformed' })]);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toBeInstanceOf(MessageRefusedError);
+    expect((refusals[0] as MessageRefusedError).reason).toBe('malformed');
   });
 });

@@ -199,7 +199,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([{ kind: 'post_failed', error: broken }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'touch' } }]);
   });
 
   it("As a serving side, a payload that does not decode is answered MalformedFrame with the cause's message, and reported", async () => {
@@ -607,9 +607,10 @@ describe('serving', () => {
     // Then
     expect(receive).not.toThrow();
     expect(interrupt).not.toThrow();
+    const call = { trait: 'notes', method: 'watch' };
     expect(issues).toEqual([
-      { kind: 'post_failed', error: broken },
-      { kind: 'post_failed', error: broken },
+      { kind: 'post_failed', error: broken, call },
+      { kind: 'post_failed', error: broken, call },
     ]);
     expect(stops).toEqual([1]);
   });

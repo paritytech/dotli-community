@@ -249,8 +249,8 @@ function callError(domainCodec: Codec<unknown> | undefined): ScaleCodec<CallErro
 }
 
 /**
- * What a target reads on each of its legs. A body is a struct of the message's own fields, so it encodes from the
- * message and decodes into it. A leg the target lacks is invalid.
+ * What a target reads on each of its legs. A body holds the message's own fields, so it encodes from the message and
+ * decodes into it. A leg the target lacks is invalid.
  */
 interface Target {
   name: string;
@@ -258,7 +258,7 @@ interface Target {
   message: (header: Header, body: object) => WireMessage;
 }
 
-/** A body codec. It encodes from the whole message, since a struct reads only its own fields. */
+/** A body codec. It encodes from the whole message, since it reads only its own fields. */
 type Body = ScaleCodec<object>;
 
 /** A leg's body, and the whole message as its header and body, which encodes in one pass. */
@@ -289,8 +289,22 @@ function composedOnce<K extends object>(compose: (key: K) => Target): (key: K) =
 }
 
 const asBody = <T extends object>(c: ScaleCodec<T>): Body => c as unknown as Body;
-const payloadBody = (c: Codec<unknown>): Body => asBody(Struct({ payload: scaleOf(c) }));
-const outcomeBody = <T, E>(c: ScaleCodec<Result<T, E>>): Body => asBody(Struct({ outcome: c }));
+/**
+ * A body of one field of the message. Mapped rather than a one-field struct, which would copy the field's bytes once
+ * more before the message is merged.
+ */
+function field<T>(key: string, c: ScaleCodec<T>): Body {
+  return asBody(
+    enhanceCodec(
+      c,
+      (message: Record<string, T>) => message[key] as T,
+      (value): Record<string, T> => ({ [key]: value }),
+    ),
+  );
+}
+
+const payloadBody = (c: Codec<unknown>): Body => field('payload', scaleOf(c));
+const outcomeBody = <T, E>(c: ScaleCodec<Result<T, E>>): Body => field('outcome', c);
 
 const methodTarget = composedOnce((impl: MethodImpl): Target => {
   const message = (header: Header, body: object): WireMessage =>
@@ -360,17 +374,16 @@ const handshakeTarget = composedOnce((schema: Schema): Target => {
 const PROTOCOL_ERROR_TARGET = target(
   'the protocol error',
   {
-    response: asBody(
-      Struct({
-        unsupportedMessage: named(
-          enhanceCodec(
-            Enum({ UnsupportedMessage: Struct({ trait: rangedU8('trait'), method: rangedU8('method') }) }),
-            (value: { trait: number; method: number }) => ({ tag: 'UnsupportedMessage' as const, value }),
-            ({ value }) => value,
-          ),
-          'the protocol error',
+    response: field(
+      'unsupportedMessage',
+      named(
+        enhanceCodec(
+          Enum({ UnsupportedMessage: Struct({ trait: rangedU8('trait'), method: rangedU8('method') }) }),
+          (value: { trait: number; method: number }) => ({ tag: 'UnsupportedMessage' as const, value }),
+          ({ value }) => value,
         ),
-      }),
+        'the protocol error',
+      ),
     ),
   },
   (header, body) => ({ kind: 'protocolError', id: header.id, ...body }) as ProtocolErrorMessage,

@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest';
-import { bindLogSink } from '@dotli/shared';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { manualTimers } from '@dotli/shared/testing';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
@@ -15,6 +14,7 @@ import {
   TOUCH,
   VERSION,
   WATCH,
+  errorLog,
   issueLog,
   rawRig,
   rig,
@@ -34,20 +34,6 @@ import {
 import { encodeMessage, type WireMessage } from './wire.js';
 
 /** Collects what the shared log records as errors. */
-function errorLog(): string[] {
-  const errors: string[] = [];
-  onTestFinished(
-    bindLogSink({
-      emit: (level, message) => {
-        if (level === 'error') {
-          errors.push(message);
-        }
-      },
-    }),
-  );
-  return errors;
-}
-
 describe('createTransport', () => {
   it('As a schema author, I pass a hello exactly when my schema declares one, and my calls are typed from the schema', () => {
     // Given

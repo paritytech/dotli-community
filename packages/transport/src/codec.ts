@@ -7,7 +7,7 @@ declare const brand: unique symbol;
 
 /** An opaque byte codec for one value type. Build one with `codec`; only the library reads it. */
 export interface Codec<T> {
-  readonly [brand]?: (value: T) => T;
+  readonly [brand]: (value: T) => T;
 }
 
 /** scale-ts hands a decoder its own byte array over the whole buffer, which carries the read position. */
