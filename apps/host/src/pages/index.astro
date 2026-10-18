@@ -12,11 +12,11 @@ import s from './index.module.css';
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" class={s['page']}>
   <head>
     <PageHead />
   </head>
-  <body data-host>
+  <body class={s['page']} data-host>
     <Shell />
 
     {/* Outside `#app`, whose content the product replaces. */}
