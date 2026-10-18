@@ -54,7 +54,7 @@ interface LooseTransport {
   handleSubscription(
     trait: string,
     method: string,
-    handler: (start: unknown, context: unknown, sink: Sink<unknown, unknown>) => () => void,
+    handler: (start: unknown, context: { hello: unknown }, sink: Sink<unknown, unknown>) => () => void,
   ): void;
 }
 
@@ -122,6 +122,7 @@ const samples: Samples = {
       values: [
         { tag: 'phase', value: 'asset-hub-syncing' },
         { tag: 'resolved', value: 'bafycontent' },
+        { tag: 'resolved', value: null },
       ],
       interrupts: [ok(), err(syncTimeout), err(apiStopped)],
     },
@@ -149,6 +150,7 @@ const samples: Samples = {
           tag: 'ok',
           value: { entropy: Uint8Array.of(1, 2, 3), identity: { identityAccountId: '5Grwva', liteUsername: null } },
         }),
+        ok({ tag: 'ok', value: { entropy: Uint8Array.of(4, 5, 6), identity: null } }),
       ],
     },
     save: { request: { siteId: 'app.dot', entropy: Uint8Array.of(9, 8, 7) }, responses: [ok()] },
@@ -224,7 +226,8 @@ describe('protocolSchema', () => {
         });
       } else {
         let run = 0;
-        server.handleSubscription(trait, method, (_start, _context, sink) => {
+        server.handleSubscription(trait, method, (_start, context, sink) => {
+          hellos.push(context.hello);
           for (const value of sample.values) {
             sink.receive(value);
           }
@@ -283,20 +286,23 @@ describe('protocolSchema', () => {
         );
       }
     }
-    expect(hellos.length).toBeGreaterThan(0);
-    expect(hellos).toEqual(hellos.map(() => OPENER_HELLO));
-    expect(described.filter(message => message.trait === '255').map(({ leg, body }) => ({ leg, body }))).toEqual([
+    // Every call and every start reached a handler that read the opener's hello.
+    expect(hellos).toEqual([...heard.values()].flat().map(() => OPENER_HELLO));
+    // The handshake is the library's own, so it is every message outside the protocol's traits.
+    const traits = new Set(Object.keys(samples));
+    const handshake = described.filter(message => !traits.has(message.trait)).map(({ leg, body }) => ({ leg, body }));
+    expect(handshake).toEqual([
       { leg: 'request', body: { version: 2, hello: OPENER_HELLO } },
       { leg: 'response', body: ok(ACCEPTER_HELLO) },
     ]);
   });
 
   it('As a facade, I match a remote failure by its tag, not by a remote error name', () => {
-    // Given
+    // Given the failure types of the frame status and the resolve methods
     type FrameFailure = DomainError<S, 'frame', 'status'>;
     type RemoteFailure = DomainError<S, 'resolve', 'owner'>;
 
-    // When / Then
+    // Then
     expectTypeOf<FrameFailure>().toEqualTypeOf<
       { tag: 'fatal'; value: string } | { tag: 'initFailed'; value: string } | { tag: 'released'; value: string }
     >();
@@ -342,10 +348,10 @@ describe('protocolSchema', () => {
     padded.set(new Uint8Array(recorded));
 
     // When
-    const describe = (): unknown => describeMessage(protocolSchema, padded.buffer);
+    const decodePadded = (): unknown => describeMessage(protocolSchema, padded.buffer);
 
     // Then
-    expect(describe).toThrow(/refused as malformed/);
+    expect(decodePadded).toThrow(/refused as malformed/);
   });
 
   it('As the protocol, an invalid telemetry event is refused', async () => {

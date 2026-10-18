@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The protocol's methods as traits of a transport schema. A trait's and a method's position is its wire id, so new ones
-// go at the end, and any wire change bumps the version.
+// The protocol's methods as traits of a transport schema. New traits and methods go at the end, and any change to them
+// bumps the version.
 
 import { Bytes, Enum, Struct, _void, enhanceCodec, str, type Codec as ScaleCodec, type CodecType } from 'scale-ts';
 import {
@@ -28,17 +28,12 @@ import {
   smoldotDbOutcomeCodec,
 } from './codec-values.js';
 
-/** A buffer holding exactly the view's bytes. scale-ts decodes from a view's whole buffer and ignores its offset. */
-function exactBuffer(bytes: Uint8Array): ArrayBuffer {
-  const { buffer } = bytes;
-  return buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === buffer.byteLength
-    ? buffer
-    : bytes.slice().buffer;
-}
-
-/** A scale-ts codec as a transport codec. Decoding throws unless the value ends exactly where the payload does. */
+/**
+ * A scale-ts codec as a transport codec. Decoding throws unless the value ends exactly where the payload does. It
+ * decodes a copy, since scale-ts reads a view's whole buffer and ignores its offset, and a payload sits after a header.
+ */
 function scaleCodec<T>(c: ScaleCodec<T>): Codec<T> {
-  return codec(c.enc, bytes => decodeExact(c.dec, exactBuffer(bytes)));
+  return codec(c.enc, bytes => decodeExact(c.dec, bytes.slice().buffer));
 }
 
 const label = scaleCodec(Struct({ label: str }));

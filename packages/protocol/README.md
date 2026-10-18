@@ -34,16 +34,17 @@ flowchart TB
 - The transport owns the framing, the request and subscription ids, the handshake, the queue and the matching of answers
   and events. One transport is bound to one provider for its whole life, and disposing it ends everything on it. The two
   ends share the framing and the receiving: a consumer side that calls and a serving side that handles.
-- The method table is the one source of every wire type. Each method declares its kind (request or subscription) and its
-  codecs, and holds the checks a codec cannot express, such as the peer count limit. Every message is encoded with SCALE
-  codecs and sent as a transferred `ArrayBuffer`. Each leg is typed by its method, so a payload, answer or event that
-  does not fit its method fails to compile. Codecs, the table and the framing never leave the package, so callers see
-  only typed requests and subscriptions.
-- The protocol schema groups the same methods into traits: the frame, name resolution, the shared store, the local
-  wallet and chains. Each handshake carries the resolution id as its hello. A remote failure the host branches on is a
-  typed error there: the frame status ends as fatal, as a failed init or as a released port, and name resolution and
-  chain connections fail with a sync timeout or a stopped light client. A telemetry event past the limits fails to
-  decode, so it is refused as malformed. Its value codecs refuse trailing bytes as the method table's do.
+- The protocol schema is where the wire types come from. It groups the methods into traits: the frame, name resolution,
+  the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its codecs,
+  and each handshake carries the resolution id as its hello. Each leg is typed by its method, so a payload, answer or
+  event that does not fit its method fails to compile. Its codecs cross the package only as opaque values, so callers
+  see only typed requests and subscriptions.
+- A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed init
+  or as a released port, and name resolution and chain connections fail with a sync timeout or a stopped light client. A
+  telemetry event past the limits, such as the peer count limit, fails to decode, so it is refused as malformed.
+- The method table carries the same methods for the consumer and serving transports, with the checks a codec cannot
+  express. Every message is encoded with SCALE codecs and sent as a transferred `ArrayBuffer`. The table and the framing
+  never leave the package.
 - Every integer goes through a codec that throws on a value it cannot carry exactly, and a message that is truncated,
   has trailing bytes, names an unknown variant or holds an option or bool byte other than 0 or 1 fails to decode.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
