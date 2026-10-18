@@ -22,6 +22,7 @@ import {
   type SubscriptionHandler,
 } from '@dotli/transport';
 
+import { serveEngineMethods } from './engine.js';
 import type { FrameBoot } from './frame-boot.js';
 import { workerEndError, type WorkerStatus } from './shared-worker-link.js';
 
@@ -80,13 +81,15 @@ export function registerWorkerRelay(
   workerStatus: WorkerStatus,
   status: Pick<FrameBoot, 'fail' | 'interrupt'>,
 ): void {
-  serving.handleRequest(frame.warmup, relayRequest(worker, frame.warmup));
-  serving.handleRequest(resolve.owner, relayRequest(worker, resolve.owner));
-  serving.handleRequest(resolve.executableManifest, relayRequest(worker, resolve.executableManifest));
-  serving.handleRequest(resolve.rootManifest, relayRequest(worker, resolve.rootManifest));
-  serving.handleRequest(chain.send, relayRequest(worker, chain.send));
-  serving.handleSubscription(chain.connect, relaySubscription(worker, chain.connect));
-  serving.handleSubscription(resolve.dotName, relaySubscription(worker, resolve.dotName));
+  serveEngineMethods(serving, {
+    warmup: relayRequest(worker, frame.warmup),
+    resolveDotName: relaySubscription(worker, resolve.dotName),
+    resolveOwner: relayRequest(worker, resolve.owner),
+    resolveExecutableManifest: relayRequest(worker, resolve.executableManifest),
+    resolveRootManifest: relayRequest(worker, resolve.rootManifest),
+    connect: relaySubscription(worker, chain.connect),
+    send: relayRequest(worker, chain.send),
+  });
   workerStatus.onEnd(end => {
     // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
     worker.dispose(workerEndError(end));

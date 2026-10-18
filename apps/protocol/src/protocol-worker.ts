@@ -40,7 +40,7 @@ import {
   type SubscriptionHandler,
 } from '@dotli/transport';
 
-import { createEngine, type EngineScope, type ProtocolEngine } from './engine.js';
+import { createEngine, serveEngineMethods, type EngineScope, type ProtocolEngine } from './engine.js';
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -442,44 +442,28 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     });
     // Any message keeps the port, so the heartbeat that answers a beat needs no answer beyond its arrival.
     transport.handleRequest(frame.heartbeat, () => ok());
-    transport.handleRequest(
-      frame.warmup,
-      traced(frame.warmup, (payload, context) => requireEngine().warmup(payload, context)),
-    );
-    transport.handleRequest(
-      resolve.owner,
-      traced(resolve.owner, (payload, context) => requireEngine().resolveOwner(payload, context)),
-    );
-    transport.handleRequest(
-      resolve.executableManifest,
-      traced(resolve.executableManifest, (payload, context) =>
-        requireEngine().resolveExecutableManifest(payload, context),
-      ),
-    );
-    transport.handleRequest(
-      resolve.rootManifest,
-      traced(resolve.rootManifest, (payload, context) => requireEngine().resolveRootManifest(payload, context)),
-    );
-    transport.handleSubscription(
-      resolve.dotName,
-      tracedSubscription(
+    // The engine and the tab's scope are made on first use, so each method asks for them when called.
+    serveEngineMethods(transport, {
+      warmup: traced(frame.warmup, (payload, context) => requireEngine().warmup(payload, context)),
+      resolveDotName: tracedSubscription(
         resolve.dotName,
         value => value.tag === 'resolved',
         (start, context, sink) => requireEngine().resolveDotName(start, context, sink),
       ),
-    );
-    transport.handleSubscription(
-      chain.connect,
-      tracedSubscription(
+      resolveOwner: traced(resolve.owner, (payload, context) => requireEngine().resolveOwner(payload, context)),
+      resolveExecutableManifest: traced(resolve.executableManifest, (payload, context) =>
+        requireEngine().resolveExecutableManifest(payload, context),
+      ),
+      resolveRootManifest: traced(resolve.rootManifest, (payload, context) =>
+        requireEngine().resolveRootManifest(payload, context),
+      ),
+      connect: tracedSubscription(
         chain.connect,
         value => value.tag === 'connected',
         (start, context, sink) => scopeOf(session).connect(start, context, sink),
       ),
-    );
-    transport.handleRequest(
-      chain.send,
-      traced(chain.send, (payload, context) => scopeOf(session).send(payload, context)),
-    );
+      send: traced(chain.send, (payload, context) => scopeOf(session).send(payload, context)),
+    });
   }
 
   /** Beats each port from this worker's clock, and lets go of one that sent nothing for too many beats. */

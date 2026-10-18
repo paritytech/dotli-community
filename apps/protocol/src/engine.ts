@@ -97,16 +97,26 @@ async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, C
   }
 }
 
+/** What serves the chain and name methods: the engine and its scope, a relay to the worker, or the worker's traces. */
+export type EngineMethods = Pick<ProtocolEngine, 'warmup' | 'resolveDotName' | 'resolveOwner'> &
+  Pick<ProtocolEngine, 'resolveExecutableManifest' | 'resolveRootManifest'> &
+  Pick<EngineScope, 'connect' | 'send'>;
+
+/** Serves every chain and name method on `serving`, so no side can leave one out. */
+export function serveEngineMethods(serving: ProtocolServing, served: EngineMethods): void {
+  serving.handleRequest(methods.frame.warmup, served.warmup);
+  serving.handleSubscription(methods.resolve.dotName, served.resolveDotName);
+  serving.handleRequest(methods.resolve.owner, served.resolveOwner);
+  serving.handleRequest(methods.resolve.executableManifest, served.resolveExecutableManifest);
+  serving.handleRequest(methods.resolve.rootManifest, served.resolveRootManifest);
+  serving.handleSubscription(methods.chain.connect, served.connect);
+  serving.handleRequest(methods.chain.send, served.send);
+}
+
 /** Serves a new scope of `engine` on `serving`: that scope's chain connections, and the engine's name reads. */
 export function serveEngineScope(serving: ProtocolServing, engine: ProtocolEngine): EngineScope {
   const scope = engine.openScope();
-  serving.handleRequest(methods.frame.warmup, engine.warmup);
-  serving.handleSubscription(methods.resolve.dotName, engine.resolveDotName);
-  serving.handleRequest(methods.resolve.owner, engine.resolveOwner);
-  serving.handleRequest(methods.resolve.executableManifest, engine.resolveExecutableManifest);
-  serving.handleRequest(methods.resolve.rootManifest, engine.resolveRootManifest);
-  serving.handleSubscription(methods.chain.connect, scope.connect);
-  serving.handleRequest(methods.chain.send, scope.send);
+  serveEngineMethods(serving, { ...engine, ...scope });
   return scope;
 }
 
