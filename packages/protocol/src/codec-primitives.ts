@@ -27,6 +27,36 @@ interface Cursor extends Uint8Array {
 
 const F64_BYTES = 8;
 
+/** Data a protocol codec cannot read. The scale-ts failure is its cause. */
+export class WireDecodeError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'WireDecodeError';
+  }
+}
+
+/**
+ * Names a scale-ts decode failure in `what`, keeping it as the cause. A read past the end is a `RangeError` in scale-ts,
+ * so it is told apart. A failure already named passes unchanged.
+ */
+function named<T>(c: Codec<T>, what: string): Codec<T> {
+  return createCodec(
+    c.enc,
+    createDecoder(input => {
+      try {
+        return c.dec(input);
+      } catch (cause) {
+        if (cause instanceof WireDecodeError) {
+          throw cause;
+        }
+        throw new WireDecodeError(`${what} ${cause instanceof RangeError ? 'ends early' : 'does not decode'}`, {
+          cause,
+        });
+      }
+    }),
+  );
+}
+
 /** `u64` on the wire, throws `RangeError` on anything but an integer in `0..Number.MAX_SAFE_INTEGER`. */
 export const safeInteger: Codec<number> = enhanceCodec(
   u64,
@@ -97,11 +127,14 @@ export const strictBool: Codec<boolean> = enhanceCodec(
 
 /** `Option` on the wire as the enum it is, so a tag other than 0 or 1 is refused. */
 export function strictOption<T>(inner: Codec<T>): Codec<T | undefined> {
-  return enhanceCodec(
-    Enum({ none: _void, some: inner }),
-    (value: T | undefined) =>
-      value === undefined ? { tag: 'none' as const, value: undefined } : { tag: 'some' as const, value },
-    decoded => (decoded.tag === 'some' ? decoded.value : undefined),
+  return named(
+    enhanceCodec(
+      Enum({ none: _void, some: inner }),
+      (value: T | undefined) =>
+        value === undefined ? { tag: 'none' as const, value: undefined } : { tag: 'some' as const, value },
+      decoded => (decoded.tag === 'some' ? decoded.value : undefined),
+    ),
+    'the option',
   );
 }
 
@@ -114,14 +147,32 @@ export function nullable<T>(inner: Codec<T>): Codec<T | null> {
   );
 }
 
-/** An enum of unit variants, one per value in list order, read as its tag. An index past the list is refused. */
+/**
+ * An enum of unit variants, each at its place in `values`, read as its tag. An index past the list is refused, and so
+ * is a value listed twice, whose index would be ambiguous.
+ */
 export function oneOf<T extends string>(values: readonly T[]): Codec<T> {
+  values.forEach((value, index) => {
+    if (values.indexOf(value) !== index) {
+      throw new RangeError(`the value "${value}" is listed twice`);
+    }
+  });
   const variants = Object.fromEntries(values.map(value => [value, _void])) as StringRecord<Codec<undefined>>;
-  return enhanceCodec(
-    Enum(variants),
+  // An object lists integer-like keys first, so each variant is pinned to its place in the list.
+  const indices = Object.keys(variants).map(key => values.indexOf(key as T));
+  const listed = enhanceCodec(
+    Enum(variants, indices as unknown as Parameters<typeof Enum>[1]),
     (value: T) => ({ tag: value, value: undefined }),
     ({ tag }) => tag as T,
   );
+  const decoded = named(listed, 'the listed value');
+  return createCodec((value: T) => {
+    try {
+      return listed.enc(value);
+    } catch (cause) {
+      throw new RangeError(`"${value}" is not one of ${values.join(', ')}`, { cause });
+    }
+  }, decoded.dec);
 }
 
 /** Decodes on one cursor over the whole buffer and throws unless the value ends exactly at `byteLength`. */

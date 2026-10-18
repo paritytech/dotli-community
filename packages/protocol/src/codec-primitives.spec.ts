@@ -13,6 +13,7 @@ import {
   strictOption,
   u32Exact,
   u8Exact,
+  WireDecodeError,
 } from './codec-primitives.js';
 
 function toBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -83,14 +84,17 @@ describe('codec primitives', () => {
     expect(received).toEqual([null, 'x']);
   });
 
-  it('As a receiver, I refuse an option, a nullable or a bool whose tag is neither 0 nor 1', () => {
-    // Given
-    const decoders: Decoder<unknown>[] = [strictOption(str).dec, nullable(str).dec, strictBool.dec];
+  it('As a receiver, I decode an option, a nullable or a bool whose tag is neither 0 nor 1 and refuse it', () => {
+    // Given a tag of 2, then what an option of a string would read as an empty string
+    const tagged = toBuffer(Uint8Array.of(2, 0));
+    const options: Decoder<unknown>[] = [strictOption(str).dec, nullable(str).dec];
 
     // When / Then
-    for (const decoder of decoders) {
-      expect(() => decodeExact(decoder, toBuffer(u8.enc(2)))).toThrow();
+    for (const decoder of options) {
+      expect(() => decodeExact(decoder, tagged)).toThrow(WireDecodeError);
+      expect(() => decodeExact(decoder, tagged)).toThrow('the option does not decode');
     }
+    expect(() => decodeExact(strictBool.dec, toBuffer(u8.enc(2)))).toThrow(new RangeError('2 is not a bool'));
   });
 
   it('As a sender, I send options and bools and they arrive as sent', () => {
@@ -128,12 +132,34 @@ describe('codec primitives', () => {
     expect(() => decodeExact(codec.dec, toBuffer(padded))).toThrow();
   });
 
-  it('As a receiver, I refuse an unknown index', () => {
+  it('As a receiver, I decode an index past the list and refuse it', () => {
     // Given
     const codec = oneOf(['a', 'b']);
 
     // When / Then
-    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow();
+    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow(WireDecodeError);
+    expect(() => decodeExact(codec.dec, toBuffer(u8.enc(5)))).toThrow('the listed value does not decode');
+  });
+
+  it('As a sender, I send listed values that look like integers and each keeps its place in the list', () => {
+    // Given
+    const values = ['b', '1', 'a', '0'] as const;
+    const codec = oneOf(values);
+
+    // When
+    const sent = values.map(value => [...codec.enc(value)]);
+
+    // Then
+    expect(sent).toEqual([[0], [1], [2], [3]]);
+    expect(decodeExact(codec.dec, toBuffer(u8.enc(1)))).toBe('1');
+  });
+
+  it('As a schema author, I list a value twice and am refused, since its index would be ambiguous', () => {
+    // Given
+    const values = ['a', 'a', 'b'];
+
+    // When / Then
+    expect(() => oneOf(values)).toThrow(new RangeError('the value "a" is listed twice'));
   });
 
   it('As a sender, I send one of the listed values as its index and it arrives as sent', () => {
@@ -148,11 +174,11 @@ describe('codec primitives', () => {
     expect(decodeExact(codec.dec, toBuffer(sent))).toBe('c');
   });
 
-  it('As a sender, I cannot send a value outside the list', () => {
+  it('As a sender, I send a value outside the list and am refused with the list', () => {
     // Given
     const codec = oneOf<string>(['a', 'b']);
 
     // When / Then
-    expect(() => codec.enc('z')).toThrow();
+    expect(() => codec.enc('z')).toThrow(new RangeError('"z" is not one of a, b'));
   });
 });
