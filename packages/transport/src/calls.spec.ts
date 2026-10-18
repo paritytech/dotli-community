@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
+import type { SubscriptionHandle } from './calls.js';
 import { TransportHandshakeTimeoutError, type TransportIssue } from './errors.js';
 import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import {
@@ -841,6 +842,45 @@ describe('calls', () => {
 
     // Then the transport closed it before the post returned, and the peer heard no stop
     expect(closes).toEqual([reason]);
+    expect(heard.ends).toEqual([]);
+    expect(raw.peer.legs()).toEqual(['request:255.0']);
+    expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);
+  });
+
+  it('As a caller, an issue hook that stops my subscription on its failed start post leaves the peer nothing to stop', async () => {
+    // Given a hook that mends posts and stops the subscription when its start cannot be posted
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts, mendPosts } = breakable(broken);
+    const issues: TransportIssue[] = [];
+    // The handle is made after the hook, which runs only once the start is posted.
+    const handles: SubscriptionHandle[] = [];
+    const raw = rawRig('open', wrap, {
+      onIssue: issue => {
+        issues.push(issue);
+        if (issue.kind === 'post_failed') {
+          mendPosts();
+          handles[0]?.stop();
+        }
+      },
+    });
+    raw.transport.connect();
+    await raw.timers.advance(0);
+    raw.answerHandshake();
+    await raw.transport.whenConnected();
+    breakPosts();
+    const heard = watcher();
+    const closes: Error[] = [];
+
+    // When
+    const handle = raw.transport.subscribe('notes', 'watch', 'from the top', heard);
+    handles.push(handle);
+    handle.onClose(error => closes.push(error));
+    await raw.timers.advance(0);
+    raw.transport.dispose(new Error('done'));
+    await raw.timers.advance(0);
+
+    // Then the stop ended it before the post returned, and the peer heard no stop
+    expect(closes).toEqual([]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.legs()).toEqual(['request:255.0']);
     expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);

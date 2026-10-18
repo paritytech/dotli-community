@@ -11,7 +11,11 @@ export interface MessageTarget {
 }
 
 export interface Provider {
-  /** Transfers the buffer to the peer, so the caller must not reuse it. Throws after `dispose`. */
+  /**
+   * Transfers the buffer to the peer, so the caller must not reuse it. Throws after `dispose`. It never delivers to its
+   * own listeners before it returns, the peer's reply included, as `postMessage` and message ports do, so a caller may
+   * record what it posted once `post` returns.
+   */
   post(data: ArrayBuffer): void;
   /**
    * Hears each message that arrives while the listener is subscribed. A provider holds nothing for a listener yet to

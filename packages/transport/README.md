@@ -170,7 +170,8 @@ sequenceDiagram
 - `TransportHandshakeTimeoutError` closes an opener that heard no answer in time. `TransportVersionMismatchError` closes
   both sides of a mismatch and carries `ours` and `theirs`.
 - `Provider` is `post(data)`, `subscribe(listener)`, `peerOrigin()` and `dispose()`. A provider holds nothing for a
-  listener yet to come, and `post` transfers the buffer.
+  listener yet to come, and `post` transfers the buffer. `post` never delivers to the provider's own listeners before it
+  returns, the peer's reply included, as `postMessage` and message ports do.
 - `createWindowProvider({ listen, peer, origin, onNotBytes?, onRefusedOrigin? })` hears `listen` (a `MessageTarget`) and
   posts to `peer()`, a `WindowLike`. `origin` is fixed, or a predicate whose first origin to send bytes is locked.
   `onNotBytes` hears data from the admitted peer that is not bytes, and `onRefusedOrigin` hears bytes from an origin it
