@@ -195,7 +195,7 @@ describe('schema', () => {
 
     // When
     type Owner = MethodTypes<S, 'resolve', 'owner'>;
-    type DotName = MethodTypes<S, 'resolve', 'changes'>;
+    type Changes = MethodTypes<S, 'resolve', 'changes'>;
     type Status = MethodTypes<S, 'frame', 'status'>;
     type Reload = MethodTypes<S, 'frame', 'reload'>;
 
@@ -210,11 +210,11 @@ describe('schema', () => {
       request: { label: string };
       response: Result<string | null, CallError<never>>;
     }>();
-    expectTypeOf<DotName>().toEqualTypeOf<{
+    expectTypeOf<Changes>().toEqualTypeOf<{
       start: { label: string };
       receive: { owner: string };
       interrupt: Result<void, CallError<never>>;
-      // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- the leg's shape is the one under test
+      // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- a stop carries no value, which is the shape under test
       stop: void;
     }>();
     expectTypeOf<Status['interrupt']>().toEqualTypeOf<Result<void, CallError<'fatal' | 'released'>>>();
