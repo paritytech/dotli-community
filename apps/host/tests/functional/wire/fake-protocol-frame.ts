@@ -10,12 +10,12 @@ import {
   createTransport,
   createWindowProvider,
   domain,
+  err,
   hostFailure,
   ok,
   type CallError,
   type MethodTypes,
   type Sink,
-  err,
 } from '@dotli/transport';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;

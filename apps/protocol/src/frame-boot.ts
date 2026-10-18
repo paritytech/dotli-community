@@ -6,11 +6,11 @@
 // left waiting would never end.
 
 import {
+  createFrameStatus,
+  type FrameStatusEnd,
   type ProtocolHandler,
   type protocolSchema,
   type TelemetryEvent,
-  createFrameStatus,
-  type FrameStatusEnd,
 } from '@dotli/protocol';
 
 import { createDeferredSubscription } from './deferred-subscription.js';

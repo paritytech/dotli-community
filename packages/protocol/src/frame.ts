@@ -168,7 +168,7 @@ function sameFrameConfig(a: ProtocolFrameConfig, b: ProtocolFrameConfig): boolea
 /** The frame's step that failed, so a failure is counted where it happened. */
 type BootPhase = 'load' | 'listen' | 'ready';
 
-/** `name` is the name of what was thrown, which is `unknown` for a value that is no `Error`. */
+/** `name` labels the count: the error's name under the protocol's class, or `unknown` for a thrown value that is no `Error`. */
 function reportBootFailure(phase: BootPhase, error: Error, name: string, count: typeof m.count): void {
   count(S.PROTOCOL_IFRAME_READY, { outcome: 'error', phase, reason: name });
   m.breadcrumb(phase === 'ready' ? 'protocol iframe ready wait failed' : 'protocol iframe load failed', {

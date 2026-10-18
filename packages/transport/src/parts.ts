@@ -31,6 +31,10 @@ export function encodeCall<M>(
   return encode(method.frame, { id, body: { tag: 'call', value: call } });
 }
 
+/** Whether a call names the method at `address`. */
+export const sameMethod = (address: Address, call: { trait: number; method: number }): boolean =>
+  address.traitId === call.trait && address.methodId === call.method;
+
 /** Runs a callback of the owner's. One that throws is reported as `listener_threw`, and the transport carries on. */
 export type RunListener = (listener: () => void) => void;
 

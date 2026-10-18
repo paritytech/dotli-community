@@ -53,7 +53,7 @@ export function callName(method: AnyMethod): CallName {
   const address = protocolSchema.addressOf(method);
   const path = `${address.trait}.${address.method}`;
   if (!isPath(path)) {
-    throw new Error('The method is not one of the protocol');
+    throw new Error(`${path} has no call name`);
   }
   return CALL_NAMES[path];
 }

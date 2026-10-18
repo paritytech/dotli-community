@@ -47,13 +47,16 @@ export const callError = <E>(domain: Codec<E>): Codec<CallError<E>> => Enum({ Do
 export const domain = <E>(value: E): CallError<E> => ({ tag: 'Domain', value });
 export const denied = (): Failure => ({ tag: 'Denied', value: undefined });
 export const unsupported = (): Failure => ({ tag: 'Unsupported', value: undefined });
-export const malformedFrame = (why: string): Failure => ({ tag: 'MalformedFrame', value: { reason: why } });
 /**
- * A handler's failure. Given an `Error`, the reason is the one a handler that throws it answers with, `"<name>:
- * <message>"`, bounded. truapi's `HostFailure` has one reason and no name, so the name rides in it.
+ * A failure's reason. Given an `Error`, it is `"<name>: <message>"`, bounded. truapi's failures have one reason and no
+ * name, so the name rides in it.
  */
-export const hostFailure = (why: string | Error): Failure => ({
-  tag: 'HostFailure',
-  value: { reason: typeof why === 'string' ? why : failureReason(why) },
+const reasonOf = (why: string | Error): { reason: string } => ({
+  reason: typeof why === 'string' ? why : failureReason(why),
 });
+
+/** A message that did not decode, or did not fit what it names. */
+export const malformedFrame = (why: string | Error): Failure => ({ tag: 'MalformedFrame', value: reasonOf(why) });
+/** A handler's failure. Given an `Error`, the reason is the one a handler that throws it answers with. */
+export const hostFailure = (why: string | Error): Failure => ({ tag: 'HostFailure', value: reasonOf(why) });
 export const cancelled = (): Failure => ({ tag: 'Cancelled', value: undefined });

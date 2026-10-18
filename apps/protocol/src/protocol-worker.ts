@@ -7,10 +7,11 @@
 
 import type * as Chains from '@dotli/chains';
 import type * as Resolver from '@dotli/resolver';
-import { isValidNetwork, getActiveFixedServicesConfig, type Network } from '@dotli/config/fixed';
-import { m, captureException, spans as S, type SpanHandle } from '@dotli/metrics';
+import { getActiveFixedServicesConfig, isValidNetwork, type Network } from '@dotli/config/fixed';
+import { captureException, m, spans as S, type SpanHandle } from '@dotli/metrics';
 import {
   callName,
+  createFrameStatus,
   failureOf,
   frameStatusEnd,
   ProtocolFatalError,
@@ -19,10 +20,9 @@ import {
   protocolSchema,
   type CallName,
   type DomainFailure,
+  type FrameStatusSink,
   type ProtocolHello,
   type ProtocolTransport,
-  createFrameStatus,
-  type FrameStatusSink,
 } from '@dotli/protocol';
 import { errorName, log, serializeError, toError } from '@dotli/shared';
 import {

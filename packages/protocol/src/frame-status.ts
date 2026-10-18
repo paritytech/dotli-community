@@ -5,14 +5,14 @@
 // that subscribes late hears where the frame stands at once, so nothing said before it subscribed is lost.
 
 import { reportListener } from '@dotli/metrics';
+import { err, type MethodTypes, type Sink } from '@dotli/transport';
 import { frameStatusEnd } from './outcomes.js';
 import type { FrameFailure, ProtocolHandler, protocolSchema } from './schema.js';
-import { err, type CallError, type ResultPayload, type Sink } from '@dotli/transport';
 
 export type FrameStatusSink = Sink<undefined, FrameFailure>;
 
 /** How the status ends, as its subscribers hear it. */
-export type FrameStatusEnd = ResultPayload<undefined, CallError<FrameFailure>>;
+export type FrameStatusEnd = MethodTypes<typeof protocolSchema.traits.frame.status>['interrupt'];
 
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: FrameStatusEnd };
 

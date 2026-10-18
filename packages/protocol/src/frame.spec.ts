@@ -8,7 +8,7 @@ import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { bindLogSink, toError } from '@dotli/shared';
 import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { domain, ok, err } from '@dotli/transport';
+import { domain, err, ok } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';

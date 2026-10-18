@@ -336,7 +336,11 @@ describe('protocolSchema', () => {
     }
 
     // Then each side reads what the other sent, and the recorded messages carry the same values
-    expect(allCases.map(sample => sample.method)).toEqual(protocolSchema.methods);
+    expect(allCases.map(sample => sample.method)).toEqual(
+      Object.values(protocolSchema.traits).flatMap((trait: Readonly<Record<string, AnyMethod>>) =>
+        Object.values(trait),
+      ),
+    );
     const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
     for (const calls of heard) {
       calls.check(recorded);

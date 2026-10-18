@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { AnyMethod } from '@dotli/transport';
 import { describe, expect, it } from 'vitest';
 import { callName, callNameAt } from './call-names.js';
 import { protocolSchema } from './schema.js';
@@ -8,7 +9,9 @@ import { protocolSchema } from './schema.js';
 describe('call names', () => {
   it('As a dotli operator, I read each protocol method under its flat name', () => {
     // Given
-    const methods = protocolSchema.methods;
+    const methods = Object.values(protocolSchema.traits).flatMap((trait: Readonly<Record<string, AnyMethod>>) =>
+      Object.values(trait),
+    );
 
     // When
     const names = methods.map(callName);

@@ -7,20 +7,14 @@
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   failureOf,
-  type FrameFailure,
   fromTransportError,
   ProtocolInitFailedError,
   protocolSchema,
+  type FrameStatusEnd,
   type ProtocolTransport,
 } from '@dotli/protocol';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
-import {
-  createPortProvider,
-  createTransport,
-  type CallError,
-  type ResultPayload,
-  type TransportIssue,
-} from '@dotli/transport';
+import { createPortProvider, createTransport, type TransportIssue } from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { disposeOnPageHide } from './worker-port.js';
@@ -29,8 +23,7 @@ import { disposeOnPageHide } from './worker-port.js';
  * How the worker's status ended for this tab: the worker's own end, which a relay passes on as it is, or the link's
  * transport closing under it.
  */
-export type WorkerEnd =
-  { kind: 'interrupt'; outcome: ResultPayload<undefined, CallError<FrameFailure>> } | { kind: 'close'; error: Error };
+export type WorkerEnd = { kind: 'interrupt'; outcome: FrameStatusEnd } | { kind: 'close'; error: Error };
 
 /** The one `frame.status` subscription to the worker. */
 export interface WorkerStatus {

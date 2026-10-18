@@ -5,8 +5,15 @@
 // comes back carries the call's id, and the call decodes it with its own method's codec.
 
 import type { ResultPayload } from 'scale-ts';
-import { failureReason } from './errors.js';
-import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
+import {
+  REMEMBERED_ENDS,
+  createRecentIds,
+  encodeCall,
+  sameMethod,
+  type Post,
+  type Refuse,
+  type RunListener,
+} from './parts.js';
 import { cancelled, err, malformedFrame, type CallError, type Failure } from './result.js';
 import type { Address, Request, Subscription } from './schema.js';
 import { decode, type Call } from './wire.js';
@@ -158,7 +165,7 @@ export function createCalls(deps: CallsDeps): Calls {
             const message = decode(method.message, bytes);
             if (!message.success) {
               refuse('malformed', message.value);
-              answer(err(malformedFrame(failureReason(message.value))));
+              answer(err(malformedFrame(message.value)));
             } else if (message.value.tag === 'response') {
               answer(message.value.value);
             } else {
@@ -296,7 +303,7 @@ export function createCalls(deps: CallsDeps): Calls {
             // What was lost may be a value, which leaves the subscriber behind the peer, so the subscription ends and the
             // peer is told to stop. A stop after the peer's own end is a race it drops.
             refuse('malformed', message.value);
-            finish(err(malformedFrame(failureReason(message.value))), true);
+            finish(err(malformedFrame(message.value)), true);
             return;
           }
           const sent = message.value;
@@ -357,7 +364,7 @@ export function createCalls(deps: CallsDeps): Calls {
         refuseStray(id);
         return;
       }
-      if (outCall.address.traitId !== call.trait || outCall.address.methodId !== call.method) {
+      if (!sameMethod(outCall.address, call)) {
         refuse('invalid', new Error(`A message for call ${String(id)} names another method than the call`));
         return;
       }

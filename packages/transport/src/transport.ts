@@ -172,7 +172,7 @@ export function createTransport<H, T extends Traits>(
     runListener,
   });
   const serving = createServing<H>({
-    methodAt: schema.methodAt,
+    placeAt: schema.placeAt,
     post,
     closed: () => phase.name === 'closed',
     refuse,

@@ -7,12 +7,19 @@
 // only calls it admitted, once the handshake told who the peer is.
 
 import { createAsyncTaskPool, toError } from '@dotli/shared';
-import type { ResultPayload } from 'scale-ts';
-import { failureReason } from './errors.js';
-import { REMEMBERED_ENDS, createRecentIds, encodeCall, type Post, type Refuse, type RunListener } from './parts.js';
+import type { Codec, ResultPayload } from 'scale-ts';
+import {
+  REMEMBERED_ENDS,
+  createRecentIds,
+  encodeCall,
+  sameMethod,
+  type Post,
+  type Refuse,
+  type RunListener,
+} from './parts.js';
 import { hostFailure, malformedFrame, unsupported, type CallError, type Failure } from './result.js';
-import type { Address, AnyMethod, Request, Subscription } from './schema.js';
-import { decode, encodeFrame, frame, type Call } from './wire.js';
+import type { Address, AnyMethod, Place, Request, Subscription } from './schema.js';
+import { decode, encodeFrame, frame, type Call, type Frame } from './wire.js';
 
 /** What a handler knows about the peer that called it. */
 export interface CallContext<H> {
@@ -43,8 +50,8 @@ export type RequestHandler<P, R, E, H> = (
 export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>, sink: Sink<V, I>) => () => void;
 
 export interface ServingDeps {
-  /** The method at a place in the schema. */
-  methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
+  /** The method at a place in the schema, and its address. */
+  placeAt: (traitId: number, methodId: number) => Place | undefined;
   post: Post;
   /** Whether the transport has closed, after which the peer hears no answer. */
   closed: () => boolean;
@@ -81,7 +88,7 @@ interface Running {
 }
 
 export function createServing<H>(deps: ServingDeps): Serving<H> {
-  const { methodAt, post, closed, refuse, runListener, onPeerIdle } = deps;
+  const { placeAt, post, closed, refuse, runListener, onPeerIdle } = deps;
   const handlers = new Map<AnyMethod, Served<H>>();
   // The peer's requests whose handlers have not settled, which a close answers.
   const inFlight = new Map<number, Address>();
@@ -117,7 +124,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
   /** Answers a call whose message does not decode. */
   const malformed = (id: number, cause: Error, address: Address): void => {
     refuse('malformed', cause);
-    fail(id, malformedFrame(failureReason(cause)), address);
+    fail(id, malformedFrame(cause), address);
   };
 
   /** Tells `onPeerIdle` once the peer's calls have settled, unless it called again meanwhile or the transport closed. */
@@ -140,14 +147,9 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
   /** Whether request `id` still waits for its answer. One whose handler settles once the transport closed has it. */
   const settles = (id: number): boolean => inFlight.delete(id) && !closed();
 
-  /** Answers request `id` with the handler's outcome, or with `HostFailure` for one the wire cannot carry. */
-  function respond<P, R, E>(
-    method: Request<P, R, E>,
-    address: Address,
-    id: number,
-    outcome: ResultPayload<R, CallError<E>>,
-  ): void {
-    const data = encodeCall(method, address, id, { tag: 'response', value: outcome });
+  /** Sends `message` on call `id`, or answers `HostFailure` for one the wire cannot carry. */
+  function answer<M>(method: { readonly frame: Codec<Frame<M>> }, address: Address, id: number, message: M): void {
+    const data = encodeCall(method, address, id, message);
     if (!data.success) {
       fail(id, hostFailure(data.value), address);
       return;
@@ -223,12 +225,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
       },
       interrupt(outcome) {
         finish(() => {
-          const data = encodeCall(method, address, id, { tag: 'interrupt', value: outcome });
-          if (!data.success) {
-            fail(id, hostFailure(data.value), address);
-          } else {
-            post(data.value, address);
-          }
+          answer(method, address, id, { tag: 'interrupt', value: outcome });
         });
       },
     };
@@ -269,7 +266,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
             .then(
               outcome => {
                 if (settles(id)) {
-                  respond(method, address, id, outcome);
+                  answer(method, address, id, { tag: 'response', value: outcome });
                 }
               },
               (error: unknown) => {
@@ -305,7 +302,7 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
     hear(id, call, context) {
       const entry = running.get(id);
       if (entry !== undefined) {
-        if (entry.address.traitId !== call.trait || entry.address.methodId !== call.method) {
+        if (!sameMethod(entry.address, call)) {
           refuse('invalid', new Error(`A message for subscription ${String(id)} names another method`));
           return;
         }
@@ -318,8 +315,8 @@ export function createServing<H>(deps: ServingDeps): Serving<H> {
         onPeerStop();
         return;
       }
-      const method = methodAt(call.trait, call.method);
-      const served = method === undefined ? undefined : handlers.get(method);
+      const placed = placeAt(call.trait, call.method);
+      const served = placed === undefined ? undefined : handlers.get(placed.method);
       if (served === undefined) {
         peerCalls += 1;
         fail(id, unsupported());

@@ -7,12 +7,12 @@ import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { _void } from 'scale-ts';
 import {
-  ok,
-  err,
   createTransport,
   defineSchema,
   domain,
+  err,
   hostFailure,
+  ok,
   type MethodTypes,
   type Sink,
 } from '@dotli/transport';

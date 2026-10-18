@@ -117,9 +117,9 @@ sequenceDiagram
   `subscription({ start, receive, interrupt? })` a `Subscription<S, V, I>`. Without `error` or `interrupt`, `E` or `I`
   is `undefined`. `RequestMessage<P, R, E>` and `SubscriptionMessage<S, V, I>` are what their sides send.
 - `defineSchema({ version, hello, traits })` checks the record and returns a `Schema<H, T>`: its `version`, `hello`
-  codec, `traits`, `methods` in wire order, `addressOf(method)`, its `Address` (`{ trait, method, traitId, methodId }`),
-  which throws for a method of another schema, and `methodAt(traitId, methodId)`, the method at a place. `Traits` is the
-  record it takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
+  codec, `traits`, `addressOf(method)`, its `Address` (`{ trait, method, traitId, methodId }`), which throws for a
+  method of another schema, and `placeAt(traitId, methodId)`, the `Place` there (`{ method, address }`), or undefined.
+  `Traits` is the record it takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
 - `MethodTypes<M>` is what each side of method `M` sends: `{ request: P; response: ResultPayload<R, CallError<E>> }` or
   `{ start: S; receive: V; interrupt: ResultPayload<undefined, CallError<I>>; stop: undefined }`. `DomainError<M>` is
   its own error, `E` or `I`.
@@ -139,7 +139,8 @@ sequenceDiagram
   - `subscribe(method, start, { receive, interrupt }, { signal? })` returns a `SubscriptionHandle` with `stop()` and
     `onClose(listener)`.
   - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
-    `CallContext` and a `Sink`, with `receive(value)` and `interrupt(error?)`, and returns its stop function.
+    `CallContext` and a `Sink`, with `receive(value)` and `interrupt(outcome)`, where `outcome` is the `ResultPayload`
+    the subscriber hears, `ok()` or `err(error)`, and returns its stop function.
   - `dispose(reason)` closes the transport and disposes the provider.
 - `CallContext<H>` is `{ origin, hello }`: the peer's origin from the provider, or null, and the peer's hello.
 - `TransportHandshakeTimeoutError` closes an opener that heard no answer in time. `TransportVersionMismatchError` closes

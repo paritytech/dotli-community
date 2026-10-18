@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { toError } from '@dotli/shared';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { ok, err, domain, hostFailure } from '@dotli/transport';
+import { domain, err, hostFailure, ok } from '@dotli/transport';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remote-resolve.js';
 import { createFrameRpc } from './rpc.js';

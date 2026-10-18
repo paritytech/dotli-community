@@ -91,17 +91,21 @@ export interface Address {
   methodId: number;
 }
 
+/** A method and where it sits. */
+export interface Place {
+  method: AnyMethod;
+  address: Address;
+}
+
 /** A checked schema, which places each of its methods. */
 export interface Schema<H, T extends Traits> {
   readonly version: number;
   readonly hello: Codec<H>;
   readonly traits: T;
-  /** Every method, in wire order. */
-  readonly methods: readonly AnyMethod[];
   /** Where `method` sits. Throws for a method of another schema, which is the caller's mistake. */
   readonly addressOf: (method: AnyMethod) => Address;
-  /** The method at a place, or undefined when the schema has none there. */
-  readonly methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
+  /** The method at a place and its address, or undefined when the schema has none there. */
+  readonly placeAt: (traitId: number, methodId: number) => Place | undefined;
 }
 
 // Ids are bytes on the wire.
@@ -121,25 +125,25 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
     throw new RangeError(`a schema has at most ${String(MAX_IDS)} traits, got ${String(traits.length)}`);
   }
   const addresses = new Map<AnyMethod, Address>();
-  const byId = traits.map(([, methods]) => Object.values(methods));
-  traits.forEach(([trait, methods], traitId) => {
+  const places = traits.map(([trait, methods], traitId) => {
     const entries = Object.entries(methods);
     if (entries.length > MAX_IDS) {
       throw new RangeError(`trait "${trait}" has at most ${String(MAX_IDS)} methods, got ${String(entries.length)}`);
     }
-    entries.forEach(([name, method], methodId) => {
+    return entries.map(([name, method], methodId): Place => {
       const placed = addresses.get(method);
       if (placed !== undefined) {
         throw new Error(`${trait}.${name} is the method already at ${placed.trait}.${placed.method}`);
       }
-      addresses.set(method, { trait, method: name, traitId, methodId });
+      const address = { trait, method: name, traitId, methodId };
+      addresses.set(method, address);
+      return { method, address };
     });
   });
   return {
     version: def.version,
     hello: def.hello,
     traits: def.traits,
-    methods: byId.flat(),
     addressOf(method) {
       const address = addresses.get(method);
       if (address === undefined) {
@@ -147,7 +151,7 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
       }
       return address;
     },
-    methodAt: (traitId, methodId) => byId[traitId]?.[methodId],
+    placeAt: (traitId, methodId) => places[traitId]?.[methodId],
   };
 }
 

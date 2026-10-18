@@ -70,7 +70,8 @@ describe('schema', () => {
     // Then
     expect(schema.addressOf(owner)).toEqual({ trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 });
     expect(() => schema.addressOf(reload)).toThrow('The method is not one of this schema');
-    expect(schema.methods).toEqual([owner, status]);
+    expect(schema.placeAt(0, 0)).toEqual({ method: owner, address: schema.addressOf(owner) });
+    expect(schema.placeAt(2, 0)).toBeUndefined();
   });
 
   it('As a schema author, I am refused a schema with too many traits or methods, or a version that is not 0 to 255', () => {
