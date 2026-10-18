@@ -33,16 +33,17 @@ export {
 export { budgetOf, CONNECT_BUDGET_MS, RESOLVE_BUDGET_MS } from './method-timeouts.js';
 export {
   protocolSchema,
+  type DomainFailure,
   type FrameFailure,
   type LocalWalletIdentity,
+  type LocalWalletRead,
   type ProtocolContext,
-  type ProtocolSchema,
-  type ProtocolTransport,
-  type RemoteFailure,
-  type DomainFailure,
   type ProtocolHandler,
   type ProtocolHello,
+  type ProtocolSchema,
   type ProtocolServing,
+  type ProtocolTransport,
+  type RemoteFailure,
   type SharedAuthChange,
   type TelemetryEvent,
 } from './schema.js';

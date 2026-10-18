@@ -48,6 +48,13 @@ export interface FakeProtocolOptions {
   rootManifest?: RootManifest;
 }
 
+declare global {
+  interface Window {
+    /** The fake's controls, in the protocol frame. */
+    __fakeProtocol?: FakeProtocolControl;
+  }
+}
+
 /** What a test reads and steers in the fake, through `window.__fakeProtocol` in the protocol frame. */
 export interface FakeProtocolControl {
   /** `bitswap_v1_get` asks per CID, counted as they arrive. */
@@ -120,7 +127,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
       }
     },
   };
-  Object.defineProperty(window, '__fakeProtocol', { value: control });
+  window.__fakeProtocol = control;
 
   const serving = createTransport(
     protocolSchema,

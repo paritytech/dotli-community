@@ -4,24 +4,23 @@
 // The shared store on `host.<BASE_DOMAIN>`: auth, mode preferences and the local wallet, one for every subdomain.
 
 import type { SiteId } from '@dotli/config';
-import type { CallError, MethodTypes, Result } from '@dotli/transport';
 import { log, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolListeners } from './listeners.js';
 import type { FrameRpc } from './rpc.js';
-import { protocolSchema, type LocalWalletIdentity, type ProtocolTransport, type SharedAuthChange } from './schema.js';
+import {
+  protocolSchema,
+  type LocalWalletIdentity,
+  type LocalWalletRead,
+  type ProtocolTransport,
+  type SharedAuthChange,
+} from './schema.js';
+import { subscribe } from './subscription.js';
 
 const { storage, wallet } = protocolSchema.traits;
 
-/** What the frame answers a local wallet read with. */
-type LocalWalletAnswer =
-  MethodTypes<typeof wallet.read>['response'] extends Result<infer R, CallError<never>> ? R : never;
-import { subscribe } from './subscription.js';
-
-export type SharedAuthStorageChange = SharedAuthChange;
-
-export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => void;
+export type SharedAuthStorageListener = (change: SharedAuthChange) => void;
 
 /** `unreadable` means the frame found a record it could not decrypt, and has already deleted it. */
 export type LocalWalletReadResult =
@@ -29,7 +28,7 @@ export type LocalWalletReadResult =
   | { status: 'unreadable' }
   | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null };
 
-function localWalletReadResult(answer: LocalWalletAnswer): LocalWalletReadResult {
+function localWalletReadResult(answer: LocalWalletRead): LocalWalletReadResult {
   switch (answer.tag) {
     case 'none':
       return { status: 'none' };
@@ -67,7 +66,7 @@ export interface SharedStoreDeps {
 }
 
 export function createSharedStore({ frame, rpc, timers = realTimers }: SharedStoreDeps) {
-  const sharedAuthListeners = protocolListeners<SharedAuthStorageChange>('shared_auth');
+  const sharedAuthListeners = protocolListeners<SharedAuthChange>('shared_auth');
   const statusListeners = protocolListeners<SharedStoreStatus>('shared_store_status');
   // Latched from each status the frame publishes, since a listener ahead of this store's own can move the frame on
   // before this store reads it.

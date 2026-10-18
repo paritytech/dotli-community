@@ -1259,7 +1259,7 @@ describe('workerNetwork', () => {
     const network = workerNetwork('dotli-protocol-previewnet');
 
     // Then
-    expect(network).toEqual({ ok: true, network: 'previewnet' });
+    expect(network).toEqual(ok('previewnet'));
   });
 
   it('As the shared worker named for a network this build does not know, I say which one', () => {
@@ -1267,7 +1267,7 @@ describe('workerNetwork', () => {
     const network = workerNetwork('dotli-protocol-nowhere');
 
     // Then
-    expect(network).toEqual({ ok: false, message: 'Unknown protocol network: "nowhere"' });
+    expect(network).toEqual(err('Unknown protocol network: "nowhere"'));
   });
 
   it('As the shared worker named without a network, I say the iframe did not encode one', () => {
@@ -1275,9 +1275,8 @@ describe('workerNetwork', () => {
     const network = workerNetwork('dotli-protocol');
 
     // Then
-    expect(network).toEqual({
-      ok: false,
-      message: 'Unexpected SharedWorker name "dotli-protocol". The iframe did not encode the active network.',
-    });
+    expect(network).toEqual(
+      err('Unexpected SharedWorker name "dotli-protocol". The iframe did not encode the active network.'),
+    );
   });
 });

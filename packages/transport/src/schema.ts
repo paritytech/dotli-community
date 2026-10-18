@@ -9,15 +9,24 @@ import type { CallError, Result, Variant } from './result.js';
 import { callError, frameOf, noDomainError, outcome, type Frame } from './wire.js';
 
 /** What a request's sides send: its payload, then the answer. */
-export type RequestMessage<P, R, E> = Variant<{ request: P; response: Result<R, CallError<E>> }>;
+export interface RequestTypes<P, R, E> {
+  request: P;
+  response: Result<R, CallError<E>>;
+}
 
 /** What a subscription's sides send: its start, its values, then its end, or the caller's stop. */
-export type SubscriptionMessage<S, V, I> = Variant<{
+export interface SubscriptionTypes<S, V, I> {
   start: S;
   receive: V;
   interrupt: Result<undefined, CallError<I>>;
   stop: undefined;
-}>;
+}
+
+/** A request's message, one of what its sides send. */
+export type RequestMessage<P, R, E> = Variant<RequestTypes<P, R, E>>;
+
+/** A subscription's message, one of what its sides send. */
+export type SubscriptionMessage<S, V, I> = Variant<SubscriptionTypes<S, V, I>>;
 
 /** A method: the codec of what its sides send, and of the frames that carry it. */
 interface Method<M> {
@@ -123,9 +132,9 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
 /** What each side of a method sends, by name. */
 export type MethodTypes<M> =
   M extends Request<infer P, infer R, infer E>
-    ? { request: P; response: Result<R, CallError<E>> }
+    ? RequestTypes<P, R, E>
     : M extends Subscription<infer S, infer V, infer I>
-      ? { start: S; receive: V; interrupt: Result<undefined, CallError<I>>; stop: undefined }
+      ? SubscriptionTypes<S, V, I>
       : never;
 
 /** A method's own error: a request's `error`, or a subscription's `interrupt` reason. */

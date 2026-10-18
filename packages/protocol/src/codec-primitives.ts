@@ -6,6 +6,7 @@
 // check that the value ends where the data does. These codecs refuse what the wire cannot carry exactly.
 
 import {
+  Bytes,
   Enum,
   _void,
   createCodec,
@@ -16,14 +17,7 @@ import {
   u8,
   type Codec,
   type Decoder,
-  type StringRecord,
 } from 'scale-ts';
-
-/** scale-ts hands decoders its internal byte array, which carries the read cursor and a view over the buffer. */
-interface Cursor extends Uint8Array {
-  i: number;
-  v: DataView;
-}
 
 const F64_BYTES = 8;
 
@@ -35,7 +29,6 @@ export class WireDecodeError extends Error {
   }
 }
 
-// The transport keeps its scale-ts helpers private, since its codecs are opaque, so the protocol has its own wrapper.
 /** Names a decode failure in `what`, keeping it as the cause. A failure already named passes unchanged. */
 function named<T>(c: Codec<T>, what: string): Codec<T> {
   return createCodec(
@@ -95,18 +88,14 @@ export const u8Exact: Codec<number> = enhanceCodec(
 );
 
 /** Eight bytes little-endian. */
-export const f64: Codec<number> = createCodec(
+export const f64: Codec<number> = enhanceCodec(
+  Bytes(F64_BYTES),
   (value: number) => {
     const bytes = new Uint8Array(F64_BYTES);
     new DataView(bytes.buffer).setFloat64(0, value, true);
     return bytes;
   },
-  createDecoder(input => {
-    const cursor = input as Cursor;
-    const value = cursor.v.getFloat64(cursor.i, true);
-    cursor.i += F64_BYTES;
-    return value;
-  }),
+  bytes => new DataView(bytes.buffer, bytes.byteOffset, F64_BYTES).getFloat64(0, true),
 );
 
 /** `bool` on the wire, throws `RangeError` on a byte other than 0 or 1. */
@@ -153,31 +142,40 @@ export function oneOf<T extends string>(values: readonly T[]): Codec<T> {
       throw new RangeError(`the value "${value}" is listed twice`);
     }
   });
-  const variants = Object.fromEntries(values.map(value => [value, _void])) as StringRecord<Codec<undefined>>;
-  // An object lists integer-like keys first, so each variant is pinned to its place in the list.
-  const indices = Object.keys(variants).map(key => values.indexOf(key as T));
   const listed = enhanceCodec(
-    Enum(variants, indices as unknown as Parameters<typeof Enum>[1]),
-    (value: T) => ({ tag: value, value: undefined }),
-    ({ tag }) => tag as T,
+    u8,
+    (value: T) => {
+      const index = values.indexOf(value);
+      if (index < 0) {
+        throw new RangeError(`"${value}" is not one of ${values.join(', ')}`);
+      }
+      return index;
+    },
+    index => {
+      const value = values[index];
+      if (value === undefined) {
+        throw new RangeError(`${String(index)} is past the ${String(values.length)} listed values`);
+      }
+      return value;
+    },
   );
-  const decoded = named(listed, 'the listed value');
-  return createCodec((value: T) => {
-    try {
-      return listed.enc(value);
-    } catch (cause) {
-      throw new RangeError(`"${value}" is not one of ${values.join(', ')}`, { cause });
-    }
-  }, decoded.dec);
+  return named(listed, 'the listed value');
 }
 
-/** Decodes on one cursor over the whole buffer and throws unless the value ends exactly at `byteLength`. */
+/** Where a scale-ts decoder stopped. scale-ts reads on a byte array that carries its position as `i`. */
+function positionOf(bytes: Uint8Array): number {
+  if ('i' in bytes && typeof bytes.i === 'number') {
+    return bytes.i;
+  }
+  throw new TypeError('The decoder was given no position');
+}
+
+/** Decodes all of `data`, refusing a value that ends before the data does or runs past it. */
 export function decodeExact<T>(decoder: Decoder<T>, data: ArrayBuffer): T {
   return createDecoder(input => {
-    const cursor = input as Cursor;
-    const value = decoder(cursor);
-    if (cursor.i !== cursor.byteLength) {
-      throw new RangeError(`decoded ${String(cursor.i)} of ${String(cursor.byteLength)} bytes`);
+    const value = decoder(input);
+    if (positionOf(input) !== input.length) {
+      throw new RangeError(`decoded ${String(positionOf(input))} of ${String(input.length)} bytes`);
     }
     return value;
   })(data);

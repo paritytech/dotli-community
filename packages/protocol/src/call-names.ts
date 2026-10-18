@@ -51,8 +51,8 @@ export function callNameAt(trait: string, method: string): string {
 /** The name of a protocol method. */
 export function callName(method: AnyMethod): CallName {
   const address = protocolSchema.addresses.get(method);
-  const path = address === undefined ? '' : `${address.trait}.${address.method}`;
-  if (!isPath(path)) {
+  const path = address === undefined ? undefined : `${address.trait}.${address.method}`;
+  if (path === undefined || !isPath(path)) {
     throw new Error('The method is not one of the protocol');
   }
   return CALL_NAMES[path];

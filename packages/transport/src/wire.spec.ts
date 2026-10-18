@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { _void, u8, type Codec } from 'scale-ts';
+import { Bytes, _void, u8, type Codec } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 import { codec } from './codec.js';
 import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
@@ -108,6 +108,18 @@ describe('wire', () => {
     // Then
     expect(message).toEqual({ tag: 'request', value: 'seen' });
     expect(seen).toEqual([[0x61, 0x62]]);
+  });
+
+  it('As a transport, I decode a message cut short and refuse it, though scale-ts reads it without a word', () => {
+    // Given a request of four bytes that carries one
+    const fixed = request({ request: Bytes(4), response: _void });
+    const cut = Uint8Array.of(0, 0x61);
+
+    // When
+    const decoded = decode(fixed.message, cut);
+
+    // Then
+    expect(decoded).toEqual(err(new RangeError('The value runs 3 bytes past the end of the data')));
   });
 
   it('As a transport, I decode what a codec refuses and am told why', () => {

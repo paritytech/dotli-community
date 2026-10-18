@@ -26,9 +26,11 @@ import { errorName, log, serializeError, toError } from '@dotli/shared';
 import {
   createPortProvider,
   createTransport,
+  err,
   ok,
   type Request,
   type RequestHandler,
+  type Result,
   type Sink,
   type Subscription,
   type SubscriptionHandler,
@@ -72,7 +74,7 @@ function intervalClock(intervalMs: number): HeartbeatClock {
 }
 
 /** The network a worker serves, or why it cannot serve one. */
-export type WorkerNetwork = { ok: true; network: Network } | { ok: false; message: string };
+export type WorkerNetwork = Result<Network, string>;
 
 export interface ProtocolWorkerDeps {
   scope: WorkerScope;
@@ -119,15 +121,12 @@ function swEvent(message: string, data?: Record<string, unknown>): void {
 export function workerNetwork(name: string): WorkerNetwork {
   const requested = name.startsWith(NETWORK_NAME_PREFIX) ? name.slice(NETWORK_NAME_PREFIX.length) : null;
   if (requested === null) {
-    return {
-      ok: false,
-      message: `Unexpected SharedWorker name "${name}". The iframe did not encode the active network.`,
-    };
+    return err(`Unexpected SharedWorker name "${name}". The iframe did not encode the active network.`);
   }
   if (!isValidNetwork(requested)) {
-    return { ok: false, message: `Unknown protocol network: "${requested}"` };
+    return err(`Unknown protocol network: "${requested}"`);
   }
-  return { ok: true, network: requested };
+  return ok(requested);
 }
 
 export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
@@ -154,7 +153,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   // What every port hears through its `frame.status` subscription, each on its own transport.
   const status = createFrameStatus();
 
-  const networkInitFailure = deps.network.ok ? null : deps.network.message;
+  const networkInitFailure = deps.network.tag === 'Err' ? deps.network.value : null;
   if (networkInitFailure !== null) {
     phase = { name: 'failed', error: new ProtocolInitFailedError(networkInitFailure) };
     status.fail(phase.error);
@@ -332,45 +331,33 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     span.end();
   }
 
-  /** Spans a request, and logs one that fails, by the name dashboards know it by. */
+  /**
+   * Logs a request that fails by the name dashboards know it by, and spans it unless `spanned` is false: a chain
+   * message gets no span, which would swamp the request spans.
+   */
   function traced<P, R, E extends DomainFailure>(
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
+    spanned = true,
   ): RequestHandler<P, R, E, ProtocolHello> {
     const name = callName(method);
     return async (payload, context) => {
-      const span = openRequestSpan(name, context.hello.resolutionId);
+      const span = spanned ? openRequestSpan(name, context.hello.resolutionId) : null;
       try {
         const answer = await handler(payload, context);
         const failure = answer.tag === 'Ok' ? undefined : failureOf(method, answer.value);
-        endSpan(span, failure);
+        if (span !== null) {
+          endSpan(span, failure);
+        }
         if (failure !== undefined) {
           // The host rebuilds this failure from the answer and reports it.
           log.warn(`${TAG} ${name} failed`, failure);
         }
         return answer;
       } catch (error) {
-        endSpan(span, toError(error));
-        log.warn(`${TAG} ${name} failed`, error);
-        throw error;
-      }
-    };
-  }
-
-  /** A chain message gets no span, which would swamp the request spans, but its failure is logged as theirs are. */
-  function logged<P, R, E extends DomainFailure>(
-    method: Request<P, R, E>,
-    handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
-  ): RequestHandler<P, R, E, ProtocolHello> {
-    const name = callName(method);
-    return async (payload, context) => {
-      try {
-        const answer = await handler(payload, context);
-        if (answer.tag === 'Err') {
-          log.warn(`${TAG} ${name} failed`, failureOf(method, answer.value));
+        if (span !== null) {
+          endSpan(span, toError(error));
         }
-        return answer;
-      } catch (error) {
         log.warn(`${TAG} ${name} failed`, error);
         throw error;
       }
@@ -484,7 +471,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     );
     transport.handleRequest(
       chain.send,
-      logged(chain.send, (payload, context) => scopeOf(session).send(payload, context)),
+      traced(chain.send, (payload, context) => scopeOf(session).send(payload, context), false),
     );
   }
 
@@ -618,11 +605,11 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   });
 
   const { network } = deps;
-  if (!network.ok) {
+  if (network.tag === 'Err') {
     // Every tab hears this as the reason the worker never became ready, and the host reports it.
-    log.error(`${TAG} ${network.message}`);
+    log.error(`${TAG} ${network.value}`);
     return;
   }
-  swEvent('Worker started', { network: network.network });
+  swEvent('Worker started', { network: network.value });
   void presync();
 }

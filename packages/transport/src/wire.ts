@@ -6,7 +6,7 @@
 // from the method's. A received frame keeps the message as bytes until the method it names decodes it. The id and the
 // handshake variants never change, so a peer of any release reads the version it refuses.
 
-import { Bytes, Enum, Struct, Tuple, _void, createCodec, createDecoder, str, u32, u8, type Codec } from 'scale-ts';
+import { Bytes, Enum, Struct, _void, createCodec, createDecoder, str, u32, u8, type Codec } from 'scale-ts';
 import { toError } from '@dotli/shared';
 import { err, ok, type CallError, type Result, type Variant } from './result.js';
 
@@ -71,13 +71,30 @@ export const frameOf = <M>(message: Codec<M>): Codec<Frame<M>> =>
 /** Frames as they arrive, and as the library writes its own, with a call's message as bytes. */
 export const frame = frameOf(Bytes(Infinity));
 
-/** Decodes all of `data`, refusing bytes after the value. */
-export function decodeAll<T>(codec: Codec<T>, data: Uint8Array | ArrayBuffer): T {
-  const [value, rest] = Tuple(codec, Bytes(Infinity)).dec(data);
-  if (rest.length > 0) {
-    throw new RangeError(`${String(rest.length)} bytes follow the end of the value`);
+/** Where a scale-ts decoder stopped. scale-ts reads on a byte array that carries its position as `i`. */
+function positionOf(bytes: Uint8Array): number {
+  if ('i' in bytes && typeof bytes.i === 'number') {
+    return bytes.i;
   }
-  return value;
+  throw new TypeError('The decoder was given no position');
+}
+
+/**
+ * Decodes all of `data`, refusing a value that ends before the data does or runs past it, since scale-ts reads a value
+ * cut short without a word.
+ */
+export function decodeAll<T>(codec: Codec<T>, data: Uint8Array | ArrayBuffer): T {
+  return createDecoder(input => {
+    const value = codec.dec(input);
+    const left = input.length - positionOf(input);
+    if (left > 0) {
+      throw new RangeError(`${String(left)} bytes follow the end of the value`);
+    }
+    if (left < 0) {
+      throw new RangeError(`The value runs ${String(-left)} bytes past the end of the data`);
+    }
+    return value;
+  })(data);
 }
 
 /** Decodes all of `data`, or says why it does not. */

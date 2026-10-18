@@ -141,7 +141,7 @@ export function rig(watched: WatchedSide = {}) {
 
 /** How a test names a frame: its kind, or a call's tag and method, such as `request:notes.read`. */
 const nameOf = (heard: RecordedFrame): string =>
-  heard.kind === 'call' ? `${heard.tag ?? 'unknown'}:${heard.trait}.${heard.method}` : heard.kind;
+  heard.kind === 'call' ? `${heard.decoded?.tag ?? 'unknown'}:${heard.trait}.${heard.method}` : heard.kind;
 
 /** A peer the test speaks for, frame by frame, in place of a transport. */
 function rawPeer(provider: Provider) {

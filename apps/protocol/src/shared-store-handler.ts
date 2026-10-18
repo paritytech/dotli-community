@@ -15,9 +15,10 @@ import {
   isValidSharedModeKey,
   protocolSchema,
   type ProtocolContext,
+  type SharedAuthChange,
   type ProtocolServing,
 } from '@dotli/protocol';
-import { type CallError, denied, err, type MethodTypes, ok, type Result, type Sink } from '@dotli/transport';
+import { type CallError, denied, err, ok, type Result, type Sink } from '@dotli/transport';
 
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
@@ -40,8 +41,6 @@ export interface SharedStoreDeps {
 }
 
 const { storage } = protocolSchema.traits;
-
-type SharedAuthChange = MethodTypes<typeof storage.authChanges>['receive'];
 
 export interface SharedStoreHandler {
   /** Stops serving the stores and hearing other tabs. */

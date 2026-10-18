@@ -9,32 +9,30 @@ import { protocolSchema } from './schema.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** How long a chain connection may take to connect. */
+export const CONNECT_BUDGET_MS = 30_000;
+/** How long a name resolution may take to answer. */
+export const RESOLVE_BUDGET_MS = 90_000;
+
 const { frame, resolve, wallet, chain } = protocolSchema.traits;
 
 /**
- * Methods bounded by chain sync or the user, not a timer. A smoldot panic rejects them through the frame's status, and
- * the user can abandon them from "Change settings".
+ * Budget per method in ms. Null is a method bounded by chain sync or the user, not a timer: a smoldot panic rejects it
+ * through the frame's status, and the user can abandon it from "Change settings".
  */
-const UNTIMED_METHODS: ReadonlySet<AnyMethod> = new Set<AnyMethod>([frame.warmup]);
-
-/** Budget per method in ms. */
-const METHOD_TIMEOUTS: ReadonlyMap<AnyMethod, number> = new Map<AnyMethod, number>([
-  [chain.connect, 30_000],
-  [resolve.dotName, 90_000],
-  [resolve.owner, 90_000],
-  [resolve.executableManifest, 90_000],
-  [resolve.rootManifest, 90_000],
+const METHOD_TIMEOUTS: ReadonlyMap<AnyMethod, number | null> = new Map<AnyMethod, number | null>([
+  [frame.warmup, null],
+  [chain.connect, CONNECT_BUDGET_MS],
+  [resolve.dotName, RESOLVE_BUDGET_MS],
+  [resolve.owner, RESOLVE_BUDGET_MS],
+  [resolve.executableManifest, RESOLVE_BUDGET_MS],
+  [resolve.rootManifest, RESOLVE_BUDGET_MS],
   // Boot waits on it, so a protocol frame that does not load or answer must not hold the page for the default budget.
   [wallet.read, 5_000],
 ]);
 
 /** How long the host waits on `method`, or null for one it waits on without a timer. */
 export function budgetOf(method: AnyMethod): number | null {
-  return UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS.get(method) ?? DEFAULT_TIMEOUT_MS);
+  const budget = METHOD_TIMEOUTS.get(method);
+  return budget === undefined ? DEFAULT_TIMEOUT_MS : budget;
 }
-
-// Timed methods, so the default is never taken.
-/** How long a chain connection may take to connect. */
-export const CONNECT_BUDGET_MS = budgetOf(chain.connect) ?? DEFAULT_TIMEOUT_MS;
-/** How long a name resolution may take to answer. */
-export const RESOLVE_BUDGET_MS = budgetOf(resolve.dotName) ?? DEFAULT_TIMEOUT_MS;

@@ -18,7 +18,6 @@ export interface HandshakeDeps<H> {
   helloCodec: Codec<H>;
   /** This side's hello. */
   hello: H;
-  nextId: () => number;
   post: Post;
   /** Reports a handshake frame meant for the other role, or one whose hello does not decode. */
   refuse: Refuse;
@@ -74,8 +73,10 @@ export function createOpener<H>(
     }
   };
 
-  const attempt = (hello: Uint8Array): never => {
-    const data = encodeFrame(frame, { id: deps.nextId(), body: { tag: 'open', value: { version, hello } } });
+  // An attempt is no call, so it takes no call id, and the accepter's answer echoes it.
+  const attempt = (): never => {
+    const hello = deps.helloCodec.enc(deps.hello);
+    const data = encodeFrame(frame, { id: 0, body: { tag: 'open', value: { version, hello } } });
     const posted = deps.post(data);
     if (posted.tag === 'Err') {
       throw new Error('The handshake could not be posted', { cause: posted.value });
@@ -89,10 +90,9 @@ export function createOpener<H>(
         return;
       }
       phase = 'waiting';
-      const hello = deps.helloCodec.enc(deps.hello);
       // An attempt fails until an answer comes, so the pool posts a fresh one every `retryMs` until it is stopped. It
-      // settles only when stopped or when an attempt cannot be posted.
-      const retrying = attempts.call<never>(() => attempt(hello), { signal: stopAttempts.signal });
+      // settles only when stopped, or when an attempt cannot encode its hello or be posted.
+      const retrying = attempts.call<never>(attempt, { signal: stopAttempts.signal });
       withTimeout(
         retrying,
         timeoutMs,

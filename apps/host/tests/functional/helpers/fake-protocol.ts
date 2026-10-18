@@ -6,7 +6,7 @@
 
 import { expect, type Frame, type Page } from '@playwright/test';
 import { PORT } from '../../env.js';
-import type { BlockMode, FakeProtocolControl, FakeProtocolOptions } from '../wire/fake-protocol-frame.js';
+import type { BlockMode, FakeProtocolOptions } from '../wire/fake-protocol-frame.js';
 import { FAKE_PROTOCOL_BUNDLE_PATH } from './wire-bundles.js';
 
 const PROTOCOL_HOST = `host.localhost:${PORT}`;
@@ -60,17 +60,14 @@ async function protocolFrame(page: Page): Promise<Frame> {
 /** `bitswap_v1_get` asks the fake has had for `cid`. */
 export async function blockGets(page: Page, cid: string): Promise<number> {
   const frame = await protocolFrame(page);
-  return frame.evaluate(
-    target => (window as unknown as { __fakeProtocol: FakeProtocolControl }).__fakeProtocol.gets[target] ?? 0,
-    cid,
-  );
+  return frame.evaluate(target => window.__fakeProtocol?.gets[target] ?? 0, cid);
 }
 
 export async function setBlockMode(page: Page, cid: string, mode: BlockMode): Promise<void> {
   const frame = await protocolFrame(page);
   await frame.evaluate(
     ([target, next]) => {
-      (window as unknown as { __fakeProtocol: FakeProtocolControl }).__fakeProtocol.setMode(target, next);
+      window.__fakeProtocol?.setMode(target, next);
     },
     [cid, mode] as const,
   );
@@ -79,6 +76,6 @@ export async function setBlockMode(page: Page, cid: string, mode: BlockMode): Pr
 export async function releaseBlock(page: Page, cid: string): Promise<void> {
   const frame = await protocolFrame(page);
   await frame.evaluate(target => {
-    (window as unknown as { __fakeProtocol: FakeProtocolControl }).__fakeProtocol.release(target);
+    window.__fakeProtocol?.release(target);
   }, cid);
 }

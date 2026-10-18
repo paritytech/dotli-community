@@ -18,9 +18,11 @@ export type {
   MethodTypes,
   Request,
   RequestMessage,
+  RequestTypes,
   Schema,
   Subscription,
   SubscriptionMessage,
+  SubscriptionTypes,
   Traits,
 } from './schema.js';
 export type { CallContext, RequestHandler, Sink, SubscriptionHandler } from './serving.js';

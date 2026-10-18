@@ -5,7 +5,7 @@
 
 import { fromHex, toHex } from '@dotli/shared';
 import type { AnyMethod, Codec } from '@dotli/transport';
-import { FrameRefusedError, readFrame, readMessage } from '@dotli/transport/testing';
+import { FrameRefusedError, readFrame, readMessage, type RecordedFrame } from '@dotli/transport/testing';
 import { protocolSchema } from '../schema.js';
 
 /**
@@ -27,7 +27,7 @@ const plain = (_key: string, value: unknown): unknown =>
 
 /** Records a call's message the frame sent, or gives null for the library's own frames and data that is no frame. */
 export function recordWireMessage(data: ArrayBuffer): RecordedWireMessage | null {
-  let frame;
+  let frame: RecordedFrame;
   try {
     frame = readFrame(protocolSchema, data);
   } catch (error) {
@@ -37,15 +37,11 @@ export function recordWireMessage(data: ArrayBuffer): RecordedWireMessage | null
     }
     throw error;
   }
-  if (frame.kind !== 'call' || frame.tag === null) {
+  if (frame.kind !== 'call' || frame.decoded === null) {
     return null;
   }
-  const { id, trait, method, tag, message } = frame;
-  const placed = [...protocolSchema.addresses].find(
-    ([, address]) => address.trait === trait && address.method === method,
-  );
-  const json = placed === undefined ? 'null' : JSON.stringify(placed[0].message.dec(message), plain);
-  return { id, trait, method, tag, message: toHex(message), json };
+  const { id, trait, method, message, decoded } = frame;
+  return { id, trait, method, tag: decoded.tag, message: toHex(message), json: JSON.stringify(decoded, plain) };
 }
 
 /** The recorded messages of `method`, decoded with it. */

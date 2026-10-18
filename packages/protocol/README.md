@@ -28,8 +28,7 @@ flowchart TB
   the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its
   payloads, and each handshake's hello has a resolution id field, null from the host and the page load's id from the
   iframe toward the SharedWorker. Each payload is typed by its method, so a payload, answer or value that does not fit
-  its method fails to compile. Its value codecs are built from the protocol's own checked codecs and cross the package
-  only as opaque values.
+  its method fails to compile. Its value codecs are the protocol's own checked SCALE codecs.
 - A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed
   init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
   or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
@@ -113,9 +112,9 @@ were.
 
 A message from the frame that cannot be decoded, or does not fit the call it names, is dropped, counted once with its
 reason (malformed or invalid) and side, and logged once with what failed. Data from the frame that is not bytes is
-counted as not bytes, since only a frame of an earlier release sends it, once, whether the provider or the transport
-drops it. A message the provider could not post is captured, logged and counted, with its call's name when it belonged
-to one. A late answer to a call that is no longer waiting is ignored without a count.
+counted as not bytes, since only a frame of an earlier release sends it, once, as the provider drops it. A message the
+provider could not post is captured, logged and counted, with its call's name when it belonged to one. A late answer to
+a call that is no longer waiting is ignored without a count.
 
 ### Shared store and chains
 

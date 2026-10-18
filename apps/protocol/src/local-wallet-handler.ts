@@ -8,6 +8,7 @@ import {
   isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
   protocolSchema,
+  type LocalWalletRead,
   type ProtocolContext,
   type ProtocolServing,
 } from '@dotli/protocol';
@@ -19,11 +20,9 @@ import {
   updateLocalWalletIdentity,
   type LocalWalletStore,
 } from '@dotli/storage';
-import { type CallError, denied, err, type MethodTypes, ok, type Result } from '@dotli/transport';
+import { denied, err, ok, type CallError, type Result } from '@dotli/transport';
 
 const { wallet } = protocolSchema.traits;
-
-type WalletRead = Extract<MethodTypes<typeof wallet.read>['response'], { tag: 'Ok' }>['value'];
 
 const pageWallet: LocalWalletStore = { forgetLocalWallet, loadLocalWallet, saveLocalWallet, updateLocalWalletIdentity };
 
@@ -50,7 +49,7 @@ function refusalOf(payload: { siteId: string }, context: ProtocolContext): Resul
 }
 
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
-async function read(store: LocalWalletStore): Promise<WalletRead> {
+async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
   try {
     const wallet = await store.loadLocalWallet();
     return wallet === null
@@ -65,32 +64,33 @@ async function read(store: LocalWalletStore): Promise<WalletRead> {
   }
 }
 
+/** Runs `write` once the call's origin and site check, or answers the call's refusal. */
+async function admittedWrite(
+  payload: { siteId: string },
+  context: ProtocolContext,
+  write: () => Promise<void>,
+): Promise<Result<undefined, CallError<never>>> {
+  const refusal = refusalOf(payload, context);
+  if (refusal !== null) {
+    return refusal;
+  }
+  await write();
+  return ok();
+}
+
 /** Serves the wallet to host pages on `serving`, over the page's own wallet store by default. */
 export function serveLocalWallet(serving: ProtocolServing, store: LocalWalletStore = pageWallet): void {
   serving.handleRequest(wallet.read, async (payload, context) => refusalOf(payload, context) ?? ok(await read(store)));
-  serving.handleRequest(wallet.save, async (payload, context) => {
-    const refusal = refusalOf(payload, context);
-    if (refusal !== null) {
-      return refusal;
-    }
-    assertEntropy(payload.entropy);
-    await store.saveLocalWallet(payload.entropy);
-    return ok();
-  });
-  serving.handleRequest(wallet.identity, async (payload, context) => {
-    const refusal = refusalOf(payload, context);
-    if (refusal !== null) {
-      return refusal;
-    }
-    await store.updateLocalWalletIdentity(payload.identity);
-    return ok();
-  });
-  serving.handleRequest(wallet.forget, async (payload, context) => {
-    const refusal = refusalOf(payload, context);
-    if (refusal !== null) {
-      return refusal;
-    }
-    await store.forgetLocalWallet();
-    return ok();
-  });
+  serving.handleRequest(wallet.save, (payload, context) =>
+    admittedWrite(payload, context, () => {
+      assertEntropy(payload.entropy);
+      return store.saveLocalWallet(payload.entropy);
+    }),
+  );
+  serving.handleRequest(wallet.identity, (payload, context) =>
+    admittedWrite(payload, context, () => store.updateLocalWalletIdentity(payload.identity)),
+  );
+  serving.handleRequest(wallet.forget, (payload, context) =>
+    admittedWrite(payload, context, () => store.forgetLocalWallet()),
+  );
 }

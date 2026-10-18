@@ -28,10 +28,10 @@ installGlobalErrorHandlers('worker');
 m.setDefaults({ protocol_mode: 'shared-worker' });
 
 const network = workerNetwork(self.name);
-if (network.ok) {
+if (network.tag === 'Ok') {
   // Before the light client starts, since everything in this worker reads the active network.
-  setActiveNetwork(network.network);
-  m.setDefaults({ network: network.network });
+  setActiveNetwork(network.value);
+  m.setDefaults({ network: network.value });
 }
 
 // Before the light client starts, or its first sockets go uncounted.

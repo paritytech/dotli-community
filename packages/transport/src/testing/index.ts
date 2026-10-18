@@ -10,14 +10,15 @@ import { decode, decodeAll, frame } from '../wire.js';
 export { createProviderPair } from '../provider.fake.js';
 
 /**
- * A frame as a test reads it. A call's message keeps its bytes, which `readMessage` decodes with its method, and its
- * tag. A call to a method the schema lacks is named by its numeric ids, with no tag.
+ * A frame as a test reads it. A call keeps its message's bytes, which `readMessage` decodes typed with its method, and
+ * the message as its method decoded it, read by its tag. A call to a method the schema lacks is named by its numeric
+ * ids, with no decoded message.
  */
 export type RecordedFrame =
   | { id: number; kind: 'open'; value: { version: number; hello: Uint8Array } }
   | { id: number; kind: 'accept'; value: Result<Uint8Array, { version: number }> }
   | { id: number; kind: 'failed'; value: CallError<never> }
-  | { id: number; kind: 'call'; trait: string; method: string; tag: string | null; message: Uint8Array };
+  | { id: number; kind: 'call'; trait: string; method: string; message: Uint8Array; decoded: { tag: string } | null };
 
 /** Recorded data that is no frame. `cause` is why. */
 export class FrameRefusedError extends Error {
@@ -27,10 +28,10 @@ export class FrameRefusedError extends Error {
   }
 }
 
-/** A message's tag, read with the method it belongs to. */
-function tagOf(method: AnyMethod, message: Uint8Array): string {
+/** A message as the method it belongs to decodes it. */
+function decodedBy(method: AnyMethod, message: Uint8Array): { tag: string } {
   try {
-    return method.message.dec(message).tag;
+    return method.message.dec(message);
   } catch (error) {
     throw new FrameRefusedError(toError(error));
   }
@@ -59,12 +60,12 @@ export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: Array
             kind: 'call',
             trait: address.trait,
             method: address.method,
-            tag: tagOf(placed, message),
             message,
+            decoded: decodedBy(placed, message),
           };
         }
       }
-      return { id, kind: 'call', trait: String(trait), method: String(method), tag: null, message };
+      return { id, kind: 'call', trait: String(trait), method: String(method), message, decoded: null };
     }
   }
 }

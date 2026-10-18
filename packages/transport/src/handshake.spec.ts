@@ -4,9 +4,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { manualTimers, must } from '@dotli/shared/testing';
 import { TransportHandshakeTimeoutError, TransportVersionMismatchError } from './errors.js';
+import { codec } from './codec.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
 import { err, ok } from './result.js';
+import { defineSchema } from './schema.js';
 import {
   breakable,
   issueLog,
@@ -23,6 +25,31 @@ import {
 import { createTransport } from './transport.js';
 
 describe('the handshake', () => {
+  it('As an opener whose hello does not encode, my handshake fails with why and my calls reject with it', async () => {
+    // Given
+    const refused = new RangeError('this hello does not encode');
+    const hello = codec<string>(
+      () => {
+        throw refused;
+      },
+      () => '',
+    );
+    const schema = defineSchema({ version: VERSION, hello, traits: { notes: { touch: notes.touch } } });
+    const transport = createTransport(schema, createProviderPair().left, {
+      handshake: 'open',
+      hello: 'opener',
+      timers: manualTimers(),
+    });
+    const call = outcomeOf(transport.request(notes.touch, undefined));
+
+    // When
+    transport.connect();
+
+    // Then
+    expect(await outcomeOf(transport.whenConnected())).toBe(refused);
+    expect(await call).toBe(refused);
+  });
+
   it('As a peer, each side hears the other side once the opener connects, and the accepter needs no connect', async () => {
     // Given
     const { opener, accepter, timers } = rig();

@@ -9,13 +9,14 @@ import { manualTimers } from '@dotli/shared/testing';
 import { hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
-import { createSharedStore, type SharedAuthStorageChange, type SharedStoreStatus } from './shared-store.js';
+import type { SharedAuthChange } from './schema.js';
+import { createSharedStore, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 const { storage, wallet } = protocolSchema.traits;
 
-type ChangeSink = Sink<SharedAuthStorageChange, never>;
+type ChangeSink = Sink<SharedAuthChange, never>;
 
 /** A frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is subscribed. */
 function relayingChanges(sinks: Set<ChangeSink>): (serving: ProtocolTransport) => void {
@@ -153,7 +154,7 @@ describe('createSharedStore', () => {
     const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting', timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
-    const changes: SharedAuthStorageChange[] = [];
+    const changes: SharedAuthChange[] = [];
     store.subscribeSharedAuthStorage(change => changes.push(change));
     await timers.advance(0);
     const subscribedWhileBooting = sinks.size;
@@ -180,7 +181,7 @@ describe('createSharedStore', () => {
     const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
-    const changes: SharedAuthStorageChange[] = [];
+    const changes: SharedAuthChange[] = [];
     const unsubscribe = store.subscribeSharedAuthStorage(change => changes.push(change));
     await timers.advance(0);
     fake.lose(new Error('boom'));
@@ -212,7 +213,7 @@ describe('createSharedStore', () => {
     const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
-    const changes: SharedAuthStorageChange[] = [];
+    const changes: SharedAuthChange[] = [];
     store.subscribeSharedAuthStorage(change => changes.push(change));
     await timers.advance(0);
 

@@ -27,7 +27,7 @@ const schema = defineSchema({
 const { read, watch } = schema.traits.notes;
 
 describe('readFrame', () => {
-  it("As a test, I read a recorded call by its method's names and tag, and decode its message with the method", () => {
+  it("As a test, I read a recorded call by its method's names and decoded message, and decode it typed with the method", () => {
     // Given
     const data = [
       encodeFrame(read.frame, {
@@ -50,16 +50,16 @@ describe('readFrame', () => {
         kind: 'call',
         trait: 'notes',
         method: 'read',
-        tag: 'request',
         message: expect.any(Uint8Array) as Uint8Array,
+        decoded: { tag: 'request', value: 'a note' },
       },
       {
         id: 2,
         kind: 'call',
         trait: 'notes',
         method: 'watch',
-        tag: 'stop',
         message: expect.any(Uint8Array) as Uint8Array,
+        decoded: { tag: 'stop', value: undefined },
       },
     ]);
     const [first] = recorded;
@@ -89,7 +89,7 @@ describe('readFrame', () => {
     expect(ok(1)).toEqual({ tag: 'Ok', value: 1 });
   });
 
-  it('As a test, I read a call to a method the schema lacks and get its numeric ids with no tag', () => {
+  it('As a test, I read a call to a method the schema lacks and get its numeric ids with no decoded message', () => {
     // Given
     const data = Uint8Array.of(5, 0, 0, 0, 3, 9, 1, 2, 0xde).buffer;
 
@@ -102,8 +102,8 @@ describe('readFrame', () => {
       kind: 'call',
       trait: '9',
       method: '1',
-      tag: null,
       message: Uint8Array.of(2, 0xde),
+      decoded: null,
     });
   });
 

@@ -209,7 +209,6 @@ export function createTransport<H, T extends Traits>(
     version: schema.version,
     helloCodec: schema.hello,
     hello: options.hello,
-    nextId,
     post,
     refuse,
     onOpen,

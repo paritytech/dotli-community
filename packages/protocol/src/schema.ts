@@ -54,6 +54,9 @@ const localWalletRead = Enum({
   ok: Struct({ entropy: Bytes(), identity: nullable(localWalletIdentity) }),
 });
 
+/** What the frame answers a local wallet read with. */
+export type LocalWalletRead = CodecType<typeof localWalletRead>;
+
 export const protocolSchema = defineSchema({
   version: 4,
   hello: resolutionHello,
