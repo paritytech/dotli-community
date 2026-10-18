@@ -10,7 +10,7 @@ import { deferred, manualTimers, type ManualTimers } from '@dotli/shared/testing
 import { domain, ok } from '@dotli/transport';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
-import { isProtocolTrait } from './call-names.js';
+import { isProtocolTrait } from './testing/traits.js';
 import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
 import {
   PROTOCOL_ERRORS,

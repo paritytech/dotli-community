@@ -292,7 +292,7 @@ describe('protocolSchema', () => {
     const traits = new Set(Object.keys(samples));
     const handshake = described.filter(message => !traits.has(message.trait)).map(({ leg, body }) => ({ leg, body }));
     expect(handshake).toEqual([
-      { leg: 'request', body: { version: 2, hello: OPENER_HELLO } },
+      { leg: 'request', body: { version: 3, hello: OPENER_HELLO } },
       { leg: 'response', body: ok(ACCEPTER_HELLO) },
     ]);
   });
@@ -304,7 +304,10 @@ describe('protocolSchema', () => {
 
     // Then
     expectTypeOf<FrameFailure>().toEqualTypeOf<
-      { tag: 'fatal'; value: string } | { tag: 'initFailed'; value: string } | { tag: 'released'; value: string }
+      | { tag: 'fatal'; value: string }
+      | { tag: 'initFailed'; value: string }
+      | { tag: 'released'; value: string }
+      | { tag: 'versionMismatch'; value: string }
     >();
     expectTypeOf<RemoteFailure>().toEqualTypeOf<
       { tag: 'syncTimeout'; value: string } | { tag: 'apiStopped'; value: string }

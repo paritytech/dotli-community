@@ -30,9 +30,10 @@ flowchart TB
   iframe toward the SharedWorker. Each payload is typed by its method, so a payload, answer or value that does not fit
   its method fails to compile. Its value codecs are built from the protocol's own checked codecs and cross the package
   only as opaque values.
-- A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed init
-  or as a released port, and name resolution and chain connections fail with a sync timeout or a stopped light client. A
-  telemetry event past the limits, such as the peer count limit, fails to decode, so it is refused as malformed.
+- A remote failure the host branches on is a typed error in the schema: the frame status ends as fatal, as a failed
+  init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
+  or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
+  refused as malformed.
 - Every integer goes through a codec that throws on a value it cannot carry exactly, and a payload that is truncated,
   has trailing bytes, names an unknown variant or holds an option or bool byte other than 0 or 1 fails to decode.
 - Every method keeps one name for the metrics, the trail, the budgets and the errors, the flat name it had before the
@@ -57,9 +58,10 @@ flowchart TB
 Each outcome becomes the error host code has always seen, so the error screen, the metrics and the trail stay as they
 were.
 
-- A typed failure becomes its class or its name: a fatal, a failed init and a released port become `ProtocolFatalError`,
-  `ProtocolInitFailedError` and `ProtocolPortReleasedError`, and a sync timeout and a stopped light client become a
-  `ProtocolRequestError` named `NetworkSyncTimeoutError` and `ApiStoppedError`.
+- A typed failure becomes its class or its name: a fatal, a failed init, a released port and a version mismatch become
+  `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError` and `ProtocolVersionMismatchError`, and a
+  sync timeout and a stopped light client become a `ProtocolRequestError` named `NetworkSyncTimeoutError` and
+  `ApiStoppedError`.
 - A handler's own failure crosses as its name and message only, and becomes a `ProtocolRequestError` under that name. A
   request's bare `Error` is named `ProtocolResponseError`, so it still reads as one that crossed the boundary.
 - A refusal, a method the frame does not serve and a call it cannot read become a `ProtocolRequestError` named `Denied`,
@@ -112,8 +114,8 @@ were.
 A message from the frame that cannot be decoded, or does not fit the call it names, is dropped, counted once with its
 reason (malformed or invalid) and side, and logged once with what failed. Data from the frame that is not bytes is
 counted as not bytes, since only a frame of an earlier release sends it, once, whether the provider or the transport
-drops it. A message the provider could not post is captured, logged and counted. A late answer to a call that is no
-longer waiting is ignored without a count.
+drops it. A message the provider could not post is captured, logged and counted, with its call's name when it belonged
+to one. A late answer to a call that is no longer waiting is ignored without a count.
 
 ### Shared store and chains
 
@@ -145,10 +147,10 @@ longer waiting is ignored without a count.
   waited on without a timer), `CONNECT_BUDGET_MS` and `RESOLVE_BUDGET_MS`.
 - For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a
   method's one name for metrics, the trail and spans), the two sides of a failure's crossing, `frameStatusEnd` (how a
-  frame ends its status on an error) and `remoteFailureOf` (the typed failure of a resolver or chain error, or null)
-  beside `failureOf` (a call's failure as the error host code sees, by its trait and method), and `createIssueReporter`
-  (what a transport cannot handle itself, counted and logged under the side that reports it, as the host's own transport
-  is).
+  frame ends its status on an error), `fromTransportError` (a transport's closing error under the protocol's class) and
+  `remoteFailureOf` (the typed failure of a resolver or chain error, or null) beside `failureOf` (a call's failure as
+  the error host code sees, by its trait and method), and `createIssueReporter` (what a transport cannot handle itself,
+  counted and logged under the side that reports it, as the host's own transport is).
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
 

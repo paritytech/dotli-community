@@ -5,7 +5,7 @@
 // the host hears the worker's answers, values and ends as the worker gave them. Nothing is added on the way: no
 // deadline goes to the worker, and each answer and end comes back unchanged.
 
-import type { ProtocolSchema, ProtocolTransport } from '@dotli/protocol';
+import { fromTransportError, type ProtocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import {
   hostFailure,
   type RequestHandler,
@@ -20,18 +20,27 @@ import { workerEndError, type WorkerStatus } from './shared-worker-link.js';
 
 type S = ProtocolSchema;
 
-/** Answers with the worker's own answer. A link that closed under the call fails it with the closing error. */
+/**
+ * Answers with the worker's own answer. A link that closed under the call fails it with the closing error, under the
+ * protocol's class when it is the transport's own.
+ */
 function relayRequest<T extends TraitName<S>, M extends RequestMethodName<S, T>>(
   worker: ProtocolTransport,
   trait: T,
   method: M,
 ): RequestHandler<S, T, M> {
-  return payload => worker.request(trait, method, payload);
+  return async payload => {
+    try {
+      return await worker.request(trait, method, payload);
+    } catch (error) {
+      throw error instanceof Error ? fromTransportError(error) : error;
+    }
+  };
 }
 
 /**
  * Sends each value of the worker's and ends with the worker's own end. A link that closed under the subscription ends
- * it with the closing error.
+ * it with the closing error, under the protocol's class when it is the transport's own.
  */
 function relaySubscription<T extends TraitName<S>, M extends SubscriptionMethodName<S, T>>(
   worker: ProtocolTransport,
@@ -48,7 +57,7 @@ function relaySubscription<T extends TraitName<S>, M extends SubscriptionMethodN
       },
     });
     subscription.onClose(error => {
-      sink.interrupt(hostFailure(error));
+      sink.interrupt(hostFailure(fromTransportError(error)));
     });
     return () => {
       subscription.stop();

@@ -29,12 +29,12 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   Objects from the parent come only from a host page of an earlier release, and are counted as not bytes.
 - What a provider or a transport drops is counted once, under the side that dropped it, the frame or the worker: a
   message that does not decode or does not fit the call it names, data that is not bytes, which the provider drops
-  before the transport sees it, and a message the provider could not post, which is also captured and logged. A listener
-  that throws on the transport is reported as a listener.
+  before the transport sees it, and a message the provider could not post, which is also captured and logged, under its
+  call's name when it belonged to one. A listener that throws on the transport is reported as a listener.
 - It sends nothing unsolicited: its readiness and failures reach the host on the frame status subscription, which a late
   subscriber hears on subscribe. The status tells each subscriber on its own, so one that throws is reported and the
-  others still hear. It ends typed, as a fatal light client, a failed init or a released port, so the host tells them
-  apart, and any other error ends it as that error's failure.
+  others still hear. It ends typed, as a fatal light client, a failed init, a released port or a version mismatch, so
+  the host tells them apart, and any other error ends it as that error's failure.
 - A handler answers with a result. A refused origin is denied, a resolver's sync timeout and a stopped light client are
   typed failures the host's error screen tells apart, and any other failure is thrown, so it crosses as the handler's
   failure under its error's name and message. A subscription a handler cannot start ends the same way.
@@ -60,7 +60,8 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   answer, value and end on as the worker gave it. When this tab's status from the worker ends, the relay first closes
   its transport, so each call the worker still held fails and each relayed subscription ends before the host hears the
   frame end. It then ends the frame status: with the worker's own end as it is, or, when its transport closed under it,
-  with the closing error.
+  with the closing error. A transport's own closing error, a version mismatch or a handshake timeout, reaches the host
+  under the protocol's class, as it would from the iframe's own link, and a version mismatch ends the status typed.
 - The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
   between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
   It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat

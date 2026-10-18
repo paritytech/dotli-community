@@ -44,5 +44,5 @@ export {
   type TelemetryEvent,
 } from './schema.js';
 export { callName, type CallName } from './call-names.js';
-export { failureOf, frameStatusEnd, remoteFailureOf } from './outcomes.js';
+export { failureOf, frameStatusEnd, fromTransportError, remoteFailureOf } from './outcomes.js';
 export { createIssueReporter } from './wire-issues.js';

@@ -8,7 +8,7 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
-import { isProtocolTrait } from './call-names.js';
+import { isProtocolTrait } from './testing/traits.js';
 import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
 import { describeWireMessage } from './testing/index.js';

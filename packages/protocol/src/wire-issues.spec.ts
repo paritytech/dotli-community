@@ -50,10 +50,33 @@ describe('createIssueReporter', () => {
     ]);
   });
 
-  it('As a dotli operator, I see a message the provider could not post captured, logged and counted with its side', () => {
+  it("As a dotli operator, I see a call's message the provider could not post captured, logged and counted with its method and side", () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const lines = recordLog();
+    const report = createIssueReporter('host', m.count);
+
+    // When
+    report({
+      kind: 'post_failed',
+      error: new TypeError('The peer window is gone'),
+      call: { trait: 'resolve', method: 'owner' },
+    });
+
+    // Then
+    expect(captured).toEqual([
+      { flow: 'protocol', step: 'serve_post', tags: { method: 'resolveOwner', side: 'host' } },
+    ]);
+    expect(lines.filter(line => line.level === 'error').map(line => line.message)).toEqual([
+      '[dot.li protocol] A resolveOwner message could not be posted The peer window is gone',
+    ]);
+    expect(metrics.counted(S.PROTOCOL_SERVE_POST)).toEqual([{ outcome: 'error', reason: 'TypeError', side: 'host' }]);
+  });
+
+  it('As a dotli operator, I see a message of no call the provider could not post captured and logged with its side alone', () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
     const lines = recordLog();
     const report = createIssueReporter('host', m.count);
 
@@ -65,7 +88,6 @@ describe('createIssueReporter', () => {
     expect(lines.filter(line => line.level === 'error').map(line => line.message)).toEqual([
       '[dot.li protocol] A message could not be posted The peer window is gone',
     ]);
-    expect(metrics.counted(S.PROTOCOL_SERVE_POST)).toEqual([{ outcome: 'error', reason: 'TypeError', side: 'host' }]);
   });
 
   it('As a dotli operator, I see a listener that threw on the transport reported as a listener of the protocol', () => {

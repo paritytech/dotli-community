@@ -48,7 +48,7 @@ const nullableString = scaleCodec(nullable(str));
 const resolutionHello = scaleCodec(Struct({ resolutionId: nullable(str) }));
 
 /** Why the frame's status ended, each with the error's message. */
-const frameFailure = scaleCodec(Enum({ fatal: str, initFailed: str, released: str }));
+const frameFailure = scaleCodec(Enum({ fatal: str, initFailed: str, released: str, versionMismatch: str }));
 
 /** The remote errors the host's error screen tells apart, each with the error's message. */
 const remoteFailure = scaleCodec(Enum({ syncTimeout: str, apiStopped: str }));
@@ -66,7 +66,7 @@ const localWalletRead = scaleCodec(
 );
 
 export const protocolSchema = defineSchema({
-  version: 2,
+  version: 3,
   hello: resolutionHello,
   traits: {
     frame: {

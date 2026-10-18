@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { denied, domain, hostFailure } from '@dotli/transport';
+import { TransportVersionMismatchError, denied, domain, hostFailure } from '@dotli/transport';
 import {
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
   ProtocolRequestError,
+  ProtocolVersionMismatchError,
 } from './errors.js';
-import { failureOf, frameStatusEnd, remoteFailureOf } from './outcomes.js';
+import { failureOf, frameStatusEnd, fromTransportError, remoteFailureOf } from './outcomes.js';
 
 describe('failureOf', () => {
   it("As a frame that waits on another, I read its frame status end as the protocol's error classes", () => {
@@ -18,16 +19,19 @@ describe('failureOf', () => {
       failureOf('frame', 'status', domain({ tag: 'fatal', value: 'wasm trap' })),
       failureOf('frame', 'status', domain({ tag: 'initFailed', value: 'chainHead follow stopped' })),
       failureOf('frame', 'status', domain({ tag: 'released', value: 'The worker let go of this tab' })),
+      failureOf('frame', 'status', domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' })),
     ];
 
     // Then
     expect(ends[0]).toBeInstanceOf(ProtocolFatalError);
     expect(ends[1]).toBeInstanceOf(ProtocolInitFailedError);
     expect(ends[2]).toBeInstanceOf(ProtocolPortReleasedError);
+    expect(ends[3]).toBeInstanceOf(ProtocolVersionMismatchError);
     expect(ends.map(error => error.message)).toEqual([
       'wasm trap',
       'chainHead follow stopped',
       'The worker let go of this tab',
+      'The peer speaks version 9',
     ]);
   });
 
@@ -58,6 +62,7 @@ describe('frameStatusEnd', () => {
       new ProtocolFatalError('wasm trap'),
       new ProtocolInitFailedError('chainHead follow stopped'),
       new ProtocolPortReleasedError('The worker let go of this tab'),
+      new ProtocolVersionMismatchError('The peer speaks version 9'),
       new TypeError('boot broke'),
     ];
 
@@ -69,10 +74,27 @@ describe('frameStatusEnd', () => {
       domain({ tag: 'fatal', value: 'wasm trap' }),
       domain({ tag: 'initFailed', value: 'chainHead follow stopped' }),
       domain({ tag: 'released', value: 'The worker let go of this tab' }),
+      domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' }),
       hostFailure('TypeError: boot broke'),
     ]);
     const read = ends.map(end => failureOf('frame', 'status', end));
     expect(read.map(error => [error.name, error.message])).toEqual(errors.map(error => [error.name, error.message]));
+  });
+});
+
+describe('fromTransportError', () => {
+  it("As a frame, I end my status on a link's version mismatch typed, and the host reads it as the protocol's mismatch", () => {
+    // Given
+    const mismatch = new TransportVersionMismatchError(3, 9);
+
+    // When
+    const end = frameStatusEnd(fromTransportError(mismatch));
+    const read = failureOf('frame', 'status', end);
+
+    // Then
+    expect(end).toEqual(domain({ tag: 'versionMismatch', value: mismatch.message }));
+    expect(read).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(read.message).toBe(mismatch.message);
   });
 });
 

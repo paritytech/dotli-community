@@ -13,12 +13,13 @@ import {
   createWindowProvider,
   defineSchema,
   type CallError,
+  type MessageTarget,
   type Sink,
   type WindowLike,
 } from '@dotli/transport';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import { frameStatusEnd } from '../outcomes.js';
-import type { MessageTarget, ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
+import type { ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { protocolSchema, type FrameFailure, type ProtocolTransport } from '../schema.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';

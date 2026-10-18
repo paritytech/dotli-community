@@ -55,6 +55,8 @@ function domainFailure(failure: DomainFailure, method: CallName): Error {
       return new ProtocolInitFailedError(failure.value);
     case 'released':
       return new ProtocolPortReleasedError(failure.value);
+    case 'versionMismatch':
+      return new ProtocolVersionMismatchError(failure.value);
     // The host's error screen tells these apart by name.
     case 'syncTimeout':
       return new ProtocolRequestError(failure.value, 'NetworkSyncTimeoutError', method);
@@ -102,10 +104,12 @@ export function failureOf<T extends TraitName<ProtocolSchema>, M extends MethodN
 }
 
 /**
- * How a frame ends its status on `error`: typed for a fatal, a failed init or a released port, so the host tells them
- * apart, and as the error's own failure for any other.
+ * How a frame ends its status on `error`: typed for a fatal, a failed init, a released port or a version mismatch, so
+ * the host tells them apart, and as the error's own failure for any other. A transport's own closing error counts as
+ * the protocol's.
  */
-export function frameStatusEnd(error: Error): CallError<FrameFailure> {
+export function frameStatusEnd(closing: Error): CallError<FrameFailure> {
+  const error = fromTransportError(closing);
   if (error instanceof ProtocolFatalError) {
     return domain({ tag: 'fatal', value: error.message });
   }
@@ -114,6 +118,9 @@ export function frameStatusEnd(error: Error): CallError<FrameFailure> {
   }
   if (error instanceof ProtocolPortReleasedError) {
     return domain({ tag: 'released', value: error.message });
+  }
+  if (error instanceof ProtocolVersionMismatchError) {
+    return domain({ tag: 'versionMismatch', value: error.message });
   }
   return hostFailure(error);
 }

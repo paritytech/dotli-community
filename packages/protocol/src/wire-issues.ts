@@ -6,6 +6,7 @@
 import { captureException, reportListener, spans as S, type m } from '@dotli/metrics';
 import { errorName, log, toError } from '@dotli/shared';
 import type { TransportIssue } from '@dotli/transport';
+import { callNameOf } from './call-names.js';
 
 // A refused message's cause in the log, enough to tell decode failures apart.
 const MAX_CAUSE_CHARS = 200;
@@ -33,9 +34,15 @@ export function createIssueReporter(side: WireSide, count: typeof m.count): (iss
         return;
       }
       case 'post_failed': {
-        const { error } = issue;
-        captureException(error, { flow: 'protocol', step: 'serve_post', tags: { side } });
-        log.error('[dot.li protocol] A message could not be posted', error);
+        const { error, call } = issue;
+        const method = call === undefined ? null : callNameOf(call.trait, call.method);
+        captureException(error, {
+          flow: 'protocol',
+          step: 'serve_post',
+          tags: method === null ? { side } : { method, side },
+        });
+        const what = method === null ? 'A message' : `A ${method} message`;
+        log.error(`[dot.li protocol] ${what} could not be posted`, error);
         count(S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: errorName(error) ?? 'unknown', side });
         return;
       }

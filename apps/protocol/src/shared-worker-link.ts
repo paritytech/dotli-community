@@ -7,6 +7,7 @@
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   failureOf,
+  fromTransportError,
   protocolSchema,
   ProtocolInitFailedError,
   type FrameFailure,
@@ -37,10 +38,13 @@ export interface WorkerStatus {
   onEnd(listener: (end: WorkerEnd) => void): void;
 }
 
-/** What a worker's end means for this tab, as an error under the name the worker's failure has. */
+/**
+ * What a worker's end means for this tab, as an error under the name the worker's failure has. A link that closed on
+ * the transport's own error, such as a version mismatch, ends under the protocol's class, as the host's link does.
+ */
 export function workerEndError(end: WorkerEnd): Error {
   if (end.kind === 'close') {
-    return end.error;
+    return fromTransportError(end.error);
   }
   return end.outcome.ok
     ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED)

@@ -52,12 +52,15 @@ export type CallName = { [T in Trait]: Names[T][keyof Names[T]] }[Trait];
 // The same table, typed so a trait and a method of it index it.
 const BY_ADDRESS: { readonly [T in Trait]: Readonly<Record<MethodName<ProtocolSchema, T>, CallName>> } = CALL_NAMES;
 
-/** Whether `trait` names one of the protocol's traits, and not one the transport keeps for itself. */
-export function isProtocolTrait(trait: string): trait is Trait {
-  return Object.hasOwn(CALL_NAMES, trait);
-}
-
 /** The one name of `method` in `trait`, the flat name it had before the methods were grouped into traits. */
 export function callName<T extends Trait>(trait: T, method: MethodName<ProtocolSchema, T>): CallName {
   return BY_ADDRESS[trait][method];
+}
+
+/** The one name of a call the transport names by strings, or `<trait>.<method>` for one the schema lacks. */
+export function callNameOf(trait: string, method: string): string {
+  const methods: Readonly<Record<string, string>> | undefined = Object.hasOwn(CALL_NAMES, trait)
+    ? CALL_NAMES[trait as Trait]
+    : undefined;
+  return methods !== undefined && Object.hasOwn(methods, method) ? (methods[method] ?? method) : `${trait}.${method}`;
 }

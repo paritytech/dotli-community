@@ -6,15 +6,18 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  failureOf,
   protocolSchema,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
+  ProtocolVersionMismatchError,
   type ProtocolContext,
   type ProtocolSchema,
   type ProtocolTransport,
 } from '@dotli/protocol';
 import { deferred } from '@dotli/shared/testing';
 import {
+  TransportVersionMismatchError,
   createPortProvider,
   createTransport,
   denied,
@@ -335,6 +338,31 @@ describe('the worker relay', () => {
 
     // Then the host's call fails with the release instead of waiting for good
     await expect(owner).resolves.toEqual(err(hostFailure('ProtocolPortReleasedError: The worker released this tab')));
+  });
+
+  it("As the host, my frame fails as a version mismatch when the link meets a worker of another version, as it would for my iframe's", async () => {
+    // Given a ready frame whose worker holds an owner read
+    const asked = deferred<undefined>();
+    const { host, link, workerStatusHeard } = linkHops(served => {
+      served.handleRequest('resolve', 'owner', () => {
+        asked.resolve(undefined);
+        return new Promise<never>(() => undefined);
+      });
+    });
+    const status = record(host, 'frame', 'status', undefined);
+    const owner = host.request('resolve', 'owner', { label: 'doom' });
+    await Promise.all([status.until(1), asked.promise, workerStatusHeard]);
+
+    // When the link closes on a version mismatch, as its handshake with a worker of another release does
+    const mismatch = new TransportVersionMismatchError(3, 9);
+    link.dispose(mismatch);
+
+    // Then the frame status ends typed, the host reads it as the protocol's mismatch, and the held call fails with it
+    const ended = await status.ended;
+    const failure = domain({ tag: 'versionMismatch' as const, value: mismatch.message });
+    expect(ended).toEqual(err(failure));
+    expect(failureOf('frame', 'status', failure)).toBeInstanceOf(ProtocolVersionMismatchError);
+    await expect(owner).resolves.toEqual(err(hostFailure(`ProtocolVersionMismatchError: ${mismatch.message}`)));
   });
 
   it('As the host, my frame fails with why when the link to the worker closes, and a call the worker held fails with it', async () => {

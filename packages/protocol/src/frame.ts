@@ -18,7 +18,7 @@ import {
   withTimeout,
   type Timers,
 } from '@dotli/shared';
-import { createTransport, createWindowProvider, type WindowLike } from '@dotli/transport';
+import { createTransport, createWindowProvider, type MessageTarget, type WindowLike } from '@dotli/transport';
 import { PROTOCOL_ERRORS, ProtocolVersionMismatchError } from './errors.js';
 import { protocolListeners } from './listeners.js';
 import { fromTransportError } from './outcomes.js';
@@ -82,12 +82,6 @@ const DEFAULT_FRAME_TIMEOUTS: ProtocolFrameTimeouts = {
   stableMs: 30_000,
 };
 
-/** Where the frame's messages arrive. The page's `window` in the browser. */
-export interface MessageTarget {
-  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-  removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-}
-
 /** Builds and mounts the hidden frame. The page's `document` in the browser. */
 export interface FrameDocument {
   createElement(tagName: 'iframe'): HTMLIFrameElement;
@@ -98,6 +92,7 @@ export interface ProtocolFrameDeps {
   /** The protocol frame's origin. Messages from any other origin are ignored. */
   origin: string;
   document: FrameDocument;
+  /** Where the frame's messages arrive. The page's `window` in the browser. */
   window: MessageTarget;
   timeouts?: Partial<ProtocolFrameTimeouts> | undefined;
   timers?: Timers | undefined;
