@@ -339,7 +339,7 @@ describe('serving', () => {
         reason: 'malformed',
         cause: expect.objectContaining({
           name: 'WireDecodeError',
-          message: 'the handshake version ends early',
+          message: 'the handshake version could not be decoded',
         }) as Error,
       },
       { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
@@ -392,7 +392,7 @@ describe('serving', () => {
         reason: 'malformed',
         cause: expect.objectContaining({
           name: 'WireDecodeError',
-          message: 'the handshake version ends early',
+          message: 'the handshake version could not be decoded',
         }) as Error,
       },
       { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError },
@@ -417,7 +417,7 @@ describe('serving', () => {
         reason: 'malformed',
         cause: expect.objectContaining({
           name: 'WireDecodeError',
-          message: 'the protocol error does not decode',
+          message: 'the protocol error could not be decoded',
         }) as Error,
       },
       { kind: 'refused', reason: 'invalid', cause: expect.any(TypeError) as TypeError },

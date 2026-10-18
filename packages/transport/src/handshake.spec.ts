@@ -56,7 +56,10 @@ describe('the handshake', () => {
       {
         kind: 'refused',
         reason: 'malformed',
-        cause: expect.objectContaining({ name: 'WireDecodeError', message: 'the header ends early' }) as Error,
+        cause: expect.objectContaining({
+          name: 'WireDecodeError',
+          message: 'the header could not be decoded',
+        }) as Error,
       },
     ]);
     const heard = peer.heard.length;

@@ -9,7 +9,6 @@
 import {
   Bytes,
   Enum,
-  Result as ScaleResult,
   Struct,
   Tuple,
   _void,
@@ -21,7 +20,7 @@ import {
   u8,
   type Codec as ScaleCodec,
 } from 'scale-ts';
-import { isPayloadFailure, none, scaleOf, type Codec, type Cursor } from './codec.js';
+import { isPayloadFailure, none, scaleOf, thrownBy, type Codec, type Cursor } from './codec.js';
 import {
   denied,
   domain,
@@ -119,8 +118,8 @@ class WireDecodeError extends Error {
 }
 
 /**
- * Names a scale-ts decode failure in `what`, keeping it as the cause. A read past the end is a `RangeError` in scale-ts,
- * so it is told apart. A failure already named, or a user's decode's own, passes unchanged.
+ * Names a decode failure in `what`, keeping it as the cause. A failure already named, or a user's decode's own, passes
+ * unchanged.
  */
 function named<T>(c: ScaleCodec<T>, what: string): ScaleCodec<T> {
   return createCodec(
@@ -132,9 +131,7 @@ function named<T>(c: ScaleCodec<T>, what: string): ScaleCodec<T> {
         if (cause instanceof WireDecodeError || isPayloadFailure(cause)) {
           throw cause;
         }
-        throw new WireDecodeError(`${what} ${cause instanceof RangeError ? 'ends early' : 'does not decode'}`, {
-          cause,
-        });
+        throw new WireDecodeError(`${what} could not be decoded`, { cause });
       }
     }),
   );
@@ -176,14 +173,14 @@ export const headerCodec: ScaleCodec<Header> = named(
   'the header',
 );
 
-/** The library's `Result` as a scale-ts `Result`. */
+/** The library's `Result` as an enum of `Ok` and `Err` at 0 and 1. Unlike scale-ts `Result`, it refuses any other tag. */
 function outcome<T, E>(value: ScaleCodec<T>, error: ScaleCodec<E>): ScaleCodec<Result<T, E>> {
   return named(
     enhanceCodec(
-      ScaleResult(value, error),
+      Enum({ Ok: value, Err: error }, [0, 1]),
       (result: Result<T, E>) =>
-        result.ok ? { success: true as const, value: result.value } : { success: false as const, value: result.error },
-      decoded => (decoded.success ? ok(decoded.value) : err(decoded.value)),
+        result.ok ? { tag: 'Ok' as const, value: result.value } : { tag: 'Err' as const, value: result.error },
+      decoded => (decoded.tag === 'Ok' ? ok(decoded.value) : err(decoded.value)),
     ),
     'the outcome',
   );
@@ -453,7 +450,7 @@ function readMessage(schema: Schema, admit: Admit, cursor: Cursor): DecodedMessa
     }
     return target.message(header, value);
   } catch (cause) {
-    return { refused: 'malformed', cause, header };
+    return { refused: 'malformed', cause: thrownBy(cause), header };
   }
 }
 

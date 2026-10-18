@@ -3,7 +3,7 @@
 
 import { Tuple, u8 } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { codec, isPayloadFailure, none, scaleOf } from './codec.js';
+import { codec, isPayloadFailure, none, scaleOf, thrownBy } from './codec.js';
 
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -60,6 +60,31 @@ describe('codec', () => {
     expect(caught).toBe(thrown);
     expect(isPayloadFailure(caught)).toBe(true);
     expect(isPayloadFailure(new RangeError('not a note'))).toBe(false);
+  });
+
+  it('As a schema author, I throw something other than an error from my decode and the library keeps exactly what I threw', () => {
+    // Given
+    const broken = scaleOf(
+      codec<string>(
+        () => new Uint8Array(0),
+        () => {
+          // eslint-disable-next-line no-throw-literal, @typescript-eslint/only-throw-error -- a schema author's decode may throw anything
+          throw 42;
+        },
+      ),
+    );
+
+    // When
+    let caught: unknown;
+    try {
+      broken.dec(new Uint8Array([1]));
+    } catch (error) {
+      caught = error;
+    }
+
+    // Then
+    expect(isPayloadFailure(caught)).toBe(true);
+    expect(thrownBy(caught)).toBe(42);
   });
 
   it('As a schema author, I use none for an empty payload and it refuses any byte', () => {

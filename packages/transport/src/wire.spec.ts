@@ -245,7 +245,7 @@ describe('wire messages', () => {
     const decoded = summarised(decodeMessage(schema, data));
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg ends early' });
+    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg could not be decoded' });
   });
 
   it('As a transport, I decode an unknown leg byte and refuse it as malformed', () => {
@@ -256,7 +256,7 @@ describe('wire messages', () => {
     const decoded = summarised(decodeMessage(schema, data));
 
     // Then
-    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg does not decode' });
+    expect(decoded).toEqual({ refused: 'malformed', cause: 'WireDecodeError: the leg could not be decoded' });
   });
 
   it('As a transport, I decode trailing bytes after a body that ends and refuse them as malformed', () => {
@@ -323,19 +323,73 @@ describe('wire messages', () => {
       },
       {
         refused: 'malformed',
-        cause: 'WireDecodeError: the call error does not decode',
+        cause: 'WireDecodeError: the call error could not be decoded',
         header: { id: 3, trait: NOTES, method: READ, leg: 'response' },
       },
       {
         refused: 'malformed',
-        cause: 'WireDecodeError: the handshake error does not decode',
+        cause: 'WireDecodeError: the handshake error could not be decoded',
         header: { id: 4, trait: 255, method: 0, leg: 'response' },
       },
       {
         refused: 'malformed',
-        cause: 'WireDecodeError: the protocol error does not decode',
+        cause: 'WireDecodeError: the protocol error could not be decoded',
         header: { id: 5, trait: 255, method: 255, leg: 'response' },
       },
+    ]);
+  });
+
+  it('As a transport, I decode an outcome whose tag is neither Ok nor Err and refuse it as malformed', () => {
+    // Given a tag of 2, then what would read as Err(Denied) or Err(VersionMismatch(3)) after it
+    const messages = [
+      bytes(1, 0, 0, 0, NOTES, READ, 1, 2, 1),
+      bytes(2, 0, 0, 0, NOTES, WATCH, 4, 2, 1),
+      bytes(3, 0, 0, 0, 255, 0, 1, 2, 0, 3),
+    ];
+
+    // When
+    const decoded = messages.map(data => summarised(decodeMessage(schema, data)));
+
+    // Then
+    const refused = (id: number, trait: number, method: number, leg: string) => ({
+      refused: 'malformed',
+      cause: 'WireDecodeError: the outcome could not be decoded',
+      header: { id, trait, method, leg },
+    });
+    expect(decoded).toEqual([
+      refused(1, NOTES, READ, 'response'),
+      refused(2, NOTES, WATCH, 'interrupt'),
+      refused(3, 255, 0, 'response'),
+    ]);
+  });
+
+  it('As a schema author, my decode throws something other than an error and the refusal carries exactly what it threw', () => {
+    // Given
+    const throwsText = codec<string>(
+      value => new TextEncoder().encode(value),
+      () => {
+        // eslint-disable-next-line no-throw-literal, @typescript-eslint/only-throw-error -- a schema author's decode may throw anything
+        throw 'not a note';
+      },
+    );
+    const texty = defineSchema({
+      version: 1,
+      traits: { notes: { read: request({ request: throwsText, response: throwsText, error: throwsText }) } },
+    });
+    const messages = [
+      bytes(1, 0, 0, 0, 0, 0, 0, 0x61),
+      bytes(2, 0, 0, 0, 0, 0, 1, 0),
+      bytes(3, 0, 0, 0, 0, 0, 1, 1, 0),
+    ];
+
+    // When
+    const decoded = messages.map(data => decodeMessage(texty, data));
+
+    // Then
+    expect(decoded).toEqual([
+      { refused: 'malformed', cause: 'not a note', header: { id: 1, trait: 0, method: 0, leg: 'request' } },
+      { refused: 'malformed', cause: 'not a note', header: { id: 2, trait: 0, method: 0, leg: 'response' } },
+      { refused: 'malformed', cause: 'not a note', header: { id: 3, trait: 0, method: 0, leg: 'response' } },
     ]);
   });
 
@@ -368,12 +422,12 @@ describe('wire messages', () => {
     expect(decoded).toEqual([
       {
         refused: 'malformed',
-        cause: 'WireDecodeError: the reason ends early',
+        cause: 'WireDecodeError: the reason could not be decoded',
         header: { id: 1, trait: NOTES, method: READ, leg: 'response' },
       },
       {
         refused: 'malformed',
-        cause: 'WireDecodeError: the reason does not decode',
+        cause: 'WireDecodeError: the reason could not be decoded',
         header: { id: 2, trait: NOTES, method: READ, leg: 'response' },
       },
     ]);

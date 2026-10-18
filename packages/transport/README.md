@@ -22,15 +22,16 @@ TypeScript. The library moves them across a frame and owns correlation, cancella
   caller's own side and never reaches a handler.
 - A message is a SCALE codec composed from the schema. Its header is a struct of the request id (`u32`), the trait and
   method ids (`u8`) and the leg (an enum). Its body is the leg's codec: the payload for a request, a start or a value, a
-  SCALE `Result` of the answer and a `CallError` for a response, a `Result` of nothing and a `CallError` for an
-  interrupt, and nothing for a stop. `CallError` is a SCALE enum with its indices pinned, and a reason is a SCALE
-  string. The payload always comes last, with no length prefix. Encoding is one pass of the composed codec. Decoding
-  reads the header, then the body its target and leg name, on one cursor, and refuses a body that does not end where the
-  message does. The user's decode gets a view of exactly the payload bytes, with no copy. The view shares the message's
-  buffer at a non-zero offset, so a decode must respect `byteOffset` or copy the bytes first. A message for an address
-  the schema lacks is still read as that address, so the receiver can answer it. Data the library's own fields cannot
-  hold is refused with an error that names the field and how it failed, such as a leg that does not decode or a reason
-  that ends early, while a user's decode keeps its own error.
+  `Result` of the answer and a `CallError` for a response, a `Result` of nothing and a `CallError` for an interrupt, and
+  nothing for a stop. A `Result` is a SCALE enum of `Ok` and `Err` at 0 and 1, so any other tag is refused. `CallError`
+  is a SCALE enum with its indices pinned, and a reason is a SCALE string. The payload always comes last, with no length
+  prefix. Encoding is one pass of the composed codec. Decoding reads the header, then the body its target and leg name,
+  on one cursor, and refuses a body that does not end where the message does. The user's decode gets a view of exactly
+  the payload bytes, with no copy. The view shares the message's buffer at a non-zero offset, so a decode must respect
+  `byteOffset` or copy the bytes first. A message for an address the schema lacks is still read as that address, so the
+  receiver can answer it. Data the library's own fields cannot hold is refused with an error that names the field that
+  could not be decoded, such as the leg or the reason, with the underlying error as its cause. A user's decode keeps its
+  own error, whatever it throws.
 - The library keeps trait 255 for itself. Method 0 is the handshake, which carries the schema version and the hello, and
   method 255 is the protocol error that answers a message for an unknown address. Their layout never changes, so a peer
   of any release reads the version it refuses.

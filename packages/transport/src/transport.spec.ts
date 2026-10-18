@@ -263,7 +263,7 @@ describe('createTransport', () => {
     // Then
     expect(hear).not.toThrow();
     expect(errors).toEqual([
-      '[transport] A message was refused as malformed, WireDecodeError: the header ends early',
+      '[transport] A message was refused as malformed, WireDecodeError: the header could not be decoded',
       '[transport] A listener threw, Error: The issue hook threw, Error: hook bug',
     ]);
   });
@@ -312,7 +312,9 @@ describe('createTransport', () => {
 
     // Then
     expect(errors).toHaveLength(2);
-    expect(errors[0]).toBe('[transport] A message was refused as malformed, WireDecodeError: the header ends early');
+    expect(errors[0]).toBe(
+      '[transport] A message was refused as malformed, WireDecodeError: the header could not be decoded',
+    );
     expect(errors[1]).toMatch(/^\[transport\] A message could not be posted, Error: x+$/);
     expect(errors[1]).toHaveLength(200);
   });

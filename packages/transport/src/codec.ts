@@ -16,9 +16,22 @@ export type Cursor = Uint8Array & { i: number };
 // What a user's decode threw. The library names its own decode failures, and passes these on as they were thrown.
 const payloadFailures = new WeakSet();
 
+/** A value that is not an object, thrown by a user's decode and boxed so it can be marked like any other. */
+class ThrownValue extends Error {
+  constructor(value: unknown) {
+    super(`A decode threw ${typeof value}`, { cause: value });
+    this.name = 'ThrownValue';
+  }
+}
+
 /** Whether a user's decode threw `error`, which the library reports unchanged. */
 export function isPayloadFailure(error: unknown): boolean {
   return typeof error === 'object' && error !== null && payloadFailures.has(error);
+}
+
+/** What a user's decode threw, unboxed when it was not an object. Any other error is returned as it is. */
+export function thrownBy(error: unknown): unknown {
+  return error instanceof ThrownValue ? error.cause : error;
 }
 
 /**
@@ -34,10 +47,10 @@ export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8
       try {
         value = decode(new Uint8Array(cursor.buffer, cursor.i));
       } catch (error) {
-        if (typeof error === 'object' && error !== null) {
-          payloadFailures.add(error);
-        }
-        throw error;
+        const failure = typeof error === 'object' && error !== null ? error : new ThrownValue(error);
+        payloadFailures.add(failure);
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- the user's own error, rethrown as it was
+        throw failure;
       }
       cursor.i = cursor.byteLength;
       return value;
