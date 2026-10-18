@@ -569,7 +569,7 @@ describe('serving', () => {
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts } = breakable(broken);
     const { transport, timers, peer, issues } = await acceptedRaw(wrap);
-    const { sinks } = serveWatch(transport);
+    const { sinks, stops } = serveWatch(transport);
     peer.send({ kind: 'method', leg: 'start', id: 4, trait: NOTES, method: WATCH, payload: 'from the top' });
     await timers.advance(0);
     breakPosts();
@@ -590,6 +590,7 @@ describe('serving', () => {
       { kind: 'post_failed', leg: 'receive', error: broken },
       { kind: 'post_failed', leg: 'interrupt', error: broken },
     ]);
+    expect(stops).toEqual([1]);
   });
 
   it('As a serving side, disposing interrupts each subscription I serve with HostFailure carrying the reason and runs its stop', async () => {

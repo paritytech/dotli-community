@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { must } from '@dotli/shared/testing';
-import { TransportHandshakeTimeoutError } from './errors.js';
+import { TransportHandshakeTimeoutError, type TransportIssue } from './errors.js';
 import { cancelled, domain, err, malformedFrame, ok, unsupported } from './result.js';
 import {
   ECHO,
@@ -810,6 +810,40 @@ describe('calls', () => {
     expect(subscribe).toThrow(new RangeError('A word is never empty'));
     await timers.advance(0);
     expect(peer.legs()).toEqual(['request:255.0']);
+  });
+
+  it('As a caller, an issue hook that disposes on my failed start post leaves the peer nothing to stop', async () => {
+    // Given a hook that mends posts and disposes when the start cannot be posted
+    const broken = new Error('the peer window is gone');
+    const { wrap, breakPosts, mendPosts } = breakable(broken);
+    const reason = new Error('leaving');
+    const issues: TransportIssue[] = [];
+    const raw = rawRig('open', wrap, {
+      onIssue: issue => {
+        issues.push(issue);
+        if (issue.kind === 'post_failed') {
+          mendPosts();
+          raw.transport.dispose(reason);
+        }
+      },
+    });
+    raw.transport.connect();
+    await raw.timers.advance(0);
+    raw.answerHandshake();
+    await raw.transport.whenConnected();
+    breakPosts();
+    const heard = watcher();
+    const closes: Error[] = [];
+
+    // When
+    raw.transport.subscribe('notes', 'watch', 'from the top', heard).onClose(error => closes.push(error));
+    await raw.timers.advance(0);
+
+    // Then the transport closed it before the post returned, and the peer heard no stop
+    expect(closes).toEqual([reason]);
+    expect(heard.ends).toEqual([]);
+    expect(raw.peer.legs()).toEqual(['request:255.0']);
+    expect(issues).toEqual([{ kind: 'post_failed', leg: 'start', error: broken }]);
   });
 
   it('As a caller, a start my provider cannot post closes my subscription with why, and the post is reported', async () => {

@@ -107,6 +107,8 @@ export function issueLog() {
 /** What a test may set on the side it watches: the accepter of `rig`, or the transport of `rawRig`. */
 interface WatchedSide {
   onPeerIdle?: () => void;
+  /** Replaces the issue log, which then stays empty. */
+  onIssue?: (issue: TransportIssue) => void;
 }
 
 /** An opener on the left and an accepter on the right, over one in-memory channel. */

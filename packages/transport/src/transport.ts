@@ -44,8 +44,9 @@ interface BaseOptions {
   /**
    * Called when the peer's own stop leaves nothing it opened running and no request of the peer is in flight, which is
    * how a peer that disposes leaves. A live peer keeps at least one subscription open, so dropping to none is taken as
-   * leaving. A call the peer makes after that cancels it. Ends this side posted never count, since the peer may not
-   * have heard them yet.
+   * leaving. It fires once per departure. A call the peer makes after that cancels a wait and arms it again, even a call
+   * whose payload does not decode or that names an address this side lacks. Ends this side posted never count, since
+   * the peer may not have heard them yet.
    */
   onPeerIdle?: () => void;
 }

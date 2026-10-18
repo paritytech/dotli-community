@@ -198,15 +198,12 @@ export function createCalls(deps: CallsDeps): Calls {
     }
   };
 
-  /**
-   * Closes subscriptions with `error`, which their `onClose` listeners hear. With `tellPeer`, each open one is stopped
-   * before any listener runs.
-   */
-  const shut = (closing: Subscription[], error: Error, tellPeer: boolean): void => {
+  /** Closes subscriptions with `error`, which their `onClose` listeners hear. Each open one is stopped first. */
+  const shut = (closing: Subscription[], error: Error): void => {
     const closed: Subscription[] = [];
     for (const subscription of closing) {
       const was = leave(subscription, { name: 'closed', error });
-      if (tellPeer && was === 'open') {
+      if (was === 'open') {
         postStop(subscription);
       }
       if (was !== null) {
@@ -341,16 +338,20 @@ export function createCalls(deps: CallsDeps): Calls {
       place(
         subscription.over.signal,
         () => {
-          subscription.state = { name: 'open' };
           lateStops.delete(id);
           const posted = post(data, 'start');
           if (!posted.ok) {
-            // The start never went out, so the peer has nothing to stop.
-            shut([subscription], new Error('The start could not be posted', { cause: posted.error }), false);
+            shut([subscription], new Error('The start could not be posted', { cause: posted.error }));
+            return;
+          }
+          // Open only once the start went out, so a stop or a close from the issue hook of a failed post sees nothing
+          // the peer could stop.
+          if (subscription.state.name === 'queued') {
+            subscription.state = { name: 'open' };
           }
         },
         error => {
-          shut([subscription], error, true);
+          shut([subscription], error);
         },
       );
       return handle;
@@ -411,7 +412,7 @@ export function createCalls(deps: CallsDeps): Calls {
       for (const call of [...waiting.values()]) {
         call.settle(error);
       }
-      shut([...subscriptions.values()], error, true);
+      shut([...subscriptions.values()], error);
     },
   };
 }
