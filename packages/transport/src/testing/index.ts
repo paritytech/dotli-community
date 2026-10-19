@@ -52,19 +52,13 @@ export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: Array
     case 'failed':
       return { id, kind: 'failed', value: body.value };
     case 'call': {
-      const { trait, method, message } = body.value;
-      const placed = schema.placeAt(trait, method);
-      if (placed === undefined) {
-        return { id, kind: 'call', trait: String(trait), method: String(method), message, decoded: null };
+      const { traitId, methodId, message } = body.value;
+      const method = schema.methodAt(traitId, methodId);
+      if (method === undefined) {
+        return { id, kind: 'call', trait: String(traitId), method: String(methodId), message, decoded: null };
       }
-      return {
-        id,
-        kind: 'call',
-        trait: placed.address.trait,
-        method: placed.address.method,
-        message,
-        decoded: decodedBy(placed.method, message),
-      };
+      const { trait, method: name } = schema.addressOf(method);
+      return { id, kind: 'call', trait, method: name, message, decoded: decodedBy(method, message) };
     }
   }
 }

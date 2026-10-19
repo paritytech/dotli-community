@@ -705,8 +705,8 @@ export function createTransport<H, T extends Traits>(
     // A new call, even one that does not decode or that names a method this side does not serve, tells that the peer
     // is here.
     peerCalls += 1;
-    const placed = schema.placeAt(call.trait, call.method);
-    const served = placed === undefined ? undefined : handlers.get(placed.method);
+    const method = schema.methodAt(call.traitId, call.methodId);
+    const served = method === undefined ? undefined : handlers.get(method);
     if (served === undefined) {
       postFailed(id, unsupported());
       return;

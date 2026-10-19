@@ -118,8 +118,8 @@ sequenceDiagram
   is `undefined`. `RequestMessage<P, R, E>` and `SubscriptionMessage<S, V, I>` are what their sides send.
 - `defineSchema({ version, hello, traits })` checks the record and returns a `Schema<H, T>`: its `version`, `hello`
   codec, `traits`, `addressOf(method)`, its `Address` (`{ trait, method, traitId, methodId }`), which throws for a
-  method of another schema, and `placeAt(traitId, methodId)`, the `Place` there (`{ method, address }`), or undefined.
-  `Traits` is the record it takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
+  method of another schema, and `methodAt(traitId, methodId)`, the method there, or undefined. `Traits` is the record it
+  takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
 - `MethodTypes<M>` is what each side of method `M` sends: `{ request: P; response: ResultPayload<R, CallError<E>> }` or
   `{ start: S; receive: V; interrupt: ResultPayload<undefined, CallError<I>>; stop: undefined }`. `DomainError<M>` is
   its own error, `E` or `I`.

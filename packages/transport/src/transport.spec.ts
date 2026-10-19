@@ -197,7 +197,9 @@ describe('createTransport', () => {
     // When
     const call = (): void => {
       const message = { tag: 'request' as const, value: undefined };
-      hear(encodeFrame(notes.touch.frame, { id: 3, body: { tag: 'call', value: { trait: 0, method: 1, message } } }));
+      hear(
+        encodeFrame(notes.touch.frame, { id: 3, body: { tag: 'call', value: { traitId: 0, methodId: 1, message } } }),
+      );
     };
 
     // Then
@@ -1365,8 +1367,8 @@ describe('serving', () => {
     const { timers, peer, issues } = await acceptedRaw();
 
     // When a method and a trait this schema lacks are called
-    peer.send(9, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
-    peer.send(11, { tag: 'call', value: { trait: 7, method: 0, message: Uint8Array.of(0) } });
+    peer.send(9, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(11, { tag: 'call', value: { traitId: 7, methodId: 0, message: Uint8Array.of(0) } });
     await timers.advance(0);
 
     // Then
@@ -1391,7 +1393,7 @@ describe('serving', () => {
     transport.handleRequest(notes.read, () => ok('never'));
 
     // When a message on notes.watch has a kind no subscription has, and a response comes for a call of the peer's
-    peer.send(5, { tag: 'call', value: { trait: NOTES, method: 2, message: Uint8Array.of(4, 0x61) } });
+    peer.send(5, { tag: 'call', value: { traitId: NOTES, methodId: 2, message: Uint8Array.of(4, 0x61) } });
     peer.call(notes.read, 7, { tag: 'response', value: ok('a note') });
     await timers.advance(0);
 
@@ -1433,7 +1435,7 @@ describe('serving', () => {
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
     peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
     peer.call(rawRead, 7, { tag: 'request', value: CUT_SHORT_TEXT }, notes.read);
-    peer.send(9, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(9, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
 
     // Then
@@ -1455,7 +1457,7 @@ describe('serving', () => {
 
     // When a call comes on a method of the schema and on one it lacks
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
-    peer.send(5, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(1, 0) } });
+    peer.send(5, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(1, 0) } });
     await timers.advance(0);
 
     // Then
@@ -2045,7 +2047,7 @@ describe('serving', () => {
 
     // When it leaves again and then calls a method this schema lacks
     await leaveWithCallHeld(7);
-    peer.send(11, { tag: 'call', value: { trait: NOTES, method: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(11, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
     releases[1]?.();
     await timers.advance(0);

@@ -53,11 +53,11 @@ describe('readFrame', () => {
     const data = [
       encodeFrame(read.frame, {
         id: 1,
-        body: { tag: 'call', value: { trait: 0, method: 0, message: { tag: 'request', value: 'a note' } } },
+        body: { tag: 'call', value: { traitId: 0, methodId: 0, message: { tag: 'request', value: 'a note' } } },
       }),
       encodeFrame(watch.frame, {
         id: 2,
-        body: { tag: 'call', value: { trait: 0, method: 1, message: { tag: 'stop', value: undefined } } },
+        body: { tag: 'call', value: { traitId: 0, methodId: 1, message: { tag: 'stop', value: undefined } } },
       }),
     ];
 
@@ -113,7 +113,7 @@ describe('readFrame', () => {
     // Given
     const data = encodeFrame(frame, {
       id: 5,
-      body: { tag: 'call', value: { trait: 9, method: 1, message: Uint8Array.of(2, 0xde) } },
+      body: { tag: 'call', value: { traitId: 9, methodId: 1, message: Uint8Array.of(2, 0xde) } },
     });
 
     // When

@@ -27,7 +27,6 @@ export type {
   DomainError,
   MethodOf,
   MethodTypes,
-  Place,
   Request,
   RequestMessage,
   RequestTypes,

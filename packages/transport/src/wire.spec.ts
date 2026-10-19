@@ -12,7 +12,7 @@ const touch = request({ request: _void, response: _void });
 const watch = subscription({ start: str, receive: u8, interrupt: str });
 
 const listed = (data: ArrayBuffer): number[] => [...new Uint8Array(data)];
-const callOf = <M>(message: M): Frame<M>['body'] => ({ tag: 'call', value: { trait: 1, method: 2, message } });
+const callOf = <M>(message: M): Frame<M>['body'] => ({ tag: 'call', value: { traitId: 1, methodId: 2, message } });
 
 /** Sends `message` on `method` through a frame, and reads it back as it arrives. */
 function roundTrip<M>(method: { frame: Codec<Frame<M>>; message: Codec<M> }, message: M): M | null {

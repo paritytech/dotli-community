@@ -100,14 +100,8 @@ export interface Address {
 }
 
 /** Whether a call names the method at `address`. */
-export const sameMethod = (address: Address, call: { trait: number; method: number }): boolean =>
-  address.traitId === call.trait && address.methodId === call.method;
-
-/** A method and where it sits. */
-export interface Place {
-  method: AnyMethod;
-  address: Address;
-}
+export const sameMethod = (address: Address, call: { traitId: number; methodId: number }): boolean =>
+  address.traitId === call.traitId && address.methodId === call.methodId;
 
 /** A checked schema, which places each of its methods. */
 export interface Schema<H, T extends Traits> {
@@ -116,8 +110,8 @@ export interface Schema<H, T extends Traits> {
   readonly traits: T;
   /** Where `method` sits. Throws for a method of another schema, which is the caller's mistake. */
   readonly addressOf: (method: AnyMethod) => Address;
-  /** The method at a place and its address, or undefined when the schema has none there. */
-  readonly placeAt: (traitId: number, methodId: number) => Place | undefined;
+  /** The method at these wire ids, or undefined when the schema has none there. */
+  readonly methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
 }
 
 // Ids are bytes on the wire.
@@ -137,21 +131,22 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
     throw new RangeError(`a schema has at most ${String(MAX_IDS)} traits, got ${String(traits.length)}`);
   }
   const addresses = new Map<AnyMethod, Address>();
-  const places = traits.map(([trait, methods], traitId) => {
-    const entries = Object.entries(methods);
+  const methods = traits.map(([trait, ofTrait], traitId) => {
+    const entries = Object.entries(ofTrait);
     if (entries.length > MAX_IDS) {
       throw new RangeError(`trait "${trait}" has at most ${String(MAX_IDS)} methods, got ${String(entries.length)}`);
     }
-    return entries.map(([name, method], methodId): Place => {
+    return entries.map(([name, method], methodId) => {
       const placed = addresses.get(method);
       if (placed !== undefined) {
         throw new Error(`${trait}.${name} is the method already at ${placed.trait}.${placed.method}`);
       }
       const address = { trait, method: name, traitId, methodId };
       addresses.set(method, address);
-      return { method, address };
+      return method;
     });
   });
+
   return {
     version: def.version,
     hello: def.hello,
@@ -163,7 +158,7 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
       }
       return address;
     },
-    placeAt: (traitId, methodId) => places[traitId]?.[methodId],
+    methodAt: (traitId, methodId) => methods[traitId]?.[methodId],
   };
 }
 

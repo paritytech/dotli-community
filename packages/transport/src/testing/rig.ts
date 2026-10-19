@@ -145,7 +145,7 @@ function rawPeer(provider: Provider) {
       at: AnyMethod = method,
     ) => {
       const address = testSchema.addressOf(at);
-      const value = { trait: address.traitId, method: address.methodId, message };
+      const value = { traitId: address.traitId, methodId: address.methodId, message };
       provider.post(encodeFrame(method.frame, { id, body: { tag: 'call', value } }));
     },
     /** Posts one of the library's own frames. */
