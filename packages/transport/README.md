@@ -214,18 +214,71 @@ sequenceDiagram
   always is.
 
 ```ts
-const schema = defineSchema({
+import { Struct, _void, str, u32 } from 'scale-ts';
+import {
+  createTransport,
+  createWindowProvider,
+  defineSchema,
+  domain,
+  err,
+  ok,
+  request,
+  subscription,
+} from '@dotli/transport';
+
+// Both sides import the one schema.
+export const schema = defineSchema({
   version: 1,
   hello: _void,
   sections: {
     names: {
-      owner: request({ request: label, response: owner }),
-      changes: subscription({ start: _void, receive: change, interrupt: failure }),
+      owner: request({ request: str, response: str, error: str }),
+      changes: subscription({ start: str, receive: Struct({ block: u32, owner: str }) }),
     },
   },
 });
+const { owner, changes } = schema.sections.names;
 
-const answer = await transport.request(schema.sections.names.owner, { label: 'polkadot' });
+// The page serves the frame it embeds.
+const page = createTransport(
+  schema,
+  createWindowProvider({
+    listen: window,
+    peer: () => document.querySelector('iframe')?.contentWindow ?? null,
+    origin: 'https://frame.example',
+  }),
+  { handshake: 'respond', hello: undefined },
+);
+page.handleRequest(owner, label => (label === 'alice' ? ok('5GrwvaEF') : err(domain(`No owner for ${label}`))));
+page.handleSubscription(changes, (label, _context, sink) => {
+  const timer = setInterval(() => sink.send({ block: 1, owner: `the owner of ${label}` }), 6000);
+  return () => clearInterval(timer);
+});
+
+// The frame calls the page that embeds it, and opens the handshake with its first call.
+const frame = createTransport(
+  schema,
+  createWindowProvider({ listen: window, peer: () => window.parent, origin: 'https://page.example' }),
+  { handshake: 'offer', hello: undefined },
+);
+const answer = await frame.request(owner, 'alice'); // ok('5GrwvaEF')
+
+const owners: string[] = [];
+let ended: string | undefined;
+const unsubscribe = frame.subscribe(changes, 'alice', {
+  receive: change => {
+    owners.push(change.owner);
+  },
+  interrupt: () => {
+    ended = 'the page ended it';
+  },
+  fail: failure => {
+    ended = failure.tag;
+  },
+  close: error => {
+    ended = error.message;
+  },
+});
 ```
 
 ### `./testing`

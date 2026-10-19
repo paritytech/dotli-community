@@ -5,36 +5,20 @@
 The transport is language-agnostic. All code examples are written in Rust, but authors can easily map these interfaces
 into other languages.
 
-This document defines the transport and no methods. The examples use an imaginary schema.
+This document defines the transport and no methods.
 
 ## General Interface
 
-A schema nests sections, then methods. A method is a request or a subscription. Peers MUST share the schema, and the
-schema's `version` MUST change with any change to its methods or their payloads.
+A schema declares its `version`, the type of the hello each peer sends in the handshake, and its sections in order, each
+a list of methods in order. A method is a request or a subscription. Peers MUST share the schema, and the schema's
+`version` MUST change with any change to its methods or their payloads.
 
 ```rust
-// Imaginary schema, version 1.
-mod names {
-  fn owner(
-    label: str
-  ) -> Result<Owner, CallError<OwnerErr>>;
+// A request takes one payload and is answered once.
+fn request(payload: P) -> Result<R, CallError<E>>;
 
-  fn changes_subscribe(
-    subscriber: Subscriber<Change, ChangesErr>
-  ) -> Unsubscribe;
-}
-
-mod chain {
-  fn send(
-    connectionId: str,
-    message: str
-  ) -> Result<(), CallError<()>>;
-
-  fn connect_subscribe(
-    genesisHash: str,
-    subscriber: Subscriber<str, Result<(), CallError<ConnectErr>>>
-  ) -> Unsubscribe;
-}
+// A subscription takes one payload, receives values, and ends with its interrupt or the caller's unsubscribe.
+fn subscribe(payload: S, subscriber: Subscriber<V, I>) -> Unsubscribe;
 ```
 
 A method that declares no error has an empty one, `()`. So does a subscription that declares no interrupt reason.
@@ -127,57 +111,40 @@ Actions MUST be derived from methods using the following algorithm:
 - For request functions, there should be two messages:
   - Request
     - Name: `request`
-    - Argument: `(arg1, arg2, ...)`
+    - Argument: the payload `P`
   - Response
     - Name: `response`
-    - Argument: `Result<ReturnValue, CallError<ReturnError>>`
+    - Argument: `Result<R, CallError<E>>`
 - For subscriptions, there should be four different messages:
   - Subscribe
     - Name: `start`
-    - Argument: tuple of all arguments except the subscriber `(arg1, arg2, ...)`
+    - Argument: the payload `S`
   - Receive
     - Name: `receive`
-    - Argument: the argument of the subscriber's `receive`
+    - Argument: `V`, the argument of the subscriber's `receive`
   - Interrupt
     - Name: `interrupt`
-    - Argument: `InterruptReason`, the method's own type as a whole
+    - Argument: `I`, the method's own interrupt reason as a whole
   - Unsubscribe
     - Name: `stop`
     - Argument: none
 
 Actions MUST be defined in the given order. A method's payload always comes last in its message, so its codec reads
-exactly the payload's bytes. The transport adds nothing to an `InterruptReason`, so a clean end is whatever the method's
-type says. A method that wants truapi's layout declares `Result<(), CallError<Reason>>` as its `InterruptReason`, as
-`chain.connect_subscribe` does.
+exactly the payload's bytes. The transport adds nothing to `I`, so a clean end is whatever the method's type says. A
+method that wants truapi's layout declares `Result<(), CallError<Reason>>` as its `I`.
 
-Example:
+So every method's `Message` is one of two enums:
 
 ```rust
-// names.owner, at sectionId 0, methodId 0
-enum OwnerMessage {
-  request(str),
-  response(Result<Owner, CallError<OwnerErr>>),
+enum RequestMessage<P, R, E> {
+  request(P),
+  response(Result<R, CallError<E>>),
 }
 
-// names.changes_subscribe, at sectionId 0, methodId 1
-enum ChangesMessage {
-  start(()),
-  receive(Change),
-  interrupt(ChangesErr),
-  stop,
-}
-
-// chain.send, at sectionId 1, methodId 0
-enum SendMessage {
-  request((str, str)),
-  response(Result<(), CallError<()>>),
-}
-
-// chain.connect_subscribe, at sectionId 1, methodId 1
-enum ConnectMessage {
-  start(str),
-  receive(str),
-  interrupt(Result<(), CallError<ConnectErr>>),
+enum SubscriptionMessage<S, V, I> {
+  start(S),
+  receive(V),
+  interrupt(I),
   stop,
 }
 ```
@@ -278,8 +245,7 @@ of its own.
 
 ## API Sections
 
-The transport defines no API sections. A schema does, as in the General Interface. What follows is shared by every
-method.
+The transport defines no API sections. A schema does. What follows is shared by every method.
 
 ### Common Interfaces
 
