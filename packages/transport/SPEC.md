@@ -1,5 +1,5 @@
 ---
-title: "Transport Protocol Design"
+title: 'Transport Protocol Design'
 type: design
 status: accepted
 created: 2026-10-19
@@ -66,8 +66,8 @@ A method that declares no error has an empty one, `()`. So does a subscription t
 
 ## Transport
 
-Communication between peers can be implemented with any IPC protocol. The body of an IPC message is a serialized
-`Frame` (byte array). The IPC implementation may vary depending on the environment.
+Communication between peers can be implemented with any IPC protocol. The body of an IPC message is a serialized `Frame`
+(byte array). The IPC implementation may vary depending on the environment.
 
 ### Provider
 
@@ -90,9 +90,9 @@ predicate allows, and a port provider, which speaks over a message port.
 
 Messages are serializable structs that can be passed between peers.
 
-Message serialization is built on [SCALE codec](https://github.com/paritytech/parity-scale-codec).
-All examples in this proposal skip SCALE codec derive implementation calls, but they are implied. The field order of
-structs and enums matters. `Result` is also treated as a serializable enum.
+Message serialization is built on [SCALE codec](https://github.com/paritytech/parity-scale-codec). All examples in this
+proposal skip SCALE codec derive implementation calls, but they are implied. The field order of structs and enums
+matters. `Result` is also treated as a serializable enum.
 
 #### Note on SCALE codec
 
@@ -195,7 +195,8 @@ enum SendMessage {
 #### Call ids
 
 Each peer numbers its own calls: the opener with odd ids from 1, the accepter with even ids from 2, wrapping to its
-first id after the last `u32`. So a frame's id tells whose call it is about: one of the peer's own calls hears answers, values and ends, and one of the other peer's reaches the handler.
+first id after the last `u32`. So a frame's id tells whose call it is about: one of the peer's own calls hears answers,
+values and ends, and one of the other peer's reaches the handler.
 
 A peer MUST refuse, with no answer, a call that comes before the handshake, a message whose method is not the one its
 call names, and a frame that does not decode. Nothing ever answers a `failed` frame. A message on a call the peer ended
@@ -203,26 +204,25 @@ lately is a race and MUST be dropped quietly.
 
 #### Requests
 
-Each peer MUST send a response message for every request.
-Request and response MUST share the same `id` for matching on each side.
+Each peer MUST send a response message for every request. Request and response MUST share the same `id` for matching on
+each side.
 
 When no handler serves the method, the message does not decode or the handler fails, the serving peer MUST answer with a
 `failed` frame of the same `id`, carrying `Unsupported`, `MalformedFrame` or `HostFailure`. A response that does not
 decode settles the call as `MalformedFrame`.
 
-A caller MAY abort a request. It then settles locally as `Cancelled`, the serving peer is not told, and a late answer
-is ignored.
+A caller MAY abort a request. It then settles locally as `Cancelled`, the serving peer is not told, and a late answer is
+ignored.
 
 #### Subscription
 
 `start`, `receive`, `interrupt` and `stop` calls MUST share the same `id` for matching inside subscription handlers.
 
-When a subscription starts, the consumer MUST notify the provider with a `start` message.
-When the consumer wants to unsubscribe, it MUST send a `stop` message.
-The provider MUST send data updates with a `receive` message.
-The provider ends the subscription with an `interrupt` message: `Ok(())` for a clean end, or `Err` with the
-subscription-specific reason or a failure. The consumer MAY react to an `interrupt` message by notifying the application
-layer. Nothing follows an `interrupt` or a `stop`.
+When a subscription starts, the consumer MUST notify the provider with a `start` message. When the consumer wants to
+unsubscribe, it MUST send a `stop` message. The provider MUST send data updates with a `receive` message. The provider
+ends the subscription with an `interrupt` message: `Ok(())` for a clean end, or `Err` with the subscription-specific
+reason or a failure. The consumer MAY react to an `interrupt` message by notifying the application layer. Nothing
+follows an `interrupt` or a `stop`.
 
 The serving peer MUST end a subscription with a `failed` frame of the same `id` in place of an `interrupt` when no
 handler serves the method or the `start` does not decode (`Unsupported` or `MalformedFrame`), and when the handler
@@ -237,6 +237,7 @@ A `receive` that does not decode ends the subscription with `MalformedFrame`, an
 what was lost may be a value.
 
 The returned `Subscriber` interface depends on the implementation, but a generic interface may look like this:
+
 ```rust
 struct Subscriber<I = ()> {
   unsubscribe: fn(),
@@ -283,9 +284,9 @@ enum CallError<E> {
 }
 ```
 
-`CallError` is truapi's: `Domain` is the method's own error, and the rest are the transport's own failures, in the
-order of `Failure`. A `failed` frame carries a `Failure`, so the transport answers any call whatever the method's error
-is. `Cancelled` is raised by the caller's own side when it aborts, and never crosses the wire. A `reason` built from an
+`CallError` is truapi's: `Domain` is the method's own error, and the rest are the transport's own failures, in the order
+of `Failure`. A `failed` frame carries a `Failure`, so the transport answers any call whatever the method's error is.
+`Cancelled` is raised by the caller's own side when it aborts, and never crosses the wire. A `reason` built from an
 error is `"<name>: <message>"`, at most 500 characters, so the peer keeps the error's name.
 
 ### Handshake
@@ -295,10 +296,10 @@ default, after which the connection is marked as failed and fails with a `Timeou
 
 The opener MUST post an `open` frame with id `0`, carrying the schema's `version` in `u8` and its hello, and post a
 fresh one every 50 ms by default until it is answered or the timeout passes, since the accepter may not be listening
-yet. The accepter MUST answer every `open` with an `accept` of the same `id`. Its answer is `Ok(hello)` when the versions
-match and `Err(VersionInfo)` with its own version otherwise, and every later answer repeats the first one it could
-post. A hello is decoded only at the same version, since another version's may not decode. A version mismatch closes
-both peers.
+yet. The accepter MUST answer every `open` with an `accept` of the same `id`. Its answer is `Ok(hello)` when the
+versions match and `Err(VersionInfo)` with its own version otherwise, and every later answer repeats the first one it
+could post. A hello is decoded only at the same version, since another version's may not decode. A version mismatch
+closes both peers.
 
 A successful handshake MUST come before any call. Calls made before it wait and go out in call order once it succeeds.
 Calls of the peer that come before it are refused with no answer.
