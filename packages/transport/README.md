@@ -30,6 +30,8 @@ and failure.
   `start`, `receive`, `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from
   its method's. A received frame keeps the message as bytes until the method it names decodes it. The id and the
   handshake variants never change, so a peer of any release reads the version it refuses.
+- A frame, a message, a hello or a failure that leaves bytes unread is refused as malformed, as truapi's `decode_all`
+  refuses it. Each method and the frame build their whole decoder once, and each transport the hello's.
 - Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
   one of this side's calls hears the peer's answers, values and ends, and one of the peer's reaches the handler.
 - A provider moves bytes between two contexts and knows nothing of their meaning, and is the trust boundary: the
@@ -75,8 +77,10 @@ sequenceDiagram
 - A subscription waits with the requests and goes out in call order with them. Its subscriber hears each value, then one
   end. `interrupt` hears the peer's own interrupt. `fail` hears a failure of the library's: one the peer answered with,
   `Cancelled` once its signal aborts, or `MalformedFrame` when a message does not decode, after which the peer is told
-  to stop, since what was lost may be a value. `close` hears the one local end with an error: the transport closed, or
-  the start could not be posted. Stopping it tells the peer and calls no listener. A start that does not encode throws.
+  to stop, since what was lost may be a value. An interrupt that does not decode is told no stop, since nothing follows
+  an interrupt, and a message whose leg cannot be read counts as a value. `close` hears the one local end with an error:
+  the transport closed, or the start could not be posted. Its `unsubscribe` tells the peer and calls no listener. A
+  start that does not encode throws.
 
 ```mermaid
 sequenceDiagram
@@ -110,7 +114,8 @@ sequenceDiagram
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed` or `invalid`, with its
   cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
   owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each
-  issue is logged as one bounded error. A message on a call this side ended lately is a race, and dropped quietly.
+  issue is logged as one bounded error. A message on a call this side ended lately is a race, and dropped quietly. So is
+  a stop of the peer's for a subscription that is not running, which counts as no call of the peer's.
 
 ## Public API
 
@@ -136,7 +141,8 @@ sequenceDiagram
 - `createTransport(schema, provider, options)` returns a `Transport<H>`. `TransportOptions<H>`:
   - `handshake: 'offer' | 'respond'` sets whether this side offers the handshake or responds to it, and `hello` is this
     side's.
-  - `retryMs` (50 by default) and `timeoutMs` (5000 by default) pace the opener, on `timers`.
+  - `retryMs` (50 by default) and `timeoutMs` (10000 by default, as host-api and truapi wait) pace the opener, on
+    `timers`.
   - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause }`,
     `{ kind: 'post_failed', error, call? }` or `{ kind: 'listener_threw', error }`. `describeIssue(issue)` is one as a
     line of text, `failureReason(error)` an error as `"<name>: <message>"`, bounded, and `reasonParts(reason)` reads
@@ -149,15 +155,15 @@ sequenceDiagram
     closing error, or when the call cannot go out.
   - `handleRequest(method, handler)` serves a request method and returns what unregisters it. A `RequestHandler` gets
     the payload and a `CallContext` and returns a `ResultPayload`, sync or async.
-  - `subscribe(method, start, { receive, interrupt, fail, close }, { signal? })` returns what stops it. Exactly one of
-    `interrupt(reason)`, `fail(failure)` and `close(error)` is called, once, unless it is stopped first.
+  - `subscribe(method, start, { receive, interrupt, fail, close }, { signal? })` returns its `unsubscribe`. Exactly one
+    of `interrupt(reason)`, `fail(failure)` and `close(error)` is called, once, unless it is unsubscribed first.
   - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
-    `CallContext` and a `Sink`, with `receive(value)` and `interrupt(reason)`, where `reason` is the method's own
-    interrupt reason, which the subscriber hears as it is, and returns its stop function.
+    `CallContext` and a `Sink`, with `send(value)` and `interrupt(reason)`, where `reason` is the method's own interrupt
+    reason, which the subscriber hears as it is, and returns its stop function.
   - `dispose(reason)` closes the transport and disposes the provider.
 - `CallContext<H>` is `{ hello }`, the peer's hello.
-- `TransportHandshakeTimeoutError` closes an opener that heard no answer in time. `TransportVersionMismatchError` closes
-  both sides of a mismatch, and names both versions.
+- `TransportHandshakeTimeoutError` closes an opener that heard no answer in time.
+  `TransportUnsupportedProtocolVersionError` closes both sides of a mismatch, and names both versions.
 - `Provider` is `isCorrectEnvironment()`, `postMessage(message)`, `subscribe(callback)` and `dispose()`, over
   `Uint8Array` messages. `isCorrectEnvironment` says whether the context has a peer to talk to, and a transport over a
   provider that has none closes at once with `Error('Environment is not correct')`. `postMessage` transfers the

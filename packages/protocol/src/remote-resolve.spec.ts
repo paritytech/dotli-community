@@ -43,9 +43,9 @@ describe('createRemoteResolve', () => {
     const resolve = resolveOver(
       resolving(({ label }, _context, sink) => {
         asked.push(label);
-        sink.receive({ tag: 'phase', value: 'asset-hub-syncing' });
-        sink.receive({ tag: 'phase', value: 'resolving-content' });
-        sink.receive({ tag: 'resolved', value: '0xcid' });
+        sink.send({ tag: 'phase', value: 'asset-hub-syncing' });
+        sink.send({ tag: 'phase', value: 'resolving-content' });
+        sink.send({ tag: 'resolved', value: '0xcid' });
         sink.interrupt(ok());
         return () => undefined;
       }),
@@ -67,7 +67,7 @@ describe('createRemoteResolve', () => {
     let stopped = false;
     const resolve = resolveOver(
       resolving((_payload, _context, sink) => {
-        sink.receive({ tag: 'resolved', value: '0xcid' });
+        sink.send({ tag: 'resolved', value: '0xcid' });
         return () => {
           stopped = true;
         };
@@ -87,7 +87,7 @@ describe('createRemoteResolve', () => {
     // Given a frame app that stops after a phase
     const resolve = resolveOver(
       resolving((_payload, _context, sink) => {
-        sink.receive({ tag: 'phase', value: 'asset-hub-syncing' });
+        sink.send({ tag: 'phase', value: 'asset-hub-syncing' });
         sink.interrupt(ok());
         return () => undefined;
       }),

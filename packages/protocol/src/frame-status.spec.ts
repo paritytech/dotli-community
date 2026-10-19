@@ -12,7 +12,7 @@ const context = { origin: null, hello: { resolutionId: null } };
 function subscribe(status: FrameStatus): { readies: number; ends: FrameStatusEnd[] } {
   const heard: { readies: number; ends: FrameStatusEnd[] } = { readies: 0, ends: [] };
   status.handler(undefined, context, {
-    receive: () => {
+    send: () => {
       heard.readies += 1;
     },
     interrupt: end => {

@@ -7,8 +7,9 @@ import { deferred } from '@dotli/shared';
 import { manualTimers, must, recordLog } from '@dotli/shared/testing';
 import {
   TransportHandshakeTimeoutError,
-  TransportVersionMismatchError,
+  TransportUnsupportedProtocolVersionError,
   cancelled,
+  denied,
   domain,
   err,
   hostFailure,
@@ -38,6 +39,8 @@ import {
   serveWatch,
   testSchema,
   TIMEOUT_MS,
+  TRAILED_REASON,
+  TRAILED_TEXT,
   VERSION,
   watcher,
 } from './testing/rig.js';
@@ -80,7 +83,7 @@ describe('createTransport', () => {
       void transport.request(notes.watch, 'from the top');
       // @ts-expect-error the payload is text
       void transport.request(echo.say, 1);
-      const handle = transport.subscribe(notes.watch, 'from the top', {
+      const unsubscribe = transport.subscribe(notes.watch, 'from the top', {
         receive: value => {
           expectTypeOf(value).toEqualTypeOf<string>();
         },
@@ -94,7 +97,7 @@ describe('createTransport', () => {
           expectTypeOf(error).toEqualTypeOf<Error>();
         },
       });
-      expectTypeOf(handle).toEqualTypeOf<() => void>();
+      expectTypeOf(unsubscribe).toEqualTypeOf<() => void>();
       // @ts-expect-error a request is not a subscription
       transport.subscribe(notes.read, 'a note', watcher());
       // @ts-expect-error a subscription is not served as a request
@@ -155,7 +158,7 @@ describe('createTransport', () => {
     relayServing.handleSubscription(echo.relay, (start, _context, sink) => {
       return relayCalling.subscribe(notes.watch, start, {
         receive: value => {
-          sink.receive(value);
+          sink.send(value);
         },
         interrupt: outcome => {
           sink.interrupt(outcome.success ? outcome : err(domain(outcome.value)));
@@ -587,6 +590,33 @@ describe('calls', () => {
     expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
   });
 
+  it('As a caller, an answer or a failure that leaves bytes unread is refused as malformed, as truapi refuses it', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await connectedRaw();
+    const answered = transport.request(notes.read, 'note');
+    const failed = outcomeOf(transport.request(notes.read, 'other'));
+    await timers.advance(0);
+    const [first, second] = peer.find('request:notes.read').map(message => message.id);
+
+    // When one answer carries text with a byte after it, and a failure frame of the other has a byte after it
+    peer.call(rawRead, must(first, 'the first call'), { tag: 'response', value: ok(TRAILED_TEXT) }, notes.read);
+    peer.sendBytes(...frame.enc({ id: must(second, 'the second call'), body: { tag: 'failed', value: denied() } }), 0);
+    await timers.advance(0);
+
+    // Then the answer resolves as MalformedFrame, and the frame is refused while its call waits on
+    expect(await answered).toEqual(err(malformedFrame(TRAILED_REASON)));
+    expect(issues).toEqual([
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
+      { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
+    ]);
+    let settled = false;
+    void failed.then(() => {
+      settled = true;
+    });
+    await timers.advance(0);
+    expect(settled).toBe(false);
+  });
+
   it('As a caller, a payload that cannot be encoded rejects my call and posts nothing', async () => {
     // Given
     const { opener, accepter, timers, delivered } = rig();
@@ -712,11 +742,11 @@ describe('calls', () => {
     const second = must(sinks[1], 'the second sink');
 
     // When
-    first.receive('one');
-    first.receive('two');
+    first.send('one');
+    first.send('two');
     first.interrupt(ok());
     first.interrupt(err('twice'));
-    first.receive('late');
+    first.send('late');
     second.interrupt(err('no such note'));
     second.interrupt(ok());
     await timers.advance(0);
@@ -734,12 +764,12 @@ describe('calls', () => {
     // Given
     const { transport, timers, peer, answerHandshake } = rawRig('offer');
     const heard = watcher();
-    const stop = transport.subscribe(notes.watch, 'from the top', heard);
+    const unsubscribe = transport.subscribe(notes.watch, 'from the top', heard);
     transport.connect();
     await timers.advance(0);
 
     // When
-    stop();
+    unsubscribe();
     answerHandshake();
     await transport.whenConnected();
     await timers.advance(0);
@@ -756,13 +786,13 @@ describe('calls', () => {
     // Given
     const { transport, timers, peer, issues } = await connectedRaw();
     const heard = watcher();
-    const stop = transport.subscribe(notes.watch, 'from the top', heard);
+    const unsubscribe = transport.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
     const [id = 0] = startIds(peer);
 
     // When
-    stop();
-    stop();
+    unsubscribe();
+    unsubscribe();
     peer.call(notes.watch, id, { tag: 'receive', value: 'crossing' });
     peer.call(notes.watch, id, { tag: 'interrupt', value: ok() });
     await timers.advance(0);
@@ -779,13 +809,13 @@ describe('calls', () => {
     const { transport, timers, peer, issues } = await connectedRaw();
     const heard = watcher();
     const abort = new AbortController();
-    const stop = transport.subscribe(notes.watch, 'from the top', heard, { signal: abort.signal });
+    const unsubscribe = transport.subscribe(notes.watch, 'from the top', heard, { signal: abort.signal });
     await timers.advance(0);
     const [id = 0] = startIds(peer);
 
     // When
     abort.abort();
-    stop();
+    unsubscribe();
     peer.call(notes.watch, id, { tag: 'receive', value: 'crossing' });
     await timers.advance(0);
 
@@ -833,9 +863,9 @@ describe('calls', () => {
     const heard = watcher();
     opener.subscribe(notes.watch, 'open', heard);
     const stopped = watcher();
-    const stop = opener.subscribe(notes.watch, 'stopped', stopped);
+    const unsubscribe = opener.subscribe(notes.watch, 'stopped', stopped);
     await timers.advance(0);
-    stop();
+    unsubscribe();
     const reason = new Error('the page is closing');
 
     // When
@@ -956,8 +986,8 @@ describe('calls', () => {
 
     // When
     for (const sink of sinks) {
-      sink.receive('one');
-      sink.receive('two');
+      sink.send('one');
+      sink.send('two');
     }
     must(sinks[0], 'the first sink').interrupt(ok());
     must(sinks[1], 'the second sink').interrupt(ok());
@@ -986,11 +1016,11 @@ describe('calls', () => {
     opener.connect();
     const reason = new Error('torn down');
     const heardBySelfStopping = vi.fn();
-    const stopSelf = opener.subscribe(notes.watch, 'a', {
+    const unsubscribeSelf = opener.subscribe(notes.watch, 'a', {
       receive: () => {
         heardBySelfStopping();
-        stopSelf();
-        stopSelf();
+        unsubscribeSelf();
+        unsubscribeSelf();
       },
       interrupt: () => undefined,
       fail: () => undefined,
@@ -1007,11 +1037,11 @@ describe('calls', () => {
     });
     const watcherCloses = vi.fn();
     let callFromClose: Promise<unknown> | undefined;
-    const stopWatched = opener.subscribe(notes.watch, 'c', {
+    const unsubscribeWatched = opener.subscribe(notes.watch, 'c', {
       ...watcher(),
       close: error => {
         watcherCloses(error);
-        stopWatched();
+        unsubscribeWatched();
         opener.dispose(new Error('second dispose'));
         callFromClose = outcomeOf(opener.request(echo.say, 'still there?'));
       },
@@ -1019,10 +1049,10 @@ describe('calls', () => {
     await timers.advance(0);
 
     // When
-    must(sinks[0], 'the first sink').receive('one');
-    must(sinks[0], 'the first sink').receive('two');
+    must(sinks[0], 'the first sink').send('one');
+    must(sinks[0], 'the first sink').send('two');
     await timers.advance(0);
-    must(sinks[1], 'the second sink').receive('one');
+    must(sinks[1], 'the second sink').send('one');
     await timers.advance(0);
 
     // Then
@@ -1062,8 +1092,8 @@ describe('calls', () => {
     const stopped = watcher();
     const interrupted = watcher();
     const open = watcher();
-    const stopStopped = transport.subscribe(notes.watch, 'stopped', stopped);
-    stopStopped();
+    const unsubscribeStopped = transport.subscribe(notes.watch, 'stopped', stopped);
+    unsubscribeStopped();
     await timers.advance(0);
     transport.subscribe(notes.watch, 'interrupted', interrupted);
     transport.subscribe(notes.watch, 'open', open);
@@ -1071,10 +1101,10 @@ describe('calls', () => {
     const [ended = 0, running = 0] = startIds(peer);
     peer.call(notes.watch, ended, { tag: 'interrupt', value: ok() });
     await timers.advance(0);
-    const stopLater = transport.subscribe(notes.watch, 'later', watcher());
+    const unsubscribeLater = transport.subscribe(notes.watch, 'later', watcher());
     await timers.advance(0);
     const [, , later = 0] = startIds(peer);
-    stopLater();
+    unsubscribeLater();
 
     // When values and ends come on the stopped one, after the interrupt, under another method, and on an id never used
     peer.call(notes.watch, later, { tag: 'receive', value: 'crossing' });
@@ -1110,14 +1140,57 @@ describe('calls', () => {
     peer.call(rawWatch, b, { tag: 'receive', value: CUT_SHORT_TEXT }, notes.watch);
     await timers.advance(0);
 
-    // Then both end, and each is stopped, since what did not decode may have been a value
+    // Then both end, and only the value is stopped, since what did not decode may have been a value and nothing follows
+    // an interrupt
     const malformed = malformedFrame('RangeError: Invalid DataView length 2');
     expect(first.fails).toEqual([malformed]);
     expect(second.fails).toEqual([malformed]);
     expect([...first.ends, ...second.ends]).toEqual([]);
-    expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([a, b]);
+    expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([b]);
     const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError };
     expect(issues).toEqual([refused, refused]);
+  });
+
+  it('As a caller, an interrupt or a value that leaves bytes unread ends my subscription as MalformedFrame, and only the value is stopped', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await connectedRaw();
+    const first = watcher();
+    const second = watcher();
+    transport.subscribe(notes.watch, 'a', first);
+    transport.subscribe(notes.watch, 'b', second);
+    await timers.advance(0);
+    const [a = 0, b = 0] = startIds(peer);
+
+    // When an interrupt carries text with a byte after it, and so does a value
+    peer.call(rawWatch, a, { tag: 'interrupt', value: err(TRAILED_TEXT) }, notes.watch);
+    peer.call(rawWatch, b, { tag: 'receive', value: TRAILED_TEXT }, notes.watch);
+    await timers.advance(0);
+
+    // Then
+    expect(first.fails).toEqual([malformedFrame(TRAILED_REASON)]);
+    expect(second.fails).toEqual([malformedFrame(TRAILED_REASON)]);
+    expect([...first.values, ...second.values, ...first.ends, ...second.ends]).toEqual([]);
+    expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([b]);
+    const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError };
+    expect(issues).toEqual([refused, refused]);
+  });
+
+  it('As a caller, a message whose leg cannot be read ends my subscription as MalformedFrame and is stopped like a value', async () => {
+    // Given
+    const { transport, timers, peer } = await connectedRaw();
+    const listeners = watcher();
+    transport.subscribe(notes.watch, 'a', listeners);
+    await timers.advance(0);
+    const [id = 0] = startIds(peer);
+    const { sectionId, methodId } = testSchema.addressOf(notes.watch);
+
+    // When the message names a leg the method lacks
+    peer.send(id, { tag: 'call', value: { sectionId, methodId, message: Uint8Array.of(9) } });
+    await timers.advance(0);
+
+    // Then
+    expect(listeners.fails).toEqual([{ tag: 'MalformedFrame', value: { reason: expect.any(String) as string } }]);
+    expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([id]);
   });
 
   it('As a caller, a subscription the peer fails as Unsupported ends as Unsupported', async () => {
@@ -1193,14 +1266,14 @@ describe('calls', () => {
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts, mendPosts } = breakable(broken);
     const issues: TransportIssue[] = [];
-    // The stop is made after the hook, which runs only once the start is posted.
-    const stops: (() => void)[] = [];
+    // The `unsubscribe` is made after the hook, which runs only once the start is posted.
+    const unsubscribes: (() => void)[] = [];
     const raw = rawRig('offer', wrap, {
       onIssue: issue => {
         issues.push(issue);
         if (issue.kind === 'post_failed') {
           mendPosts();
-          stops[0]?.();
+          unsubscribes[0]?.();
         }
       },
     });
@@ -1212,12 +1285,12 @@ describe('calls', () => {
     const heard = watcher();
 
     // When
-    stops.push(raw.transport.subscribe(notes.watch, 'from the top', heard));
+    unsubscribes.push(raw.transport.subscribe(notes.watch, 'from the top', heard));
     await raw.timers.advance(0);
     raw.transport.dispose(new Error('done'));
     await raw.timers.advance(0);
 
-    // Then the stop ended it before the post returned, and the peer heard no stop
+    // Then `unsubscribe` ended it before the post returned, and the peer heard no stop
     expect(heard.closes).toEqual([]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.names()).toEqual(['handshakeOffer']);
@@ -1233,10 +1306,10 @@ describe('calls', () => {
     const heard = watcher();
 
     // When
-    const stop = transport.subscribe(notes.watch, 'from the top', heard);
+    const unsubscribe = transport.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
     mendPosts();
-    stop();
+    unsubscribe();
     transport.dispose(new Error('done'));
     await timers.advance(0);
 
@@ -1405,6 +1478,22 @@ describe('serving', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('As a serving side, a payload that leaves bytes unread is answered MalformedFrame and reported', async () => {
+    // Given
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    const handler = vi.fn(() => ok('never'));
+    transport.handleRequest(notes.read, handler);
+
+    // When a request on notes.read carries text with a byte after it
+    peer.call(rawRead, 7, { tag: 'request', value: TRAILED_TEXT }, notes.read);
+    await timers.advance(0);
+
+    // Then
+    expect(peer.failures()).toEqual([{ id: 7, value: malformedFrame(TRAILED_REASON) }]);
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('As a serving side, a call to a method or a section this schema lacks is answered Unsupported, and a failure about a call I never made is refused', async () => {
     // Given
     const { timers, peer, issues } = await acceptedRaw();
@@ -1508,7 +1597,7 @@ describe('serving', () => {
       kind: 'refused',
       reason: 'invalid',
       cause: expect.objectContaining({
-        message: `A call came after the transport closed, TransportVersionMismatchError: The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
+        message: `A call came after the transport closed, TransportUnsupportedProtocolVersionError: The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
       }) as Error,
     };
     expect(issues).toEqual([refused, refused]);
@@ -1552,6 +1641,30 @@ describe('serving', () => {
     ]);
     expect(peer.heard).toEqual([]);
     expect(connected).toBe(false);
+  });
+
+  it('As either side, a hello that leaves bytes unread is refused as malformed and settles no handshake', async () => {
+    // Given an accepter and an opener that both face a raw peer
+    const accepter = rawRig('respond');
+    const opener = rawRig('offer');
+    opener.transport.connect();
+    await opener.timers.advance(0);
+    const attempt = must(opener.peer.find('handshakeOffer')[0], 'a handshake');
+
+    // When each hears a hello with a byte after it
+    accepter.peer.send(1, { tag: 'handshakeOffer', value: { version: VERSION, hello: TRAILED_TEXT } });
+    opener.peer.send(attempt.id, { tag: 'handshakeResponse', value: ok(TRAILED_TEXT) });
+    await accepter.timers.advance(0);
+    await opener.timers.advance(0);
+
+    // Then the accepter answers nothing and the opener keeps trying
+    const refused = [{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }];
+    expect(accepter.issues).toEqual(refused);
+    expect(accepter.peer.names()).toEqual([]);
+    expect(opener.issues).toEqual(refused);
+    const heard = opener.peer.heard.length;
+    await opener.timers.advance(RETRY_MS);
+    expect(opener.peer.heard.length).toBeGreaterThan(heard);
   });
 
   it('As either side, a frame of a kind the wire lacks is reported as malformed with no reply', async () => {
@@ -1608,17 +1721,11 @@ describe('serving', () => {
     peer.call(notes.watch, 5, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
-    // Then the second stop is the peer's fault
+    // Then the second stop stops nothing and is dropped quietly
     expect(started).toEqual([{ start: 'from the top', context: { hello: 'peer' } }]);
     expect(stop).toHaveBeenCalledOnce();
     expect(peer.names()).toEqual(['handshakeResponse']);
-    expect(issues).toEqual([
-      {
-        kind: 'refused',
-        reason: 'invalid',
-        cause: expect.objectContaining({ message: 'A stop names subscription 5, which is not running' }) as Error,
-      },
-    ]);
+    expect(issues).toEqual([]);
   });
 
   it('As a serving side, a handler that throws on start interrupts with HostFailure', async () => {
@@ -1645,7 +1752,7 @@ describe('serving', () => {
     const { opener, accepter, timers, issues } = rig();
     const stop = vi.fn();
     accepter.handleSubscription(notes.watch, (_start, _context, sink) => {
-      sink.receive('only');
+      sink.send('only');
       sink.interrupt(err('at once'));
       return stop;
     });
@@ -1669,11 +1776,11 @@ describe('serving', () => {
     const { sinks, stops } = serveWatch(accepter);
     opener.connect();
     const heard = watcher();
-    const handle = opener.subscribe(notes.watch, 'from the top', heard);
+    const unsubscribe = opener.subscribe(notes.watch, 'from the top', heard);
     await timers.advance(0);
 
     // When
-    handle();
+    unsubscribe();
     must(sinks[0], 'a sink').interrupt(ok());
     await timers.advance(0);
 
@@ -1688,15 +1795,15 @@ describe('serving', () => {
     const { opener, accepter, timers, delivered } = rig();
     const { sinks, stops } = serveWatch(accepter);
     opener.connect();
-    const handle = opener.subscribe(notes.watch, 'from the top', watcher());
+    const unsubscribe = opener.subscribe(notes.watch, 'from the top', watcher());
     await timers.advance(0);
-    handle();
+    unsubscribe();
     await timers.advance(0);
     const posted = delivered.length;
 
     // When
     const sink = must(sinks[0], 'a sink');
-    sink.receive('late');
+    sink.send('late');
     sink.interrupt(ok());
     sink.interrupt(err('again'));
     await timers.advance(0);
@@ -1718,7 +1825,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // When
-    must(sinks[0], 'the first sink').receive('');
+    must(sinks[0], 'the first sink').send('');
     must(sinks[1], 'the second sink').interrupt(err('gone'));
     await timers.advance(0);
 
@@ -1741,7 +1848,7 @@ describe('serving', () => {
 
     // When
     const receive = (): void => {
-      sink.receive('a line');
+      sink.send('a line');
     };
     const interrupt = (): void => {
       sink.interrupt(ok());
@@ -1885,9 +1992,9 @@ describe('serving', () => {
     expect(onPeerIdle).not.toHaveBeenCalled();
 
     // When it subscribes again and leaves that one
-    const again = opener.subscribe(notes.watch, 'tick', watcher());
+    const unsubscribeAgain = opener.subscribe(notes.watch, 'tick', watcher());
     await timers.advance(0);
-    again();
+    unsubscribeAgain();
     await timers.advance(0);
 
     // Then it is
@@ -1923,10 +2030,10 @@ describe('serving', () => {
     accepter.handleRequest(notes.touch, () => held.promise);
     accepter.handleRequest(echo.say, text => ok(text));
     opener.connect();
-    const ticks = opener.subscribe(notes.watch, 'tick', watcher());
+    const unsubscribeTicks = opener.subscribe(notes.watch, 'tick', watcher());
     const touched = opener.request(notes.touch, undefined);
     await timers.advance(0);
-    ticks();
+    unsubscribeTicks();
     await timers.advance(0);
 
     // When it makes another call, and both settle
@@ -2027,18 +2134,19 @@ describe('serving', () => {
     expect(onPeerIdle).toHaveBeenCalledTimes(2);
   });
 
-  it('As a serving side, a stop before the handshake or for a subscription that is not running is refused as invalid, and I hear no peer leave', async () => {
+  it('As a serving side, a stop before the handshake is refused as invalid, one for a subscription that is not running is dropped quietly, and I hear no peer leave', async () => {
     // Given
     const onPeerIdle = vi.fn();
     const { transport, timers, peer, issues, openHandshake } = rawRig('respond', undefined, { onPeerIdle });
     serveWatch(transport);
 
-    // When a stop comes before the handshake, then one names an id never started
+    // When a stop comes before the handshake, then one names an id never started, and one a method with no handler
     peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
     await timers.advance(0);
     openHandshake();
     await timers.advance(0);
     peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
+    peer.call(echo.listen, 5, { tag: 'stop', value: undefined });
     await timers.advance(0);
 
     // Then
@@ -2047,11 +2155,6 @@ describe('serving', () => {
         kind: 'refused',
         reason: 'invalid',
         cause: expect.objectContaining({ message: 'A call came before the handshake' }) as Error,
-      },
-      {
-        kind: 'refused',
-        reason: 'invalid',
-        cause: expect.objectContaining({ message: 'A stop names subscription 3, which is not running' }) as Error,
       },
     ]);
     expect(onPeerIdle).not.toHaveBeenCalled();
@@ -2103,6 +2206,30 @@ describe('serving', () => {
 });
 
 describe('the handshake', () => {
+  it('As a serving side, a stray stop from a peer that left neither answers nor keeps the peer', async () => {
+    // Given a peer that leaves its last subscription while a call is held
+    const onPeerIdle = vi.fn();
+    const { transport, timers, peer, issues } = await acceptedRaw(undefined, { onPeerIdle });
+    serveWatch(transport);
+    const held = deferred<ResultPayload<undefined, CallError<undefined>>>();
+    transport.handleRequest(notes.touch, () => held.promise);
+    peer.call(notes.touch, 1, { tag: 'request', value: undefined });
+    peer.call(notes.watch, 3, { tag: 'start', value: 'tick' });
+    peer.call(notes.watch, 3, { tag: 'stop', value: undefined });
+    await timers.advance(0);
+
+    // When it sends a stop for a subscription that never ran, and the held call settles
+    peer.call(notes.watch, 5, { tag: 'stop', value: undefined });
+    await timers.advance(0);
+    held.resolve(ok());
+    await timers.advance(0);
+
+    // Then
+    expect(onPeerIdle).toHaveBeenCalledOnce();
+    expect(peer.failures()).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
   it('As an opener whose hello does not encode, my handshake fails with why and my calls reject with it', async () => {
     // Given
     const refused = new RangeError('this hello does not encode');
@@ -2184,6 +2311,30 @@ describe('the handshake', () => {
     expect(settled).toBeInstanceOf(TransportHandshakeTimeoutError);
   });
 
+  it('As an opener with no timeout set, my handshake waits 10 seconds for an answer, as host-api and truapi wait', async () => {
+    // Given
+    const { left } = createProviderPair();
+    const timers = manualTimers();
+    const transport = createTransport(testSchema, left, { handshake: 'offer', hello: 'opener', timers });
+    let settled: unknown;
+    void transport.whenConnected().catch((error: unknown) => {
+      settled = error;
+    });
+
+    // When
+    transport.connect();
+    await timers.advance(9_999);
+
+    // Then
+    expect(settled).toBeUndefined();
+
+    // When
+    await timers.advance(1);
+
+    // Then
+    expect(settled).toBeInstanceOf(TransportHandshakeTimeoutError);
+  });
+
   it('As an opener, a handshake answer after my handshake timed out changes nothing', async () => {
     // Given
     const { transport, timers, peer, answerHandshake } = rawRig('offer');
@@ -2219,7 +2370,7 @@ describe('the handshake', () => {
 
     // Then
     const failure = await outcomeOf(transport.whenConnected());
-    expect(failure).toBeInstanceOf(TransportVersionMismatchError);
+    expect(failure).toBeInstanceOf(TransportUnsupportedProtocolVersionError);
     expect(failure).toMatchObject({
       message: `The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
     });
@@ -2315,7 +2466,7 @@ describe('the handshake', () => {
       { id: 3, value: err({ version: VERSION }) },
     ]);
     const failure = await outcomeOf(transport.whenConnected());
-    expect(failure).toBeInstanceOf(TransportVersionMismatchError);
+    expect(failure).toBeInstanceOf(TransportUnsupportedProtocolVersionError);
     expect(failure).toMatchObject({
       message: `The peer speaks version ${String(VERSION + 1)} and this side ${String(VERSION)}`,
     });

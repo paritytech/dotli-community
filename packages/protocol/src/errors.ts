@@ -7,7 +7,7 @@
 
 import {
   TransportHandshakeTimeoutError,
-  TransportVersionMismatchError,
+  TransportUnsupportedProtocolVersionError,
   domain,
   hostFailure,
   reasonParts,
@@ -94,7 +94,7 @@ export const PROTOCOL_ERRORS = {
 
 /** The error a transport closed with, under the protocol's own class when it is one of the transport's. */
 export function fromTransportError(error: Error): Error {
-  if (error instanceof TransportVersionMismatchError) {
+  if (error instanceof TransportUnsupportedProtocolVersionError) {
     return new ProtocolVersionMismatchError(error.message, { cause: error });
   }
   if (error instanceof TransportHandshakeTimeoutError) {

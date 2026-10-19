@@ -16,7 +16,7 @@ import {
   type CallError,
 } from './errors.js';
 import { codec, request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
-import { decode, frame, type Frame } from './wire.js';
+import { decode, frame, whole, wholeFrame, type Frame } from './wire.js';
 
 const read = request({ request: str, response: str, error: u8 });
 const touch = request({ request: _void, response: _void });
@@ -154,9 +154,42 @@ describe('wire', () => {
     ];
 
     // When
-    const decoded = messages.map(bytes => decode(touch.message, bytes));
+    const decoded = messages.map(bytes => decode(touch.wholeMessage, bytes));
 
     // Then
     expect(decoded).toEqual([err(expect.any(Error) as Error), err(expect.any(Error) as Error)]);
+  });
+
+  it('As a transport, I refuse a value that leaves bytes unread, as truapi decodes all', () => {
+    // Given a message, a hello and a failure frame, each with a byte after it
+    const message = Uint8Array.of(...read.message.enc({ tag: 'request', value: 'a' }), 0);
+    const hello = Uint8Array.of(...str.enc('a'), 0);
+    const failed = Uint8Array.of(...frame.enc({ id: 1, body: { tag: 'failed', value: denied() } }), 0);
+
+    // When
+    const decoded = [
+      decode(read.wholeMessage, message),
+      decode(whole(str), hello),
+      decode(wholeFrame, failed),
+      decode(wholeFrame, failed.slice(0, -1)),
+    ];
+
+    // Then only the frame that ends where its value ends decodes
+    const unread = err(new RangeError('The value is followed by unread bytes, 1 in all'));
+    expect(decoded).toEqual([unread, unread, unread, ok({ id: 1, body: { tag: 'failed', value: denied() } })]);
+  });
+
+  it('As a transport, I read the leg of a message whose payload does not decode', () => {
+    // Given an interrupt whose text is cut short, and a message of a leg the method lacks
+    const cutShort = Uint8Array.of(2, 8);
+    const unknown = Uint8Array.of(9);
+
+    // When
+    const legs = [decode(watch.leg, cutShort), decode(watch.leg, unknown)];
+
+    // Then
+    expect(decode(watch.wholeMessage, cutShort).success).toBe(false);
+    expect(legs[0]).toEqual(ok({ tag: 'interrupt', value: Uint8Array.of(8) }));
+    expect(legs[1]?.success).toBe(false);
   });
 });

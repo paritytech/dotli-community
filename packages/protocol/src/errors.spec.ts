@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { TransportVersionMismatchError, denied, domain, hostFailure } from '@dotli/transport';
+import { TransportUnsupportedProtocolVersionError, denied, domain, hostFailure } from '@dotli/transport';
 import {
   ProtocolFatalError,
   ProtocolInitFailedError,
@@ -91,7 +91,7 @@ describe('frameStatusEnd', () => {
 describe('fromTransportError', () => {
   it("As a frame, I end my status on a link's version mismatch typed, and the host reads it as the protocol's mismatch", () => {
     // Given
-    const mismatch = new TransportVersionMismatchError(3, 9);
+    const mismatch = new TransportUnsupportedProtocolVersionError(3, 9);
 
     // When
     const end = frameStatusEnd(fromTransportError(mismatch));

@@ -10,7 +10,7 @@ import { createAsyncTaskPool, deferred, realTimers, toError, withTimeout, type T
 import type { Codec, ResultPayload } from 'scale-ts';
 import {
   TransportHandshakeTimeoutError,
-  TransportVersionMismatchError,
+  TransportUnsupportedProtocolVersionError,
   cancelled,
   err,
   failureReason,
@@ -38,6 +38,8 @@ import {
   decode,
   encodeCall,
   frame,
+  whole,
+  wholeFrame,
   type Call,
   type Frame,
   type HandshakeOffer,
@@ -64,7 +66,7 @@ export interface CallContext<H> {
 /** What a subscription handler sends on. Both do nothing once the subscription has ended. */
 export interface Sink<V, I> {
   /** Sends a value. One the wire cannot carry ends the subscription with `HostFailure`. */
-  receive(value: V): void;
+  send(value: V): void;
   /** Ends the subscription with `reason`, the method's own interrupt type, which the subscriber hears as it is. */
   interrupt(reason: I): void;
 }
@@ -136,8 +138,8 @@ export interface Transport<H> {
   ): () => void;
   /**
    * Subscribes to the peer. `receive` hears each value, and `interrupt`, `fail` or `close` the one end. Subscriptions
-   * made before the handshake wait and go out in call order with the requests. Returns what stops it, which tells the
-   * peer and calls no listener. Throws when the start does not encode.
+   * made before the handshake wait and go out in call order with the requests. Returns `unsubscribe`, which stops it at
+   * the peer and calls no listener. Throws when the start does not encode.
    */
   subscribe<S, V, I>(
     method: Subscription<S, V, I>,
@@ -152,7 +154,7 @@ export interface Transport<H> {
   ): () => void;
   /**
    * Closes this side. Every subscription it serves is interrupted with `HostFailure` carrying `reason`, every one it
-   * made is stopped at the peer and hears `onClose(reason)`, every pending and later request rejects with `reason`, and
+   * made is stopped at the peer and hears `close(reason)`, every pending and later request rejects with `reason`, and
    * the provider is disposed.
    */
   dispose(reason: Error): void;
@@ -179,7 +181,7 @@ interface Running {
 }
 
 const DEFAULT_RETRY_MS = 50;
-const DEFAULT_TIMEOUT_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
 // The largest id the wire's u32 carries. Ids wrap long after any call with an old one has settled.
 const MAX_ID = 0xffff_ffff;
 
@@ -324,7 +326,7 @@ export function createTransport<H, T extends Sections>(
       const call: OutCall = {
         address,
         hear(bytes) {
-          const message = decode(method.message, bytes);
+          const message = decode(method.wholeMessage, bytes);
           if (!message.success) {
             refuse('malformed', message.value);
             answer(err(malformedFrame(message.value)));
@@ -410,12 +412,14 @@ export function createTransport<H, T extends Sections>(
     const call: OutCall = {
       address,
       hear(bytes) {
-        const message = decode(method.message, bytes);
+        const message = decode(method.wholeMessage, bytes);
         if (!message.success) {
           // What was lost may be a value, which leaves the subscriber behind the peer, so the subscription ends and the
-          // peer is told to stop. A stop after the peer's own end is a race it drops.
+          // peer is told to stop. A stop after the peer's own end is a race it drops. Nothing follows an interrupt, so
+          // the peer that sent one hears no stop. A message whose leg cannot be read counts as a value.
           refuse('malformed', message.value);
-          fail(malformedFrame(message.value), true);
+          const leg = decode(method.leg, bytes);
+          fail(malformedFrame(message.value), !leg.success || leg.value.tag !== 'interrupt');
           return;
         }
         const sent = message.value;
@@ -444,13 +448,13 @@ export function createTransport<H, T extends Sections>(
     if (!data.success) {
       throw data.value;
     }
-    const stop = (): void => {
+    const unsubscribe = (): void => {
       finish(true, null);
     };
     if (signal?.aborted === true) {
-      // Heard on a microtask, so no listener runs before the caller holds its stop.
+      // Heard on a microtask, so no listener runs before the caller holds its `unsubscribe`.
       queueMicrotask(onAbort);
-      return stop;
+      return unsubscribe;
     }
     signal?.addEventListener('abort', onAbort, { once: true });
     place(() => {
@@ -467,7 +471,7 @@ export function createTransport<H, T extends Sections>(
       // stop. A post that succeeds hears nothing before it returns.
       state = 'open';
     }, shut);
-    return stop;
+    return unsubscribe;
   }
 
   /** Hands a message the peer sent on call `id` to the call. */
@@ -568,7 +572,7 @@ export function createTransport<H, T extends Sections>(
   function handleRequest<P, R, E>(method: Request<P, R, E>, handler: RequestHandler<P, R, E, H>): () => void {
     const address = schema.addressOf(method);
     return register(method, address, (id, bytes, context) => {
-      const message = decode(method.message, bytes);
+      const message = decode(method.wholeMessage, bytes);
       if (!message.success) {
         malformed(id, message.value, address);
         return;
@@ -629,7 +633,7 @@ export function createTransport<H, T extends Sections>(
       const entry: Running = {
         address,
         hear(bytes) {
-          const message = decode(method.message, bytes);
+          const message = decode(method.wholeMessage, bytes);
           if (!message.success) {
             refuse('malformed', message.value);
             return;
@@ -651,7 +655,7 @@ export function createTransport<H, T extends Sections>(
       running.set(id, entry);
 
       const sink: Sink<V, I> = {
-        receive(value) {
+        send(value) {
           if (running.get(id) !== entry) {
             return;
           }
@@ -684,7 +688,7 @@ export function createTransport<H, T extends Sections>(
     };
 
     return register(method, address, (id, bytes, context) => {
-      const message = decode(method.message, bytes);
+      const message = decode(method.wholeMessage, bytes);
       if (!message.success) {
         malformed(id, message.value, address);
         return;
@@ -715,10 +719,15 @@ export function createTransport<H, T extends Sections>(
       onPeerStop();
       return;
     }
+    const method = schema.methodAt(call.sectionId, call.methodId);
+    // A stop for a subscription that is neither running nor lately ended stops nothing, and the peer made no call.
+    const leg = method === undefined ? undefined : decode(method.leg, call.message);
+    if (leg?.success === true && leg.value.tag === 'stop') {
+      return;
+    }
     // A new call, even one that does not decode or that names a method this side does not serve, tells that the peer
     // is here.
     peerCalls += 1;
-    const method = schema.methodAt(call.sectionId, call.methodId);
     const served = method === undefined ? undefined : handlers.get(method);
     if (served === undefined) {
       postFailed(id, unsupported());
@@ -772,6 +781,8 @@ export function createTransport<H, T extends Sections>(
   });
   const stopAttempts = new AbortController();
   let started = false;
+  // Built once, so no handshake composes a decoder.
+  const wholeHello = whole(schema.hello);
 
   // Settles the opener's handshake once. An answer settles it in the turn it arrives, so a call the accepter makes right
   // after its answer finds this side open.
@@ -806,10 +817,10 @@ export function createTransport<H, T extends Sections>(
     }
     // Only the first answer counts. The rest answer attempts already in flight.
     if (!response.success) {
-      settleHandshake(err(new TransportVersionMismatchError(schema.version, response.value.version)));
+      settleHandshake(err(new TransportUnsupportedProtocolVersionError(schema.version, response.value.version)));
       return;
     }
-    const hello = decode(schema.hello, response.value);
+    const hello = decode(wholeHello, response.value);
     if (!hello.success) {
       refuse('malformed', hello.value);
       return;
@@ -822,7 +833,7 @@ export function createTransport<H, T extends Sections>(
 
   const heardOffer = (id: number, offer: HandshakeOffer): void => {
     const sameVersion = offer.version === schema.version;
-    const peerHello = sameVersion ? decode(schema.hello, offer.hello) : undefined;
+    const peerHello = sameVersion ? decode(wholeHello, offer.hello) : undefined;
     if (peerHello?.success === false) {
       refuse('malformed', peerHello.value);
       return;
@@ -842,14 +853,14 @@ export function createTransport<H, T extends Sections>(
     }
     first = answer;
     if (peerHello === undefined) {
-      close(new TransportVersionMismatchError(schema.version, offer.version));
+      close(new TransportUnsupportedProtocolVersionError(schema.version, offer.version));
     } else {
       onOpen(peerHello.value);
     }
   };
 
   const receive = (data: Uint8Array): void => {
-    const received = decode(frame, data);
+    const received = decode(wholeFrame, data);
     if (!received.success) {
       refuse('malformed', received.value);
       return;

@@ -34,7 +34,7 @@ describe('createFrameTelemetry', () => {
 
   /** The frame up now reporting `event`. */
   const report = (event: TelemetryEvent): void => {
-    sinks.at(-1)?.receive(event);
+    sinks.at(-1)?.send(event);
   };
 
   beforeEach(() => {

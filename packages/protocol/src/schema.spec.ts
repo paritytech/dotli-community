@@ -134,7 +134,7 @@ function subscriptionCase<S, V, E>(
       server.handleSubscription(method, (_start, context, sink) => {
         hellos.push(context.hello);
         for (const value of sample.values) {
-          sink.receive(value);
+          sink.send(value);
         }
         const end = sample.interrupts[run++] ?? err(NO_SAMPLE);
         if (!end.success) {
@@ -453,8 +453,8 @@ describe('protocolSchema', () => {
       bestNumber: index,
     }));
     accepter.handleSubscription(frame.telemetry, (_start, _context, sink) => {
-      sink.receive({ tag: 'netBytes', value: 512 });
-      sink.receive({ tag: 'chainDetail', value: { chain: 'relay', peers: tooManyPeers } });
+      sink.send({ tag: 'netBytes', value: 512 });
+      sink.send({ tag: 'chainDetail', value: { chain: 'relay', peers: tooManyPeers } });
       // Ends cleanly, so an event let through would end the subscription as Ok.
       sink.interrupt(ok());
       return () => undefined;

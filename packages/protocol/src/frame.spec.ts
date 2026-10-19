@@ -818,7 +818,7 @@ describe('protocol status', () => {
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     provider(() => undefined, onHalt);
     host.serve().handleSubscription(chain.connect, (_start, _context, sink) => {
-      sink.receive({ tag: 'connected', value: undefined });
+      sink.send({ tag: 'connected', value: undefined });
       return () => undefined;
     });
     await host.bringUp();

@@ -26,7 +26,7 @@ import {
 import { deferred } from '@dotli/shared';
 import { FakePage, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
-  TransportVersionMismatchError,
+  TransportUnsupportedProtocolVersionError,
   createPortProvider,
   createTransport,
   denied,
@@ -143,7 +143,7 @@ function fakeWorker(): FakeWorker {
     beatsHeard: beatsHeard.promise,
     beatTab: () => {
       for (const sink of [...beatSinks]) {
-        sink.receive(undefined);
+        sink.send(undefined);
       }
     },
     refuseHeartbeats: () => {
@@ -184,7 +184,7 @@ function link(
 /** The first end a frame status hears. */
 function firstEnd(status: FrameStatus): Promise<FrameStatusEnd> {
   return new Promise(resolve => {
-    status.handler(undefined, { hello: { resolutionId: null } }, { receive: () => undefined, interrupt: resolve });
+    status.handler(undefined, { hello: { resolutionId: null } }, { send: () => undefined, interrupt: resolve });
   });
 }
 
@@ -539,7 +539,7 @@ describe('the worker relay', () => {
     const { host, contexts } = linkHops((worker, seen) => {
       worker.handleSubscription(chain.connect, (_start, context, sink) => {
         seen.set('chain.connect', context);
-        sink.receive({ tag: 'connected', value: undefined });
+        sink.send({ tag: 'connected', value: undefined });
         return () => undefined;
       });
       worker.handleRequest(chain.send, ({ message }) => {
@@ -552,13 +552,13 @@ describe('the worker relay', () => {
       });
       worker.handleRequest(frame.warmup, () => ok());
       worker.handleSubscription(resolve.dotName, (_start, _context, sink) => {
-        sink.receive({ tag: 'phase', value: 'resolving-content' });
-        sink.receive({ tag: 'resolved', value: 'bafycid' });
+        sink.send({ tag: 'phase', value: 'resolving-content' });
+        sink.send({ tag: 'resolved', value: 'bafycid' });
         sink.interrupt(ok());
         return () => undefined;
       });
       worker.handleSubscription(frame.telemetry, (_start, _context, sink) => {
-        sink.receive({ tag: 'netBytes', value: 4_000 });
+        sink.send({ tag: 'netBytes', value: 4_000 });
         return () => undefined;
       });
     });
@@ -629,7 +629,7 @@ describe('the worker relay', () => {
     });
     const { host } = linkHops(worker => {
       worker.handleSubscription(chain.connect, (_start, _context, sink) => {
-        sink.receive({ tag: 'connected', value: undefined });
+        sink.send({ tag: 'connected', value: undefined });
         return stopped;
       });
     });
@@ -684,7 +684,7 @@ describe('the worker relay', () => {
         return () => undefined;
       });
       worker.handleSubscription(chain.connect, (_start, _context, sink) => {
-        sink.receive({ tag: 'connected', value: undefined });
+        sink.send({ tag: 'connected', value: undefined });
         sink.interrupt(err(hostFailure('TypeError: the chain broke')));
         return () => undefined;
       });
@@ -771,7 +771,7 @@ describe('the worker relay', () => {
     await Promise.all([status.until(1), asked.promise, workerStatusHeard]);
 
     // When the link closes on a version mismatch, as its handshake with a worker of another release does
-    const mismatch = new TransportVersionMismatchError(3, 9);
+    const mismatch = new TransportUnsupportedProtocolVersionError(3, 9);
     link.dispose(mismatch);
 
     // Then the frame status ends typed, the host reads it as the protocol's mismatch, and the held call fails with it

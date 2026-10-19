@@ -116,7 +116,7 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
       return;
     }
     for (const sink of [...subscribers]) {
-      sink.receive({ siteId: data.siteId, key: data.key, value: data.value });
+      sink.send({ siteId: data.siteId, key: data.key, value: data.value });
     }
   }
 

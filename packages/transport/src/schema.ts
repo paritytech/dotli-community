@@ -4,9 +4,9 @@
 // A schema nests sections, then methods. A method is a request or a subscription, built from the codecs of what its sides
 // send, and carries its types, so the transport calls and serves it by the method itself. Wire ids are positions.
 
-import { Bytes, Enum, Result, _void, enhanceCodec, type Codec, type ResultPayload } from 'scale-ts';
+import { Bytes, Enum, Result, _void, enhanceCodec, type Codec, type Decoder, type ResultPayload } from 'scale-ts';
 import { callError, type CallError } from './errors.js';
-import { frameOf, type Frame } from './wire.js';
+import { frameOf, whole, type Frame } from './wire.js';
 
 /** Wraps plain encode and decode functions as a codec. A payload ends its message, so it takes the rest of the bytes. */
 export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8Array) => T): Codec<T> {
@@ -37,8 +37,12 @@ export type RequestMessage<P, R, E> = Variant<RequestTypes<P, R, E>>;
 export type SubscriptionMessage<S, V, I> = Variant<SubscriptionTypes<S, V, I>>;
 
 /** A method: the codec of what its sides send, and of the frames that carry it. */
-interface Method<M> {
+interface Method<M extends { tag: string }> {
   readonly message: Codec<M>;
+  /** Decodes a message, refusing one that leaves bytes unread. */
+  readonly wholeMessage: Decoder<M>;
+  /** Reads only which leg a message is, so a message whose payload does not decode still tells its leg. */
+  readonly leg: Decoder<{ tag: M['tag'] }>;
   readonly frame: Codec<Frame<M>>;
 }
 
@@ -48,7 +52,23 @@ export type Request<P, R, E> = Method<RequestMessage<P, R, E>>;
 /** A subscription method. `I` is its own interrupt reason as a whole, `undefined` when it declares none. */
 export type Subscription<S, V, I> = Method<SubscriptionMessage<S, V, I>>;
 
-const method = <M>(message: Codec<M>): Method<M> => ({ message, frame: frameOf(message) });
+// A leg's payload as bytes, so reading a message's leg decodes no payload.
+const rest = Bytes(Infinity);
+
+const method = <M extends { tag: string }>(message: Codec<M>, leg: Decoder<{ tag: M['tag'] }>): Method<M> => ({
+  message,
+  wholeMessage: whole(message),
+  leg,
+  frame: frameOf(message),
+});
+
+// The legs of each kind of method in wire order, so a method's message and the reader of its leg share one layout.
+const requestLegs = <P, A>(request: Codec<P>, response: Codec<A>) => Enum({ request, response });
+const subscriptionLegs = <S, V, I>(start: Codec<S>, receive: Codec<V>, interrupt: Codec<I>) =>
+  Enum({ start, receive, interrupt, stop: _void });
+
+const requestLeg = requestLegs(rest, rest).dec;
+const subscriptionLeg = subscriptionLegs(rest, rest, rest).dec;
 
 /** Declares a request. `error` is the method's own error, and a method without one has an empty one. */
 export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, undefined>;
@@ -59,7 +79,7 @@ export function request<P, R, E>(def: {
   error?: Codec<E>;
 }): Request<P, R, E> | Request<P, R, undefined> {
   const requestOf = <D>(error: Codec<D>): Request<P, R, D> =>
-    method(Enum({ request: def.request, response: Result(def.response, callError(error)) }));
+    method(requestLegs(def.request, Result(def.response, callError(error))), requestLeg);
   return def.error === undefined ? requestOf(_void) : requestOf(def.error);
 }
 
@@ -79,13 +99,14 @@ export function subscription<S, V, I>(def: {
   interrupt?: Codec<I>;
 }): Subscription<S, V, I> | Subscription<S, V, undefined> {
   const subscriptionOf = <D>(interrupt: Codec<D>): Subscription<S, V, D> =>
-    method(Enum({ start: def.start, receive: def.receive, interrupt, stop: _void }));
+    method(subscriptionLegs(def.start, def.receive, interrupt), subscriptionLeg);
   return def.interrupt === undefined ? subscriptionOf(_void) : subscriptionOf(def.interrupt);
 }
 
 /** Any method, as a schema holds it. What its sides send is told apart by tag, whatever its payload types. */
 export interface AnyMethod {
   readonly message: { readonly dec: (data: Uint8Array) => { tag: string } };
+  readonly leg: (data: Uint8Array) => { tag: string };
 }
 
 /** A schema's sections: section names to method names to methods. */

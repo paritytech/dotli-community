@@ -82,6 +82,9 @@ const DEFAULT_FRAME_TIMEOUTS: ProtocolFrameTimeouts = {
   stableMs: 30_000,
 };
 
+// Boot waits on the frame's handshake, so a frame that loads and never answers fails it within 5 s.
+const HANDSHAKE_TIMEOUT_MS = 5_000;
+
 /** The hidden iframe, as much of it as the frame uses. An `HTMLIFrameElement` is one. */
 export interface FrameElement {
   src: string;
@@ -268,7 +271,13 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
           onNotBytes: wire.onNotBytes,
         }),
         // The frame reads the resolution id from its URL, which it needs before any handshake.
-        { handshake: 'offer', hello: { resolutionId: null }, timers, onIssue: wire.onIssue },
+        {
+          handshake: 'offer',
+          hello: { resolutionId: null },
+          timers,
+          timeoutMs: HANDSHAKE_TIMEOUT_MS,
+          onIssue: wire.onIssue,
+        },
       ),
     );
     subscribe(kept.transport, protocolSchema.sections.frame.status, undefined, {

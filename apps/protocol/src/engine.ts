@@ -166,7 +166,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
             answered = true;
             note(`First chain message for ${connectionId} (${String(message.length)} bytes)`);
           }
-          sink.receive({ tag: 'message', value: message });
+          sink.send({ tag: 'message', value: message });
         },
         () => {
           // The broker has already answered pending requests and stopped follows, so there is nothing to disconnect.
@@ -185,7 +185,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       connections.set(connectionId, opened);
       scopes.add(connections);
       note(`Chain connected: ${connectionId} (${String(totalConnections())} total)`);
-      sink.receive({ tag: 'connected', value: undefined });
+      sink.send({ tag: 'connected', value: undefined });
       return () => {
         if (forget(opened)) {
           opened.connection.disconnect();
@@ -262,13 +262,13 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       void resolver
         .resolveDotName(label, {
           onPhase: phase => {
-            sink.receive({ tag: 'phase', value: phase });
+            sink.send({ tag: 'phase', value: phase });
           },
           ...syncOptions(methods.resolve.dotName),
         })
         .then(
           resolved => {
-            sink.receive({ tag: 'resolved', value: resolved });
+            sink.send({ tag: 'resolved', value: resolved });
             sink.interrupt(ok());
           },
           (error: unknown) => {

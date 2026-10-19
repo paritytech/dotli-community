@@ -139,7 +139,7 @@ describe('createSharedStore', () => {
     fake.setStatus('listening');
     await timers.advance(0);
     for (const sink of sinks) {
-      sink.receive({ siteId: 'dotli', key: 'k', value: 'v' });
+      sink.send({ siteId: 'dotli', key: 'k', value: 'v' });
     }
     await timers.advance(0);
     fake.setStatus('idle');
@@ -168,7 +168,7 @@ describe('createSharedStore', () => {
 
     // When a sibling tab writes, and then I leave
     for (const sink of sinks) {
-      sink.receive({ siteId: 'dotli', key: 'k', value: null });
+      sink.send({ siteId: 'dotli', key: 'k', value: null });
     }
     await timers.advance(0);
     unsubscribe();
@@ -203,7 +203,7 @@ describe('createSharedStore', () => {
     await timers.advance(1_999);
     const openedBeforeSecondWait = opened.length;
     await timers.advance(1);
-    opened[2]?.receive({ siteId: 'dotli', key: 'k', value: 'v' });
+    opened[2]?.send({ siteId: 'dotli', key: 'k', value: 'v' });
     await timers.advance(0);
 
     // Then

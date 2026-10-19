@@ -136,7 +136,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
   let answering = true;
   const stop = (): void => {
     answering = false;
-    stopBeats();
+    unsubscribeBeats();
   };
   const failed = (error: Error): void => {
     // A link that ended has already said why through its status, and its pending heartbeats fail with the same.
@@ -148,7 +148,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     log.error('[dot.li protocol] Worker heartbeat failed', error);
     m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
   };
-  const stopBeats = transport.subscribe(protocolSchema.sections.frame.beat, undefined, {
+  const unsubscribeBeats = transport.subscribe(protocolSchema.sections.frame.beat, undefined, {
     receive: () => {
       void transport.request(protocolSchema.sections.frame.heartbeat, undefined).then(
         outcome => {
@@ -313,7 +313,7 @@ function relaySubscription<S, V, E>(
   return (start, _context, sink) =>
     worker.subscribe(method, start, {
       receive: value => {
-        sink.receive(value);
+        sink.send(value);
       },
       interrupt: outcome => {
         sink.interrupt(outcome);

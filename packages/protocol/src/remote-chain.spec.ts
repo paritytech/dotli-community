@@ -84,7 +84,7 @@ function accept(connect: ServedConnect | undefined): void {
   if (connect === undefined) {
     throw new Error('no chainConnect reached the frame');
   }
-  connect.sink.receive({ tag: 'connected', value: undefined });
+  connect.sink.send({ tag: 'connected', value: undefined });
 }
 
 /** The JSON-RPC ids of the sends that reached the frame, in order. */
@@ -177,7 +177,7 @@ describe('createRemoteChains', () => {
     accept(server().connects[0]);
 
     // When
-    server().connects[0]?.sink.receive({
+    server().connects[0]?.sink.send({
       tag: 'message',
       value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x' }),
     });
@@ -198,7 +198,7 @@ describe('createRemoteChains', () => {
 
     // When it is closed while the frame sends a message for it
     connection.disconnect();
-    server().connects[0]?.sink.receive({
+    server().connects[0]?.sink.send({
       tag: 'message',
       value: JSON.stringify({ jsonrpc: '2.0', id: 1, result: null }),
     });
@@ -238,7 +238,7 @@ describe('createRemoteChains', () => {
     accept(server().connects[0]);
 
     // When the frame sends a message that is not JSON
-    server().connects[0]?.sink.receive({ tag: 'message', value: '{' });
+    server().connects[0]?.sink.send({ tag: 'message', value: '{' });
     await settle();
 
     // Then
@@ -305,7 +305,7 @@ describe('createRemoteChains', () => {
 
     // When the budget runs out, and the frame accepts it afterwards
     await settle(CONNECT_BUDGET_MS);
-    connect?.sink.receive({ tag: 'connected', value: undefined });
+    connect?.sink.send({ tag: 'connected', value: undefined });
     await settle();
     connection.send(genesisRequest(1));
 
@@ -750,7 +750,7 @@ describe('createRemoteChainProvider halts', () => {
 
     // When it is closed, and the frame accepts it all the same
     connection.disconnect();
-    connect?.sink.receive({ tag: 'connected', value: undefined });
+    connect?.sink.send({ tag: 'connected', value: undefined });
     await settle();
 
     // Then

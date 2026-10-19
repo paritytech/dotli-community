@@ -6,7 +6,20 @@
 // from the method's. A received frame keeps the message as bytes until the method it names decodes it. The id and the
 // handshake variants never change, so a peer of any release reads the version it refuses.
 
-import { Bytes, Enum, Result, Struct, u32, u8, type Codec, type CodecType, type ResultPayload } from 'scale-ts';
+import {
+  Bytes,
+  Enum,
+  Result,
+  Struct,
+  Tuple,
+  enhanceDecoder,
+  u32,
+  u8,
+  type Codec,
+  type CodecType,
+  type Decoder,
+  type ResultPayload,
+} from 'scale-ts';
 import { toError } from '@dotli/shared';
 import { err, failure, ok } from './errors.js';
 import type { Address } from './schema.js';
@@ -42,10 +55,25 @@ export type Call<M> = Extract<Frame<M>['body'], { tag: 'call' }>['value'];
 /** Frames as they arrive, and as the library writes its own, with a call's message as bytes. */
 export const frame = frameOf(Bytes(Infinity));
 
+/**
+ * The decoder of `codec` that refuses a value which leaves bytes unread, as truapi's `decode_all` does. Built once per
+ * codec, since composing it per message would cost each message the composition.
+ */
+export const whole = <T>(codec: Codec<T>): Decoder<T> =>
+  enhanceDecoder(Tuple.dec(codec.dec, Bytes.dec(Infinity)), ([value, rest]) => {
+    if (rest.length > 0) {
+      throw new RangeError(`The value is followed by unread bytes, ${String(rest.length)} in all`);
+    }
+    return value;
+  });
+
+/** Reads a whole frame. A call's message takes the rest of the frame, so its method refuses bytes after it. */
+export const wholeFrame = whole(frame);
+
 /** Decodes `data`, or says why it does not. */
-export function decode<T>(codec: Codec<T>, data: Uint8Array): ResultPayload<T, Error> {
+export function decode<T>(decoder: (data: Uint8Array) => T, data: Uint8Array): ResultPayload<T, Error> {
   try {
-    return ok(codec.dec(data));
+    return ok(decoder(data));
   } catch (error) {
     return err(toError(error));
   }

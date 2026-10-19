@@ -13,10 +13,10 @@ export class TransportHandshakeTimeoutError extends Error {
 }
 
 /** The peer speaks another schema version, so no call can cross. A reload, not a retry, fixes it. */
-export class TransportVersionMismatchError extends Error {
+export class TransportUnsupportedProtocolVersionError extends Error {
   constructor(ours: number, theirs: number) {
     super(`The peer speaks version ${String(theirs)} and this side ${String(ours)}`);
-    this.name = 'TransportVersionMismatchError';
+    this.name = 'TransportUnsupportedProtocolVersionError';
   }
 }
 

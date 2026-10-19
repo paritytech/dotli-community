@@ -18,7 +18,7 @@ export interface FrameSubscriber<V> {
   close?(): void;
 }
 
-/** Subscribes `method` on `transport`, and returns what stops it. Throws when `start` is refused. */
+/** Subscribes `method` on `transport`, and returns its `unsubscribe`. Throws when `start` is refused. */
 export function subscribe<S, V, I extends SubscriptionEnd<DomainFailure>>(
   transport: ProtocolTransport,
   method: Method<S, V, I>,

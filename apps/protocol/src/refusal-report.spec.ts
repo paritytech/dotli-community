@@ -156,7 +156,7 @@ describe('the reporting transport', () => {
     const served = reportRefusals(link.serving, refusal => refusals.push(refusal));
     served.handleRequest(frame.warmup, () => ok());
     served.handleSubscription(resolve.dotName, (_start, _context, sink) => {
-      sink.receive({ tag: 'resolved', value: null });
+      sink.send({ tag: 'resolved', value: null });
       sink.interrupt(ok());
       return () => undefined;
     });

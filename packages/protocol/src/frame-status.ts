@@ -48,7 +48,7 @@ export function createFrameStatus(): FrameStatus {
       }
       state = { name: 'ready' };
       for (const sink of sinks) {
-        sink.receive(undefined);
+        sink.send(undefined);
       }
     },
 
@@ -64,7 +64,7 @@ export function createFrameStatus(): FrameStatus {
         return () => undefined;
       }
       if (state.name === 'ready') {
-        sink.receive(undefined);
+        sink.send(undefined);
       }
       sinks.add(sink);
       return () => {

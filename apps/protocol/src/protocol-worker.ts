@@ -196,8 +196,8 @@ function tracedSubscription<S, V, E extends DomainFailure>(
       endSpan(span, error);
     };
     const spanned: Sink<V, SubscriptionEnd<E>> = {
-      receive: value => {
-        sink.receive(value);
+      send: value => {
+        sink.send(value);
         if (answers(value)) {
           settle(undefined);
         }
@@ -465,7 +465,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
         continue;
       }
       for (const sink of [...session.beats]) {
-        sink.receive(undefined);
+        sink.send(undefined);
       }
     }
   }

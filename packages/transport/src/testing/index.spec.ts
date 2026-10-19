@@ -148,7 +148,7 @@ describe('recordMessage', () => {
     // Given an accepter that sends the opener one event
     const { opener, accepter, delivered } = wire();
     accepter.handleSubscription(events, (_start, _context, sink) => {
-      sink.receive('synced');
+      sink.send('synced');
       return () => undefined;
     });
     await new Promise<void>(resolve => {

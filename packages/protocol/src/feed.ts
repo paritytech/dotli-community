@@ -23,7 +23,7 @@ export type FeedName = 'shared_auth' | 'telemetry';
 export type FeedEnds = Required<Pick<FrameSubscriber<unknown>, 'end' | 'close'>>;
 
 /**
- * Subscribes the feed on one frame's transport, and returns what stops it. Called again for each reopen on the same
+ * Subscribes the feed on one frame's transport, and returns its `unsubscribe`. Called again for each reopen on the same
  * transport.
  */
 export type FeedOpen = (ends: FeedEnds) => () => void;

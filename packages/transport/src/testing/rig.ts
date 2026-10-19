@@ -62,6 +62,12 @@ export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: 
 /** Text cut short: its length says two bytes and none follow, so `str` refuses it. */
 export const CUT_SHORT_TEXT = Uint8Array.of(8);
 
+/** The text `a` followed by a byte it leaves unread, so a whole decode refuses it. */
+export const TRAILED_TEXT = Uint8Array.of(4, 0x61, 0);
+
+/** Why a whole decode refuses `TRAILED_TEXT`. */
+export const TRAILED_REASON = 'RangeError: The value is followed by unread bytes, 1 in all';
+
 /**
  * Listeners of a subscription whose values are text and whose interrupt is `I`, such as `notes.watch`, that record the
  * values it hears, its interrupts, its failures and its closes.

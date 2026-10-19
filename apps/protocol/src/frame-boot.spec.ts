@@ -36,7 +36,7 @@ function endedYet(ended: Promise<EndOf<undefined>>): () => boolean {
 }
 
 const bytes: ProtocolHandler<typeof frame.telemetry> = (_start, _context, sink) => {
-  sink.receive({ tag: 'netBytes', value: 4_096 });
+  sink.send({ tag: 'netBytes', value: 4_096 });
   return () => undefined;
 };
 
@@ -142,7 +142,7 @@ function source(): { handler: TelemetryHandler; started: () => number; stopped: 
   return {
     handler: (_start, _context, sink) => {
       started += 1;
-      sink.receive({ tag: 'netBytes', value: started });
+      sink.send({ tag: 'netBytes', value: started });
       return () => {
         stopped.resolve(undefined);
       };

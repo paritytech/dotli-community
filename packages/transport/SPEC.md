@@ -27,8 +27,8 @@ mod names {
   ) -> Result<Owner, CallError<OwnerErr>>;
 
   fn changes_subscribe(
-    callback: fn(Change)
-  ) -> Subscriber<ChangesErr>;
+    subscriber: Subscriber<Change, ChangesErr>
+  ) -> Unsubscribe;
 }
 
 mod chain {
@@ -39,8 +39,8 @@ mod chain {
 
   fn connect_subscribe(
     genesisHash: str,
-    callback: fn(str)
-  ) -> Subscriber<Result<(), CallError<ConnectErr>>>;
+    subscriber: Subscriber<str, Result<(), CallError<ConnectErr>>>
+  ) -> Unsubscribe;
 }
 ```
 
@@ -138,10 +138,10 @@ Actions MUST be derived from methods using the following algorithm:
 - For subscriptions, there should be four different messages:
   - Subscribe
     - Name: `start`
-    - Argument: tuple of all arguments except callback `(arg1, arg2, ...)`
+    - Argument: tuple of all arguments except the subscriber `(arg1, arg2, ...)`
   - Receive
     - Name: `receive`
-    - Argument: argument of callback function
+    - Argument: the argument of the subscriber's `receive`
   - Interrupt
     - Name: `interrupt`
     - Argument: `InterruptReason`, the method's own type as a whole
@@ -196,7 +196,11 @@ values and ends, and one of the other peer's reaches the handler.
 
 A peer MUST refuse, with no answer, a call that comes before the handshake, a message whose method is not the one its
 call names, and a frame that does not decode. Nothing ever answers a `failed` frame. A message on a call the peer ended
-lately is a race and MUST be dropped quietly.
+lately is a race and MUST be dropped quietly. So MUST a `stop` for a subscription that is not running, which counts as
+no call of the peer's.
+
+A frame, a message, a hello or a `Failure` that leaves bytes unread does not decode, as truapi's `decode_all` refuses
+it.
 
 #### Requests
 
@@ -204,8 +208,8 @@ Each peer MUST send a response message for every request. Request and response M
 each side.
 
 When no handler serves the method, the message does not decode or the handler fails, the serving peer MUST answer with a
-`failed` frame of the same `id`, carrying `Unsupported`, `MalformedFrame` or `HostFailure`. A response that does not
-decode settles the call as `MalformedFrame`.
+`failed` frame of the same `id`, carrying `Unsupported`, `MalformedFrame` or `HostFailure`. A request that leaves bytes
+unread is answered `MalformedFrame`. A response that does not decode settles the call as `MalformedFrame`.
 
 A caller MAY abort a request. It then settles locally as `Cancelled`, the serving peer is not told, and a late answer is
 ignored.
@@ -225,33 +229,37 @@ throws, a value cannot be encoded or the serving peer disposes (`HostFailure`). 
 subscription's end.
 
 Each subscription method declares its own interrupt payload type `I`. Subscriptions that do not need to communicate a
-reason default `I` to `()`. The interrupt payload type is orthogonal to the `receive` callback type and is surfaced on
-the returned `Subscriber<I>`.
+reason default `I` to `()`. The interrupt payload type is orthogonal to the type `receive` takes, and reaches the
+subscriber's `interrupt`.
 
 A `receive` that does not decode ends the subscription with `MalformedFrame`, and the consumer MUST send `stop`, since
-what was lost may be a value.
+what was lost may be a value. An `interrupt` that does not decode ends it with `MalformedFrame` too, and the consumer
+MUST NOT send `stop`, since nothing follows an `interrupt`. A message whose action cannot be read counts as a `receive`.
 
-The returned `Subscriber` interface depends on the implementation, but a generic interface may look like this:
+The `Subscriber` interface depends on the implementation, but a generic interface may look like this:
 
 ```rust
-struct Subscriber<I = ()> {
-  unsubscribe: fn(),
-  onInterrupt: fn(fn(I)),
-  onFail: fn(fn(Failure)),
-  onClose: fn(fn(Error))
+struct Subscriber<V, I = ()> {
+  receive: fn(V),
+  interrupt: fn(I),
+  fail: fn(Failure),
+  close: fn(Error)
 }
+
+// What subscribing returns. It sends `stop` and calls no listener.
+type Unsubscribe = fn();
 ```
 
-`onInterrupt` hears only the provider's own `interrupt` message. `onFail` hears every failure of the transport's own: a
-`failed` frame, `Cancelled` once the consumer aborts, and `MalformedFrame` when a message does not decode. `onClose`
-hears the one local end, the transport closing or a `start` that could not be posted. Exactly one of them is called,
-once. Unsubscribing calls no listener.
+`interrupt` hears only the provider's own `interrupt` message. `fail` hears every failure of the transport's own: a
+`failed` frame, `Cancelled` once the consumer aborts, and `MalformedFrame` when a message does not decode. `close` hears
+the one local end, the transport closing or a `start` that could not be posted. Exactly one of them is called, once.
+`unsubscribe` calls none of them.
 
 #### Closing
 
 A transport closes when its provider is not in a correct environment, the handshake fails or times out, the versions
 differ, or its owner disposes it. Every pending and later request then fails with that error, and every subscription
-hears it once through `onClose`. Disposing also answers each request the peer is serving, and ends each subscription it
+hears it once through `close`. Disposing also answers each request the peer is serving, and ends each subscription it
 serves, with a `failed` frame carrying `HostFailure`, and sends `stop` for each subscription it made.
 
 A peer leaves when its own `stop` leaves nothing it opened running and no request of its is in flight.
@@ -289,8 +297,8 @@ error is `"<name>: <message>"`, at most 500 characters, so the peer keeps the er
 
 ### Handshake
 
-One peer opens the handshake and the other accepts it. Handshake implementations CAN include a timeout, 5 seconds by
-default, after which the connection is marked as failed and fails with a `Timeout` error.
+One peer opens the handshake and the other accepts it. Handshake implementations CAN include a timeout, 10 seconds by
+default as in host-api and truapi, after which the connection is marked as failed and fails with a `Timeout` error.
 
 The opener MUST post a `handshakeOffer` frame with id `0`, carrying the schema's `version` in `u8` and its hello, and
 post a fresh one every 50 ms by default until it is answered or the timeout passes, since the accepter may not be
@@ -305,7 +313,7 @@ Calls of the peer that come before it are refused with no answer.
 ```rust
 enum HandshakeErr {
   Timeout,
-  VersionMismatch { ours: u8, theirs: u8 }
+  UnsupportedProtocolVersion { ours: u8, theirs: u8 }
 }
 
 type ProtocolVersion = u8;

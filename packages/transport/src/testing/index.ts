@@ -5,7 +5,7 @@ import { fromHex, toError, toHex } from '@dotli/shared';
 import type { Codec } from 'scale-ts';
 import type { Failure } from '../errors.js';
 import type { AnyMethod, Schema, Sections } from '../schema.js';
-import { decode, frame, type HandshakeOffer, type HandshakeResponse } from '../wire.js';
+import { decode, wholeFrame, type HandshakeOffer, type HandshakeResponse } from '../wire.js';
 
 export { createProviderPair } from '../provider.fake.js';
 
@@ -42,7 +42,7 @@ function decodedBy(method: AnyMethod, message: Uint8Array): { tag: string } {
  * `FrameRefusedError` on data that is no frame.
  */
 export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: Uint8Array | ArrayBuffer): RecordedFrame {
-  const read = decode(frame, data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+  const read = decode(wholeFrame, data instanceof ArrayBuffer ? new Uint8Array(data) : data);
   if (!read.success) {
     throw new FrameRefusedError(read.value);
   }

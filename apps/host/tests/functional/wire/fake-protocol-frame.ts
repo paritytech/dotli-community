@@ -74,7 +74,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   const stopNothing = (): void => undefined;
 
   const reply = (connectionId: string, message: unknown): void => {
-    connections.get(connectionId)?.receive({ tag: 'message', value: JSON.stringify(message) });
+    connections.get(connectionId)?.send({ tag: 'message', value: JSON.stringify(message) });
   };
   const answerBlock = (connectionId: string, rpcId: unknown, cid: string): void => {
     const hex = blocks[cid];
@@ -143,7 +143,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     switch (resolution.kind) {
       case 'cid':
       case 'none':
-        sink.receive({ tag: 'resolved', value: resolution.kind === 'cid' ? resolution.cid : null });
+        sink.send({ tag: 'resolved', value: resolution.kind === 'cid' ? resolution.cid : null });
         sink.interrupt(ok());
         return stopNothing;
       case 'fatal':
@@ -165,7 +165,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
 
   serving.handleSubscription(chain.connect, ({ connectionId }, _context, sink) => {
     connections.set(connectionId, sink);
-    sink.receive({ tag: 'connected', value: undefined });
+    sink.send({ tag: 'connected', value: undefined });
     return () => {
       connections.delete(connectionId);
     };

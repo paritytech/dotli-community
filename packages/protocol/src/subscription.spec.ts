@@ -78,7 +78,7 @@ describe('subscribe', () => {
     await settle();
 
     // When
-    statusSinks[0]?.receive(undefined);
+    statusSinks[0]?.send(undefined);
     statusSinks[0]?.interrupt(ok());
     await settle();
 
