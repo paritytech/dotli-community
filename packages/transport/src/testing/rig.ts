@@ -116,14 +116,14 @@ export function rig(watched: WatchedSide = {}) {
   const timers = manualTimers();
   const { issues, onIssue } = issueLog();
   const opener = createTransport(testSchema, left, {
-    handshake: 'open',
+    handshake: 'offer',
     hello: 'opener',
     timers,
     retryMs: RETRY_MS,
     timeoutMs: TIMEOUT_MS,
     onIssue,
   });
-  const accepter = createTransport(testSchema, right, { handshake: 'accept', hello: 'accepter', onIssue, ...watched });
+  const accepter = createTransport(testSchema, right, { handshake: 'respond', hello: 'accepter', onIssue, ...watched });
   return { opener, accepter, timers, issues, delivered, left, right };
 }
 
@@ -174,7 +174,7 @@ function rawPeer(provider: Provider) {
 
 /** A transport facing a raw peer, which answers nothing until the test says so. `wrap` stands between it and its side. */
 export function rawRig(
-  handshake: 'open' | 'accept',
+  handshake: 'offer' | 'respond',
   wrap = (provider: Provider): Provider => provider,
   watched: WatchedSide = {},
 ) {
@@ -184,7 +184,7 @@ export function rawRig(
   const peer = rawPeer(right);
   const transport = createTransport(testSchema, wrap(left), {
     handshake,
-    hello: handshake === 'open' ? 'opener' : 'accepter',
+    hello: handshake === 'offer' ? 'opener' : 'accepter',
     timers,
     retryMs: RETRY_MS,
     timeoutMs: TIMEOUT_MS,

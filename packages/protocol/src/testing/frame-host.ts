@@ -251,7 +251,7 @@ export function createFrameDom(
     let entry = served.get(target);
     if (entry === undefined) {
       const serving = createTransport(protocolSchema, providerOn(target), {
-        handshake: 'accept',
+        handshake: 'respond',
         hello: { resolutionId: null },
       });
       // A frame app always serves the client's feeds, and these frames have nothing to report on them.
@@ -284,7 +284,7 @@ export function createFrameDom(
     stranger: () => elsewhere.appendChild(new FakeIframe(toHost)),
     serve: (target = iframe()) => servedOn(target).serving,
     serveNewer(target = iframe()) {
-      createTransport(newerSchema, providerOn(target), { handshake: 'accept', hello: undefined });
+      createTransport(newerSchema, providerOn(target), { handshake: 'respond', hello: undefined });
     },
     status,
     retryHandshake,

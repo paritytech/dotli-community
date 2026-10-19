@@ -164,7 +164,7 @@ describe('the wire report', () => {
         onNotBytes: report.onNotBytes,
         onRefusedOrigin: report.onRefusedOrigin,
       }),
-      { handshake: 'accept', hello: { resolutionId: null }, onIssue: report.onIssue },
+      { handshake: 'respond', hello: { resolutionId: null }, onIssue: report.onIssue },
     );
     const deliver = (data: unknown, origin: string, source: unknown): void => {
       for (const listener of [...listeners]) {

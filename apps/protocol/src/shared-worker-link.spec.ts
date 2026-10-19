@@ -96,7 +96,7 @@ function fakeWorker(): FakeWorker {
   const channel = new MessageChannel();
   channels.add(channel);
   const serving = createTransport(protocolSchema, createPortProvider(channel.port1), {
-    handshake: 'accept',
+    handshake: 'respond',
     hello: { resolutionId: null },
   });
   const status = createFrameStatus();

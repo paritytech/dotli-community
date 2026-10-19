@@ -96,7 +96,7 @@ const serving = createTransport(
     onNotBytes: wire.onNotBytes,
     onRefusedOrigin: wire.onRefusedOrigin,
   }),
-  { handshake: 'accept', hello: { resolutionId: null }, onIssue: wire.onIssue },
+  { handshake: 'respond', hello: { resolutionId: null }, onIssue: wire.onIssue },
 );
 serving.handleSubscription(protocolSchema.sections.frame.status, boot.frameStatus);
 serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.telemetry);

@@ -475,7 +475,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     const provider = createPortProvider(port, { closeOnDispose: false });
     // A tab's hello names its page load, which each request span carries. The worker's own names none.
     const transport = createTransport(protocolSchema, provider, {
-      handshake: 'accept',
+      handshake: 'respond',
       hello: { resolutionId: null },
       onIssue: wire.onIssue,
       // A live tab always holds a subscription, so a tab that left none disposed its transport, as a page that left for

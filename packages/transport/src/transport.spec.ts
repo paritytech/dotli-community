@@ -49,7 +49,7 @@ const startIds = (peer: { find: (leg: string) => { id: number }[] }): number[] =
 
 /** A transport that opened toward a raw peer, with the handshake answered. */
 async function connectedRaw(wrap?: Parameters<typeof rawRig>[1]) {
-  const raw = rawRig('open', wrap);
+  const raw = rawRig('offer', wrap);
   raw.transport.connect();
   await raw.timers.advance(0);
   raw.answerHandshake();
@@ -59,7 +59,7 @@ async function connectedRaw(wrap?: Parameters<typeof rawRig>[1]) {
 
 /** A transport that accepted a raw peer's handshake. */
 async function acceptedRaw(wrap?: Parameters<typeof rawRig>[1], watched?: Parameters<typeof rawRig>[2]) {
-  const raw = rawRig('accept', wrap, watched);
+  const raw = rawRig('respond', wrap, watched);
   raw.openHandshake();
   await raw.timers.advance(0);
   return raw;
@@ -108,8 +108,8 @@ describe('createTransport', () => {
     };
 
     // Then
-    expectTypeOf<{ handshake: 'open'; hello: string }>().toExtend<TransportOptions<string>>();
-    expectTypeOf<{ handshake: 'open' }>().not.toExtend<TransportOptions<string>>();
+    expectTypeOf<{ handshake: 'offer'; hello: string }>().toExtend<TransportOptions<string>>();
+    expectTypeOf<{ handshake: 'offer' }>().not.toExtend<TransportOptions<string>>();
     expect(typeOnly).toBeTypeOf('function');
   });
 
@@ -189,7 +189,7 @@ describe('createTransport', () => {
       dispose: () => undefined,
     };
     const { issues, onIssue } = issueLog();
-    const transport = createTransport(schema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
+    const transport = createTransport(schema, provider, { handshake: 'respond', hello: 'accepter', onIssue });
     transport.handleRequest(notes.touch, () => ok());
     const hear = (message: Uint8Array): void => {
       for (const callback of callbacks) {
@@ -229,7 +229,7 @@ describe('createTransport', () => {
       dispose: () => undefined,
     };
     createTransport(testSchema, provider, {
-      handshake: 'accept',
+      handshake: 'respond',
       hello: 'accepter',
       onIssue: () => {
         throw new Error('hook bug');
@@ -253,7 +253,7 @@ describe('createTransport', () => {
 
   it('As a caller, a receive or interrupt for a subscription I never opened is refused as invalid', async () => {
     // Given
-    const { transport, timers, peer, issues, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, issues, answerHandshake } = rawRig('offer');
     transport.connect();
     await timers.advance(0);
     answerHandshake();
@@ -284,7 +284,7 @@ describe('createTransport', () => {
           throw new Error('x'.repeat(1_000));
         },
       },
-      { handshake: 'open', hello: 'opener', timers },
+      { handshake: 'offer', hello: 'opener', timers },
     );
 
     // When
@@ -322,7 +322,7 @@ describe('createTransport', () => {
       postMessage: post,
       dispose,
     };
-    const transport = createTransport(testSchema, provider, { handshake: 'open', hello: 'opener', timers });
+    const transport = createTransport(testSchema, provider, { handshake: 'offer', hello: 'opener', timers });
 
     // When
     transport.dispose(new Error('the page is closing'));
@@ -344,7 +344,7 @@ describe('createTransport', () => {
     const provider: Provider = { ...left, isCorrectEnvironment: () => false, postMessage: post };
 
     // When
-    const transport = createTransport(testSchema, provider, { handshake: 'open', hello: 'opener', timers });
+    const transport = createTransport(testSchema, provider, { handshake: 'offer', hello: 'opener', timers });
     transport.connect();
     const heard = watcher();
     transport.subscribe(notes.watch, 'from the top', heard);
@@ -386,7 +386,7 @@ describe('calls', () => {
 
   it('As a caller, my calls go out in call order across the handshake, and one made once connected goes behind them', async () => {
     // Given
-    const { transport, timers, peer, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, answerHandshake } = rawRig('offer');
     // Registered first, so it hears the handshake end before any queued call does.
     const connected = transport.whenConnected().then(() => {
       void transport.request(echo.say, 'once connected');
@@ -505,7 +505,7 @@ describe('calls', () => {
 
   it('As a caller, a call aborted while queued settles once as Cancelled and never posts, even when the handshake then fails', async () => {
     // Given
-    const { transport, timers, peer } = rawRig('open');
+    const { transport, timers, peer } = rawRig('offer');
     const giveUp = new AbortController();
     const call = outcomeOf(transport.request(notes.touch, undefined, { signal: giveUp.signal }));
     transport.connect();
@@ -523,7 +523,7 @@ describe('calls', () => {
 
   it('As a caller, a call aborted while queued never goes out once the handshake succeeds', async () => {
     // Given
-    const { transport, timers, peer, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, answerHandshake } = rawRig('offer');
     const giveUp = new AbortController();
     const call = transport.request(notes.touch, undefined, { signal: giveUp.signal });
     transport.connect();
@@ -627,7 +627,7 @@ describe('calls', () => {
 
   it('As a caller, my queued calls reject with the dispose reason and the handshake stops', async () => {
     // Given
-    const { transport, timers, peer, left } = rawRig('open');
+    const { transport, timers, peer, left } = rawRig('offer');
     transport.connect();
     const call = outcomeOf(transport.request(notes.touch, undefined));
     await timers.advance(100);
@@ -647,7 +647,7 @@ describe('calls', () => {
 
   it('As a caller, my calls and subscriptions go out in call order across the handshake', async () => {
     // Given
-    const { transport, timers, peer, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, answerHandshake } = rawRig('offer');
     // Registered first, so it hears the handshake end before any queued call does.
     const connected = transport.whenConnected().then(() => {
       transport.subscribe(notes.watch, 'once connected', watcher());
@@ -713,7 +713,7 @@ describe('calls', () => {
 
   it('As a subscriber, stopping while queued sends nothing and I hear nothing', async () => {
     // Given
-    const { transport, timers, peer, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, answerHandshake } = rawRig('offer');
     const heard = watcher();
     const stop = transport.subscribe(notes.watch, 'from the top', heard);
     transport.connect();
@@ -778,7 +778,7 @@ describe('calls', () => {
 
   it('As a caller, a subscription aborted while queued or before it is made posts nothing and I hear Cancelled once', async () => {
     // Given
-    const { transport, timers, peer, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, answerHandshake } = rawRig('offer');
     const queued = watcher();
     const early = watcher();
     const abort = new AbortController();
@@ -867,7 +867,7 @@ describe('calls', () => {
 
   it('As a caller, disposing while my start is queued closes it with the reason and posts no start', async () => {
     // Given
-    const { transport, timers, peer } = rawRig('open');
+    const { transport, timers, peer } = rawRig('offer');
     const heard = watcher();
     transport.subscribe(notes.watch, 'queued', heard);
     transport.connect();
@@ -886,7 +886,7 @@ describe('calls', () => {
 
   it('As a caller, a handshake that times out closes my queued subscription with why and posts no start', async () => {
     // Given
-    const { transport, timers, peer } = rawRig('open');
+    const { transport, timers, peer } = rawRig('offer');
     const heard = watcher();
     transport.subscribe(notes.watch, 'queued', heard);
 
@@ -1131,7 +1131,7 @@ describe('calls', () => {
     const { wrap, breakPosts, mendPosts } = breakable(broken);
     const reason = new Error('leaving');
     const issues: TransportIssue[] = [];
-    const raw = rawRig('open', wrap, {
+    const raw = rawRig('offer', wrap, {
       onIssue: issue => {
         issues.push(issue);
         if (issue.kind === 'post_failed') {
@@ -1165,7 +1165,7 @@ describe('calls', () => {
     const issues: TransportIssue[] = [];
     // The stop is made after the hook, which runs only once the start is posted.
     const stops: (() => void)[] = [];
-    const raw = rawRig('open', wrap, {
+    const raw = rawRig('offer', wrap, {
       onIssue: issue => {
         issues.push(issue);
         if (issue.kind === 'post_failed') {
@@ -1224,8 +1224,8 @@ describe('serving', () => {
     // Given
     const { left, right } = createProviderPair();
     const timers = manualTimers();
-    const opener = createTransport(testSchema, left, { handshake: 'open', hello: 'opener', timers });
-    const accepter = createTransport(testSchema, right, { handshake: 'accept', hello: 'accepter' });
+    const opener = createTransport(testSchema, left, { handshake: 'offer', hello: 'opener', timers });
+    const accepter = createTransport(testSchema, right, { handshake: 'respond', hello: 'accepter' });
     const servedByAccepter = vi.fn(() => ok('a'));
     const servedByOpener = vi.fn(() => ok('b'));
     accepter.handleRequest(echo.say, servedByAccepter);
@@ -1439,7 +1439,7 @@ describe('serving', () => {
 
   it('As a serving side, a call before the handshake is refused as invalid with no reply', async () => {
     // Given
-    const { transport, timers, peer, issues } = rawRig('accept');
+    const { transport, timers, peer, issues } = rawRig('respond');
     const handler = vi.fn(() => ok());
     transport.handleRequest(notes.touch, handler);
 
@@ -1463,7 +1463,7 @@ describe('serving', () => {
 
   it('As a serving side, a call after my handshake failed is refused as invalid with the failure and no reply', async () => {
     // Given
-    const { timers, peer, issues, openHandshake } = rawRig('accept');
+    const { timers, peer, issues, openHandshake } = rawRig('respond');
     openHandshake(VERSION + 1);
     await timers.advance(0);
 
@@ -1503,7 +1503,7 @@ describe('serving', () => {
 
   it('As an accepter, a malformed handshake open is reported with no reply', async () => {
     // Given
-    const { transport, timers, peer, issues } = rawRig('accept');
+    const { transport, timers, peer, issues } = rawRig('respond');
     let connected = false;
     void transport.whenConnected().then(() => {
       connected = true;
@@ -1997,7 +1997,7 @@ describe('serving', () => {
   it('As a serving side, a stop before the handshake or for a subscription that is not running is refused as invalid, and I hear no peer leave', async () => {
     // Given
     const onPeerIdle = vi.fn();
-    const { transport, timers, peer, issues, openHandshake } = rawRig('accept', undefined, { onPeerIdle });
+    const { transport, timers, peer, issues, openHandshake } = rawRig('respond', undefined, { onPeerIdle });
     serveWatch(transport);
 
     // When a stop comes before the handshake, then one names an id never started
@@ -2081,7 +2081,7 @@ describe('the handshake', () => {
     );
     const schema = defineSchema({ version: VERSION, hello, sections: { notes: { touch: notes.touch } } });
     const transport = createTransport(schema, createProviderPair().left, {
-      handshake: 'open',
+      handshake: 'offer',
       hello: 'opener',
       timers: manualTimers(),
     });
@@ -2114,7 +2114,7 @@ describe('the handshake', () => {
 
   it('As an opener, my handshake times out only on the running clock and survives a garbage answer', async () => {
     // Given
-    const { transport, timers, peer, issues } = rawRig('open');
+    const { transport, timers, peer, issues } = rawRig('offer');
     transport.connect();
     let settled: unknown;
     void outcomeOf(transport.whenConnected()).then(outcome => {
@@ -2153,7 +2153,7 @@ describe('the handshake', () => {
 
   it('As an opener, a handshake answer after my handshake timed out changes nothing', async () => {
     // Given
-    const { transport, timers, peer, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, answerHandshake } = rawRig('offer');
     const call = outcomeOf(transport.request(notes.touch, undefined));
     transport.connect();
     await timers.advance(TIMEOUT_MS);
@@ -2174,7 +2174,7 @@ describe('the handshake', () => {
 
   it('As an opener, a peer of another version fails my handshake at once with both versions', async () => {
     // Given
-    const { transport, timers, peer } = rawRig('open');
+    const { transport, timers, peer } = rawRig('offer');
     transport.connect();
     const call = outcomeOf(transport.request(notes.touch, undefined));
     await timers.advance(0);
@@ -2198,7 +2198,7 @@ describe('the handshake', () => {
 
   it('As an opener, every retry and flush posts a fresh buffer', async () => {
     // Given
-    const { transport, timers, peer, left, answerHandshake } = rawRig('open');
+    const { transport, timers, peer, left, answerHandshake } = rawRig('offer');
     const post = vi.spyOn(left, 'postMessage');
     const calls = [1, 2, 3].map(() => outcomeOf(transport.request(notes.touch, undefined)));
 
@@ -2237,7 +2237,7 @@ describe('the handshake', () => {
     };
     const timers = manualTimers();
     const { issues, onIssue } = issueLog();
-    const transport = createTransport(testSchema, provider, { handshake: 'open', hello: 'opener', timers, onIssue });
+    const transport = createTransport(testSchema, provider, { handshake: 'offer', hello: 'opener', timers, onIssue });
 
     // When
     transport.connect();
@@ -2251,7 +2251,7 @@ describe('the handshake', () => {
 
   it('As an accepter, I answer every handshake attempt with the outcome of the first', async () => {
     // Given
-    const { transport, timers, peer, openHandshake } = rawRig('accept');
+    const { transport, timers, peer, openHandshake } = rawRig('respond');
 
     // When
     openHandshake(VERSION, 1);
@@ -2268,7 +2268,7 @@ describe('the handshake', () => {
 
   it('As an accepter, I refuse every attempt of another version and close with both versions', async () => {
     // Given
-    const { transport, timers, peer, openHandshake } = rawRig('accept');
+    const { transport, timers, peer, openHandshake } = rawRig('respond');
     const call = outcomeOf(transport.request(notes.touch, undefined));
 
     // When
@@ -2292,7 +2292,7 @@ describe('the handshake', () => {
 
   it('As an opener, a handshake answer before I connect is refused as invalid', async () => {
     // Given
-    const { transport, timers, peer, issues } = rawRig('open');
+    const { transport, timers, peer, issues } = rawRig('offer');
     let connected = false;
     void transport.whenConnected().then(() => {
       connected = true;
@@ -2311,7 +2311,7 @@ describe('the handshake', () => {
     // Given
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts, mendPosts } = breakable(broken);
-    const { transport, timers, peer, issues, openHandshake } = rawRig('accept', wrap);
+    const { transport, timers, peer, issues, openHandshake } = rawRig('respond', wrap);
     void transport.request(notes.touch, undefined);
     let connected = false;
     void transport.whenConnected().then(() => {
@@ -2340,8 +2340,8 @@ describe('the handshake', () => {
 
   it('As either side, a handshake leg meant for the other side is refused as invalid', async () => {
     // Given
-    const opening = rawRig('open');
-    const accepting = rawRig('accept');
+    const opening = rawRig('offer');
+    const accepting = rawRig('respond');
 
     // When
     opening.openHandshake();

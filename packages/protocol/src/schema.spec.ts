@@ -294,12 +294,12 @@ function protocolRig() {
   const { left, right, delivered } = createProviderPair();
   const issues: TransportIssue[] = [];
   const opener = createTransport(protocolSchema, left, {
-    handshake: 'open',
+    handshake: 'offer',
     hello: OPENER_HELLO,
     timers: manualTimers(),
     onIssue: issue => issues.push(issue),
   });
-  const accepter = createTransport(protocolSchema, right, { handshake: 'accept', hello: ACCEPTER_HELLO });
+  const accepter = createTransport(protocolSchema, right, { handshake: 'respond', hello: ACCEPTER_HELLO });
   return { opener, accepter, delivered, issues };
 }
 

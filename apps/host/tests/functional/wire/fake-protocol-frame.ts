@@ -121,7 +121,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   const serving = createTransport(
     protocolSchema,
     createWindowProvider({ listen: window, peer: () => window.parent, origin: () => true }),
-    { handshake: 'accept', hello: { resolutionId: null } },
+    { handshake: 'respond', hello: { resolutionId: null } },
   );
 
   serving.handleSubscription(frame.status, status.handler);

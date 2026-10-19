@@ -395,7 +395,7 @@ async function bootWorker(
     return {
       speak: resolutionId => {
         const transport = createTransport(protocolSchema, createPortProvider(channel.port2), {
-          handshake: 'open',
+          handshake: 'offer',
           hello: { resolutionId: resolutionId ?? null },
         });
         transport.connect();

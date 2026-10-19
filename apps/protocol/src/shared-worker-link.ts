@@ -190,7 +190,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   // A port delivers every message, so one handshake is enough. It has the ready wait's budget, so a worker whose script
   // loads slowly fails no sooner than one that loaded and never synced.
   const transport = createTransport(protocolSchema, createPortProvider(worker.port), {
-    handshake: 'open',
+    handshake: 'offer',
     hello: { resolutionId: deps.resolutionId },
     timers,
     retryMs: readyTimeoutMs,

@@ -146,11 +146,11 @@ describe('subscribe', () => {
     // Given a frame that speaks a wire version the host cannot
     const { left, right } = createProviderPair();
     createTransport(defineSchema({ version: 255, hello: _void, sections: {} }), right, {
-      handshake: 'accept',
+      handshake: 'respond',
       hello: undefined,
     });
     const transport = createTransport(protocolSchema, left, {
-      handshake: 'open',
+      handshake: 'offer',
       hello: { resolutionId: null },
       timers,
     });

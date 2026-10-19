@@ -268,7 +268,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
           onNotBytes: wire.onNotBytes,
         }),
         // The frame reads the resolution id from its URL, which it needs before any handshake.
-        { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: wire.onIssue },
+        { handshake: 'offer', hello: { resolutionId: null }, timers, onIssue: wire.onIssue },
       ),
     );
     subscribe(kept.transport, protocolSchema.sections.frame.status, undefined, {

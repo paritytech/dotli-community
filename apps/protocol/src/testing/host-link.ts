@@ -40,12 +40,12 @@ export function linkHost(): HostLink {
     issues.push(issue);
   };
   const serving = createTransport(protocolSchema, right, {
-    handshake: 'accept',
+    handshake: 'respond',
     hello: { resolutionId: null },
     onIssue,
   });
   const host = createTransport(protocolSchema, left, {
-    handshake: 'open',
+    handshake: 'offer',
     hello: { resolutionId: null },
     onIssue,
   });

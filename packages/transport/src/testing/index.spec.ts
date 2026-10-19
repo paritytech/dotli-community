@@ -39,8 +39,8 @@ const { save, events } = vaultSchema.sections.vault;
 /** An opener and an accepter over one in-memory channel, with every message either side received. */
 function wire() {
   const { left, right, delivered } = createProviderPair();
-  const accepter = createTransport(vaultSchema, right, { handshake: 'accept', hello: 'accepter' });
-  const opener = createTransport(vaultSchema, left, { handshake: 'open', hello: 'opener' });
+  const accepter = createTransport(vaultSchema, right, { handshake: 'respond', hello: 'accepter' });
+  const opener = createTransport(vaultSchema, left, { handshake: 'offer', hello: 'opener' });
   opener.connect();
   return { opener, accepter, delivered };
 }

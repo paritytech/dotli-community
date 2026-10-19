@@ -81,7 +81,7 @@ export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>
 
 export interface TransportOptions<H> {
   /** Which side opens the handshake. The other accepts it. */
-  handshake: 'open' | 'accept';
+  handshake: 'offer' | 'respond';
   /** This side's handshake value. */
   hello: H;
   /** How often the opener posts a fresh handshake until it is answered. */
@@ -208,7 +208,7 @@ export function createTransport<H, T extends Sections>(
 
   let phase: Phase<H> = { name: 'connecting' };
   let disposed = false;
-  const opens = options.handshake === 'open';
+  const opens = options.handshake === 'offer';
   const firstId = opens ? 1 : 2;
   let lastId = firstId - 2;
   // Settles once the handshake succeeds or fails, or the transport closes. The phase says which.
