@@ -20,7 +20,7 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@solidjs/web": "2.0.0-rc.15",
-    "astro": "^7.3.8",
+    "astro": "^7.4.0",
     "solid-js": "2.0.0-rc.15"
   },
   "dependencies": {

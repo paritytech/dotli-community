@@ -24,6 +24,6 @@
   },
   "dependencies": {
     "@dotli/shared": "*",
-    "@sentry/browser": "^11.7.0"
+    "@sentry/browser": "^11.8.0"
   }
 }

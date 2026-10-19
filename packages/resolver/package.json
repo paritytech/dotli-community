@@ -29,6 +29,6 @@
     "@polkadot-api/substrate-bindings": "0.21.2",
     "@polkadot-api/substrate-client": "0.7.0",
     "@polkadot-api/utils": "0.4.0",
-    "polkadot-api": "^3.2.1"
+    "polkadot-api": "^3.2.2"
   }
 }
