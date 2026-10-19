@@ -46,6 +46,7 @@ import {
   TIMEOUT_MS,
   TRAILED_REASON,
   TRAILED_TEXT,
+  UNKNOWN_LEG,
   VERSION,
   watcher,
 } from './testing/rig.js';
@@ -1267,7 +1268,7 @@ describe('calls', () => {
     const { sectionId, methodId } = testSchema.addressOf(notes.watch);
 
     // When the message names a leg the method lacks
-    peer.send(id, { tag: 'call', value: { sectionId, methodId, message: Uint8Array.of(9) } });
+    peer.send(id, { tag: 'call', value: { sectionId, methodId, message: UNKNOWN_LEG } });
     await timers.advance(0);
 
     // Then
@@ -2540,7 +2541,7 @@ describe('the handshake', () => {
 /** A message on the method at `at` whose leg no method reads, as the frame body a raw side posts. */
 const unreadableLeg = (at: AnyMethod) => {
   const { sectionId, methodId } = testSchema.addressOf(at);
-  return { tag: 'call' as const, value: { sectionId, methodId, message: Uint8Array.of(9) } };
+  return { tag: 'call' as const, value: { sectionId, methodId, message: UNKNOWN_LEG } };
 };
 
 /**
@@ -2858,7 +2859,7 @@ describe('forwarding', () => {
     expect(issues).toEqual([]);
   });
 
-  it('As a forwarder, I pass back a value whose leg cannot be read as a value, and the peer stops it on the upstream', async () => {
+  it('As a forwarder, I pass an unreadable value through and the peer refuses it and stops it on the upstream', async () => {
     // Given
     const { peer, timers, issues, server } = await forwardingToRaw();
     const heard = watcher();
@@ -2955,7 +2956,7 @@ describe('forwarding', () => {
     expect(near.peer.names()).toEqual(['handshakeResponse']);
   });
 
-  it('As a forwarder, I refuse a request answering a forwarded request and a start or stop on a forwarded subscription, and pass none back', async () => {
+  it('As a forwarder, I refuse the wrong legs the upstream sends on forwarded calls and pass none back', async () => {
     // Given
     const { peer, timers, issues, server, toPeer } = await forwardingToRaw();
     const read = peer.request(notes.read, 'a note');

@@ -59,6 +59,9 @@ const bytes = Bytes(Infinity);
 export const rawRead = request({ request: bytes, response: bytes, error: bytes });
 export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: Result(_void, bytes) });
 
+/** A message whose leg tag no method has, so every method's leg reader refuses it. */
+export const UNKNOWN_LEG = Uint8Array.of(9);
+
 /** Text cut short: its length says two bytes and none follow, so `str` refuses it. */
 export const CUT_SHORT_TEXT = Uint8Array.of(8);
 
