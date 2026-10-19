@@ -18,6 +18,7 @@ import {
   describeStall,
   isCriticalChain,
   STALL_WARNING_MS,
+  STILL_WORKING,
   WARNING_MIN_LOAD_MS,
   type CriticalChain,
 } from './warnings.js';
@@ -218,10 +219,11 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
   };
 
   loading.onProgressStall(() => {
-    if (warned.size > 0) {
+    const message = describeProgressStall(liveBytesPerSecond);
+    if (warned.size > 0 || message === null) {
       return;
     }
-    showWarning(describeProgressStall(liveBytesPerSecond));
+    showWarning(message);
   });
 
   const armStallWatch = (chain: CriticalChain, state: ChainSyncKind): void => {
@@ -232,7 +234,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
     if (warned.delete(chain) && warned.size === 0) {
       // Recovered, but hiding the row would flash it, so fall back to the general slow-load line.
       if (warningShown) {
-        showWarning(describeProgressStall(liveBytesPerSecond));
+        showWarning(describeProgressStall(liveBytesPerSecond) ?? STILL_WORKING);
       } else {
         pendingWarning = null;
       }

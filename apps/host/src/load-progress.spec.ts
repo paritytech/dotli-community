@@ -314,6 +314,40 @@ describe('startLoadProgress', () => {
     expect(progressNow()).toBeCloseTo(65.3);
   });
 
+  it('As a visitor on a fast connection, I see no warning while the download parks the bar', () => {
+    // Given
+    const { progress, netBytes, content } = setup('smoldot-direct');
+    progress.contentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+
+    // When the bar holds for ten seconds while 2 MB arrive every second
+    for (let tick = 1; tick <= 20; tick++) {
+      vi.advanceTimersByTime(500);
+      netBytes.send({ received: tick * 1_000_000 });
+    }
+
+    // Then
+    expect(getLoadingState().warning).toBeNull();
+  });
+
+  it('As a visitor on a slow connection, I see the rate once the download parks the bar', () => {
+    // Given
+    const { progress, netBytes, content } = setup('smoldot-direct');
+    progress.contentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+
+    // When the bar holds for ten seconds while 2 kB arrive every second
+    for (let tick = 1; tick <= 20; tick++) {
+      vi.advanceTimersByTime(500);
+      netBytes.send({ received: tick * 1_024 });
+    }
+
+    // Then
+    expect(getLoadingState().warning).toBe(
+      'Still downloading at 2 kB/s. That is slower than this app usually needs, so give it a moment.',
+    );
+  });
+
   it('As a developer with the debug panel, I see byte totals stop once the product is on screen, the last total included', () => {
     // Given
     const { netBytes, debug } = setup('smoldot-direct');

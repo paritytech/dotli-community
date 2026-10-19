@@ -34,6 +34,16 @@ const CHAIN_WORDS: Record<CriticalChain, string> = {
   bulletin: 'the app files',
 };
 
+/**
+ * At or above this the connection is not what holds the load, so no warning names it. Healthy cold loads average
+ * about 2 MB/s.
+ */
+export const SLOW_BYTES_PER_SECOND = 128 * 1024;
+
+function isFast(bytesPerSecond: number | null): boolean {
+  return bytesPerSecond !== null && bytesPerSecond >= SLOW_BYTES_PER_SECOND;
+}
+
 function throughput(bytesPerSecond: number | null): string | null {
   // The "connected but nothing arriving" sentence covers under a byte a second.
   if (bytesPerSecond === null || bytesPerSecond < 1) {
@@ -44,7 +54,7 @@ function throughput(bytesPerSecond: number | null): string | null {
 
 /**
  * Null when nothing is wrong, the common case: healthy chains dwell in `connecting` for seconds. Only no peers, a
- * stall smoldot reports, or a peered chain with no data earns a warning. A missing peer sample is not one.
+ * stall smoldot reports, or a peered chain with little or no data earns a warning. A missing peer sample is not one.
  */
 export function describeStall(facts: StallFacts): string | null {
   const what = CHAIN_WORDS[facts.chain];
@@ -59,6 +69,9 @@ export function describeStall(facts: StallFacts): string | null {
   if (facts.reason !== undefined) {
     return `${what} stopped advancing with ${peerWords} connected. Retrying.`;
   }
+  if (isFast(facts.bytesPerSecond)) {
+    return null;
+  }
   const rate = throughput(facts.bytesPerSecond);
   if (rate === null) {
     return `Connected to ${peerWords} for ${what}, but no data is arriving yet.`;
@@ -72,14 +85,21 @@ export function describeStall(facts: StallFacts): string | null {
  */
 export const WARNING_MIN_LOAD_MS = 5_000;
 
+/** The slow-load line that names no cause, also for a shown warning whose cause has passed. */
+export const STILL_WORKING = 'Still working. This is taking longer than usual.';
+
 /**
  * For a parked bar, which the per-chain watchdog misses when a chain never reaches a peer and so emits nothing. No
- * percentage, since one baked into a sentence goes stale as the bar moves.
+ * percentage, since one baked into a sentence goes stale as the bar moves. With nothing arriving it names no cause:
+ * the bar also parks while the light client starts or verifies, and a lost connection is the topbar's to announce.
  */
-export function describeProgressStall(bytesPerSecond: number | null): string {
+export function describeProgressStall(bytesPerSecond: number | null): string | null {
+  if (isFast(bytesPerSecond)) {
+    return null;
+  }
   const rate = throughput(bytesPerSecond);
   if (rate !== null) {
     return `Still downloading at ${rate}. That is slower than this app usually needs, so give it a moment.`;
   }
-  return 'Still working. No data is arriving right now, so it may be your connection.';
+  return STILL_WORKING;
 }
