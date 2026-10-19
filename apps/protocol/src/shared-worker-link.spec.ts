@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
-  endListeners,
   failureOf,
   protocolSchema,
   ProtocolFatalError,
@@ -20,12 +19,11 @@ import {
   type ProtocolContext,
   type ProtocolTransport,
   type RemoteFailure,
-  type SubscriptionEnd,
   createFrameStatus,
   type FrameStatus,
   type FrameStatusEnd,
 } from '@dotli/protocol';
-import { deferred } from '@dotli/shared';
+import { deferred, toHex } from '@dotli/shared';
 import { FakePage, manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
   TransportUnsupportedProtocolVersionError,
@@ -42,7 +40,6 @@ import {
   type DomainError,
   type MethodTypes,
   type Sink,
-  type Subscription,
 } from '@dotli/transport';
 import { readFrame } from '@dotli/transport/testing';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -53,7 +50,7 @@ import {
   workerEndError,
   type WorkerEnd,
 } from './shared-worker-link.js';
-import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
+import { closeHostLinks, linkHost, record, type EndOf, type HostLink } from './testing/host-link.js';
 
 const { frame, resolve, chain } = protocolSchema.sections;
 
@@ -582,34 +579,7 @@ function chainValues(frames: readonly Uint8Array[]): Uint8Array[] {
 /** One end the host heard, under the call it ended. */
 interface HeardEnd {
   call: string;
-  end: SubscriptionEnd<unknown> | Error;
-}
-
-/**
- * Subscribes `method` on `host` and logs each end it hears into `heard`. `first` settles on its first value, and
- * `ended` on its first end.
- */
-function logEnds<S, V, I>(
-  host: ProtocolTransport,
-  method: Subscription<S, V, SubscriptionEnd<I>>,
-  start: NoInfer<S>,
-  heard: HeardEnd[],
-): { first: Promise<void>; ended: Promise<void> } {
-  const call = protocolSchema.addressOf(method);
-  const first = deferred<undefined>();
-  const ended = deferred<undefined>();
-  const log = (end: SubscriptionEnd<I> | Error): void => {
-    heard.push({ call: `${call.section}.${call.method}`, end });
-    ended.resolve(undefined);
-  };
-  host.subscribe(method, start, {
-    receive: () => {
-      first.resolve(undefined);
-    },
-    ...endListeners<I>(log),
-    close: log,
-  });
-  return { first: first.promise.then(() => undefined), ended: ended.promise.then(() => undefined) };
+  end: EndOf<unknown>;
 }
 
 describe('the worker relay', () => {
@@ -876,7 +846,8 @@ describe('the worker relay', () => {
     const mismatch = new TransportUnsupportedProtocolVersionError({ wire: 1, schema: 3 }, { wire: 1, schema: 9 });
     link.dispose(mismatch);
 
-    // Then the frame status ends typed, the host reads it as the protocol's mismatch, and the held call fails with it
+    // Then the frame status ends typed, the host reads it as the protocol's mismatch, and the held call fails with the
+    // link's closing error
     const ended = await status.ended;
     const failure: CallError<FrameFailure> = domain({ tag: 'versionMismatch', value: mismatch.message });
     expect(ended).toEqual(err(failure));
@@ -911,7 +882,7 @@ describe('the worker relay', () => {
     );
   });
 
-  it("As the host, a subscription the worker fails reaches me through the iframe with the worker's failure", async () => {
+  it("As the host, I subscribe through the iframe to calls the worker fails and hear the worker's failure", async () => {
     // Given a worker whose name read throws on start, and which serves no chain
     const { host } = linkHops(worker => {
       worker.handleSubscription(resolve.dotName, () => {
@@ -928,10 +899,12 @@ describe('the worker relay', () => {
     expect(await connected.ended).toEqual(err(unsupported()));
   });
 
-  it('As a tab in shared-worker mode, a chain message crosses the iframe with every byte the same on both links', async () => {
-    // Given a worker that answers a chain with a message that opens with a byte order mark, which a text decode drops,
-    // so a relay that decoded and encoded it again would change its bytes
+  it('As a tab in shared-worker mode, I hear a chain message through the iframe and every byte is the same on both links', async () => {
+    // Given a worker that answers a chain with a message that opens with a byte order mark, which a text decode drops
     const message = '\uFEFF{"jsonrpc":"2.0","id":1,"result":"0xaa"}';
+    const sent = toHex(chain.connect.message.enc({ tag: 'receive', value: { tag: 'message', value: message } }));
+    // The story tells a forwarding relay from a decoding one only if a decode and encode changes these bytes.
+    expect(toHex(chain.connect.message.enc(chain.connect.message.dec(sent)))).not.toBe(sent);
     const { host, wire } = linkHops(worker => {
       worker.handleSubscription(chain.connect, (_start, _context, sink) => {
         sink.send({ tag: 'message', value: message });
@@ -943,13 +916,13 @@ describe('the worker relay', () => {
     const connected = record(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
     await connected.until(1);
 
-    // Then the host received the one message as the bytes the worker posted
+    // Then the worker posted the one message, and the host received it as the bytes the worker posted
     const posted = chainValues(wire.worker);
-    expect(posted).toHaveLength(1);
+    expect(posted.map(toHex)).toEqual([sent]);
     expect(chainValues(wire.host)).toEqual(posted);
   });
 
-  it('As a tab whose worker link closes under a chain connection, my connection ends with HostFailure after the frame status, and the loss is counted once', async () => {
+  it('As a tab whose worker link closes under a chain connection, I hear the frame status end first and then my connection end with HostFailure, once', async () => {
     // Given a ready frame whose worker holds a chain for the host
     const { host, link, workerStatusHeard } = linkHops(served => {
       served.handleSubscription(chain.connect, (_start, _context, sink) => {
@@ -958,9 +931,16 @@ describe('the worker relay', () => {
       });
     });
     const heard: HeardEnd[] = [];
-    const status = logEnds(host, frame.status, undefined, heard);
-    const connection = logEnds(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' }, heard);
-    await Promise.all([status.first, connection.first, workerStatusHeard]);
+    const status = record(host, frame.status, undefined);
+    const connection = record(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
+    // Added before either ends, so each end lands in the order the host heard it.
+    void status.ended.then(end => {
+      heard.push({ call: 'frame.status', end });
+    });
+    void connection.ended.then(end => {
+      heard.push({ call: 'chain.connect', end });
+    });
+    await Promise.all([status.until(1), connection.until(1), workerStatusHeard]);
 
     // When the link closes under the relay, as a page that hides for good closes it
     link.dispose(new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));

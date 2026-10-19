@@ -6,7 +6,7 @@
 //
 // Over that link the iframe forwards its chain and name calls to the SharedWorker as their message bytes, so the host
 // hears the worker's answers, values and ends as the worker posted them. Nothing is added on the way: no deadline goes to
-// the worker, and no message is decoded in the iframe.
+// the worker, and no chain or name payload is decoded in the iframe.
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
