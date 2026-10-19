@@ -23,7 +23,7 @@ import {
 } from './errors.js';
 import { createProviderPair } from './provider.fake.js';
 import type { Provider } from './provider.js';
-import { codec, defineSchema } from './schema.js';
+import { codec, defineSchema, type AnyMethod } from './schema.js';
 import {
   breakable,
   countedSchema,
@@ -2537,6 +2537,32 @@ describe('the handshake', () => {
   });
 });
 
+/** A message on the method at `at` whose leg no method reads, as the frame body a raw side posts. */
+const unreadableLeg = (at: AnyMethod) => {
+  const { sectionId, methodId } = testSchema.addressOf(at);
+  return { tag: 'call' as const, value: { sectionId, methodId, message: Uint8Array.of(9) } };
+};
+
+/**
+ * A peer and the forwarder it opened to, whose upstream faces a raw server the test speaks for, both handshakes over.
+ * `toPeer` is what the peer's channel delivered, both ways.
+ */
+async function forwardingToRaw() {
+  const near = rig();
+  const far = rawRig('offer');
+  near.accepter.forward([notes.read, notes.watch, echo.say], far.transport);
+  near.opener.connect();
+  far.transport.connect();
+  await near.timers.advance(0);
+  far.answerHandshake();
+  await far.transport.whenConnected();
+  return { peer: near.opener, timers: near.timers, issues: near.issues, server: far.peer, toPeer: near.delivered };
+}
+
+/** The id of the one call the raw server heard by `name`, such as `request:notes.read`. */
+const heardId = (server: { find: (name: string) => { id: number }[] }, name: string): number =>
+  must(server.find(name)[0], name).id;
+
 describe('forwarding', () => {
   it('As a forwarder, I pass a request and its answer through, every byte of the message the same on both links', async () => {
     // Given
@@ -2568,7 +2594,7 @@ describe('forwarding', () => {
 
     // Then
     expect(await said).toEqual(err(unsupported()));
-    expect(namesOf(toUpstream)).toContain('failed');
+    expect(namesOf(toUpstream)).toEqual(['handshakeOffer', 'handshakeResponse', 'request:echo.say', 'failed']);
     expect(namesOf(toForwarder)).toEqual(['handshakeOffer', 'handshakeResponse', 'request:echo.say', 'failed']);
     expect(issues).toEqual([]);
   });
@@ -2616,16 +2642,32 @@ describe('forwarding', () => {
   it('As a forwarder, I decode no payload in the middle', async () => {
     // Given
     const { schema, decodes } = countedSchema();
-    const { peer, server, timers } = forwardRig(schema);
-    server.handleRequest(schema.sections.notes.read, key => ok(key));
+    const { read, watch } = schema.sections.notes;
+    const { peer, server, timers, issues } = forwardRig(schema);
+    server.handleRequest(read, key => ok(key));
+    server.handleSubscription(watch, (start, _context, sink) => {
+      sink.send(start);
+      sink.send('second');
+      return () => undefined;
+    });
 
     // When
-    const read = peer.request(schema.sections.notes.read, 'a note');
+    const answered = peer.request(read, 'a note');
     await timers.advance(0);
 
-    // Then only the server decoded it
-    expect(await read).toEqual(ok('a note'));
-    expect(decodes()).toBe(1);
+    // Then the server decoded the request and the peer the response
+    expect(await answered).toEqual(ok('a note'));
+    expect(decodes()).toBe(2);
+
+    // When
+    const heard = watcher();
+    peer.subscribe(watch, 'first', heard);
+    await timers.advance(0);
+
+    // Then the server decoded the start and the peer each value
+    expect(heard.values).toEqual(['first', 'second']);
+    expect(decodes()).toBe(5);
+    expect(issues).toEqual([]);
   });
 
   it('As a forwarder, I answer each forwarded call HostFailure when the upstream closes under it', async () => {
@@ -2668,14 +2710,18 @@ describe('forwarding', () => {
 
     // Then the late answer is dropped on the upstream, and the peer hears nothing
     expect(stops).toEqual([1]);
-    expect(messageHex(toUpstream, 'stop:notes.watch')).toHaveLength(1);
-    expect(messageHex(toUpstream, 'response:notes.read')).toHaveLength(1);
+    expect(messageHex(toUpstream, 'stop:notes.watch')).toEqual([
+      toHex(notes.watch.message.enc({ tag: 'stop', value: undefined })),
+    ]);
+    expect(messageHex(toUpstream, 'response:notes.read')).toEqual([
+      toHex(notes.read.message.enc({ tag: 'response', value: ok('too late') })),
+    ]);
     expect(toForwarder).toHaveLength(posted);
     expect([heard.values, heard.ends, heard.fails, heard.closes]).toEqual([[], [], [], []]);
     expect(issues).toEqual([]);
   });
 
-  it('As a forwarder, a reused start replaces the forwarded subscription, which stops on the upstream', async () => {
+  it('As a forwarder, I replace a forwarded subscription on a reused start and stop the old one on the upstream', async () => {
     // Given a raw peer, and a server behind the upstream
     const near = rawRig('respond');
     const far = rig();
@@ -2722,7 +2768,7 @@ describe('forwarding', () => {
     expect(issues).toEqual([]);
   });
 
-  it('As a forwarder, a stop that comes while the forwarded start still waits for the upstream posts nothing upstream', async () => {
+  it('As a forwarder, I end a subscription stopped while its start waits for the upstream and post nothing upstream', async () => {
     // Given a raw peer, and a raw server behind the upstream that has not answered the handshake
     const near = rawRig('respond');
     const far = rawRig('offer');
@@ -2745,7 +2791,7 @@ describe('forwarding', () => {
     expect([...near.issues, ...far.issues]).toEqual([]);
   });
 
-  it('As a forwarder, after I stop forwarding a method new calls of it are Unsupported and open ones run to their end', async () => {
+  it('As a forwarder, I stop forwarding a method and new calls of it are Unsupported while open ones run to their end', async () => {
     // Given
     const { peer, server, timers, issues, stopForwarding } = forwardRig();
     const answer = deferred<ResultPayload<string, CallError<string>>>();
@@ -2773,7 +2819,7 @@ describe('forwarding', () => {
     expect(issues).toEqual([]);
   });
 
-  it('As a forwarder, a 1 MB message crosses with every byte the same on both links', async () => {
+  it('As a forwarder, I pass a 1 MB message through and every byte is the same on both links', async () => {
     // Given
     const { peer, server, timers, issues, toForwarder, toUpstream } = forwardRig();
     server.handleRequest(echo.say, text => ok(text));
@@ -2792,6 +2838,175 @@ describe('forwarding', () => {
     expect(messageHex(toUpstream, 'response:echo.say')).toEqual(response);
     expect(messageHex(toForwarder, 'response:echo.say')).toEqual(response);
     expect(issues).toEqual([]);
+  });
+
+  it("As a forwarder, I pass the upstream's failed frame on a subscription back and the peer's fail hears it", async () => {
+    // Given a server whose handler throws on start
+    const { peer, server, timers, issues } = forwardRig();
+    server.handleSubscription(notes.watch, () => {
+      throw new RangeError('no watching today');
+    });
+    const heard = watcher();
+
+    // When
+    peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+
+    // Then
+    expect(heard.fails).toEqual([hostFailure('RangeError: no watching today')]);
+    expect([heard.values, heard.ends, heard.closes]).toEqual([[], [], []]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a forwarder, I pass back a value whose leg cannot be read as a value, and the peer stops it on the upstream', async () => {
+    // Given
+    const { peer, timers, issues, server } = await forwardingToRaw();
+    const heard = watcher();
+    peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+    const id = heardId(server, 'start:notes.watch');
+
+    // When
+    server.send(id, unreadableLeg(notes.watch));
+    await timers.advance(0);
+
+    // Then the peer refuses it as a lost value and tells the server to stop
+    expect(heard.fails).toEqual([expect.objectContaining({ tag: 'MalformedFrame' }) as Failure]);
+    expect(server.find('stop:notes.watch').map(stop => stop.id)).toEqual([id]);
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(Error) as Error }]);
+  });
+
+  it('As a forwarder, I pass back an answer whose leg cannot be read and the peer rejects it as malformed', async () => {
+    // Given
+    const { peer, timers, issues, server } = await forwardingToRaw();
+    const read = outcomeOf(peer.request(notes.read, 'a note'));
+    await timers.advance(0);
+
+    // When
+    server.send(heardId(server, 'request:notes.read'), unreadableLeg(notes.read));
+    await timers.advance(0);
+
+    // Then
+    expect(await read).toBeInstanceOf(TransportMalformedResponseError);
+    expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(Error) as Error }]);
+  });
+
+  it("As a forwarder, I answer HostFailure for a call still waiting on the upstream's handshake when it times out", async () => {
+    // Given an upstream whose server never answers the handshake
+    const near = rig();
+    const far = rawRig('offer');
+    near.accepter.forward([notes.read], far.transport);
+    near.opener.connect();
+    await near.timers.advance(0);
+    const read = near.opener.request(notes.read, 'a note');
+    await near.timers.advance(0);
+
+    // When
+    await far.timers.advance(TIMEOUT_MS);
+
+    // Then
+    const timedOut = new TransportHandshakeTimeoutError(`No handshake answer within ${String(TIMEOUT_MS)} ms`);
+    expect(await read).toEqual(err(hostFailure(timedOut)));
+    expect(far.peer.names().filter(name => name !== 'handshakeOffer')).toEqual([]);
+    expect(near.issues).toEqual([]);
+  });
+
+  it('As a forwarder, I answer a peer message whose leg cannot be read MalformedFrame and forward nothing', async () => {
+    // Given
+    const near = rawRig('respond');
+    const far = rig();
+    near.transport.forward([notes.read], far.opener);
+    near.openHandshake();
+    await near.timers.advance(0);
+
+    // When
+    near.peer.send(1, unreadableLeg(notes.read));
+    await near.timers.advance(0);
+
+    // Then
+    expect(near.peer.failures()).toEqual([
+      { id: 1, value: expect.objectContaining({ tag: 'MalformedFrame' }) as Failure },
+    ]);
+    expect(near.issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(Error) as Error }]);
+    expect(far.delivered).toEqual([]);
+  });
+
+  it('As a forwarder, I refuse a response or a value the peer sends on a forwarded method and forward neither', async () => {
+    // Given
+    const near = rawRig('respond');
+    const far = rig();
+    const { starts, stops } = serveWatch(far.accepter);
+    near.transport.forward([notes.read, notes.watch], far.opener);
+    near.openHandshake();
+    await near.timers.advance(0);
+    near.peer.call(notes.watch, 3, { tag: 'start', value: 'from the top' });
+    await far.timers.advance(0);
+
+    // When
+    near.peer.call(notes.read, 1, { tag: 'response', value: ok('not asked') });
+    near.peer.call(notes.watch, 3, { tag: 'receive', value: 'backwards' });
+    await far.timers.advance(0);
+
+    // Then
+    const invalid = { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error };
+    expect(near.issues).toEqual([invalid, invalid]);
+    expect(namesOf(far.delivered)).toEqual(['handshakeOffer', 'handshakeResponse', 'start:notes.watch']);
+    expect([starts, stops]).toEqual([['from the top'], [0]]);
+    expect(near.peer.names()).toEqual(['handshakeResponse']);
+  });
+
+  it('As a forwarder, I refuse a request answering a forwarded request and a start or stop on a forwarded subscription, and pass none back', async () => {
+    // Given
+    const { peer, timers, issues, server, toPeer } = await forwardingToRaw();
+    const read = peer.request(notes.read, 'a note');
+    const heard = watcher();
+    peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+    const readId = heardId(server, 'request:notes.read');
+    const watchId = heardId(server, 'start:notes.watch');
+
+    // When the server sends the wrong legs, then the right ones
+    server.call(notes.read, readId, { tag: 'request', value: 'backwards' });
+    server.call(notes.watch, watchId, { tag: 'start', value: 'backwards' });
+    server.call(notes.watch, watchId, { tag: 'stop', value: undefined });
+    await timers.advance(0);
+    server.call(notes.read, readId, { tag: 'response', value: ok('the note') });
+    server.call(notes.watch, watchId, { tag: 'receive', value: 'a value' });
+    await timers.advance(0);
+
+    // Then only the right ones reach the peer
+    const invalid = { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error };
+    expect(issues).toEqual([invalid, invalid, invalid]);
+    expect(await read).toEqual(ok('the note'));
+    expect(heard.values).toEqual(['a value']);
+    expect([heard.ends, heard.fails, heard.closes]).toEqual([[], [], []]);
+    expect(namesOf(toPeer)).toEqual([
+      'handshakeOffer',
+      'handshakeResponse',
+      'request:notes.read',
+      'start:notes.watch',
+      'response:notes.read',
+      'receive:notes.watch',
+    ]);
+  });
+
+  it('As a forwarder, I drop a stop with no subscription running under its id and forward nothing', async () => {
+    // Given
+    const near = rawRig('respond');
+    const far = rig();
+    serveWatch(far.accepter);
+    near.transport.forward([notes.watch], far.opener);
+    near.openHandshake();
+    await near.timers.advance(0);
+
+    // When
+    near.peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
+    await near.timers.advance(0);
+
+    // Then
+    expect(far.delivered).toEqual([]);
+    expect(near.peer.names()).toEqual(['handshakeResponse']);
+    expect([...near.issues, ...far.issues]).toEqual([]);
   });
 
   it('As a schema user, I am refused forwarding to a transport that places the method elsewhere, to one this library did not build, or for a method that already has a handler', () => {

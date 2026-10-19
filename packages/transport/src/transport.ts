@@ -816,6 +816,23 @@ export function createTransport<H, T extends Sections>(
   // crosses as the bytes it is, so only the far ends decode a payload. Only the leg of a message is read, to follow the
   // call's life.
 
+  /**
+   * How a forwarded call answers the peer when the upstream ends it: with the upstream's failure, or `HostFailure` when
+   * the upstream closed. `leave` ends the call here, and says whether it was still open.
+   */
+  const answerEnd = (id: number, address: Address, leave: () => boolean): Pick<Heard, 'fail' | 'close'> => ({
+    fail(error) {
+      if (leave()) {
+        postFailed(id, error, address);
+      }
+    },
+    close(error) {
+      if (leave()) {
+        postFailed(id, hostFailure(error), address);
+      }
+    },
+  });
+
   /** Forwards a peer's request, and posts the upstream's answer back on its id. */
   const forwardRequest = (
     upstream: Upstream,
@@ -840,16 +857,7 @@ export function createTransport<H, T extends Sections>(
           post(carrying(address, id, answer), address);
         }
       },
-      fail(error) {
-        if (inFlight.delete(id)) {
-          postFailed(id, error, address);
-        }
-      },
-      close(error) {
-        if (inFlight.delete(id)) {
-          postFailed(id, hostFailure(error), address);
-        }
-      },
+      ...answerEnd(id, address, () => inFlight.delete(id)),
     });
     inFlight.set(id, () => {
       call.forget();
@@ -905,21 +913,14 @@ export function createTransport<H, T extends Sections>(
           return;
         }
         if (tag === 'interrupt') {
-          finish();
           call.forget();
+          if (!finish()) {
+            return;
+          }
         }
         post(carrying(address, id, sent), address);
       },
-      fail(error) {
-        if (finish()) {
-          postFailed(id, error, address);
-        }
-      },
-      close(error) {
-        if (finish()) {
-          postFailed(id, hostFailure(error), address);
-        }
-      },
+      ...answerEnd(id, address, finish),
     });
     running.set(id, entry);
   };

@@ -145,24 +145,29 @@ export function rig() {
 }
 
 /**
- * `testSchema` with a `notes.read` whose request counts its decodes, so a test can tell which side read a payload. The
- * other methods are `testSchema`'s own.
+ * `testSchema` with a `notes.read` and a `notes.watch` whose payloads count their decodes, so a test can tell which side
+ * read a payload. The counted payloads are the request, the response, the start and the values.
  */
 export function countedSchema() {
   let decodes = 0;
-  const counted = enhanceCodec(
-    word,
-    (value: string) => value,
-    (value: string) => {
-      decodes += 1;
-      return value;
-    },
-  );
+  const counted = <T>(codec: Codec<T>): Codec<T> =>
+    enhanceCodec(
+      codec,
+      (value: T) => value,
+      (value: T) => {
+        decodes += 1;
+        return value;
+      },
+    );
   const schema = defineSchema({
     version: VERSION,
     hello: str,
     sections: {
-      notes: { ...notes, read: request({ request: counted, response: str, error: str }) },
+      notes: {
+        ...notes,
+        read: request({ request: counted(word), response: counted(str), error: str }),
+        watch: subscription({ start: counted(word), receive: counted(word), interrupt: Result(_void, str) }),
+      },
       echo,
     },
   });
