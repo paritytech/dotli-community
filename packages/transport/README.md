@@ -28,8 +28,9 @@ and failure.
   a `failed` that answers a call with a `CallError` of the library's own, or a `call` that carries the section and
   method ids and the method's own message. A message is its method's enum: `request` and `response` for a request, and
   `start`, `receive`, `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from
-  its method's. A received frame keeps the message as bytes until the method it names decodes it. The id and the
-  handshake variants never change, so a peer of any release reads the version it refuses.
+  its method's. A received frame keeps the message as bytes until the method it names decodes it. The id, the handshake
+  variants and the wire version that opens an offer never change, so a peer of any release reads the versions it
+  refuses.
 - A frame, a message, a hello or a failure that leaves bytes unread is refused as malformed, as truapi's `decode_all`
   refuses it. Each method and the frame build their whole decoder once, and each transport the hello's.
 - Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
@@ -39,26 +40,30 @@ and failure.
   the first origin a predicate allows, and delivers nothing from any other. The port provider speaks over a message
   port. Both post and accept an `ArrayBuffer` between documents, the message's own buffer when it holds only the message
   and a copy otherwise, so transferring it moves nothing else. Any object with the same four methods works.
-- One side opens the handshake and the other accepts it. The opener posts a fresh `handshakeOffer` every `retryMs` until
-  it is answered or `timeoutMs` passes on the running clock. The accepter answers every attempt with the outcome of the
-  first answer it could post, and counts as connected only once that answer is posted. A hello is decoded only at the
-  same version, since another release's may not decode. A version mismatch closes both sides.
+- One side opens the handshake and the other accepts it. The opener starts it with its first request, subscription or
+  wait for the handshake, as host-api starts it, or earlier with `connect`. It posts a fresh `handshakeOffer` every
+  `retryMs` until it is answered or `timeoutMs` passes on the running clock. An offer carries the library's own wire
+  version first, then the schema's version and the hello. Both versions must match. The accepter answers every attempt
+  with the outcome of the first, which is its hello or both of its versions, and counts as connected only once that
+  answer is posted. A hello is decoded only at the same versions, since another release's may not decode. A mismatch
+  closes both sides.
 
 ```mermaid
 sequenceDiagram
   participant O as Opener
   participant A as Accepter
-  O->>A: handshakeOffer (version, hello)
+  O->>A: handshakeOffer (wire version, version, hello)
   Note over O: retries every retryMs
-  O->>A: handshakeOffer (version, hello)
-  A-->>O: handshakeResponse, Ok(hello) or Err(the accepter's version)
+  O->>A: handshakeOffer (wire version, version, hello)
+  A-->>O: handshakeResponse, Ok(hello) or Err(the accepter's wire version and version)
   A-->>O: the same answer again
   Note over O,A: queued calls go out in call order
 ```
 
 - Calls made before the handshake wait and go out in call order once it succeeds. A request resolves to the peer's
-  `Result`, to a failure the library answered with, or to `MalformedFrame` when the answer does not decode. Aborting its
-  signal resolves it as `Cancelled`, and a late answer is ignored. The peer is not told.
+  `Result` or to a failure the library answered with. An answer that does not decode rejects it with
+  `TransportMalformedResponseError`, whose cause is why, as truapi's client and host-api reject it. Aborting its signal
+  resolves it as `Cancelled`, and a late answer is ignored. The peer is not told.
 
 ```mermaid
 sequenceDiagram
@@ -79,8 +84,8 @@ sequenceDiagram
   `Cancelled` once its signal aborts, or `MalformedFrame` when a message does not decode, after which the peer is told
   to stop, since what was lost may be a value. An interrupt that does not decode is told no stop, since nothing follows
   an interrupt, and a message whose leg cannot be read counts as a value. `close` hears the one local end with an error:
-  the transport closed, or the start could not be posted. Its `unsubscribe` tells the peer and calls no listener. A
-  start that does not encode throws.
+  the transport closed, a post the provider threw on among the ways it does. Its `unsubscribe` tells the peer and calls
+  no listener. A start that does not encode throws.
 
 ```mermaid
 sequenceDiagram
@@ -90,7 +95,7 @@ sequenceDiagram
   H-->>C: receive, any number of times
   alt the serving side ends it
     H-->>C: interrupt, the method's own reason
-  else no handler, a start that does not decode, a handler that throws or a dispose
+  else no handler, a start that does not decode, or a handler that throws
     H-->>C: failed, Unsupported, MalformedFrame or HostFailure
   else the subscriber stops it or aborts
     C->>H: stop
@@ -98,19 +103,38 @@ sequenceDiagram
 ```
 
 - A transport closes when its provider is not in a correct environment, which it checks once at creation, when the
-  handshake fails or times out, the versions differ, or its owner disposes it. Every pending and later request then
-  rejects with that error itself, and every subscription still queued or open, or made later, hears it once through
-  `close`, so a closed transport is never a call outcome. Disposing also answers each request this side is serving, and
-  ends each subscription it serves, with `HostFailure` carrying `"<name>: <message>"` of the reason, and tells the peer
-  to stop each subscription it made.
+  handshake fails or times out, the versions differ, its provider throws on a post, or its owner disposes it. Every
+  pending and later request then rejects with that error itself, and every subscription still queued or open, or made
+  later, hears it once through `close`, so a closed transport is never a call outcome. A post the provider throws on is
+  reported first, and closes the transport with the provider's error, as truapi's client does.
+- A closing transport posts nothing, as truapi's runtime posts nothing once disposed: no failure for the requests it
+  serves and no stop for the subscriptions it made. Each subscription it serves stops, so its stop function runs, and
+  each request it serves is never answered.
+
+```mermaid
+sequenceDiagram
+  participant C as Closing side
+  participant P as Peer
+  Note over C: dispose, a failed handshake or a failed post
+  Note over C: its requests reject, its subscriptions hear close
+  Note over C: each subscription it serves runs its stop
+  Note over C,P: no frame goes out
+```
+
 - A subscription handler gets the start, the context and a sink, and returns its stop function. That function runs once,
-  on the peer's stop, an interrupt or a dispose, even when the handler interrupts before it returns. The peer hears an
-  end before the stop function runs. A handler that throws on start, or a value the wire cannot carry, ends it with
-  `HostFailure`. The sink does nothing once the subscription has ended.
+  on the peer's stop, an interrupt, a start that reuses its id, or a close, even when the handler interrupts before it
+  returns. The peer hears an end before the stop function runs. A handler that throws on start, or a value the wire
+  cannot carry, ends it with `HostFailure`. The sink does nothing once the subscription has ended.
 - `onPeerIdle` fires when the peer's own stop leaves nothing it opened running and no request of the peer is in flight,
-  which is how a peer that disposes leaves. It fires once per departure, and a call from the peer arms it again.
-- Calls of the peer reach a handler only once the handshake told who the peer is. One before the handshake or after the
-  transport closed is refused with no answer. Nothing ever answers a `failed` frame or a frame that does not decode.
+  which is how a peer that stops everything itself leaves. A peer that closes posts nothing, so it never fires for one.
+  It fires once per departure, and a call from the peer arms it again.
+- Calls of the peer reach a handler only once the handshake told who the peer is. A request or a start before the
+  handshake is over is refused and answered at once with `HostFailure`, "The handshake is not over", and its handler
+  never runs. One after the transport closed is refused with no answer. Nothing ever answers a `failed` frame or a frame
+  that does not decode.
+- As truapi does with an id the peer reuses, a request whose id is still in flight is refused with no answer, and its
+  handler does not run again. A start on the id of a running subscription replaces it: the running one stops with
+  nothing sent, and the new one starts.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed` or `invalid`, with its
   cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
   owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each
@@ -149,10 +173,10 @@ sequenceDiagram
     such a reason back as `{ name, message }`.
   - `onPeerIdle()` hears that the peer left.
 - `Transport<H>`:
-  - `connect()` starts the handshake on the opener, and `whenConnected()` resolves once it succeeds or rejects with the
-    closing error.
-  - `request(method, payload, { signal? })` resolves to `ResultPayload<R, CallError<E>>`. It rejects only with the
-    closing error, or when the call cannot go out.
+  - `connect()` starts the handshake on the opener ahead of its first call, which starts it otherwise, and
+    `whenConnected()` resolves once it succeeds or rejects with the closing error.
+  - `request(method, payload, { signal? })` resolves to `ResultPayload<R, CallError<E>>`. It rejects with the closing
+    error, with `TransportMalformedResponseError` when the answer does not decode, or when the payload does not encode.
   - `handleRequest(method, handler)` serves a request method and returns what unregisters it. A `RequestHandler` gets
     the payload and a `CallContext` and returns a `ResultPayload`, sync or async.
   - `subscribe(method, start, { receive, interrupt, fail, close }, { signal? })` returns its `unsubscribe`. Exactly one
@@ -160,10 +184,13 @@ sequenceDiagram
   - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
     `CallContext` and a `Sink`, with `send(value)` and `interrupt(reason)`, where `reason` is the method's own interrupt
     reason, which the subscriber hears as it is, and returns its stop function.
-  - `dispose(reason)` closes the transport and disposes the provider.
+  - `dispose(reason)` closes the transport, posting nothing, and disposes the provider.
 - `CallContext<H>` is `{ hello }`, the peer's hello.
 - `TransportHandshakeTimeoutError` closes an opener that heard no answer in time.
-  `TransportUnsupportedProtocolVersionError` closes both sides of a mismatch, and names both versions.
+  `TransportUnsupportedProtocolVersionError` closes both sides of a mismatch. It carries `ours` and `theirs` as
+  `TransportVersions`, `{ wire, schema }`, and its message names each version that differs, with both sides' values.
+  `TransportMalformedResponseError` rejects a request whose answer does not decode, with the decode error as its
+  `cause`.
 - `Provider` is `isCorrectEnvironment()`, `postMessage(message)`, `subscribe(callback)` and `dispose()`, over
   `Uint8Array` messages. `isCorrectEnvironment` says whether the context has a peer to talk to, and a transport over a
   provider that has none closes at once with `Error('Environment is not correct')`. `postMessage` transfers the

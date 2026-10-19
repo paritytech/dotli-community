@@ -75,8 +75,8 @@ interface FakeWorker {
   failHeld: (error: Error) => void;
   /** Settles once the tab's status subscription reached the worker. */
   statusHeard: Promise<void>;
-  /** Settles once the tab's status subscription on the worker stops. */
-  statusStopped: Promise<void>;
+  /** Settles once the tab's end of the worker's port closes, which a closing transport does and tells nothing else. */
+  portClosed: Promise<void>;
   serving: ProtocolTransport;
   /** The worker script failing to load. */
   failToStart: (message: string) => void;
@@ -100,15 +100,14 @@ function fakeWorker(): FakeWorker {
     hello: { resolutionId: null },
   });
   const status = createFrameStatus();
-  const stopped = deferred<undefined>();
   const statusHeard = deferred<undefined>();
   serving.handleSubscription(frame.status, (start, context, sink) => {
     statusHeard.resolve(undefined);
-    const stop = status.handler(start, context, sink);
-    return () => {
-      stop();
-      stopped.resolve(undefined);
-    };
+    return status.handler(start, context, sink);
+  });
+  const portClosed = deferred<undefined>();
+  channel.port1.addEventListener('close', () => {
+    portClosed.resolve(undefined);
   });
   const heartbeats: (string | null)[] = [];
   let beat = deferred<undefined>();
@@ -156,7 +155,7 @@ function fakeWorker(): FakeWorker {
       held.reject(error);
     },
     statusHeard: statusHeard.promise,
-    statusStopped: stopped.promise,
+    portClosed: portClosed.promise,
     serving,
     failToStart: message => {
       workerTarget.dispatchEvent(new ErrorEvent('error', { message }));
@@ -264,11 +263,11 @@ describe('connectSharedWorker', () => {
     // When
     await timers.advance(READY_TIMEOUT_MS);
 
-    // Then the link fails as a failed init, the frame hears the same, and the worker hears the status subscription stop
+    // Then the link fails as a failed init, the frame hears the same, and the worker hears the port close
     const timeout = { name: 'ProtocolInitFailedError', message: PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT };
     await expect(failed).resolves.toMatchObject(timeout);
     await expect(handed.promise.then(workerEndError)).resolves.toMatchObject(timeout);
-    await worker.statusStopped;
+    await worker.portClosed;
   });
 
   it.each([
@@ -425,9 +424,9 @@ describe('connectSharedWorker', () => {
     // When its page hides for good
     page.hide(false);
 
-    // Then its transport is closed, and the worker heard its subscription end
+    // Then its transport is closed, and the worker hears its port close
     await expect(transport.request(frame.heartbeat, undefined)).rejects.toThrow(PROTOCOL_APP_ERRORS.PORT_CLOSED);
-    await worker.statusStopped;
+    await worker.portClosed;
   });
 
   it('As a tab whose worker stopped serving it, I stop answering its beats and a heartbeat it then fails is not reported', async () => {
@@ -757,6 +756,28 @@ describe('the worker relay', () => {
     await expect(owner).resolves.toEqual(err(hostFailure('ProtocolPortReleasedError: The worker released this tab')));
   });
 
+  it('As the host, a chain the worker holds when it releases my port ends with the release, though the worker posts nothing as it closes', async () => {
+    // Given a chain the worker holds for the host
+    const { host, worker, workerStatus, workerStatusHeard } = linkHops(served => {
+      served.handleSubscription(chain.connect, (_start, _context, sink) => {
+        sink.send({ tag: 'connected', value: undefined });
+        return () => undefined;
+      });
+    });
+    const connected = record(host, chain.connect, { genesisHash: '0xaa', connectionId: 'c1' });
+    await Promise.all([connected.until(1), workerStatusHeard]);
+
+    // When the worker releases the iframe's port, ending its status first as the worker does
+    const release = new ProtocolPortReleasedError('The worker released this tab');
+    workerStatus.fail(release);
+    worker.dispose(release);
+
+    // Then the host's chain ends with the release, which the iframe's link ends it with on the status end
+    await expect(connected.ended).resolves.toEqual(
+      err(hostFailure('ProtocolPortReleasedError: The worker released this tab')),
+    );
+  });
+
   it("As the host, my frame fails as a version mismatch when the link meets a worker of another version, as it would for my iframe's", async () => {
     // Given a ready frame whose worker holds an owner read
     const asked = deferred<undefined>();
@@ -771,7 +792,7 @@ describe('the worker relay', () => {
     await Promise.all([status.until(1), asked.promise, workerStatusHeard]);
 
     // When the link closes on a version mismatch, as its handshake with a worker of another release does
-    const mismatch = new TransportUnsupportedProtocolVersionError(3, 9);
+    const mismatch = new TransportUnsupportedProtocolVersionError({ wire: 1, schema: 3 }, { wire: 1, schema: 9 });
     link.dispose(mismatch);
 
     // Then the frame status ends typed, the host reads it as the protocol's mismatch, and the held call fails with it

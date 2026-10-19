@@ -67,16 +67,16 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
   It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat
   request, and a port that sends nothing for too many beats is released. A release ends that port's frame status as a
-  released port, then closes its transport, which ends the rest of its subscriptions with the release, so a thawed tab
-  rebuilds its frame and opens a new port. A released port stays open, so a frozen tab still hears its release when it
-  thaws. It closes on the beat after its tab speaks again, so the ends posted at the release arrive first, or when the
-  worker closes.
-- A tab that leaves ends its subscriptions, which frees its connections at once. The worker then forgets its port and
-  closes it at once: a live tab always holds a subscription, so a tab whose own stop leaves nothing running, with no
-  call of its in flight, has disposed its transport. The worker waits for a call still in flight to settle first, and a
-  call the tab makes meanwhile keeps the port. A port whose tab crashed fires its close event, and the worker forgets
-  it, or closes it if it was released, at once. Where an engine never fires the event, the heartbeat release is the
-  fallback.
+  released port, then closes its transport, which posts nothing more. The tab's link ends the rest of what it holds with
+  that end, so a thawed tab rebuilds its frame and opens a new port. A released port stays open, so a frozen tab still
+  hears its release when it thaws. It closes on the beat after its tab speaks again, so the end posted at the release
+  arrives first, or when the worker closes.
+- A tab that leaves disposes its link, which closes its port and posts nothing. A port whose tab left or crashed fires
+  its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never fires the
+  event, the heartbeat release frees the tab's connections once it misses its beats, and holds its port as it holds a
+  frozen tab's. A tab that stops every subscription itself, with no call of its in flight, has left too, since a live
+  tab always holds one, so the worker forgets its port and closes it at once. It waits for a call still in flight to
+  settle first, and a call the tab makes meanwhile keeps the port.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
   ends. A heartbeat it cannot send is captured, logged and counted, and the link stops answering, so the worker releases
   the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the

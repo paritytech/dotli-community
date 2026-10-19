@@ -175,9 +175,10 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
 }
 
 /**
- * Disposes the iframe's worker transport once its page is hidden for good, which ends its subscriptions and so frees
- * its connections at once. `pagehide` and not `beforeunload`, because a frame the host removes fires only the former.
- * A page kept in the back-forward cache may come back, so it keeps its transport.
+ * Disposes the iframe's worker transport once its page is hidden for good, which closes its port. The transport posts
+ * nothing as it closes, so the worker frees the tab's connections when the port's close reaches it, or once the tab
+ * misses its beats. `pagehide` and not `beforeunload`, because a frame the host removes fires only the former. A page
+ * kept in the back-forward cache may come back, so it keeps its transport.
  */
 function disposeOnPageHide(
   target: Pick<EventTarget, 'addEventListener'>,
@@ -232,22 +233,6 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
     captureException(error, { flow: 'protocol', step: 'shared_worker_error' });
   });
 
-  // Before the ready wait, so a frame removed while the worker syncs still frees its port at once.
-  disposeOnPageHide(deps.window, transport, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
-
-  // One subscription serves the ready wait and the caller alike, since a dead worker may close once this tab first
-  // heard why, and would never answer a second.
-  const status = watchWorkerStatus(transport, () => {
-    waiting = false;
-    ready.resolve(undefined);
-  });
-  // Before the ready wait too, since the worker lets go of a silent port while it syncs as well.
-  answerBeats(transport, status);
-
-  status.onEnd(end => {
-    failReadyWait(workerEndError(end), 'worker_reported');
-  });
-
   let timedOut: Error | undefined;
   const record = (outcome: 'ok' | 'error' | 'timeout'): number => {
     waiting = false;
@@ -258,7 +243,8 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
     });
     return waitMs;
   };
-  // Armed before the handshake starts, so on a tie the ready wait's own timeout is the one heard.
+  // Armed before the status subscription starts the handshake, so on a tie the ready wait's own timeout is the one
+  // heard.
   const waited = withTimeout(
     ready.promise,
     readyTimeoutMs,
@@ -279,7 +265,22 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
       throw error;
     },
   );
-  transport.connect();
+  // Bound at once, not once ready, so a frame removed while the worker syncs still closes its port at once.
+  disposeOnPageHide(deps.window, transport, new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
+
+  // One subscription serves the ready wait and the caller alike, since a dead worker may close once this tab first
+  // heard why, and would never answer a second. It is the link's first call, so it starts the handshake.
+  const status = watchWorkerStatus(transport, () => {
+    waiting = false;
+    ready.resolve(undefined);
+  });
+  // At once too, since the worker lets go of a silent port while it syncs as well.
+  answerBeats(transport, status);
+
+  status.onEnd(end => {
+    failReadyWait(workerEndError(end), 'worker_reported');
+  });
+
   return { transport, status, ready: waited };
 }
 

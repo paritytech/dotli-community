@@ -68,7 +68,8 @@ were.
 - A handler's own failure crosses as its name and message only, and becomes a `ProtocolRequestError` under that name. A
   request's bare `Error` is named `ProtocolResponseError`, so it still reads as one that crossed the boundary.
 - A refusal, a method the frame does not serve and a call it cannot read become a `ProtocolRequestError` named `Denied`,
-  `Unsupported` and `MalformedFrame`. A request given up on its budget fails with its timeout.
+  `Unsupported` and `MalformedFrame`. An answer of the frame's that the host cannot read rejects with the transport's
+  own `TransportMalformedResponseError`, under that name. A request given up on its budget fails with its timeout.
 - A transport that closes rejects every request and ends every subscription with why: the frame's loss itself, or a
   handshake that timed out or met another version, which become `ProtocolHandshakeTimeoutError` and
   `ProtocolVersionMismatchError`.
@@ -78,7 +79,8 @@ were.
 ### Handshake and queue
 
 - The host opens the handshake when the iframe has loaded, and repeats it on a short interval until the frame answers.
-  `listening` is a completed handshake. Its hello carries no resolution id, since the frame reads that from its URL.
+  It hands out the frame's transport only then, since the first call on a transport starts its handshake. `listening` is
+  a completed handshake. Its hello carries no resolution id, since the frame reads that from its URL.
 - A call made before the handshake succeeds waits and goes out once it does, in call order. A call given up, or a
   subscription stopped, while it waits is never sent.
 - A handshake that does not succeed in time fails with a timeout, measured on a clock that does not run while the page
@@ -87,8 +89,8 @@ were.
 ### Frame loss and version mismatch
 
 - A lost frame disposes its transport with the loss as the reason. Every call in flight rejects with it and every open
-  subscription ends with it, so a remote chain connection hears that the frame stopped. The transport goes before the
-  iframe, so the frame still hears each subscription stop. The frame is then rebuilt.
+  subscription ends with it, so a remote chain connection hears that the frame stopped. The transport posts nothing as
+  it closes, so the frame lets go of what it served as its iframe goes. The frame is then rebuilt.
 - A call made while the frame is down waits for the next transport.
 - A version mismatch is final. A rebuild cannot fix it and a reload can, so the frame moves to `failed`, stops
   rebuilding, and rejects every waiting and later call with `ProtocolVersionMismatchError`.

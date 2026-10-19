@@ -266,8 +266,9 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   });
 
   /**
-   * Stops serving the port, once. Its status ends first with why, typed, so the tab tells a release from a crash. Its
-   * transport goes next, so each open chain hears the release and not a halt.
+   * Stops serving the port, once. Its status ends with why, typed, so the tab tells a release from a crash, and the
+   * tab's link ends everything else it holds with that end, so each open chain hears the release and not a halt. Its
+   * transport goes next, and posts nothing as it closes.
    */
   function release(session: PortSession, reason: Error): void {
     if (!sessions.delete(session)) {
@@ -285,7 +286,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
 
   /**
    * Keeps a released port open until the beat after its tab sends anything, which it is no longer served for. A tab
-   * that speaks may have done so before the release reached it, so the ends posted at the release get a beat to arrive.
+   * that speaks may have done so before the release reached it, so the end posted at the release gets a beat to arrive.
    */
   function holdReleased({ port, unwatch }: PortSession): void {
     const onMessage = (): void => {
@@ -303,8 +304,8 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   /**
-   * Lets go of a port whose tab disposed its transport, so nothing it was sent is still waited for. Its port closes at
-   * once instead of being held for a release.
+   * Lets go of a port whose tab left, as its port closing or its own stop of everything it held tells, so nothing it
+   * was sent is still waited for. Its port closes at once instead of being held for a release.
    */
   function forget(session: PortSession): void {
     if (!sessions.delete(session)) {
@@ -479,13 +480,14 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       handshake: 'respond',
       hello: { resolutionId: null },
       onIssue: wire.onIssue,
-      // A live tab always holds a subscription, so a tab that left none disposed its transport, as a page that left for
-      // good does, and would never speak to end a release.
+      // A live tab always holds a subscription, so a tab that stopped every one itself has left, and would never speak
+      // to end a release. A tab that disposes its transport posts nothing, so its port's close or the heartbeat release
+      // lets go of it.
       onPeerIdle: () => {
         forget(session);
       },
     });
-    // The tab's end of the port closed, as when its page crashed or was evicted, which no stop or message tells.
+    // The tab's end of the port closed, as when its page left for good, crashed or was evicted, which no message tells.
     // Engines that never fire the event fall back to the heartbeat release.
     const onClosed = (): void => {
       if (sessions.has(session)) {

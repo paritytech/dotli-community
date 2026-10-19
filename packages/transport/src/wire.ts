@@ -3,8 +3,9 @@
 
 // A frame is a call id and one enum: the handshake's offer and response, a failure the library answers a call with, or a
 // call's message on a method. A message is its method's own enum, so a frame encodes in one pass of a codec composed
-// from the method's. A received frame keeps the message as bytes until the method it names decodes it. The id and the
-// handshake variants never change, so a peer of any release reads the version it refuses.
+// from the method's. A received frame keeps the message as bytes until the method it names decodes it. The id, the
+// handshake variants and the wire version that opens an offer never change, so a peer of any release reads the versions
+// it refuses.
 
 import {
   Bytes,
@@ -24,14 +25,17 @@ import { toError } from '@dotli/shared';
 import { err, failure, ok } from './errors.js';
 import type { Address } from './schema.js';
 
-// A hello stays bytes, since another release's may not decode.
-const handshakeOffer = Struct({ version: u8, hello: Bytes(Infinity) });
-const handshakeResponse = Result(Bytes(Infinity), Struct({ version: u8 }));
+/** The version of the library's own wire: the frame, the failures and the handshake. The handshake checks it. */
+export const WIRE_VERSION = 1;
 
-/** The opener's attempt: its version and its hello. */
+// A hello stays bytes, since another release's may not decode.
+const handshakeOffer = Struct({ wireVersion: u8, version: u8, hello: Bytes(Infinity) });
+const handshakeResponse = Result(Bytes(Infinity), Struct({ wireVersion: u8, version: u8 }));
+
+/** The opener's attempt: its wire version, its schema's version and its hello. */
 export type HandshakeOffer = CodecType<typeof handshakeOffer>;
 
-/** The accepter's answer: its hello, or the version it speaks. */
+/** The accepter's answer: its hello, or the wire and schema versions it speaks. */
 export type HandshakeResponse = CodecType<typeof handshakeResponse>;
 
 /** Frames whose calls carry `message`, with the ids of the call's method. */

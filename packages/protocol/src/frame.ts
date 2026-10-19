@@ -126,11 +126,13 @@ export interface ProtocolFrame {
    */
   configure(config: ProtocolFrameConfig): void;
   /**
-   * The transport of the frame there is now, booting one if there is none, once the frame is configured. Calls on it
-   * wait in its queue until its handshake succeeds, and fail with the loss when the frame is dropped first. Rejects
-   * with the version mismatch for good once a frame refused the host's wire. The transport itself speaks the transport
-   * library's outcomes and errors, so a failed handshake rejects its calls with the library's timeout or mismatch
-   * error. The frame rpc and `subscribe` turn those into the protocol's errors.
+   * The transport of the frame there is now, booting one if there is none, once the frame is configured and its iframe
+   * has loaded, since a call starts the handshake and a frame hears none before its document loads. Rejects with the
+   * loss when the frame is dropped before it loads. Calls on it wait in its queue until its handshake succeeds, and
+   * fail with the loss when the frame is dropped first. Rejects with the version mismatch for good once a frame refused
+   * the host's wire. The transport itself speaks the transport library's outcomes and errors, so a failed handshake
+   * rejects its calls with the library's timeout or mismatch error. The frame rpc and `subscribe` turn those into the
+   * protocol's errors.
    */
   transport(): Promise<ProtocolTransport>;
   /**
@@ -147,16 +149,23 @@ export interface ProtocolFrame {
   onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
 }
 
-/** One iframe and the transport to it. The transport exists before the iframe, so a `booting` listener can reach it. */
+/**
+ * One iframe and the transport to it. The transport exists before the iframe, and is handed out once the iframe loaded,
+ * since its first call starts the handshake.
+ */
 class FrameSlot<E extends FrameElement> {
   /** Null until it is built. */
   iframe: E | null = null;
   /** Aborted with why the frame is gone, which ends whatever its keeper waits on. */
   readonly loss = new AbortController();
   readonly transport: ProtocolTransport;
+  /** Resolves with the transport once the iframe loaded, and rejects with the loss of a frame dropped before. */
+  readonly loaded = deferred<ProtocolTransport>();
 
   constructor(open: (peer: () => WindowLike | null) => ProtocolTransport) {
     this.transport = open(() => this.iframe?.contentWindow ?? null);
+    // No caller may be waiting for the load, and the loss is reported where the frame is dropped.
+    this.loaded.promise.catch(() => undefined);
   }
 }
 
@@ -243,8 +252,8 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   const setStatus = status.set;
 
   /**
-   * Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down, and
-   * before its iframe goes, so the frame still hears the subscriptions it served stop.
+   * Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down. The
+   * transport posts nothing as it closes, so the frame lets go of what it served once its iframe goes.
    */
   function loseFrame(error: Error, next: 'failed' | 'idle'): void {
     const lost = slot;
@@ -252,13 +261,14 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
     downReason = error;
     losses += 1;
     lost?.loss.abort(error);
+    lost?.loaded.reject(error);
     setStatus(next);
     lost?.transport.dispose(error);
     lost?.iframe?.remove();
     lostListeners.emit(error);
   }
 
-  /** A slot with its transport, which hears the frame's status from the start. */
+  /** A slot with its transport, which waits for its iframe to load. */
   function openSlot(): FrameSlot<E> {
     const kept = new FrameSlot<E>(peer =>
       createTransport(
@@ -280,6 +290,11 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         },
       ),
     );
+    return kept;
+  }
+
+  /** Hears the frame's status, the first call on its transport, once its iframe loaded. */
+  function watchStatus(kept: FrameSlot<E>): void {
     subscribe(kept.transport, protocolSchema.sections.frame.status, undefined, {
       receive: () => {
         if (slot === kept) {
@@ -293,7 +308,6 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         }
       },
     });
-    return kept;
   }
 
   function createIframe(config: ProtocolFrameConfig): E {
@@ -318,9 +332,9 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   }
 
   /**
-   * Mounts the frame and resolves on its `load`, where the handshake starts, since a post to a frame that has not
-   * committed its document is dropped. `load` also fires when the frame's script failed, which the handshake's own
-   * timeout then finds.
+   * Mounts the frame and resolves on its `load`, where the handshake starts and the transport is handed out, since a
+   * post to a frame that has not committed its document is dropped. `load` also fires when the frame's script failed,
+   * which the handshake's own timeout then finds.
    */
   function untilLoaded(kept: FrameSlot<E>, iframe: E): Promise<void> {
     const signal = kept.loss.signal;
@@ -328,6 +342,9 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       const onLoad = (): void => {
         release();
         kept.transport.connect();
+        // First, so the status goes out ahead of the calls that waited for the load.
+        watchStatus(kept);
+        kept.loaded.resolve(kept.transport);
         resolve();
       };
       const onError = (): void => {
@@ -499,7 +516,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
     return withConfig(config => {
       askForFrame(config);
       // A keeper opens its slot in the turn it is asked for, so none here means its build failed at once.
-      return slot === null ? Promise.reject(downReason) : Promise.resolve(slot.transport);
+      return slot === null ? Promise.reject(downReason) : slot.loaded.promise;
     });
   }
 

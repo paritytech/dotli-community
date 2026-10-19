@@ -477,9 +477,8 @@ const FATAL = 'chain 0xaa connection failed: wasm trap';
 /** How a tab hears the light client died. */
 const fatalEnd = err(domain({ tag: 'fatal', value: FATAL }));
 
-/** How a tab hears the worker let go of its port: its status typed, everything else open as the release. */
+/** How a tab hears the worker let go of its port: its status ends typed, and nothing else open hears from the worker. */
 const releasedStatus = err(domain({ tag: 'released', value: PROTOCOL_APP_ERRORS.PORT_RELEASED }));
-const released = err(hostFailure(`ProtocolPortReleasedError: ${PROTOCOL_APP_ERRORS.PORT_RELEASED}`));
 
 describe('protocol SharedWorker', () => {
   beforeEach(() => {
@@ -905,7 +904,7 @@ describe('protocol SharedWorker', () => {
     ]);
   });
 
-  it('As a tab that left, my connections and my port are freed at once', async () => {
+  it('As a tab that left, my connections are freed once the worker misses my beats, since my dispose tells it nothing', async () => {
     // Given two tabs that each hold a chain connection, the leaving one on an engine whose ports never say they closed
     const light = fakeLightClient();
     const worker = await bootWorker(light);
@@ -915,12 +914,20 @@ describe('protocol SharedWorker', () => {
 
     // When the first tab disposes its transport, as its page hides for good
     leaving.transport.dispose(new Error('pagehide'));
+    await staying.transport.request(frame.heartbeat, undefined);
 
-    // Then its connection and its port are released before any heartbeat, and the shared chain stays up for the other
-    // tab
+    // Then the worker still holds its connection, since a closing transport posts nothing
+    expect(worker.logs.map(line => line.message)).not.toContain('Chain disconnected: c1 (1 remaining)');
+
+    // When the heartbeat runs past the beats the worker allows, while the other tab answers each
+    for (let i = 0; i <= HEARTBEAT_MISSED_BEATS; i++) {
+      await staying.transport.request(frame.heartbeat, undefined);
+      worker.beat();
+    }
+
+    // Then only the tab that left is released, its connection is freed, and the shared chain stays up for the other tab
     await worker.untilLog('Chain disconnected: c1 (1 remaining)');
-    await worker.untilLog('Port closed');
-    expect(leaving.closes()).toBe(1);
+    expect(worker.logs.filter(line => line.message === 'Port released')).toHaveLength(1);
     expect(worker.beating()).toBe(true);
     for (const disconnect of light.disconnects) {
       expect(disconnect).not.toHaveBeenCalled();
@@ -943,9 +950,10 @@ describe('protocol SharedWorker', () => {
 
     // Then the worker freed its connection at the release
     expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
-    // And once it thaws, its queued messages end its status and its chain with the release, not a halt
+    // And once it thaws, its queued messages end its status with the release, and its chain hears no halt, since the
+    // tab's link ends the rest of what it holds with that end
     await expect(status.ended).resolves.toEqual(releasedStatus);
-    await expect(connected.ended).resolves.toEqual(released);
+    expect(connected.events).toEqual([{ tag: 'connected', value: undefined }]);
   });
 
   it('As a frozen tab, my released port stays open so I hear the release whenever I thaw', async () => {
@@ -1047,17 +1055,18 @@ describe('protocol SharedWorker', () => {
     expect(tab.closes()).toBe(1);
   });
 
-  it('As a tab that left for good, my port is closed at once and not held for a release', async () => {
+  it('As a tab that stops everything itself, my port is closed at once and not held for a release', async () => {
     // Given a ready tab holding a chain connection, on an engine whose ports never say they closed, and a tab that stays
     const worker = await bootWorker(fakeLightClient());
     const leaving = worker.attach({ closeEvent: false }).speak();
     const staying = worker.connect();
     await readyStatus(leaving);
-    await connectChain(leaving, 'c1');
+    const connected = await connectChain(leaving, 'c1');
     await readyStatus(staying);
 
-    // When the leaving tab disposes its transport, as its page hides for good
-    leaving.transport.dispose(new Error('pagehide'));
+    // When the leaving tab stops its status and its chain, which leaves the worker nothing of its running
+    leaving.status.unsubscribe();
+    connected.unsubscribe();
     await worker.untilLog('Port closed');
 
     // Then its port was closed at once, with no beat, and the other tab is still served
@@ -1132,7 +1141,7 @@ describe('protocol SharedWorker', () => {
     // Then it still holds the port, and lets it go on the next beat
     expect(worker.logs.map(line => line.message)).not.toContain('Port released');
     worker.beat();
-    await expect(beats.ended).resolves.toEqual(released);
+    await expect(tab.status.ended).resolves.toEqual(releasedStatus);
     expect(worker.logs.map(line => line.message)).toContain('Port released');
   });
 
@@ -1221,7 +1230,8 @@ describe('protocol SharedWorker', () => {
     // Given a tab on a worker that reports bytes, which heard the baseline
     const light = fakeLightClient();
     const worker = await bootWorker(light, undefined, undefined, () => 1_000);
-    const telemetry = record(worker.connect().transport, frame.telemetry, undefined);
+    const tab = worker.connect();
+    const telemetry = record(tab.transport, frame.telemetry, undefined);
     await telemetry.until(1);
 
     // When the light client dies, the worker closes, and an interval passes
@@ -1229,8 +1239,8 @@ describe('protocol SharedWorker', () => {
     await worker.closedOnce;
     worker.tickNetBytes();
 
-    // Then the telemetry ended with the fatal, and no byte report reached the tab after the baseline
-    await expect(telemetry.ended).resolves.toEqual(err(hostFailure(`ProtocolFatalError: ${FATAL}`)));
+    // Then the tab heard the fatal on its status, and no byte report reached it after the baseline
+    await expect(tab.status.ended).resolves.toEqual(fatalEnd);
     expect(telemetry.events).toEqual([{ tag: 'netBytes', value: 1_000 }]);
   });
 });

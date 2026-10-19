@@ -91,7 +91,7 @@ describe('frameStatusEnd', () => {
 describe('fromTransportError', () => {
   it("As a frame, I end my status on a link's version mismatch typed, and the host reads it as the protocol's mismatch", () => {
     // Given
-    const mismatch = new TransportUnsupportedProtocolVersionError(3, 9);
+    const mismatch = new TransportUnsupportedProtocolVersionError({ wire: 1, schema: 3 }, { wire: 1, schema: 9 });
 
     // When
     const end = frameStatusEnd(fromTransportError(mismatch));

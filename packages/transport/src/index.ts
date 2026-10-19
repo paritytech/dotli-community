@@ -4,6 +4,7 @@
 export type { Codec, ResultPayload } from 'scale-ts';
 export {
   TransportHandshakeTimeoutError,
+  TransportMalformedResponseError,
   TransportUnsupportedProtocolVersionError,
   callError,
   cancelled,
@@ -18,7 +19,7 @@ export {
   reasonParts,
   unsupported,
 } from './errors.js';
-export type { CallError, Failure, TransportIssue } from './errors.js';
+export type { CallError, Failure, TransportIssue, TransportVersions } from './errors.js';
 export { createPortProvider, createWindowProvider } from './provider.js';
 export type { MessageTarget, PortLike, Provider, WindowLike, WindowMessage, WindowProviderDeps } from './provider.js';
 export { codec, defineSchema, request, subscription } from './schema.js';

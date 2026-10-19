@@ -3,8 +3,9 @@
 
 // A protocol frame without an iframe, for the layers above it. Each frame it builds is a real transport over an
 // in-memory provider pair, with a real transport on the far side the test answers through. The test says when the
-// frame is up and when it is lost. A frame's handshake is answered only once the test says it listens, so calls made
-// while it boots wait in the transport's queue as they would on a real frame.
+// frame is up and when it is lost. A frame's transport is handed out only once the test says it listens, as a real
+// frame hands out its transport once its iframe loads, since a call starts the handshake. So calls made while it boots
+// wait as they would on a real frame.
 
 import { createStatusCell, realTimers, untilStatus, type Timers } from '@dotli/shared';
 import { createTransport } from '@dotli/transport';
@@ -32,8 +33,8 @@ interface Built {
 /**
  * Up and ready unless `options.status` says otherwise, or the test moves it. `serve` sets up each frame's serving
  * transport as it is built, and each frame's transport waits on `options.timers`. A `whenReady` or `transport` on an
- * idle or failed frame builds one and starts it booting, as the frame does. A `whenReady` waits for the test to set
- * `ready`, and fails when the frame is then lost or goes idle.
+ * idle or failed frame builds one and starts it booting, as the frame does. A `transport` waits for the test to set
+ * `listening` or `ready`, and a `whenReady` for `ready`. Each fails when the frame is then lost or goes idle.
  */
 export function createFakeFrame(
   serve: (serving: ProtocolTransport) => void = () => undefined,
@@ -86,31 +87,34 @@ export function createFakeFrame(
 
   bringUp(status.get());
 
+  /** The host's side of the frame there is once the status is one of `reached`, booting one if there is none. */
+  const until = (reached: readonly ProtocolStatus[]): Promise<ProtocolTransport> => {
+    boot();
+    let host: ProtocolTransport | null = null;
+    return untilStatus(status, next => {
+      if (reached.includes(next)) {
+        host = current?.host ?? null;
+        return host !== null || lostWith;
+      }
+      if (next === 'failed' || next === 'idle') {
+        return next === 'failed' ? lostWith : new Error('frame went idle');
+      }
+      return false;
+    }).then(() => {
+      if (host === null) {
+        throw lostWith;
+      }
+      return host;
+    });
+  };
+
   return {
     frame: {
       getStatus: status.get,
       subscribeStatus: status.subscribe,
       configure: () => undefined,
-      transport: () => Promise.resolve(boot().host),
-      whenReady() {
-        boot();
-        let reached: ProtocolTransport | null = null;
-        return untilStatus(status, next => {
-          if (next === 'ready') {
-            reached = current?.host ?? null;
-            return reached !== null || lostWith;
-          }
-          if (next === 'failed' || next === 'idle') {
-            return next === 'failed' ? lostWith : new Error('frame went idle');
-          }
-          return false;
-        }).then(() => {
-          if (reached === null) {
-            throw lostWith;
-          }
-          return reached;
-        });
-      },
+      transport: () => until(['listening', 'ready']),
+      whenReady: () => until(['ready']),
       // The facades never read it, and this fake's frame speaks the host's schema.
       onVersionMismatch: () => () => undefined,
     },

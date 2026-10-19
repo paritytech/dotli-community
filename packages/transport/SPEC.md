@@ -103,11 +103,13 @@ enum Body {
 }
 
 struct HandshakeOffer {
+  wireVersion: u8,
   version: u8,
   hello: Vec<u8> /* rest */
 }
 
 struct VersionInfo {
+  wireVersion: u8,
   version: u8
 }
 
@@ -119,8 +121,10 @@ struct Call {
 ```
 
 `handshakeOffer` and `handshakeResponse` are the handshake. `failed` answers a call with a failure of the transport's
-own. `call` carries a message of a method. The layout of `Frame`, `handshakeOffer` and `handshakeResponse` MUST NOT
-change between versions, so a peer of any version reads the version it refuses.
+own. `call` carries a message of a method. `wireVersion` is the version of the transport's own wire: `Frame`, `Failure`,
+`CallError` and the handshake. It is `1`. `version` is the schema's. The layout of `Frame`, `handshakeOffer` and
+`handshakeResponse` MUST NOT change between versions, and `wireVersion` comes first in an offer, so a peer of any
+version reads the versions it refuses.
 
 `Message` is the method's own enum of **actions**. Ids MUST follow the order of the schema: `sectionId` is the section's
 place in the schema and `methodId` the method's place in its section. New sections and methods MUST go at the end. A
@@ -194,10 +198,15 @@ Each peer numbers its own calls: the opener with odd ids from 1, the accepter wi
 first id after the last `u32`. So a frame's id tells whose call it is about: one of the peer's own calls hears answers,
 values and ends, and one of the other peer's reaches the handler.
 
-A peer MUST refuse, with no answer, a call that comes before the handshake, a message whose method is not the one its
-call names, and a frame that does not decode. Nothing ever answers a `failed` frame. A message on a call the peer ended
-lately is a race and MUST be dropped quietly. So MUST a `stop` for a subscription that is not running, which counts as
-no call of the peer's.
+A peer MUST answer a `request` or a `start` that comes before its handshake is over with a `failed` frame of the same
+`id` carrying `HostFailure`, with the reason `The handshake is not over`, and run no handler for it. A peer MUST refuse,
+with no answer, a call that comes after it closed, a message whose method is not the one its call names, and a frame
+that does not decode. Nothing ever answers a `failed` frame. A message on a call the peer ended lately is a race and
+MUST be dropped quietly. So MUST a `stop` for a subscription that is not running, which counts as no call of the peer's.
+
+Ids are not reused while a call is running. As truapi does, a serving peer MUST refuse, with no answer, a `request`
+whose `id` is still in flight, and MUST NOT run its handler again. A `start` on the `id` of a running subscription
+replaces it: the running one stops with no frame sent, and the new one starts.
 
 A frame, a message, a hello or a `Failure` that leaves bytes unread does not decode, as truapi's `decode_all` refuses
 it.
@@ -209,7 +218,8 @@ each side.
 
 When no handler serves the method, the message does not decode or the handler fails, the serving peer MUST answer with a
 `failed` frame of the same `id`, carrying `Unsupported`, `MalformedFrame` or `HostFailure`. A request that leaves bytes
-unread is answered `MalformedFrame`. A response that does not decode settles the call as `MalformedFrame`.
+unread is answered `MalformedFrame`. A response that does not decode fails the call locally with an error whose cause is
+why, as truapi's client and host-api fail it, and is no `CallError`.
 
 A caller MAY abort a request. It then settles locally as `Cancelled`, the serving peer is not told, and a late answer is
 ignored.
@@ -225,8 +235,7 @@ an `interrupt` message by notifying the application layer. Nothing follows an `i
 
 The serving peer MUST end a subscription with a `failed` frame of the same `id` in place of an `interrupt` when no
 handler serves the method or the `start` does not decode (`Unsupported` or `MalformedFrame`), and when the handler
-throws, a value cannot be encoded or the serving peer disposes (`HostFailure`). The consumer hears it as the
-subscription's end.
+throws or a value cannot be encoded (`HostFailure`). The consumer hears it as the subscription's end.
 
 Each subscription method declares its own interrupt payload type `I`. Subscriptions that do not need to communicate a
 reason default `I` to `()`. The interrupt payload type is orthogonal to the type `receive` takes, and reaches the
@@ -252,15 +261,19 @@ type Unsubscribe = fn();
 
 `interrupt` hears only the provider's own `interrupt` message. `fail` hears every failure of the transport's own: a
 `failed` frame, `Cancelled` once the consumer aborts, and `MalformedFrame` when a message does not decode. `close` hears
-the one local end, the transport closing or a `start` that could not be posted. Exactly one of them is called, once.
-`unsubscribe` calls none of them.
+the one local end, the transport closing. Exactly one of them is called, once. `unsubscribe` calls none of them.
 
 #### Closing
 
 A transport closes when its provider is not in a correct environment, the handshake fails or times out, the versions
-differ, or its owner disposes it. Every pending and later request then fails with that error, and every subscription
-hears it once through `close`. Disposing also answers each request the peer is serving, and ends each subscription it
-serves, with a `failed` frame carrying `HostFailure`, and sends `stop` for each subscription it made.
+differ, its provider throws on a post, or its owner disposes it. Every pending and later request then fails with that
+error, and every subscription hears it once through `close`. A provider that throws on a post closes the transport with
+the provider's error, as truapi's client does.
+
+A transport that closes, for any reason, MUST post no frame, as truapi's runtime posts none once disposed: no `failed`
+frame for the calls it serves and no `stop` for the subscriptions it made. Each subscription it serves stops locally,
+and each request it serves is never answered. A peer learns that the other closed from its provider or a liveness check
+of its own.
 
 A peer leaves when its own `stop` leaves nothing it opened running and no request of its is in flight.
 
@@ -300,23 +313,28 @@ error is `"<name>: <message>"`, at most 500 characters, so the peer keeps the er
 One peer opens the handshake and the other accepts it. Handshake implementations CAN include a timeout, 10 seconds by
 default as in host-api and truapi, after which the connection is marked as failed and fails with a `Timeout` error.
 
-The opener MUST post a `handshakeOffer` frame with id `0`, carrying the schema's `version` in `u8` and its hello, and
-post a fresh one every 50 ms by default until it is answered or the timeout passes, since the accepter may not be
-listening yet. The accepter MUST answer every `handshakeOffer` with a `handshakeResponse` of the same `id`. Its answer
-is `Ok(hello)` when the versions match and `Err(VersionInfo)` with its own version otherwise, and every later answer
-repeats the first one it could post. A hello is decoded only at the same version, since another version's may not
-decode. A version mismatch closes both peers.
+The opener starts the handshake with its first call or its first wait for the handshake, as host-api does, unless it
+started earlier. It MUST post a `handshakeOffer` frame with id `0`, carrying the transport's `wireVersion` first, then
+the schema's `version`, each in `u8`, and its hello, and post a fresh one every 50 ms by default until it is answered or
+the timeout passes, since the accepter may not be listening yet. The accepter MUST answer every `handshakeOffer` with a
+`handshakeResponse` of the same `id`. Its answer is `Ok(hello)` when both versions match and `Err(VersionInfo)` with
+both of its own otherwise, and every later answer repeats the first. A hello is decoded only at the same versions, since
+another version's may not decode. A mismatch of either version closes both peers, and the accepter answers no offer once
+closed.
 
-A successful handshake MUST come before any call. Calls made before it wait and go out in call order once it succeeds.
-Calls of the peer that come before it are refused with no answer.
+A successful handshake MUST come before any call. Calls made before it wait and go out in call order once it succeeds. A
+`request` or a `start` of the peer that comes before it is answered with `HostFailure`, as the call ids rules say.
 
 ```rust
 enum HandshakeErr {
   Timeout,
-  UnsupportedProtocolVersion { ours: u8, theirs: u8 }
+  UnsupportedProtocolVersion { ours: Versions, theirs: Versions }
 }
 
-type ProtocolVersion = u8;
+struct Versions {
+  wire: u8,
+  schema: u8
+}
 ```
 
 `HandshakeErr` is local to each peer and never crosses the wire.

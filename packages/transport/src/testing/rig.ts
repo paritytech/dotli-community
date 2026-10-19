@@ -11,7 +11,7 @@ import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
 import { defineSchema, request, subscription, type AnyMethod } from '../schema.js';
 import { createTransport, type Sink, type Transport } from '../transport.js';
-import { frame, type Frame } from '../wire.js';
+import { WIRE_VERSION, frame, type Frame } from '../wire.js';
 import { readFrame, type RecordedFrame } from './index.js';
 
 export const RETRY_MS = 50;
@@ -216,9 +216,9 @@ export function rawRig(
     }
     peer.send(attempt.id, { tag: 'handshakeResponse', value: ok(str.enc('peer')) });
   };
-  /** Opens the handshake toward the transport, as an opener of `version`. */
-  const openHandshake = (version = VERSION, id = 1): void => {
-    peer.send(id, { tag: 'handshakeOffer', value: { version, hello: str.enc('peer') } });
+  /** Opens the handshake toward the transport, as an opener of `version` on `wireVersion`. */
+  const openHandshake = (version = VERSION, id = 1, wireVersion = WIRE_VERSION): void => {
+    peer.send(id, { tag: 'handshakeOffer', value: { wireVersion, version, hello: str.enc('peer') } });
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }

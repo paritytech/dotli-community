@@ -65,9 +65,12 @@ describe('wire', () => {
   it('As a peer of any release, I encode the handshake and a failure and get the frozen bytes', () => {
     // Given
     const frames: Frame<Uint8Array>[] = [
-      { id: 1, body: { tag: 'handshakeOffer', value: { version: 3, hello: Uint8Array.of(0x68, 0x69) } } },
+      {
+        id: 1,
+        body: { tag: 'handshakeOffer', value: { wireVersion: 1, version: 3, hello: Uint8Array.of(0x68, 0x69) } },
+      },
       { id: 2, body: { tag: 'handshakeResponse', value: ok(Uint8Array.of(0x68, 0x69)) } },
-      { id: 2, body: { tag: 'handshakeResponse', value: err({ version: 3 }) } },
+      { id: 2, body: { tag: 'handshakeResponse', value: err({ wireVersion: 1, version: 3 }) } },
       { id: 0x0102_0304, body: { tag: 'failed', value: malformedFrame('no') } },
     ];
 
@@ -76,9 +79,9 @@ describe('wire', () => {
 
     // Then
     expect(encoded).toEqual([
-      [1, 0, 0, 0, 0, 3, 0x68, 0x69],
+      [1, 0, 0, 0, 0, 1, 3, 0x68, 0x69],
       [2, 0, 0, 0, 1, 0, 0x68, 0x69],
-      [2, 0, 0, 0, 1, 1, 3],
+      [2, 0, 0, 0, 1, 1, 1, 3],
       [4, 3, 2, 1, 2, 2, 8, 0x6e, 0x6f],
     ]);
   });
