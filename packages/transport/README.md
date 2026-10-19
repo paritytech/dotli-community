@@ -139,9 +139,9 @@ sequenceDiagram
   and the upstream numbers the call itself. Its messages cross as the bytes they arrived as: the forwarder reads only a
   message's leg, to follow the call's life, and only the far ends decode a payload. When the upstream closes under a
   forwarded call, the peer's call is answered `HostFailure` with the closing error. When the forwarder closes, it posts
-  nothing to its peer and the upstream stops each forwarded subscription, and a start that replaces a forwarded
-  subscription stops the old one there too, with a stop of the forwarder's own. A peer's stop goes on only once it reads
-  whole, so the far end never refuses a stop the forwarder acted on.
+  nothing to its peer and the upstream stops each forwarded subscription. A start that replaces a forwarded subscription
+  stops the old one on the upstream with a stop of the forwarder's own. A peer's stop goes on only once it reads whole,
+  so the far end never refuses a stop the forwarder acted on.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed` or `invalid`, with its
   cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
   owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each

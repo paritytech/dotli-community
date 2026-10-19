@@ -1809,6 +1809,33 @@ describe('serving', () => {
     expect(handler).toHaveBeenCalledTimes(2);
   });
 
+  it('As a serving side, I refuse an unreadable subscription message that reuses an in-flight request id and answer only the request', async () => {
+    // Given a request the handler holds on id 3, beside a served subscription
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    transport.handleRequest(notes.read, () => answer.promise);
+    transport.handleSubscription(notes.watch, () => () => undefined);
+    peer.call(notes.read, 3, { tag: 'request', value: 'first' });
+    await timers.advance(0);
+    const { sectionId, methodId } = testSchema.addressOf(notes.watch);
+
+    // When the peer sends a subscription message it cannot read on that id, and the request is then answered
+    peer.send(3, { tag: 'call', value: { sectionId, methodId, message: UNKNOWN_LEG } });
+    await timers.advance(0);
+    answer.resolve(ok('the first'));
+    await timers.advance(0);
+
+    // Then the request in flight keeps its id, and only its answer is posted
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'invalid',
+        cause: expect.objectContaining({ message: 'A request reuses call 3, which is still in flight' }) as Error,
+      },
+    ]);
+    expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
+  });
+
   it('As a serving side, I answer each call of the peer side by side', async () => {
     // Given
     const { opener, accepter, timers } = rig();

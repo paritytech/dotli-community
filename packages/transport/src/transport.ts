@@ -801,7 +801,10 @@ export function createTransport<H, T extends Sections>(
     return register(method, address, (id, bytes, context) => {
       const message = decode(method.wholeMessage, bytes);
       if (!message.success) {
-        malformed(id, message.value, address);
+        // A failed frame on a request's id would answer that request twice.
+        if (!reusesInFlight(id)) {
+          malformed(id, message.value, address);
+        }
         return;
       }
       const sent = message.value;
