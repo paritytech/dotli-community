@@ -3,7 +3,7 @@
 
 import { toError } from '@dotli/shared';
 import type { Codec } from 'scale-ts';
-import type { Failure } from '../result.js';
+import type { Failure } from '../errors.js';
 import type { AnyMethod, Schema, Traits } from '../schema.js';
 import { decode, frame, type Accept, type Open } from '../wire.js';
 

@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Serves the shared auth and mode stores to host pages, and other tabs' auth writes to the host pages that subscribe.
-// Both stores keep the shared-auth trust boundary: host and landing origins of this root domain, never product origins.
+// Serves the shared auth and mode stores and the local wallet to host pages, and other tabs' auth writes to the host
+// pages that subscribe. Every store keeps the shared-auth trust boundary: host and landing origins of this root domain,
+// never product origins.
 
 import { captureException } from '@dotli/metrics';
 import { SITE_ID, type SiteId } from '@dotli/config';
@@ -14,10 +15,19 @@ import {
   isValidSharedAuthKey,
   isValidSharedModeKey,
   protocolSchema,
+  type LocalWalletRead,
   type ProtocolContext,
   type SharedAuthChange,
   type ProtocolServing,
 } from '@dotli/protocol';
+import {
+  forgetLocalWallet,
+  loadLocalWallet,
+  LocalWalletUnreadableError,
+  saveLocalWallet,
+  updateLocalWalletIdentity,
+  type LocalWalletStore,
+} from '@dotli/storage';
 import { denied, err, ok, type Failure, type ResultPayload, type Sink } from '@dotli/transport';
 
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
@@ -67,7 +77,7 @@ function isOriginAllowed(context: ProtocolContext): boolean {
  * Answers with what `run` returns for the call's site once its origin and site check, or with the call's refusal when
  * its origin may not use the shared stores. A site that does not check throws.
  */
-export async function whenAdmitted<T>(
+async function whenAdmitted<T>(
   payload: { siteId: string },
   context: ProtocolContext,
   run: (site: SiteId) => T | Promise<T>,
@@ -196,4 +206,53 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
       }
     },
   };
+}
+
+const { wallet } = protocolSchema.traits;
+
+const pageWallet: LocalWalletStore = { forgetLocalWallet, loadLocalWallet, saveLocalWallet, updateLocalWalletIdentity };
+
+const ENTROPY_LENGTHS = new Set([16, 20, 24, 28, 32]);
+
+function assertEntropy(value: Uint8Array): void {
+  if (!ENTROPY_LENGTHS.has(value.length)) {
+    throw new Error('Invalid local wallet entropy');
+  }
+}
+
+/** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
+async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
+  try {
+    const wallet = await store.loadLocalWallet();
+    return wallet === null
+      ? { tag: 'none', value: undefined }
+      : { tag: 'ok', value: { entropy: wallet.entropy, identity: wallet.identity } };
+  } catch (error) {
+    if (!(error instanceof LocalWalletUnreadableError)) {
+      throw error;
+    }
+    await store.forgetLocalWallet();
+    return { tag: 'unreadable', value: undefined };
+  }
+}
+
+/** Serves the wallet to host pages on `serving`, over the page's own wallet store by default. */
+export function serveLocalWallet(serving: ProtocolServing, store: LocalWalletStore = pageWallet): void {
+  serving.handleRequest(wallet.read, (payload, context) => whenAdmitted(payload, context, () => read(store)));
+  serving.handleRequest(wallet.save, (payload, context) =>
+    whenAdmitted(payload, context, async (): Promise<undefined> => {
+      assertEntropy(payload.entropy);
+      await store.saveLocalWallet(payload.entropy);
+    }),
+  );
+  serving.handleRequest(wallet.identity, (payload, context) =>
+    whenAdmitted(payload, context, async (): Promise<undefined> => {
+      await store.updateLocalWalletIdentity(payload.identity);
+    }),
+  );
+  serving.handleRequest(wallet.forget, (payload, context) =>
+    whenAdmitted(payload, context, async (): Promise<undefined> => {
+      await store.forgetLocalWallet();
+    }),
+  );
 }

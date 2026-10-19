@@ -46,7 +46,6 @@ import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } fro
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { createWireReport, reportRefusals } from './refusal-report.js';
 import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
-import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
 const { frame, resolve, chain } = protocolSchema.traits;
 
@@ -103,6 +102,14 @@ interface PortSession {
   unwatch: () => void;
 }
 
+/**
+ * A closed tab's port neither throws nor tells the worker, so the worker beats each port on this interval, the iframe
+ * answers each beat, and the worker lets go of a port it heard nothing from for this many beats. Three beats of 20 s
+ * release a dead tab's connections within about a minute, and leave an iframe stuck in a long task two beats of slack.
+ */
+const HEARTBEAT_INTERVAL_MS = 20_000;
+export const HEARTBEAT_MISSED_BEATS = 3;
+
 const TAG = '[dot.li SW]';
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 // Bounds what a tab can write into this worker's span attributes. The host mints a UUID.
@@ -122,6 +129,94 @@ export function workerNetwork(name: string): WorkerNetwork {
     return err(`Unknown protocol network: "${requested}"`);
   }
   return ok(requested);
+}
+
+/** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
+function openRequestSpan(openSpan: typeof m.open, method: CallName, resolutionId: string | null): SpanHandle {
+  return openSpan(S.PROTOCOL_WORKER_REQUEST, {
+    root: true,
+    attributes: {
+      method,
+      ...(resolutionId !== null && RESOLUTION_ID_PATTERN.test(resolutionId) ? { resolution_id: resolutionId } : {}),
+    },
+  });
+}
+
+/** Ends `span` as answered, failed with `error`, or cancelled by the tab. */
+function endSpan(span: SpanHandle, error: Error | undefined | 'cancelled'): void {
+  if (error === undefined || error === 'cancelled') {
+    span.setAttributes({ outcome: error ?? 'ok' });
+  } else {
+    span.setAttributes({ outcome: 'error', error_name: errorName(error) ?? 'NonError' });
+  }
+  span.end();
+}
+
+/** Spans a request when its calls are timed. */
+function traced<P, R, E extends DomainFailure>(
+  openSpan: typeof m.open,
+  method: Request<P, R, E>,
+  handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
+): RequestHandler<P, R, E, ProtocolHello> {
+  const { name, timed } = policyOf(method);
+  if (!timed) {
+    return handler;
+  }
+  return async (payload, context) => {
+    const span = openRequestSpan(openSpan, name, context.hello.resolutionId);
+    try {
+      const answer = await handler(payload, context);
+      endSpan(span, answer.success ? undefined : failureOf(method, answer.value));
+      return answer;
+    } catch (error) {
+      endSpan(span, toError(error));
+      throw error;
+    }
+  };
+}
+
+/** Spans a subscription until the value that answers it, or its end, or the tab stopping it first. */
+function tracedSubscription<S, V, I extends DomainFailure>(
+  openSpan: typeof m.open,
+  method: Subscription<S, V, I>,
+  answers: (value: NoInfer<V>) => boolean,
+  handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
+): SubscriptionHandler<S, V, I, ProtocolHello> {
+  const name = callName(method);
+  return (start, context, sink) => {
+    const span = openRequestSpan(openSpan, name, context.hello.resolutionId);
+    let open = true;
+    const settle = (error: Error | undefined | 'cancelled'): void => {
+      if (!open) {
+        return;
+      }
+      open = false;
+      endSpan(span, error);
+    };
+    const spanned: Sink<V, I> = {
+      receive: value => {
+        sink.receive(value);
+        if (answers(value)) {
+          settle(undefined);
+        }
+      },
+      interrupt: outcome => {
+        settle(outcome.success ? undefined : failureOf(method, outcome.value));
+        sink.interrupt(outcome);
+      },
+    };
+    let stop: () => void;
+    try {
+      stop = handler(start, context, spanned);
+    } catch (error) {
+      settle(toError(error));
+      throw error;
+    }
+    return () => {
+      settle('cancelled');
+      stop();
+    };
+  };
 }
 
 export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
@@ -302,92 +397,6 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     return session.scope;
   }
 
-  /** The resolution id goes on this span alone, since scope or metric defaults would label other tabs' work too. */
-  function openRequestSpan(method: CallName, resolutionId: string | null) {
-    return openSpan(S.PROTOCOL_WORKER_REQUEST, {
-      root: true,
-      attributes: {
-        method,
-        ...(resolutionId !== null && RESOLUTION_ID_PATTERN.test(resolutionId) ? { resolution_id: resolutionId } : {}),
-      },
-    });
-  }
-
-  /** Ends `span` as answered, failed with `error`, or cancelled by the tab. */
-  function endSpan(span: SpanHandle, error: Error | undefined | 'cancelled'): void {
-    if (error === undefined || error === 'cancelled') {
-      span.setAttributes({ outcome: error ?? 'ok' });
-    } else {
-      span.setAttributes({ outcome: 'error', error_name: errorName(error) ?? 'NonError' });
-    }
-    span.end();
-  }
-
-  /** Spans a request when its calls are timed. */
-  function traced<P, R, E extends DomainFailure>(
-    method: Request<P, R, E>,
-    handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
-  ): RequestHandler<P, R, E, ProtocolHello> {
-    const { name, timed } = policyOf(method);
-    if (!timed) {
-      return handler;
-    }
-    return async (payload, context) => {
-      const span = openRequestSpan(name, context.hello.resolutionId);
-      try {
-        const answer = await handler(payload, context);
-        endSpan(span, answer.success ? undefined : failureOf(method, answer.value));
-        return answer;
-      } catch (error) {
-        endSpan(span, toError(error));
-        throw error;
-      }
-    };
-  }
-
-  /** Spans a subscription until the value that answers it, or its end, or the tab stopping it first. */
-  function tracedSubscription<S, V, I extends DomainFailure>(
-    method: Subscription<S, V, I>,
-    answers: (value: NoInfer<V>) => boolean,
-    handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
-  ): SubscriptionHandler<S, V, I, ProtocolHello> {
-    const name = callName(method);
-    return (start, context, sink) => {
-      const span = openRequestSpan(name, context.hello.resolutionId);
-      let open = true;
-      const settle = (error: Error | undefined | 'cancelled'): void => {
-        if (!open) {
-          return;
-        }
-        open = false;
-        endSpan(span, error);
-      };
-      const spanned: Sink<V, I> = {
-        receive: value => {
-          sink.receive(value);
-          if (answers(value)) {
-            settle(undefined);
-          }
-        },
-        interrupt: outcome => {
-          settle(outcome.success ? undefined : failureOf(method, outcome.value));
-          sink.interrupt(outcome);
-        },
-      };
-      let stop: () => void;
-      try {
-        stop = handler(start, context, spanned);
-      } catch (error) {
-        settle(toError(error));
-        throw error;
-      }
-      return () => {
-        settle('cancelled');
-        stop();
-      };
-    };
-  }
-
   function serve(session: PortSession): void {
     const { transport } = session;
     transport.handleSubscription(frame.status, (start, context, sink) => {
@@ -415,25 +424,29 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       log.warn(`${TAG} ${method} failed`, error);
     });
     serveEngineMethods(reporting, {
-      warmup: traced(frame.warmup, (payload, context) => requireEngine().warmup(payload, context)),
+      warmup: traced(openSpan, frame.warmup, (payload, context) => requireEngine().warmup(payload, context)),
       resolveDotName: tracedSubscription(
+        openSpan,
         resolve.dotName,
         value => value.tag === 'resolved',
         (start, context, sink) => requireEngine().resolveDotName(start, context, sink),
       ),
-      resolveOwner: traced(resolve.owner, (payload, context) => requireEngine().resolveOwner(payload, context)),
-      resolveExecutableManifest: traced(resolve.executableManifest, (payload, context) =>
+      resolveOwner: traced(openSpan, resolve.owner, (payload, context) =>
+        requireEngine().resolveOwner(payload, context),
+      ),
+      resolveExecutableManifest: traced(openSpan, resolve.executableManifest, (payload, context) =>
         requireEngine().resolveExecutableManifest(payload, context),
       ),
-      resolveRootManifest: traced(resolve.rootManifest, (payload, context) =>
+      resolveRootManifest: traced(openSpan, resolve.rootManifest, (payload, context) =>
         requireEngine().resolveRootManifest(payload, context),
       ),
       connect: tracedSubscription(
+        openSpan,
         chain.connect,
         value => value.tag === 'connected',
         (start, context, sink) => scopeOf(session).connect(start, context, sink),
       ),
-      send: traced(chain.send, (payload, context) => scopeOf(session).send(payload, context)),
+      send: traced(openSpan, chain.send, (payload, context) => scopeOf(session).send(payload, context)),
     });
   }
 

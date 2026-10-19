@@ -4,9 +4,17 @@
 // A schema nests traits, then methods. A method is a request or a subscription, built from the codecs of what its sides
 // send, and carries its types, so the transport calls and serves it by the method itself. Wire ids are positions.
 
-import { Enum, Result, _void, type Codec, type ResultPayload } from 'scale-ts';
-import { callError, type CallError, type Variant } from './result.js';
+import { Bytes, Enum, Result, _void, enhanceCodec, type Codec, type ResultPayload } from 'scale-ts';
+import { callError, type CallError } from './errors.js';
 import { frameOf, type Frame } from './wire.js';
+
+/** Wraps plain encode and decode functions as a codec. A payload ends its message, so it takes the rest of the bytes. */
+export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8Array) => T): Codec<T> {
+  return enhanceCodec(Bytes(Infinity), encode, decode);
+}
+
+/** A record's entries as a tagged union, the shape a scale-ts `Enum` reads and writes. */
+export type Variant<T> = { [K in keyof T]: { tag: K; value: T[K] } }[keyof T];
 
 /** What a request's sides send: its payload, then the answer. */
 export interface RequestTypes<P, R, E> {

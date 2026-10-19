@@ -3,9 +3,8 @@
 
 import { _void, str, u8, type Codec } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { codec } from './codec.js';
-import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './result.js';
-import { request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
+import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './errors.js';
+import { codec, request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
 import { decode, encodeFrame, frame, type Frame } from './wire.js';
 
 const read = request({ request: str, response: str, error: u8 });

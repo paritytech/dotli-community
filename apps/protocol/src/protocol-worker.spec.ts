@@ -25,6 +25,7 @@ import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome }
 import { deferred, bindLogSink, type LogLevel } from '@dotli/shared';
 import { createTestTicker } from './net-bytes.fake.js';
 import {
+  HEARTBEAT_MISSED_BEATS,
   startProtocolWorker,
   workerNetwork,
   type WorkerResolver,
@@ -32,10 +33,8 @@ import {
   type WorkerScope,
 } from './protocol-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { connectSharedWorker, type SharedWorkerLink } from './shared-worker-link.js';
+import { connectSharedWorker, registerWorkerRelay, type SharedWorkerLink } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
-import { registerWorkerRelay } from './worker-relay.js';
-import { HEARTBEAT_MISSED_BEATS } from './worker-port.js';
 
 const { frame, chain, resolve: names } = protocolSchema.traits;
 

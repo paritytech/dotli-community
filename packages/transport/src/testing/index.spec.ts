@@ -4,7 +4,7 @@
 import { _void, str } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 
-import { err, unsupported } from '../result.js';
+import { err, unsupported } from '../errors.js';
 import { defineSchema, request, subscription } from '../schema.js';
 import { encodeFrame, frame } from '../wire.js';
 import { FrameRefusedError, readFrame, readMessage } from './index.js';

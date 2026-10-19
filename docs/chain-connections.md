@@ -49,7 +49,7 @@ flowchart LR
     Engine["Engine<br/>(engine.ts)"]
     IframePool[("Iframe chain pool<br/>direct + rpc modes")]
     Resolver["Resolver reads<br/>(Asset Hub, People)"]
-    Observe["Watched chains<br/>(observe-chains.ts)"]
+    Observe["Watched chains<br/>(light-client-service.ts)"]
   end
 
   subgraph Worker["SharedWorker (smoldot-shared-worker)"]
@@ -420,7 +420,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Network panel | `apps/host/src/state/network-monitor.ts`, `ChainPool.watch` in `packages/chains/src/chain-pool.ts`, `packages/chains/src/header-number.ts` |
 | Bitswap | `packages/bitswap/src/client.ts`, `packages/bitswap/src/relay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/engine.ts` |
-| Watched chains | `apps/protocol/src/observe-chains.ts` |
+| Watched chains | `apps/protocol/src/light-client-service.ts` (`observeChains`) |
 | SharedWorker ports and heartbeat | `apps/protocol/src/protocol-worker.ts` |
 
 ## Known limits

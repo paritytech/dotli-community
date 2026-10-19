@@ -7,13 +7,11 @@ import { toError } from '@dotli/shared';
 import { manualTimers, recordLog, type LogLine } from '@dotli/shared/testing';
 import { Bytes, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
 import { onTestFinished } from 'vitest';
-import type { TransportIssue } from '../errors.js';
+import { ok, type CallError, type TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
-import { ok, type CallError } from '../result.js';
 import { defineSchema, request, subscription, type AnyMethod } from '../schema.js';
-import type { Sink } from '../serving.js';
-import { createTransport, type Transport } from '../transport.js';
+import { createTransport, type Sink, type Transport } from '../transport.js';
 import { encodeFrame, frame, type Frame } from '../wire.js';
 import { readFrame, readMessage, type RecordedFrame } from './index.js';
 

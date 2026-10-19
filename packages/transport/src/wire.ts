@@ -8,7 +8,7 @@
 
 import { Bytes, Enum, Result, Struct, u32, u8, type Codec, type CodecType, type ResultPayload } from 'scale-ts';
 import { toError } from '@dotli/shared';
-import { err, failure, ok } from './result.js';
+import { err, failure, ok } from './errors.js';
 import type { Address } from './schema.js';
 
 // A hello stays bytes, since another release's may not decode.

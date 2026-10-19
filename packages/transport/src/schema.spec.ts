@@ -1,10 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Enum, Struct, _void, str, u32, type ResultPayload } from 'scale-ts';
+import { Enum, Struct, Tuple, _void, str, u32, u8, type ResultPayload } from 'scale-ts';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CallError } from './result.js';
-import { defineSchema, request, subscription, type DomainError, type MethodTypes, type Traits } from './schema.js';
+import type { CallError } from './errors.js';
+import {
+  codec,
+  defineSchema,
+  request,
+  subscription,
+  type DomainError,
+  type MethodTypes,
+  type Traits,
+} from './schema.js';
 
 const label = Struct({ label: str });
 const frameFailure = Enum({ fatal: _void, released: _void });
@@ -13,6 +21,10 @@ const owner = request({ request: label, response: str });
 const changes = subscription({ start: label, receive: str });
 const status = subscription({ start: _void, receive: _void, interrupt: frameFailure });
 const reload = request({ request: _void, response: _void, error: frameFailure });
+const text = codec<string>(
+  value => new TextEncoder().encode(value),
+  bytes => new TextDecoder().decode(bytes),
+);
 
 const s = defineSchema({
   version: 2,
@@ -131,5 +143,49 @@ describe('schema', () => {
     expectTypeOf<DomainError<typeof reload>>().toEqualTypeOf<FrameFailure>();
     expectTypeOf<DomainError<typeof owner>>().toBeUndefined();
     expect(s.hello).toBe(u32);
+  });
+});
+
+describe('codec', () => {
+  it('As a schema author, I wrap plain functions as a codec and the library encodes and decodes through them', () => {
+    // Given
+    const wrapped = text;
+
+    // When
+    const bytes = wrapped.enc('hello');
+
+    // Then
+    expect([...bytes]).toEqual([104, 101, 108, 108, 111]);
+    expect(wrapped.dec(bytes)).toBe('hello');
+  });
+
+  it('As a schema author, I decode my payload after other fields and my decode gets exactly the rest of the input', () => {
+    // Given
+    const message = Tuple(u8, text);
+    const bytes = message.enc([7, 'tail']);
+
+    // When
+    const decoded = message.dec(bytes);
+
+    // Then
+    expect([...bytes]).toEqual([7, 0x74, 0x61, 0x69, 0x6c]);
+    expect(decoded).toEqual([7, 'tail']);
+  });
+
+  it('As a schema author, I throw from my decode and the library rethrows my own error', () => {
+    // Given
+    const thrown = new RangeError('not a note');
+    const broken = codec<string>(
+      () => new Uint8Array(0),
+      () => {
+        throw thrown;
+      },
+    );
+
+    // When
+    const decode = () => broken.dec(new Uint8Array([1]));
+
+    // Then
+    expect(decode).toThrow(thrown);
   });
 });

@@ -35,13 +35,11 @@ import {
 import { DB_NAME } from '@dotli/storage';
 import { createTransport, createWindowProvider } from '@dotli/transport';
 
-import { connectSharedWorker } from './shared-worker-link.js';
-import { registerWorkerRelay } from './worker-relay.js';
+import { connectSharedWorker, registerWorkerRelay } from './shared-worker-link.js';
 import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
 import { createEngine, serveEngineScope, type ProtocolEngine } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
-import { serveLocalWallet } from './local-wallet-handler.js';
-import { createSharedStoreHandler, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
+import { createSharedStoreHandler, serveLocalWallet, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createRefusalReporter, createWireReport, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
 import { createFrameBoot } from './frame-boot.js';
