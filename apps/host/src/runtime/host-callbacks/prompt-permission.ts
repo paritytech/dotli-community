@@ -13,6 +13,7 @@ import {
   isEnforceableDevicePermission,
   type EnforceablePermissionName,
   type PermissionAuthorizations,
+  type PermissionStatus,
 } from '../permissions.js';
 import { throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
@@ -84,26 +85,23 @@ interface PromptOptions {
   permissions: PromptPermissionStores;
 }
 
-function decidePromptPermission(
+/** Only a question waits for the dialog queue. A stored answer needs no dialog, so it never waits behind one. */
+async function decidePromptPermission(
   label: string,
   name: EnforceablePermissionName,
   options: PromptOptions,
   modalScope: BlockingModalScope,
 ): Promise<PermissionDecision> {
-  return modalScope.enqueue(signal => decidePromptPermissionWhenActive(label, name, options, signal));
+  const stored = storedDecision(label, name, options, await options.permissions.registry.status(label, name));
+  return stored ?? modalScope.enqueue(signal => decidePromptPermissionWhenActive(label, name, options, signal));
 }
 
-async function decidePromptPermissionWhenActive(
+function storedDecision(
   label: string,
   name: EnforceablePermissionName,
-  options: PromptOptions,
-  signal: AbortSignal,
-): Promise<PermissionDecision> {
-  const { kind, limiter, ask, notify, permissions } = options;
-  // A grant reloads the product.
-  const gatedByIframe = isDevicePermission(name);
-  const status = await permissions.registry.status(label, name);
-  throwIfAborted(signal);
+  { kind, notify }: PromptOptions,
+  status: PermissionStatus,
+): PermissionDecision | null {
   if (status === 'granted') {
     // The status also reflects a pending one-time grant, which AllowAlways would quietly make permanent.
     return 'AllowOnce';
@@ -120,6 +118,25 @@ async function decidePromptPermissionWhenActive(
       browserNotification: false,
     });
     return 'Deny';
+  }
+  return null;
+}
+
+async function decidePromptPermissionWhenActive(
+  label: string,
+  name: EnforceablePermissionName,
+  options: PromptOptions,
+  signal: AbortSignal,
+): Promise<PermissionDecision> {
+  const { limiter, ask, permissions } = options;
+  // A grant reloads the product.
+  const gatedByIframe = isDevicePermission(name);
+  // An earlier prompt for the same permission may have answered it while this one waited.
+  const status = await permissions.registry.status(label, name);
+  throwIfAborted(signal);
+  const stored = storedDecision(label, name, options, status);
+  if (stored !== null) {
+    return stored;
   }
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);

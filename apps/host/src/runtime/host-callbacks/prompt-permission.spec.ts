@@ -246,6 +246,38 @@ describe('three-way permission prompts', () => {
 });
 
 describe('queued permission prompts', () => {
+  it('As a product with notifications granted, I get my answer while another dialog is open', async () => {
+    // Given a dialog that holds the queue until the user answers it
+    await registry.setStatus('myapp', 'Notifications', 'granted');
+    const scope = createBlockingModalCoordinator().createScope();
+    void scope.enqueue(signal => page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }));
+    await promptShown();
+
+    // When
+    const response = prompts('myapp', scope).devicePermission(PRODUCT, 'Notifications');
+
+    // Then
+    await expect(response).resolves.toBe('AllowOnce');
+    expect(page.shown()).toMatchObject({ permission: 'ChainSubmit' });
+    scope.dispose();
+  });
+
+  it('As a dotli user with notifications blocked, I am told so while another dialog is open', async () => {
+    // Given a dialog that holds the queue until the user answers it
+    await registry.setStatus('myapp', 'Notifications', 'denied');
+    const scope = createBlockingModalCoordinator().createScope();
+    void scope.enqueue(signal => page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }));
+    await promptShown();
+
+    // When
+    const response = prompts('myapp', scope).devicePermission(PRODUCT, 'Notifications');
+
+    // Then
+    await expect(response).resolves.toBe('Deny');
+    expect(page.notices).toEqual([expect.objectContaining({ tone: 'idle' })]);
+    scope.dispose();
+  });
+
   it('As a dotli integrator, I queue a duplicate permission prompt and the host rechecks the permission before showing it', async () => {
     // Given
     let status: 'NotDetermined' | 'Authorized' = 'NotDetermined';
