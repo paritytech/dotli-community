@@ -66,7 +66,11 @@ const subscriptionLegs = <S, V, I>(start: Codec<S>, receive: Codec<V>, interrupt
 
 // A leg's payload is read as nothing, so reading a message's leg reads only its tag and copies no payload.
 const requestLeg = requestLegs(_void, _void).dec;
-const subscriptionLeg = subscriptionLegs(_void, _void, _void).dec;
+const voidSubscriptionLegs = subscriptionLegs(_void, _void, _void);
+const subscriptionLeg = voidSubscriptionLegs.dec;
+
+/** The stop of any subscription, which carries nothing, so a side that decodes none of its messages can send it. */
+export const SUBSCRIPTION_STOP = voidSubscriptionLegs.enc({ tag: 'stop', value: undefined });
 
 /** Declares a request. `error` is the method's own error, and a method without one has an empty one. */
 export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, undefined>;

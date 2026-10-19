@@ -134,6 +134,12 @@ sequenceDiagram
 - As truapi does with an id the peer reuses, a request whose id is still in flight is refused with no answer, and its
   handler does not run again. A start on the id of a running subscription replaces it: the running one stops with
   nothing sent, and the new one starts.
+- A transport forwards a peer's calls of chosen methods to another transport of the same schema, which places them at
+  the same ids. A forwarded call is ordinary frames on both links, so each link keeps every rule it applies to its peer,
+  and the upstream numbers the call itself. Its messages cross as the bytes they arrived as: the forwarder reads only a
+  message's leg, to follow the call's life, and only the far ends decode a payload. When the upstream closes under a
+  forwarded call, the peer's call is answered `HostFailure` with the closing error. When the forwarder closes, it posts
+  nothing to its peer and the upstream stops each forwarded subscription.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed` or `invalid`, with its
   cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
   owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each
@@ -183,6 +189,10 @@ sequenceDiagram
   - `handleSubscription(method, handler)` serves a subscription method. A `SubscriptionHandler` gets the start, a
     `CallContext` and a `Sink`, with `send(value)` and `interrupt(reason)`, where `reason` is the method's own interrupt
     reason, which the subscriber hears as it is, and returns its stop function.
+  - `forward(methods, upstream)` serves each of `methods` by forwarding the peer's calls to `upstream`, another
+    `Transport` this library built, as their message bytes, and returns what stops forwarding them, which leaves the
+    open calls to run to their end. It throws for a method `upstream` places elsewhere, for a transport this library did
+    not build, and for a method that already has a handler.
   - `dispose(reason)` closes the transport, posting nothing, and disposes the provider.
 - `CallContext<H>` is `{ hello }`, the peer's hello.
 - `TransportHandshakeTimeoutError` closes an opener that heard no answer in time.

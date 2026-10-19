@@ -28,6 +28,7 @@ import {
 import type { Provider } from './provider.js';
 import { createRecentIds } from './recent-ids.js';
 import {
+  SUBSCRIPTION_STOP,
   sameMethod,
   type Address,
   type AnyMethod,
@@ -159,6 +160,14 @@ export interface Transport<H> {
     handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, H>,
   ): () => void;
   /**
+   * Serves each of `methods` by forwarding the peer's calls to `upstream` as their message bytes, and the answers back.
+   * A forwarded call waits for `upstream`'s handshake like its own calls, and is answered `HostFailure` with the
+   * closing error when `upstream` closes under it. Returns what stops forwarding them, which leaves the open calls to
+   * run to their end. Throws for a method `upstream` does not place at the same ids, for an `upstream` this library did
+   * not build, and for a method that already has a handler.
+   */
+  forward(methods: readonly AnyMethod[], upstream: Transport<unknown>): () => void;
+  /**
    * Closes this side, and posts nothing. Every subscription it serves stops, every one it made hears `close(reason)`,
    * every pending and later request rejects with `reason`, and the provider is disposed.
    */
@@ -185,6 +194,42 @@ interface Running {
   /** Ends it with nothing sent, and runs its stop function. */
   drop(): void;
 }
+
+/** What a call opened for a forwarder hears from the peer it went to. */
+interface Heard {
+  /** A message on the call, as its bytes. */
+  message(bytes: Uint8Array): void;
+  /** The failure the peer answered the call with, which ends it. */
+  fail(error: Failure): void;
+  /** The transport closed with `error`, which ends the call. */
+  close(error: Error): void;
+}
+
+/** A call opened for a forwarder. */
+interface Forwarded {
+  /** Posts a further message on the call once it went out, and nothing while it waits for the handshake. */
+  send(bytes: Uint8Array): void;
+  /** Ends the call with nothing posted, so a late message on it is dropped and one still waiting never goes out. */
+  forget(): void;
+}
+
+/** What a forwarder reaches of the transport it forwards to. */
+interface Upstream {
+  /** Where the upstream's schema places `method`. Throws for a method it lacks. */
+  addressOf(method: AnyMethod): Address;
+  /** Opens a call of the method at `address` that carries `message` as it is. */
+  open(address: Address, message: Uint8Array, heard: Heard): Forwarded;
+}
+
+// Each transport this library built, so `forward` reaches another's calls with no public raw frame API.
+const upstreams = new WeakMap<Transport<unknown>, Upstream>();
+
+/** A frame that carries `message` on call `id` of the method at `address`, as the bytes it is. */
+const carrying = (address: Address, id: number, message: Uint8Array): Uint8Array =>
+  frame.enc({
+    id,
+    body: { tag: 'call', value: { sectionId: address.sectionId, methodId: address.methodId, message } },
+  });
 
 const DEFAULT_RETRY_MS = 50;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -515,14 +560,71 @@ export function createTransport<H, T extends Sections>(
     outCall.fail(error);
   };
 
+  /**
+   * Opens a call for a transport that forwards its peer's calls here. It starts the handshake and waits for it with the
+   * other calls, as `subscribe` does, and its messages cross as the bytes they are.
+   */
+  const open = (address: Address, message: Uint8Array, heard: Heard): Forwarded => {
+    let state: 'queued' | 'open' | 'ended' = 'queued';
+    const id = nextId();
+    const end = (): void => {
+      state = 'ended';
+      if (out.delete(id)) {
+        ended.add(id);
+      }
+    };
+    const call: OutCall = {
+      address,
+      hear(bytes) {
+        heard.message(bytes);
+      },
+      fail(error) {
+        end();
+        heard.fail(error);
+      },
+      close(error) {
+        end();
+        heard.close(error);
+      },
+    };
+    startHandshake();
+    place(
+      () => {
+        if (state !== 'queued') {
+          return;
+        }
+        out.set(id, call);
+        // A post the provider throws on closes the transport, which ends this call with why.
+        if (post(carrying(address, id, message), address).success) {
+          state = 'open';
+        }
+      },
+      error => {
+        if (state === 'queued') {
+          state = 'ended';
+          heard.close(error);
+        }
+      },
+    );
+    return {
+      send(bytes) {
+        if (state === 'open') {
+          post(carrying(address, id, bytes), address);
+        }
+      },
+      forget: end,
+    };
+  };
+
   // The calls this side serves. Each method's handler decodes the peer's messages with the method's own codec, answers a
   // request with its `Result` and streams a subscription until one side ends it. The library's own outcomes, no handler, a
   // message that does not decode and a handler that throws, go back as a failure frame. Only calls the transport
   // admitted reach this side, once the handshake told who the peer is.
 
   const handlers = new Map<AnyMethod, Served<H>>();
-  // The peer's requests whose handlers have not settled, by id. A close drops them, so none is answered.
-  const inFlight = new Set<number>();
+  // The peer's requests whose handlers have not settled, by id, with what drops each. A close drops them, so none is
+  // answered.
+  const inFlight = new Map<number, () => void>();
   const running = new Map<number, Running>();
 
   /** Stores one handler per method, and returns what unregisters it. */
@@ -559,12 +661,22 @@ export function createTransport<H, T extends Sections>(
     post(data.value, address);
   }
 
+  /**
+   * Refuses a request whose id is still in flight. As truapi does, that is the peer's mistake, and the one in flight
+   * keeps it.
+   */
+  const reusesInFlight = (id: number): boolean => {
+    if (!inFlight.has(id)) {
+      return false;
+    }
+    refuse('invalid', new Error(`A request reuses call ${String(id)}, which is still in flight`));
+    return true;
+  };
+
   function handleRequest<P, R, E>(method: Request<P, R, E>, handler: RequestHandler<P, R, E, H>): () => void {
     const address = schema.addressOf(method);
     return register(method, address, (id, bytes, context) => {
-      // As truapi does, a call whose id is still in flight is the peer's mistake, and the one in flight keeps it.
-      if (inFlight.has(id)) {
-        refuse('invalid', new Error(`A request reuses call ${String(id)}, which is still in flight`));
+      if (reusesInFlight(id)) {
         return;
       }
       const message = decode(method.wholeMessage, bytes);
@@ -577,7 +689,8 @@ export function createTransport<H, T extends Sections>(
         return;
       }
       const payload = message.value.value;
-      inFlight.add(id);
+      // A handler's late answer finds its id gone, so dropping it needs nothing more.
+      inFlight.set(id, () => undefined);
       // Run in the turn the call arrives, and a handler that throws answers like one that rejects.
       void new Promise<ResultPayload<R, CallError<E>>>(resolve => {
         resolve(handler(payload, context));
@@ -699,6 +812,169 @@ export function createTransport<H, T extends Sections>(
     });
   }
 
+  // The calls this side forwards. Each goes on to the upstream as a call of its own, numbered there, and every message
+  // crosses as the bytes it is, so only the far ends decode a payload. Only the leg of a message is read, to follow the
+  // call's life.
+
+  /** Forwards a peer's request, and posts the upstream's answer back on its id. */
+  const forwardRequest = (
+    upstream: Upstream,
+    method: AnyMethod,
+    address: Address,
+    id: number,
+    request: Uint8Array,
+  ): void => {
+    if (reusesInFlight(id)) {
+      return;
+    }
+    const call = upstream.open(address, request, {
+      message(answer) {
+        const leg = decode(method.leg, answer);
+        // An answer whose leg cannot be read goes back, so the peer refuses it as one it cannot decode.
+        if (leg.success && leg.value.tag !== 'response') {
+          refuse('invalid', new Error(`A ${leg.value.tag} answers forwarded call ${String(id)}`));
+          return;
+        }
+        call.forget();
+        if (inFlight.delete(id)) {
+          post(carrying(address, id, answer), address);
+        }
+      },
+      fail(error) {
+        if (inFlight.delete(id)) {
+          postFailed(id, error, address);
+        }
+      },
+      close(error) {
+        if (inFlight.delete(id)) {
+          postFailed(id, hostFailure(error), address);
+        }
+      },
+    });
+    inFlight.set(id, () => {
+      call.forget();
+    });
+  };
+
+  /** Forwards a peer's subscription, and posts what the upstream sends back on its id until either side ends it. */
+  const forwardSubscription = (
+    upstream: Upstream,
+    method: AnyMethod,
+    address: Address,
+    id: number,
+    start: Uint8Array,
+  ): void => {
+    /** Ends it here once. Returns whether it was still running. */
+    const finish = (): boolean => {
+      if (running.get(id) !== entry) {
+        return false;
+      }
+      running.delete(id);
+      return true;
+    };
+    const stopWith = (stop: Uint8Array): void => {
+      if (finish()) {
+        call.send(stop);
+        call.forget();
+      }
+    };
+    const entry: Running = {
+      address,
+      hear(message) {
+        const leg = decode(method.leg, message);
+        if (!leg.success) {
+          refuse('malformed', leg.value);
+        } else if (leg.value.tag === 'stop') {
+          stopWith(message);
+        } else {
+          refuse('invalid', new Error(`A ${leg.value.tag} names subscription ${String(id)}, which is running`));
+        }
+      },
+      // The upstream is still open, so it stops what it holds there, as a subscriber stops its own.
+      drop: () => {
+        stopWith(SUBSCRIPTION_STOP);
+      },
+    };
+    const call = upstream.open(address, start, {
+      message(sent) {
+        const leg = decode(method.leg, sent);
+        // A message whose leg cannot be read counts as a value, as a subscriber counts it.
+        const tag = leg.success ? leg.value.tag : 'receive';
+        if (tag === 'start' || tag === 'stop') {
+          refuse('invalid', new Error(`A ${tag} names forwarded subscription ${String(id)}, which this side made`));
+          return;
+        }
+        if (tag === 'interrupt') {
+          finish();
+          call.forget();
+        }
+        post(carrying(address, id, sent), address);
+      },
+      fail(error) {
+        if (finish()) {
+          postFailed(id, error, address);
+        }
+      },
+      close(error) {
+        if (finish()) {
+          postFailed(id, hostFailure(error), address);
+        }
+      },
+    });
+    running.set(id, entry);
+  };
+
+  /** Serves `method` by forwarding each call the peer opens to `upstream`, a request or a subscription by its leg. */
+  const forwarding =
+    (upstream: Upstream, method: AnyMethod, address: Address): Served<H> =>
+    (id, message) => {
+      const leg = decode(method.leg, message);
+      if (!leg.success) {
+        malformed(id, leg.value, address);
+        return;
+      }
+      switch (leg.value.tag) {
+        case 'request':
+          forwardRequest(upstream, method, address, id, message);
+          return;
+        case 'start':
+          forwardSubscription(upstream, method, address, id, message);
+          return;
+        default:
+          refuse('invalid', new Error(`A ${leg.value.tag} names call ${String(id)}, which is not open`));
+      }
+    };
+
+  function forward(methods: readonly AnyMethod[], to: Transport<unknown>): () => void {
+    const upstream = upstreams.get(to);
+    if (upstream === undefined) {
+      throw new Error('The upstream transport was not built by this library');
+    }
+    const placed = methods.map(method => {
+      const address = schema.addressOf(method);
+      if (!sameMethod(upstream.addressOf(method), address)) {
+        throw new Error(`${address.section}.${address.method} sits elsewhere in the upstream`);
+      }
+      return { method, address };
+    });
+    const unregisters: (() => void)[] = [];
+    const unregisterAll = (): void => {
+      for (const unregister of unregisters) {
+        unregister();
+      }
+    };
+    // A method refused partway leaves none of the others forwarded.
+    try {
+      for (const { method, address } of placed) {
+        unregisters.push(register(method, address, forwarding(upstream, method, address)));
+      }
+    } catch (error) {
+      unregisterAll();
+      throw error;
+    }
+    return unregisterAll;
+  }
+
   /** The leg a message of the peer's reads as, or undefined when its method is not this schema's or it reads as none. */
   const legOf = (call: Call<Uint8Array>): string | undefined => {
     const method = schema.methodAt(call.sectionId, call.methodId);
@@ -757,7 +1033,11 @@ export function createTransport<H, T extends Sections>(
     phase = { name: 'closed', error };
     stopAttempts.abort(error);
     handshakeOver.resolve(undefined);
+    const dropped = [...inFlight.values()];
     inFlight.clear();
+    for (const drop of dropped) {
+      drop();
+    }
     for (const entry of [...running.values()]) {
       entry.drop();
     }
@@ -933,7 +1213,7 @@ export function createTransport<H, T extends Sections>(
     close(new Error('Environment is not correct'));
   }
 
-  return {
+  const transport: Transport<H> = {
     connect: startHandshake,
 
     async whenConnected() {
@@ -948,6 +1228,7 @@ export function createTransport<H, T extends Sections>(
     handleRequest,
     subscribe,
     handleSubscription,
+    forward,
 
     dispose(reason) {
       if (disposed) {
@@ -959,4 +1240,6 @@ export function createTransport<H, T extends Sections>(
       provider.dispose();
     },
   };
+  upstreams.set(transport, { addressOf: schema.addressOf, open });
+  return transport;
 }

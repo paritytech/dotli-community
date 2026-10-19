@@ -1,10 +1,3 @@
----
-title: 'Transport Protocol Design'
-type: design
-status: accepted
-created: 2026-10-19
----
-
 # Transport Protocol Design
 
 ## Overview
@@ -261,6 +254,13 @@ type Unsubscribe = fn();
 `interrupt` hears only the provider's own `interrupt` message. `fail` hears every failure of the transport's own: a
 `failed` frame, `Cancelled` once the consumer aborts, and `MalformedFrame` when a message does not decode. `close` hears
 the one local end, the transport closing. Exactly one of them is called, once. `unsubscribe` calls none of them.
+
+#### Forwarding
+
+A peer MAY forward calls of methods to another peer of the same schema. It numbers the forwarded calls itself, as calls
+of its own on the other link, and passes every message as it is, in both directions. A forwarded call is ordinary frames
+on both links, so each link keeps its own rules. When the link it forwards to closes under a forwarded call, the
+forwarding peer answers the call with a `failed` frame carrying `HostFailure`.
 
 #### Closing
 

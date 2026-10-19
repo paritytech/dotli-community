@@ -3,7 +3,7 @@
 
 import { type ResultPayload, str } from 'scale-ts';
 import { describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest';
-import { deferred } from '@dotli/shared';
+import { deferred, toHex } from '@dotli/shared';
 import { manualTimers, must, recordLog } from '@dotli/shared/testing';
 import {
   TransportHandshakeTimeoutError,
@@ -26,9 +26,13 @@ import type { Provider } from './provider.js';
 import { codec, defineSchema } from './schema.js';
 import {
   breakable,
+  countedSchema,
   CUT_SHORT_TEXT,
   echo,
+  forwardRig,
   issueLog,
+  messageHex,
+  namesOf,
   notes,
   NOTES,
   outcomeOf,
@@ -2530,5 +2534,281 @@ describe('the handshake', () => {
     expect(accepting.issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error }]);
     expect(opening.peer.heard).toEqual([]);
     expect(accepting.peer.heard).toEqual([]);
+  });
+});
+
+describe('forwarding', () => {
+  it('As a forwarder, I pass a request and its answer through, every byte of the message the same on both links', async () => {
+    // Given
+    const { peer, server, timers, issues, toForwarder, toUpstream } = forwardRig();
+    server.handleRequest(notes.read, (key, { hello }) => ok(`${key}, read for the ${hello}`));
+
+    // When
+    const read = peer.request(notes.read, 'a note');
+    await timers.advance(0);
+
+    // Then
+    expect(await read).toEqual(ok('a note, read for the upstream'));
+    const request = [toHex(notes.read.message.enc({ tag: 'request', value: 'a note' }))];
+    const response = [toHex(notes.read.message.enc({ tag: 'response', value: ok('a note, read for the upstream') }))];
+    expect(messageHex(toForwarder, 'request:notes.read')).toEqual(request);
+    expect(messageHex(toUpstream, 'request:notes.read')).toEqual(request);
+    expect(messageHex(toUpstream, 'response:notes.read')).toEqual(response);
+    expect(messageHex(toForwarder, 'response:notes.read')).toEqual(response);
+    expect(issues).toEqual([]);
+  });
+
+  it("As a forwarder, I pass the upstream's failure back as a failed frame on the peer's call", async () => {
+    // Given a server with no handler for the method
+    const { peer, timers, issues, toForwarder, toUpstream } = forwardRig();
+
+    // When
+    const said = peer.request(echo.say, 'hello');
+    await timers.advance(0);
+
+    // Then
+    expect(await said).toEqual(err(unsupported()));
+    expect(namesOf(toUpstream)).toContain('failed');
+    expect(namesOf(toForwarder)).toEqual(['handshakeOffer', 'handshakeResponse', 'request:echo.say', 'failed']);
+    expect(issues).toEqual([]);
+  });
+
+  it("As a forwarder, I pass a subscription's values and its interrupt through, and the peer's stop reaches the upstream", async () => {
+    // Given
+    const { peer, server, timers, issues, toForwarder, toUpstream } = forwardRig();
+    const { starts, sinks, stops } = serveWatch(server);
+    const heard = watcher();
+    peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+
+    // When the server sends a value and ends it
+    must(sinks[0], 'the first sink').send('first');
+    must(sinks[0], 'the first sink').interrupt(ok());
+    await timers.advance(0);
+
+    // Then
+    expect(starts).toEqual(['from the top']);
+    expect(heard.values).toEqual(['first']);
+    expect(heard.ends).toEqual([ok()]);
+    for (const [name, message] of [
+      ['start:notes.watch', toHex(notes.watch.message.enc({ tag: 'start', value: 'from the top' }))],
+      ['receive:notes.watch', toHex(notes.watch.message.enc({ tag: 'receive', value: 'first' }))],
+      ['interrupt:notes.watch', toHex(notes.watch.message.enc({ tag: 'interrupt', value: ok() }))],
+    ] as const) {
+      expect(messageHex(toForwarder, name)).toEqual([message]);
+      expect(messageHex(toUpstream, name)).toEqual([message]);
+    }
+
+    // When the peer stops a second one
+    const unsubscribe = peer.subscribe(notes.watch, 'again', watcher());
+    await timers.advance(0);
+    unsubscribe();
+    await timers.advance(0);
+
+    // Then
+    expect(stops).toEqual([1, 1]);
+    const stop = [toHex(notes.watch.message.enc({ tag: 'stop', value: undefined }))];
+    expect(messageHex(toForwarder, 'stop:notes.watch')).toEqual(stop);
+    expect(messageHex(toUpstream, 'stop:notes.watch')).toEqual(stop);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a forwarder, I decode no payload in the middle', async () => {
+    // Given
+    const { schema, decodes } = countedSchema();
+    const { peer, server, timers } = forwardRig(schema);
+    server.handleRequest(schema.sections.notes.read, key => ok(key));
+
+    // When
+    const read = peer.request(schema.sections.notes.read, 'a note');
+    await timers.advance(0);
+
+    // Then only the server decoded it
+    expect(await read).toEqual(ok('a note'));
+    expect(decodes()).toBe(1);
+  });
+
+  it('As a forwarder, I answer each forwarded call HostFailure when the upstream closes under it', async () => {
+    // Given
+    const { peer, upstream, server, timers, issues } = forwardRig();
+    server.handleRequest(notes.read, () => deferred<ResultPayload<string, CallError<string>>>().promise);
+    serveWatch(server);
+    const read = peer.request(notes.read, 'a note');
+    const heard = watcher();
+    peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+
+    // When
+    upstream.dispose(new Error('gone'));
+    await timers.advance(0);
+
+    // Then
+    expect(await read).toEqual(err(hostFailure(new Error('gone'))));
+    expect(heard.fails).toEqual([hostFailure(new Error('gone'))]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a forwarder that closes, I post nothing to my peer and stop each forwarded subscription on the upstream', async () => {
+    // Given
+    const { peer, forwarder, server, timers, issues, toForwarder, toUpstream } = forwardRig();
+    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    server.handleRequest(notes.read, () => answer.promise);
+    const { stops } = serveWatch(server);
+    void peer.request(notes.read, 'a note');
+    const heard = watcher();
+    peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+    const posted = toForwarder.length;
+
+    // When
+    forwarder.dispose(new Error('closing'));
+    await timers.advance(0);
+    answer.resolve(ok('too late'));
+    await timers.advance(0);
+
+    // Then the late answer is dropped on the upstream, and the peer hears nothing
+    expect(stops).toEqual([1]);
+    expect(messageHex(toUpstream, 'stop:notes.watch')).toHaveLength(1);
+    expect(messageHex(toUpstream, 'response:notes.read')).toHaveLength(1);
+    expect(toForwarder).toHaveLength(posted);
+    expect([heard.values, heard.ends, heard.fails, heard.closes]).toEqual([[], [], [], []]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a forwarder, a reused start replaces the forwarded subscription, which stops on the upstream', async () => {
+    // Given a raw peer, and a server behind the upstream
+    const near = rawRig('respond');
+    const far = rig();
+    const { starts, sinks, stops } = serveWatch(far.accepter);
+    near.transport.forward([notes.watch], far.opener);
+    near.openHandshake();
+    await near.timers.advance(0);
+    near.peer.call(notes.watch, 1, { tag: 'start', value: 'first' });
+    await far.timers.advance(0);
+
+    // When
+    near.peer.call(notes.watch, 1, { tag: 'start', value: 'second' });
+    await far.timers.advance(0);
+    must(sinks[1], 'the second sink').send('fresh');
+    await far.timers.advance(0);
+
+    // Then
+    expect(starts).toEqual(['first', 'second']);
+    expect(stops).toEqual([1, 0]);
+    expect(near.peer.values(notes.watch, 'receive:notes.watch')).toEqual(['fresh']);
+    expect([...near.issues, ...far.issues]).toEqual([]);
+  });
+
+  it("As a forwarder, I start the upstream's handshake with the first forwarded call and send it once the handshake is over", async () => {
+    // Given
+    const { peer, server, timers, issues, toUpstream } = forwardRig();
+    server.handleRequest(echo.say, text => ok(text));
+    peer.connect();
+    await timers.advance(0);
+    expect(toUpstream).toEqual([]);
+
+    // When
+    const said = peer.request(echo.say, 'hello');
+    await timers.advance(0);
+
+    // Then
+    expect(await said).toEqual(ok('hello'));
+    expect(namesOf(toUpstream)).toEqual([
+      'handshakeOffer',
+      'handshakeResponse',
+      'request:echo.say',
+      'response:echo.say',
+    ]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a forwarder, a stop that comes while the forwarded start still waits for the upstream posts nothing upstream', async () => {
+    // Given a raw peer, and a raw server behind the upstream that has not answered the handshake
+    const near = rawRig('respond');
+    const far = rawRig('offer');
+    near.transport.forward([notes.watch], far.transport);
+    near.openHandshake();
+    await near.timers.advance(0);
+    near.peer.call(notes.watch, 1, { tag: 'start', value: 'from the top' });
+    await near.timers.advance(0);
+
+    // When
+    near.peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
+    await near.timers.advance(0);
+    far.answerHandshake();
+    await far.transport.whenConnected();
+    await far.timers.advance(0);
+
+    // Then the late handshake opens nothing
+    expect(far.peer.names()).toEqual(['handshakeOffer']);
+    expect(near.peer.names()).toEqual(['handshakeResponse']);
+    expect([...near.issues, ...far.issues]).toEqual([]);
+  });
+
+  it('As a forwarder, after I stop forwarding a method new calls of it are Unsupported and open ones run to their end', async () => {
+    // Given
+    const { peer, server, timers, issues, stopForwarding } = forwardRig();
+    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    server.handleRequest(notes.read, () => answer.promise);
+    const { sinks, stops } = serveWatch(server);
+    const read = peer.request(notes.read, 'a note');
+    const heard = watcher();
+    const unsubscribe = peer.subscribe(notes.watch, 'from the top', heard);
+    await timers.advance(0);
+
+    // When
+    stopForwarding();
+    const refused = peer.request(notes.read, 'another note');
+    answer.resolve(ok('the note'));
+    must(sinks[0], 'the first sink').send('still here');
+    await timers.advance(0);
+    unsubscribe();
+    await timers.advance(0);
+
+    // Then
+    expect(await refused).toEqual(err(unsupported()));
+    expect(await read).toEqual(ok('the note'));
+    expect(heard.values).toEqual(['still here']);
+    expect(stops).toEqual([1]);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a forwarder, a 1 MB message crosses with every byte the same on both links', async () => {
+    // Given
+    const { peer, server, timers, issues, toForwarder, toUpstream } = forwardRig();
+    server.handleRequest(echo.say, text => ok(text));
+    const text = 'a 1 MB note'.repeat(100_000).slice(0, 1_000_000);
+
+    // When
+    const said = peer.request(echo.say, text);
+    await timers.advance(0);
+
+    // Then
+    expect(await said).toEqual(ok(text));
+    const request = [toHex(echo.say.message.enc({ tag: 'request', value: text }))];
+    const response = [toHex(echo.say.message.enc({ tag: 'response', value: ok(text) }))];
+    expect(messageHex(toForwarder, 'request:echo.say')).toEqual(request);
+    expect(messageHex(toUpstream, 'request:echo.say')).toEqual(request);
+    expect(messageHex(toUpstream, 'response:echo.say')).toEqual(response);
+    expect(messageHex(toForwarder, 'response:echo.say')).toEqual(response);
+    expect(issues).toEqual([]);
+  });
+
+  it('As a schema user, I am refused forwarding to a transport that places the method elsewhere, to one this library did not build, or for a method that already has a handler', () => {
+    // Given
+    const { forwarder, upstream } = forwardRig();
+    const reordered = defineSchema({ version: VERSION, hello: str, sections: { echo, notes } });
+    const elsewhere = createTransport(reordered, createProviderPair().left, { handshake: 'offer', hello: 'elsewhere' });
+
+    // When
+    const toElsewhere = () => forwarder.forward([notes.touch], elsewhere);
+    const toAnother = () => forwarder.forward([notes.touch], { ...upstream });
+    const twice = () => forwarder.forward([notes.touch, notes.read], upstream);
+
+    // Then nothing a refused call names stays forwarded
+    expect(toElsewhere).toThrow('notes.touch sits elsewhere in the upstream');
+    expect(toAnother).toThrow('The upstream transport was not built by this library');
+    expect(twice).toThrow('notes.read already has a handler');
+    expect(() => forwarder.handleRequest(notes.touch, () => ok())).not.toThrow();
   });
 });

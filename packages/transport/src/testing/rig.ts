@@ -3,7 +3,7 @@
 
 // A test schema and two transports over one in-memory channel, or one transport facing a raw peer the test speaks for.
 
-import { toError } from '@dotli/shared';
+import { toError, toHex } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
 import { Bytes, Result, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
 import { callError, ok, type Failure, type TransportIssue } from '../errors.js';
@@ -144,9 +144,79 @@ export function rig() {
   return { opener, accepter, timers, issues, delivered, left, right };
 }
 
+/**
+ * `testSchema` with a `notes.read` whose request counts its decodes, so a test can tell which side read a payload. The
+ * other methods are `testSchema`'s own.
+ */
+export function countedSchema() {
+  let decodes = 0;
+  const counted = enhanceCodec(
+    word,
+    (value: string) => value,
+    (value: string) => {
+      decodes += 1;
+      return value;
+    },
+  );
+  const schema = defineSchema({
+    version: VERSION,
+    hello: str,
+    sections: {
+      notes: { ...notes, read: request({ request: counted, response: str, error: str }) },
+      echo,
+    },
+  });
+  return { schema, decodes: () => decodes };
+}
+
+/**
+ * A peer, a forwarder that serves it, the forwarder's upstream, and the server the upstream calls, over two in-memory
+ * channels. The peer offers to the forwarder and the upstream to the server, and the forwarder forwards `notes.read`,
+ * `notes.watch` and `echo.say` to the upstream before any call. `toForwarder` and `toUpstream` are what each channel
+ * delivered, both ways.
+ */
+export function forwardRig(schema: typeof testSchema = testSchema) {
+  const near = createProviderPair();
+  const far = createProviderPair();
+  const timers = manualTimers();
+  const { issues, onIssue } = issueLog();
+  const opening = { timers, retryMs: RETRY_MS, timeoutMs: TIMEOUT_MS, onIssue };
+  const peer = createTransport(schema, near.left, { handshake: 'offer', hello: 'peer', ...opening });
+  const forwarder = createTransport(schema, near.right, { handshake: 'respond', hello: 'forwarder', onIssue });
+  const upstream = createTransport(schema, far.left, { handshake: 'offer', hello: 'upstream', ...opening });
+  const server = createTransport(schema, far.right, { handshake: 'respond', hello: 'server', onIssue });
+  const { read, watch } = schema.sections.notes;
+  const stopForwarding = forwarder.forward([read, watch, schema.sections.echo.say], upstream);
+  return {
+    peer,
+    forwarder,
+    upstream,
+    server,
+    timers,
+    issues,
+    stopForwarding,
+    toForwarder: near.delivered,
+    toUpstream: far.delivered,
+  };
+}
+
 /** How a test names a frame: its kind, or a call's tag and method, such as `request:notes.read`. */
 const nameOf = (heard: RecordedFrame): string =>
   heard.kind === 'call' ? `${heard.decoded?.tag ?? 'unknown'}:${heard.section}.${heard.method}` : heard.kind;
+
+/** The names of the frames a channel delivered, both ways, in order. */
+export const namesOf = (delivered: readonly Uint8Array[]): string[] =>
+  delivered.map(data => nameOf(readFrame(testSchema, data)));
+
+/**
+ * The message bytes of the calls a channel delivered under one name, such as `request:notes.read`, as hex, which
+ * compares a large message at once.
+ */
+export const messageHex = (delivered: readonly Uint8Array[], name: string): string[] =>
+  delivered.flatMap(data => {
+    const heard = readFrame(testSchema, data);
+    return heard.kind === 'call' && nameOf(heard) === name ? [toHex(heard.message)] : [];
+  });
 
 /** A peer the test speaks for, frame by frame, in place of a transport. */
 function rawPeer(provider: Provider) {
