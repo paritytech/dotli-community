@@ -130,22 +130,26 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
   if (traits.length > MAX_IDS) {
     throw new RangeError(`a schema has at most ${String(MAX_IDS)} traits, got ${String(traits.length)}`);
   }
+
   const addresses = new Map<AnyMethod, Address>();
-  const methods = traits.map(([trait, ofTrait], traitId) => {
+  const methods: AnyMethod[][] = [];
+  for (const [trait, ofTrait] of traits) {
     const entries = Object.entries(ofTrait);
     if (entries.length > MAX_IDS) {
       throw new RangeError(`trait "${trait}" has at most ${String(MAX_IDS)} methods, got ${String(entries.length)}`);
     }
-    return entries.map(([name, method], methodId) => {
-      const placed = addresses.get(method);
-      if (placed !== undefined) {
-        throw new Error(`${trait}.${name} is the method already at ${placed.trait}.${placed.method}`);
+    const traitId = methods.length;
+    const inTrait: AnyMethod[] = [];
+    for (const [name, method] of entries) {
+      const taken = addresses.get(method);
+      if (taken !== undefined) {
+        throw new Error(`${trait}.${name} is the method already at ${taken.trait}.${taken.method}`);
       }
-      const address = { trait, method: name, traitId, methodId };
-      addresses.set(method, address);
-      return method;
-    });
-  });
+      addresses.set(method, { trait, method: name, traitId, methodId: inTrait.length });
+      inTrait.push(method);
+    }
+    methods.push(inTrait);
+  }
 
   return {
     version: def.version,
