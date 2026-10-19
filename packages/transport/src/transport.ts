@@ -122,11 +122,13 @@ export interface Transport<H> {
    * which waits for the opener.
    */
   connect(): void;
+
   /**
    * Resolves once the handshake succeeds, and rejects with the closing error once the transport closes. Starts the
    * handshake on the opener, as `connect` does.
    */
   whenConnected(): Promise<void>;
+
   /**
    * Calls the peer, and starts the handshake on the opener, as `connect` does. Resolves to its `Result`, or to
    * `Cancelled` once the signal aborts. Calls made before the handshake wait and go out in call order once it succeeds.
@@ -138,11 +140,15 @@ export interface Transport<H> {
     payload: NoInfer<P>,
     options?: RequestOptions,
   ): Promise<ResultPayload<R, CallError<E>>>;
-  /** Serves one method. One handler per method, and calling the returned function unregisters it. */
+
+  /**
+   * Serves one method. One handler per method, and calling the returned function unregisters it.
+   * */
   handleRequest<P, R, E>(
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, H>,
   ): () => void;
+
   /**
    * Subscribes to the peer, and starts the handshake on the opener, as `connect` does. `receive` hears each value, and
    * `interrupt`, `fail` or `close` the one end. Subscriptions made before the handshake wait and go out in call order
@@ -155,11 +161,15 @@ export interface Transport<H> {
     listeners: SubscriptionListeners<NoInfer<V>, NoInfer<I>>,
     options?: SubscribeOptions,
   ): () => void;
-  /** Serves one subscription method. One handler per method, and calling the returned function unregisters it. */
+
+  /**
+   * Serves one subscription method. One handler per method, and calling the returned function unregisters it.
+   * */
   handleSubscription<S, V, I>(
     method: Subscription<S, V, I>,
     handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, H>,
   ): () => void;
+
   /**
    * Serves each of `methods` by forwarding the peer's calls to `upstream` as their message bytes, and the answers back.
    * A forwarded call waits for `upstream`'s handshake like its own calls, and is answered `HostFailure` with the
@@ -168,6 +178,7 @@ export interface Transport<H> {
    * not build, and for a method that already has a handler.
    */
   forward(methods: readonly AnyMethod[], upstream: Transport<unknown>): () => void;
+
   /**
    * Closes this side, and posts nothing. Every subscription it serves stops, every one it made hears `close(reason)`,
    * every pending and later request rejects with `reason`, and the provider is disposed.

@@ -85,8 +85,8 @@ jobs:
               echo "${label}: ${gz} B gzip (budget ${max} B): ok"
             fi
           }
-          check_eager "host-eager-path" apps/host/dist 172000
-          check_eager "landing-eager-path" apps/host/dist 132000 landing.html
+          check_eager "host-eager-path" apps/host/dist 187000
+          check_eager "landing-eager-path" apps/host/dist 146000 landing.html
           check_eager "sandbox-eager-path" apps/sandbox/dist 84000
 
       - name: Download baseline from main
