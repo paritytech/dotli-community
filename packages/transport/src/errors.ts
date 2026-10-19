@@ -40,6 +40,12 @@ export function failureReason(error: Error): string {
   return `${error.name}: ${error.message}`.slice(0, MAX_REASON_CHARS);
 }
 
+/** A reason as `failureReason` wrote it, read back as the error's name and message. Text with no name is an `Error`'s. */
+export function reasonParts(reason: string): { name: string; message: string } {
+  const at = reason.indexOf(': ');
+  return at < 0 ? { name: 'Error', message: reason } : { name: reason.slice(0, at), message: reason.slice(at + 2) };
+}
+
 /** An issue as one line of text, with the name of each error in it. */
 export function describeIssue(issue: TransportIssue): string {
   switch (issue.kind) {

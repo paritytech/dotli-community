@@ -4,16 +4,15 @@
 // A test schema and two transports over one in-memory channel, or one transport facing a raw peer the test speaks for.
 
 import { toError } from '@dotli/shared';
-import { manualTimers, recordLog, type LogLine } from '@dotli/shared/testing';
+import { manualTimers } from '@dotli/shared/testing';
 import { Bytes, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
-import { onTestFinished } from 'vitest';
 import { ok, type CallError, type TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
 import { defineSchema, request, subscription, type AnyMethod } from '../schema.js';
 import { createTransport, type Sink, type Transport } from '../transport.js';
 import { encodeFrame, frame, type Frame } from '../wire.js';
-import { readFrame, readMessage, type RecordedFrame } from './index.js';
+import { readFrame, type RecordedFrame } from './index.js';
 
 export const RETRY_MS = 50;
 export const TIMEOUT_MS = 5_000;
@@ -165,7 +164,7 @@ function rawPeer(provider: Provider) {
     /** What the calls heard by one name carry, decoded with their method. */
     values: <M extends { value: V }, V>(method: { readonly message: Codec<M> }, name: string): V[] =>
       heard.flatMap(frame =>
-        frame.kind === 'call' && nameOf(frame) === name ? [readMessage(method, frame.message).value] : [],
+        frame.kind === 'call' && nameOf(frame) === name ? [method.message.dec(frame.message).value] : [],
       ),
     /** The frames heard by one name. */
     find: (name: string) => heard.filter(frame => nameOf(frame) === name),
@@ -205,9 +204,6 @@ export function rawRig(
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }
-
-/** Each error line the shared log writes during the current test. */
-export const errorLog = (): LogLine[] => recordLog({ onFinished: onTestFinished, level: 'error' });
 
 /** A promise's outcome as a value: `{ value }` when it resolved, or the error it rejected with. */
 export async function outcomeOf<T>(promise: Promise<T>): Promise<{ value: T } | Error> {

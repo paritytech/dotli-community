@@ -4,10 +4,10 @@
 // The shared store on `host.<BASE_DOMAIN>`: auth, mode preferences and the local wallet, one for every subdomain.
 
 import type { SiteId } from '@dotli/config';
-import { realTimers, type Timers } from '@dotli/shared';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
-import { protocolListeners } from './listeners.js';
 import type { FrameRpc } from './rpc.js';
 import { protocolSchema, type LocalWalletIdentity, type LocalWalletRead, type SharedAuthChange } from './schema.js';
 import { subscribe } from './subscription.js';
@@ -60,8 +60,12 @@ export interface SharedStoreDeps {
 }
 
 export function createSharedStore({ frame, rpc, timers = realTimers }: SharedStoreDeps) {
-  const sharedAuthListeners = protocolListeners<SharedAuthChange>('shared_auth');
-  const statusListeners = protocolListeners<SharedStoreStatus>('shared_store_status');
+  const sharedAuthListeners = createListenerSet<SharedAuthChange>({
+    onListenerError: reportListener('protocol', 'protocol.shared_auth'),
+  });
+  const statusListeners = createListenerSet<SharedStoreStatus>({
+    onListenerError: reportListener('protocol', 'protocol.shared_store_status'),
+  });
   // Latched from each status the frame publishes, since a listener ahead of this store's own can move the frame on
   // before this store reads it.
   let settledOnce = hasSettled(frame.getStatus());

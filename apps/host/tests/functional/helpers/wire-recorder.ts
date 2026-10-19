@@ -5,7 +5,7 @@
 // what a test reads to see a message cross from the frame to the host.
 
 import type { BrowserContext, Page } from '@playwright/test';
-import type { RecordedWireMessage } from '@dotli/protocol/testing';
+import type { RecordedWireMessage } from '@dotli/transport/testing';
 import { RECORDER_BUNDLE_PATH } from './wire-bundles.js';
 
 declare global {

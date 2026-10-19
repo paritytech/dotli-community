@@ -11,25 +11,21 @@ export {
   isValidSharedAuthKey,
   isValidSharedModeKey,
 } from './auth-storage.js';
-export {
-  getProtocolOrigin,
-  isRemoteChainConnectable,
-  isRemoteChainSupported,
-  protocolClient,
-  type ProtocolClient,
-  type ProtocolFrameConfig,
-  type ProtocolStatus,
-  type LocalWalletReadResult,
-  type RemoteChainProvider,
-  type SharedStoreStatus,
-} from './client.js';
-export { backendOfFrameMode } from './frame.js';
+export { getProtocolOrigin, protocolClient, type ProtocolClient } from './client.js';
+export { backendOfFrameMode, type ProtocolFrameConfig, type ProtocolStatus } from './frame.js';
+export { isRemoteChainConnectable, isRemoteChainSupported, type RemoteChainProvider } from './remote-chain.js';
+export type { LocalWalletReadResult, SharedStoreStatus } from './shared-store.js';
 export {
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
+  failureOf,
+  frameStatusEnd,
+  fromTransportError,
+  remoteEnd,
 } from './errors.js';
+export type { TelemetryEvent } from './codec-values.js';
 export {
   protocolSchema,
   type DomainFailure,
@@ -44,9 +40,7 @@ export {
   type ProtocolTransport,
   type RemoteFailure,
   type SharedAuthChange,
-  type TelemetryEvent,
 } from './schema.js';
 export { budgetOf, callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
-export { failureOf, frameStatusEnd, fromTransportError, remoteEnd } from './outcomes.js';
 export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
-export { createIssueReporter, type WireIssue } from './wire-issues.js';
+export { createWireReport } from './wire-issues.js';

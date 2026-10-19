@@ -1,20 +1,42 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// JSON-RPC connections to the chains the protocol frame runs.
+// Which chains the protocol frame serves, and JSON-RPC connections to them.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import { errorName, log, named, randomId, serializeError } from '@dotli/shared';
 import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
+import {
+  getActiveCoreGatewaySupportedGenesisHashes,
+  getActiveGatewaySupportedGenesisHashes,
+  getActiveSupportedGenesisHashes,
+  getBackend,
+} from '@dotli/config';
 
-import { isRemoteChainConnectable } from './remote-chain-support.js';
 import type { FrameRpc } from './rpc.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 import { subscribe } from './subscription.js';
 
 const { chain } = protocolSchema.traits;
+
+/**
+ * Wider than the advertised `isRemoteChainSupported`, since gateway mode keeps Bulletin connectable for bitswap's
+ * content fetches through the frame.
+ */
+export function isRemoteChainConnectable(genesisHash: string): boolean {
+  const supported =
+    getBackend() === 'rpc-gateway' ? getActiveCoreGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
+  return supported.has(genesisHash.toLowerCase());
+}
+
+export function isRemoteChainSupported(genesisHash: string): boolean {
+  // Gateway mode bridges a curated RPC subset, while smoldot can run any configured chain.
+  const supported =
+    getBackend() === 'rpc-gateway' ? getActiveGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
+  return supported.has(genesisHash.toLowerCase());
+}
 
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;

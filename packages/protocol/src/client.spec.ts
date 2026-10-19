@@ -8,9 +8,10 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
-import type { ProtocolStatus, SharedStoreStatus } from './client.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
+import type { ProtocolStatus } from './frame.js';
 import { protocolSchema } from './schema.js';
+import type { SharedStoreStatus } from './shared-store.js';
 import { createFrameHost, FRAME_CONFIG, FRAME_ORIGIN, type FakeIframe, type FrameHost } from './testing/frame-host.js';
 
 const { storage } = protocolSchema.traits;

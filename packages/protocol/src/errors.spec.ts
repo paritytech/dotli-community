@@ -9,8 +9,11 @@ import {
   ProtocolPortReleasedError,
   ProtocolRequestError,
   ProtocolVersionMismatchError,
+  failureOf,
+  frameStatusEnd,
+  fromTransportError,
+  remoteEnd,
 } from './errors.js';
-import { failureOf, frameStatusEnd, fromTransportError, remoteEnd } from './outcomes.js';
 import { protocolSchema } from './schema.js';
 
 const { frame, resolve, wallet } = protocolSchema.traits;

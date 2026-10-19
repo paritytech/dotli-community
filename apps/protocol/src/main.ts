@@ -27,6 +27,7 @@ import {
 
 import {
   backendOfFrameMode,
+  createWireReport,
   isSharedAuthOriginAllowed,
   ProtocolFatalError,
   ProtocolInitFailedError,
@@ -40,7 +41,7 @@ import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
 import { createEngine, serveEngineScope, type ProtocolEngine } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { createSharedStoreHandler, serveLocalWallet, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
-import { createRefusalReporter, createWireReport, reportRefusals } from './refusal-report.js';
+import { createRefusalReporter, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
 import { createFrameBoot } from './frame-boot.js';
 import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
@@ -79,7 +80,7 @@ function adoptResolutionId(): void {
 }
 
 // What this frame's provider and transport drop, each counted once, whichever of them drops it.
-const wire = createWireReport('frame', { warn: log.warn, count: m.count });
+const wire = createWireReport('frame', { count: m.count });
 
 // The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
 // speaks only when spoken to. The host's hello names no page load, which this frame reads from its URL.

@@ -6,7 +6,7 @@
 // frame is up and when it is lost. A frame's handshake is answered only once the test says it listens, so calls made
 // while it boots wait in the transport's queue as they would on a real frame.
 
-import { createStatusCell, realTimers, type Timers } from '@dotli/shared';
+import { createStatusCell, realTimers, untilStatus, type Timers } from '@dotli/shared';
 import { createTransport } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
@@ -94,30 +94,21 @@ export function createFakeFrame(
       transport: () => Promise.resolve(boot().host),
       whenReady() {
         boot();
-        return new Promise<ProtocolTransport>((resolve, reject) => {
-          const settle = (next: ProtocolStatus): boolean => {
-            if (next === 'ready') {
-              if (current === null) {
-                reject(lostWith);
-              } else {
-                resolve(current.host);
-              }
-              return true;
-            }
-            if (next === 'failed' || next === 'idle') {
-              reject(next === 'failed' ? lostWith : new Error('frame went idle'));
-              return true;
-            }
-            return false;
-          };
-          if (settle(status.get())) {
-            return;
+        let reached: ProtocolTransport | null = null;
+        return untilStatus(status, next => {
+          if (next === 'ready') {
+            reached = current?.host ?? null;
+            return reached !== null || lostWith;
           }
-          const stop = status.subscribe(next => {
-            if (settle(next)) {
-              stop();
-            }
-          });
+          if (next === 'failed' || next === 'idle') {
+            return next === 'failed' ? lostWith : new Error('frame went idle');
+          }
+          return false;
+        }).then(() => {
+          if (reached === null) {
+            throw lostWith;
+          }
+          return reached;
         });
       },
       // The facades never read it, and this fake's frame speaks the host's schema.

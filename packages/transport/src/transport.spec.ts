@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { type ResultPayload, str } from 'scale-ts';
-import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest';
 import { deferred } from '@dotli/shared';
-import { manualTimers, must } from '@dotli/shared/testing';
+import { manualTimers, must, recordLog } from '@dotli/shared/testing';
 import {
   TransportHandshakeTimeoutError,
   TransportVersionMismatchError,
@@ -25,7 +25,6 @@ import {
   breakable,
   CUT_SHORT_TEXT,
   echo,
-  errorLog,
   issueLog,
   notes,
   NOTES,
@@ -214,7 +213,7 @@ describe('createTransport', () => {
 
   it('As an owner, an issue hook that throws never reaches the provider, and the issue and the throw are logged', () => {
     // Given
-    const errors = errorLog();
+    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const listeners: ((data: ArrayBuffer) => void)[] = [];
     const provider: Provider = {
       post: () => undefined,
@@ -270,7 +269,7 @@ describe('createTransport', () => {
 
   it('As an owner with no issue hook, each issue is logged as one bounded error', async () => {
     // Given
-    const errors = errorLog();
+    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const { left, right } = createProviderPair();
     const timers = manualTimers();
     const opener = createTransport(

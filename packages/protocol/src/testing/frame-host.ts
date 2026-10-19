@@ -17,11 +17,11 @@ import {
   type WindowLike,
   type WindowMessage,
 } from '@dotli/transport';
+import { recordMessage, type RecordedWireMessage } from '@dotli/transport/testing';
 import { createProtocolClient, type ProtocolClient } from '../client.js';
 import { createFrameStatus, type FrameStatus } from '../frame-status.js';
 import type { ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { protocolSchema, type ProtocolTransport } from '../schema.js';
-import { recordWireMessage, type RecordedWireMessage } from './index.js';
 
 export const FRAME_ORIGIN = 'https://host.dot.li';
 
@@ -302,7 +302,7 @@ export function createFrameDom(
     },
     sent: (target = iframe()) =>
       target.window.posted.flatMap(data => {
-        const message = data instanceof ArrayBuffer ? recordWireMessage(data) : null;
+        const message = data instanceof ArrayBuffer ? recordMessage(protocolSchema, data) : null;
         return message === null ? [] : [message];
       }),
     deliverRaw(data, from = iframe(), origin = FRAME_ORIGIN) {

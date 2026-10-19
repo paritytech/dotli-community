@@ -19,7 +19,14 @@ import {
   type Subscription,
   type TransportIssue,
 } from '@dotli/transport';
-import { FrameRefusedError, createProviderPair, readFrame } from '@dotli/transport/testing';
+import {
+  FrameRefusedError,
+  createProviderPair,
+  messagesOf,
+  readFrame,
+  recordMessage,
+  type RecordedWireMessage,
+} from '@dotli/transport/testing';
 import {
   protocolSchema,
   type DomainFailure,
@@ -27,7 +34,6 @@ import {
   type ProtocolSchema,
   type ProtocolTransport,
 } from './schema.js';
-import { messagesOf, recordWireMessage, type RecordedWireMessage } from './testing/index.js';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
@@ -75,7 +81,7 @@ function requestCase<P, R, E>(
         calls: outcomes.length,
         check(recorded) {
           expect(outcomes).toEqual(sample.responses);
-          expect(messagesOf(method, recorded)).toEqual(
+          expect(messagesOf(protocolSchema, method, recorded)).toEqual(
             sample.responses.flatMap(response => [
               { tag: 'request', value: sample.request },
               { tag: 'response', value: response },
@@ -141,7 +147,7 @@ function subscriptionCase<S, V, I>(
         calls: heard.length,
         check(recorded) {
           expect(heard).toEqual(sample.interrupts.map(end => ({ values: sample.values, end })));
-          expect(messagesOf(method, recorded)).toEqual(
+          expect(messagesOf(protocolSchema, method, recorded)).toEqual(
             sample.interrupts.flatMap(end => [
               { tag: 'start', value: sample.start },
               ...sample.values.map(value => ({ tag: 'receive', value })),
@@ -342,7 +348,7 @@ describe('protocolSchema', () => {
         Object.values(trait),
       ),
     );
-    const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
+    const recorded = delivered.flatMap(data => recordMessage(protocolSchema, data) ?? []);
     for (const calls of heard) {
       calls.check(recorded);
     }
@@ -391,8 +397,8 @@ describe('protocolSchema', () => {
 
     // Then
     expect(answer).toEqual(ok('owner of app'));
-    const recorded = delivered.flatMap(data => recordWireMessage(data) ?? []);
-    const request = messagesOf(resolve.owner, recorded).find(message => message.tag === 'request');
+    const recorded = delivered.flatMap(data => recordMessage(protocolSchema, data) ?? []);
+    const request = messagesOf(protocolSchema, resolve.owner, recorded).find(message => message.tag === 'request');
     expect(request?.value).toEqual({ label: 'app' });
   });
 

@@ -1,14 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
-import { cancelled, denied, domain, err, hostFailure, logIssue, malformedFrame, ok, unsupported } from './errors.js';
-import { errorLog } from './testing/rig.js';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { recordLog } from '@dotli/shared/testing';
+import {
+  cancelled,
+  denied,
+  domain,
+  err,
+  failureReason,
+  hostFailure,
+  logIssue,
+  malformedFrame,
+  ok,
+  reasonParts,
+  unsupported,
+} from './errors.js';
 
 describe('issues', () => {
   it("As an owner with no issue hook, I read a failed post with its call's names, or without them when it had no call", () => {
     // Given
-    const errors = errorLog();
+    const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const error = new Error('the peer window is gone');
 
     // When
@@ -20,6 +32,30 @@ describe('issues', () => {
       '[transport] A notes.read message could not be posted, Error: the peer window is gone',
       '[transport] A message could not be posted, Error: the peer window is gone',
     ]);
+  });
+});
+
+describe('reasons', () => {
+  it("As a caller, I read a failure's reason back as the name and message of the error that failed", () => {
+    // Given
+    const errors = [new TypeError('the peer is gone'), new RangeError('expected: a word')];
+
+    // When
+    const parts = errors.map(error => reasonParts(failureReason(error)));
+
+    // Then
+    expect(parts).toEqual([
+      { name: 'TypeError', message: 'the peer is gone' },
+      { name: 'RangeError', message: 'expected: a word' },
+    ]);
+  });
+
+  it('As a caller, I read a reason with no name as the message of a plain error', () => {
+    // When
+    const parts = reasonParts('the peer is gone');
+
+    // Then
+    expect(parts).toEqual({ name: 'Error', message: 'the peer is gone' });
   });
 });
 

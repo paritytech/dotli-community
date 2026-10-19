@@ -9,7 +9,8 @@ import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok, type Sink } from '@dotli/transport';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
-import { protocolSchema, type ProtocolTransport, type TelemetryEvent } from './schema.js';
+import type { TelemetryEvent } from './codec-values.js';
+import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 const { frame } = protocolSchema.traits;
 

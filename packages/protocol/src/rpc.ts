@@ -7,9 +7,8 @@ import { m, spans as S } from '@dotli/metrics';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { failureReason, type AnyMethod, type Request } from '@dotli/transport';
 import { callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
-import { ProtocolRequestError } from './errors.js';
+import { ProtocolRequestError, callFailure, fromTransportError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
-import { callFailure, fromTransportError } from './outcomes.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
 
 /** The error a call that outlived its budget fails with. */

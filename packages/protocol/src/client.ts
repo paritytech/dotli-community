@@ -19,13 +19,6 @@ import { createRemoteResolve } from './remote-resolve.js';
 import { createSharedStore } from './shared-store.js';
 import { createFrameTelemetry } from './telemetry.js';
 
-export { isRemoteChainConnectable, isRemoteChainSupported } from './remote-chain-support.js';
-export type { RemoteChainProvider } from './remote-chain.js';
-
-export type { ProtocolFrameConfig, ProtocolStatus } from './frame.js';
-
-export type { LocalWalletReadResult, SharedStoreStatus } from './shared-store.js';
-
 export function getProtocolOrigin(): string {
   if (isLocalhost) {
     if (import.meta.env.DEV) {

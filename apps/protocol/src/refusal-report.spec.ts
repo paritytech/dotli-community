@@ -4,36 +4,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { spans as S, type m } from '@dotli/metrics';
-import { isSharedAuthOriginAllowed, protocolSchema, type CallName, type RemoteFailure } from '@dotli/protocol';
+import { protocolSchema, type CallName, type RemoteFailure } from '@dotli/protocol';
 import { memoryStorage } from '@dotli/shared/testing';
-import {
-  createTransport,
-  createWindowProvider,
-  denied,
-  domain,
-  err,
-  hostFailure,
-  ok,
-  type CallError,
-  type MessageTarget,
-  type WindowLike,
-  type WindowMessage,
-} from '@dotli/transport';
-import {
-  createRefusalReporter,
-  createWireReport,
-  reportRefusals,
-  type FrameRefusal,
-  type FrameRoute,
-} from './refusal-report.js';
+import { denied, domain, err, hostFailure, ok, type CallError } from '@dotli/transport';
+import { createRefusalReporter, reportRefusals, type FrameRefusal, type FrameRoute } from './refusal-report.js';
 import { createSharedStoreHandler } from './shared-store-handler.js';
-import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
+import { closeHostLinks, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
 
-const STRANGER = 'https://evil.example';
 const FAILURE = new Error('storage read failed');
 
 const failedMethods: Record<FrameRoute, CallName> = {
@@ -98,83 +79,6 @@ describe('the protocol frame refusal report', () => {
 
     // Then it is logged and counted as the table says
     expect({ warned: sinks.warned, counted: sinks.counted }).toEqual({ warned: row.warned, counted: row.counted });
-  });
-});
-
-describe('the wire report', () => {
-  it('As a dotli operator, I see each refused origin counted and logged once, however often it posts', () => {
-    // Given a report on its own log and counter
-    const sinks = recorded();
-    const report = createWireReport('frame', sinks);
-
-    // When a stranger keeps posting and a second one posts once
-    report.onRefusedOrigin(STRANGER);
-    report.onRefusedOrigin(STRANGER);
-    report.onRefusedOrigin(STRANGER);
-    report.onRefusedOrigin(PRODUCT_ORIGIN);
-
-    // Then each origin is counted and logged on its first refusal only
-    const refused = [S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'origin', side: 'frame' }];
-    expect(sinks.counted).toEqual([refused, refused]);
-    expect(sinks.warned).toEqual([
-      [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${STRANGER}`],
-      [`[dot.li protocol] Rejected protocol messages from disallowed origin: ${PRODUCT_ORIGIN}`],
-    ]);
-  });
-
-  it("As a dotli operator, I see what the frame's provider and transport drop counted once each, under the frame's side", () => {
-    // Given the frame's provider and transport on one report, as the frame wires them
-    const sinks = recorded();
-    const report = createWireReport('frame', sinks);
-    const listeners = new Set<(event: WindowMessage) => void>();
-    const page: MessageTarget = {
-      addEventListener: (_type, listener) => listeners.add(listener),
-      removeEventListener: (_type, listener) => listeners.delete(listener),
-    };
-    const parent: WindowLike = { postMessage: () => undefined };
-    createTransport(
-      protocolSchema,
-      createWindowProvider({
-        listen: page,
-        peer: () => parent,
-        origin: isSharedAuthOriginAllowed,
-        onNotBytes: report.onNotBytes,
-        onRefusedOrigin: report.onRefusedOrigin,
-      }),
-      { handshake: 'accept', hello: { resolutionId: null }, onIssue: report.onIssue },
-    );
-    const deliver = (data: unknown, origin: string, source: unknown): void => {
-      for (const listener of [...listeners]) {
-        listener({ data, origin, source });
-      }
-    };
-
-    // When the host sends an object, a stranger sends bytes twice, and the host sends bytes that are no message
-    deliver({ legacy: true }, HOST_ORIGIN, parent);
-    deliver(new ArrayBuffer(8), STRANGER, {});
-    deliver(new ArrayBuffer(8), STRANGER, {});
-    deliver(new ArrayBuffer(2), HOST_ORIGIN, parent);
-
-    // Then each is counted once, under its reason
-    expect(sinks.counted.map(([, attributes]) => attributes)).toEqual([
-      { outcome: 'refused', reason: 'not_bytes', side: 'frame' },
-      { outcome: 'refused', reason: 'origin', side: 'frame' },
-      { outcome: 'refused', reason: 'malformed', side: 'frame' },
-    ]);
-  });
-
-  it("As a dotli operator, I see what the worker's transport refuses counted under the worker's side", () => {
-    // Given
-    const sinks = recorded();
-    const report = createWireReport('worker', sinks);
-
-    // When
-    report.onIssue({ kind: 'refused', reason: 'invalid', cause: new Error('A stop came before the handshake') });
-
-    // Then
-    expect(sinks.counted).toEqual([
-      [S.PROTOCOL_WIRE_REFUSED, { outcome: 'refused', reason: 'invalid', side: 'worker' }],
-    ]);
   });
 });
 

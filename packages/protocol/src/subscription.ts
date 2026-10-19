@@ -6,11 +6,11 @@
 
 import type { SubscribeOptions, Subscription as Method } from '@dotli/transport';
 import { callName } from './method-policy.js';
-import { callFailure, fromTransportError } from './outcomes.js';
+import { callFailure, fromTransportError } from './errors.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
-export interface SubscriptionListeners<V> {
+export interface FrameSubscriber<V> {
   receive(value: V): void;
   /** Null when the frame ended it cleanly, else why it ended, as the error host code sees. */
   end(error: Error | null): void;
@@ -23,7 +23,7 @@ export function subscribe<S, V, I extends DomainFailure>(
   transport: ProtocolTransport,
   method: Method<S, V, I>,
   start: NoInfer<S>,
-  listeners: SubscriptionListeners<NoInfer<V>>,
+  listeners: FrameSubscriber<NoInfer<V>>,
   options: SubscribeOptions = {},
 ): () => void {
   const name = callName(method);

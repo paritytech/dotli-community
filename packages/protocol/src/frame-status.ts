@@ -5,7 +5,7 @@
 // that subscribes late hears where the frame stands at once, so nothing said before it subscribed is lost.
 
 import { err, type MethodTypes, type Sink } from '@dotli/transport';
-import { frameStatusEnd } from './outcomes.js';
+import { frameStatusEnd } from './errors.js';
 import type { FrameFailure, ProtocolHandler, protocolSchema } from './schema.js';
 
 export type FrameStatusSink = Sink<undefined, FrameFailure>;

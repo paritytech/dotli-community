@@ -8,9 +8,10 @@ import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { deferred, toError } from '@dotli/shared';
 import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { domain, err, ok } from '@dotli/transport';
+import { recordMessage } from '@dotli/transport/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
-import { createProtocolClient, type ProtocolStatus, type SharedStoreStatus } from './client.js';
+import { createProtocolClient } from './client.js';
 import {
   PROTOCOL_ERRORS,
   ProtocolFatalError,
@@ -19,9 +20,9 @@ import {
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame } from './frame.js';
+import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame, type ProtocolStatus } from './frame.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
-import { recordWireMessage } from './testing/index.js';
+import type { SharedStoreStatus } from './shared-store.js';
 import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameDom, type FrameHost } from './testing/frame-host.js';
 
 const { resolve, storage, chain } = protocolSchema.traits;
@@ -60,7 +61,7 @@ async function recordedReady(): Promise<ArrayBuffer[]> {
   return other
     .iframe()
     .window.sent.flatMap(data =>
-      data instanceof ArrayBuffer && recordWireMessage(data)?.tag === 'receive' ? [data] : [],
+      data instanceof ArrayBuffer && recordMessage(protocolSchema, data)?.tag === 'receive' ? [data] : [],
     );
 }
 
@@ -421,7 +422,9 @@ describe('createProtocolFrame', () => {
     // Then
     expect(answered).toEqual([]);
     expect(
-      first.window.sent.filter(data => data instanceof ArrayBuffer && recordWireMessage(data)?.trait === 'storage'),
+      first.window.sent.filter(
+        data => data instanceof ArrayBuffer && recordMessage(protocolSchema, data)?.trait === 'storage',
+      ),
     ).toHaveLength(16);
     for (const read of oldReads) {
       expect(await read).toMatchObject({ message: 'boom' });

@@ -28,7 +28,7 @@ export { dur, elapsed } from './perf.js';
 export { noop } from './noop.js';
 export { createPendingReplies, type PendingReplies } from './pending-replies.js';
 export { randomId } from './random-id.js';
-export { createStatusCell, type StatusCell, type StatusCellOptions } from './status-cell.js';
+export { createStatusCell, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
 export {
   createSyncStore,
   registerStoreStateReset,

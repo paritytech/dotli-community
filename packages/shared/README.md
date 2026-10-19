@@ -48,8 +48,9 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 - Concurrency and state: `createAsyncTaskPool`, `createLazyLoad`, `createListenerSet`, `ListenerSet`,
   `ListenerSetOptions`, `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`,
-  `createStatusCell`, `toAbortError`, `createPendingReplies`, `PendingReplies`, `deferred` (a promise with its resolve
-  and reject).
+  `createStatusCell`, `untilStatus` (a wait on a status cell until a verdict, which settles at once on the status there
+  is now and leaves through a signal), `toAbortError`, `createPendingReplies`, `PendingReplies`, `deferred` (a promise
+  with its resolve and reject).
 - Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
   `named`, `endpointHost`, `gatewayUnreachable`.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.

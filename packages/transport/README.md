@@ -128,7 +128,8 @@ sequenceDiagram
   - `retryMs` (50 by default) and `timeoutMs` (5000 by default) pace the opener, on `timers`.
   - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause }`,
     `{ kind: 'post_failed', error, call? }` or `{ kind: 'listener_threw', error }`. `describeIssue(issue)` is one as a
-    line of text, and `failureReason(error)` an error as `"<name>: <message>"`, bounded.
+    line of text, `failureReason(error)` an error as `"<name>: <message>"`, bounded, and `reasonParts(reason)` reads
+    such a reason back as `{ name, message }`.
   - `onPeerIdle()` hears that the peer left.
 - `Transport<H>`:
   - `connect()` starts the handshake on the opener, and `whenConnected()` resolves once it succeeds or rejects with the
@@ -175,4 +176,8 @@ Test helpers for code that uses the library.
   on a microtask, in order, and detach each buffer as a browser transfer does.
 - `readFrame(schema, data)` reads a recorded frame as a `RecordedFrame`. A call is named by its method's names and its
   message's tag, and keeps the message's bytes. It throws a `FrameRefusedError` on data that is no frame.
-- `readMessage(method, bytes)` decodes a recorded call's message, typed by the method.
+- `recordMessage(schema, data)` records a call's message as a `RecordedWireMessage`
+  (`{ id, trait, method, tag, message, json }`), with its bytes as hex and the decoded message as JSON with bytes as hex
+  and big integers as text, so a page can keep and match it. It gives null for the library's own frames and data that is
+  no frame.
+- `messagesOf(schema, method, recorded)` picks the recorded messages of a method and decodes them, typed by it.

@@ -155,19 +155,9 @@ a call that is no longer waiting is ignored without a count.
   at once), the two sides of a failure's crossing, `frameStatusEnd` (how a frame ends its status on an error),
   `fromTransportError` (a transport's closing error under the protocol's class) and `remoteEnd` (how a resolver or chain
   error ends a call, typed or as the handler's own failure) beside `failureOf` (a call's failure as the error host code
-  sees, by its method), and `createIssueReporter` with `WireIssue` (what a transport or its window provider cannot
-  handle itself, counted and logged under the side that reports it, as the host's own transport is).
+  sees, by its method), and `createWireReport(side, { count, warn? })` (the `onIssue`, `onNotBytes` and
+  `onRefusedOrigin` hooks for a transport and its window provider, which count and log what they cannot handle
+  themselves under the side that reports it, as the host's own transport is, and a refused origin only on its first
+  bytes, with `warn` the shared log's when unset).
 - Frame and errors: `backendOfFrameMode`, `ProtocolFatalError`, `ProtocolInitFailedError`, `ProtocolPortReleasedError`,
   `ProtocolVersionMismatchError`.
-
-### `@dotli/protocol/testing`
-
-Test-only, for functional tests that read the protocol frame's traffic in a real page. Never imported by shipped code.
-
-- `recordWireMessage`: a call's message the frame sent as a `RecordedWireMessage`, or null for the library's own frames
-  and data that is no frame. It names the call by the schema's trait and method, such as `frame` and `status`, and the
-  message's tag: `request`, `response`, `start`, `receive`, `interrupt` or `stop`. It keeps the message's bytes as hex,
-  and the message as JSON with bytes as hex, so a page can match it. The frame status ending as fatal is
-  `{ tag: 'interrupt', value: { success: false, value: { tag: 'Domain', value } } }` with the `fatal` failure as its
-  value.
-- `messagesOf(method, recorded)`: the recorded messages of a method, decoded typed with it.

@@ -9,22 +9,22 @@ import { parseBackend, type Backend, type Network } from '@dotli/config';
 import { captureException, getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
+  createListenerSet,
   createStatusCell,
   deferred,
   log,
   realTimers,
   serializeError,
   toError,
+  untilStatus,
   withTimeout,
   type Timers,
 } from '@dotli/shared';
 import { createTransport, createWindowProvider, type MessageTarget, type WindowLike } from '@dotli/transport';
-import { PROTOCOL_ERRORS, ProtocolVersionMismatchError } from './errors.js';
-import { protocolListeners } from './listeners.js';
-import { fromTransportError } from './outcomes.js';
+import { PROTOCOL_ERRORS, ProtocolVersionMismatchError, fromTransportError } from './errors.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscription.js';
-import { createIssueReporter } from './wire-issues.js';
+import { createWireReport } from './wire-issues.js';
 
 /**
  * Where the protocol frame stands. `idle` before anything asked for it. `booting` while it loads. `listening` once it
@@ -204,12 +204,14 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...deps.timeouts };
   const timers = deps.timers ?? realTimers;
   const count = deps.count ?? m.count;
-  const reportIssue = createIssueReporter('host', count);
+  const wire = createWireReport('host', { count });
 
   const status = createStatusCell<ProtocolStatus>('idle', {
     onListenerError: reportListener('protocol', 'protocol.status'),
   });
-  const lostListeners = protocolListeners<Error>('frame_lost');
+  const lostListeners = createListenerSet<Error>({
+    onListenerError: reportListener('protocol', 'protocol.frame_lost'),
+  });
   // Why the frame is down, for a caller that asks before it is back.
   let downReason: Error = new Error(PROTOCOL_ERRORS.FRAME_RESET);
   // The frame being booted or kept, and nothing while the frame is down.
@@ -263,12 +265,10 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
           peer,
           origin,
           // The provider drops what is not bytes before the transport sees it, so this is its only count.
-          onNotBytes: () => {
-            reportIssue({ kind: 'refused', reason: 'not_bytes' });
-          },
+          onNotBytes: wire.onNotBytes,
         }),
         // The frame reads the resolution id from its URL, which it needs before any handshake.
-        { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: reportIssue },
+        { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: wire.onIssue },
       ),
     );
     subscribe(kept.transport, protocolSchema.traits.frame.status, undefined, {
@@ -285,53 +285,6 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       },
     });
     return kept;
-  }
-
-  /**
-   * Waits on the status until `verdict` settles the wait with `true` or fails it with an error, and fails with the
-   * signal's reason when the frame is lost first.
-   */
-  function untilStatus(verdict: (status: ProtocolStatus) => boolean | Error, signal?: AbortSignal): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      // A frame lost before the wait began leaves nothing to start.
-      if (signal?.aborted === true) {
-        reject(toError(signal.reason));
-        return;
-      }
-      let unsubscribe = (): void => undefined;
-      let settled = false;
-      /** Whether `next` settled the wait. */
-      const onStatus = (next: ProtocolStatus): boolean => {
-        const outcome = verdict(next);
-        if (outcome === false) {
-          return false;
-        }
-        settle(outcome === true ? null : outcome);
-        return true;
-      };
-      const onAbort = (): void => {
-        settle(toError(signal?.reason));
-      };
-      function settle(error: Error | null): void {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        unsubscribe();
-        signal?.removeEventListener('abort', onAbort);
-        if (error === null) {
-          resolve();
-        } else {
-          reject(error);
-        }
-      }
-      // The status there is now settles the wait at once, so a frame already there costs no subscription.
-      if (onStatus(status.get())) {
-        return;
-      }
-      unsubscribe = status.subscribe(onStatus);
-      signal?.addEventListener('abort', onAbort, { once: true });
-    });
   }
 
   function createIframe(config: ProtocolFrameConfig): E {
@@ -422,7 +375,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       const stopReady = m.timer(S.PROTOCOL_IFRAME_READY);
       try {
         await withTimeout(
-          untilStatus(next => next === 'ready', kept.loss.signal),
+          untilStatus(status, next => next === 'ready', kept.loss.signal),
           timeouts.readyMs,
           () => new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT),
           timers,
@@ -431,7 +384,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         stopReady();
       }
       readyAt = timers.now();
-      await untilStatus(() => false, kept.loss.signal);
+      await untilStatus(status, () => false, kept.loss.signal);
     } catch (thrown: unknown) {
       // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
       const reason = fromTransportError(toError(thrown));
@@ -518,7 +471,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       askForFrame(config);
       // Read when the status is reached, since the frame can be dropped before the wait's continuation runs.
       let reached: ProtocolTransport | null = null;
-      return untilStatus(next => {
+      return untilStatus(status, next => {
         if (next === 'ready') {
           reached = slot?.transport ?? null;
           return reached !== null || downReason;

@@ -4,10 +4,10 @@
 // What the protocol frame reports about its light client, for the network panel and telemetry tags.
 
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import { realTimers, type Timers } from '@dotli/shared';
+import { reportListener } from '@dotli/metrics';
+import { createListenerSet, realTimers, type Timers } from '@dotli/shared';
 import { createFeedKeeper } from './feed.js';
 import type { ProtocolFrame } from './frame.js';
-import { protocolListeners } from './listeners.js';
 import { protocolSchema } from './schema.js';
 import { subscribe } from './subscription.js';
 
@@ -16,9 +16,15 @@ export function createFrameTelemetry(
   frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>,
   timers: Timers = realTimers,
 ) {
-  const chainSyncListeners = protocolListeners<ChainSyncEvent>('chain_sync');
-  const chainDetailListeners = protocolListeners<ChainDetail>('chain_detail');
-  const netBytesListeners = protocolListeners<{ received: number }>('net_bytes');
+  const chainSyncListeners = createListenerSet<ChainSyncEvent>({
+    onListenerError: reportListener('protocol', 'protocol.chain_sync'),
+  });
+  const chainDetailListeners = createListenerSet<ChainDetail>({
+    onListenerError: reportListener('protocol', 'protocol.chain_detail'),
+  });
+  const netBytesListeners = createListenerSet<{ received: number }>({
+    onListenerError: reportListener('protocol', 'protocol.net_bytes'),
+  });
   // A chain stays "unknown" on the gateway path, which runs no light client, and until its store answers.
   const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
   const reports = createFeedKeeper(

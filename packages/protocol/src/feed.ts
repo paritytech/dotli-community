@@ -8,7 +8,7 @@
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, errorName, log, named, type Timers } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
-import type { SubscriptionListeners } from './subscription.js';
+import type { FrameSubscriber } from './subscription.js';
 
 /** The first wait before an ended feed is reopened. It doubles after each end on the same frame. */
 const REOPEN_MS = 1_000;
@@ -20,7 +20,7 @@ const STABLE_MS = 30_000;
 export type FeedName = 'shared_auth' | 'telemetry';
 
 /** How a held feed hears that the frame ended it, or that its transport closed under it. */
-export type FeedEnds = Required<Pick<SubscriptionListeners<unknown>, 'end' | 'close'>>;
+export type FeedEnds = Required<Pick<FrameSubscriber<unknown>, 'end' | 'close'>>;
 
 /**
  * Subscribes the feed on one frame's transport, and returns what stops it. Called again for each reopen on the same

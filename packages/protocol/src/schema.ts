@@ -30,8 +30,6 @@ import {
   telemetryEventCodec,
 } from './codec-values.js';
 
-export type { TelemetryEvent } from './codec-values.js';
-
 type ExecutableKind = ExecutableManifest['kind'];
 
 const label = Struct({ label: str });

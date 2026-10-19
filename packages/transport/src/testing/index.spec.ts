@@ -1,13 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { _void, str } from 'scale-ts';
+import { Bytes, Struct, _void, str, u128 } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 
-import { err, unsupported } from '../errors.js';
+import { err, ok, unsupported } from '../errors.js';
+import { createProviderPair } from '../provider.fake.js';
 import { defineSchema, request, subscription } from '../schema.js';
+import { createTransport } from '../transport.js';
 import { encodeFrame, frame } from '../wire.js';
-import { FrameRefusedError, readFrame, readMessage } from './index.js';
+import { FrameRefusedError, messagesOf, readFrame, recordMessage } from './index.js';
 
 const schema = defineSchema({
   version: 2,
@@ -20,6 +22,30 @@ const schema = defineSchema({
   },
 });
 const { read, watch } = schema.traits.notes;
+
+/** A schema whose messages carry bytes and a big integer, which JSON does not keep as they are. */
+const vaultSchema = defineSchema({
+  version: 1,
+  hello: str,
+  traits: {
+    vault: {
+      save: request({ request: Struct({ entropy: Bytes(), amount: u128 }), response: _void }),
+      events: subscription({ start: _void, receive: str }),
+    },
+  },
+});
+const { save, events } = vaultSchema.traits.vault;
+
+/** An opener and an accepter over one in-memory channel, with every message either side received. */
+function wire() {
+  const { left, right, delivered } = createProviderPair();
+  const accepter = createTransport(vaultSchema, right, { handshake: 'accept', hello: 'accepter' });
+  const opener = createTransport(vaultSchema, left, { handshake: 'open', hello: 'opener' });
+  opener.connect();
+  return { opener, accepter, delivered };
+}
+
+const record = (data: ArrayBuffer) => recordMessage(vaultSchema, data);
 
 describe('readFrame', () => {
   it("As a test, I read a recorded call by its method's names and decoded message, and decode it typed with the method", () => {
@@ -58,7 +84,7 @@ describe('readFrame', () => {
       },
     ]);
     const [first] = recorded;
-    expect(first?.kind === 'call' ? readMessage(read, first.message) : null).toEqual({
+    expect(first?.kind === 'call' ? read.message.dec(first.message) : null).toEqual({
       tag: 'request',
       value: 'a note',
     });
@@ -114,5 +140,78 @@ describe('readFrame', () => {
     // Then
     expect(read).toThrow(FrameRefusedError);
     expect(read).toThrow('The data is no frame');
+  });
+});
+
+describe('recordMessage', () => {
+  it("As a test, I record a call's message by its trait, method and tag, as JSON, and decode it with its method", async () => {
+    // Given an accepter that sends the opener one event
+    const { opener, accepter, delivered } = wire();
+    accepter.handleSubscription(events, (_start, _context, sink) => {
+      sink.receive('synced');
+      return () => undefined;
+    });
+    await new Promise<void>(resolve => {
+      opener.subscribe(events, undefined, {
+        receive: () => {
+          resolve();
+        },
+        interrupt: () => undefined,
+        close: () => undefined,
+      });
+    });
+
+    // When
+    const recorded = delivered.flatMap(data => record(data) ?? []);
+
+    // Then
+    expect(recorded.filter(message => message.tag === 'receive')).toEqual([
+      {
+        id: expect.any(Number) as number,
+        trait: 'vault',
+        method: 'events',
+        tag: 'receive',
+        message: expect.any(String) as string,
+        json: JSON.stringify({ tag: 'receive', value: 'synced' }),
+      },
+    ]);
+    expect(messagesOf(vaultSchema, events, recorded)).toEqual([
+      { tag: 'start', value: undefined },
+      { tag: 'receive', value: 'synced' },
+    ]);
+  });
+
+  it("As a test, I get null for data that is no frame and for the library's own frames", async () => {
+    // Given a handshake both sides heard, and bytes too short to hold a frame
+    const { opener, delivered } = wire();
+    await opener.whenConnected();
+    const data = [...delivered, new Uint8Array([1, 2]).buffer];
+
+    // When
+    const recorded = data.map(record);
+
+    // Then
+    expect(delivered.length).toBeGreaterThan(0);
+    expect(recorded).toEqual(data.map(() => null));
+  });
+
+  it('As a test, I record the bytes of a message as hex, so the record stays plain JSON and decodes back', async () => {
+    // Given an accepter that saves what the opener sends
+    const { opener, accepter, delivered } = wire();
+    accepter.handleRequest(save, () => ok());
+    await opener.request(save, { entropy: new Uint8Array([1, 2, 255]), amount: 2n ** 100n });
+
+    // When
+    const recorded = delivered.flatMap(data => record(data) ?? []);
+
+    // Then
+    expect(JSON.parse(JSON.stringify(recorded))).toEqual(recorded);
+    expect(recorded.find(message => message.tag === 'request')?.json).toBe(
+      JSON.stringify({ tag: 'request', value: { entropy: '0x0102ff', amount: (2n ** 100n).toString() } }),
+    );
+    expect(messagesOf(vaultSchema, save, recorded)).toEqual([
+      { tag: 'request', value: { entropy: new Uint8Array([1, 2, 255]), amount: 2n ** 100n } },
+      { tag: 'response', value: ok() },
+    ]);
   });
 });

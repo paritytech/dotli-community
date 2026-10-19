@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { toError } from '@dotli/shared';
+import { fromHex, toError, toHex } from '@dotli/shared';
 import type { Codec } from 'scale-ts';
 import type { Failure } from '../errors.js';
 import type { AnyMethod, Schema, Traits } from '../schema.js';
@@ -10,8 +10,8 @@ import { decode, frame, type Accept, type Open } from '../wire.js';
 export { createProviderPair } from '../provider.fake.js';
 
 /**
- * A frame as a test reads it. A call keeps its message's bytes, which `readMessage` decodes typed with its method, and
- * the message as its method decoded it, read by its tag. A call to a method the schema lacks is named by its numeric
+ * A frame as a test reads it. A call keeps its message's bytes, and the message as its method decoded it, read by its
+ * tag. A call to a method the schema lacks is named by its numeric
  * ids, with no decoded message.
  */
 export type RecordedFrame =
@@ -69,7 +69,55 @@ export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: Array
   }
 }
 
-/** Decodes a recorded call's message with the method it belongs to. */
-export function readMessage<M>(method: { readonly message: Codec<M> }, message: Uint8Array): M {
-  return method.message.dec(message);
+/**
+ * A call's message as a recording keeps it: by its method's names and tag, with its bytes as hex, and as JSON with bytes
+ * as hex, so a page can match it.
+ */
+export interface RecordedWireMessage {
+  id: number;
+  trait: string;
+  method: string;
+  tag: string;
+  message: string;
+  json: string;
+}
+
+/** Bytes and big integers as JSON keeps them. */
+const plain = (_key: string, value: unknown): unknown =>
+  value instanceof Uint8Array ? toHex(value) : typeof value === 'bigint' ? value.toString() : value;
+
+/** Records a call's message read by `schema`, or gives null for the library's own frames and data that is no frame. */
+export function recordMessage<H, T extends Traits>(
+  schema: Schema<H, T>,
+  data: ArrayBuffer,
+): RecordedWireMessage | null {
+  let recorded: RecordedFrame;
+  try {
+    recorded = readFrame(schema, data);
+  } catch (error) {
+    // Data that is no frame is not recorded. Any other throw is a fault.
+    if (error instanceof FrameRefusedError) {
+      return null;
+    }
+    throw error;
+  }
+  if (recorded.kind !== 'call' || recorded.decoded === null) {
+    return null;
+  }
+  const { id, trait, method, message, decoded } = recorded;
+  return { id, trait, method, tag: decoded.tag, message: toHex(message), json: JSON.stringify(decoded, plain) };
+}
+
+/** The recorded messages of `method`, decoded with it. */
+export function messagesOf<H, T extends Traits, M>(
+  schema: Schema<H, T>,
+  method: AnyMethod & { readonly message: Codec<M> },
+  recorded: readonly RecordedWireMessage[],
+): M[] {
+  const address = schema.addressOf(method);
+  // Read as the method's own codec, so the messages come back typed by it.
+  const codec: Codec<M> = method.message;
+  return recorded
+    .filter(message => message.trait === address.trait && message.method === address.method)
+    .map(message => codec.dec(fromHex(message.message)));
 }

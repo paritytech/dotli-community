@@ -14,6 +14,7 @@ export {
   hostFailure,
   malformedFrame,
   ok,
+  reasonParts,
   unsupported,
 } from './errors.js';
 export type { CallError, Failure, TransportIssue } from './errors.js';

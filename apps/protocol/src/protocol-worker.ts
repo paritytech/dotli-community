@@ -12,6 +12,7 @@ import { captureException, m, spans as S, type SpanHandle } from '@dotli/metrics
 import {
   callName,
   createFrameStatus,
+  createWireReport,
   failureOf,
   frameStatusEnd,
   policyOf,
@@ -44,7 +45,7 @@ import { createEngine, serveEngineMethods, type EngineScope, type ProtocolEngine
 import { startLightClientService } from './light-client-service.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes, type Ticker } from './net-bytes.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { createWireReport, reportRefusals } from './refusal-report.js';
+import { reportRefusals } from './refusal-report.js';
 import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
 
 const { frame, resolve, chain } = protocolSchema.traits;
@@ -224,7 +225,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const openSpan = deps.openSpan ?? m.open;
   const sessions = new Set<PortSession>();
   // What each port's transport cannot handle itself, counted as the worker's.
-  const wire = createWireReport('worker', { warn: log.warn, count: m.count });
+  const wire = createWireReport('worker', { count: m.count });
   // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
   // it. So a released port stays open until the beat after its tab speaks again, or until the worker closes. Each maps
   // to its close.

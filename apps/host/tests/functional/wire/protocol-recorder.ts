@@ -4,7 +4,8 @@
 // Records what the protocol frame tells the host page. A page runs this script in every frame it builds, so it
 // records, and defines its global, only in the host page's top window, where the host listens.
 
-import { recordWireMessage, type RecordedWireMessage } from '@dotli/protocol/testing';
+import { protocolSchema } from '@dotli/protocol';
+import { recordMessage, type RecordedWireMessage } from '@dotli/transport/testing';
 import type {} from '../helpers/wire-recorder.js';
 
 const PROTOCOL_HOSTNAME = 'host.localhost';
@@ -18,7 +19,7 @@ if (window.top === window && location.hostname !== PROTOCOL_HOSTNAME) {
     if (event.origin !== protocolOrigin || !(event.data instanceof ArrayBuffer)) {
       return;
     }
-    const recorded = recordWireMessage(event.data);
+    const recorded = recordMessage(protocolSchema, event.data);
     // The light client's own traffic, which no test reads, would dwarf the rest and slow every wait that scans it.
     if (recorded !== null && recorded.trait !== 'chain') {
       seen.push(recorded);
