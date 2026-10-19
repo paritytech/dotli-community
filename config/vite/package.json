@@ -28,13 +28,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sentry/vite-plugin": "^5.4.1",
+    "@sentry/vite-plugin": "^11.8.0",
     "vite-plugin-pwa": "^2.0.0",
     "vite-plugin-wasm": "^3.6.0"
   },
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "astro": "^7.3.8"
+    "astro": "^7.4.1"
   }
 }

@@ -18,7 +18,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "fake-indexeddb": "^6.2.5"
+    "fake-indexeddb": "^6.2.6"
   },
   "dependencies": {
     "@dotli/config": "*",

@@ -31,7 +31,7 @@ RUN if [ -n "${RELEASE_VERSION:-}" ]; then node scripts/set-version.ts "$RELEASE
  && if [ -n "${RELEASE_COMMIT:-}" ]; then export VITE_COMMIT_SHA="$RELEASE_COMMIT"; fi \
  && npm run build:prod
 
-FROM nginx:alpine@sha256:72aeb3308ef6cb3118242fb16389518923916dfa206e32d1a8377acc328b9870
+FROM nginx:alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d
 ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173
 
 # jq: the entrypoint validates the runtime network config before nginx starts.
