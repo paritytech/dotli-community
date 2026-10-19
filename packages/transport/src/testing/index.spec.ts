@@ -157,6 +157,7 @@ describe('recordMessage', () => {
           resolve();
         },
         interrupt: () => undefined,
+        fail: () => undefined,
         close: () => undefined,
       });
     });

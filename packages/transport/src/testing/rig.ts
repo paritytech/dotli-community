@@ -5,8 +5,8 @@
 
 import { toError } from '@dotli/shared';
 import { manualTimers } from '@dotli/shared/testing';
-import { Bytes, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
-import { ok, type CallError, type TransportIssue } from '../errors.js';
+import { Bytes, Result, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
+import { callError, ok, type Failure, type TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
 import { defineSchema, request, subscription, type AnyMethod } from '../schema.js';
@@ -37,11 +37,14 @@ export const testSchema = defineSchema({
     notes: {
       read: request({ request: word, response: str, error: str }),
       touch: request({ request: _void, response: _void }),
-      watch: subscription({ start: word, receive: word, interrupt: str }),
+      // Its author ends it with a `Result`: `Ok` a clean end, `Err` with why.
+      watch: subscription({ start: word, receive: word, interrupt: Result(_void, str) }),
     },
     echo: {
       say: request({ request: str, response: str }),
       listen: subscription({ start: _void, receive: str }),
+      // An interrupt of truapi's layout, so a relay can pass a failure it heard on as the method's own reason.
+      relay: subscription({ start: word, receive: word, interrupt: Result(_void, callError(str)) }),
     },
   },
 });
@@ -54,25 +57,33 @@ export const NOTES = testSchema.addressOf(notes.read).sectionId;
 // `notes.read` and `notes.watch` with every payload as bytes, so a test can send what their codecs refuse.
 const bytes = Bytes(Infinity);
 export const rawRead = request({ request: bytes, response: bytes, error: bytes });
-export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: bytes });
+export const rawWatch = subscription({ start: bytes, receive: bytes, interrupt: Result(_void, bytes) });
 
 /** Text cut short: its length says two bytes and none follow, so `str` refuses it. */
 export const CUT_SHORT_TEXT = Uint8Array.of(8);
 
-/** Listeners of a `notes.watch` subscription that record the values it hears, its interrupts and its closes. */
-export function watcher() {
+/**
+ * Listeners of a subscription whose values are text and whose interrupt is `I`, such as `notes.watch`, that record the
+ * values it hears, its interrupts, its failures and its closes.
+ */
+export function watcher<I = ResultPayload<undefined, string>>() {
   const values: string[] = [];
-  const ends: ResultPayload<undefined, CallError<string>>[] = [];
+  const ends: I[] = [];
+  const fails: Failure[] = [];
   const closes: Error[] = [];
   return {
     values,
     ends,
+    fails,
     closes,
     receive: (value: string) => {
       values.push(value);
     },
-    interrupt: (outcome: ResultPayload<undefined, CallError<string>>) => {
-      ends.push(outcome);
+    interrupt: (reason: I) => {
+      ends.push(reason);
+    },
+    fail: (failure: Failure) => {
+      fails.push(failure);
     },
     close: (error: Error) => {
       closes.push(error);
@@ -83,7 +94,7 @@ export function watcher() {
 /** Serves `notes.watch` on a transport, keeping each subscription's start and sink and counting its stops. */
 export function serveWatch(transport: Transport<string>) {
   const starts: string[] = [];
-  const sinks: Sink<string, string>[] = [];
+  const sinks: Sink<string, ResultPayload<undefined, string>>[] = [];
   const stops: number[] = [];
   transport.handleSubscription(notes.watch, (start, _context, sink) => {
     const index = sinks.length;

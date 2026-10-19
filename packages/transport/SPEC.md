@@ -36,6 +36,11 @@ mod chain {
     connectionId: str,
     message: str
   ) -> Result<(), CallError<()>>;
+
+  fn connect_subscribe(
+    genesisHash: str,
+    callback: fn(str)
+  ) -> Subscriber<Result<(), CallError<ConnectErr>>>;
 }
 ```
 
@@ -139,13 +144,15 @@ Actions MUST be derived from methods using the following algorithm:
     - Argument: argument of callback function
   - Interrupt
     - Name: `interrupt`
-    - Argument: `Result<(), CallError<InterruptReason>>`
+    - Argument: `InterruptReason`, the method's own type as a whole
   - Unsubscribe
     - Name: `stop`
     - Argument: none
 
 Actions MUST be defined in the given order. A method's payload always comes last in its message, so its codec reads
-exactly the payload's bytes.
+exactly the payload's bytes. The transport adds nothing to an `InterruptReason`, so a clean end is whatever the method's
+type says. A method that wants truapi's layout declares `Result<(), CallError<Reason>>` as its `InterruptReason`, as
+`chain.connect_subscribe` does.
 
 Example:
 
@@ -160,7 +167,7 @@ enum OwnerMessage {
 enum ChangesMessage {
   start(()),
   receive(Change),
-  interrupt(Result<(), CallError<ChangesErr>>),
+  interrupt(ChangesErr),
   stop,
 }
 
@@ -168,6 +175,14 @@ enum ChangesMessage {
 enum SendMessage {
   request((str, str)),
   response(Result<(), CallError<()>>),
+}
+
+// chain.connect_subscribe, at sectionId 1, methodId 1
+enum ConnectMessage {
+  start(str),
+  receive(str),
+  interrupt(Result<(), CallError<ConnectErr>>),
+  stop,
 }
 ```
 
@@ -201,9 +216,8 @@ ignored.
 
 When a subscription starts, the consumer MUST notify the provider with a `start` message. When the consumer wants to
 unsubscribe, it MUST send a `stop` message. The provider MUST send data updates with a `receive` message. The provider
-ends the subscription with an `interrupt` message: `Ok(())` for a clean end, or `Err` with the subscription-specific
-reason or a failure. The consumer MAY react to an `interrupt` message by notifying the application layer. Nothing
-follows an `interrupt` or a `stop`.
+ends the subscription with an `interrupt` message carrying the subscription-specific reason. The consumer MAY react to
+an `interrupt` message by notifying the application layer. Nothing follows an `interrupt` or a `stop`.
 
 The serving peer MUST end a subscription with a `failed` frame of the same `id` in place of an `interrupt` when no
 handler serves the method or the `start` does not decode (`Unsupported` or `MalformedFrame`), and when the handler
@@ -222,13 +236,16 @@ The returned `Subscriber` interface depends on the implementation, but a generic
 ```rust
 struct Subscriber<I = ()> {
   unsubscribe: fn(),
-  onInterrupt: fn(fn(Result<(), CallError<I>>)),
+  onInterrupt: fn(fn(I)),
+  onFail: fn(fn(Failure)),
   onClose: fn(fn(Error))
 }
 ```
 
-`onClose` hears the one local end, the transport closing or a `start` that could not be posted. Unsubscribing calls no
-listener.
+`onInterrupt` hears only the provider's own `interrupt` message. `onFail` hears every failure of the transport's own: a
+`failed` frame, `Cancelled` once the consumer aborts, and `MalformedFrame` when a message does not decode. `onClose`
+hears the one local end, the transport closing or a `start` that could not be posted. Exactly one of them is called,
+once. Unsubscribing calls no listener.
 
 #### Closing
 

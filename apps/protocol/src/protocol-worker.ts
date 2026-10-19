@@ -25,6 +25,7 @@ import {
   type FrameStatusSink,
   type ProtocolHello,
   type ProtocolTransport,
+  type SubscriptionEnd,
 } from '@dotli/protocol';
 import { errorName, log, serializeError, toError } from '@dotli/shared';
 import {
@@ -96,7 +97,7 @@ interface PortSession {
   /** Beats since the port last sent anything. */
   missed: number;
   /** The tab's open `frame.beat` subscriptions, which each beat reaches. */
-  beats: Set<Sink<undefined, undefined>>;
+  beats: Set<Sink<undefined, SubscriptionEnd<undefined>>>;
   /** The tab's open `frame.status` subscriptions, which a release ends before the transport goes. */
   statuses: Set<FrameStatusSink>;
   /** Stops hearing the port close. */
@@ -177,12 +178,12 @@ function traced<P, R, E extends DomainFailure>(
 }
 
 /** Spans a subscription until the value that answers it, or its end, or the tab stopping it first. */
-function tracedSubscription<S, V, I extends DomainFailure>(
+function tracedSubscription<S, V, E extends DomainFailure>(
   openSpan: typeof m.open,
-  method: Subscription<S, V, I>,
+  method: Subscription<S, V, SubscriptionEnd<E>>,
   answers: (value: NoInfer<V>) => boolean,
-  handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
-): SubscriptionHandler<S, V, I, ProtocolHello> {
+  handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<SubscriptionEnd<E>>, ProtocolHello>,
+): SubscriptionHandler<S, V, SubscriptionEnd<E>, ProtocolHello> {
   const name = callName(method);
   return (start, context, sink) => {
     const span = openRequestSpan(openSpan, name, context.hello.resolutionId);
@@ -194,7 +195,7 @@ function tracedSubscription<S, V, I extends DomainFailure>(
       open = false;
       endSpan(span, error);
     };
-    const spanned: Sink<V, I> = {
+    const spanned: Sink<V, SubscriptionEnd<E>> = {
       receive: value => {
         sink.receive(value);
         if (answers(value)) {

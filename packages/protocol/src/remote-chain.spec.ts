@@ -15,7 +15,15 @@ import {
 import { deferred } from '@dotli/shared';
 import { manualTimers, type ManualTimers, recordLog } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
-import { err, hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
+import {
+  err,
+  hostFailure,
+  ok,
+  type CallError,
+  type ResultPayload,
+  type MethodTypes,
+  type Sink,
+} from '@dotli/transport';
 import { ProtocolFatalError } from './errors.js';
 import { budgetOf } from './method-policy.js';
 import { createRemoteChains, type RemoteChainProvider } from './remote-chain.js';
@@ -38,7 +46,7 @@ const settle = (ms = 0): Promise<void> => timers.advance(ms);
 
 interface ServedConnect {
   payload: Connect['start'];
-  sink: Sink<Connect['receive'], RemoteFailure>;
+  sink: Sink<Connect['receive'], ResultPayload<undefined, CallError<RemoteFailure>>>;
   /** The host unsubscribed, which is its disconnect. */
   stopped: boolean;
 }

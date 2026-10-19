@@ -26,7 +26,7 @@ export interface RequestTypes<P, R, E> {
 export interface SubscriptionTypes<S, V, I> {
   start: S;
   receive: V;
-  interrupt: ResultPayload<undefined, CallError<I>>;
+  interrupt: I;
   stop: undefined;
 }
 
@@ -45,7 +45,7 @@ interface Method<M> {
 /** A request method. `E` is its own error, `undefined` when it declares none. */
 export type Request<P, R, E> = Method<RequestMessage<P, R, E>>;
 
-/** A subscription method. `I` is its own end reason, `undefined` when it declares none. */
+/** A subscription method. `I` is its own interrupt reason as a whole, `undefined` when it declares none. */
 export type Subscription<S, V, I> = Method<SubscriptionMessage<S, V, I>>;
 
 const method = <M>(message: Codec<M>): Method<M> => ({ message, frame: frameOf(message) });
@@ -63,7 +63,10 @@ export function request<P, R, E>(def: {
   return def.error === undefined ? requestOf(_void) : requestOf(def.error);
 }
 
-/** Declares a subscription. `interrupt` is the method's own end reason, and one without it has an empty one. */
+/**
+ * Declares a subscription. `interrupt` is the method's own interrupt reason, which crosses as it is with nothing added,
+ * and one without it has an empty one. A schema that wants truapi's layout declares `Result(_void, callError(reason))`.
+ */
 export function subscription<S, V>(def: { start: Codec<S>; receive: Codec<V> }): Subscription<S, V, undefined>;
 export function subscription<S, V, I>(def: {
   start: Codec<S>;
@@ -75,8 +78,8 @@ export function subscription<S, V, I>(def: {
   receive: Codec<V>;
   interrupt?: Codec<I>;
 }): Subscription<S, V, I> | Subscription<S, V, undefined> {
-  const subscriptionOf = <D>(reason: Codec<D>): Subscription<S, V, D> =>
-    method(Enum({ start: def.start, receive: def.receive, interrupt: Result(_void, callError(reason)), stop: _void }));
+  const subscriptionOf = <D>(interrupt: Codec<D>): Subscription<S, V, D> =>
+    method(Enum({ start: def.start, receive: def.receive, interrupt, stop: _void }));
   return def.interrupt === undefined ? subscriptionOf(_void) : subscriptionOf(def.interrupt);
 }
 
@@ -180,6 +183,6 @@ export type MethodTypes<M> =
       ? SubscriptionTypes<S, V, I>
       : never;
 
-/** A method's own error: a request's `error`, or a subscription's `interrupt` reason. */
+/** A method's own error: a request's `error`, or a subscription's `interrupt` reason as a whole. */
 export type DomainError<M> =
   M extends Request<infer _P, infer _R, infer E> ? E : M extends Subscription<infer _S, infer _V, infer I> ? I : never;

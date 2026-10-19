@@ -14,6 +14,7 @@ import {
   protocolSchema,
   remoteEnd,
   type RemoteFailure,
+  type SubscriptionEnd,
 } from '@dotli/protocol';
 import { createTransport, createWindowProvider, err, ok, type MethodTypes, type Sink } from '@dotli/transport';
 
@@ -68,7 +69,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   const modes: Record<string, BlockMode> = { ...options.modes };
   const gets: Record<string, number> = {};
   const held: { cid: string; connectionId: string; rpcId: unknown }[] = [];
-  const connections = new Map<string, Sink<ChainMessage, RemoteFailure>>();
+  const connections = new Map<string, Sink<ChainMessage, SubscriptionEnd<RemoteFailure>>>();
   const status = createFrameStatus();
   const stopNothing = (): void => undefined;
 

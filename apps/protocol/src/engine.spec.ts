@@ -11,17 +11,8 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import { budgetOf, protocolSchema, type ProtocolTransport } from '@dotli/protocol';
-import {
-  domain,
-  err,
-  hostFailure,
-  ok,
-  type Failure,
-  type DomainError,
-  type MethodTypes,
-  type ResultPayload,
-} from '@dotli/transport';
+import { budgetOf, protocolSchema, type ProtocolTransport, type RemoteFailure } from '@dotli/protocol';
+import { domain, err, hostFailure, ok, type Failure, type MethodTypes, type ResultPayload } from '@dotli/transport';
 import {
   createEngine,
   MAX_CONNS,
@@ -36,7 +27,7 @@ import { closeHostLinks, linkHost, record, type Recording } from './testing/host
 
 const { chain, resolve } = protocolSchema.sections;
 
-type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], DomainError<typeof chain.connect>>;
+type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], RemoteFailure>;
 
 afterEach(() => {
   vi.useRealTimers();

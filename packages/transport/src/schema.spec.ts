@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Enum, Struct, Tuple, _void, str, u32, u8, type ResultPayload } from 'scale-ts';
+import { Enum, Result, Struct, Tuple, _void, str, u32, u8, type ResultPayload } from 'scale-ts';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CallError } from './errors.js';
+import { callError, type CallError } from './errors.js';
 import {
   codec,
   defineSchema,
@@ -20,6 +20,7 @@ const frameFailure = Enum({ fatal: _void, released: _void });
 const owner = request({ request: label, response: str });
 const changes = subscription({ start: label, receive: str });
 const status = subscription({ start: _void, receive: _void, interrupt: frameFailure });
+const ended = subscription({ start: _void, receive: _void, interrupt: Result(_void, callError(frameFailure)) });
 const reload = request({ request: _void, response: _void, error: frameFailure });
 const text = codec<string>(
   value => new TextEncoder().encode(value),
@@ -31,7 +32,7 @@ const s = defineSchema({
   hello: u32,
   sections: {
     resolve: { owner, changes },
-    frame: { status, reload },
+    frame: { status, reload, ended },
   },
 });
 
@@ -133,13 +134,15 @@ describe('schema', () => {
     expectTypeOf<Changes>().toEqualTypeOf<{
       start: { label: string };
       receive: string;
-      interrupt: ResultPayload<undefined, CallError<undefined>>;
+      interrupt: undefined;
       stop: undefined;
     }>();
-    expectTypeOf<MethodTypes<typeof status>['interrupt']>().toEqualTypeOf<
+    expectTypeOf<MethodTypes<typeof status>['interrupt']>().toEqualTypeOf<FrameFailure>();
+    expectTypeOf<MethodTypes<typeof ended>['interrupt']>().toEqualTypeOf<
       ResultPayload<undefined, CallError<FrameFailure>>
     >();
     expectTypeOf<DomainError<typeof status>>().toEqualTypeOf<FrameFailure>();
+    expectTypeOf<DomainError<typeof ended>>().toEqualTypeOf<ResultPayload<undefined, CallError<FrameFailure>>>();
     expectTypeOf<DomainError<typeof reload>>().toEqualTypeOf<FrameFailure>();
     expectTypeOf<DomainError<typeof owner>>().toBeUndefined();
     expect(s.hello).toBe(u32);

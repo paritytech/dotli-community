@@ -6,12 +6,12 @@
 
 import { err, type MethodTypes, type Sink } from '@dotli/transport';
 import { frameStatusEnd } from './errors.js';
-import type { FrameFailure, ProtocolHandler, protocolSchema } from './schema.js';
-
-export type FrameStatusSink = Sink<undefined, FrameFailure>;
+import type { ProtocolHandler, protocolSchema } from './schema.js';
 
 /** How the status ends, as its subscribers hear it. */
 export type FrameStatusEnd = MethodTypes<typeof protocolSchema.sections.frame.status>['interrupt'];
+
+export type FrameStatusSink = Sink<undefined, FrameStatusEnd>;
 
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: FrameStatusEnd };
 

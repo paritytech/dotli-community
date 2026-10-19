@@ -7,7 +7,7 @@
 import type { SubscribeOptions, Subscription as Method } from '@dotli/transport';
 import { callName } from './method-policy.js';
 import { callFailure, fromTransportError } from './errors.js';
-import type { DomainFailure, ProtocolTransport } from './schema.js';
+import type { DomainFailure, ProtocolTransport, SubscriptionEnd } from './schema.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
 export interface FrameSubscriber<V> {
@@ -19,7 +19,7 @@ export interface FrameSubscriber<V> {
 }
 
 /** Subscribes `method` on `transport`, and returns what stops it. Throws when `start` is refused. */
-export function subscribe<S, V, I extends DomainFailure>(
+export function subscribe<S, V, I extends SubscriptionEnd<DomainFailure>>(
   transport: ProtocolTransport,
   method: Method<S, V, I>,
   start: NoInfer<S>,
@@ -36,6 +36,9 @@ export function subscribe<S, V, I extends DomainFailure>(
       },
       interrupt: outcome => {
         listeners.end(outcome.success ? null : callFailure(outcome.value, name, options.signal));
+      },
+      fail: failure => {
+        listeners.end(callFailure(failure, name, options.signal));
       },
       close: error => {
         if (listeners.close === undefined) {

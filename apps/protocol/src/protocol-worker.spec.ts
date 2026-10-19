@@ -10,17 +10,14 @@ import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { protocolSchema, type ProtocolTransport, createFrameStatus } from '@dotli/protocol';
 import {
-  createPortProvider,
-  createTransport,
-  domain,
-  err,
-  hostFailure,
-  ok,
-  type DomainError,
-  type MethodTypes,
-} from '@dotli/transport';
+  protocolSchema,
+  type FrameFailure,
+  type ProtocolTransport,
+  type RemoteFailure,
+  createFrameStatus,
+} from '@dotli/protocol';
+import { createPortProvider, createTransport, domain, err, hostFailure, ok, type MethodTypes } from '@dotli/transport';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { deferred, bindLogSink, type LogLevel } from '@dotli/shared';
 import { createTestTicker } from './net-bytes.fake.js';
@@ -38,8 +35,8 @@ import { closeHostLinks, linkHost, record, type Recording } from './testing/host
 
 const { frame, chain, resolve: names } = protocolSchema.sections;
 
-type StatusRecording = Recording<MethodTypes<typeof frame.status>['receive'], DomainError<typeof frame.status>>;
-type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], DomainError<typeof chain.connect>>;
+type StatusRecording = Recording<MethodTypes<typeof frame.status>['receive'], FrameFailure>;
+type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], RemoteFailure>;
 
 type ChainSyncEvent = Parameters<Parameters<WorkerResolver['onChainSync']>[0]>[0];
 type ChainDetail = Parameters<Parameters<WorkerResolver['onChainDetail']>[0]>[0];

@@ -5,6 +5,7 @@ export type { Codec, ResultPayload } from 'scale-ts';
 export {
   TransportHandshakeTimeoutError,
   TransportVersionMismatchError,
+  callError,
   cancelled,
   denied,
   describeIssue,

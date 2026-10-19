@@ -97,7 +97,7 @@ export type Failure = CodecType<typeof failure>;
 /** Why a call did not return its value: the method's own `Domain` error, or a failure of the library's. */
 export type CallError<E> = { tag: 'Domain'; value: E } | Failure;
 
-/** truapi's `CallError`, with `Domain` first. */
+/** truapi's `CallError`, with `Domain` first. A request's answer carries one, as does an interrupt that chooses it. */
 export const callError = <E>(domain: Codec<E>): Codec<CallError<E>> => Enum({ Domain: domain, ...failures });
 
 export const domain = <E>(value: E): CallError<E> => ({ tag: 'Domain', value });

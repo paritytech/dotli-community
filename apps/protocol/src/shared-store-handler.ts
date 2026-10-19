@@ -17,6 +17,7 @@ import {
   type LocalWalletRead,
   type SharedAuthChange,
   type ProtocolServing,
+  type SubscriptionEnd,
 } from '@dotli/protocol';
 import {
   forgetLocalWallet,
@@ -92,7 +93,7 @@ function isBroadcastMessage(data: unknown): data is SharedAuthBroadcastMessage {
 
 export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedStoreDeps): SharedStoreHandler {
   const { channel } = deps;
-  const subscribers = new Set<Sink<SharedAuthChange, undefined>>();
+  const subscribers = new Set<Sink<SharedAuthChange, SubscriptionEnd<undefined>>>();
 
   function broadcast(siteId: string, key: string, value: string | null): void {
     if (channel === null) {

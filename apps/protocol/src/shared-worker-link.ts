@@ -18,6 +18,7 @@ import {
   type ProtocolHello,
   type ProtocolServing,
   type ProtocolTransport,
+  type SubscriptionEnd,
 } from '@dotli/protocol';
 import {
   createListenerSet,
@@ -107,6 +108,10 @@ export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => v
     interrupt: outcome => {
       finish({ kind: 'interrupt', outcome });
     },
+    // A failure of the transport's own ends the status as the worker's end, as truapi's `CallError` carries it.
+    fail: failure => {
+      finish({ kind: 'interrupt', outcome: err(failure) });
+    },
     close: error => {
       finish({ kind: 'close', error });
     },
@@ -157,6 +162,9 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
       );
     },
     interrupt: () => {
+      answering = false;
+    },
+    fail: () => {
       answering = false;
     },
     close: () => {
@@ -298,10 +306,10 @@ function relayRequest<P, R, E>(
  * Sends each value of the worker's and ends with the worker's own end. A link that closed under the subscription ends
  * it with the closing error, under the protocol's class when it is the transport's own.
  */
-function relaySubscription<S, V, I>(
+function relaySubscription<S, V, E>(
   worker: ProtocolTransport,
-  method: Subscription<S, V, I>,
-): SubscriptionHandler<S, V, I, ProtocolHello> {
+  method: Subscription<S, V, SubscriptionEnd<E>>,
+): SubscriptionHandler<S, V, SubscriptionEnd<E>, ProtocolHello> {
   return (start, _context, sink) =>
     worker.subscribe(method, start, {
       receive: value => {
@@ -309,6 +317,9 @@ function relaySubscription<S, V, I>(
       },
       interrupt: outcome => {
         sink.interrupt(outcome);
+      },
+      fail: failure => {
+        sink.interrupt(err(failure));
       },
       close: error => {
         sink.interrupt(err(hostFailure(fromTransportError(error))));

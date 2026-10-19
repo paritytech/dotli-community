@@ -13,37 +13,38 @@ import {
   type ProtocolHandler,
   type ProtocolHello,
   type protocolSchema,
+  type SubscriptionEnd,
   type TelemetryEvent,
 } from '@dotli/protocol';
 import { toError } from '@dotli/shared';
 import { err, hostFailure, type Sink, type SubscriptionHandler } from '@dotli/transport';
 
-type Handler<St, V, I> = SubscriptionHandler<St, V, I, ProtocolHello>;
+type Handler<St, V, E> = SubscriptionHandler<St, V, SubscriptionEnd<E>, ProtocolHello>;
 
-interface Waiting<St, V, I> {
+interface Waiting<St, V, E> {
   start: St;
   context: ProtocolContext;
-  sink: Sink<V, I>;
+  sink: Sink<V, SubscriptionEnd<E>>;
   /** Null until the real handler starts it. */
   stop: (() => void) | null;
   /** Stopped by the peer, an interrupt or a dispose, which may come while the real handler runs. */
   stopped: boolean;
 }
 
-export interface DeferredSubscription<St, V, I> {
+export interface DeferredSubscription<St, V, E> {
   /** Registered at once. Each subscription waits until `serve`, and one that stops first never starts. */
-  handler: Handler<St, V, I>;
+  handler: Handler<St, V, E>;
   /** Starts every waiting subscription on `real`, and every later one at once. Only the first `serve` or `fail` counts. */
-  serve(real: Handler<St, V, I>): void;
+  serve(real: Handler<St, V, E>): void;
   /** Ends every waiting subscription with `error`, and every later one at once, for a source that will never come. */
   fail(error: Error): void;
 }
 
-export function createDeferredSubscription<St, V, I>(): DeferredSubscription<St, V, I> {
-  let real: Handler<St, V, I> | null = null;
-  const waiting = new Set<Waiting<St, V, I>>();
+export function createDeferredSubscription<St, V, E>(): DeferredSubscription<St, V, E> {
+  let real: Handler<St, V, E> | null = null;
+  const waiting = new Set<Waiting<St, V, E>>();
 
-  const run = (entry: Waiting<St, V, I>, handler: Handler<St, V, I>): void => {
+  const run = (entry: Waiting<St, V, E>, handler: Handler<St, V, E>): void => {
     const stop = handler(entry.start, entry.context, entry.sink);
     if (entry.stopped) {
       stop();
@@ -52,7 +53,7 @@ export function createDeferredSubscription<St, V, I>(): DeferredSubscription<St,
     }
   };
 
-  const serve = (handler: Handler<St, V, I>): void => {
+  const serve = (handler: Handler<St, V, E>): void => {
     if (real !== null) {
       return;
     }
@@ -71,7 +72,7 @@ export function createDeferredSubscription<St, V, I>(): DeferredSubscription<St,
 
   return {
     handler: (start, context, sink) => {
-      const entry: Waiting<St, V, I> = { start, context, sink, stop: null, stopped: false };
+      const entry: Waiting<St, V, E> = { start, context, sink, stop: null, stopped: false };
       if (real === null) {
         waiting.add(entry);
       } else {

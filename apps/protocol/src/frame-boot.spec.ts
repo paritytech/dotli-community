@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProtocolInitFailedError, protocolSchema, type ProtocolHandler } from '@dotli/protocol';
 import { deferred } from '@dotli/shared';
-import { domain, err, hostFailure, type DomainError, type MethodTypes } from '@dotli/transport';
+import { domain, err, hostFailure, type MethodTypes } from '@dotli/transport';
 import {
   createDeferredSubscription,
   createFrameBoot,
@@ -27,7 +27,7 @@ function setup(): { boot: FrameBoot; link: HostLink } {
 }
 
 /** Whether the recorded subscription has ended by now. */
-function endedYet(ended: Promise<EndOf<DomainError<typeof frame.telemetry>>>): () => boolean {
+function endedYet(ended: Promise<EndOf<undefined>>): () => boolean {
   let over = false;
   void ended.then(() => {
     over = true;
@@ -126,11 +126,7 @@ describe('the frame boot', () => {
 
 type Telemetry = MethodTypes<typeof frame.telemetry>;
 type TelemetryHandler = ProtocolHandler<typeof frame.telemetry>;
-type DeferredTelemetry = DeferredSubscription<
-  Telemetry['start'],
-  Telemetry['receive'],
-  DomainError<typeof frame.telemetry>
->;
+type DeferredTelemetry = DeferredSubscription<Telemetry['start'], Telemetry['receive'], undefined>;
 
 /** A deferred telemetry the frame serves on `link`. */
 function telemetrySubscription(link: HostLink): DeferredTelemetry {

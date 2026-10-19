@@ -16,6 +16,7 @@ import {
   ok,
   unsupported,
   type CallError,
+  type Failure,
   type TransportIssue,
 } from './errors.js';
 import { createProviderPair } from './provider.fake.js';
@@ -84,7 +85,10 @@ describe('createTransport', () => {
           expectTypeOf(value).toEqualTypeOf<string>();
         },
         interrupt: outcome => {
-          expectTypeOf(outcome).toEqualTypeOf<ResultPayload<undefined, CallError<string>>>();
+          expectTypeOf(outcome).toEqualTypeOf<ResultPayload<undefined, string>>();
+        },
+        fail: failure => {
+          expectTypeOf(failure).toEqualTypeOf<Failure>();
         },
         close: error => {
           expectTypeOf(error).toEqualTypeOf<Error>();
@@ -103,6 +107,15 @@ describe('createTransport', () => {
       transport.handleSubscription(echo.listen, (start, _context, sink) => {
         expectTypeOf(start).toEqualTypeOf<undefined>();
         expectTypeOf(sink).toEqualTypeOf<Sink<string, undefined>>();
+        return () => undefined;
+      });
+      transport.handleSubscription(echo.relay, (_start, _context, sink) => {
+        expectTypeOf(sink).toEqualTypeOf<Sink<string, ResultPayload<undefined, CallError<string>>>>();
+        return () => undefined;
+      });
+      transport.handleSubscription(notes.watch, (_start, _context, sink) => {
+        // @ts-expect-error an interrupt carries the method's own type, which is text
+        sink.interrupt(err(hostFailure('not the method own type')));
         return () => undefined;
       });
     };
@@ -139,13 +152,16 @@ describe('createTransport', () => {
     const relayServing = downstream.accepter;
     const relayCalling = upstream.opener;
     serveWatch(upstream.accepter);
-    relayServing.handleSubscription(notes.watch, (start, _context, sink) => {
+    relayServing.handleSubscription(echo.relay, (start, _context, sink) => {
       return relayCalling.subscribe(notes.watch, start, {
         receive: value => {
           sink.receive(value);
         },
         interrupt: outcome => {
-          sink.interrupt(outcome);
+          sink.interrupt(outcome.success ? outcome : err(domain(outcome.value)));
+        },
+        fail: failure => {
+          sink.interrupt(err(failure));
         },
         close: error => {
           sink.interrupt(err(hostFailure(error)));
@@ -154,8 +170,8 @@ describe('createTransport', () => {
     });
     caller.connect();
     relayCalling.connect();
-    const heard = watcher();
-    caller.subscribe(notes.watch, 'from the top', heard);
+    const heard = watcher<ResultPayload<undefined, CallError<string>>>();
+    caller.subscribe(echo.relay, 'from the top', heard);
     await downstream.timers.advance(0);
     await upstream.timers.advance(0);
 
@@ -166,6 +182,7 @@ describe('createTransport', () => {
 
     // Then
     expect(heard.ends).toEqual([err(hostFailure('RangeError: upstream gone'))]);
+    expect(heard.fails).toEqual([]);
     expect([...downstream.issues, ...upstream.issues]).toEqual([]);
   });
 
@@ -357,6 +374,7 @@ describe('createTransport', () => {
     expect(await outcomeOf(transport.whenConnected())).toEqual(closed);
     expect(heard.closes).toEqual([closed]);
     expect(heard.ends).toEqual([]);
+    expect(heard.fails).toEqual([]);
     expect(post).not.toHaveBeenCalled();
   });
 });
@@ -697,9 +715,9 @@ describe('calls', () => {
     first.receive('one');
     first.receive('two');
     first.interrupt(ok());
-    first.interrupt(err(domain('twice')));
+    first.interrupt(err('twice'));
     first.receive('late');
-    second.interrupt(err(domain('no such note')));
+    second.interrupt(err('no such note'));
     second.interrupt(ok());
     await timers.advance(0);
 
@@ -707,7 +725,8 @@ describe('calls', () => {
     expect(clean.values).toEqual(['one', 'two']);
     expect(clean.ends).toEqual([ok()]);
     expect(failed.values).toEqual([]);
-    expect(failed.ends).toEqual([err(domain('no such note'))]);
+    expect(failed.ends).toEqual([err('no such note')]);
+    expect([...clean.fails, ...failed.fails]).toEqual([]);
     expect(issues).toEqual([]);
   });
 
@@ -729,6 +748,7 @@ describe('calls', () => {
     // Then
     expect(peer.names()).toEqual(['handshakeOffer']);
     expect(heard.ends).toEqual([]);
+    expect(heard.fails).toEqual([]);
     expect(heard.closes).toEqual([]);
   });
 
@@ -770,7 +790,8 @@ describe('calls', () => {
     await timers.advance(0);
 
     // Then
-    expect(heard.ends).toEqual([err(cancelled())]);
+    expect(heard.fails).toEqual([cancelled()]);
+    expect(heard.ends).toEqual([]);
     expect(heard.values).toEqual([]);
     expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([id]);
     expect(issues).toEqual([]);
@@ -788,7 +809,7 @@ describe('calls', () => {
     transport.subscribe(notes.watch, 'early', early, { signal: AbortSignal.abort() });
 
     // Then it hears nothing before the call returns
-    expect(early.ends).toEqual([]);
+    expect(early.fails).toEqual([]);
 
     // When
     transport.connect();
@@ -799,8 +820,8 @@ describe('calls', () => {
     await timers.advance(0);
 
     // Then
-    expect(queued.ends).toEqual([err(cancelled())]);
-    expect(early.ends).toEqual([err(cancelled())]);
+    expect(queued.fails).toEqual([cancelled()]);
+    expect(early.fails).toEqual([cancelled()]);
     expect(peer.names()).toEqual(['handshakeOffer']);
   });
 
@@ -826,6 +847,7 @@ describe('calls', () => {
     expect(heard.closes).toEqual([reason]);
     expect(stopped.closes).toEqual([]);
     expect(heard.ends).toEqual([]);
+    expect(heard.fails).toEqual([]);
     expect(stops).toEqual([1, 1]);
 
     // When a subscription is made once closed, and stopped before it hears
@@ -860,6 +882,7 @@ describe('calls', () => {
 
     // Then
     expect(heard.ends).toEqual([ok()]);
+    expect(heard.fails).toEqual([]);
     expect(heard.closes).toEqual([]);
     expect(peer.find('stop:notes.watch')).toEqual([]);
     expect(issues).toEqual([]);
@@ -914,6 +937,7 @@ describe('calls', () => {
       interrupt: vi.fn(() => {
         throw bug;
       }),
+      fail: vi.fn(() => undefined),
       close: vi.fn(() => undefined),
     };
     const heard = watcher();
@@ -969,6 +993,7 @@ describe('calls', () => {
         stopSelf();
       },
       interrupt: () => undefined,
+      fail: () => undefined,
       close: () => undefined,
     });
     const disposingCloses = vi.fn();
@@ -977,6 +1002,7 @@ describe('calls', () => {
         opener.dispose(reason);
       },
       interrupt: () => undefined,
+      fail: () => undefined,
       close: disposingCloses,
     });
     const watcherCloses = vi.fn();
@@ -1015,6 +1041,7 @@ describe('calls', () => {
       interrupt: () => {
         transport.dispose(new Error('torn down'));
       },
+      fail: () => undefined,
       close: () => undefined,
     });
     transport.subscribe(notes.watch, 'open', watcher());
@@ -1078,15 +1105,16 @@ describe('calls', () => {
     await timers.advance(0);
     const [a = 0, b = 0] = startIds(peer);
 
-    // When an interrupt carries a domain error that is cut short, and a value is cut short
-    peer.call(rawWatch, a, { tag: 'interrupt', value: err(domain(CUT_SHORT_TEXT)) }, notes.watch);
+    // When an interrupt carries a value that is cut short, and a value is cut short
+    peer.call(rawWatch, a, { tag: 'interrupt', value: err(CUT_SHORT_TEXT) }, notes.watch);
     peer.call(rawWatch, b, { tag: 'receive', value: CUT_SHORT_TEXT }, notes.watch);
     await timers.advance(0);
 
     // Then both end, and each is stopped, since what did not decode may have been a value
-    const malformed = err(malformedFrame('RangeError: Invalid DataView length 2'));
-    expect(first.ends).toEqual([malformed]);
-    expect(second.ends).toEqual([malformed]);
+    const malformed = malformedFrame('RangeError: Invalid DataView length 2');
+    expect(first.fails).toEqual([malformed]);
+    expect(second.fails).toEqual([malformed]);
+    expect([...first.ends, ...second.ends]).toEqual([]);
     expect(peer.find('stop:notes.watch').map(message => message.id)).toEqual([a, b]);
     const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError };
     expect(issues).toEqual([refused, refused]);
@@ -1105,7 +1133,8 @@ describe('calls', () => {
     await timers.advance(0);
 
     // Then
-    expect(heard.ends).toEqual([err(unsupported())]);
+    expect(heard.fails).toEqual([unsupported()]);
+    expect(heard.ends).toEqual([]);
     expect(peer.find('stop:notes.watch')).toEqual([]);
     expect(issues).toEqual([]);
   });
@@ -1154,6 +1183,7 @@ describe('calls', () => {
     // Then the transport closed it before the post returned, and the peer heard no stop
     expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
+    expect(heard.fails).toEqual([]);
     expect(raw.peer.names()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
@@ -1214,6 +1244,7 @@ describe('calls', () => {
     const failed = expect.objectContaining({ message: 'The start could not be posted', cause: broken }) as Error;
     expect(heard.closes).toEqual([failed]);
     expect(heard.ends).toEqual([]);
+    expect(heard.fails).toEqual([]);
     expect(peer.names()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
@@ -1604,7 +1635,8 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then
-    expect(heard.ends).toEqual([err(hostFailure('TypeError: bad start'))]);
+    expect(heard.fails).toEqual([hostFailure('TypeError: bad start')]);
+    expect(heard.ends).toEqual([]);
     expect(issues).toEqual([]);
   });
 
@@ -1614,7 +1646,7 @@ describe('serving', () => {
     const stop = vi.fn();
     accepter.handleSubscription(notes.watch, (_start, _context, sink) => {
       sink.receive('only');
-      sink.interrupt(err(domain('at once')));
+      sink.interrupt(err('at once'));
       return stop;
     });
     opener.connect();
@@ -1626,7 +1658,7 @@ describe('serving', () => {
 
     // Then
     expect(heard.values).toEqual(['only']);
-    expect(heard.ends).toEqual([err(domain('at once'))]);
+    expect(heard.ends).toEqual([err('at once')]);
     expect(stop).toHaveBeenCalledOnce();
     expect(issues).toEqual([]);
   });
@@ -1666,7 +1698,7 @@ describe('serving', () => {
     const sink = must(sinks[0], 'a sink');
     sink.receive('late');
     sink.interrupt(ok());
-    sink.interrupt(err(domain('again')));
+    sink.interrupt(err('again'));
     await timers.advance(0);
 
     // Then
@@ -1687,12 +1719,12 @@ describe('serving', () => {
 
     // When
     must(sinks[0], 'the first sink').receive('');
-    must(sinks[1], 'the second sink').interrupt(err(cancelled()));
+    must(sinks[1], 'the second sink').interrupt(err('gone'));
     await timers.advance(0);
 
     // Then
-    expect(first.ends).toEqual([err(hostFailure('RangeError: A word is never empty'))]);
-    expect(second.ends).toEqual([err(cancelled())]);
+    expect(first.fails).toEqual([hostFailure('RangeError: A word is never empty')]);
+    expect(second.ends).toEqual([err('gone')]);
     expect(stops).toEqual([1, 1]);
   });
 
@@ -1744,7 +1776,8 @@ describe('serving', () => {
     // Then
     expect(stops).toEqual([1, 1]);
     for (const listeners of heard) {
-      expect(listeners.ends).toEqual([err(hostFailure('RangeError: upstream gone'))]);
+      expect(listeners.fails).toEqual([hostFailure('RangeError: upstream gone')]);
+      expect(listeners.ends).toEqual([]);
     }
     expect(issues).toEqual([]);
   });
@@ -1943,7 +1976,7 @@ describe('serving', () => {
   it('As a handler, my stop function that disposes the transport still lets the peer hear my interrupt', async () => {
     // Given
     const { opener, accepter, timers, issues } = rig();
-    const sinks: Sink<string, string>[] = [];
+    const sinks: Sink<string, ResultPayload<undefined, string>>[] = [];
     accepter.handleSubscription(notes.watch, (_start, _context, sink) => {
       sinks.push(sink);
       return () => {
@@ -1958,12 +1991,12 @@ describe('serving', () => {
     await timers.advance(0);
 
     // When
-    must(sinks[0], 'the first sink').interrupt(err(domain('finished')));
+    must(sinks[0], 'the first sink').interrupt(err('finished'));
     await timers.advance(0);
 
     // Then
-    expect(ended.ends).toEqual([err(domain('finished'))]);
-    expect(other.ends).toEqual([err(hostFailure('Error: done here'))]);
+    expect(ended.ends).toEqual([err('finished')]);
+    expect(other.fails).toEqual([hostFailure('Error: done here')]);
     expect(issues).toEqual([]);
   });
 

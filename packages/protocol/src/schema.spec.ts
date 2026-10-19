@@ -30,6 +30,7 @@ import {
 import {
   protocolSchema,
   type DomainFailure,
+  type FrameFailure,
   type ProtocolHello,
   type ProtocolSchema,
   type ProtocolTransport,
@@ -93,12 +94,15 @@ function requestCase<P, R, E>(
   };
 }
 
-/** Subscribes once and settles with the values heard and the one end, or fails with the closing error. */
-function heardUntilEnd<S, V, I>(
+/**
+ * Subscribes once and settles with the values heard and the one end, the peer's interrupt or a failure of the
+ * library's, or fails with the closing error.
+ */
+function heardUntilEnd<S, V, E>(
   transport: ProtocolTransport,
-  method: Subscription<S, V, I>,
+  method: Subscription<S, V, ResultPayload<undefined, CallError<E>>>,
   start: NoInfer<S>,
-): Promise<{ values: V[]; end: ResultPayload<undefined, CallError<I>> }> {
+): Promise<{ values: V[]; end: ResultPayload<undefined, CallError<E>> }> {
   const values: V[] = [];
   return new Promise((settle, fail) => {
     transport.subscribe(method, start, {
@@ -106,18 +110,21 @@ function heardUntilEnd<S, V, I>(
       interrupt: end => {
         settle({ values, end });
       },
+      fail: failure => {
+        settle({ values, end: err(failure) });
+      },
       close: fail,
     });
   });
 }
 
-/** A subscription with the values it sends before each of its ends. */
-function subscriptionCase<S, V, I>(
-  method: Subscription<S, V, I>,
+/** A subscription with the values it sends before each of its ends, each a `CallError` of its reason. */
+function subscriptionCase<S, V, E>(
+  method: Subscription<S, V, ResultPayload<undefined, CallError<E>>>,
   sample: {
     start: NoInfer<S>;
     values: NoInfer<V>[];
-    interrupts: ResultPayload<undefined, CallError<NoInfer<I>>>[];
+    interrupts: ResultPayload<undefined, CallError<NoInfer<E>>>[];
   },
 ): Case {
   return {
@@ -139,7 +146,7 @@ function subscriptionCase<S, V, I>(
       });
     },
     async call(caller) {
-      const heard: { values: V[]; end: ResultPayload<undefined, CallError<I>> }[] = [];
+      const heard: { values: V[]; end: ResultPayload<undefined, CallError<E>> }[] = [];
       for (const _ of sample.interrupts) {
         heard.push(await heardUntilEnd(caller, method, sample.start));
       }
@@ -369,7 +376,6 @@ describe('protocolSchema', () => {
 
   it('As a facade, I match a remote failure by its tag, not by a remote error name', () => {
     // Given the failure types of the frame status and the resolve methods
-    type FrameFailure = DomainError<typeof frame.status>;
     type RemoteFailure = DomainError<typeof resolve.owner>;
 
     // Then
@@ -385,10 +391,41 @@ describe('protocolSchema', () => {
     expectTypeOf<DomainFailure>().toEqualTypeOf<FrameFailure | RemoteFailure | undefined>();
     expectTypeOf<DomainError<typeof resolve.executableManifest>>().toEqualTypeOf<RemoteFailure>();
     expectTypeOf<DomainError<typeof resolve.rootManifest>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<typeof resolve.dotName>>().toEqualTypeOf<RemoteFailure>();
-    expectTypeOf<DomainError<typeof chain.connect>>().toEqualTypeOf<RemoteFailure>();
+    expectTypeOf<DomainError<typeof frame.status>>().toEqualTypeOf<ResultPayload<undefined, CallError<FrameFailure>>>();
+    expectTypeOf<DomainError<typeof resolve.dotName>>().toEqualTypeOf<
+      ResultPayload<undefined, CallError<RemoteFailure>>
+    >();
+    expectTypeOf<DomainError<typeof chain.connect>>().toEqualTypeOf<
+      ResultPayload<undefined, CallError<RemoteFailure>>
+    >();
+    expectTypeOf<DomainError<typeof frame.beat>>().toEqualTypeOf<ResultPayload<undefined, CallError<undefined>>>();
     expectTypeOf<DomainError<typeof chain.send>>().toBeUndefined();
     expectTypeOf<DomainError<typeof storage.authRead>>().toBeUndefined();
+  });
+
+  it("As the protocol, each subscription's interrupt keeps truapi's CallError bytes", () => {
+    // Given a clean end, a domain reason and a failure of the library's, on methods with and without a reason
+    const interrupts = [
+      frame.status.message.enc({ tag: 'interrupt', value: ok() }),
+      frame.status.message.enc({ tag: 'interrupt', value: err(domain({ tag: 'fatal', value: 'x' })) }),
+      resolve.dotName.message.enc({ tag: 'interrupt', value: err(domain({ tag: 'apiStopped', value: 'x' })) }),
+      chain.connect.message.enc({ tag: 'interrupt', value: err(hostFailure('x')) }),
+      frame.beat.message.enc({ tag: 'interrupt', value: err(domain(undefined)) }),
+      storage.authChanges.message.enc({ tag: 'interrupt', value: err(malformedFrame('x')) }),
+    ];
+
+    // When
+    const bytes = interrupts.map(data => [...data]);
+
+    // Then the interrupt tag, the `Result`, the `CallError` and its value, as truapi lays them out
+    expect(bytes).toEqual([
+      [2, 0],
+      [2, 1, 0, 0, 4, 0x78],
+      [2, 1, 0, 1, 4, 0x78],
+      [2, 1, 4, 4, 0x78],
+      [2, 1, 0],
+      [2, 1, 3, 4, 0x78],
+    ]);
   });
 
   it('As the protocol, a value codec decodes a payload that sits after a header in the message', async () => {

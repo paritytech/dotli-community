@@ -1,15 +1,28 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { _void, str, u8, type Codec } from 'scale-ts';
+import { Result, _void, str, u8, type Codec, type ResultPayload } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
-import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './errors.js';
+import {
+  callError,
+  cancelled,
+  denied,
+  domain,
+  err,
+  hostFailure,
+  malformedFrame,
+  ok,
+  unsupported,
+  type CallError,
+} from './errors.js';
 import { codec, request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
 import { decode, frame, type Frame } from './wire.js';
 
 const read = request({ request: str, response: str, error: u8 });
 const touch = request({ request: _void, response: _void });
 const watch = subscription({ start: str, receive: u8, interrupt: str });
+const listen = subscription({ start: str, receive: u8 });
+const watchWithCallError = subscription({ start: str, receive: u8, interrupt: Result(_void, callError(str)) });
 
 const listed = (data: Uint8Array): number[] => [...data];
 const callOf = <M>(message: M): Frame<M>['body'] => ({ tag: 'call', value: { sectionId: 1, methodId: 2, message } });
@@ -36,8 +49,7 @@ describe('wire', () => {
     const watches: SubscriptionMessage<string, number, string>[] = [
       { tag: 'start', value: 'from the top' },
       { tag: 'receive', value: 42 },
-      { tag: 'interrupt', value: ok() },
-      { tag: 'interrupt', value: err(domain('gone')) },
+      { tag: 'interrupt', value: 'gone' },
       { tag: 'stop', value: undefined },
     ];
 
@@ -69,6 +81,34 @@ describe('wire', () => {
       [2, 0, 0, 0, 1, 1, 3],
       [4, 3, 2, 1, 2, 2, 8, 0x6e, 0x6f],
     ]);
+  });
+
+  it("As a schema author, my interrupt crosses as my own type with nothing added, and in truapi's layout only when I choose it", () => {
+    // Given
+    const own: SubscriptionMessage<string, number, string> = { tag: 'interrupt', value: 'no' };
+    const empty: SubscriptionMessage<string, number, undefined> = { tag: 'interrupt', value: undefined };
+    const chosen: SubscriptionMessage<string, number, ResultPayload<undefined, CallError<string>>>[] = [
+      { tag: 'interrupt', value: ok() },
+      { tag: 'interrupt', value: err(domain('no')) },
+      { tag: 'interrupt', value: err(hostFailure('no')) },
+    ];
+
+    // When
+    const ownBytes = listed(watch.message.enc(own));
+    const emptyBytes = listed(listen.message.enc(empty));
+    const chosenBytes = chosen.map(message => listed(watchWithCallError.message.enc(message)));
+
+    // Then
+    expect(ownBytes).toEqual([2, 8, 0x6e, 0x6f]);
+    expect(emptyBytes).toEqual([2]);
+    expect(chosenBytes).toEqual([
+      [2, 0],
+      [2, 1, 0, 8, 0x6e, 0x6f],
+      [2, 1, 4, 8, 0x6e, 0x6f],
+    ]);
+    expect(roundTrip(watch, own)).toEqual(own);
+    expect(roundTrip(listen, empty)).toEqual(empty);
+    expect(chosen.map(message => roundTrip(watchWithCallError, message))).toEqual(chosen);
   });
 
   it("As a transport, I encode a call as its id, its method's ids and the method's own message", () => {

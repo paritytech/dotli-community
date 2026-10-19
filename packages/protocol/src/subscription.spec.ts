@@ -11,6 +11,8 @@ import {
   err,
   hostFailure,
   ok,
+  type CallError,
+  type ResultPayload,
   type MethodTypes,
   type Sink,
 } from '@dotli/transport';
@@ -24,8 +26,11 @@ const { frame, resolve } = protocolSchema.sections;
 
 describe('subscribe', () => {
   let timers: ManualTimers;
-  let statusSinks: Sink<void, FrameFailure>[];
-  let resolveSinks: Sink<MethodTypes<typeof resolve.dotName>['receive'], RemoteFailure>[];
+  let statusSinks: Sink<void, ResultPayload<undefined, CallError<FrameFailure>>>[];
+  let resolveSinks: Sink<
+    MethodTypes<typeof resolve.dotName>['receive'],
+    ResultPayload<undefined, CallError<RemoteFailure>>
+  >[];
   let stops: number;
 
   const settle = (): Promise<void> => timers.advance(0);
@@ -100,6 +105,29 @@ describe('subscribe', () => {
     expect(ends[0]).toBeInstanceOf(ProtocolFatalError);
     expect(ends[0]?.message).toBe('wasm trap');
     expect(ends[1]).toMatchObject({ name: 'DotNsError', message: 'no owner', method: 'resolveDotName' });
+  });
+
+  it('As the host, a subscription the frame fails on its own ends with the error a failed call ends with', async () => {
+    // Given a frame that serves no chain connections
+    const transport = await hostTransport();
+    const ends: (Error | null)[] = [];
+
+    // When
+    subscribe(
+      transport,
+      protocolSchema.sections.chain.connect,
+      { genesisHash: '0x91b171bb', connectionId: 'c1' },
+      { receive: () => undefined, end: error => ends.push(error) },
+    );
+    await settle();
+
+    // Then
+    expect(ends).toHaveLength(1);
+    expect(ends[0]).toMatchObject({
+      name: 'Unsupported',
+      message: 'The frame does not serve "chainConnect"',
+      method: 'chainConnect',
+    });
   });
 
   it('As the host, a subscription I give up on ends with my reason and stops in the frame', async () => {

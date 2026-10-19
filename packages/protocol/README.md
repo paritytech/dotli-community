@@ -34,6 +34,9 @@ flowchart TB
   init, as a released port or as a version mismatch, and name resolution and chain connections fail with a sync timeout
   or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
   refused as malformed.
+- Each subscription declares its interrupt as truapi's `Result<(), CallError>` of its reason, an empty reason for one
+  that has none, so its end crosses as truapi lays it out and a frame that relays another frame's subscription can pass
+  a failure it heard on as its own end.
 - What the host knows of each method beyond its wire types sits in one policy record: its name for the metrics, the
   trail and the errors (the flat name it had before the methods were grouped into sections, such as `resolveOwner` or
   `authStorageRead`, so dashboards read on unchanged), its budget, whether a page load's trail names it, whether each
@@ -145,8 +148,9 @@ a call that is no longer waiting is ignored without a count.
   of the frame status, the resolve methods and chain connections. `ProtocolSchema`, `ProtocolHello`, `ProtocolTransport`
   and `ProtocolContext` type a transport over it and its handlers' context. `ProtocolServing` is the serving half of a
   transport for the schema's own errors, and `ProtocolHandler<typeof method>` a method's handler. `FrameFailure` and
-  `RemoteFailure` are its typed failures, `DomainFailure` both, `SharedAuthChange` what the shared auth feed sends, and
-  `TelemetryEvent` what the frame reports on its telemetry feed.
+  `RemoteFailure` are its typed failures, `DomainFailure` both, `SubscriptionEnd<E>` how a subscription ends (`Ok`, or a
+  `CallError` of its reason `E`), `SharedAuthChange` what the shared auth feed sends, and `TelemetryEvent` what the
+  frame reports on its telemetry feed.
 - The method policy: `policyOf` and `MethodPolicy`. For the frame to size its own work, `budgetOf` (a method's budget,
   or null for one waited on without a timer).
 - For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a

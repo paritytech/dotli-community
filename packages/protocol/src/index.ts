@@ -40,6 +40,7 @@ export {
   type ProtocolTransport,
   type RemoteFailure,
   type SharedAuthChange,
+  type SubscriptionEnd,
 } from './schema.js';
 export { budgetOf, callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
 export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';

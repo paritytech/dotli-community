@@ -47,8 +47,10 @@ import {
 /** What a subscriber hears: each value, then one end, unless it stops first. */
 export interface SubscriptionListeners<V, I> {
   receive(value: V): void;
-  /** The peer's end, a failure the library answered with, or `Cancelled` or `MalformedFrame` raised on this side. */
-  interrupt(outcome: ResultPayload<undefined, CallError<I>>): void;
+  /** The peer's own end, the method's own interrupt reason as it is. */
+  interrupt(reason: I): void;
+  /** A failure of the library's: one the peer answered with, or `Cancelled` or `MalformedFrame` raised on this side. */
+  fail(failure: Failure): void;
   /** The end raised on this side with an error: the transport closed, or the start could not be posted. */
   close(error: Error): void;
 }
@@ -63,8 +65,8 @@ export interface CallContext<H> {
 export interface Sink<V, I> {
   /** Sends a value. One the wire cannot carry ends the subscription with `HostFailure`. */
   receive(value: V): void;
-  /** Ends the subscription with `outcome`, as the subscriber hears it: `ok()`, or an error a relay may pass on as is. */
-  interrupt(outcome: ResultPayload<undefined, CallError<I>>): void;
+  /** Ends the subscription with `reason`, the method's own interrupt type, which the subscriber hears as it is. */
+  interrupt(reason: I): void;
 }
 
 /** Serves one request method. It answers with a `Result`, and a throw or rejection answers `HostFailure`. */
@@ -107,7 +109,7 @@ export interface RequestOptions {
 }
 
 export interface SubscribeOptions {
-  /** Gives up on the subscription: the peer is told to stop and `interrupt` hears `Cancelled`, once. */
+  /** Gives up on the subscription: the peer is told to stop and `fail` hears `Cancelled`, once. */
   signal?: AbortSignal;
 }
 
@@ -133,9 +135,9 @@ export interface Transport<H> {
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, H>,
   ): () => void;
   /**
-   * Subscribes to the peer. `receive` hears each value, and `interrupt` or `close` the one end. Subscriptions made
-   * before the handshake wait and go out in call order with the requests. Returns what stops it, which tells the peer
-   * and calls no listener. Throws when the start does not encode.
+   * Subscribes to the peer. `receive` hears each value, and `interrupt`, `fail` or `close` the one end. Subscriptions
+   * made before the handshake wait and go out in call order with the requests. Returns what stops it, which tells the
+   * peer and calls no listener. Throws when the start does not encode.
    */
   subscribe<S, V, I>(
     method: Subscription<S, V, I>,
@@ -386,9 +388,14 @@ export function createTransport<H, T extends Sections>(
         runListener(heard);
       }
     };
-    const end = (outcome: ResultPayload<undefined, CallError<I>>, tellPeer: boolean): void => {
+    const end = (reason: I): void => {
+      finish(false, () => {
+        listeners.interrupt(reason);
+      });
+    };
+    const fail = (failure: Failure, tellPeer: boolean): void => {
       finish(tellPeer, () => {
-        listeners.interrupt(outcome);
+        listeners.fail(failure);
       });
     };
     const shut = (error: Error): void => {
@@ -397,7 +404,7 @@ export function createTransport<H, T extends Sections>(
       });
     };
     const onAbort = (): void => {
-      end(err(cancelled()), true);
+      fail(cancelled(), true);
     };
 
     const call: OutCall = {
@@ -408,7 +415,7 @@ export function createTransport<H, T extends Sections>(
           // What was lost may be a value, which leaves the subscriber behind the peer, so the subscription ends and the
           // peer is told to stop. A stop after the peer's own end is a race it drops.
           refuse('malformed', message.value);
-          end(err(malformedFrame(message.value)), true);
+          fail(malformedFrame(message.value), true);
           return;
         }
         const sent = message.value;
@@ -419,7 +426,7 @@ export function createTransport<H, T extends Sections>(
             });
             return;
           case 'interrupt':
-            end(sent.value, false);
+            end(sent.value);
             return;
           case 'start':
           case 'stop':
@@ -427,7 +434,7 @@ export function createTransport<H, T extends Sections>(
         }
       },
       fail(error) {
-        end(err(error), false);
+        fail(error, false);
       },
       close: shut,
     };
@@ -655,9 +662,9 @@ export function createTransport<H, T extends Sections>(
           }
           post(data.value, address);
         },
-        interrupt(outcome) {
+        interrupt(reason) {
           finish(() => {
-            reply(method, address, id, { tag: 'interrupt', value: outcome });
+            reply(method, address, id, { tag: 'interrupt', value: reason });
           });
         },
       };

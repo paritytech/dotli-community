@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The protocol's methods as sections of a transport schema. New sections and methods go at the end, and any change to them
-// bumps the version.
+// bumps the version. Each subscription's interrupt is truapi's `Result<(), CallError>` of its reason, as the host's
+// handlers and subscribers expect.
 
-import { Bytes, Enum, Struct, _void, str, type CodecType } from 'scale-ts';
+import { Bytes, Enum, Result, Struct, _void, str, type CodecType, type ResultPayload } from 'scale-ts';
 import {
+  callError,
   defineSchema,
   request,
   subscription,
   type CallContext,
+  type CallError,
   type DomainError,
   type MethodOf,
   type MethodTypes,
@@ -64,13 +67,17 @@ export const protocolSchema = defineSchema({
   hello: resolutionHello,
   sections: {
     frame: {
-      status: subscription({ start: _void, receive: _void, interrupt: frameFailure }),
+      status: subscription({ start: _void, receive: _void, interrupt: Result(_void, callError(frameFailure)) }),
       heartbeat: request({ request: _void, response: _void }),
       // The SharedWorker sends each beat from its own clock, and a tab answers from the event, which a hidden page's
       // timer throttling does not delay.
-      beat: subscription({ start: _void, receive: _void }),
+      beat: subscription({ start: _void, receive: _void, interrupt: Result(_void, callError(_void)) }),
       warmup: request({ request: _void, response: _void }),
-      telemetry: subscription({ start: _void, receive: telemetryEventCodec }),
+      telemetry: subscription({
+        start: _void,
+        receive: telemetryEventCodec,
+        interrupt: Result(_void, callError(_void)),
+      }),
     },
     resolve: {
       owner: request({ request: label, response: nullableString, error: remoteFailure }),
@@ -90,7 +97,7 @@ export const protocolSchema = defineSchema({
       dotName: subscription({
         start: label,
         receive: Enum({ phase: resolvePhaseCodec, resolved: nullable(str) }),
-        interrupt: remoteFailure,
+        interrupt: Result(_void, callError(remoteFailure)),
       }),
     },
     storage: {
@@ -100,6 +107,7 @@ export const protocolSchema = defineSchema({
       authChanges: subscription({
         start: _void,
         receive: Struct({ siteId: str, key: str, value: nullable(str) }),
+        interrupt: Result(_void, callError(_void)),
       }),
       modeRead: request({ request: siteKey, response: nullableString }),
       modeWrite: request({ request: siteKeyValue, response: _void }),
@@ -119,7 +127,7 @@ export const protocolSchema = defineSchema({
       connect: subscription({
         start: Struct({ genesisHash: str, connectionId: str }),
         receive: Enum({ connected: _void, message: str }),
-        interrupt: remoteFailure,
+        interrupt: Result(_void, callError(remoteFailure)),
       }),
     },
   },
@@ -132,13 +140,19 @@ export type ProtocolTransport = Transport<ProtocolHello>;
 export type ProtocolContext = CallContext<ProtocolHello>;
 
 /** Why the frame's status ended. */
-export type FrameFailure = DomainError<typeof protocolSchema.sections.frame.status>;
+export type FrameFailure = CodecType<typeof frameFailure>;
 /** The remote errors name resolution and chain connections fail with. */
 export type RemoteFailure = DomainError<typeof protocolSchema.sections.resolve.owner>;
 /** A shared auth write a sibling tab made. */
 export type SharedAuthChange = MethodTypes<typeof protocolSchema.sections.storage.authChanges>['receive'];
+/** How a protocol subscription ends: `Ok` for a clean end, or a `CallError` of its reason `E`. */
+export type SubscriptionEnd<E> = ResultPayload<undefined, CallError<E>>;
+
+/** A method's own `Domain` error: a request's error, or the reason of a subscription's end. */
+type DomainOf<M> = M extends Subscription<infer _S, infer _V, SubscriptionEnd<infer E>> ? E : DomainError<M>;
+
 /** Every domain error the schema declares, and the empty one of a method that declares none. */
-export type DomainFailure = DomainError<MethodOf<ProtocolSchema['sections']>>;
+export type DomainFailure = DomainOf<MethodOf<ProtocolSchema['sections']>>;
 
 /** What serves `method` of the protocol. */
 export type ProtocolHandler<M> =
@@ -154,7 +168,7 @@ export interface ProtocolServing {
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
   ): () => void;
-  handleSubscription<S, V, I extends DomainFailure>(
+  handleSubscription<S, V, I extends SubscriptionEnd<DomainFailure>>(
     method: Subscription<S, V, I>,
     handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
   ): () => void;

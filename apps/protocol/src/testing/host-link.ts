@@ -5,20 +5,16 @@
 // wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any of
 // them, so none goes unseen.
 
-import { protocolSchema, type ProtocolTransport } from '@dotli/protocol';
+import { protocolSchema, type ProtocolTransport, type SubscriptionEnd } from '@dotli/protocol';
 import { deferred } from '@dotli/shared';
 import { createProviderPair } from '@dotli/transport/testing';
-import {
-  createTransport,
-  describeIssue,
-  type CallError,
-  type ResultPayload,
-  type Subscription,
-  type TransportIssue,
-} from '@dotli/transport';
+import { createTransport, describeIssue, err, type Subscription, type TransportIssue } from '@dotli/transport';
 
-/** How a subscription whose own end reason is `I` ended: the peer's interrupt, or the error its transport closed with. */
-export type EndOf<I> = ResultPayload<undefined, CallError<I>> | Error;
+/**
+ * How a subscription whose own end reason is `I` ended: the peer's interrupt or a failure of the transport's own, as
+ * the `CallError` of its end, or the error its transport closed with.
+ */
+export type EndOf<I> = SubscriptionEnd<I> | Error;
 
 export interface HostLink {
   /** The frame's end, where a spec registers the handlers under test. */
@@ -97,7 +93,7 @@ export interface Recording<V, I> {
 /** Subscribes on `transport` and records every value and the end. */
 export function record<S, V, I>(
   transport: ProtocolTransport,
-  method: Subscription<S, V, I>,
+  method: Subscription<S, V, SubscriptionEnd<I>>,
   start: NoInfer<S>,
 ): Recording<V, I> {
   const events: V[] = [];
@@ -114,6 +110,9 @@ export function record<S, V, I>(
       }
     },
     interrupt: ended.resolve,
+    fail: failure => {
+      ended.resolve(err(failure));
+    },
     close: ended.resolve,
   });
   return {
