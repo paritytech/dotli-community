@@ -882,7 +882,7 @@ describe('the worker relay', () => {
     );
   });
 
-  it("As the host, I subscribe through the iframe to calls the worker fails and hear the worker's failure", async () => {
+  it('As the host, I start subscriptions the worker refuses through the iframe and hear each refusal as the worker sent it', async () => {
     // Given a worker whose name read throws on start, and which serves no chain
     const { host } = linkHops(worker => {
       worker.handleSubscription(resolve.dotName, () => {
