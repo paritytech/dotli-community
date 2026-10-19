@@ -20,12 +20,12 @@ const showNotification = createNotifier({
   system: () => system,
 });
 
-/** A system notification API that grants and records what it shows. */
-function grantedSystem(): { title: string; body: string | undefined }[] {
+/** A system notification API whose permission stands at `permission`, recording what it shows. */
+function systemAt(permission: NotificationPermission): { title: string; body: string | undefined }[] {
   const created: { title: string; body: string | undefined }[] = [];
   class FakeNotification {
-    static permission = 'granted';
-    static requestPermission = vi.fn();
+    static permission = permission;
+    static requestPermission = vi.fn(() => Promise.resolve(permission));
     onclick: (() => void) | null = null;
     constructor(title: string, options?: { body?: string }) {
       created.push({ title, body: options?.body });
@@ -34,6 +34,14 @@ function grantedSystem(): { title: string; body: string | undefined }[] {
   }
   system = FakeNotification as unknown as SystemNotifications;
   return created;
+}
+
+const grantedSystem = (): { title: string; body: string | undefined }[] => systemAt('granted');
+
+/** Whether each toast is on its way out once the default delay has passed with a toast view mounted. */
+function leavingAfterDefaultDelay(): boolean[] {
+  vi.advanceTimersByTime(NOTIFICATION_DISMISS_MS);
+  return toastsStore.get().items.map(t => t.leaving);
 }
 
 beforeEach(() => {
@@ -129,6 +137,50 @@ describe('showNotification', () => {
     // Then
     expect(created).toEqual([]);
     expect(toastsStore.get().items.map(t => t.text)).toEqual(['Here']);
+  });
+
+  it('As a dotli user away from the window with system notifications blocked, I find the notification still in the page', () => {
+    // Given
+    vi.useFakeTimers();
+    showToasts();
+    systemAt('denied');
+    focused = false;
+
+    // When
+    showNotification({ label: 'Ping', text: 'Kept' });
+
+    // Then
+    expect(leavingAfterDefaultDelay()).toEqual([false]);
+    vi.useRealTimers();
+  });
+
+  it('As a dotli user away from the window in a browser with no system notifications, I find the notification still in the page', () => {
+    // Given
+    vi.useFakeTimers();
+    showToasts();
+    focused = false;
+
+    // When
+    showNotification({ label: 'Ping', text: 'Kept' });
+
+    // Then
+    expect(leavingAfterDefaultDelay()).toEqual([false]);
+    vi.useRealTimers();
+  });
+
+  it('As a dotli user away from the window, a notification the system showed leaves the page after the default delay', () => {
+    // Given
+    vi.useFakeTimers();
+    showToasts();
+    grantedSystem();
+    focused = false;
+
+    // When
+    showNotification({ label: 'Ping', text: 'Shown' });
+
+    // Then
+    expect(leavingAfterDefaultDelay()).toEqual([true]);
+    vi.useRealTimers();
   });
 
   it('As a dotli user, a notification keeps the icon it was given and carries none otherwise', () => {

@@ -53,7 +53,8 @@ and no data source.
 - Toasts and dialogs are queued on the stores and show once the app has mounted `Overlays`, in a container it marks
   `data-overlays` so that a full-page screen keeps it.
 - The notifier always shows a toast. While the tab is hidden or its window has lost focus, it also fires a system
-  notification, when the browser has one.
+  notification, when the browser has one and the user allowed it. Without one, the toast stays in the page until closed,
+  so it is not lost unseen.
 - Every icon is a Solid component that draws an `<svg>` in `currentColor`, one module per icon. It keeps the size,
   stroke and geometry it was drawn at, and takes a `size` for another size, a `class` and a test id.
 - `mountRoot` renders a view inside a root boundary. A view that throws is reported once under the root's name and the

@@ -85,7 +85,10 @@ export interface NotifierDeps {
   system: () => SystemNotifications | undefined;
 }
 
-/** Shows a toast, and a system notification too while the page is not attended. */
+/**
+ * Shows a toast, and a system notification too while the page is not attended. Without the system's permission the
+ * toast waits in the page until closed.
+ */
 export type ShowNotification = (params: NotificationParams) => void;
 
 export function createNotifier({ present, attended, system }: NotifierDeps): ShowNotification {
@@ -96,19 +99,22 @@ export function createNotifier({ present, attended, system }: NotifierDeps): Sho
     }
     const deeplink = validateDeeplink(params.deeplink);
     const tone = params.tone ?? 'info';
+    const wantsSystem = (params.browserNotification ?? true) && !attended();
+    const notifications = wantsSystem ? system() : undefined;
+    // One the system cannot show stays in the page until closed, or a window behind others would lose it unseen.
+    const fallback = wantsSystem && notifications?.permission !== 'granted';
 
     present({
       text,
       label: params.label,
       ...(params.icon === undefined ? {} : { icon: params.icon }),
       tone,
-      dismissMs: params.dismissMs ?? NOTIFICATION_DISMISS_MS,
+      dismissMs: fallback ? 0 : (params.dismissMs ?? NOTIFICATION_DISMISS_MS),
       ...(deeplink === undefined ? {} : { deeplink }),
       ...(params.onDismiss === undefined ? {} : { onDismiss: params.onDismiss }),
       ...(params.action === undefined ? {} : { action: params.action }),
     });
 
-    const notifications = (params.browserNotification ?? true) && !attended() ? system() : undefined;
     if (notifications !== undefined) {
       fireBrowserNotification(notifications, text, deeplink, params.label);
     }
