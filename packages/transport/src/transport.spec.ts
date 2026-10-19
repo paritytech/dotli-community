@@ -1830,6 +1830,59 @@ describe('serving', () => {
       {
         kind: 'refused',
         reason: 'invalid',
+        cause: expect.objectContaining({ message: 'A message reuses call 3, which is still in flight' }) as Error,
+      },
+    ]);
+    expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
+  });
+
+  it('As a serving side, I refuse a start that reuses an in-flight request id and the request keeps its one answer', async () => {
+    // Given a request the handler holds on id 3, beside a served subscription
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    transport.handleRequest(notes.read, () => answer.promise);
+    const watch = vi.fn(() => () => undefined);
+    transport.handleSubscription(notes.watch, watch);
+    peer.call(notes.read, 3, { tag: 'request', value: 'first' });
+    await timers.advance(0);
+
+    // When the peer starts a subscription on that id, and the request is then answered
+    peer.call(notes.watch, 3, { tag: 'start', value: 'from the top' });
+    await timers.advance(0);
+    answer.resolve(ok('the first'));
+    await timers.advance(0);
+
+    // Then the subscription never starts, and only the request's answer is posted
+    expect(watch).not.toHaveBeenCalled();
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'invalid',
+        cause: expect.objectContaining({ message: 'A start reuses call 3, which is still in flight' }) as Error,
+      },
+    ]);
+    expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
+  });
+
+  it('As a serving side, I refuse a request for a method I do not serve on an in-flight id and answer only the first', async () => {
+    // Given a request the handler holds on id 3, and no handler for echo.say
+    const { transport, timers, peer, issues } = await acceptedRaw();
+    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    transport.handleRequest(notes.read, () => answer.promise);
+    peer.call(notes.read, 3, { tag: 'request', value: 'first' });
+    await timers.advance(0);
+
+    // When the peer calls echo.say on that id, and the first request is then answered
+    peer.call(echo.say, 3, { tag: 'request', value: 'hello' });
+    await timers.advance(0);
+    answer.resolve(ok('the first'));
+    await timers.advance(0);
+
+    // Then echo.say is refused rather than answered Unsupported, so the id carries one answer
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'invalid',
         cause: expect.objectContaining({ message: 'A request reuses call 3, which is still in flight' }) as Error,
       },
     ]);
@@ -2774,7 +2827,7 @@ describe('forwarding', () => {
     await timers.advance(0);
 
     // Then
-    const reused = new Error('A request reuses call 1, which is still in flight');
+    const reused = new Error('A message reuses call 1, which is still in flight');
     expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: reused }]);
     expect(peer.names()).toEqual(['handshakeResponse']);
 
@@ -2805,6 +2858,26 @@ describe('forwarding', () => {
     expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: reused }]);
     expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
     expect(peer.values(notes.read, 'response:notes.read')).toEqual([ok('the note')]);
+  });
+
+  it('As a forwarder, I refuse a start that reuses an in-flight request id and forward nothing', async () => {
+    // Given a forwarded request in flight on id 1, and a server of notes.watch
+    const { peer, timers, issues, answer, server } = await forwardingFromRaw();
+    const { starts } = serveWatch(server);
+    peer.call(notes.read, 1, { tag: 'request', value: 'a note' });
+    await timers.advance(0);
+
+    // When
+    peer.call(notes.watch, 1, { tag: 'start', value: 'from the top' });
+    await timers.advance(0);
+    answer.resolve(ok('the note'));
+    await timers.advance(0);
+
+    // Then
+    expect(starts).toEqual([]);
+    const reused = new Error('A start reuses call 1, which is still in flight');
+    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: reused }]);
+    expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
   });
 
   it('As a forwarder, I refuse a stop with trailing bytes and the subscription keeps running on both links until a whole stop ends it', async () => {

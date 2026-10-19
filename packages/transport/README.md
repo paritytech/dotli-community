@@ -131,9 +131,9 @@ sequenceDiagram
   handshake is over is refused and answered at once with `HostFailure`, "The handshake is not over", and its handler
   never runs. One after the transport closed is refused with no answer. Nothing ever answers a `failed` frame or a frame
   that does not decode.
-- As truapi does with an id the peer reuses, a request whose id is still in flight is refused with no answer, and its
-  handler does not run again. A start on the id of a running subscription replaces it: the running one stops with
-  nothing sent, and the new one starts.
+- As truapi does with an id the peer reuses, a request or a start whose id is a request still in flight is refused with
+  no answer, and no handler runs for it, so the request keeps its one answer. A start on the id of a running
+  subscription replaces it: the running one stops with nothing sent, and the new one starts.
 - A transport forwards a peer's calls of chosen methods to another transport of the same schema, which places them at
   the same ids. A forwarded call is ordinary frames on both links, so each link keeps every rule it applies to its peer,
   and the upstream numbers the call itself. Its messages cross as the bytes they arrived as: the forwarder reads only a

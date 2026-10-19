@@ -662,24 +662,9 @@ export function createTransport<H, T extends Sections>(
     post(data.value, address);
   }
 
-  /**
-   * Refuses a request whose id is still in flight. As truapi does, that is the peer's mistake, and the one in flight
-   * keeps it.
-   */
-  const reusesInFlight = (id: number): boolean => {
-    if (!inFlight.has(id)) {
-      return false;
-    }
-    refuse('invalid', new Error(`A request reuses call ${String(id)}, which is still in flight`));
-    return true;
-  };
-
   function handleRequest<P, R, E>(method: Request<P, R, E>, handler: RequestHandler<P, R, E, H>): () => void {
     const address = schema.addressOf(method);
     return register(method, address, (id, bytes, context) => {
-      if (reusesInFlight(id)) {
-        return;
-      }
       const message = decode(method.wholeMessage, bytes);
       if (!message.success) {
         malformed(id, message.value, address);
@@ -801,10 +786,7 @@ export function createTransport<H, T extends Sections>(
     return register(method, address, (id, bytes, context) => {
       const message = decode(method.wholeMessage, bytes);
       if (!message.success) {
-        // A failed frame on a request's id would answer that request twice.
-        if (!reusesInFlight(id)) {
-          malformed(id, message.value, address);
-        }
+        malformed(id, message.value, address);
         return;
       }
       const sent = message.value;
@@ -845,9 +827,6 @@ export function createTransport<H, T extends Sections>(
     id: number,
     request: Uint8Array,
   ): void => {
-    if (reusesInFlight(id)) {
-      return;
-    }
     const call = upstream.open(address, request, {
       message(answer) {
         const leg = decode(method.leg, answer);
@@ -942,11 +921,7 @@ export function createTransport<H, T extends Sections>(
     (id, message) => {
       const leg = decode(method.leg, message);
       if (!leg.success) {
-        // Refused before it is answered, as the served path refuses a reused id, so a request in flight on it keeps its
-        // one answer.
-        if (!reusesInFlight(id)) {
-          malformed(id, leg.value, address);
-        }
+        malformed(id, leg.value, address);
         return;
       }
       switch (leg.value.tag) {
@@ -998,6 +973,9 @@ export function createTransport<H, T extends Sections>(
     return leg?.success === true ? leg.value.tag : undefined;
   };
 
+  /** Whether a message opens a call this side answers. One whose leg does not read is answered too, as malformed. */
+  const opensCall = (leg: string | undefined): boolean => leg === undefined || leg === 'request' || leg === 'start';
+
   /** Hands a message of the peer's call `id` to what serves it. */
   const hearPeer = (id: number, call: Call<Uint8Array>, context: CallContext<H>): void => {
     const entry = running.get(id);
@@ -1016,6 +994,11 @@ export function createTransport<H, T extends Sections>(
       // A stop for a subscription that is not running stops nothing, such as one that crossed this side's end.
       return;
     }
+    if (opensCall(leg) && inFlight.has(id)) {
+      // As truapi refuses a reused id, the request in flight keeps it, and its one answer.
+      refuse('invalid', new Error(`A ${leg ?? 'message'} reuses call ${String(id)}, which is still in flight`));
+      return;
+    }
     const method = schema.methodAt(call.sectionId, call.methodId);
     const served = method === undefined ? undefined : handlers.get(method);
     if (served === undefined) {
@@ -1031,8 +1014,7 @@ export function createTransport<H, T extends Sections>(
    */
   const answerEarly = (id: number, call: Call<Uint8Array>): void => {
     refuse('invalid', new Error('A call came before the handshake'));
-    const leg = legOf(call);
-    if (leg === undefined || leg === 'request' || leg === 'start') {
+    if (opensCall(legOf(call))) {
       postFailed(id, hostFailure(HANDSHAKE_NOT_OVER));
     }
   };

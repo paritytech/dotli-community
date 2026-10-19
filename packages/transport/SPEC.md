@@ -196,9 +196,9 @@ with no answer, a call that comes after it closed, a message whose method is not
 that does not decode. Nothing ever answers a `failed` frame. A message on a call the peer ended lately is a race and
 MUST be dropped quietly. So MUST a `stop` for a subscription that is not running.
 
-Ids are not reused while a call is running. As truapi does, a serving peer MUST refuse, with no answer, a `request`
-whose `id` is still in flight, and MUST NOT run its handler again. A `start` on the `id` of a running subscription
-replaces it: the running one stops with no frame sent, and the new one starts.
+Ids are not reused while a call is running. As truapi does, a serving peer MUST refuse, with no answer, a `request` or a
+`start` whose `id` is a request still in flight, and MUST NOT run a handler for it. A `start` on the `id` of a running
+subscription replaces it: the running one stops with no frame sent, and the new one starts.
 
 A frame, a message, a hello or a `Failure` that leaves bytes unread does not decode, as truapi's `decode_all` refuses
 it.
