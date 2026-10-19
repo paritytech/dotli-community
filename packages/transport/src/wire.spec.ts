@@ -53,9 +53,9 @@ describe('wire', () => {
   it('As a peer of any release, I encode the handshake and a failure and get the frozen bytes', () => {
     // Given
     const frames: Frame<Uint8Array>[] = [
-      { id: 1, body: { tag: 'open', value: { version: 3, hello: Uint8Array.of(0x68, 0x69) } } },
-      { id: 2, body: { tag: 'accept', value: ok(Uint8Array.of(0x68, 0x69)) } },
-      { id: 2, body: { tag: 'accept', value: err({ version: 3 }) } },
+      { id: 1, body: { tag: 'handshakeOffer', value: { version: 3, hello: Uint8Array.of(0x68, 0x69) } } },
+      { id: 2, body: { tag: 'handshakeResponse', value: ok(Uint8Array.of(0x68, 0x69)) } },
+      { id: 2, body: { tag: 'handshakeResponse', value: err({ version: 3 }) } },
       { id: 0x0102_0304, body: { tag: 'failed', value: malformedFrame('no') } },
     ];
 

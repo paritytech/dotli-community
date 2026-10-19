@@ -305,18 +305,23 @@ function protocolRig() {
 
 /** A handshake frame with its hello decoded. */
 type HandshakeFrame =
-  { open: { version: number; hello: ProtocolHello } } | { accept: ResultPayload<ProtocolHello, { version: number }> };
+  | { handshakeOffer: { version: number; hello: ProtocolHello } }
+  | { handshakeResponse: ResultPayload<ProtocolHello, { version: number }> };
 
 /** The handshake frames in `delivered`. */
 function handshakeOf(delivered: Uint8Array[]): HandshakeFrame[] {
   return delivered.flatMap((data): HandshakeFrame[] => {
     const read = readFrame(protocolSchema, data);
     switch (read.kind) {
-      case 'open':
-        return [{ open: { version: read.value.version, hello: protocolSchema.hello.dec(read.value.hello) } }];
-      case 'accept':
+      case 'handshakeOffer':
+        return [{ handshakeOffer: { version: read.value.version, hello: protocolSchema.hello.dec(read.value.hello) } }];
+      case 'handshakeResponse':
         return [
-          { accept: read.value.success ? ok(protocolSchema.hello.dec(read.value.value)) : err(read.value.value) },
+          {
+            handshakeResponse: read.value.success
+              ? ok(protocolSchema.hello.dec(read.value.value))
+              : err(read.value.value),
+          },
         ];
       case 'failed':
       case 'call':
@@ -357,8 +362,8 @@ describe('protocolSchema', () => {
     expect(hellos).toEqual(Array.from({ length: callCount }, () => OPENER_HELLO));
     // The handshake is the library's own, so its frames carry no call.
     expect(handshakeOf(delivered)).toEqual([
-      { open: { version: protocolSchema.version, hello: OPENER_HELLO } },
-      { accept: ok(ACCEPTER_HELLO) },
+      { handshakeOffer: { version: protocolSchema.version, hello: OPENER_HELLO } },
+      { handshakeResponse: ok(ACCEPTER_HELLO) },
     ]);
   });
 

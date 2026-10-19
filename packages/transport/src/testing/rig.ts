@@ -158,7 +158,8 @@ function rawPeer(provider: Provider) {
     },
     names: () => heard.map(nameOf),
     /** The handshake answers heard, by id. */
-    accepts: () => heard.flatMap(frame => (frame.kind === 'accept' ? [{ id: frame.id, value: frame.value }] : [])),
+    handshakeResponses: () =>
+      heard.flatMap(frame => (frame.kind === 'handshakeResponse' ? [{ id: frame.id, value: frame.value }] : [])),
     /** The failures heard, by id. */
     failures: () => heard.flatMap(frame => (frame.kind === 'failed' ? [{ id: frame.id, value: frame.value }] : [])),
     /** What the calls heard by one name carry, decoded with their method. */
@@ -192,15 +193,15 @@ export function rawRig(
   });
   /** Answers the first handshake the transport posted, as an accepter of the same version. */
   const answerHandshake = (): void => {
-    const [attempt] = peer.find('open');
+    const [attempt] = peer.find('handshakeOffer');
     if (attempt === undefined) {
       throw new Error('no handshake heard yet');
     }
-    peer.send(attempt.id, { tag: 'accept', value: ok(str.enc('peer')) });
+    peer.send(attempt.id, { tag: 'handshakeResponse', value: ok(str.enc('peer')) });
   };
   /** Opens the handshake toward the transport, as an opener of `version`. */
   const openHandshake = (version = VERSION, id = 1): void => {
-    peer.send(id, { tag: 'open', value: { version, hello: str.enc('peer') } });
+    peer.send(id, { tag: 'handshakeOffer', value: { version, hello: str.enc('peer') } });
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }

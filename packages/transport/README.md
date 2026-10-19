@@ -20,12 +20,12 @@ and failure.
   handler's own `Domain` error, or a `Failure` of the library's, `Denied`, `Unsupported`, `MalformedFrame`,
   `HostFailure` or `Cancelled`. The library's failures are an enum of their own, so it answers any call with one. A
   method that declares no error has an empty one, `undefined`.
-- A frame is a SCALE struct of a call id (`u32`) and one enum: the handshake's `open` and `accept`, a `failed` that
-  answers a call with a `CallError` of the library's own, or a `call` that carries the section and method ids and the
-  method's own message. A message is its method's enum: `request` and `response` for a request, and `start`, `receive`,
-  `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from its method's. A
-  received frame keeps the message as bytes until the method it names decodes it. The id and the handshake variants
-  never change, so a peer of any release reads the version it refuses.
+- A frame is a SCALE struct of a call id (`u32`) and one enum: the handshake's `handshakeOffer` and `handshakeResponse`,
+  a `failed` that answers a call with a `CallError` of the library's own, or a `call` that carries the section and
+  method ids and the method's own message. A message is its method's enum: `request` and `response` for a request, and
+  `start`, `receive`, `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from
+  its method's. A received frame keeps the message as bytes until the method it names decodes it. The id and the
+  handshake variants never change, so a peer of any release reads the version it refuses.
 - Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
   one of this side's calls hears the peer's answers, values and ends, and one of the peer's reaches the handler.
 - A provider moves bytes between two contexts and knows nothing of their meaning, and is the trust boundary: the
@@ -33,19 +33,19 @@ and failure.
   the first origin a predicate allows, and delivers nothing from any other. The port provider speaks over a message
   port. Both post and accept an `ArrayBuffer` between documents, the message's own buffer when it holds only the message
   and a copy otherwise, so transferring it moves nothing else. Any object with the same four methods works.
-- One side opens the handshake and the other accepts it. The opener posts a fresh `open` every `retryMs` until it is
-  answered or `timeoutMs` passes on the running clock. The accepter answers every attempt with the outcome of the first
-  answer it could post, and counts as connected only once that answer is posted. A hello is decoded only at the same
-  version, since another release's may not decode. A version mismatch closes both sides.
+- One side opens the handshake and the other accepts it. The opener posts a fresh `handshakeOffer` every `retryMs` until
+  it is answered or `timeoutMs` passes on the running clock. The accepter answers every attempt with the outcome of the
+  first answer it could post, and counts as connected only once that answer is posted. A hello is decoded only at the
+  same version, since another release's may not decode. A version mismatch closes both sides.
 
 ```mermaid
 sequenceDiagram
   participant O as Opener
   participant A as Accepter
-  O->>A: open (version, hello)
+  O->>A: handshakeOffer (version, hello)
   Note over O: retries every retryMs
-  O->>A: open (version, hello)
-  A-->>O: accept, Ok(hello) or the accepter's version
+  O->>A: handshakeOffer (version, hello)
+  A-->>O: handshakeResponse, Ok(hello) or Err(the accepter's version)
   A-->>O: the same answer again
   Note over O,A: queued calls go out in call order
 ```

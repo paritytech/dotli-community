@@ -91,13 +91,13 @@ struct Frame {
 }
 
 enum Body {
-  open(Open),
-  accept(Result<Vec<u8> /* rest */, VersionInfo>),
+  handshakeOffer(HandshakeOffer),
+  handshakeResponse(Result<Vec<u8> /* rest */, VersionInfo>),
   failed(Failure),
   call(Call)
 }
 
-struct Open {
+struct HandshakeOffer {
   version: u8,
   hello: Vec<u8> /* rest */
 }
@@ -113,9 +113,9 @@ struct Call {
 }
 ```
 
-`open` and `accept` are the handshake. `failed` answers a call with a failure of the transport's own. `call` carries a
-message of a method. The layout of `Frame`, `open` and `accept` MUST NOT change between versions, so a peer of any
-version reads the version it refuses.
+`handshakeOffer` and `handshakeResponse` are the handshake. `failed` answers a call with a failure of the transport's
+own. `call` carries a message of a method. The layout of `Frame`, `handshakeOffer` and `handshakeResponse` MUST NOT
+change between versions, so a peer of any version reads the version it refuses.
 
 `Message` is the method's own enum of **actions**. Ids MUST follow the order of the schema: `sectionId` is the section's
 place in the schema and `methodId` the method's place in its section. New sections and methods MUST go at the end. A
@@ -275,12 +275,12 @@ error is `"<name>: <message>"`, at most 500 characters, so the peer keeps the er
 One peer opens the handshake and the other accepts it. Handshake implementations CAN include a timeout, 5 seconds by
 default, after which the connection is marked as failed and fails with a `Timeout` error.
 
-The opener MUST post an `open` frame with id `0`, carrying the schema's `version` in `u8` and its hello, and post a
-fresh one every 50 ms by default until it is answered or the timeout passes, since the accepter may not be listening
-yet. The accepter MUST answer every `open` with an `accept` of the same `id`. Its answer is `Ok(hello)` when the
-versions match and `Err(VersionInfo)` with its own version otherwise, and every later answer repeats the first one it
-could post. A hello is decoded only at the same version, since another version's may not decode. A version mismatch
-closes both peers.
+The opener MUST post a `handshakeOffer` frame with id `0`, carrying the schema's `version` in `u8` and its hello, and
+post a fresh one every 50 ms by default until it is answered or the timeout passes, since the accepter may not be
+listening yet. The accepter MUST answer every `handshakeOffer` with a `handshakeResponse` of the same `id`. Its answer
+is `Ok(hello)` when the versions match and `Err(VersionInfo)` with its own version otherwise, and every later answer
+repeats the first one it could post. A hello is decoded only at the same version, since another version's may not
+decode. A version mismatch closes both peers.
 
 A successful handshake MUST come before any call. Calls made before it wait and go out in call order once it succeeds.
 Calls of the peer that come before it are refused with no answer.

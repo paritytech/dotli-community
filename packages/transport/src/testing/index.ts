@@ -5,7 +5,7 @@ import { fromHex, toError, toHex } from '@dotli/shared';
 import type { Codec } from 'scale-ts';
 import type { Failure } from '../errors.js';
 import type { AnyMethod, Schema, Sections } from '../schema.js';
-import { decode, frame, type Accept, type Open } from '../wire.js';
+import { decode, frame, type HandshakeOffer, type HandshakeResponse } from '../wire.js';
 
 export { createProviderPair } from '../provider.fake.js';
 
@@ -15,8 +15,8 @@ export { createProviderPair } from '../provider.fake.js';
  * ids, with no decoded message.
  */
 export type RecordedFrame =
-  | { id: number; kind: 'open'; value: Open }
-  | { id: number; kind: 'accept'; value: Accept }
+  | { id: number; kind: 'handshakeOffer'; value: HandshakeOffer }
+  | { id: number; kind: 'handshakeResponse'; value: HandshakeResponse }
   | { id: number; kind: 'failed'; value: Failure }
   | { id: number; kind: 'call'; section: string; method: string; message: Uint8Array; decoded: { tag: string } | null };
 
@@ -48,10 +48,10 @@ export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: Uin
   }
   const { id, body } = read.value;
   switch (body.tag) {
-    case 'open':
-      return { id, kind: 'open', value: body.value };
-    case 'accept':
-      return { id, kind: 'accept', value: body.value };
+    case 'handshakeOffer':
+      return { id, kind: 'handshakeOffer', value: body.value };
+    case 'handshakeResponse':
+      return { id, kind: 'handshakeResponse', value: body.value };
     case 'failed':
       return { id, kind: 'failed', value: body.value };
     case 'call': {

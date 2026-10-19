@@ -34,7 +34,15 @@ import {
   type Subscription,
   type Sections,
 } from './schema.js';
-import { decode, encodeCall, frame, type Accept, type Call, type Frame, type Open } from './wire.js';
+import {
+  decode,
+  encodeCall,
+  frame,
+  type Call,
+  type Frame,
+  type HandshakeOffer,
+  type HandshakeResponse,
+} from './wire.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
 export interface SubscriptionListeners<V, I> {
@@ -776,7 +784,7 @@ export function createTransport<H, T extends Sections>(
   // An attempt is no call, so it takes no call id, and the accepter's answer echoes it.
   const attempt = (): never => {
     const hello = schema.hello.enc(options.hello);
-    const data = frame.enc({ id: 0, body: { tag: 'open', value: { version: schema.version, hello } } });
+    const data = frame.enc({ id: 0, body: { tag: 'handshakeOffer', value: { version: schema.version, hello } } });
     const posted = post(data);
     if (!posted.success) {
       throw new Error('The handshake could not be posted', { cause: posted.value });
@@ -784,17 +792,17 @@ export function createTransport<H, T extends Sections>(
     throw new HandshakeUnansweredError('The handshake is not answered yet');
   };
 
-  const heardAccept = (accept: Accept): void => {
+  const heardResponse = (response: HandshakeResponse): void => {
     if (!started) {
       refuse('invalid', new Error('A handshake answer came before this side opened the handshake'));
       return;
     }
     // Only the first answer counts. The rest answer attempts already in flight.
-    if (!accept.success) {
-      settleHandshake(err(new TransportVersionMismatchError(schema.version, accept.value.version)));
+    if (!response.success) {
+      settleHandshake(err(new TransportVersionMismatchError(schema.version, response.value.version)));
       return;
     }
-    const hello = decode(schema.hello, accept.value);
+    const hello = decode(schema.hello, response.value);
     if (!hello.success) {
       refuse('malformed', hello.value);
       return;
@@ -803,17 +811,17 @@ export function createTransport<H, T extends Sections>(
   };
 
   // The accepter's answer to the first attempt whose answer was posted, which every later attempt hears again.
-  let first: Accept | undefined;
+  let first: HandshakeResponse | undefined;
 
-  const heardOpen = (id: number, open: Open): void => {
-    const sameVersion = open.version === schema.version;
-    const peerHello = sameVersion ? decode(schema.hello, open.hello) : undefined;
+  const heardOffer = (id: number, offer: HandshakeOffer): void => {
+    const sameVersion = offer.version === schema.version;
+    const peerHello = sameVersion ? decode(schema.hello, offer.hello) : undefined;
     if (peerHello?.success === false) {
       refuse('malformed', peerHello.value);
       return;
     }
     const deciding = first === undefined;
-    let answer: Accept;
+    let answer: HandshakeResponse;
     try {
       answer = first ?? (sameVersion ? ok(schema.hello.enc(options.hello)) : err({ version: schema.version }));
     } catch (error) {
@@ -821,13 +829,13 @@ export function createTransport<H, T extends Sections>(
       return;
     }
     // An answer the opener never heard decides nothing, so its next attempt is answered afresh.
-    const posted = post(frame.enc({ id, body: { tag: 'accept', value: answer } }));
+    const posted = post(frame.enc({ id, body: { tag: 'handshakeResponse', value: answer } }));
     if (!posted.success || !deciding) {
       return;
     }
     first = answer;
     if (peerHello === undefined) {
-      close(new TransportVersionMismatchError(schema.version, open.version));
+      close(new TransportVersionMismatchError(schema.version, offer.version));
     } else {
       onOpen(peerHello.value);
     }
@@ -841,16 +849,16 @@ export function createTransport<H, T extends Sections>(
     }
     const { id, body } = received.value;
     switch (body.tag) {
-      case 'open':
+      case 'handshakeOffer':
         if (opens) {
-          refuse('invalid', new Error('A handshake open reached the side that opens the handshake'));
+          refuse('invalid', new Error('A handshake offer reached the side that opens the handshake'));
         } else {
-          heardOpen(id, body.value);
+          heardOffer(id, body.value);
         }
         return;
-      case 'accept':
+      case 'handshakeResponse':
         if (opens) {
-          heardAccept(body.value);
+          heardResponse(body.value);
         } else {
           refuse('invalid', new Error('A handshake answer reached the side that accepts the handshake'));
         }

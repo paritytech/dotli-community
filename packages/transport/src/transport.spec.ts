@@ -196,7 +196,7 @@ describe('createTransport', () => {
         callback(message);
       }
     };
-    hear(frame.enc({ id: 1, body: { tag: 'open', value: { version: VERSION, hello: str.enc('peer') } } }));
+    hear(frame.enc({ id: 1, body: { tag: 'handshakeOffer', value: { version: VERSION, hello: str.enc('peer') } } }));
 
     // When
     const call = (): void => {
@@ -268,7 +268,7 @@ describe('createTransport', () => {
       { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
       { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error },
     ]);
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
   });
 
   it('As an owner with no issue hook, each issue is logged as one bounded error', async () => {
@@ -404,7 +404,7 @@ describe('calls', () => {
 
     // Then
     expect(peer.names()).toEqual([
-      'open',
+      'handshakeOffer',
       'request:notes.touch',
       'request:echo.say',
       'request:notes.read',
@@ -496,7 +496,7 @@ describe('calls', () => {
     // Then
     expect(await call).toEqual(err(cancelled()));
     expect(issues).toEqual([]);
-    expect(peer.names()).toEqual(['open', 'request:notes.read']);
+    expect(peer.names()).toEqual(['handshakeOffer', 'request:notes.read']);
     expect(detach).toHaveBeenCalledOnce();
     // A call still waiting would be settled again by the dispose, and detach its listener a second time.
     transport.dispose(new Error('done'));
@@ -518,7 +518,7 @@ describe('calls', () => {
     // Then
     expect(await outcomeOf(transport.whenConnected())).toBeInstanceOf(TransportHandshakeTimeoutError);
     expect(await call).toEqual({ value: err(cancelled()) });
-    expect(new Set(peer.names())).toEqual(new Set(['open']));
+    expect(new Set(peer.names())).toEqual(new Set(['handshakeOffer']));
   });
 
   it('As a caller, a call aborted while queued never goes out once the handshake succeeds', async () => {
@@ -537,7 +537,7 @@ describe('calls', () => {
 
     // Then
     expect(await call).toEqual(err(cancelled()));
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
   });
 
   it('As a caller, a call with an already aborted signal resolves Cancelled at once and posts nothing', async () => {
@@ -550,7 +550,7 @@ describe('calls', () => {
     // Then a marker settled after the call loses the race, so the call settled before any queue step
     expect(await Promise.race([call, Promise.resolve('still waiting')])).toEqual(err(cancelled()));
     await timers.advance(0);
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
   });
 
   it('As a caller, an answer that does not decode resolves my call as MalformedFrame and is reported', async () => {
@@ -631,7 +631,7 @@ describe('calls', () => {
     transport.connect();
     const call = outcomeOf(transport.request(notes.touch, undefined));
     await timers.advance(100);
-    expect(peer.names()).toEqual(['open', 'open', 'open']);
+    expect(peer.names()).toEqual(['handshakeOffer', 'handshakeOffer', 'handshakeOffer']);
     const post = vi.spyOn(left, 'postMessage');
     const reason = new Error('the peer left');
 
@@ -666,7 +666,7 @@ describe('calls', () => {
 
     // Then
     expect(peer.names()).toEqual([
-      'open',
+      'handshakeOffer',
       'request:notes.touch',
       'start:notes.watch',
       'request:echo.say',
@@ -727,7 +727,7 @@ describe('calls', () => {
     transport.dispose(new Error('done'));
 
     // Then
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
     expect(heard.ends).toEqual([]);
     expect(heard.closes).toEqual([]);
   });
@@ -801,7 +801,7 @@ describe('calls', () => {
     // Then
     expect(queued.ends).toEqual([err(cancelled())]);
     expect(early.ends).toEqual([err(cancelled())]);
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
   });
 
   it('As a caller, a transport that closes closes my subscription once with its error', async () => {
@@ -1122,7 +1122,7 @@ describe('calls', () => {
     // Then
     expect(subscribe).toThrow(new RangeError('A word is never empty'));
     await timers.advance(0);
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
   });
 
   it('As a caller, an issue hook that disposes on my failed start post leaves the peer nothing to stop', async () => {
@@ -1154,7 +1154,7 @@ describe('calls', () => {
     // Then the transport closed it before the post returned, and the peer heard no stop
     expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
-    expect(raw.peer.names()).toEqual(['open']);
+    expect(raw.peer.names()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
 
@@ -1190,7 +1190,7 @@ describe('calls', () => {
     // Then the stop ended it before the post returned, and the peer heard no stop
     expect(heard.closes).toEqual([]);
     expect(heard.ends).toEqual([]);
-    expect(raw.peer.names()).toEqual(['open']);
+    expect(raw.peer.names()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
 
@@ -1214,7 +1214,7 @@ describe('calls', () => {
     const failed = expect.objectContaining({ message: 'The start could not be posted', cause: broken }) as Error;
     expect(heard.closes).toEqual([failed]);
     expect(heard.ends).toEqual([]);
-    expect(peer.names()).toEqual(['open']);
+    expect(peer.names()).toEqual(['handshakeOffer']);
     expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
 });
@@ -1394,7 +1394,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.names()).toEqual(['accept', 'failed', 'failed']);
+    expect(peer.names()).toEqual(['handshakeResponse', 'failed', 'failed']);
     expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error }]);
   });
 
@@ -1481,7 +1481,7 @@ describe('serving', () => {
       }) as Error,
     };
     expect(issues).toEqual([refused, refused]);
-    expect(peer.names()).toEqual(['accept']);
+    expect(peer.names()).toEqual(['handshakeResponse']);
   });
 
   it('As a connected accepter, a malformed handshake open is reported with no reply', async () => {
@@ -1490,7 +1490,7 @@ describe('serving', () => {
 
     // When an open carries no version, then one carries a hello that is cut short
     peer.sendBytes(3, 0, 0, 0, 0);
-    peer.send(5, { tag: 'open', value: { version: VERSION, hello: CUT_SHORT_TEXT } });
+    peer.send(5, { tag: 'handshakeOffer', value: { version: VERSION, hello: CUT_SHORT_TEXT } });
     await timers.advance(0);
 
     // Then
@@ -1498,7 +1498,7 @@ describe('serving', () => {
       { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
       { kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError },
     ]);
-    expect(peer.names()).toEqual(['accept']);
+    expect(peer.names()).toEqual(['handshakeResponse']);
   });
 
   it('As an accepter, a malformed handshake open is reported with no reply', async () => {
@@ -1511,7 +1511,7 @@ describe('serving', () => {
 
     // When an open carries no version, then one carries a hello that is cut short
     peer.sendBytes(1, 0, 0, 0, 0);
-    peer.send(3, { tag: 'open', value: { version: VERSION, hello: CUT_SHORT_TEXT } });
+    peer.send(3, { tag: 'handshakeOffer', value: { version: VERSION, hello: CUT_SHORT_TEXT } });
     await timers.advance(0);
 
     // Then
@@ -1535,7 +1535,7 @@ describe('serving', () => {
     // Then
     const refused = { kind: 'refused', reason: 'malformed', cause: expect.any(TypeError) as TypeError };
     expect(issues).toEqual([refused, refused]);
-    expect(peer.names()).toEqual(['accept']);
+    expect(peer.names()).toEqual(['handshakeResponse']);
   });
 
   it('As a serving side, I answer each call of the peer side by side', async () => {
@@ -1580,7 +1580,7 @@ describe('serving', () => {
     // Then the second stop is the peer's fault
     expect(started).toEqual([{ start: 'from the top', context: { hello: 'peer' } }]);
     expect(stop).toHaveBeenCalledOnce();
-    expect(peer.names()).toEqual(['accept']);
+    expect(peer.names()).toEqual(['handshakeResponse']);
     expect(issues).toEqual([
       {
         kind: 'refused',
@@ -1796,7 +1796,7 @@ describe('serving', () => {
     expect(stops).toEqual([0]);
     const refused = { kind: 'refused', reason: 'invalid', cause: expect.any(Error) as Error };
     expect(issues).toEqual([refused, refused]);
-    expect(peer.names()).toEqual(['accept']);
+    expect(peer.names()).toEqual(['handshakeResponse']);
   });
 
   it('As a serving side, I hear that a disposed peer left once its last stop and its last call are done', async () => {
@@ -2022,7 +2022,7 @@ describe('serving', () => {
       },
     ]);
     expect(onPeerIdle).not.toHaveBeenCalled();
-    expect(peer.names()).toEqual(['accept']);
+    expect(peer.names()).toEqual(['handshakeResponse']);
   });
 
   it('As a serving side, a call that does not decode or names an address I lack still keeps the peer', async () => {
@@ -2181,7 +2181,7 @@ describe('the handshake', () => {
     const attempt = must(peer.heard[0], 'a handshake');
 
     // When
-    peer.send(attempt.id, { tag: 'accept', value: err({ version: VERSION + 1 }) });
+    peer.send(attempt.id, { tag: 'handshakeResponse', value: err({ version: VERSION + 1 }) });
     await timers.advance(0);
 
     // Then
@@ -2211,10 +2211,10 @@ describe('the handshake', () => {
 
     // Then
     expect(peer.names()).toEqual([
-      'open',
-      'open',
-      'open',
-      'open',
+      'handshakeOffer',
+      'handshakeOffer',
+      'handshakeOffer',
+      'handshakeOffer',
       'request:notes.touch',
       'request:notes.touch',
       'request:notes.touch',
@@ -2259,7 +2259,7 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.accepts()).toEqual([
+    expect(peer.handshakeResponses()).toEqual([
       { id: 1, value: ok(str.enc('accepter')) },
       { id: 3, value: ok(str.enc('accepter')) },
     ]);
@@ -2277,7 +2277,7 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.accepts()).toEqual([
+    expect(peer.handshakeResponses()).toEqual([
       { id: 1, value: err({ version: VERSION }) },
       { id: 3, value: err({ version: VERSION }) },
     ]);
@@ -2299,7 +2299,7 @@ describe('the handshake', () => {
     });
 
     // When
-    peer.send(1, { tag: 'accept', value: ok(str.enc('peer')) });
+    peer.send(1, { tag: 'handshakeResponse', value: ok(str.enc('peer')) });
     await timers.advance(0);
 
     // Then
@@ -2333,9 +2333,9 @@ describe('the handshake', () => {
     await timers.advance(0);
 
     // Then
-    expect(peer.accepts()).toEqual([{ id: 3, value: ok(str.enc('accepter')) }]);
+    expect(peer.handshakeResponses()).toEqual([{ id: 3, value: ok(str.enc('accepter')) }]);
     expect(connected).toBe(true);
-    expect(peer.names()).toEqual(['accept', 'request:notes.touch']);
+    expect(peer.names()).toEqual(['handshakeResponse', 'request:notes.touch']);
   });
 
   it('As either side, a handshake leg meant for the other side is refused as invalid', async () => {
@@ -2345,7 +2345,7 @@ describe('the handshake', () => {
 
     // When
     opening.openHandshake();
-    accepting.peer.send(1, { tag: 'accept', value: ok(str.enc('peer')) });
+    accepting.peer.send(1, { tag: 'handshakeResponse', value: ok(str.enc('peer')) });
     await opening.timers.advance(0);
 
     // Then

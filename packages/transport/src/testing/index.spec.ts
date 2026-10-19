@@ -93,8 +93,8 @@ describe('readFrame', () => {
   it("As a test, I read the library's own frames as they are", () => {
     // Given
     const data = [
-      frame.enc({ id: 3, body: { tag: 'open', value: { version: 2, hello: str.enc('opener') } } }),
-      frame.enc({ id: 3, body: { tag: 'accept', value: err({ version: 5 }) } }),
+      frame.enc({ id: 3, body: { tag: 'handshakeOffer', value: { version: 2, hello: str.enc('opener') } } }),
+      frame.enc({ id: 3, body: { tag: 'handshakeResponse', value: err({ version: 5 }) } }),
       frame.enc({ id: 4, body: { tag: 'failed', value: unsupported() } }),
     ];
 
@@ -103,8 +103,8 @@ describe('readFrame', () => {
 
     // Then
     expect(recorded).toEqual([
-      { id: 3, kind: 'open', value: { version: 2, hello: str.enc('opener') } },
-      { id: 3, kind: 'accept', value: err({ version: 5 }) },
+      { id: 3, kind: 'handshakeOffer', value: { version: 2, hello: str.enc('opener') } },
+      { id: 3, kind: 'handshakeResponse', value: err({ version: 5 }) },
       { id: 4, kind: 'failed', value: unsupported() },
     ]);
   });
