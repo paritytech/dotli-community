@@ -9,20 +9,38 @@ import { createNotifier, NOTIFICATION_DISMISS_MS, type SystemNotifications } fro
 
 let page: FakePage;
 let system: SystemNotifications | undefined;
+let focused: boolean;
 
-/** The notifier over the toast store, on a page whose visibility the test sets. */
+/** The notifier over the toast store, on a page whose visibility and focus the test sets. */
 const showNotification = createNotifier({
   present: input => {
     pushToast(input);
   },
-  visible: () => page.document.visibilityState === 'visible',
+  attended: () => page.document.visibilityState === 'visible' && focused,
   system: () => system,
 });
+
+/** A system notification API that grants and records what it shows. */
+function grantedSystem(): { title: string; body: string | undefined }[] {
+  const created: { title: string; body: string | undefined }[] = [];
+  class FakeNotification {
+    static permission = 'granted';
+    static requestPermission = vi.fn();
+    onclick: (() => void) | null = null;
+    constructor(title: string, options?: { body?: string }) {
+      created.push({ title, body: options?.body });
+    }
+    close(): void {}
+  }
+  system = FakeNotification as unknown as SystemNotifications;
+  return created;
+}
 
 beforeEach(() => {
   page = new FakePage();
   bindToastPage(page.document);
   system = undefined;
+  focused = true;
 });
 
 afterEach(() => {
@@ -73,17 +91,7 @@ describe('showNotification', () => {
 
   it('As a dotli user with the tab hidden, I also get a system notification when permission is granted', () => {
     // Given
-    const created: { title: string; body: string | undefined }[] = [];
-    class FakeNotification {
-      static permission = 'granted';
-      static requestPermission = vi.fn();
-      onclick: (() => void) | null = null;
-      constructor(title: string, options?: { body?: string }) {
-        created.push({ title, body: options?.body });
-      }
-      close(): void {}
-    }
-    system = FakeNotification as unknown as SystemNotifications;
+    const created = grantedSystem();
     page.setVisibility('hidden');
 
     // When
@@ -96,6 +104,31 @@ describe('showNotification', () => {
 
     // Then
     expect(created).toEqual([{ title: 'Ping', body: 'Background' }]);
+  });
+
+  it('As a dotli user with the window behind other windows, I also get a system notification', () => {
+    // Given the tab still reports visible, but its window has lost focus
+    const created = grantedSystem();
+    focused = false;
+
+    // When
+    showNotification({ label: 'Ping', text: 'Behind' });
+
+    // Then
+    expect(created).toEqual([{ title: 'Ping', body: 'Behind' }]);
+    expect(toastsStore.get().items.map(t => t.text)).toEqual(['Behind']);
+  });
+
+  it('As a dotli user looking at the page, I get only the in-page notification', () => {
+    // Given
+    const created = grantedSystem();
+
+    // When
+    showNotification({ label: 'Ping', text: 'Here' });
+
+    // Then
+    expect(created).toEqual([]);
+    expect(toastsStore.get().items.map(t => t.text)).toEqual(['Here']);
   });
 
   it('As a dotli user, a notification keeps the icon it was given and carries none otherwise', () => {

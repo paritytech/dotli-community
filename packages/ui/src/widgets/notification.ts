@@ -19,7 +19,7 @@ export interface NotificationParams {
   tone?: NoticeTone;
   /** 0 keeps it until closed. */
   dismissMs?: number;
-  /** Also fire a browser Notification when the tab is hidden. Default true. */
+  /** Also fire a browser Notification when the page is not attended. Default true. */
   browserNotification?: boolean;
   onDismiss?: () => void;
   action?: { label: string; onClick: () => void };
@@ -76,16 +76,19 @@ function fireBrowserNotification(
 
 export interface NotifierDeps {
   present: (input: ToastInput) => void;
-  /** Whether the tab is showing, so a hidden one also gets a system notification. */
-  visible: () => boolean;
+  /**
+   * Whether the user is looking at the page: the tab showing and its window focused. A window behind other windows
+   * still reports visible, so focus decides there. An unattended page also gets a system notification.
+   */
+  attended: () => boolean;
   /** Undefined where the browser has none. */
   system: () => SystemNotifications | undefined;
 }
 
-/** Shows a toast, and a system notification too while the tab is hidden. */
+/** Shows a toast, and a system notification too while the page is not attended. */
 export type ShowNotification = (params: NotificationParams) => void;
 
-export function createNotifier({ present, visible, system }: NotifierDeps): ShowNotification {
+export function createNotifier({ present, attended, system }: NotifierDeps): ShowNotification {
   return params => {
     const text = sanitizeText(params.text);
     if (!text) {
@@ -105,7 +108,7 @@ export function createNotifier({ present, visible, system }: NotifierDeps): Show
       ...(params.action === undefined ? {} : { action: params.action }),
     });
 
-    const notifications = (params.browserNotification ?? true) && !visible() ? system() : undefined;
+    const notifications = (params.browserNotification ?? true) && !attended() ? system() : undefined;
     if (notifications !== undefined) {
       fireBrowserNotification(notifications, text, deeplink, params.label);
     }
@@ -117,6 +120,7 @@ export const showNotification: ShowNotification = createNotifier({
   present: input => {
     pushToast(input);
   },
-  visible: () => document.visibilityState === 'visible',
+  // Focus inside the product's frame still counts, since the top document's focus covers its frames.
+  attended: () => document.visibilityState === 'visible' && document.hasFocus(),
   system: () => ('Notification' in window ? window.Notification : undefined),
 });
