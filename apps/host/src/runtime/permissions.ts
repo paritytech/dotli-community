@@ -99,7 +99,7 @@ export interface PermissionAuthorizations {
   /** A no-op while no connection of `label` is open. */
   setStatus(label: string, permission: PermissionName, status: PermissionStatus): Promise<void>;
   grantedDevicePermissions(label: string): Promise<DevicePermissionName[]>;
-  /** The iframe `allow` attribute for `label`'s granted device permissions. */
+  /** The iframe `allow` attribute for `label`'s granted device permissions, plus those every product gets. */
   allowAttribute(label: string): Promise<string>;
 }
 
@@ -187,7 +187,8 @@ export function createPermissionAuthorizations(): PermissionAuthorizations {
     setStatus,
     grantedDevicePermissions,
     async allowAttribute(label) {
-      const policies = ['clipboard-write'];
+      // TrUAPI has no screen capture permission, and the browser's picker asks on every capture anyway.
+      const policies = ['clipboard-write', 'display-capture'];
       for (const name of await grantedDevicePermissions(label)) {
         const directive = DEVICE_PERMISSION_POLICY[name];
         if (directive !== undefined) {
