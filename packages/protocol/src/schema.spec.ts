@@ -18,6 +18,7 @@ import {
   type ResultPayload,
   type Subscription,
   type TransportIssue,
+  type TransportVersions,
 } from '@dotli/transport';
 import {
   FrameRefusedError,
@@ -34,7 +35,9 @@ import {
   type ProtocolHello,
   type ProtocolSchema,
   type ProtocolTransport,
+  type SubscriptionEnd,
 } from './schema.js';
+import { endListeners } from './subscription.js';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.sections;
 
@@ -100,19 +103,16 @@ function requestCase<P, R, E>(
  */
 function heardUntilEnd<S, V, E>(
   transport: ProtocolTransport,
-  method: Subscription<S, V, ResultPayload<undefined, CallError<E>>>,
+  method: Subscription<S, V, SubscriptionEnd<E>>,
   start: NoInfer<S>,
-): Promise<{ values: V[]; end: ResultPayload<undefined, CallError<E>> }> {
+): Promise<{ values: V[]; end: SubscriptionEnd<E> }> {
   const values: V[] = [];
   return new Promise((settle, fail) => {
     transport.subscribe(method, start, {
       receive: value => values.push(value),
-      interrupt: end => {
+      ...endListeners<E>(end => {
         settle({ values, end });
-      },
-      fail: failure => {
-        settle({ values, end: err(failure) });
-      },
+      }),
       close: fail,
     });
   });
@@ -120,11 +120,11 @@ function heardUntilEnd<S, V, E>(
 
 /** A subscription with the values it sends before each of its ends, each a `CallError` of its reason. */
 function subscriptionCase<S, V, E>(
-  method: Subscription<S, V, ResultPayload<undefined, CallError<E>>>,
+  method: Subscription<S, V, SubscriptionEnd<E>>,
   sample: {
     start: NoInfer<S>;
     values: NoInfer<V>[];
-    interrupts: ResultPayload<undefined, CallError<NoInfer<E>>>[];
+    interrupts: SubscriptionEnd<NoInfer<E>>[];
   },
 ): Case {
   return {
@@ -146,7 +146,7 @@ function subscriptionCase<S, V, E>(
       });
     },
     async call(caller) {
-      const heard: { values: V[]; end: ResultPayload<undefined, CallError<E>> }[] = [];
+      const heard: { values: V[]; end: SubscriptionEnd<E> }[] = [];
       for (const _ of sample.interrupts) {
         heard.push(await heardUntilEnd(caller, method, sample.start));
       }
@@ -313,7 +313,7 @@ function protocolRig() {
 /** A handshake frame with its hello decoded. */
 type HandshakeFrame =
   | { handshakeOffer: { version: number; hello: ProtocolHello } }
-  | { handshakeResponse: ResultPayload<ProtocolHello, { version: number }> };
+  | { handshakeResponse: ResultPayload<ProtocolHello, TransportVersions> };
 
 /** The handshake frames in `delivered`. */
 function handshakeOf(delivered: Uint8Array[]): HandshakeFrame[] {
@@ -321,7 +321,11 @@ function handshakeOf(delivered: Uint8Array[]): HandshakeFrame[] {
     const read = readFrame(protocolSchema, data);
     switch (read.kind) {
       case 'handshakeOffer':
-        return [{ handshakeOffer: { version: read.value.version, hello: protocolSchema.hello.dec(read.value.hello) } }];
+        return [
+          {
+            handshakeOffer: { version: read.value.versions.schema, hello: protocolSchema.hello.dec(read.value.hello) },
+          },
+        ];
       case 'handshakeResponse':
         return [
           {

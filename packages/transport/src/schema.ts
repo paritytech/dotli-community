@@ -52,9 +52,6 @@ export type Request<P, R, E> = Method<RequestMessage<P, R, E>>;
 /** A subscription method. `I` is its own interrupt reason as a whole, `undefined` when it declares none. */
 export type Subscription<S, V, I> = Method<SubscriptionMessage<S, V, I>>;
 
-// A leg's payload as bytes, so reading a message's leg decodes no payload.
-const rest = Bytes(Infinity);
-
 const method = <M extends { tag: string }>(message: Codec<M>, leg: Decoder<{ tag: M['tag'] }>): Method<M> => ({
   message,
   wholeMessage: whole(message),
@@ -67,8 +64,9 @@ const requestLegs = <P, A>(request: Codec<P>, response: Codec<A>) => Enum({ requ
 const subscriptionLegs = <S, V, I>(start: Codec<S>, receive: Codec<V>, interrupt: Codec<I>) =>
   Enum({ start, receive, interrupt, stop: _void });
 
-const requestLeg = requestLegs(rest, rest).dec;
-const subscriptionLeg = subscriptionLegs(rest, rest, rest).dec;
+// A leg's payload is read as nothing, so reading a message's leg reads only its tag and copies no payload.
+const requestLeg = requestLegs(_void, _void).dec;
+const subscriptionLeg = subscriptionLegs(_void, _void, _void).dec;
 
 /** Declares a request. `error` is the method's own error, and a method without one has an empty one. */
 export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, undefined>;

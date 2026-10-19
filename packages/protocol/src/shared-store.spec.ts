@@ -6,17 +6,17 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createStatusCell } from '@dotli/shared';
 import { manualTimers, recordLog } from '@dotli/shared/testing';
-import { err, hostFailure, ok, type CallError, type ResultPayload, type Sink } from '@dotli/transport';
+import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
-import type { SharedAuthChange } from './schema.js';
+import type { SharedAuthChange, SubscriptionEnd } from './schema.js';
 import { createSharedStore, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 const { storage, wallet } = protocolSchema.sections;
 
-type ChangeSink = Sink<SharedAuthChange, ResultPayload<undefined, CallError<undefined>>>;
+type ChangeSink = Sink<SharedAuthChange, SubscriptionEnd<undefined>>;
 
 /** A frame app that relays sibling tabs' auth changes, keeping each subscriber's sink while it is subscribed. */
 function relayingChanges(sinks: Set<ChangeSink>): (serving: ProtocolTransport) => void {

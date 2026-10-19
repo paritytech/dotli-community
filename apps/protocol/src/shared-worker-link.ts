@@ -10,6 +10,7 @@
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
+  endListeners,
   failureOf,
   fromTransportError,
   ProtocolInitFailedError,
@@ -105,13 +106,10 @@ export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => v
   };
   transport.subscribe(protocolSchema.sections.frame.status, undefined, {
     receive: onReady,
-    interrupt: outcome => {
-      finish({ kind: 'interrupt', outcome });
-    },
     // A failure of the transport's own ends the status as the worker's end, as truapi's `CallError` carries it.
-    fail: failure => {
-      finish({ kind: 'interrupt', outcome: err(failure) });
-    },
+    ...endListeners((outcome: FrameStatusEnd) => {
+      finish({ kind: 'interrupt', outcome });
+    }),
     close: error => {
       finish({ kind: 'close', error });
     },
@@ -196,14 +194,15 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   const { worker, readyTimeoutMs } = deps;
   const timers = deps.timers ?? realTimers;
   const startedAt = performance.now();
-  // A port delivers every message, so one handshake is enough. It has the ready wait's budget, so a worker whose script
-  // loads slowly fails no sooner than one that loaded and never synced.
+  // A port delivers every message, so one handshake is enough. The ready wait is its one deadline, so a worker that
+  // never answers counts as a ready timeout, and one whose script loads slowly fails no sooner than one that never
+  // synced.
   const transport = createTransport(protocolSchema, createPortProvider(worker.port), {
     handshake: 'offer',
     hello: { resolutionId: deps.resolutionId },
     timers,
     retryMs: readyTimeoutMs,
-    timeoutMs: readyTimeoutMs,
+    timeoutMs: null,
     onIssue: deps.onIssue,
   });
   // Why the wait failed, for the metric. A timeout carries none.
@@ -243,8 +242,6 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
     });
     return waitMs;
   };
-  // Armed before the status subscription starts the handshake, so on a tie the ready wait's own timeout is the one
-  // heard.
   const waited = withTimeout(
     ready.promise,
     readyTimeoutMs,
@@ -316,12 +313,9 @@ function relaySubscription<S, V, E>(
       receive: value => {
         sink.send(value);
       },
-      interrupt: outcome => {
+      ...endListeners<E>(outcome => {
         sink.interrupt(outcome);
-      },
-      fail: failure => {
-        sink.interrupt(err(failure));
-      },
+      }),
       close: error => {
         sink.interrupt(err(hostFailure(fromTransportError(error))));
       },

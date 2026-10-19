@@ -20,14 +20,20 @@ import {
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
 } from './errors.js';
-import { backendOfFrameMode, createProtocolFrame, type ProtocolFrame, type ProtocolStatus } from './frame.js';
+import {
+  DEFAULT_FRAME_TIMEOUTS,
+  backendOfFrameMode,
+  createProtocolFrame,
+  type ProtocolFrame,
+  type ProtocolStatus,
+} from './frame.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import type { SharedStoreStatus } from './shared-store.js';
 import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameDom, type FrameHost } from './testing/frame-host.js';
 
 const { resolve, storage, chain } = protocolSchema.sections;
 
-const HANDSHAKE_TIMEOUT_MS = 5_000;
+const HANDSHAKE_TIMEOUT_MS = DEFAULT_FRAME_TIMEOUTS.handshakeMs;
 const READY_TIMEOUT_MS = 240_000;
 
 /** The clock and timers each test moves by hand. */

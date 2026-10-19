@@ -97,20 +97,19 @@ struct Frame {
 
 enum Body {
   handshakeOffer(HandshakeOffer),
-  handshakeResponse(Result<Vec<u8> /* rest */, VersionInfo>),
+  handshakeResponse(Result<Vec<u8> /* rest */, Versions>),
   failed(Failure),
   call(Call)
 }
 
 struct HandshakeOffer {
-  wireVersion: u8,
-  version: u8,
+  versions: Versions,
   hello: Vec<u8> /* rest */
 }
 
-struct VersionInfo {
-  wireVersion: u8,
-  version: u8
+struct Versions {
+  wire: u8,
+  schema: u8
 }
 
 struct Call {
@@ -121,10 +120,10 @@ struct Call {
 ```
 
 `handshakeOffer` and `handshakeResponse` are the handshake. `failed` answers a call with a failure of the transport's
-own. `call` carries a message of a method. `wireVersion` is the version of the transport's own wire: `Frame`, `Failure`,
-`CallError` and the handshake. It is `1`. `version` is the schema's. The layout of `Frame`, `handshakeOffer` and
-`handshakeResponse` MUST NOT change between versions, and `wireVersion` comes first in an offer, so a peer of any
-version reads the versions it refuses.
+own. `call` carries a message of a method. `wire` is the version of the transport's own wire: `Frame`, `Failure`,
+`CallError` and the handshake. It is `1`. `schema` is the schema's version. The layout of `Frame`, `handshakeOffer` and
+`handshakeResponse` MUST NOT change between versions, and `wire` comes first in `Versions`, so a peer of any version
+reads the versions it refuses.
 
 `Message` is the method's own enum of **actions**. Ids MUST follow the order of the schema: `sectionId` is the section's
 place in the schema and `methodId` the method's place in its section. New sections and methods MUST go at the end. A
@@ -202,7 +201,7 @@ A peer MUST answer a `request` or a `start` that comes before its handshake is o
 `id` carrying `HostFailure`, with the reason `The handshake is not over`, and run no handler for it. A peer MUST refuse,
 with no answer, a call that comes after it closed, a message whose method is not the one its call names, and a frame
 that does not decode. Nothing ever answers a `failed` frame. A message on a call the peer ended lately is a race and
-MUST be dropped quietly. So MUST a `stop` for a subscription that is not running, which counts as no call of the peer's.
+MUST be dropped quietly. So MUST a `stop` for a subscription that is not running.
 
 Ids are not reused while a call is running. As truapi does, a serving peer MUST refuse, with no answer, a `request`
 whose `id` is still in flight, and MUST NOT run its handler again. A `start` on the `id` of a running subscription
@@ -275,8 +274,6 @@ frame for the calls it serves and no `stop` for the subscriptions it made. Each 
 and each request it serves is never answered. A peer learns that the other closed from its provider or a liveness check
 of its own.
 
-A peer leaves when its own `stop` leaves nothing it opened running and no request of its is in flight.
-
 ## API Sections
 
 The transport defines no API sections. A schema does, as in the General Interface. What follows is shared by every
@@ -311,16 +308,16 @@ error is `"<name>: <message>"`, at most 500 characters, so the peer keeps the er
 ### Handshake
 
 One peer opens the handshake and the other accepts it. Handshake implementations CAN include a timeout, 10 seconds by
-default as in host-api and truapi, after which the connection is marked as failed and fails with a `Timeout` error.
+default as in host-api and truapi, after which the connection is marked as failed and fails with a `Timeout` error. An
+owner that bounds the wait itself MAY set none.
 
 The opener starts the handshake with its first call or its first wait for the handshake, as host-api does, unless it
-started earlier. It MUST post a `handshakeOffer` frame with id `0`, carrying the transport's `wireVersion` first, then
-the schema's `version`, each in `u8`, and its hello, and post a fresh one every 50 ms by default until it is answered or
-the timeout passes, since the accepter may not be listening yet. The accepter MUST answer every `handshakeOffer` with a
-`handshakeResponse` of the same `id`. Its answer is `Ok(hello)` when both versions match and `Err(VersionInfo)` with
-both of its own otherwise, and every later answer repeats the first. A hello is decoded only at the same versions, since
-another version's may not decode. A mismatch of either version closes both peers, and the accepter answers no offer once
-closed.
+started earlier. It MUST post a `handshakeOffer` frame with id `0`, carrying its `Versions`, the transport's `wire`
+version first, then the schema's, and its hello, and post a fresh one every 50 ms by default until it is answered or the
+timeout passes, since the accepter may not be listening yet. The accepter MUST answer every `handshakeOffer` with a
+`handshakeResponse` of the same `id`. Its answer is `Ok(hello)` when both versions match and `Err(Versions)` with its
+own otherwise, and every later answer repeats the first. A hello is decoded only at the same versions, since another
+version's may not decode. A mismatch of either version closes both peers, and the accepter answers no offer once closed.
 
 A successful handshake MUST come before any call. Calls made before it wait and go out in call order once it succeeds. A
 `request` or a `start` of the peer that comes before it is answered with `HostFailure`, as the call ids rules say.
@@ -329,11 +326,6 @@ A successful handshake MUST come before any call. Calls made before it wait and 
 enum HandshakeErr {
   Timeout,
   UnsupportedProtocolVersion { ours: Versions, theirs: Versions }
-}
-
-struct Versions {
-  wire: u8,
-  schema: u8
 }
 ```
 

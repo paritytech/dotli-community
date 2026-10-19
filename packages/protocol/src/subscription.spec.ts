@@ -11,26 +11,22 @@ import {
   err,
   hostFailure,
   ok,
-  type CallError,
-  type ResultPayload,
   type MethodTypes,
   type Sink,
 } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import { ProtocolFatalError, ProtocolVersionMismatchError } from './errors.js';
 import { createFakeFrame } from './frame.fake.js';
-import { protocolSchema, type FrameFailure, type ProtocolTransport, type RemoteFailure } from './schema.js';
+import type { FrameStatusSink } from './frame-status.js';
+import { protocolSchema, type ProtocolTransport, type RemoteFailure, type SubscriptionEnd } from './schema.js';
 import { subscribe } from './subscription.js';
 
 const { frame, resolve } = protocolSchema.sections;
 
 describe('subscribe', () => {
   let timers: ManualTimers;
-  let statusSinks: Sink<void, ResultPayload<undefined, CallError<FrameFailure>>>[];
-  let resolveSinks: Sink<
-    MethodTypes<typeof resolve.dotName>['receive'],
-    ResultPayload<undefined, CallError<RemoteFailure>>
-  >[];
+  let statusSinks: FrameStatusSink[];
+  let resolveSinks: Sink<MethodTypes<typeof resolve.dotName>['receive'], SubscriptionEnd<RemoteFailure>>[];
   let stops: number;
 
   const settle = (): Promise<void> => timers.advance(0);

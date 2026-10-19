@@ -95,9 +95,9 @@ describe('readFrame', () => {
     const data = [
       frame.enc({
         id: 3,
-        body: { tag: 'handshakeOffer', value: { wireVersion: 1, version: 2, hello: str.enc('opener') } },
+        body: { tag: 'handshakeOffer', value: { versions: { wire: 1, schema: 2 }, hello: str.enc('opener') } },
       }),
-      frame.enc({ id: 3, body: { tag: 'handshakeResponse', value: err({ wireVersion: 1, version: 5 }) } }),
+      frame.enc({ id: 3, body: { tag: 'handshakeResponse', value: err({ wire: 1, schema: 5 }) } }),
       frame.enc({ id: 4, body: { tag: 'failed', value: unsupported() } }),
     ];
 
@@ -106,8 +106,8 @@ describe('readFrame', () => {
 
     // Then
     expect(recorded).toEqual([
-      { id: 3, kind: 'handshakeOffer', value: { wireVersion: 1, version: 2, hello: str.enc('opener') } },
-      { id: 3, kind: 'handshakeResponse', value: err({ wireVersion: 1, version: 5 }) },
+      { id: 3, kind: 'handshakeOffer', value: { versions: { wire: 1, schema: 2 }, hello: str.enc('opener') } },
+      { id: 3, kind: 'handshakeResponse', value: err({ wire: 1, schema: 5 }) },
       { id: 4, kind: 'failed', value: unsupported() },
     ]);
   });

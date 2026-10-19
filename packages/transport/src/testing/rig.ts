@@ -120,15 +120,15 @@ export function issueLog() {
   return { issues, onIssue: (issue: TransportIssue) => issues.push(issue) };
 }
 
-/** What a test may set on the side it watches: the accepter of `rig`, or the transport of `rawRig`. */
+/** What a test may set on the transport of `rawRig`. */
 interface WatchedSide {
-  onPeerIdle?: () => void;
   /** Replaces the issue log, which then stays empty. */
   onIssue?: (issue: TransportIssue) => void;
+  timeoutMs?: number | null;
 }
 
 /** An opener on the left and an accepter on the right, over one in-memory channel. */
-export function rig(watched: WatchedSide = {}) {
+export function rig() {
   const { left, right, delivered } = createProviderPair();
   const timers = manualTimers();
   const { issues, onIssue } = issueLog();
@@ -140,7 +140,7 @@ export function rig(watched: WatchedSide = {}) {
     timeoutMs: TIMEOUT_MS,
     onIssue,
   });
-  const accepter = createTransport(testSchema, right, { handshake: 'respond', hello: 'accepter', onIssue, ...watched });
+  const accepter = createTransport(testSchema, right, { handshake: 'respond', hello: 'accepter', onIssue });
   return { opener, accepter, timers, issues, delivered, left, right };
 }
 
@@ -216,9 +216,9 @@ export function rawRig(
     }
     peer.send(attempt.id, { tag: 'handshakeResponse', value: ok(str.enc('peer')) });
   };
-  /** Opens the handshake toward the transport, as an opener of `version` on `wireVersion`. */
-  const openHandshake = (version = VERSION, id = 1, wireVersion = WIRE_VERSION): void => {
-    peer.send(id, { tag: 'handshakeOffer', value: { wireVersion, version, hello: str.enc('peer') } });
+  /** Opens the handshake toward the transport, as an opener of schema `version` on wire version `wire`. */
+  const openHandshake = (version = VERSION, id = 1, wire = WIRE_VERSION): void => {
+    peer.send(id, { tag: 'handshakeOffer', value: { versions: { wire, schema: version }, hello: str.enc('peer') } });
   };
   return { transport, timers, issues, peer, left, right, answerHandshake, openHandshake };
 }

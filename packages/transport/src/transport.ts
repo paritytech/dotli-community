@@ -23,6 +23,7 @@ import {
   type CallError,
   type Failure,
   type TransportIssue,
+  type TransportVersions,
 } from './errors.js';
 import type { Provider } from './provider.js';
 import { createRecentIds } from './recent-ids.js';
@@ -41,7 +42,6 @@ import {
   encodeCall,
   frame,
   whole,
-  wholeFrame,
   type Call,
   type Frame,
   type HandshakeOffer,
@@ -89,23 +89,18 @@ export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>
 export interface TransportOptions<H> {
   /** Which side opens the handshake. The other accepts it. */
   handshake: 'offer' | 'respond';
-  /** This side's handshake value. */
+  /** This side's handshake value, encoded once. One its codec refuses throws at creation. */
   hello: H;
   /** How often the opener posts a fresh handshake offer until it is answered. */
   retryMs?: number | undefined;
-  /** How long the opener waits for an answer, on the running clock. */
-  timeoutMs?: number | undefined;
+  /**
+   * How long the opener waits for an answer, on the running clock. Null sets no deadline, for an owner that bounds the
+   * wait itself and disposes the transport when it gives up, so the wait has one deadline only.
+   */
+  timeoutMs?: number | null | undefined;
   timers?: Timers | undefined;
   /** Hears what the transport cannot handle itself. With none, each issue is logged as an error. */
   onIssue?: ((issue: TransportIssue) => void) | undefined;
-  /**
-   * Called when the peer's own stop leaves nothing it opened running and no request of the peer is in flight, which is
-   * how a peer that stops everything itself leaves. A live peer keeps at least one subscription open, so dropping to
-   * none is taken as leaving. A peer that closes sends nothing, so this never hears it. It fires once per departure. A
-   * call the peer makes after that cancels a wait and arms it again, even one that does not decode or that names a
-   * method this side does not serve. Ends this side posted never count, since the peer may not have heard them yet.
-   */
-  onPeerIdle?: (() => void) | undefined;
 }
 
 export interface RequestOptions {
@@ -187,8 +182,6 @@ type Served<H> = (id: number, message: Uint8Array, context: CallContext<H>) => v
 interface Running {
   address: Address;
   hear(message: Uint8Array): void;
-  /** Ends it with a failure the peer hears. */
-  end(error: Failure): void;
   /** Ends it with nothing sent, and runs its stop function. */
   drop(): void;
 }
@@ -225,6 +218,8 @@ export function createTransport<H, T extends Sections>(
     }
   };
 
+  // Encoded once, so neither side encodes it per handshake, and a hello its codec refuses throws here.
+  const ourHello = schema.hello.enc(options.hello);
   let phase: Phase<H> = { name: 'connecting' };
   let disposed = false;
   // Aborted once the handshake is settled or the transport closed, which stops the opener's attempts.
@@ -411,7 +406,7 @@ export function createTransport<H, T extends Sections>(
         runListener(heard);
       }
     };
-    const end = (reason: I): void => {
+    const interrupt = (reason: I): void => {
       finish(false, () => {
         listeners.interrupt(reason);
       });
@@ -422,7 +417,7 @@ export function createTransport<H, T extends Sections>(
       });
     };
     // A closed transport posts nothing, so the peer is not told.
-    const shut = (error: Error): void => {
+    const close = (error: Error): void => {
       finish(false, () => {
         listeners.close(error);
       });
@@ -452,7 +447,7 @@ export function createTransport<H, T extends Sections>(
             });
             return;
           case 'interrupt':
-            end(sent.value);
+            interrupt(sent.value);
             return;
           case 'start':
           case 'stop':
@@ -462,7 +457,7 @@ export function createTransport<H, T extends Sections>(
       fail(error) {
         fail(error, false);
       },
-      close: shut,
+      close,
     };
 
     // Encoded at once, so a start the wire refuses throws to the caller. It is posted once, so the buffer stays whole.
@@ -492,7 +487,7 @@ export function createTransport<H, T extends Sections>(
       // Open only once the start went out, so a stop from the issue hook of a failed post sees nothing the peer could
       // stop. A post that succeeds hears nothing before it returns.
       state = 'open';
-    }, shut);
+    }, close);
     return unsubscribe;
   }
 
@@ -525,20 +520,10 @@ export function createTransport<H, T extends Sections>(
   // message that does not decode and a handler that throws, go back as a failure frame. Only calls the transport
   // admitted reach this side, once the handshake told who the peer is.
 
-  const { onPeerIdle } = options;
   const handlers = new Map<AnyMethod, Served<H>>();
   // The peer's requests whose handlers have not settled, by id. A close drops them, so none is answered.
   const inFlight = new Set<number>();
   const running = new Map<number, Running>();
-  // Runs the request handlers, so the wait for a peer that left is a wait for every call of its to settle. The pool
-  // answers a handler that throws at once like one that rejects.
-  const handlerCalls = createAsyncTaskPool({ poolSize: Number.POSITIVE_INFINITY });
-  const lateEnds = createRecentIds();
-  // How many calls the peer has made so far. It only grows, so a wait that read it can tell whether the peer called
-  // again since.
-  let peerCalls = 0;
-  // The count `onPeerIdle` last fired at, so one departure fires it once and the peer's next call arms it again.
-  let idleHeardAt: number | null = null;
 
   /** Stores one handler per method, and returns what unregisters it. */
   const register = (method: AnyMethod, address: Address, served: Served<H>): (() => void) => {
@@ -562,23 +547,6 @@ export function createTransport<H, T extends Sections>(
   const malformed = (id: number, cause: Error, address: Address): void => {
     refuse('malformed', cause);
     postFailed(id, malformedFrame(cause), address);
-  };
-
-  /** Tells `onPeerIdle` once the peer's calls have settled, unless it called again meanwhile or the transport closed. */
-  const whenPeerIdle = async (seen: number): Promise<void> => {
-    await handlerCalls.settle();
-    if (phase.name === 'closed' || peerCalls !== seen || idleHeardAt === seen || onPeerIdle === undefined) {
-      return;
-    }
-    idleHeardAt = seen;
-    runListener(onPeerIdle);
-  };
-
-  /** The peer's own stop leaves nothing it opened running, even when this side ended a subscription before it came. */
-  const onPeerStop = (): void => {
-    if (running.size === 0) {
-      void whenPeerIdle(peerCalls);
-    }
   };
 
   /** Sends `message` on call `id`, or answers `HostFailure` for one the wire cannot carry. */
@@ -610,21 +578,22 @@ export function createTransport<H, T extends Sections>(
       }
       const payload = message.value.value;
       inFlight.add(id);
-      void handlerCalls
-        .call(() => handler(payload, context))
-        .then(
-          outcome => {
-            // A closed transport dropped the call, and answers nothing.
-            if (inFlight.delete(id)) {
-              reply(method, address, id, { tag: 'response', value: outcome });
-            }
-          },
-          (error: unknown) => {
-            if (inFlight.delete(id)) {
-              postFailed(id, hostFailure(toError(error)), address);
-            }
-          },
-        );
+      // Run in the turn the call arrives, and a handler that throws answers like one that rejects.
+      void new Promise<ResultPayload<R, CallError<E>>>(resolve => {
+        resolve(handler(payload, context));
+      }).then(
+        outcome => {
+          // A closed transport dropped the call, and answers nothing.
+          if (inFlight.delete(id)) {
+            reply(method, address, id, { tag: 'response', value: outcome });
+          }
+        },
+        (error: unknown) => {
+          if (inFlight.delete(id)) {
+            postFailed(id, hostFailure(toError(error)), address);
+          }
+        },
+      );
     });
   }
 
@@ -643,28 +612,23 @@ export function createTransport<H, T extends Sections>(
         }
       };
 
-      /** Ends the subscription once with nothing sent, and runs the stop function. Returns whether it was running. */
-      const drop = (): boolean => {
-        if (running.get(id) !== entry) {
-          return false;
-        }
-        running.delete(id);
-        runStop();
-        return true;
-      };
-
       /**
-       * Ends the subscription once: `send` tells the peer, then the stop function runs. The peer hears it first, so a
-       * stop function that disposes the transport cannot keep it from the peer.
+       * Ends the subscription once: `send`, if any, tells the peer, then the stop function runs. The peer hears it first,
+       * so a stop function that disposes the transport cannot keep it from the peer.
        */
-      const finish = (send: () => void): void => {
+      const finish = (send?: () => void): void => {
         if (running.get(id) !== entry) {
           return;
         }
         running.delete(id);
-        lateEnds.add(id);
-        send();
+        send?.();
         runStop();
+      };
+      /** Ends it with a failure the peer hears. */
+      const failWith = (error: Failure): void => {
+        finish(() => {
+          postFailed(id, error, address);
+        });
       };
 
       const entry: Running = {
@@ -679,16 +643,11 @@ export function createTransport<H, T extends Sections>(
             refuse('invalid', new Error(`A ${message.value.tag} names subscription ${String(id)}, which is running`));
             return;
           }
-          if (drop()) {
-            onPeerStop();
-          }
+          finish();
         },
-        end(error) {
-          finish(() => {
-            postFailed(id, error, address);
-          });
+        drop: () => {
+          finish();
         },
-        drop,
       };
       running.set(id, entry);
 
@@ -699,7 +658,7 @@ export function createTransport<H, T extends Sections>(
           }
           const data = encodeCall(method, address, id, { tag: 'receive', value });
           if (!data.success) {
-            entry.end(hostFailure(data.value));
+            failWith(hostFailure(data.value));
             return;
           }
           post(data.value, address);
@@ -714,7 +673,7 @@ export function createTransport<H, T extends Sections>(
       try {
         stopIt = handler(startValue, context, sink);
       } catch (error) {
-        entry.end(hostFailure(toError(error)));
+        failWith(hostFailure(toError(error)));
         return;
       }
       if (running.get(id) === entry) {
@@ -761,18 +720,10 @@ export function createTransport<H, T extends Sections>(
       }
       entry.hear(call.message);
       return;
-    } else if (lateEnds.has(id)) {
-      // The peer stopped it before it heard this side's end. A second stop for it is no race.
-      lateEnds.delete(id);
-      onPeerStop();
-      return;
     } else if (leg === 'stop') {
-      // A stop for a subscription that is neither running nor lately ended stops nothing, and the peer made no call.
+      // A stop for a subscription that is not running stops nothing, such as one that crossed this side's end.
       return;
     }
-    // A new call, even one that does not decode or that names a method this side does not serve, tells that the peer
-    // is here.
-    peerCalls += 1;
     const method = schema.methodAt(call.sectionId, call.methodId);
     const served = method === undefined ? undefined : handlers.get(method);
     if (served === undefined) {
@@ -792,15 +743,6 @@ export function createTransport<H, T extends Sections>(
     if (leg === undefined || leg === 'request' || leg === 'start') {
       postFailed(id, hostFailure(HANDSHAKE_NOT_OVER));
     }
-  };
-
-  /** Called once the peer is there, with its hello. */
-  const onOpen = (peerHello: H): void => {
-    if (phase.name !== 'connecting') {
-      return;
-    }
-    phase = { name: 'connected', peerHello };
-    handshakeOver.resolve(undefined);
   };
 
   /**
@@ -829,7 +771,7 @@ export function createTransport<H, T extends Sections>(
   // once, with whether the peer is there and what its hello is. Both the library's wire version and the schema's must
   // match.
 
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : options.timeoutMs;
   const timers = options.timers ?? realTimers;
   const attempts = createAsyncTaskPool({
     poolSize: 1,
@@ -841,27 +783,31 @@ export function createTransport<H, T extends Sections>(
   let started = false;
   // Built once, so no handshake composes a decoder.
   const wholeHello = whole(schema.hello);
-  const ours = { wire: WIRE_VERSION, schema: schema.version };
+  const ours: TransportVersions = { wire: WIRE_VERSION, schema: schema.version };
+  const sameVersions = (theirs: TransportVersions): boolean =>
+    theirs.wire === ours.wire && theirs.schema === ours.schema;
 
-  // Settles the opener's handshake once. An answer settles it in the turn it arrives, so a call the accepter makes right
-  // after its answer finds this side open.
+  /**
+   * Settles the handshake once, on either side, with the peer's hello or why it failed. An answer settles the opener in
+   * the turn it arrives, so a call the accepter makes right after its answer finds this side open.
+   */
   const settleHandshake = (outcome: ResultPayload<H, Error>): void => {
     if (phase.name !== 'connecting') {
       return;
     }
     if (outcome.success) {
+      phase = { name: 'connected', peerHello: outcome.value };
       stopAttempts.abort();
-      onOpen(outcome.value);
+      handshakeOver.resolve(undefined);
     } else {
       close(outcome.value);
     }
   };
 
-  // An attempt is no call, so it takes no call id, and the accepter's answer echoes it. The wire version goes first, so
-  // a peer of any release reads it.
+  // An attempt is no call, so it takes no call id, and the accepter's answer echoes it. The frame is built anew each
+  // time, since the provider may transfer its buffer.
   const attempt = (): never => {
-    const hello = schema.hello.enc(options.hello);
-    const offer = { wireVersion: WIRE_VERSION, version: schema.version, hello };
+    const offer = { versions: ours, hello: ourHello };
     const posted = post(frame.enc({ id: 0, body: { tag: 'handshakeOffer', value: offer } }));
     if (!posted.success) {
       throw posted.value;
@@ -876,14 +822,18 @@ export function createTransport<H, T extends Sections>(
     }
     started = true;
     // An attempt fails until an answer comes, so the pool posts a fresh one every `retryMs` until it is stopped. It
-    // settles only when stopped, or when an attempt cannot encode its hello or be posted.
+    // settles only when stopped, or when an attempt cannot be posted.
     const retrying = attempts.call<never>(attempt, { signal: stopAttempts.signal });
-    withTimeout(
-      retrying,
-      timeoutMs,
-      () => new TransportHandshakeTimeoutError(`No handshake answer within ${String(timeoutMs)} ms`),
-      timers,
-    ).catch((error: unknown) => {
+    const answered =
+      timeoutMs === null
+        ? retrying
+        : withTimeout(
+            retrying,
+            timeoutMs,
+            () => new TransportHandshakeTimeoutError(`No handshake answer within ${String(timeoutMs)} ms`),
+            timers,
+          );
+    answered.catch((error: unknown) => {
       settleHandshake(err(toError(error)));
     });
   }
@@ -895,8 +845,7 @@ export function createTransport<H, T extends Sections>(
     }
     // Only the first answer counts. The rest answer attempts already in flight.
     if (!response.success) {
-      const theirs = { wire: response.value.wireVersion, schema: response.value.version };
-      settleHandshake(err(new TransportUnsupportedProtocolVersionError(ours, theirs)));
+      settleHandshake(err(new TransportUnsupportedProtocolVersionError(ours, response.value)));
       return;
     }
     const hello = decode(wholeHello, response.value);
@@ -911,35 +860,23 @@ export function createTransport<H, T extends Sections>(
   let first: HandshakeResponse | undefined;
 
   const heardOffer = (id: number, offer: HandshakeOffer): void => {
-    const sameVersions = offer.wireVersion === WIRE_VERSION && offer.version === schema.version;
-    const peerHello = sameVersions ? decode(wholeHello, offer.hello) : undefined;
+    const same = sameVersions(offer.versions);
+    const peerHello = same ? decode(wholeHello, offer.hello) : undefined;
     if (peerHello?.success === false) {
       refuse('malformed', peerHello.value);
       return;
     }
     const deciding = first === undefined;
-    try {
-      first ??= sameVersions
-        ? ok(schema.hello.enc(options.hello))
-        : err({ wireVersion: WIRE_VERSION, version: schema.version });
-    } catch (error) {
-      close(new Error('The handshake answer could not be encoded', { cause: error }));
-      return;
-    }
+    first ??= same ? ok(ourHello) : err(ours);
     // A post the provider throws on closes this side, so an answer that decides is always one the opener can hear.
     const posted = post(frame.enc({ id, body: { tag: 'handshakeResponse', value: first } }));
-    if (!posted.success || !deciding) {
-      return;
-    }
-    if (peerHello === undefined) {
-      close(new TransportUnsupportedProtocolVersionError(ours, { wire: offer.wireVersion, schema: offer.version }));
-    } else {
-      onOpen(peerHello.value);
+    if (posted.success && deciding) {
+      settleHandshake(peerHello ?? err(new TransportUnsupportedProtocolVersionError(ours, offer.versions)));
     }
   };
 
   const receive = (data: Uint8Array): void => {
-    const received = decode(wholeFrame, data);
+    const received = decode(frame.dec, data);
     if (!received.success) {
       refuse('malformed', received.value);
       return;

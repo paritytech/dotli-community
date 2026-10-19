@@ -6,15 +6,15 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
-import { ok, type CallError, type ResultPayload, type Sink } from '@dotli/transport';
+import { ok, type Sink } from '@dotli/transport';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
 import type { TelemetryEvent } from './codec-values.js';
-import { protocolSchema, type ProtocolTransport } from './schema.js';
+import { protocolSchema, type ProtocolTransport, type SubscriptionEnd } from './schema.js';
 
 const { frame } = protocolSchema.sections;
 
-type TelemetrySink = Sink<TelemetryEvent, ResultPayload<undefined, CallError<undefined>>>;
+type TelemetrySink = Sink<TelemetryEvent, SubscriptionEnd<undefined>>;
 
 /** A frame app that reports telemetry to each subscriber, keeping its sink. */
 function reporting(sinks: TelemetrySink[]): (serving: ProtocolTransport) => void {

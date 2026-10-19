@@ -16,7 +16,7 @@ import {
   type CallError,
 } from './errors.js';
 import { codec, request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
-import { decode, frame, whole, wholeFrame, type Frame } from './wire.js';
+import { decode, frame, whole, type Frame } from './wire.js';
 
 const read = request({ request: str, response: str, error: u8 });
 const touch = request({ request: _void, response: _void });
@@ -67,10 +67,10 @@ describe('wire', () => {
     const frames: Frame<Uint8Array>[] = [
       {
         id: 1,
-        body: { tag: 'handshakeOffer', value: { wireVersion: 1, version: 3, hello: Uint8Array.of(0x68, 0x69) } },
+        body: { tag: 'handshakeOffer', value: { versions: { wire: 1, schema: 3 }, hello: Uint8Array.of(0x68, 0x69) } },
       },
       { id: 2, body: { tag: 'handshakeResponse', value: ok(Uint8Array.of(0x68, 0x69)) } },
-      { id: 2, body: { tag: 'handshakeResponse', value: err({ wireVersion: 1, version: 3 }) } },
+      { id: 2, body: { tag: 'handshakeResponse', value: err({ wire: 1, schema: 3 }) } },
       { id: 0x0102_0304, body: { tag: 'failed', value: malformedFrame('no') } },
     ];
 
@@ -164,22 +164,33 @@ describe('wire', () => {
   });
 
   it('As a transport, I refuse a value that leaves bytes unread, as truapi decodes all', () => {
-    // Given a message, a hello and a failure frame, each with a byte after it
+    // Given a message, a hello, a failure frame and a handshake refusal, each with a byte after it
     const message = Uint8Array.of(...read.message.enc({ tag: 'request', value: 'a' }), 0);
     const hello = Uint8Array.of(...str.enc('a'), 0);
     const failed = Uint8Array.of(...frame.enc({ id: 1, body: { tag: 'failed', value: denied() } }), 0);
+    const refusal: Frame<Uint8Array>['body'] = { tag: 'handshakeResponse', value: err({ wire: 1, schema: 3 }) };
+    const refused = Uint8Array.of(...frame.enc({ id: 2, body: refusal }), 0);
 
     // When
     const decoded = [
       decode(read.wholeMessage, message),
       decode(whole(str), hello),
-      decode(wholeFrame, failed),
-      decode(wholeFrame, failed.slice(0, -1)),
+      decode(frame.dec, failed),
+      decode(frame.dec, refused),
+      decode(frame.dec, failed.slice(0, -1)),
+      decode(frame.dec, refused.slice(0, -1)),
     ];
 
-    // Then only the frame that ends where its value ends decodes
+    // Then only the frames that end where their value ends decode
     const unread = err(new RangeError('The value is followed by unread bytes, 1 in all'));
-    expect(decoded).toEqual([unread, unread, unread, ok({ id: 1, body: { tag: 'failed', value: denied() } })]);
+    expect(decoded).toEqual([
+      unread,
+      unread,
+      unread,
+      unread,
+      ok({ id: 1, body: { tag: 'failed', value: denied() } }),
+      ok({ id: 2, body: refusal }),
+    ]);
   });
 
   it('As a transport, I read the leg of a message whose payload does not decode', () => {
@@ -192,7 +203,7 @@ describe('wire', () => {
 
     // Then
     expect(decode(watch.wholeMessage, cutShort).success).toBe(false);
-    expect(legs[0]).toEqual(ok({ tag: 'interrupt', value: Uint8Array.of(8) }));
+    expect(legs[0]).toEqual(ok({ tag: 'interrupt', value: undefined }));
     expect(legs[1]?.success).toBe(false);
   });
 });

@@ -78,9 +78,11 @@ were.
 
 ### Handshake and queue
 
-- The host opens the handshake when the iframe has loaded, and repeats it on a short interval until the frame answers.
-  It hands out the frame's transport only then, since the first call on a transport starts its handshake. `listening` is
-  a completed handshake. Its hello carries no resolution id, since the frame reads that from its URL.
+- The host builds the frame's transport when the iframe has loaded, and only then hands it out, since the first call on
+  a transport starts its handshake and a frame hears none before its document loads. Its status subscription is that
+  first call. The handshake repeats on a short interval until the frame answers, for 5 s, so a frame that never answers
+  has failed by the time a wallet read gives up, and the retried read boots a fresh frame. `listening` is a completed
+  handshake. Its hello carries no resolution id, since the frame reads that from its URL.
 - A call made before the handshake succeeds waits and goes out once it does, in call order. A call given up, or a
   subscription stopped, while it waits is never sent.
 - A handshake that does not succeed in time fails with a timeout, measured on a clock that does not run while the page
@@ -151,8 +153,9 @@ a call that is no longer waiting is ignored without a count.
   and `ProtocolContext` type a transport over it and its handlers' context. `ProtocolServing` is the serving half of a
   transport for the schema's own errors, and `ProtocolHandler<typeof method>` a method's handler. `FrameFailure` and
   `RemoteFailure` are its typed failures, `DomainFailure` both, `SubscriptionEnd<E>` how a subscription ends (`Ok`, or a
-  `CallError` of its reason `E`), `SharedAuthChange` what the shared auth feed sends, and `TelemetryEvent` what the
-  frame reports on its telemetry feed.
+  `CallError` of its reason `E`), `endListeners(end)` (a subscription's `interrupt` and `fail` listeners as one `end`
+  with a `SubscriptionEnd`, a failure of the library's as `err(failure)`), `SharedAuthChange` what the shared auth feed
+  sends, and `TelemetryEvent` what the frame reports on its telemetry feed.
 - The method policy: `policyOf` and `MethodPolicy`. For the frame to size its own work, `budgetOf` (a method's budget,
   or null for one waited on without a timer).
 - For the frame, which serves the schema and waits on or relays another frame's calls: `callName` and `CallName` (a

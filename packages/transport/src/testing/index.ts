@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { fromHex, toError, toHex } from '@dotli/shared';
+import { fromHex, toHex } from '@dotli/shared';
 import type { Codec } from 'scale-ts';
 import type { Failure } from '../errors.js';
 import type { AnyMethod, Schema, Sections } from '../schema.js';
-import { decode, wholeFrame, type HandshakeOffer, type HandshakeResponse } from '../wire.js';
+import { decode, frame, type HandshakeOffer, type HandshakeResponse } from '../wire.js';
 
 export { createProviderPair } from '../provider.fake.js';
 
@@ -28,21 +28,12 @@ export class FrameRefusedError extends Error {
   }
 }
 
-/** A message as the method it belongs to decodes it. */
-function decodedBy(method: AnyMethod, message: Uint8Array): { tag: string } {
-  try {
-    return method.message.dec(message);
-  } catch (error) {
-    throw new FrameRefusedError(toError(error));
-  }
-}
-
 /**
  * Reads a recorded frame: bytes a provider delivered, or a buffer posted between documents. Throws a
  * `FrameRefusedError` on data that is no frame.
  */
 export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: Uint8Array | ArrayBuffer): RecordedFrame {
-  const read = decode(wholeFrame, data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+  const read = decode(frame.dec, data instanceof ArrayBuffer ? new Uint8Array(data) : data);
   if (!read.success) {
     throw new FrameRefusedError(read.value);
   }
@@ -61,7 +52,11 @@ export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: Uin
         return { id, kind: 'call', section: String(sectionId), method: String(methodId), message, decoded: null };
       }
       const { section, method: name } = schema.addressOf(method);
-      return { id, kind: 'call', section, method: name, message, decoded: decodedBy(method, message) };
+      const decoded = decode(method.message.dec, message);
+      if (!decoded.success) {
+        throw new FrameRefusedError(decoded.value);
+      }
+      return { id, kind: 'call', section, method: name, message, decoded: decoded.value };
     }
   }
 }

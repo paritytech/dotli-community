@@ -304,8 +304,8 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   }
 
   /**
-   * Lets go of a port whose tab left, as its port closing or its own stop of everything it held tells, so nothing it
-   * was sent is still waited for. Its port closes at once instead of being held for a release.
+   * Lets go of a port whose tab left, as its port closing tells, so nothing it was sent is still waited for. Its port
+   * closes at once instead of being held for a release.
    */
   function forget(session: PortSession): void {
     if (!sessions.delete(session)) {
@@ -480,12 +480,6 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       handshake: 'respond',
       hello: { resolutionId: null },
       onIssue: wire.onIssue,
-      // A live tab always holds a subscription, so a tab that stopped every one itself has left, and would never speak
-      // to end a release. A tab that disposes its transport posts nothing, so its port's close or the heartbeat release
-      // lets go of it.
-      onPeerIdle: () => {
-        forget(session);
-      },
     });
     // The tab's end of the port closed, as when its page left for good, crashed or was evicted, which no message tells.
     // Engines that never fire the event fall back to the heartbeat release.

@@ -1055,33 +1055,6 @@ describe('protocol SharedWorker', () => {
     expect(tab.closes()).toBe(1);
   });
 
-  it('As a tab that stops everything itself, my port is closed at once and not held for a release', async () => {
-    // Given a ready tab holding a chain connection, on an engine whose ports never say they closed, and a tab that stays
-    const worker = await bootWorker(fakeLightClient());
-    const leaving = worker.attach({ closeEvent: false }).speak();
-    const staying = worker.connect();
-    await readyStatus(leaving);
-    const connected = await connectChain(leaving, 'c1');
-    await readyStatus(staying);
-
-    // When the leaving tab stops its status and its chain, which leaves the worker nothing of its running
-    leaving.status.unsubscribe();
-    connected.unsubscribe();
-    await worker.untilLog('Port closed');
-
-    // Then its port was closed at once, with no beat, and the other tab is still served
-    expect(leaving.closes()).toBe(1);
-    expect(worker.beating()).toBe(true);
-    await expect(staying.transport.request(frame.heartbeat, undefined)).resolves.toEqual(ok());
-
-    // When the heartbeat outlasts both tabs
-    outlastHeartbeat(worker);
-
-    // Then only the tab that stayed is released, and the port that left is not closed again
-    expect(worker.logs.filter(line => line.message === 'Port released')).toHaveLength(1);
-    expect(leaving.closes()).toBe(1);
-  });
-
   it('As a closing dead worker, I close the ports I released before', async () => {
     // Given a tab whose port the worker released, and a tab still served
     const light = fakeLightClient();

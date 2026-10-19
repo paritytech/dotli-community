@@ -5,10 +5,10 @@
 // wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any of
 // them, so none goes unseen.
 
-import { protocolSchema, type ProtocolTransport, type SubscriptionEnd } from '@dotli/protocol';
+import { endListeners, protocolSchema, type ProtocolTransport, type SubscriptionEnd } from '@dotli/protocol';
 import { deferred } from '@dotli/shared';
 import { createProviderPair } from '@dotli/transport/testing';
-import { createTransport, describeIssue, err, type Subscription, type TransportIssue } from '@dotli/transport';
+import { createTransport, describeIssue, type Subscription, type TransportIssue } from '@dotli/transport';
 
 /**
  * How a subscription whose own end reason is `I` ended: the peer's interrupt or a failure of the transport's own, as
@@ -109,10 +109,7 @@ export function record<S, V, I>(
         }
       }
     },
-    interrupt: ended.resolve,
-    fail: failure => {
-      ended.resolve(err(failure));
-    },
+    ...endListeners<I>(ended.resolve),
     close: ended.resolve,
   });
   return {

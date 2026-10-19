@@ -317,6 +317,34 @@ describe('connectSharedWorker', () => {
     );
   });
 
+  it('As a dotli operator, I see a worker that never answers the handshake counted as a ready timeout, with one deadline', async () => {
+    // Given a worker whose port nothing answers on
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const timers = manualTimers();
+    const channel = new MessageChannel();
+    channels.add(channel);
+    const silent = Object.assign(new EventTarget(), { port: channel.port2 });
+    const failed = connectSharedWorker({
+      worker: silent,
+      window: new FakePage().window,
+      resolutionId: null,
+      readyTimeoutMs: READY_TIMEOUT_MS,
+      timers,
+    }).ready.catch((error: unknown) => error);
+
+    // When the ready wait runs out, where a handshake deadline of the same length would tie with it
+    await timers.advance(READY_TIMEOUT_MS);
+
+    // Then the wait fails as its own timeout, and is counted once as one
+    await expect(failed).resolves.toMatchObject({
+      name: 'ProtocolInitFailedError',
+      message: PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT,
+    });
+    expect(metrics.distributions.filter(d => d.name === `dotli.${S.PROTOCOL_SW_READY}`).map(d => d.attributes)).toEqual(
+      [{ outcome: 'timeout' }],
+    );
+  });
+
   it('As a dotli maintainer, a SharedWorker that fails after it was ready is reported, since nothing waits on it', async () => {
     // Given a worker that is ready
     const exceptions: string[] = [];

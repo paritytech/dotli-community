@@ -60,9 +60,8 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   answer, value and end on as the worker gave it. When this tab's status from the worker ends, the relay first ends the
   frame status: with the worker's own end as it is, or, when its transport closed under it, with the closing error. The
   host drops the frame on that end, as the worker orders its own release. The relay then closes its transport, so each
-  call the worker still held fails. A transport's own closing error, a version mismatch or a handshake timeout, reaches
-  the host under the protocol's class, as it would from the iframe's own link, and a version mismatch ends the status
-  typed.
+  call the worker still held fails. A transport's own closing error, such as a version mismatch, reaches the host under
+  the protocol's class, as it would from the iframe's own link, and a version mismatch ends the status typed.
 - The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
   between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
   It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat
@@ -74,14 +73,13 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
 - A tab that leaves disposes its link, which closes its port and posts nothing. A port whose tab left or crashed fires
   its close event, and the worker forgets it, or closes it if it was released, at once. Where an engine never fires the
   event, the heartbeat release frees the tab's connections once it misses its beats, and holds its port as it holds a
-  frozen tab's. A tab that stops every subscription itself, with no call of its in flight, has left too, since a live
-  tab always holds one, so the worker forgets its port and closes it at once. It waits for a call still in flight to
-  settle first, and a call the tab makes meanwhile keeps the port.
+  frozen tab's.
 - The iframe's link to the worker waits for the worker to be ready, and answers its beats until the worker's status
-  ends. A heartbeat it cannot send is captured, logged and counted, and the link stops answering, so the worker releases
-  the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports a failure, disposes the
-  link's transport with that error, so the status subscription, the beats and the relay let go of the worker. The
-  timeout and the load failure are init failures.
+  ends. The ready wait is the link's one deadline, and its handshake has none of its own, so a worker that never answers
+  counts as a ready timeout. A heartbeat it cannot send is captured, logged and counted, and the link stops answering,
+  so the worker releases the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports
+  a failure, disposes the link's transport with that error, so the status subscription, the beats and the relay let go
+  of the worker. The timeout and the load failure are init failures.
 - A fatal light client ends every port's frame status with the error, and a port that connects later hears it on
   subscribe. The worker closes once every connected port has heard it.
 - One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, a watcher

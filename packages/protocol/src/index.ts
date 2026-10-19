@@ -44,4 +44,5 @@ export {
 } from './schema.js';
 export { budgetOf, callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
 export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
+export { endListeners } from './subscription.js';
 export { createWireReport } from './wire-issues.js';

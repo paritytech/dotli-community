@@ -32,7 +32,9 @@ and failure.
   variants and the wire version that opens an offer never change, so a peer of any release reads the versions it
   refuses.
 - A frame, a message, a hello or a failure that leaves bytes unread is refused as malformed, as truapi's `decode_all`
-  refuses it. Each method and the frame build their whole decoder once, and each transport the hello's.
+  refuses it. Only a failure and a handshake refusal can end before their frame does, so only they check for bytes after
+  them. Each method builds its whole decoder once, and each transport the hello's. Reading which leg a message is reads
+  its tag only.
 - Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
   one of this side's calls hears the peer's answers, values and ends, and one of the peer's reaches the handler.
 - A provider moves bytes between two contexts and knows nothing of their meaning, and is the trust boundary: the
@@ -42,20 +44,20 @@ and failure.
   and a copy otherwise, so transferring it moves nothing else. Any object with the same four methods works.
 - One side opens the handshake and the other accepts it. The opener starts it with its first request, subscription or
   wait for the handshake, as host-api starts it, or earlier with `connect`. It posts a fresh `handshakeOffer` every
-  `retryMs` until it is answered or `timeoutMs` passes on the running clock. An offer carries the library's own wire
-  version first, then the schema's version and the hello. Both versions must match. The accepter answers every attempt
-  with the outcome of the first, which is its hello or both of its versions, and counts as connected only once that
-  answer is posted. A hello is decoded only at the same versions, since another release's may not decode. A mismatch
-  closes both sides.
+  `retryMs` until it is answered or `timeoutMs` passes on the running clock. An offer carries the versions, the
+  library's own wire version first, then the schema's, and the hello. Both versions must match. Each side encodes its
+  hello once, when the transport is created. The accepter answers every attempt with the outcome of the first, which is
+  its hello or its versions, and counts as connected only once that answer is posted. A hello is decoded only at the
+  same versions, since another release's may not decode. A mismatch closes both sides.
 
 ```mermaid
 sequenceDiagram
   participant O as Opener
   participant A as Accepter
-  O->>A: handshakeOffer (wire version, version, hello)
+  O->>A: handshakeOffer (versions, hello)
   Note over O: retries every retryMs
-  O->>A: handshakeOffer (wire version, version, hello)
-  A-->>O: handshakeResponse, Ok(hello) or Err(the accepter's wire version and version)
+  O->>A: handshakeOffer (versions, hello)
+  A-->>O: handshakeResponse, Ok(hello) or Err(the accepter's versions)
   A-->>O: the same answer again
   Note over O,A: queued calls go out in call order
 ```
@@ -125,9 +127,6 @@ sequenceDiagram
   on the peer's stop, an interrupt, a start that reuses its id, or a close, even when the handler interrupts before it
   returns. The peer hears an end before the stop function runs. A handler that throws on start, or a value the wire
   cannot carry, ends it with `HostFailure`. The sink does nothing once the subscription has ended.
-- `onPeerIdle` fires when the peer's own stop leaves nothing it opened running and no request of the peer is in flight,
-  which is how a peer that stops everything itself leaves. A peer that closes posts nothing, so it never fires for one.
-  It fires once per departure, and a call from the peer arms it again.
 - Calls of the peer reach a handler only once the handshake told who the peer is. A request or a start before the
   handshake is over is refused and answered at once with `HostFailure`, "The handshake is not over", and its handler
   never runs. One after the transport closed is refused with no answer. Nothing ever answers a `failed` frame or a frame
@@ -139,7 +138,7 @@ sequenceDiagram
   cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
   owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each
   issue is logged as one bounded error. A message on a call this side ended lately is a race, and dropped quietly. So is
-  a stop of the peer's for a subscription that is not running, which counts as no call of the peer's.
+  a stop of the peer's for a subscription that is not running.
 
 ## Public API
 
@@ -164,14 +163,14 @@ sequenceDiagram
   `{ start: S; receive: V; interrupt: I; stop: undefined }`. `DomainError<M>` is its own error, `E`, or `I` as a whole.
 - `createTransport(schema, provider, options)` returns a `Transport<H>`. `TransportOptions<H>`:
   - `handshake: 'offer' | 'respond'` sets whether this side offers the handshake or responds to it, and `hello` is this
-    side's.
+    side's. A hello its codec refuses throws at creation.
   - `retryMs` (50 by default) and `timeoutMs` (10000 by default, as host-api and truapi wait) pace the opener, on
-    `timers`.
+    `timers`. A `timeoutMs` of null sets no deadline, for an owner that bounds the wait itself and disposes the
+    transport when it gives up.
   - `onIssue(issue)` hears every `TransportIssue`: `{ kind: 'refused', reason, cause }`,
     `{ kind: 'post_failed', error, call? }` or `{ kind: 'listener_threw', error }`. `describeIssue(issue)` is one as a
     line of text, `failureReason(error)` an error as `"<name>: <message>"`, bounded, and `reasonParts(reason)` reads
     such a reason back as `{ name, message }`.
-  - `onPeerIdle()` hears that the peer left.
 - `Transport<H>`:
   - `connect()` starts the handshake on the opener ahead of its first call, which starts it otherwise, and
     `whenConnected()` resolves once it succeeds or rejects with the closing error.

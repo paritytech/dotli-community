@@ -4,7 +4,7 @@
 // A subscription to the frame as the host's layers hold it. Whether the frame ended it or the transport closed under
 // it, its one end is heard in one place, as the error host code sees, unless the subscriber tells the two apart.
 
-import type { SubscribeOptions, Subscription as Method } from '@dotli/transport';
+import { err, type SubscribeOptions, type Subscription as Method, type SubscriptionListeners } from '@dotli/transport';
 import { callName } from './method-policy.js';
 import { callFailure, fromTransportError } from './errors.js';
 import type { DomainFailure, ProtocolTransport, SubscriptionEnd } from './schema.js';
@@ -16,6 +16,21 @@ export interface FrameSubscriber<V> {
   end(error: Error | null): void;
   /** Hears the transport closing under it in place of `end`, for a subscriber that the frame's loss ends for good. */
   close?(): void;
+}
+
+/**
+ * The `interrupt` and `fail` listeners of a protocol subscription as one end. A failure of the library's ends it as
+ * `err(failure)`, the `CallError` a protocol interrupt carries.
+ */
+export function endListeners<E>(
+  end: (outcome: SubscriptionEnd<E>) => void,
+): Pick<SubscriptionListeners<never, SubscriptionEnd<E>>, 'interrupt' | 'fail'> {
+  return {
+    interrupt: end,
+    fail: failure => {
+      end(err(failure));
+    },
+  };
 }
 
 /** Subscribes `method` on `transport`, and returns its `unsubscribe`. Throws when `start` is refused. */
@@ -34,12 +49,9 @@ export function subscribe<S, V, I extends SubscriptionEnd<DomainFailure>>(
       receive: value => {
         listeners.receive(value);
       },
-      interrupt: outcome => {
+      ...endListeners<DomainFailure>(outcome => {
         listeners.end(outcome.success ? null : callFailure(outcome.value, name, options.signal));
-      },
-      fail: failure => {
-        listeners.end(callFailure(failure, name, options.signal));
-      },
+      }),
       close: error => {
         if (listeners.close === undefined) {
           listeners.end(fromTransportError(error));
