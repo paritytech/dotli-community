@@ -4,9 +4,9 @@
 // The iframe's link to the protocol SharedWorker: a transport on the worker's port that waits until the worker is
 // ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 //
-// Over that link the iframe serves its chain and name methods by making the same call on the SharedWorker, so the host
-// hears the worker's answers, values and ends as the worker gave them. Nothing is added on the way: no deadline goes to
-// the worker, and each answer and end comes back unchanged.
+// Over that link the iframe forwards its chain and name calls to the SharedWorker as their message bytes, so the host
+// hears the worker's answers, values and ends as the worker posted them. Nothing is added on the way: no deadline goes to
+// the worker, and no message is decoded in the iframe.
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
@@ -17,7 +17,6 @@ import {
   protocolSchema,
   type FrameStatusEnd,
   type ProtocolHello,
-  type ProtocolServing,
   type ProtocolTransport,
   type SubscriptionEnd,
 } from '@dotli/protocol';
@@ -36,14 +35,12 @@ import {
   createTransport,
   err,
   hostFailure,
-  type Request,
-  type RequestHandler,
   type Subscription,
   type SubscriptionHandler,
   type TransportIssue,
 } from '@dotli/transport';
 
-import { serveEngineMethods } from './engine.js';
+import { ENGINE_METHODS } from './engine.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import type { FrameBoot } from './frame-boot.js';
 
@@ -281,28 +278,10 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   return { transport, status, ready: waited };
 }
 
-const { frame, resolve, chain } = protocolSchema.sections;
-
-/**
- * Answers with the worker's own answer. A link that closed under the call fails it with the closing error, under the
- * protocol's class when it is the transport's own.
- */
-function relayRequest<P, R, E>(
-  worker: ProtocolTransport,
-  method: Request<P, R, E>,
-): RequestHandler<P, R, E, ProtocolHello> {
-  return async payload => {
-    try {
-      return await worker.request(method, payload);
-    } catch (error) {
-      throw fromTransportError(toError(error));
-    }
-  };
-}
-
 /**
  * Sends each value of the worker's and ends with the worker's own end. A link that closed under the subscription ends
- * it with the closing error, under the protocol's class when it is the transport's own.
+ * it with the closing error, under the protocol's class when it is the transport's own. The telemetry crosses this way,
+ * decoded, since the frame's boot holds its subscriptions until the worker is ready.
  */
 function relaySubscription<S, V, E>(
   worker: ProtocolTransport,
@@ -323,29 +302,21 @@ function relaySubscription<S, V, E>(
 }
 
 /**
- * Serves the chain and name methods on `serving` through `worker`, and feeds `boot` the worker's telemetry. When the
- * worker stops serving this tab, `boot` ends the status with the worker's own end, so the host's frame status ends with
- * it and the host rebuilds the frame, and the calls the worker still holds fail, since it will answer nothing more.
+ * Forwards the chain and name calls of `serving` to `worker`, and feeds `boot` the worker's telemetry. When the worker
+ * stops serving this tab, `boot` ends the status with the worker's own end, so the host's frame status ends with it
+ * and the host rebuilds the frame, and the calls the worker still holds fail, since it will answer nothing more.
  */
 export function registerWorkerRelay(
-  serving: ProtocolServing,
+  serving: ProtocolTransport,
   worker: ProtocolTransport,
   workerStatus: WorkerStatus,
   boot: Pick<FrameBoot, 'fail' | 'interrupt' | 'serveTelemetry'>,
 ): void {
-  serveEngineMethods(serving, {
-    warmup: relayRequest(worker, frame.warmup),
-    resolveDotName: relaySubscription(worker, resolve.dotName),
-    resolveOwner: relayRequest(worker, resolve.owner),
-    resolveExecutableManifest: relayRequest(worker, resolve.executableManifest),
-    resolveRootManifest: relayRequest(worker, resolve.rootManifest),
-    connect: relaySubscription(worker, chain.connect),
-    send: relayRequest(worker, chain.send),
-  });
+  serving.forward(ENGINE_METHODS, worker);
   // Before the status can end, so no telemetry subscription waits for a source when it does.
-  boot.serveTelemetry(relaySubscription(worker, frame.telemetry));
+  boot.serveTelemetry(relaySubscription(worker, protocolSchema.sections.frame.telemetry));
   workerStatus.onEnd(end => {
-    // The status goes first, so the host drops this frame before it hears the relayed calls fail, and counts them in
+    // The status goes first, so the host drops this frame before it hears the forwarded calls fail, and counts them in
     // the frame's loss.
     if (end.kind === 'interrupt') {
       boot.interrupt(end.outcome);

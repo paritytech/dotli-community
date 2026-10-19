@@ -54,14 +54,18 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   origins only, never product origins. The iframe's provider holds it, since it admits no other origin, and it guards
   every method the iframe serves. No other transport serves the stores or the wallet. What the stores refuse is counted
   as bad input, and what the wallet refuses is logged.
-- In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
-  through its own transport, including the frame status and telemetry subscriptions. That transport opens the handshake
-  toward the worker, with this page load's resolution id as its hello. The relay adds nothing to a call and passes each
-  answer, value and end on as the worker gave it. When this tab's status from the worker ends, the relay first ends the
-  frame status: with the worker's own end as it is, or, when its transport closed under it, with the closing error. The
-  host drops the frame on that end, as the worker orders its own release. The relay then closes its transport, so each
-  call the worker still held fails. A transport's own closing error, such as a version mismatch, reaches the host under
-  the protocol's class, as it would from the iframe's own link, and a version mismatch ends the status typed.
+- In shared-worker mode the iframe serves the store and wallet methods itself, and its relay forwards the chain and name
+  calls to the SharedWorker through its own transport. A forwarded call crosses as its message bytes, so the iframe
+  decodes no chain message, and only the host and the worker read one. The relay adds nothing to a call and passes each
+  answer, value and end on as the worker posted it. The worker reports what it refuses, so the forwarded calls skip the
+  iframe's refusal report. The telemetry is relayed decoded, since the frame's boot holds it until the worker is ready,
+  and the frame status is the iframe's own, which follows the worker's. That transport opens the handshake toward the
+  worker, with this page load's resolution id as its hello. When this tab's status from the worker ends, the relay first
+  ends the frame status: with the worker's own end as it is, or, when its transport closed under it, with the closing
+  error. The host drops the frame on that end, as the worker orders its own release. The relay then closes its
+  transport, so each call the worker still held is answered as a host failure with the closing error. The frame status
+  takes a transport's own closing error under the protocol's class, as it would from the iframe's own link, so a version
+  mismatch ends it typed.
 - The SharedWorker runs smoldot and serves each tab port with its own transport and engine scope, so no buffer is shared
   between ports. It accepts each tab's handshake and labels that tab's request spans with the page load its hello names.
   It drives the heartbeat: it sends a beat to each port on its own clock, the iframe answers each with a heartbeat
@@ -96,7 +100,7 @@ flowchart LR
     serving["transport, accepts the host"] --> stores["shared stores, local wallet"]
     serving -- direct or gateway --> engine --> pool[chain pool]
     pool --> smoldot
-    serving -- shared worker --> relay["relay, over its own transport that opens toward the worker"]
+    serving -- shared worker --> relay["relay, forwards over its own transport that opens toward the worker"]
   end
   pool --> gateway[WSS gateway]
   relay -- port --> portServing

@@ -8,15 +8,28 @@ import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import {
   budgetOf,
+  type DomainFailure,
   type ProtocolHandler,
+  type ProtocolHello,
   protocolSchema,
   type ProtocolServing,
   type RemoteFailure,
   remoteEnd,
+  type SubscriptionEnd,
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
 import { toError } from '@dotli/shared';
-import { err, ok, type AnyMethod, type CallError, type ResultPayload } from '@dotli/transport';
+import {
+  err,
+  ok,
+  type AnyMethod,
+  type CallError,
+  type Request,
+  type RequestHandler,
+  type ResultPayload,
+  type Subscription,
+  type SubscriptionHandler,
+} from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
@@ -92,18 +105,69 @@ async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, C
   }
 }
 
-/** What serves the chain and name methods: the engine and its scope, a relay to the worker, or the worker's traces. */
+/** What serves the chain and name methods: the engine and its scope, or the worker's traces. */
 export type EngineMethods = Omit<ProtocolEngine, 'openScope' | 'cleanup'> & Pick<EngineScope, 'connect' | 'send'>;
+
+/** One engine method, and how its handler `H` is registered. */
+interface EngineMethod<H> {
+  readonly method: AnyMethod;
+  readonly serve: (serving: ProtocolServing, handler: H) => void;
+}
+
+const requestMethod = <P, R, E extends DomainFailure>(
+  method: Request<P, R, E>,
+): EngineMethod<RequestHandler<P, R, E, ProtocolHello>> => ({
+  method,
+  serve: (serving, handler) => {
+    serving.handleRequest(method, handler);
+  },
+});
+
+const subscriptionMethod = <S, V, I extends SubscriptionEnd<DomainFailure>>(
+  method: Subscription<S, V, I>,
+): EngineMethod<SubscriptionHandler<S, V, I, ProtocolHello>> => ({
+  method,
+  serve: (serving, handler) => {
+    serving.handleSubscription(method, handler);
+  },
+});
+
+/** Each chain and name method under the name of its handler, so a method without a handler fails the build. */
+const ENGINE: { readonly [K in keyof EngineMethods]: EngineMethod<EngineMethods[K]> } = {
+  warmup: requestMethod(methods.frame.warmup),
+  resolveDotName: subscriptionMethod(methods.resolve.dotName),
+  resolveOwner: requestMethod(methods.resolve.owner),
+  resolveExecutableManifest: requestMethod(methods.resolve.executableManifest),
+  resolveRootManifest: requestMethod(methods.resolve.rootManifest),
+  connect: subscriptionMethod(methods.chain.connect),
+  send: requestMethod(methods.chain.send),
+};
+
+/** Every chain and name method, for a side that forwards them instead of serving them. */
+export const ENGINE_METHODS: readonly AnyMethod[] = Object.values(ENGINE).map(({ method }) => method);
+
+/** The names of a record's own keys, typed by it. */
+function namesOf<T extends object>(record: T): Extract<keyof T, string>[] {
+  const names: Extract<keyof T, string>[] = [];
+  for (const name in record) {
+    names.push(name);
+  }
+  return names;
+}
+
+function serveEngineMethod<K extends keyof EngineMethods>(
+  serving: ProtocolServing,
+  served: Pick<EngineMethods, K>,
+  name: K,
+): void {
+  ENGINE[name].serve(serving, served[name]);
+}
 
 /** Serves every chain and name method on `serving`, so no side can leave one out. */
 export function serveEngineMethods(serving: ProtocolServing, served: EngineMethods): void {
-  serving.handleRequest(methods.frame.warmup, served.warmup);
-  serving.handleSubscription(methods.resolve.dotName, served.resolveDotName);
-  serving.handleRequest(methods.resolve.owner, served.resolveOwner);
-  serving.handleRequest(methods.resolve.executableManifest, served.resolveExecutableManifest);
-  serving.handleRequest(methods.resolve.rootManifest, served.resolveRootManifest);
-  serving.handleSubscription(methods.chain.connect, served.connect);
-  serving.handleRequest(methods.chain.send, served.send);
+  for (const name of namesOf(ENGINE)) {
+    serveEngineMethod(serving, served, name);
+  }
 }
 
 /** Serves a new scope of `engine` on `serving`: that scope's chain connections, and the engine's name reads. */

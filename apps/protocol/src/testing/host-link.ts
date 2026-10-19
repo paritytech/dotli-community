@@ -21,6 +21,8 @@ export interface HostLink {
   serving: ProtocolTransport;
   /** The host page's end, which opens the handshake. */
   host: ProtocolTransport;
+  /** Every frame either end delivered to the other, in order. */
+  delivered: readonly Uint8Array[];
   /** Disposes both ends. */
   close: () => void;
 }
@@ -30,7 +32,7 @@ const links = new Map<HostLink, TransportIssue[]>();
 
 /** Links a host page to the frame. */
 export function linkHost(): HostLink {
-  const { left, right } = createProviderPair();
+  const { left, right, delivered } = createProviderPair();
   const issues: TransportIssue[] = [];
   const onIssue = (issue: TransportIssue): void => {
     issues.push(issue);
@@ -49,6 +51,7 @@ export function linkHost(): HostLink {
   const link: HostLink = {
     serving,
     host,
+    delivered,
     close: () => {
       links.delete(link);
       const over = new Error('The spec is over');
