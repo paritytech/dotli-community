@@ -78,7 +78,7 @@ describe('the transport issues', () => {
     report.onIssue({
       kind: 'post_failed',
       error: new TypeError('The peer window is gone'),
-      call: { trait: 'resolve', method: 'owner' },
+      call: { section: 'resolve', method: 'owner' },
     });
 
     // Then

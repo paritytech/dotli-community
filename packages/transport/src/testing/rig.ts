@@ -33,7 +33,7 @@ const word = enhanceCodec(
 export const testSchema = defineSchema({
   version: VERSION,
   hello: str,
-  traits: {
+  sections: {
     notes: {
       read: request({ request: word, response: str, error: str }),
       touch: request({ request: _void, response: _void }),
@@ -46,10 +46,10 @@ export const testSchema = defineSchema({
   },
 });
 
-export const { notes, echo } = testSchema.traits;
+export const { notes, echo } = testSchema.sections;
 
-/** The wire id of the `notes` trait, for a test that calls a method the trait lacks. */
-export const NOTES = testSchema.addressOf(notes.read).traitId;
+/** The wire id of the `notes` section, for a test that calls a method the section lacks. */
+export const NOTES = testSchema.addressOf(notes.read).sectionId;
 
 // `notes.read` and `notes.watch` with every payload as bytes, so a test can send what their codecs refuse.
 const bytes = Bytes(Infinity);
@@ -129,7 +129,7 @@ export function rig(watched: WatchedSide = {}) {
 
 /** How a test names a frame: its kind, or a call's tag and method, such as `request:notes.read`. */
 const nameOf = (heard: RecordedFrame): string =>
-  heard.kind === 'call' ? `${heard.decoded?.tag ?? 'unknown'}:${heard.trait}.${heard.method}` : heard.kind;
+  heard.kind === 'call' ? `${heard.decoded?.tag ?? 'unknown'}:${heard.section}.${heard.method}` : heard.kind;
 
 /** A peer the test speaks for, frame by frame, in place of a transport. */
 function rawPeer(provider: Provider) {
@@ -145,7 +145,7 @@ function rawPeer(provider: Provider) {
       at: AnyMethod = method,
     ) => {
       const address = testSchema.addressOf(at);
-      const value = { traitId: address.traitId, methodId: address.methodId, message };
+      const value = { sectionId: address.sectionId, methodId: address.methodId, message };
       provider.post(encodeFrame(method.frame, { id, body: { tag: 'call', value } }));
     },
     /** Posts one of the library's own frames. */

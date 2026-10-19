@@ -198,7 +198,7 @@ describe('createTransport', () => {
     const call = (): void => {
       const message = { tag: 'request' as const, value: undefined };
       hear(
-        encodeFrame(notes.touch.frame, { id: 3, body: { tag: 'call', value: { traitId: 0, methodId: 1, message } } }),
+        encodeFrame(notes.touch.frame, { id: 3, body: { tag: 'call', value: { sectionId: 0, methodId: 1, message } } }),
       );
     };
 
@@ -577,7 +577,7 @@ describe('calls', () => {
 
     // Then
     expect(await call).toMatchObject({ message: 'The request could not be posted', cause: broken });
-    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'touch' } }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'touch' } }]);
   });
 
   it('As a caller, a closed transport rejects my pending and later requests with the closing error', async () => {
@@ -1129,7 +1129,7 @@ describe('calls', () => {
     expect(heard.closes).toEqual([reason]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.names()).toEqual(['open']);
-    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
 
   it('As a caller, an issue hook that stops my subscription on its failed start post leaves the peer nothing to stop', async () => {
@@ -1165,7 +1165,7 @@ describe('calls', () => {
     expect(heard.closes).toEqual([]);
     expect(heard.ends).toEqual([]);
     expect(raw.peer.names()).toEqual(['open']);
-    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
 
   it('As a caller, a start my provider cannot post closes my subscription with why, and the post is reported', async () => {
@@ -1189,7 +1189,7 @@ describe('calls', () => {
     expect(heard.closes).toEqual([failed]);
     expect(heard.ends).toEqual([]);
     expect(peer.names()).toEqual(['open']);
-    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'watch' } }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'watch' } }]);
   });
 });
 
@@ -1343,7 +1343,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then
-    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { trait: 'notes', method: 'touch' } }]);
+    expect(issues).toEqual([{ kind: 'post_failed', error: broken, call: { section: 'notes', method: 'touch' } }]);
   });
 
   it("As a serving side, a payload that does not decode is answered MalformedFrame with the cause's message, and reported", async () => {
@@ -1362,13 +1362,13 @@ describe('serving', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('As a serving side, a call to a method or a trait this schema lacks is answered Unsupported, and a failure about a call I never made is refused', async () => {
+  it('As a serving side, a call to a method or a section this schema lacks is answered Unsupported, and a failure about a call I never made is refused', async () => {
     // Given
     const { timers, peer, issues } = await acceptedRaw();
 
-    // When a method and a trait this schema lacks are called
-    peer.send(9, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
-    peer.send(11, { tag: 'call', value: { traitId: 7, methodId: 0, message: Uint8Array.of(0) } });
+    // When a method and a section this schema lacks are called
+    peer.send(9, { tag: 'call', value: { sectionId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(11, { tag: 'call', value: { sectionId: 7, methodId: 0, message: Uint8Array.of(0) } });
     await timers.advance(0);
 
     // Then
@@ -1393,7 +1393,7 @@ describe('serving', () => {
     transport.handleRequest(notes.read, () => ok('never'));
 
     // When a message on notes.watch has a kind no subscription has, and a response comes for a call of the peer's
-    peer.send(5, { tag: 'call', value: { traitId: NOTES, methodId: 2, message: Uint8Array.of(4, 0x61) } });
+    peer.send(5, { tag: 'call', value: { sectionId: NOTES, methodId: 2, message: Uint8Array.of(4, 0x61) } });
     peer.call(notes.read, 7, { tag: 'response', value: ok('a note') });
     await timers.advance(0);
 
@@ -1435,7 +1435,7 @@ describe('serving', () => {
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
     peer.call(notes.watch, 5, { tag: 'start', value: 'from the top' });
     peer.call(rawRead, 7, { tag: 'request', value: CUT_SHORT_TEXT }, notes.read);
-    peer.send(9, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(9, { tag: 'call', value: { sectionId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
 
     // Then
@@ -1457,7 +1457,7 @@ describe('serving', () => {
 
     // When a call comes on a method of the schema and on one it lacks
     peer.call(notes.touch, 3, { tag: 'request', value: undefined });
-    peer.send(5, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(1, 0) } });
+    peer.send(5, { tag: 'call', value: { sectionId: NOTES, methodId: 7, message: Uint8Array.of(1, 0) } });
     await timers.advance(0);
 
     // Then
@@ -1706,7 +1706,7 @@ describe('serving', () => {
     // Then
     expect(receive).not.toThrow();
     expect(interrupt).not.toThrow();
-    const call = { trait: 'notes', method: 'watch' };
+    const call = { section: 'notes', method: 'watch' };
     expect(issues).toEqual([
       { kind: 'post_failed', error: broken, call },
       { kind: 'post_failed', error: broken, call },
@@ -2047,7 +2047,7 @@ describe('serving', () => {
 
     // When it leaves again and then calls a method this schema lacks
     await leaveWithCallHeld(7);
-    peer.send(11, { tag: 'call', value: { traitId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
+    peer.send(11, { tag: 'call', value: { sectionId: NOTES, methodId: 7, message: Uint8Array.of(0, 1, 2) } });
     await timers.advance(0);
     releases[1]?.();
     await timers.advance(0);
@@ -2067,7 +2067,7 @@ describe('the handshake', () => {
       },
       () => '',
     );
-    const schema = defineSchema({ version: VERSION, hello, traits: { notes: { touch: notes.touch } } });
+    const schema = defineSchema({ version: VERSION, hello, sections: { notes: { touch: notes.touch } } });
     const transport = createTransport(schema, createProviderPair().left, {
       handshake: 'open',
       hello: 'opener',

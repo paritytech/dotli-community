@@ -13,7 +13,7 @@ import { closeHostLinks, linkHost, PRODUCT_ORIGIN, record } from './testing/host
 
 afterEach(closeHostLinks);
 
-const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
+const { frame, resolve, storage, wallet, chain } = protocolSchema.sections;
 
 const FAILURE = new Error('storage read failed');
 

@@ -20,7 +20,7 @@ import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type FrameFailure, type ProtocolTransport, type RemoteFailure } from './schema.js';
 import { subscribe } from './subscription.js';
 
-const { frame, resolve } = protocolSchema.traits;
+const { frame, resolve } = protocolSchema.sections;
 
 describe('subscribe', () => {
   let timers: ManualTimers;
@@ -145,7 +145,7 @@ describe('subscribe', () => {
   it('As the host, a subscription to a frame of a later release ends with the version mismatch my reload screen knows', async () => {
     // Given a frame that speaks a wire version the host cannot
     const { left, right } = createProviderPair();
-    createTransport(defineSchema({ version: 255, hello: _void, traits: {} }), right, {
+    createTransport(defineSchema({ version: 255, hello: _void, sections: {} }), right, {
       handshake: 'accept',
       hello: undefined,
     });

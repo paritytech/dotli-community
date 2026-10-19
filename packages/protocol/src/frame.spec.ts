@@ -25,7 +25,7 @@ import { protocolSchema, type ProtocolTransport } from './schema.js';
 import type { SharedStoreStatus } from './shared-store.js';
 import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameDom, type FrameHost } from './testing/frame-host.js';
 
-const { resolve, storage, chain } = protocolSchema.traits;
+const { resolve, storage, chain } = protocolSchema.sections;
 
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const READY_TIMEOUT_MS = 240_000;
@@ -423,7 +423,7 @@ describe('createProtocolFrame', () => {
     expect(answered).toEqual([]);
     expect(
       first.window.sent.filter(
-        data => data instanceof ArrayBuffer && recordMessage(protocolSchema, data)?.trait === 'storage',
+        data => data instanceof ArrayBuffer && recordMessage(protocolSchema, data)?.section === 'storage',
       ),
     ).toHaveLength(16);
     for (const read of oldReads) {
@@ -850,7 +850,7 @@ describe('protocol status', () => {
     // Then
     expect(host.client.getProtocolStatus()).toBe('listening');
     expect(read.outcome).toBeNull();
-    expect(host.sent().map(message => `${message.tag}:${message.trait}.${message.method}`)).toEqual([
+    expect(host.sent().map(message => `${message.tag}:${message.section}.${message.method}`)).toEqual([
       'start:frame.status',
       'start:frame.telemetry',
       'request:storage.authRead',

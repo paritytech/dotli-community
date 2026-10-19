@@ -34,7 +34,7 @@ import {
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 
-const { chain, resolve } = protocolSchema.traits;
+const { chain, resolve } = protocolSchema.sections;
 
 type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], DomainError<typeof chain.connect>>;
 
@@ -333,7 +333,7 @@ describe('createEngine name reads', () => {
     [
       'leaves the budget to its method, less the delivery grace',
       undefined,
-      (budgetOf(protocolSchema.traits.resolve.dotName) ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+      (budgetOf(protocolSchema.sections.resolve.dotName) ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
     ],
   ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
     // Given

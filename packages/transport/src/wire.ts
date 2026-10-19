@@ -25,7 +25,7 @@ export type Accept = CodecType<typeof accept>;
 export const frameOf = <M>(message: Codec<M>) =>
   Struct({
     id: u32,
-    body: Enum({ open, accept, failed: failure, call: Struct({ traitId: u8, methodId: u8, message }) }),
+    body: Enum({ open, accept, failed: failure, call: Struct({ sectionId: u8, methodId: u8, message }) }),
   });
 
 /** What crosses the wire, about the call or the handshake attempt `id` names. */
@@ -64,7 +64,7 @@ export function encodeCall<M>(
   message: M,
 ): ResultPayload<ArrayBuffer, Error> {
   try {
-    const call = { traitId: address.traitId, methodId: address.methodId, message };
+    const call = { sectionId: address.sectionId, methodId: address.methodId, message };
     return ok(encodeFrame(method.frame, { id, body: { tag: 'call', value: call } }));
   } catch (error) {
     return err(toError(error));

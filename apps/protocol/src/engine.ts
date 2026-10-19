@@ -20,7 +20,7 @@ import { err, ok, type AnyMethod, type CallError, type ResultPayload } from '@do
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
-const methods = protocolSchema.traits;
+const methods = protocolSchema.sections;
 
 type ChainSink = Parameters<ProtocolHandler<typeof methods.chain.connect>>[2];
 

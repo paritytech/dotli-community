@@ -21,7 +21,7 @@ if (window.top === window && location.hostname !== PROTOCOL_HOSTNAME) {
     }
     const recorded = recordMessage(protocolSchema, event.data);
     // The light client's own traffic, which no test reads, would dwarf the rest and slow every wait that scans it.
-    if (recorded !== null && recorded.trait !== 'chain') {
+    if (recorded !== null && recorded.section !== 'chain') {
       seen.push(recorded);
     }
   });

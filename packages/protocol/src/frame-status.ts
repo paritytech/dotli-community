@@ -11,7 +11,7 @@ import type { FrameFailure, ProtocolHandler, protocolSchema } from './schema.js'
 export type FrameStatusSink = Sink<undefined, FrameFailure>;
 
 /** How the status ends, as its subscribers hear it. */
-export type FrameStatusEnd = MethodTypes<typeof protocolSchema.traits.frame.status>['interrupt'];
+export type FrameStatusEnd = MethodTypes<typeof protocolSchema.sections.frame.status>['interrupt'];
 
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: FrameStatusEnd };
 
@@ -22,7 +22,7 @@ export interface FrameStatus {
   fail(error: Error): void;
   /** Ends the status with `end` as it is, for a relay that passes on another frame's end. Only the first end is heard. */
   interrupt(end: FrameStatusEnd): void;
-  handler: ProtocolHandler<typeof protocolSchema.traits.frame.status>;
+  handler: ProtocolHandler<typeof protocolSchema.sections.frame.status>;
 }
 
 export function createFrameStatus(): FrameStatus {

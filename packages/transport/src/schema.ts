@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A schema nests traits, then methods. A method is a request or a subscription, built from the codecs of what its sides
+// A schema nests sections, then methods. A method is a request or a subscription, built from the codecs of what its sides
 // send, and carries its types, so the transport calls and serves it by the method itself. Wire ids are positions.
 
 import { Bytes, Enum, Result, _void, enhanceCodec, type Codec, type ResultPayload } from 'scale-ts';
@@ -85,33 +85,33 @@ export interface AnyMethod {
   readonly message: { readonly dec: (data: Uint8Array) => { tag: string } };
 }
 
-/** A schema's traits: trait names to method names to methods. */
-export type Traits = Readonly<Record<string, Readonly<Record<string, AnyMethod>>>>;
+/** A schema's sections: section names to method names to methods. */
+export type Sections = Readonly<Record<string, Readonly<Record<string, AnyMethod>>>>;
 
 /** Any one method of `T`, as a union. */
-export type MethodOf<T extends Traits> = { [K in keyof T]: T[K][keyof T[K]] }[keyof T];
+export type MethodOf<T extends Sections> = { [K in keyof T]: T[K][keyof T[K]] }[keyof T];
 
 /** Where a method sits: its names and its wire ids. */
 export interface Address {
-  trait: string;
+  section: string;
   method: string;
-  traitId: number;
+  sectionId: number;
   methodId: number;
 }
 
 /** Whether a call names the method at `address`. */
-export const sameMethod = (address: Address, call: { traitId: number; methodId: number }): boolean =>
-  address.traitId === call.traitId && address.methodId === call.methodId;
+export const sameMethod = (address: Address, call: { sectionId: number; methodId: number }): boolean =>
+  address.sectionId === call.sectionId && address.methodId === call.methodId;
 
 /** A checked schema, which places each of its methods. */
-export interface Schema<H, T extends Traits> {
+export interface Schema<H, T extends Sections> {
   readonly version: number;
   readonly hello: Codec<H>;
-  readonly traits: T;
+  readonly sections: T;
   /** Where `method` sits. Throws for a method of another schema, which is the caller's mistake. */
   readonly addressOf: (method: AnyMethod) => Address;
   /** The method at these wire ids, or undefined when the schema has none there. */
-  readonly methodAt: (traitId: number, methodId: number) => AnyMethod | undefined;
+  readonly methodAt: (sectionId: number, methodId: number) => AnyMethod | undefined;
 }
 
 // Ids are bytes on the wire.
@@ -119,42 +119,48 @@ const MAX_IDS = 256;
 const MAX_VERSION = 255;
 
 /**
- * Checks a schema and fixes its wire ids from the order of `traits` and of each trait's methods. Each method may sit in
+ * Checks a schema and fixes its wire ids from the order of `sections` and of each section's methods. Each method may sit in
  * one place only, since the transport finds its place by the method itself.
  */
-export function defineSchema<H, T extends Traits>(def: { version: number; hello: Codec<H>; traits: T }): Schema<H, T> {
+export function defineSchema<H, T extends Sections>(def: {
+  version: number;
+  hello: Codec<H>;
+  sections: T;
+}): Schema<H, T> {
   if (!Number.isInteger(def.version) || def.version < 0 || def.version > MAX_VERSION) {
     throw new RangeError(`version must be an integer from 0 to ${String(MAX_VERSION)}, got ${String(def.version)}`);
   }
-  const traits = Object.entries(def.traits);
-  if (traits.length > MAX_IDS) {
-    throw new RangeError(`a schema has at most ${String(MAX_IDS)} traits, got ${String(traits.length)}`);
+  const sections = Object.entries(def.sections);
+  if (sections.length > MAX_IDS) {
+    throw new RangeError(`a schema has at most ${String(MAX_IDS)} sections, got ${String(sections.length)}`);
   }
 
   const addresses = new Map<AnyMethod, Address>();
   const methods: AnyMethod[][] = [];
-  for (const [trait, ofTrait] of traits) {
-    const entries = Object.entries(ofTrait);
+  for (const [section, ofSection] of sections) {
+    const entries = Object.entries(ofSection);
     if (entries.length > MAX_IDS) {
-      throw new RangeError(`trait "${trait}" has at most ${String(MAX_IDS)} methods, got ${String(entries.length)}`);
+      throw new RangeError(
+        `section "${section}" has at most ${String(MAX_IDS)} methods, got ${String(entries.length)}`,
+      );
     }
-    const traitId = methods.length;
-    const inTrait: AnyMethod[] = [];
+    const sectionId = methods.length;
+    const inSection: AnyMethod[] = [];
     for (const [name, method] of entries) {
       const taken = addresses.get(method);
       if (taken !== undefined) {
-        throw new Error(`${trait}.${name} is the method already at ${taken.trait}.${taken.method}`);
+        throw new Error(`${section}.${name} is the method already at ${taken.section}.${taken.method}`);
       }
-      addresses.set(method, { trait, method: name, traitId, methodId: inTrait.length });
-      inTrait.push(method);
+      addresses.set(method, { section, method: name, sectionId, methodId: inSection.length });
+      inSection.push(method);
     }
-    methods.push(inTrait);
+    methods.push(inSection);
   }
 
   return {
     version: def.version,
     hello: def.hello,
-    traits: def.traits,
+    sections: def.sections,
     addressOf(method) {
       const address = addresses.get(method);
       if (address === undefined) {
@@ -162,7 +168,7 @@ export function defineSchema<H, T extends Traits>(def: { version: number; hello:
       }
       return address;
     },
-    methodAt: (traitId, methodId) => methods[traitId]?.[methodId],
+    methodAt: (sectionId, methodId) => methods[sectionId]?.[methodId],
   };
 }
 

@@ -16,7 +16,7 @@ import {
 } from './errors.js';
 import { protocolSchema } from './schema.js';
 
-const { frame, resolve, wallet } = protocolSchema.traits;
+const { frame, resolve, wallet } = protocolSchema.sections;
 
 describe('failureOf', () => {
   it("As a frame that waits on another, I read its frame status end as the protocol's error classes", () => {

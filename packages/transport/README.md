@@ -12,16 +12,16 @@ and failure.
   and is answered with a `Result`. A subscription starts with one payload, receives values, and ends with an interrupt
   that is a `Result`, or with the caller's stop. A method carries its types, so the transport calls and serves a method
   by passing the method itself, and every payload, answer and end is typed from it with no type argument.
-- A schema nests traits, then methods. Wire ids are positions: a trait's id is its place in the schema and a method's id
-  is its place in its trait, so new traits and methods go at the end. A schema holds up to 256 traits of up to 256
-  methods each, a version from 0 to 255, and the codec of the hello each side sends in the handshake. Each method sits
-  in one place only.
+- A schema nests sections, then methods. Wire ids are positions: a section's id is its place in the schema and a
+  method's id is its place in its section, so new sections and methods go at the end. A schema holds up to 256 sections
+  of up to 256 methods each, a version from 0 to 255, and the codec of the hello each side sends in the handshake. Each
+  method sits in one place only.
 - `Result` is scale-ts's own, `{ success, value }`. `CallError` is truapi's, a tagged union of `{ tag, value }`: the
   handler's own `Domain` error, or a `Failure` of the library's, `Denied`, `Unsupported`, `MalformedFrame`,
   `HostFailure` or `Cancelled`. The library's failures are an enum of their own, so it answers any call with one. A
   method that declares no error has an empty one, `undefined`.
 - A frame is a SCALE struct of a call id (`u32`) and one enum: the handshake's `open` and `accept`, a `failed` that
-  answers a call with a `CallError` of the library's own, or a `call` that carries the trait and method ids and the
+  answers a call with a `CallError` of the library's own, or a `call` that carries the section and method ids and the
   method's own message. A message is its method's enum: `request` and `response` for a request, and `start`, `receive`,
   `interrupt` and `stop` for a subscription. A frame encodes in one pass of a codec composed from its method's. A
   received frame keeps the message as bytes until the method it names decodes it. The id and the handshake variants
@@ -99,7 +99,7 @@ sequenceDiagram
 - Calls of the peer reach a handler only once the handshake told who the peer is. One before the handshake or after the
   transport closed is refused with no answer. Nothing ever answers a `failed` frame or a frame that does not decode.
 - What the transport cannot handle itself goes to one issue hook: a refused message (`malformed` or `invalid`, with its
-  cause), a post the provider threw on (with the trait and method names of its call, if any), and a callback of the
+  cause), a post the provider threw on (with the section and method names of its call, if any), and a callback of the
   owner's that threw. A throw while a frame is handled is reported and never reaches the provider. With no hook, each
   issue is logged as one bounded error. A message on a call this side ended lately is a race, and dropped quietly.
 
@@ -116,10 +116,10 @@ sequenceDiagram
 - `request({ request, response, error? })` declares a `Request<P, R, E>`, and
   `subscription({ start, receive, interrupt? })` a `Subscription<S, V, I>`. Without `error` or `interrupt`, `E` or `I`
   is `undefined`. `RequestMessage<P, R, E>` and `SubscriptionMessage<S, V, I>` are what their sides send.
-- `defineSchema({ version, hello, traits })` checks the record and returns a `Schema<H, T>`: its `version`, `hello`
-  codec, `traits`, `addressOf(method)`, its `Address` (`{ trait, method, traitId, methodId }`), which throws for a
-  method of another schema, and `methodAt(traitId, methodId)`, the method there, or undefined. `Traits` is the record it
-  takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
+- `defineSchema({ version, hello, sections })` checks the record and returns a `Schema<H, T>`: its `version`, `hello`
+  codec, `sections`, `addressOf(method)`, its `Address` (`{ section, method, sectionId, methodId }`), which throws for a
+  method of another schema, and `methodAt(sectionId, methodId)`, the method there, or undefined. `Sections` is the
+  record it takes, of `AnyMethod`, and `MethodOf<T>` is any one of its methods, as a union.
 - `MethodTypes<M>` is what each side of method `M` sends: `{ request: P; response: ResultPayload<R, CallError<E>> }` or
   `{ start: S; receive: V; interrupt: ResultPayload<undefined, CallError<I>>; stop: undefined }`. `DomainError<M>` is
   its own error, `E` or `I`.
@@ -157,7 +157,7 @@ sequenceDiagram
 const schema = defineSchema({
   version: 1,
   hello: _void,
-  traits: {
+  sections: {
     names: {
       owner: request({ request: label, response: owner }),
       changes: subscription({ start: _void, receive: change, interrupt: failure }),
@@ -165,7 +165,7 @@ const schema = defineSchema({
   },
 });
 
-const answer = await transport.request(schema.traits.names.owner, { label: 'polkadot' });
+const answer = await transport.request(schema.sections.names.owner, { label: 'polkadot' });
 ```
 
 ### `./testing`
@@ -177,7 +177,7 @@ Test helpers for code that uses the library.
 - `readFrame(schema, data)` reads a recorded frame as a `RecordedFrame`. A call is named by its method's names and its
   message's tag, and keeps the message's bytes. It throws a `FrameRefusedError` on data that is no frame.
 - `recordMessage(schema, data)` records a call's message as a `RecordedWireMessage`
-  (`{ id, trait, method, tag, message, json }`), with its bytes as hex and the decoded message as JSON with bytes as hex
-  and big integers as text, so a page can keep and match it. It gives null for the library's own frames and data that is
-  no frame.
+  (`{ id, section, method, tag, message, json }`), with its bytes as hex and the decoded message as JSON with bytes as
+  hex and big integers as text, so a page can keep and match it. It gives null for the library's own frames and data
+  that is no frame.
 - `messagesOf(schema, method, recorded)` picks the recorded messages of a method and decodes them, typed by it.

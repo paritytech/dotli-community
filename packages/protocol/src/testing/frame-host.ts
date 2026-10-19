@@ -177,12 +177,12 @@ function createMount(fires: MountEvent): FakeMount {
 /** Serves the frame's status on `serving` as a frame app does. */
 function serveFrameStatus(serving: ProtocolTransport): FrameStatus {
   const status = createFrameStatus();
-  serving.handleSubscription(protocolSchema.traits.frame.status, status.handler);
+  serving.handleSubscription(protocolSchema.sections.frame.status, status.handler);
   return status;
 }
 
 /** A frame of a later release, whose wire the host cannot speak. */
-const newerSchema = defineSchema({ version: 255, hello: _void, traits: {} });
+const newerSchema = defineSchema({ version: 255, hello: _void, sections: {} });
 
 export interface FrameDom {
   /** What a frame or client is built on. */
@@ -255,8 +255,8 @@ export function createFrameDom(
         hello: { resolutionId: null },
       });
       // A frame app always serves the client's feeds, and these frames have nothing to report on them.
-      serving.handleSubscription(protocolSchema.traits.frame.telemetry, () => () => undefined);
-      serving.handleSubscription(protocolSchema.traits.storage.authChanges, () => () => undefined);
+      serving.handleSubscription(protocolSchema.sections.frame.telemetry, () => () => undefined);
+      serving.handleSubscription(protocolSchema.sections.storage.authChanges, () => () => undefined);
       entry = { serving, status: null };
       served.set(target, entry);
     }

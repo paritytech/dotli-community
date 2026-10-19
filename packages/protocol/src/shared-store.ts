@@ -12,7 +12,7 @@ import type { FrameRpc } from './rpc.js';
 import { protocolSchema, type LocalWalletIdentity, type LocalWalletRead, type SharedAuthChange } from './schema.js';
 import { subscribe } from './subscription.js';
 
-const { storage, wallet } = protocolSchema.traits;
+const { storage, wallet } = protocolSchema.sections;
 
 export type SharedAuthStorageListener = (change: SharedAuthChange) => void;
 

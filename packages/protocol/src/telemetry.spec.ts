@@ -12,7 +12,7 @@ import { createFakeFrame } from './frame.fake.js';
 import type { TelemetryEvent } from './codec-values.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
-const { frame } = protocolSchema.traits;
+const { frame } = protocolSchema.sections;
 
 type TelemetrySink = Sink<TelemetryEvent, undefined>;
 

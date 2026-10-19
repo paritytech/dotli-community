@@ -271,7 +271,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
         { handshake: 'open', hello: { resolutionId: null }, timers, onIssue: wire.onIssue },
       ),
     );
-    subscribe(kept.transport, protocolSchema.traits.frame.status, undefined, {
+    subscribe(kept.transport, protocolSchema.sections.frame.status, undefined, {
       receive: () => {
         if (slot === kept) {
           setStatus('ready');

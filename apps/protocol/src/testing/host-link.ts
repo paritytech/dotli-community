@@ -82,7 +82,7 @@ export function closeHostLinks(): void {
 
 /** Settles once the frame has answered a call made after everything before it, by asking for a method it lacks. */
 export async function roundTrip(link: HostLink): Promise<void> {
-  const answer = await link.host.request(protocolSchema.traits.frame.warmup, undefined);
+  const answer = await link.host.request(protocolSchema.sections.frame.warmup, undefined);
   if (answer.success || answer.value.tag !== 'Unsupported') {
     throw new Error('The frame served the warmup, so the round trip proves nothing');
   }

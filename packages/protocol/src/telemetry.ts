@@ -34,7 +34,7 @@ export function createFrameTelemetry(
       // Each frame's byte meter starts at zero, and a reopened feed reads on from the same meter.
       let lastNetBytesTotal = 0;
       return ends =>
-        subscribe(transport, protocolSchema.traits.frame.telemetry, undefined, {
+        subscribe(transport, protocolSchema.sections.frame.telemetry, undefined, {
           receive: event => {
             switch (event.tag) {
               case 'chainSync':

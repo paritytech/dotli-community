@@ -24,7 +24,7 @@ describe('issues', () => {
     const error = new Error('the peer window is gone');
 
     // When
-    logIssue({ kind: 'post_failed', error, call: { trait: 'notes', method: 'read' } });
+    logIssue({ kind: 'post_failed', error, call: { section: 'notes', method: 'read' } });
     logIssue({ kind: 'post_failed', error });
 
     // Then

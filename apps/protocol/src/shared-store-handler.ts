@@ -54,7 +54,7 @@ export interface SharedStoreDeps {
   channel: SharedAuthChannel | null;
 }
 
-const { storage } = protocolSchema.traits;
+const { storage } = protocolSchema.sections;
 
 /** One store's read, write and clear. Both stores share their codecs, so they share these types. */
 interface StoreMethods {
@@ -208,7 +208,7 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
   };
 }
 
-const { wallet } = protocolSchema.traits;
+const { wallet } = protocolSchema.sections;
 
 const pageWallet: LocalWalletStore = { forgetLocalWallet, loadLocalWallet, saveLocalWallet, updateLocalWalletIdentity };
 

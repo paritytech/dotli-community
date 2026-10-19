@@ -4,7 +4,7 @@
 import { fromHex, toError, toHex } from '@dotli/shared';
 import type { Codec } from 'scale-ts';
 import type { Failure } from '../errors.js';
-import type { AnyMethod, Schema, Traits } from '../schema.js';
+import type { AnyMethod, Schema, Sections } from '../schema.js';
 import { decode, frame, type Accept, type Open } from '../wire.js';
 
 export { createProviderPair } from '../provider.fake.js';
@@ -18,7 +18,7 @@ export type RecordedFrame =
   | { id: number; kind: 'open'; value: Open }
   | { id: number; kind: 'accept'; value: Accept }
   | { id: number; kind: 'failed'; value: Failure }
-  | { id: number; kind: 'call'; trait: string; method: string; message: Uint8Array; decoded: { tag: string } | null };
+  | { id: number; kind: 'call'; section: string; method: string; message: Uint8Array; decoded: { tag: string } | null };
 
 /** Recorded data that is no frame. `cause` is why. */
 export class FrameRefusedError extends Error {
@@ -38,7 +38,7 @@ function decodedBy(method: AnyMethod, message: Uint8Array): { tag: string } {
 }
 
 /** Reads a recorded frame. Throws a `FrameRefusedError` on data that is no frame. */
-export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: ArrayBuffer): RecordedFrame {
+export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: ArrayBuffer): RecordedFrame {
   const read = decode(frame, data);
   if (!read.success) {
     throw new FrameRefusedError(read.value);
@@ -52,13 +52,13 @@ export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: Array
     case 'failed':
       return { id, kind: 'failed', value: body.value };
     case 'call': {
-      const { traitId, methodId, message } = body.value;
-      const method = schema.methodAt(traitId, methodId);
+      const { sectionId, methodId, message } = body.value;
+      const method = schema.methodAt(sectionId, methodId);
       if (method === undefined) {
-        return { id, kind: 'call', trait: String(traitId), method: String(methodId), message, decoded: null };
+        return { id, kind: 'call', section: String(sectionId), method: String(methodId), message, decoded: null };
       }
-      const { trait, method: name } = schema.addressOf(method);
-      return { id, kind: 'call', trait, method: name, message, decoded: decodedBy(method, message) };
+      const { section, method: name } = schema.addressOf(method);
+      return { id, kind: 'call', section, method: name, message, decoded: decodedBy(method, message) };
     }
   }
 }
@@ -69,7 +69,7 @@ export function readFrame<H, T extends Traits>(schema: Schema<H, T>, data: Array
  */
 export interface RecordedWireMessage {
   id: number;
-  trait: string;
+  section: string;
   method: string;
   tag: string;
   message: string;
@@ -81,7 +81,7 @@ const plain = (_key: string, value: unknown): unknown =>
   value instanceof Uint8Array ? toHex(value) : typeof value === 'bigint' ? value.toString() : value;
 
 /** Records a call's message read by `schema`, or gives null for the library's own frames and data that is no frame. */
-export function recordMessage<H, T extends Traits>(
+export function recordMessage<H, T extends Sections>(
   schema: Schema<H, T>,
   data: ArrayBuffer,
 ): RecordedWireMessage | null {
@@ -98,12 +98,12 @@ export function recordMessage<H, T extends Traits>(
   if (recorded.kind !== 'call' || recorded.decoded === null) {
     return null;
   }
-  const { id, trait, method, message, decoded } = recorded;
-  return { id, trait, method, tag: decoded.tag, message: toHex(message), json: JSON.stringify(decoded, plain) };
+  const { id, section, method, message, decoded } = recorded;
+  return { id, section, method, tag: decoded.tag, message: toHex(message), json: JSON.stringify(decoded, plain) };
 }
 
 /** The recorded messages of `method`, decoded with it. */
-export function messagesOf<H, T extends Traits, M>(
+export function messagesOf<H, T extends Sections, M>(
   schema: Schema<H, T>,
   method: AnyMethod & { readonly message: Codec<M> },
   recorded: readonly RecordedWireMessage[],
@@ -112,6 +112,6 @@ export function messagesOf<H, T extends Traits, M>(
   // Read as the method's own codec, so the messages come back typed by it.
   const codec: Codec<M> = method.message;
   return recorded
-    .filter(message => message.trait === address.trait && message.method === address.method)
+    .filter(message => message.section === address.section && message.method === address.method)
     .map(message => codec.dec(fromHex(message.message)));
 }

@@ -4,7 +4,7 @@
 import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
 import type { ProtocolSchema } from './schema.js';
 
-type StorageMethod = keyof ProtocolSchema['traits']['storage'];
+type StorageMethod = keyof ProtocolSchema['sections']['storage'];
 
 export type SharedModeRequestMethod = Extract<StorageMethod, 'modeRead' | 'modeWrite' | 'modeClear'>;
 
@@ -17,7 +17,7 @@ const SHARED_MODE_METHODS: ReadonlySet<string> = new Set<SharedModeRequestMethod
   'modeClear',
 ]);
 
-/** Whether `method` is a request of the shared mode store, among the storage trait's methods. */
+/** Whether `method` is a request of the shared mode store, among the storage section's methods. */
 export function isSharedModeRequestMethod(method: string): method is SharedModeRequestMethod {
   return SHARED_MODE_METHODS.has(method);
 }

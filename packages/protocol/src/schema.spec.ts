@@ -35,9 +35,9 @@ import {
   type ProtocolTransport,
 } from './schema.js';
 
-const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
+const { frame, resolve, storage, wallet, chain } = protocolSchema.sections;
 
-type Traits = ProtocolSchema['traits'];
+type Sections = ProtocolSchema['sections'];
 
 /** What a call heard: how many calls it made, and the check of what they heard and sent. */
 interface Heard {
@@ -53,7 +53,7 @@ interface Case {
 }
 
 // Typed against the schema, so a method without a case fails to compile.
-type Cases = { [T in keyof Traits]: { [M in keyof Traits[T]]: Case } };
+type Cases = { [T in keyof Sections]: { [M in keyof Sections[T]]: Case } };
 
 /** A sample that is missing, which fails the test that reads it. */
 const NO_SAMPLE = hostFailure('Error: no sample left');
@@ -344,8 +344,8 @@ describe('protocolSchema', () => {
 
     // Then each side reads what the other sent, and the recorded messages carry the same values
     expect(allCases.map(sample => sample.method)).toEqual(
-      Object.values(protocolSchema.traits).flatMap((trait: Readonly<Record<string, AnyMethod>>) =>
-        Object.values(trait),
+      Object.values(protocolSchema.sections).flatMap((section: Readonly<Record<string, AnyMethod>>) =>
+        Object.values(section),
       ),
     );
     const recorded = delivered.flatMap(data => recordMessage(protocolSchema, data) ?? []);

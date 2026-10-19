@@ -97,8 +97,8 @@ const serving = createTransport(
   }),
   { handshake: 'accept', hello: { resolutionId: null }, onIssue: wire.onIssue },
 );
-serving.handleSubscription(protocolSchema.traits.frame.status, boot.frameStatus);
-serving.handleSubscription(protocolSchema.traits.frame.telemetry, boot.telemetry);
+serving.handleSubscription(protocolSchema.sections.frame.status, boot.frameStatus);
+serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.telemetry);
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));

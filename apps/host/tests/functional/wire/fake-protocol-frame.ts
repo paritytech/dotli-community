@@ -17,7 +17,7 @@ import {
 } from '@dotli/protocol';
 import { createTransport, createWindowProvider, err, ok, type MethodTypes, type Sink } from '@dotli/transport';
 
-const { frame, resolve, storage, wallet, chain } = protocolSchema.traits;
+const { frame, resolve, storage, wallet, chain } = protocolSchema.sections;
 
 type ChainMessage = MethodTypes<typeof chain.connect>['receive'];
 

@@ -14,7 +14,7 @@ import { protocolSchema } from './schema.js';
 import type { SharedStoreStatus } from './shared-store.js';
 import { createFrameHost, FRAME_CONFIG, FRAME_ORIGIN, type FakeIframe, type FrameHost } from './testing/frame-host.js';
 
-const { storage } = protocolSchema.traits;
+const { storage } = protocolSchema.sections;
 
 /** The clock and timers each test moves by hand. */
 let timers: ManualTimers;

@@ -11,7 +11,7 @@ import type { FrameRpc } from './rpc.js';
 import { protocolSchema } from './schema.js';
 import { subscribe } from './subscription.js';
 
-const { dotName, owner, executableManifest, rootManifest } = protocolSchema.traits.resolve;
+const { dotName, owner, executableManifest, rootManifest } = protocolSchema.sections.resolve;
 
 export function createRemoteResolve(rpc: FrameRpc) {
   /**
@@ -50,7 +50,7 @@ export function createRemoteResolve(rpc: FrameRpc) {
 
   return {
     async warmupProtocol(): Promise<void> {
-      await rpc.request(protocolSchema.traits.frame.warmup, undefined);
+      await rpc.request(protocolSchema.sections.frame.warmup, undefined);
     },
     resolveDotNameRemote: resolveDotName,
     resolveOwnerRemote: (label: string) => rpc.request(owner, { label }),

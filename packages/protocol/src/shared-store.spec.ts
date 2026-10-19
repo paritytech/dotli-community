@@ -14,7 +14,7 @@ import { createSharedStore, type SharedStoreStatus } from './shared-store.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
-const { storage, wallet } = protocolSchema.traits;
+const { storage, wallet } = protocolSchema.sections;
 
 type ChangeSink = Sink<SharedAuthChange, undefined>;
 

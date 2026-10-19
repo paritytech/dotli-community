@@ -24,7 +24,7 @@ import { createFakeFrame, type FakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport, type RemoteFailure } from './schema.js';
 import { createFrameHost, FRAME_CONFIG, type FrameHost } from './testing/frame-host.js';
 
-const { chain } = protocolSchema.traits;
+const { chain } = protocolSchema.sections;
 
 type Connect = MethodTypes<typeof chain.connect>;
 

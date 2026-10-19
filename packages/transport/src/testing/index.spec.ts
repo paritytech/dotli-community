@@ -14,27 +14,27 @@ import { FrameRefusedError, messagesOf, readFrame, recordMessage } from './index
 const schema = defineSchema({
   version: 2,
   hello: str,
-  traits: {
+  sections: {
     notes: {
       read: request({ request: str, response: str }),
       watch: subscription({ start: _void, receive: str }),
     },
   },
 });
-const { read, watch } = schema.traits.notes;
+const { read, watch } = schema.sections.notes;
 
 /** A schema whose messages carry bytes and a big integer, which JSON does not keep as they are. */
 const vaultSchema = defineSchema({
   version: 1,
   hello: str,
-  traits: {
+  sections: {
     vault: {
       save: request({ request: Struct({ entropy: Bytes(), amount: u128 }), response: _void }),
       events: subscription({ start: _void, receive: str }),
     },
   },
 });
-const { save, events } = vaultSchema.traits.vault;
+const { save, events } = vaultSchema.sections.vault;
 
 /** An opener and an accepter over one in-memory channel, with every message either side received. */
 function wire() {
@@ -53,11 +53,11 @@ describe('readFrame', () => {
     const data = [
       encodeFrame(read.frame, {
         id: 1,
-        body: { tag: 'call', value: { traitId: 0, methodId: 0, message: { tag: 'request', value: 'a note' } } },
+        body: { tag: 'call', value: { sectionId: 0, methodId: 0, message: { tag: 'request', value: 'a note' } } },
       }),
       encodeFrame(watch.frame, {
         id: 2,
-        body: { tag: 'call', value: { traitId: 0, methodId: 1, message: { tag: 'stop', value: undefined } } },
+        body: { tag: 'call', value: { sectionId: 0, methodId: 1, message: { tag: 'stop', value: undefined } } },
       }),
     ];
 
@@ -69,7 +69,7 @@ describe('readFrame', () => {
       {
         id: 1,
         kind: 'call',
-        trait: 'notes',
+        section: 'notes',
         method: 'read',
         message: expect.any(Uint8Array) as Uint8Array,
         decoded: { tag: 'request', value: 'a note' },
@@ -77,7 +77,7 @@ describe('readFrame', () => {
       {
         id: 2,
         kind: 'call',
-        trait: 'notes',
+        section: 'notes',
         method: 'watch',
         message: expect.any(Uint8Array) as Uint8Array,
         decoded: { tag: 'stop', value: undefined },
@@ -113,7 +113,7 @@ describe('readFrame', () => {
     // Given
     const data = encodeFrame(frame, {
       id: 5,
-      body: { tag: 'call', value: { traitId: 9, methodId: 1, message: Uint8Array.of(2, 0xde) } },
+      body: { tag: 'call', value: { sectionId: 9, methodId: 1, message: Uint8Array.of(2, 0xde) } },
     });
 
     // When
@@ -123,7 +123,7 @@ describe('readFrame', () => {
     expect(recorded).toEqual({
       id: 5,
       kind: 'call',
-      trait: '9',
+      section: '9',
       method: '1',
       message: Uint8Array.of(2, 0xde),
       decoded: null,
@@ -144,7 +144,7 @@ describe('readFrame', () => {
 });
 
 describe('recordMessage', () => {
-  it("As a test, I record a call's message by its trait, method and tag, as JSON, and decode it with its method", async () => {
+  it("As a test, I record a call's message by its section, method and tag, as JSON, and decode it with its method", async () => {
     // Given an accepter that sends the opener one event
     const { opener, accepter, delivered } = wire();
     accepter.handleSubscription(events, (_start, _context, sink) => {
@@ -168,7 +168,7 @@ describe('recordMessage', () => {
     expect(recorded.filter(message => message.tag === 'receive')).toEqual([
       {
         id: expect.any(Number) as number,
-        trait: 'vault',
+        section: 'vault',
         method: 'events',
         tag: 'receive',
         message: expect.any(String) as string,

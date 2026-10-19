@@ -19,7 +19,7 @@ import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, record, type Hos
 
 afterEach(closeHostLinks);
 
-const { authChanges, authClear, authRead, authWrite, modeClear, modeRead, modeWrite } = protocolSchema.traits.storage;
+const { authChanges, authClear, authRead, authWrite, modeClear, modeRead, modeWrite } = protocolSchema.sections.storage;
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -281,7 +281,7 @@ describe('the shared mode store', () => {
   });
 });
 
-const { wallet } = protocolSchema.traits;
+const { wallet } = protocolSchema.sections;
 
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const IDENTITY = { identityAccountId: `0x${'22'.repeat(32)}`, liteUsername: 'bob.7' };

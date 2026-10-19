@@ -11,7 +11,7 @@ import { closeHostLinks, linkHost, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
-const { frame } = protocolSchema.traits;
+const { frame } = protocolSchema.sections;
 
 type DbListener = (chain: SmoldotDbChain, outcome: SmoldotDbOutcome) => void;
 

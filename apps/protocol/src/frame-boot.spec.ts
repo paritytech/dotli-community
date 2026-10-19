@@ -15,7 +15,7 @@ import { closeHostLinks, linkHost, record, roundTrip, type EndOf, type HostLink 
 
 afterEach(closeHostLinks);
 
-const { frame } = protocolSchema.traits;
+const { frame } = protocolSchema.sections;
 
 /** A host linked to a booting frame, subscribed to its status and telemetry at once, as the host does. */
 function setup(): { boot: FrameBoot; link: HostLink } {

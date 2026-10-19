@@ -16,14 +16,14 @@ const HOST_URL = `http://host-playground.localhost:${PORT}/`;
 
 /** The telemetry event that tells how `chain` started from its stored database. */
 const smoldotDb = (chain: string): MessageMatch => ({
-  trait: 'frame',
+  section: 'frame',
   method: 'telemetry',
   tag: 'receive',
   body: { tag: 'smoldotDb', value: { chain } },
 });
 
 /** The frame status ending, as the frame's typed failure. */
-const frameStatusEnd: MessageMatch = { trait: 'frame', method: 'status', tag: 'interrupt' };
+const frameStatusEnd: MessageMatch = { section: 'frame', method: 'status', tag: 'interrupt' };
 
 const isProviderWasm = (url: URL): boolean =>
   url.hostname === 'host.localhost' && url.pathname.includes('truapi_provider_bg');

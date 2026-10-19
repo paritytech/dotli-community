@@ -94,10 +94,10 @@ export function createDeferredSubscription<St, V, I>(): DeferredSubscription<St,
   };
 }
 
-type Telemetry = ProtocolHandler<typeof protocolSchema.traits.frame.telemetry>;
+type Telemetry = ProtocolHandler<typeof protocolSchema.sections.frame.telemetry>;
 
 export interface FrameBoot {
-  frameStatus: ProtocolHandler<typeof protocolSchema.traits.frame.status>;
+  frameStatus: ProtocolHandler<typeof protocolSchema.sections.frame.status>;
   telemetry: Telemetry;
   /** Feeds the telemetry from the mode's light client. Only the first source, or the idle feed of `ready`, counts. */
   serveTelemetry(source: Telemetry): void;

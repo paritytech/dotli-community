@@ -17,8 +17,8 @@ declare global {
 
 /** What a recorded message must be. `body` matches when each of its fields does, at any depth. */
 export interface MessageMatch {
-  /** Any trait when unset. */
-  trait?: string;
+  /** Any section when unset. */
+  section?: string;
   method: string;
   /** The message's kind, such as `receive` or `interrupt`. */
   tag: string;
@@ -63,7 +63,7 @@ export async function waitForProtocolMessage(
       };
       const found = (window.__dotliProtocolMessages ?? []).find(
         message =>
-          (wanted.trait === undefined || message.trait === wanted.trait) &&
+          (wanted.section === undefined || message.section === wanted.section) &&
           message.method === wanted.method &&
           message.tag === wanted.tag &&
           contains(bodyOf(message), wanted.body ?? {}),

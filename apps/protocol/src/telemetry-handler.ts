@@ -42,7 +42,7 @@ export function lightClientDb(
 
 export function createTelemetryHandler(
   deps: TelemetryDeps,
-): ProtocolHandler<typeof protocolSchema.traits.frame.telemetry> {
+): ProtocolHandler<typeof protocolSchema.sections.frame.telemetry> {
   return (_payload, _context, sink) => {
     const stops: (() => void)[] = [];
     const stopAll = (): void => {

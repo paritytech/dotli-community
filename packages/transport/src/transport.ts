@@ -32,7 +32,7 @@ import {
   type Request,
   type Schema,
   type Subscription,
-  type Traits,
+  type Sections,
 } from './schema.js';
 import { decode, encodeCall, encodeFrame, frame, type Accept, type Call, type Frame, type Open } from './wire.js';
 
@@ -178,7 +178,7 @@ const MAX_ID = 0xffff_ffff;
 /** Fails a handshake attempt so the pool tries again. Any other failure ends the handshake. */
 class HandshakeUnansweredError extends Error {}
 
-export function createTransport<H, T extends Traits>(
+export function createTransport<H, T extends Sections>(
   schema: Schema<H, T>,
   provider: Provider,
   options: TransportOptions<H>,
@@ -236,7 +236,7 @@ export function createTransport<H, T extends Traits>(
       return ok();
     } catch (thrown) {
       const error = toError(thrown);
-      const call = address === undefined ? undefined : { trait: address.trait, method: address.method };
+      const call = address === undefined ? undefined : { section: address.section, method: address.method };
       report({ kind: 'post_failed', error, call });
       return err(error);
     }
@@ -504,7 +504,7 @@ export function createTransport<H, T extends Traits>(
   /** Stores one handler per method, and returns what unregisters it. */
   const register = (method: AnyMethod, address: Address, served: Served<H>): (() => void) => {
     if (handlers.has(method)) {
-      throw new Error(`${address.trait}.${address.method} already has a handler`);
+      throw new Error(`${address.section}.${address.method} already has a handler`);
     }
     handlers.set(method, served);
     return () => {
@@ -705,7 +705,7 @@ export function createTransport<H, T extends Traits>(
     // A new call, even one that does not decode or that names a method this side does not serve, tells that the peer
     // is here.
     peerCalls += 1;
-    const method = schema.methodAt(call.traitId, call.methodId);
+    const method = schema.methodAt(call.sectionId, call.methodId);
     const served = method === undefined ? undefined : handlers.get(method);
     if (served === undefined) {
       postFailed(id, unsupported());

@@ -51,7 +51,7 @@ import {
 } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 
-const { frame, resolve, chain } = protocolSchema.traits;
+const { frame, resolve, chain } = protocolSchema.sections;
 
 const READY_TIMEOUT_MS = 30_000;
 

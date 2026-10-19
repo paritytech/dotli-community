@@ -9,8 +9,8 @@ import { protocolSchema } from './schema.js';
 describe('method policy', () => {
   it('As a dotli operator, I read each protocol method under its flat name', () => {
     // Given
-    const methods = Object.values(protocolSchema.traits).flatMap((trait: Readonly<Record<string, AnyMethod>>) =>
-      Object.values(trait),
+    const methods = Object.values(protocolSchema.sections).flatMap((section: Readonly<Record<string, AnyMethod>>) =>
+      Object.values(section),
     );
 
     // When
@@ -18,7 +18,7 @@ describe('method policy', () => {
 
     // Then
     expect(new Set(names).size).toBe(methods.length);
-    expect(callName(protocolSchema.traits.resolve.owner)).toBe('resolveOwner');
+    expect(callName(protocolSchema.sections.resolve.owner)).toBe('resolveOwner');
   });
 
   it('As a dotli operator, I read a call the transport names by strings under its flat name, and any other by its place', () => {
@@ -32,7 +32,7 @@ describe('method policy', () => {
     ] as const;
 
     // When
-    const names = named.map(([trait, method]) => callNameAt(trait, method));
+    const names = named.map(([section, method]) => callNameAt(section, method));
 
     // Then
     expect(names).toEqual(['resolveOwner', 'chainConnect', 'resolve.constructor', 'toString.owner', 'notes.read']);
@@ -40,7 +40,7 @@ describe('method policy', () => {
 
   it('As a dotli operator, I see a page load step trailed, a chain message untimed, and the shared store asked once the frame listens', () => {
     // Given
-    const { resolve, chain, storage, wallet, frame } = protocolSchema.traits;
+    const { resolve, chain, storage, wallet, frame } = protocolSchema.sections;
 
     // When
     const [owner, send, authRead, walletRead, warmup] = [

@@ -19,7 +19,7 @@ import { protocolSchema, type ProtocolTransport } from './schema.js';
 
 import { subscribe } from './subscription.js';
 
-const { chain } = protocolSchema.traits;
+const { chain } = protocolSchema.sections;
 
 /**
  * Wider than the advertised `isRemoteChainSupported`, since gateway mode keeps Bulletin connectable for bitswap's

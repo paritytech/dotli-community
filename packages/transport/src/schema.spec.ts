@@ -11,7 +11,7 @@ import {
   subscription,
   type DomainError,
   type MethodTypes,
-  type Traits,
+  type Sections,
 } from './schema.js';
 
 const label = Struct({ label: str });
@@ -29,16 +29,16 @@ const text = codec<string>(
 const s = defineSchema({
   version: 2,
   hello: u32,
-  traits: {
+  sections: {
     resolve: { owner, changes },
     frame: { status, reload },
   },
 });
 
-const traitsOf = (count: number, methods: number): Traits =>
+const sectionsOf = (count: number, methods: number): Sections =>
   Object.fromEntries(
     Array.from({ length: count }, (_, t) => [
-      `trait${String(t)}`,
+      `section${String(t)}`,
       Object.fromEntries(
         Array.from({ length: methods }, (__, m) => [
           `method${String(m)}`,
@@ -49,7 +49,7 @@ const traitsOf = (count: number, methods: number): Traits =>
   );
 
 describe('schema', () => {
-  it('As a schema author, I nest traits and methods and their places follow their order', () => {
+  it('As a schema author, I nest sections and methods and their places follow their order', () => {
     // Given
     const schema = s;
 
@@ -58,51 +58,51 @@ describe('schema', () => {
 
     // Then
     expect(places).toEqual([
-      { trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 },
-      { trait: 'resolve', method: 'changes', traitId: 0, methodId: 1 },
-      { trait: 'frame', method: 'status', traitId: 1, methodId: 0 },
-      { trait: 'frame', method: 'reload', traitId: 1, methodId: 1 },
+      { section: 'resolve', method: 'owner', sectionId: 0, methodId: 0 },
+      { section: 'resolve', method: 'changes', sectionId: 0, methodId: 1 },
+      { section: 'frame', method: 'status', sectionId: 1, methodId: 0 },
+      { section: 'frame', method: 'reload', sectionId: 1, methodId: 1 },
     ]);
-    expect(schema.traits.resolve.owner).toBe(owner);
+    expect(schema.sections.resolve.owner).toBe(owner);
     expect(schema.version).toBe(2);
   });
 
-  it('As a schema author, I change my traits record after defining the schema and its places stay as they were', () => {
+  it('As a schema author, I change my sections record after defining the schema and its places stay as they were', () => {
     // Given
-    const traits: Record<string, Record<string, typeof owner | typeof status | typeof reload>> = {
+    const sections: Record<string, Record<string, typeof owner | typeof status | typeof reload>> = {
       resolve: { owner },
       frame: { status },
     };
-    const schema = defineSchema({ version: 0, hello: _void, traits });
+    const schema = defineSchema({ version: 0, hello: _void, sections });
 
     // When
-    delete traits['resolve'];
-    traits['later'] = { owner: reload };
+    delete sections['resolve'];
+    sections['later'] = { owner: reload };
 
     // Then
-    expect(schema.addressOf(owner)).toEqual({ trait: 'resolve', method: 'owner', traitId: 0, methodId: 0 });
+    expect(schema.addressOf(owner)).toEqual({ section: 'resolve', method: 'owner', sectionId: 0, methodId: 0 });
     expect(() => schema.addressOf(reload)).toThrow('The method is not one of this schema');
     expect(schema.methodAt(0, 0)).toBe(owner);
     expect(schema.methodAt(2, 0)).toBeUndefined();
   });
 
-  it('As a schema author, I am refused a schema with too many traits or methods, or a version that is not 0 to 255', () => {
+  it('As a schema author, I am refused a schema with too many sections or methods, or a version that is not 0 to 255', () => {
     // Given
-    const fits = { version: 255, hello: _void, traits: traitsOf(256, 1) };
-    const fitsMethods = { version: 0, hello: _void, traits: traitsOf(1, 256) };
+    const fits = { version: 255, hello: _void, sections: sectionsOf(256, 1) };
+    const fitsMethods = { version: 0, hello: _void, sections: sectionsOf(1, 256) };
 
     // When
-    const tooManyTraits = () => defineSchema({ version: 0, hello: _void, traits: traitsOf(257, 1) });
-    const tooManyMethods = () => defineSchema({ version: 0, hello: _void, traits: traitsOf(1, 257) });
-    const versionOver = () => defineSchema({ version: 256, hello: _void, traits: {} });
-    const versionUnder = () => defineSchema({ version: -1, hello: _void, traits: {} });
-    const versionFraction = () => defineSchema({ version: 1.5, hello: _void, traits: {} });
+    const tooManySections = () => defineSchema({ version: 0, hello: _void, sections: sectionsOf(257, 1) });
+    const tooManyMethods = () => defineSchema({ version: 0, hello: _void, sections: sectionsOf(1, 257) });
+    const versionOver = () => defineSchema({ version: 256, hello: _void, sections: {} });
+    const versionUnder = () => defineSchema({ version: -1, hello: _void, sections: {} });
+    const versionFraction = () => defineSchema({ version: 1.5, hello: _void, sections: {} });
 
     // Then
     expect(() => defineSchema(fits)).not.toThrow();
     expect(() => defineSchema(fitsMethods)).not.toThrow();
-    expect(tooManyTraits).toThrow('at most 256 traits, got 257');
-    expect(tooManyMethods).toThrow('trait "trait0" has at most 256 methods, got 257');
+    expect(tooManySections).toThrow('at most 256 sections, got 257');
+    expect(tooManyMethods).toThrow('section "section0" has at most 256 methods, got 257');
     expect(versionOver).toThrow('version must be an integer from 0 to 255, got 256');
     expect(versionUnder).toThrow('got -1');
     expect(versionFraction).toThrow('got 1.5');
@@ -110,10 +110,10 @@ describe('schema', () => {
 
   it('As a schema author, I am refused a method placed twice, since the transport finds a method by itself', () => {
     // Given
-    const traits = { resolve: { owner }, frame: { reload: owner } };
+    const sections = { resolve: { owner }, frame: { reload: owner } };
 
     // When
-    const twice = () => defineSchema({ version: 0, hello: _void, traits });
+    const twice = () => defineSchema({ version: 0, hello: _void, sections });
 
     // Then
     expect(twice).toThrow('frame.reload is the method already at resolve.owner');

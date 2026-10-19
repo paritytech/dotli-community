@@ -67,7 +67,7 @@ export function workerEndError(end: WorkerEnd): Error {
   }
   return end.outcome.success
     ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED)
-    : failureOf(protocolSchema.traits.frame.status, end.outcome.value);
+    : failureOf(protocolSchema.sections.frame.status, end.outcome.value);
 }
 
 export interface SharedWorkerLinkDeps {
@@ -102,7 +102,7 @@ export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => v
     ended = end;
     ends.emit(end);
   };
-  transport.subscribe(protocolSchema.traits.frame.status, undefined, {
+  transport.subscribe(protocolSchema.sections.frame.status, undefined, {
     receive: onReady,
     interrupt: outcome => {
       finish({ kind: 'interrupt', outcome });
@@ -143,12 +143,12 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     log.error('[dot.li protocol] Worker heartbeat failed', error);
     m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
   };
-  const stopBeats = transport.subscribe(protocolSchema.traits.frame.beat, undefined, {
+  const stopBeats = transport.subscribe(protocolSchema.sections.frame.beat, undefined, {
     receive: () => {
-      void transport.request(protocolSchema.traits.frame.heartbeat, undefined).then(
+      void transport.request(protocolSchema.sections.frame.heartbeat, undefined).then(
         outcome => {
           if (!outcome.success) {
-            failed(failureOf(protocolSchema.traits.frame.heartbeat, outcome.value));
+            failed(failureOf(protocolSchema.sections.frame.heartbeat, outcome.value));
           }
         },
         (error: unknown) => {
@@ -275,7 +275,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   return { transport, status, ready: waited };
 }
 
-const { frame, resolve, chain } = protocolSchema.traits;
+const { frame, resolve, chain } = protocolSchema.sections;
 
 /**
  * Answers with the worker's own answer. A link that closed under the call fails it with the closing error, under the

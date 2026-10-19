@@ -24,9 +24,9 @@ flowchart TB
 - The page speaks to the frame through the transport library, over the protocol schema. The library owns the framing,
   the handshake, the queue, the request and subscription ids and the decoding. This package owns the schema, the frame's
   lifecycle, the facades and how every outcome reaches host code.
-- The protocol schema is where the wire types come from. It groups the methods into traits: the frame, name resolution,
-  the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and its
-  payloads, and each handshake's hello has a resolution id field, null from the host and the page load's id from the
+- The protocol schema is where the wire types come from. It groups the methods into sections: the frame, name
+  resolution, the shared store, the local wallet and chains. Each method declares its kind (request or subscription) and
+  its payloads, and each handshake's hello has a resolution id field, null from the host and the page load's id from the
   iframe toward the SharedWorker. Each payload is typed by its method, so a payload, answer or value that does not fit
   its method fails to compile. Its value codecs are composed from scale-ts: a string union is an enum of empty variants,
   an optional field is an `Option`, a whole number of any size is a compact, and a record crosses as entries.
@@ -35,7 +35,7 @@ flowchart TB
   or a stopped light client. A telemetry event past the limits, such as the peer count limit, fails to decode, so it is
   refused as malformed.
 - What the host knows of each method beyond its wire types sits in one policy record: its name for the metrics, the
-  trail and the errors (the flat name it had before the methods were grouped into traits, such as `resolveOwner` or
+  trail and the errors (the flat name it had before the methods were grouped into sections, such as `resolveOwner` or
   `authStorageRead`, so dashboards read on unchanged), its budget, whether a page load's trail names it, whether each
   call is timed, and whether the frame answers it once it listens, before its light client is ready.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
@@ -137,10 +137,10 @@ a call that is no longer waiting is ignored without a count.
 - Shared store: `SharedStoreStatus`, `SHARED_CORE_SESSION_KEY`, the key helpers `buildSharedAuthStorageKey`,
   `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the request guards
   `isSharedAuthOriginAllowed`, `isSharedAuthSiteId` and `isSharedModeRequestMethod`, which tells the mode store's
-  methods from the rest of the storage trait.
+  methods from the rest of the storage section.
 - Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
   the entropy and the cached identity).
-- The protocol as a transport schema: `protocolSchema`, whose `traits` `frame`, `resolve`, `storage`, `wallet` and
+- The protocol as a transport schema: `protocolSchema`, whose `sections` `frame`, `resolve`, `storage`, `wallet` and
   `chain` hold the method objects every call and handler is made with, with the resolution hello and the typed failures
   of the frame status, the resolve methods and chain connections. `ProtocolSchema`, `ProtocolHello`, `ProtocolTransport`
   and `ProtocolContext` type a transport over it and its handlers' context. `ProtocolServing` is the serving half of a

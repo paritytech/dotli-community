@@ -13,7 +13,7 @@ import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
-const { resolve, storage, wallet } = protocolSchema.traits;
+const { resolve, storage, wallet } = protocolSchema.sections;
 
 /** The metrics Sentry receives, recorded for each test. */
 let metrics: RecordingSentry;

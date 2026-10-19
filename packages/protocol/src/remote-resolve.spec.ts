@@ -11,7 +11,7 @@ import { createFrameRpc } from './rpc.js';
 import { createFakeFrame } from './frame.fake.js';
 import { protocolSchema, type ProtocolHandler, type ProtocolTransport } from './schema.js';
 
-const { dotName } = protocolSchema.traits.resolve;
+const { dotName } = protocolSchema.sections.resolve;
 
 /** A frame app that resolves names with `handler`. */
 function resolving(handler: ProtocolHandler<typeof dotName>): (serving: ProtocolTransport) => void {

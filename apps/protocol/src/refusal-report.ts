@@ -45,10 +45,10 @@ export function createRefusalReporter({ warn, count }: RefusalReportDeps): (refu
 
 function routeOf(method: AnyMethod): FrameRoute {
   const address = protocolSchema.addressOf(method);
-  if (address.trait === 'storage') {
+  if (address.section === 'storage') {
     return isSharedModeRequestMethod(address.method) ? 'mode' : 'auth';
   }
-  return address.trait === 'wallet' ? 'wallet' : 'chain';
+  return address.section === 'wallet' ? 'wallet' : 'chain';
 }
 
 /**

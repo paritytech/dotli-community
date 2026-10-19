@@ -34,7 +34,7 @@ export type {
   Subscription,
   SubscriptionMessage,
   SubscriptionTypes,
-  Traits,
+  Sections,
   Variant,
 } from './schema.js';
 export { createTransport } from './transport.js';

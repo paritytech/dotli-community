@@ -48,7 +48,7 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { reportRefusals } from './refusal-report.js';
 import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
 
-const { frame, resolve, chain } = protocolSchema.traits;
+const { frame, resolve, chain } = protocolSchema.sections;
 
 /** A tab's port, as much of it as the worker uses. A `MessagePort` is one. */
 export interface WorkerPort extends PortLike {

@@ -38,7 +38,7 @@ function createIssueReporter(side: WireSide, count: typeof m.count): (issue: Wir
       }
       case 'post_failed': {
         const { error, call } = issue;
-        const method = call === undefined ? null : callNameAt(call.trait, call.method);
+        const method = call === undefined ? null : callNameAt(call.section, call.method);
         captureException(error, {
           flow: 'protocol',
           step: 'serve_post',

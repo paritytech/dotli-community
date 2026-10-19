@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The protocol's methods as traits of a transport schema. New traits and methods go at the end, and any change to them
+// The protocol's methods as sections of a transport schema. New sections and methods go at the end, and any change to them
 // bumps the version.
 
 import { Bytes, Enum, Struct, _void, str, type CodecType } from 'scale-ts';
@@ -62,7 +62,7 @@ export type LocalWalletRead = CodecType<typeof localWalletRead>;
 export const protocolSchema = defineSchema({
   version: 4,
   hello: resolutionHello,
-  traits: {
+  sections: {
     frame: {
       status: subscription({ start: _void, receive: _void, interrupt: frameFailure }),
       heartbeat: request({ request: _void, response: _void }),
@@ -132,13 +132,13 @@ export type ProtocolTransport = Transport<ProtocolHello>;
 export type ProtocolContext = CallContext<ProtocolHello>;
 
 /** Why the frame's status ended. */
-export type FrameFailure = DomainError<typeof protocolSchema.traits.frame.status>;
+export type FrameFailure = DomainError<typeof protocolSchema.sections.frame.status>;
 /** The remote errors name resolution and chain connections fail with. */
-export type RemoteFailure = DomainError<typeof protocolSchema.traits.resolve.owner>;
+export type RemoteFailure = DomainError<typeof protocolSchema.sections.resolve.owner>;
 /** A shared auth write a sibling tab made. */
-export type SharedAuthChange = MethodTypes<typeof protocolSchema.traits.storage.authChanges>['receive'];
+export type SharedAuthChange = MethodTypes<typeof protocolSchema.sections.storage.authChanges>['receive'];
 /** Every domain error the schema declares, and the empty one of a method that declares none. */
-export type DomainFailure = DomainError<MethodOf<ProtocolSchema['traits']>>;
+export type DomainFailure = DomainError<MethodOf<ProtocolSchema['sections']>>;
 
 /** What serves `method` of the protocol. */
 export type ProtocolHandler<M> =

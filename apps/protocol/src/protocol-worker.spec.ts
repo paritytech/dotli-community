@@ -36,7 +36,7 @@ import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { connectSharedWorker, registerWorkerRelay, type SharedWorkerLink } from './shared-worker-link.js';
 import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
 
-const { frame, chain, resolve: names } = protocolSchema.traits;
+const { frame, chain, resolve: names } = protocolSchema.sections;
 
 type StatusRecording = Recording<MethodTypes<typeof frame.status>['receive'], DomainError<typeof frame.status>>;
 type ChainRecording = Recording<MethodTypes<typeof chain.connect>['receive'], DomainError<typeof chain.connect>>;
