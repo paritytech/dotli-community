@@ -238,9 +238,9 @@ describe('grantedDevicePermissions', () => {
 });
 
 describe('allowAttribute', () => {
-  it('As a product, my iframe always receives clipboard-write access', async () => {
+  it('As a product, my iframe always receives clipboard-write and screen sharing access', async () => {
     // When / Then
-    expect(await permissions.allowAttribute('myapp')).toBe('clipboard-write');
+    expect(await permissions.allowAttribute('myapp')).toBe('clipboard-write; display-capture');
   });
 
   it('As a product, my granted device permissions appear in iframe policy', async () => {
@@ -253,7 +253,7 @@ describe('allowAttribute', () => {
     const directives = (await permissions.allowAttribute('myapp')).split('; ').sort();
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'microphone']);
+    expect(directives).toEqual(['camera', 'clipboard-write', 'display-capture', 'microphone']);
   });
 
   it('As a product, denied and submit permissions stay out of iframe policy', async () => {
@@ -265,7 +265,7 @@ describe('allowAttribute', () => {
     const allow = await permissions.allowAttribute('myapp');
 
     // Then
-    expect(allow).toBe('clipboard-write');
+    expect(allow).toBe('clipboard-write; display-capture');
   });
 });
 
