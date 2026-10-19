@@ -18,19 +18,19 @@ export interface MessageTarget {
 }
 
 export interface Provider {
+  /** Whether this context has a peer to talk to. A transport over a provider that has none closes at once. */
+  isCorrectEnvironment(): boolean;
   /**
-   * Transfers the buffer to the peer, so the caller must not reuse it. Throws after `dispose`. It never delivers to its
-   * own listeners before it returns, the peer's reply included, as `postMessage` and message ports do, so a caller may
-   * record what it posted once `post` returns.
+   * Transfers the message's bytes to the peer, so the caller must not reuse the message. Throws after `dispose`. It
+   * never delivers to its own subscribers before it returns, the peer's reply included, as `postMessage` and message
+   * ports do, so a caller may record what it posted once `postMessage` returns.
    */
-  post(data: ArrayBuffer): void;
+  postMessage(message: Uint8Array): void;
   /**
-   * Hears each message that arrives while the listener is subscribed. A provider holds nothing for a listener yet to
+   * Hears each message that arrives while the callback is subscribed. A provider holds nothing for a callback yet to
    * come, so its owner subscribes in the turn that creates it. Does nothing after `dispose`.
    */
-  subscribe(listener: (data: ArrayBuffer) => void): () => void;
-  /** The origin the peer is known by, or null when it has none or none is admitted yet. */
-  peerOrigin(): string | null;
+  subscribe(callback: (message: Uint8Array) => void): () => void;
   dispose(): void;
 }
 
@@ -50,7 +50,10 @@ export interface PortLike {
 export interface WindowProviderDeps {
   listen: MessageTarget;
   peer: () => WindowLike | null;
-  /** A fixed origin, or a predicate whose first origin to send bytes is locked for the rest of the provider's life. */
+  /**
+   * A fixed origin, or a predicate whose first origin to send bytes is locked for the rest of the provider's life. Only
+   * bytes from the admitted origin are delivered, so this is the trust boundary of every method served over it.
+   */
   origin: string | ((origin: string) => boolean);
   /** Called for data from the admitted peer that is not an `ArrayBuffer`. */
   onNotBytes?: () => void;
@@ -63,33 +66,33 @@ export interface WindowProviderDeps {
 
 /** A provider's listeners, which hear nothing once it is disposed. */
 export interface Listeners {
-  deliver: (data: ArrayBuffer) => void;
-  subscribe: (listener: (data: ArrayBuffer) => void) => () => void;
+  deliver: (message: Uint8Array) => void;
+  subscribe: (callback: (message: Uint8Array) => void) => () => void;
   /** Drops every listener. Returns false when already disposed. */
   dispose: () => boolean;
   disposed: () => boolean;
 }
 
 export function createListeners(): Listeners {
-  const listeners = new Set<(data: ArrayBuffer) => void>();
+  const listeners = new Set<(message: Uint8Array) => void>();
   let disposed = false;
   return {
-    deliver: data => {
+    deliver: message => {
       for (const listener of [...listeners]) {
         // A listener may dispose the provider, after which the rest hear nothing.
         if (disposed) {
           return;
         }
-        listener(data);
+        listener(message);
       }
     },
-    subscribe: listener => {
+    subscribe: callback => {
       if (disposed) {
         return () => undefined;
       }
-      listeners.add(listener);
+      listeners.add(callback);
       return () => {
-        listeners.delete(listener);
+        listeners.delete(callback);
       };
     },
     dispose: () => {
@@ -104,7 +107,21 @@ export function createListeners(): Listeners {
   };
 }
 
-/** Hears its peer from the moment it is created, and delivers only to listeners subscribed by then. */
+/**
+ * The message's bytes in a buffer that holds only them, so transferring it moves nothing else. The message's own buffer
+ * when it fits exactly, and a copy of a view into a larger one.
+ */
+export function transferableBuffer(message: Uint8Array): ArrayBuffer {
+  const { buffer } = message;
+  return buffer instanceof ArrayBuffer && message.byteOffset === 0 && message.byteLength === buffer.byteLength
+    ? buffer
+    : message.slice().buffer;
+}
+
+/**
+ * Hears its peer from the moment it is created, and delivers only to listeners subscribed by then. Between documents
+ * it posts and accepts an `ArrayBuffer`.
+ */
 export function createWindowProvider(deps: WindowProviderDeps): Provider {
   const { listen, peer, origin, onNotBytes, onRefusedOrigin } = deps;
   const listeners = createListeners();
@@ -129,12 +146,17 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
     }
     // Only bytes lock the origin, so an object from an allowed origin leaves the lock to the peer that speaks the wire.
     locked ??= event.origin;
-    listeners.deliver(data);
+    listeners.deliver(new Uint8Array(data));
   };
   listen.addEventListener('message', onMessage);
 
   return {
-    post(data) {
+    isCorrectEnvironment() {
+      // A page with no parent is its own parent, as a frame app opened at the top is, and has no peer to talk to.
+      const self: object = listen;
+      return peer() !== self;
+    },
+    postMessage(message) {
       if (listeners.disposed()) {
         throw new Error('The provider is disposed');
       }
@@ -145,10 +167,10 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
       if (locked === null) {
         throw new Error('No peer origin is admitted yet');
       }
-      target.postMessage(data, locked, [data]);
+      const buffer = transferableBuffer(message);
+      target.postMessage(buffer, locked, [buffer]);
     },
     subscribe: listeners.subscribe,
-    peerOrigin: () => locked,
     dispose() {
       if (listeners.dispose()) {
         listen.removeEventListener('message', onMessage);
@@ -162,28 +184,32 @@ interface PortProviderOptions {
   closeOnDispose?: boolean;
 }
 
-/** Starts the port, so it hears from the moment it is created and delivers only to listeners subscribed by then. */
+/**
+ * Starts the port, so it hears from the moment it is created and delivers only to listeners subscribed by then. It
+ * posts and accepts an `ArrayBuffer` on the port.
+ */
 export function createPortProvider(port: PortLike, options: PortProviderOptions = {}): Provider {
   const closeOnDispose = options.closeOnDispose ?? true;
   const listeners = createListeners();
 
   const onMessage = (event: { readonly data: unknown }): void => {
     if (event.data instanceof ArrayBuffer) {
-      listeners.deliver(event.data);
+      listeners.deliver(new Uint8Array(event.data));
     }
   };
   port.addEventListener('message', onMessage);
   port.start();
 
   return {
-    post(data) {
+    isCorrectEnvironment: () => true,
+    postMessage(message) {
       if (listeners.disposed()) {
         throw new Error('The provider is disposed');
       }
-      port.postMessage(data, [data]);
+      const buffer = transferableBuffer(message);
+      port.postMessage(buffer, [buffer]);
     },
     subscribe: listeners.subscribe,
-    peerOrigin: () => null,
     dispose() {
       if (!listeners.dispose()) {
         return;

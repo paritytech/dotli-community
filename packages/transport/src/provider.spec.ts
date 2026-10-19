@@ -69,7 +69,7 @@ describe('createWindowProvider', () => {
     listen.dispatchEvent(messageFrom(frame, 'https://peer.example', bytes));
 
     // Then
-    expect(heard).toHaveBeenCalledExactlyOnceWith(bytes);
+    expect(heard).toHaveBeenCalledExactlyOnceWith(new Uint8Array(bytes));
   });
 
   it("As an embedded page, I lock to my parent's first allowed origin and answer only there", () => {
@@ -87,11 +87,10 @@ describe('createWindowProvider', () => {
     // When
     listen.dispatchEvent(messageFrom(parent, 'https://a.peer.example', new ArrayBuffer(1)));
     listen.dispatchEvent(messageFrom(parent, 'https://b.peer.example', new ArrayBuffer(2)));
-    provider.post(new ArrayBuffer(3));
+    provider.postMessage(new Uint8Array(3));
 
     // Then
     expect(heard).toHaveBeenCalledTimes(1);
-    expect(provider.peerOrigin()).toBe('https://a.peer.example');
     expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://a.peer.example']);
   });
 
@@ -115,14 +114,17 @@ describe('createWindowProvider', () => {
 
     // Then
     expect(onNotBytes).toHaveBeenCalledOnce();
-    expect(provider.peerOrigin()).toBeNull();
+    expect(() => {
+      provider.postMessage(new Uint8Array(1));
+    }).toThrow();
 
     // When
     listen.dispatchEvent(messageFrom(parent, 'https://b.peer.example', bytes));
+    provider.postMessage(new Uint8Array(2));
 
     // Then
-    expect(heard).toHaveBeenCalledExactlyOnceWith(bytes);
-    expect(provider.peerOrigin()).toBe('https://b.peer.example');
+    expect(heard).toHaveBeenCalledExactlyOnceWith(new Uint8Array(bytes));
+    expect(parent.posted.map(p => p.targetOrigin)).toEqual(['https://b.peer.example']);
   });
 
   it('As an embedded page, I refuse to post before any parent origin is admitted', () => {
@@ -131,9 +133,8 @@ describe('createWindowProvider', () => {
     const provider = createWindowProvider({ listen: createTarget(), peer: () => parent, origin: () => true });
 
     // When / Then
-    expect(provider.peerOrigin()).toBeNull();
     expect(() => {
-      provider.post(new ArrayBuffer(1));
+      provider.postMessage(new Uint8Array(1));
     }).toThrow();
   });
 
@@ -167,6 +168,35 @@ describe('createWindowProvider', () => {
 
     // Then
     expect(onNotBytes).not.toHaveBeenCalled();
+  });
+
+  it('As an embedded page, I never deliver bytes from an origin my predicate refuses, before or after my lock', () => {
+    // Given
+    const listen = createTarget();
+    const parent = createFakeWindow();
+    const provider = createWindowProvider({
+      listen,
+      peer: () => parent,
+      origin: origin => origin.endsWith('.peer.example'),
+    });
+    const heard = vi.fn();
+    provider.subscribe(heard);
+
+    // When my parent speaks the wire from a refused origin
+    listen.dispatchEvent(messageFrom(parent, 'https://evil.example', Uint8Array.of(1).buffer));
+
+    // Then nothing is delivered and nothing is locked
+    expect(heard).not.toHaveBeenCalled();
+    expect(() => {
+      provider.postMessage(new Uint8Array(1));
+    }).toThrow();
+
+    // When my parent locks an allowed origin and then speaks from a refused one
+    listen.dispatchEvent(messageFrom(parent, 'https://a.peer.example', Uint8Array.of(2).buffer));
+    listen.dispatchEvent(messageFrom(parent, 'https://evil.example', Uint8Array.of(3).buffer));
+
+    // Then only the bytes from the allowed origin are delivered
+    expect(heard).toHaveBeenCalledExactlyOnceWith(Uint8Array.of(2));
   });
 
   it('As an embedded page, I report bytes from any window at an origin I refuse, before or after my lock, and nothing else', () => {
@@ -232,7 +262,7 @@ describe('createWindowProvider', () => {
 
     // When / Then
     expect(() => {
-      provider.post(new ArrayBuffer(1));
+      provider.postMessage(new Uint8Array(1));
     }).toThrow();
   });
 
@@ -244,13 +274,48 @@ describe('createWindowProvider', () => {
       peer: () => frame,
       origin: 'https://peer.example',
     });
-    const data = new ArrayBuffer(4);
+    const data = new Uint8Array(4);
+    const { buffer } = data;
 
     // When
-    provider.post(data);
+    provider.postMessage(data);
 
     // Then
-    expect(frame.posted).toEqual([{ message: data, targetOrigin: 'https://peer.example', transfer: [data] }]);
+    expect(frame.posted).toEqual([{ message: buffer, targetOrigin: 'https://peer.example', transfer: [buffer] }]);
+  });
+
+  it('As either side, I post a view into a larger buffer as a copy of its bytes and leave the buffer whole', () => {
+    // Given
+    const frame = createFakeWindow();
+    const provider = createWindowProvider({
+      listen: createTarget(),
+      peer: () => frame,
+      origin: 'https://peer.example',
+    });
+    const whole = Uint8Array.of(1, 2, 3, 4);
+
+    // When
+    provider.postMessage(whole.subarray(1, 3));
+
+    // Then
+    const [posted] = frame.posted;
+    expect(posted?.message).not.toBe(whole.buffer);
+    expect(posted?.message).toEqual(Uint8Array.of(2, 3).buffer);
+    expect(posted?.transfer).toEqual([posted?.message]);
+  });
+
+  it('As a frame app opened at the top, I am my own parent and not in a correct environment', () => {
+    // Given
+    const page = Object.assign(createTarget(), createFakeWindow());
+    const parent = createFakeWindow();
+
+    // When
+    const atTop = createWindowProvider({ listen: page, peer: () => page, origin: () => true });
+    const framed = createWindowProvider({ listen: page, peer: () => parent, origin: () => true });
+
+    // Then
+    expect(atTop.isCorrectEnvironment()).toBe(false);
+    expect(framed.isCorrectEnvironment()).toBe(true);
   });
 
   it('As either side, I hear nothing after I dispose and cannot post', () => {
@@ -268,7 +333,7 @@ describe('createWindowProvider', () => {
     // Then
     expect(heard).not.toHaveBeenCalled();
     expect(() => {
-      provider.post(new ArrayBuffer(1));
+      provider.postMessage(new Uint8Array(1));
     }).toThrow();
   });
 
@@ -326,21 +391,21 @@ describe('createWindowProvider', () => {
 });
 
 describe('createPortProvider', () => {
-  it('As a port owner, I exchange bytes over a port and my peer origin is unknown', async () => {
+  it('As a port owner, I exchange bytes over a port in a correct environment and transfer them', async () => {
     // Given
     const { port1, port2 } = new MessageChannel();
     const left = createPortProvider(port1);
     const right = createPortProvider(port2);
-    const received = new Promise<ArrayBuffer>(resolve => right.subscribe(resolve));
-    const data = new Uint8Array([1, 2, 3]).buffer;
+    const received = new Promise<Uint8Array>(resolve => right.subscribe(resolve));
+    const data = new Uint8Array([1, 2, 3]);
 
     // When
-    left.post(data);
+    left.postMessage(data);
 
     // Then
-    expect([...new Uint8Array(await received)]).toEqual([1, 2, 3]);
+    expect([...(await received)]).toEqual([1, 2, 3]);
     expect(data.byteLength).toBe(0);
-    expect(left.peerOrigin()).toBeNull();
+    expect(left.isCorrectEnvironment()).toBe(true);
 
     left.dispose();
     right.dispose();
@@ -361,7 +426,7 @@ describe('createPortProvider', () => {
     provider.subscribe(sibling);
 
     // When
-    sender.post(new ArrayBuffer(1));
+    sender.postMessage(new Uint8Array(1));
     await disposed;
 
     // Then
@@ -380,7 +445,7 @@ describe('createPortProvider', () => {
 
     // Then
     expect(() => {
-      provider.post(new ArrayBuffer(1));
+      provider.postMessage(new Uint8Array(1));
     }).toThrow();
   });
 
@@ -407,14 +472,14 @@ describe('createProviderPair', () => {
   it('As a test, I see a reused buffer fail as in a browser', () => {
     // Given
     const { left } = createProviderPair();
-    const data = new ArrayBuffer(8);
+    const data = new Uint8Array(8);
 
     // When
-    left.post(data);
+    left.postMessage(data);
 
     // Then
     expect(() => {
-      left.post(data);
+      left.postMessage(data);
     }).toThrow();
   });
 
@@ -431,7 +496,7 @@ describe('createProviderPair', () => {
     right.subscribe(sibling);
 
     // When
-    left.post(new ArrayBuffer(1));
+    left.postMessage(new Uint8Array(1));
     await disposed;
 
     // Then
@@ -442,9 +507,9 @@ describe('createProviderPair', () => {
     // Given
     const { left, right } = createProviderPair();
     const heard = vi.fn();
-    const arrived = new Promise<ArrayBuffer>(resolve => right.subscribe(resolve));
-    right.post(new ArrayBuffer(1));
-    left.post(new ArrayBuffer(2));
+    const arrived = new Promise<Uint8Array>(resolve => right.subscribe(resolve));
+    right.postMessage(new Uint8Array(1));
+    left.postMessage(new Uint8Array(2));
 
     // When
     left.dispose();
@@ -455,20 +520,21 @@ describe('createProviderPair', () => {
     expect(heard).not.toHaveBeenCalled();
   });
 
-  it('As a test, I get bytes in order on a microtask', async () => {
+  it('As a test, I get bytes in order on a microtask, in a correct environment', async () => {
     // Given
     const { left, right, delivered } = createProviderPair();
     const heard: number[] = [];
-    right.subscribe(data => heard.push(data.byteLength));
+    right.subscribe(message => heard.push(message.byteLength));
 
     // When
-    left.post(new ArrayBuffer(1));
-    left.post(new ArrayBuffer(2));
+    left.postMessage(new Uint8Array(1));
+    left.postMessage(new Uint8Array(2));
 
     // Then
     expect(heard).toEqual([]);
     await Promise.resolve();
     expect(heard).toEqual([1, 2]);
     expect(delivered).toHaveLength(2);
+    expect([left.isCorrectEnvironment(), right.isCorrectEnvironment()]).toEqual([true, true]);
   });
 });

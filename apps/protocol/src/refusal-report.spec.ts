@@ -5,11 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { spans as S, type m } from '@dotli/metrics';
 import { protocolSchema, type CallName, type RemoteFailure } from '@dotli/protocol';
-import { memoryStorage } from '@dotli/shared/testing';
 import { denied, domain, err, hostFailure, ok, type CallError } from '@dotli/transport';
 import { createRefusalReporter, reportRefusals, type FrameRefusal, type FrameRoute } from './refusal-report.js';
-import { createSharedStoreHandler } from './shared-store-handler.js';
-import { closeHostLinks, linkHost, PRODUCT_ORIGIN, record } from './testing/host-link.js';
+import { closeHostLinks, linkHost, record } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
@@ -85,12 +83,10 @@ describe('the protocol frame refusal report', () => {
 describe('the reporting transport', () => {
   it('As a dotli operator, I see a store call refused by its handler reported as refused, and the host hears it denied', async () => {
     // Given
-    const link = linkHost(PRODUCT_ORIGIN);
+    const link = linkHost();
     const refusals: FrameRefusal[] = [];
-    const pageStorage = memoryStorage();
-    createSharedStoreHandler(
-      reportRefusals(link.serving, refusal => refusals.push(refusal)),
-      { storage: () => pageStorage, channel: null },
+    reportRefusals(link.serving, refusal => refusals.push(refusal)).handleRequest(storage.modeRead, () =>
+      err(denied()),
     );
 
     // When

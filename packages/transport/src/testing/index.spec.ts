@@ -8,7 +8,7 @@ import { err, ok, unsupported } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
 import { defineSchema, request, subscription } from '../schema.js';
 import { createTransport } from '../transport.js';
-import { encodeFrame, frame } from '../wire.js';
+import { frame } from '../wire.js';
 import { FrameRefusedError, messagesOf, readFrame, recordMessage } from './index.js';
 
 const schema = defineSchema({
@@ -45,17 +45,17 @@ function wire() {
   return { opener, accepter, delivered };
 }
 
-const record = (data: ArrayBuffer) => recordMessage(vaultSchema, data);
+const record = (data: Uint8Array) => recordMessage(vaultSchema, data);
 
 describe('readFrame', () => {
   it("As a test, I read a recorded call by its method's names and decoded message, and decode it typed with the method", () => {
     // Given
     const data = [
-      encodeFrame(read.frame, {
+      read.frame.enc({
         id: 1,
         body: { tag: 'call', value: { sectionId: 0, methodId: 0, message: { tag: 'request', value: 'a note' } } },
       }),
-      encodeFrame(watch.frame, {
+      watch.frame.enc({
         id: 2,
         body: { tag: 'call', value: { sectionId: 0, methodId: 1, message: { tag: 'stop', value: undefined } } },
       }),
@@ -93,9 +93,9 @@ describe('readFrame', () => {
   it("As a test, I read the library's own frames as they are", () => {
     // Given
     const data = [
-      encodeFrame(frame, { id: 3, body: { tag: 'open', value: { version: 2, hello: str.enc('opener') } } }),
-      encodeFrame(frame, { id: 3, body: { tag: 'accept', value: err({ version: 5 }) } }),
-      encodeFrame(frame, { id: 4, body: { tag: 'failed', value: unsupported() } }),
+      frame.enc({ id: 3, body: { tag: 'open', value: { version: 2, hello: str.enc('opener') } } }),
+      frame.enc({ id: 3, body: { tag: 'accept', value: err({ version: 5 }) } }),
+      frame.enc({ id: 4, body: { tag: 'failed', value: unsupported() } }),
     ];
 
     // When
@@ -111,7 +111,7 @@ describe('readFrame', () => {
 
   it('As a test, I read a call to a method the schema lacks and get its numeric ids with no decoded message', () => {
     // Given
-    const data = encodeFrame(frame, {
+    const data = frame.enc({
       id: 5,
       body: { tag: 'call', value: { sectionId: 9, methodId: 1, message: Uint8Array.of(2, 0xde) } },
     });
@@ -132,7 +132,7 @@ describe('readFrame', () => {
 
   it('As a test, I read recorded data that is no frame and am told why, as a refusal I can tell apart', () => {
     // Given
-    const data = Uint8Array.of(1, 0, 0).buffer;
+    const data = Uint8Array.of(1, 0, 0);
 
     // When
     const read = () => readFrame(schema, data);
@@ -185,7 +185,7 @@ describe('recordMessage', () => {
     // Given a handshake both sides heard, and bytes too short to hold a frame
     const { opener, delivered } = wire();
     await opener.whenConnected();
-    const data = [...delivered, new Uint8Array([1, 2]).buffer];
+    const data = [...delivered, Uint8Array.of(1, 2)];
 
     // When
     const recorded = data.map(record);

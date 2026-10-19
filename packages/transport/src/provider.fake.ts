@@ -1,24 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createListeners, type Listeners, type Provider } from './provider.js';
+import { createListeners, transferableBuffer, type Listeners, type Provider } from './provider.js';
 
 /**
  * Two connected providers that deliver on a microtask, in order, and detach each buffer like a browser transfer. As a
  * browser port does, a message posted before its sender closes still arrives, and nothing reaches a closed receiver,
  * not even its other listeners once one of them closes it.
  */
-export function createProviderPair(): { left: Provider; right: Provider; delivered: ArrayBuffer[] } {
-  const delivered: ArrayBuffer[] = [];
+export function createProviderPair(): { left: Provider; right: Provider; delivered: Uint8Array[] } {
+  const delivered: Uint8Array[] = [];
   const leftSide = createListeners();
   const rightSide = createListeners();
 
   const createSide = (own: Listeners, peer: Listeners): Provider => ({
-    post(data) {
+    isCorrectEnvironment: () => true,
+    postMessage(message) {
       if (own.disposed()) {
         throw new Error('The provider is disposed');
       }
-      const moved = structuredClone(data, { transfer: [data] });
+      const buffer = transferableBuffer(message);
+      const moved = new Uint8Array(structuredClone(buffer, { transfer: [buffer] }));
       queueMicrotask(() => {
         if (peer.disposed()) {
           return;
@@ -28,7 +30,6 @@ export function createProviderPair(): { left: Provider; right: Provider; deliver
       });
     },
     subscribe: own.subscribe,
-    peerOrigin: () => null,
     dispose() {
       own.dispose();
     },

@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Serves the shared auth and mode stores and the local wallet to host pages, and other tabs' auth writes to the host
-// pages that subscribe. Every store keeps the shared-auth trust boundary: host and landing origins of this root domain,
-// never product origins.
+// pages that subscribe. The transport they are served on holds the shared-auth trust boundary: host and landing origins
+// of this root domain, never product origins.
 
 import { captureException } from '@dotli/metrics';
 import { SITE_ID, type SiteId } from '@dotli/config';
 import {
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
-  isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
   isValidSharedAuthKey,
   isValidSharedModeKey,
   protocolSchema,
   type LocalWalletRead,
-  type ProtocolContext,
   type SharedAuthChange,
   type ProtocolServing,
 } from '@dotli/protocol';
@@ -28,7 +26,7 @@ import {
   updateLocalWalletIdentity,
   type LocalWalletStore,
 } from '@dotli/storage';
-import { denied, err, ok, type Failure, type ResultPayload, type Sink } from '@dotli/transport';
+import { ok, type Failure, type ResultPayload, type Sink } from '@dotli/transport';
 
 /** Each tab's iframe tells the other tabs' iframes of its shared-auth writes over this channel. */
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
@@ -68,23 +66,11 @@ export interface SharedStoreHandler {
   stop: () => void;
 }
 
-// Holds the shared-auth trust boundary on any transport these stores are served over.
-function isOriginAllowed(context: ProtocolContext): boolean {
-  return context.origin !== null && isSharedAuthOriginAllowed(context.origin);
-}
-
-/**
- * Answers with what `run` returns for the call's site once its origin and site check, or with the call's refusal when
- * its origin may not use the shared stores. A site that does not check throws.
- */
+/** Answers with what `run` returns for the call's site once it checks. A site that does not check throws. */
 async function whenAdmitted<T>(
   payload: { siteId: string },
-  context: ProtocolContext,
   run: (site: SiteId) => T | Promise<T>,
 ): Promise<ResultPayload<T, Failure>> {
-  if (!isOriginAllowed(context)) {
-    return err(denied());
-  }
   if (!isSharedAuthSiteId(payload.siteId)) {
     throw new Error(`Invalid siteId: ${String(payload.siteId)}`);
   }
@@ -144,25 +130,23 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
     build: (siteId: SiteId, key: string) => string,
     onChange: (siteId: string, key: string, value: string | null) => void = () => undefined,
   ): (() => void)[] {
-    const keyed = <T>(payload: { siteId: string; key: string }, context: ProtocolContext, use: (key: string) => T) =>
-      whenAdmitted(payload, context, site => {
+    const keyed = <T>(payload: { siteId: string; key: string }, use: (key: string) => T) =>
+      whenAdmitted(payload, site => {
         if (!isValidKey(payload.key)) {
           throw new Error(`Invalid shared ${name} key: ${payload.key}`);
         }
         return use(build(site, payload.key));
       });
     return [
-      serving.handleRequest(methods.read, (payload, context) =>
-        keyed(payload, context, key => deps.storage().getItem(key)),
-      ),
-      serving.handleRequest(methods.write, (payload, context) =>
-        keyed(payload, context, (key): undefined => {
+      serving.handleRequest(methods.read, payload => keyed(payload, key => deps.storage().getItem(key))),
+      serving.handleRequest(methods.write, payload =>
+        keyed(payload, (key): undefined => {
           deps.storage().setItem(key, payload.value);
           onChange(payload.siteId, payload.key, payload.value);
         }),
       ),
-      serving.handleRequest(methods.clear, (payload, context) =>
-        keyed(payload, context, (key): undefined => {
+      serving.handleRequest(methods.clear, payload =>
+        keyed(payload, (key): undefined => {
           deps.storage().removeItem(key);
           onChange(payload.siteId, payload.key, null);
         }),
@@ -186,11 +170,7 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
       isValidSharedModeKey,
       buildSharedModeStorageKey,
     ),
-    serving.handleSubscription(storage.authChanges, (_start, context, sink) => {
-      if (!isOriginAllowed(context)) {
-        sink.interrupt(err(denied()));
-        return () => undefined;
-      }
+    serving.handleSubscription(storage.authChanges, (_start, _context, sink) => {
       subscribers.add(sink);
       return () => {
         subscribers.delete(sink);
@@ -238,20 +218,20 @@ async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
 
 /** Serves the wallet to host pages on `serving`, over the page's own wallet store by default. */
 export function serveLocalWallet(serving: ProtocolServing, store: LocalWalletStore = pageWallet): void {
-  serving.handleRequest(wallet.read, (payload, context) => whenAdmitted(payload, context, () => read(store)));
-  serving.handleRequest(wallet.save, (payload, context) =>
-    whenAdmitted(payload, context, async (): Promise<undefined> => {
+  serving.handleRequest(wallet.read, payload => whenAdmitted(payload, () => read(store)));
+  serving.handleRequest(wallet.save, payload =>
+    whenAdmitted(payload, async (): Promise<undefined> => {
       assertEntropy(payload.entropy);
       await store.saveLocalWallet(payload.entropy);
     }),
   );
-  serving.handleRequest(wallet.identity, (payload, context) =>
-    whenAdmitted(payload, context, async (): Promise<undefined> => {
+  serving.handleRequest(wallet.identity, payload =>
+    whenAdmitted(payload, async (): Promise<undefined> => {
       await store.updateLocalWalletIdentity(payload.identity);
     }),
   );
-  serving.handleRequest(wallet.forget, (payload, context) =>
-    whenAdmitted(payload, context, async (): Promise<undefined> => {
+  serving.handleRequest(wallet.forget, payload =>
+    whenAdmitted(payload, async (): Promise<undefined> => {
       await store.forgetLocalWallet();
     }),
   );

@@ -38,22 +38,12 @@ export type Call<M> = Extract<Frame<M>['body'], { tag: 'call' }>['value'];
 export const frame = frameOf(Bytes(Infinity));
 
 /** Decodes `data`, or says why it does not. */
-export function decode<T>(codec: Codec<T>, data: Uint8Array | ArrayBuffer): ResultPayload<T, Error> {
+export function decode<T>(codec: Codec<T>, data: Uint8Array): ResultPayload<T, Error> {
   try {
     return ok(codec.dec(data));
   } catch (error) {
     return err(toError(error));
   }
-}
-
-/** Encodes a frame into a buffer of its own, which a provider can transfer. */
-export function encodeFrame<M>(codec: Codec<Frame<M>>, value: Frame<M>): ArrayBuffer {
-  const bytes = codec.enc(value);
-  const { buffer } = bytes;
-  // A struct encodes into a fresh buffer of exactly its bytes, so only a view into a larger one needs a copy.
-  return buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === buffer.byteLength
-    ? buffer
-    : bytes.slice().buffer;
 }
 
 /** Encodes a message on call `id` of the method at `address`, or says why it cannot. */
@@ -62,10 +52,10 @@ export function encodeCall<M>(
   address: Address,
   id: number,
   message: M,
-): ResultPayload<ArrayBuffer, Error> {
+): ResultPayload<Uint8Array, Error> {
   try {
     const call = { sectionId: address.sectionId, methodId: address.methodId, message };
-    return ok(encodeFrame(method.frame, { id, body: { tag: 'call', value: call } }));
+    return ok(method.frame.enc({ id, body: { tag: 'call', value: call } }));
   } catch (error) {
     return err(toError(error));
   }

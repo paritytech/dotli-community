@@ -28,9 +28,11 @@ and failure.
   never change, so a peer of any release reads the version it refuses.
 - Each side numbers its own calls, the opener odd and the accepter even, so a frame's id tells whose call it is about:
   one of this side's calls hears the peer's answers, values and ends, and one of the peer's reaches the handler.
-- A provider moves bytes between two contexts and knows nothing of their meaning. The window provider admits one peer
-  window at a fixed origin, or at the first origin a predicate allows. The port provider speaks over a message port. Any
-  object with the same four methods works.
+- A provider moves bytes between two contexts and knows nothing of their meaning, and is the trust boundary: the
+  transport serves whoever its provider delivers. The window provider admits one peer window at a fixed origin, or at
+  the first origin a predicate allows, and delivers nothing from any other. The port provider speaks over a message
+  port. Both post and accept an `ArrayBuffer` between documents, the message's own buffer when it holds only the message
+  and a copy otherwise, so transferring it moves nothing else. Any object with the same four methods works.
 - One side opens the handshake and the other accepts it. The opener posts a fresh `open` every `retryMs` until it is
   answered or `timeoutMs` passes on the running clock. The accepter answers every attempt with the outcome of the first
   answer it could post, and counts as connected only once that answer is posted. A hello is decoded only at the same
@@ -85,11 +87,12 @@ sequenceDiagram
   end
 ```
 
-- A transport closes when the handshake fails or times out, the versions differ, or its owner disposes it. Every pending
-  and later request then rejects with that error itself, and every subscription still queued or open, or made later,
-  hears it once through `close`, so a closed transport is never a call outcome. Disposing also answers each request this
-  side is serving, and ends each subscription it serves, with `HostFailure` carrying `"<name>: <message>"` of the
-  reason, and tells the peer to stop each subscription it made.
+- A transport closes when its provider is not in a correct environment, which it checks once at creation, when the
+  handshake fails or times out, the versions differ, or its owner disposes it. Every pending and later request then
+  rejects with that error itself, and every subscription still queued or open, or made later, hears it once through
+  `close`, so a closed transport is never a call outcome. Disposing also answers each request this side is serving, and
+  ends each subscription it serves, with `HostFailure` carrying `"<name>: <message>"` of the reason, and tells the peer
+  to stop each subscription it made.
 - A subscription handler gets the start, the context and a sink, and returns its stop function. That function runs once,
   on the peer's stop, an interrupt or a dispose, even when the handler interrupts before it returns. The peer hears an
   end before the stop function runs. A handler that throws on start, or a value the wire cannot carry, ends it with
@@ -143,15 +146,19 @@ sequenceDiagram
     `CallContext` and a `Sink`, with `receive(value)` and `interrupt(outcome)`, where `outcome` is the `ResultPayload`
     the subscriber hears, `ok()` or `err(error)`, and returns its stop function.
   - `dispose(reason)` closes the transport and disposes the provider.
-- `CallContext<H>` is `{ origin, hello }`: the peer's origin from the provider, or null, and the peer's hello.
+- `CallContext<H>` is `{ hello }`, the peer's hello.
 - `TransportHandshakeTimeoutError` closes an opener that heard no answer in time. `TransportVersionMismatchError` closes
   both sides of a mismatch, and names both versions.
-- `Provider` is `post(data)`, `subscribe(listener)`, `peerOrigin()` and `dispose()`. `post` transfers the buffer and
-  never delivers to the provider's own listeners before it returns.
+- `Provider` is `isCorrectEnvironment()`, `postMessage(message)`, `subscribe(callback)` and `dispose()`, over
+  `Uint8Array` messages. `isCorrectEnvironment` says whether the context has a peer to talk to, and a transport over a
+  provider that has none closes at once with `Error('Environment is not correct')`. `postMessage` transfers the
+  message's buffer and never delivers to the provider's own subscribers before it returns.
 - `createWindowProvider({ listen, peer, origin, onNotBytes?, onRefusedOrigin? })` and
   `createPortProvider(port, { closeOnDispose? })` are the two providers. Each takes only as much of a window or a port
   as it uses: a `MessageTarget` that delivers each `WindowMessage` (`{ data, origin, source }`), a `WindowLike` to post
-  to, and a `PortLike`. A browser's own window, `MessageEvent` and `MessagePort` are each one.
+  to, and a `PortLike`. A browser's own window, `MessageEvent` and `MessagePort` are each one. The window provider is
+  not in a correct environment when its peer is the window it listens on, as a page with no parent is. The port provider
+  always is.
 
 ```ts
 const schema = defineSchema({
@@ -172,10 +179,11 @@ const answer = await transport.request(schema.sections.names.owner, { label: 'po
 
 Test helpers for code that uses the library.
 
-- `createProviderPair()` returns two connected providers, `left` and `right`, and the `delivered` buffers. They deliver
-  on a microtask, in order, and detach each buffer as a browser transfer does.
-- `readFrame(schema, data)` reads a recorded frame as a `RecordedFrame`. A call is named by its method's names and its
-  message's tag, and keeps the message's bytes. It throws a `FrameRefusedError` on data that is no frame.
+- `createProviderPair()` returns two connected providers, `left` and `right`, and the `delivered` messages. They are in
+  a correct environment, deliver on a microtask, in order, and detach each buffer as a browser transfer does.
+- `readFrame(schema, data)` reads a recorded frame, bytes a provider delivered or a buffer posted between documents, as
+  a `RecordedFrame`. A call is named by its method's names and its message's tag, and keeps the message's bytes. It
+  throws a `FrameRefusedError` on data that is no frame.
 - `recordMessage(schema, data)` records a call's message as a `RecordedWireMessage`
   (`{ id, section, method, tag, message, json }`), with its bytes as hex and the decoded message as JSON with bytes as
   hex and big integers as text, so a page can keep and match it. It gives null for the library's own frames and data

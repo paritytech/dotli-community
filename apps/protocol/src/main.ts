@@ -89,7 +89,8 @@ const serving = createTransport(
   createWindowProvider({
     listen: window,
     peer: () => window.parent,
-    // Same allowlist as shared auth, so sandboxed apps never drive the chain bridge directly.
+    // The shared-auth allowlist guards every method served here, the shared stores and the wallet included, so sandboxed
+    // apps never drive them or the chain bridge directly.
     origin: isSharedAuthOriginAllowed,
     // Only a host page of an earlier release sends objects. It never hears an answer and fails by its own timeout.
     onNotBytes: wire.onNotBytes,

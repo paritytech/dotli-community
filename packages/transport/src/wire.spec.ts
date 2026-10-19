@@ -5,18 +5,18 @@ import { _void, str, u8, type Codec } from 'scale-ts';
 import { describe, expect, it } from 'vitest';
 import { cancelled, denied, domain, err, hostFailure, malformedFrame, ok, unsupported } from './errors.js';
 import { codec, request, subscription, type RequestMessage, type SubscriptionMessage } from './schema.js';
-import { decode, encodeFrame, frame, type Frame } from './wire.js';
+import { decode, frame, type Frame } from './wire.js';
 
 const read = request({ request: str, response: str, error: u8 });
 const touch = request({ request: _void, response: _void });
 const watch = subscription({ start: str, receive: u8, interrupt: str });
 
-const listed = (data: ArrayBuffer): number[] => [...new Uint8Array(data)];
+const listed = (data: Uint8Array): number[] => [...data];
 const callOf = <M>(message: M): Frame<M>['body'] => ({ tag: 'call', value: { sectionId: 1, methodId: 2, message } });
 
 /** Sends `message` on `method` through a frame, and reads it back as it arrives. */
 function roundTrip<M>(method: { frame: Codec<Frame<M>>; message: Codec<M> }, message: M): M | null {
-  const received = frame.dec(encodeFrame(method.frame, { id: 0xffff_ffff, body: callOf(message) }));
+  const received = frame.dec(method.frame.enc({ id: 0xffff_ffff, body: callOf(message) }));
   return received.body.tag === 'call' ? method.message.dec(received.body.value.message) : null;
 }
 
@@ -60,7 +60,7 @@ describe('wire', () => {
     ];
 
     // When
-    const encoded = frames.map(value => listed(encodeFrame(frame, value)));
+    const encoded = frames.map(value => listed(frame.enc(value)));
 
     // Then
     expect(encoded).toEqual([
@@ -76,7 +76,7 @@ describe('wire', () => {
     const message: RequestMessage<undefined, undefined, undefined> = { tag: 'request', value: undefined };
 
     // When
-    const data = encodeFrame(touch.frame, { id: 5, body: callOf(message) });
+    const data = touch.frame.enc({ id: 5, body: callOf(message) });
 
     // Then
     expect(listed(data)).toEqual([5, 0, 0, 0, 3, 1, 2, 0]);

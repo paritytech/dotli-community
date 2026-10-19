@@ -17,9 +17,6 @@ import {
   type TransportIssue,
 } from '@dotli/transport';
 
-export const HOST_ORIGIN = 'http://host-playground.localhost:5173';
-export const PRODUCT_ORIGIN = 'http://bafy.app.localhost:5173';
-
 /** How a subscription whose own end reason is `I` ended: the peer's interrupt, or the error its transport closed with. */
 export type EndOf<I> = ResultPayload<undefined, CallError<I>> | Error;
 
@@ -35,18 +32,18 @@ export interface HostLink {
 /** Each open link, with what either end could not handle itself, in order. */
 const links = new Map<HostLink, TransportIssue[]>();
 
-/** Links a host page known by `origin`, which the frame's provider names, as the window provider names the parent's. */
-export function linkHost(origin: string | null = HOST_ORIGIN): HostLink {
+/** Links a host page to the frame. */
+export function linkHost(): HostLink {
   const { left, right } = createProviderPair();
   const issues: TransportIssue[] = [];
   const onIssue = (issue: TransportIssue): void => {
     issues.push(issue);
   };
-  const serving = createTransport(
-    protocolSchema,
-    { ...right, peerOrigin: () => origin },
-    { handshake: 'accept', hello: { resolutionId: null }, onIssue },
-  );
+  const serving = createTransport(protocolSchema, right, {
+    handshake: 'accept',
+    hello: { resolutionId: null },
+    onIssue,
+  });
   const host = createTransport(protocolSchema, left, {
     handshake: 'open',
     hello: { resolutionId: null },

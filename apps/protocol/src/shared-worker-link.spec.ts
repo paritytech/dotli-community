@@ -184,11 +184,7 @@ function link(
 /** The first end a frame status hears. */
 function firstEnd(status: FrameStatus): Promise<FrameStatusEnd> {
   return new Promise(resolve => {
-    status.handler(
-      undefined,
-      { origin: null, hello: { resolutionId: null } },
-      { receive: () => undefined, interrupt: resolve },
-    );
+    status.handler(undefined, { hello: { resolutionId: null } }, { receive: () => undefined, interrupt: resolve });
   });
 }
 
@@ -497,8 +493,7 @@ afterEach(() => {
 /** Links a host to an iframe in shared-worker mode, whose worker answers with what `serveWorker` registers. */
 function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string, ProtocolContext>) => void): Hops {
   const iframe: HostLink = linkHost();
-  // The worker's port names no origin.
-  const { serving: worker, host: toWorker } = linkHost(null);
+  const { serving: worker, host: toWorker } = linkHost();
   const contexts = new Map<string, ProtocolContext>();
   serveWorker(worker, contexts);
   const workerStatus = createFrameStatus();
@@ -535,7 +530,7 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
 }
 
 /** The worker's link context, which carries nothing of the host's call. */
-const LINK_CONTEXT = { origin: null, hello: { resolutionId: null } };
+const LINK_CONTEXT = { hello: { resolutionId: null } };
 
 describe('the worker relay', () => {
   it('As the host in shared-worker mode, my chain and resolve calls reach the worker and its answers reach me', async () => {

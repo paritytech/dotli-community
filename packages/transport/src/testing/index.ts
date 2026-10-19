@@ -37,9 +37,12 @@ function decodedBy(method: AnyMethod, message: Uint8Array): { tag: string } {
   }
 }
 
-/** Reads a recorded frame. Throws a `FrameRefusedError` on data that is no frame. */
-export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: ArrayBuffer): RecordedFrame {
-  const read = decode(frame, data);
+/**
+ * Reads a recorded frame: bytes a provider delivered, or a buffer posted between documents. Throws a
+ * `FrameRefusedError` on data that is no frame.
+ */
+export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: Uint8Array | ArrayBuffer): RecordedFrame {
+  const read = decode(frame, data instanceof ArrayBuffer ? new Uint8Array(data) : data);
   if (!read.success) {
     throw new FrameRefusedError(read.value);
   }
@@ -83,7 +86,7 @@ const plain = (_key: string, value: unknown): unknown =>
 /** Records a call's message read by `schema`, or gives null for the library's own frames and data that is no frame. */
 export function recordMessage<H, T extends Sections>(
   schema: Schema<H, T>,
-  data: ArrayBuffer,
+  data: Uint8Array | ArrayBuffer,
 ): RecordedWireMessage | null {
   let recorded: RecordedFrame;
   try {

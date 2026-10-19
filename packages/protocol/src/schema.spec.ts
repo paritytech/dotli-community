@@ -308,7 +308,7 @@ type HandshakeFrame =
   { open: { version: number; hello: ProtocolHello } } | { accept: ResultPayload<ProtocolHello, { version: number }> };
 
 /** The handshake frames in `delivered`. */
-function handshakeOf(delivered: ArrayBuffer[]): HandshakeFrame[] {
+function handshakeOf(delivered: Uint8Array[]): HandshakeFrame[] {
   return delivered.flatMap((data): HandshakeFrame[] => {
     const read = readFrame(protocolSchema, data);
     switch (read.kind) {

@@ -41,7 +41,7 @@ import {
   watcher,
 } from './testing/rig.js';
 import { createTransport, type CallContext, type Sink, type Transport, type TransportOptions } from './transport.js';
-import { encodeFrame, frame } from './wire.js';
+import { frame } from './wire.js';
 
 /** The ids of the subscriptions a raw peer heard start, in order. */
 const startIds = (peer: { find: (leg: string) => { id: number }[] }): number[] =>
@@ -170,36 +170,38 @@ describe('createTransport', () => {
   });
 
   it('As a receiver, a throw while I handle a message is reported and never reaches the provider', () => {
-    // Given a provider of the owner's whose peer origin throws
-    const listeners: ((data: ArrayBuffer) => void)[] = [];
-    const bug = new Error('no origin today');
-    const provider: Provider = {
-      post: () => undefined,
-      subscribe: listener => {
-        listeners.push(listener);
-        return () => undefined;
-      },
-      peerOrigin: () => {
+    // Given a schema of the owner's whose method lookup throws
+    const callbacks: ((message: Uint8Array) => void)[] = [];
+    const bug = new Error('no methods today');
+    const schema = {
+      ...testSchema,
+      methodAt: () => {
         throw bug;
+      },
+    };
+    const provider: Provider = {
+      isCorrectEnvironment: () => true,
+      postMessage: () => undefined,
+      subscribe: callback => {
+        callbacks.push(callback);
+        return () => undefined;
       },
       dispose: () => undefined,
     };
     const { issues, onIssue } = issueLog();
-    const transport = createTransport(testSchema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
+    const transport = createTransport(schema, provider, { handshake: 'accept', hello: 'accepter', onIssue });
     transport.handleRequest(notes.touch, () => ok());
-    const hear = (data: ArrayBuffer): void => {
-      for (const listener of listeners) {
-        listener(data);
+    const hear = (message: Uint8Array): void => {
+      for (const callback of callbacks) {
+        callback(message);
       }
     };
-    hear(encodeFrame(frame, { id: 1, body: { tag: 'open', value: { version: VERSION, hello: str.enc('peer') } } }));
+    hear(frame.enc({ id: 1, body: { tag: 'open', value: { version: VERSION, hello: str.enc('peer') } } }));
 
     // When
     const call = (): void => {
       const message = { tag: 'request' as const, value: undefined };
-      hear(
-        encodeFrame(notes.touch.frame, { id: 3, body: { tag: 'call', value: { sectionId: 0, methodId: 1, message } } }),
-      );
+      hear(notes.touch.frame.enc({ id: 3, body: { tag: 'call', value: { sectionId: 0, methodId: 1, message } } }));
     };
 
     // Then
@@ -216,14 +218,14 @@ describe('createTransport', () => {
   it('As an owner, an issue hook that throws never reaches the provider, and the issue and the throw are logged', () => {
     // Given
     const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
-    const listeners: ((data: ArrayBuffer) => void)[] = [];
+    const callbacks: ((message: Uint8Array) => void)[] = [];
     const provider: Provider = {
-      post: () => undefined,
-      subscribe: listener => {
-        listeners.push(listener);
+      isCorrectEnvironment: () => true,
+      postMessage: () => undefined,
+      subscribe: callback => {
+        callbacks.push(callback);
         return () => undefined;
       },
-      peerOrigin: () => null,
       dispose: () => undefined,
     };
     createTransport(testSchema, provider, {
@@ -236,8 +238,8 @@ describe('createTransport', () => {
 
     // When
     const hear = (): void => {
-      for (const listener of listeners) {
-        listener(Uint8Array.of(0xff, 0xff, 0xff).buffer);
+      for (const callback of callbacks) {
+        callback(Uint8Array.of(0xff, 0xff, 0xff));
       }
     };
 
@@ -278,7 +280,7 @@ describe('createTransport', () => {
       testSchema,
       {
         ...left,
-        post: () => {
+        postMessage: () => {
           throw new Error('x'.repeat(1_000));
         },
       },
@@ -286,7 +288,7 @@ describe('createTransport', () => {
     );
 
     // When
-    right.post(Uint8Array.of(0xff, 0xff, 0xff).buffer);
+    right.postMessage(Uint8Array.of(0xff, 0xff, 0xff));
     await timers.advance(0);
     opener.connect();
     await timers.advance(0);
@@ -310,14 +312,14 @@ describe('createTransport', () => {
     const dispose = vi.fn();
     const provider: Provider = {
       ...left,
-      subscribe: listener => {
-        const unsubscribe = left.subscribe(listener);
+      subscribe: callback => {
+        const unsubscribe = left.subscribe(callback);
         return () => {
           unsubscribed();
           unsubscribe();
         };
       },
-      post,
+      postMessage: post,
       dispose,
     };
     const transport = createTransport(testSchema, provider, { handshake: 'open', hello: 'opener', timers });
@@ -331,6 +333,30 @@ describe('createTransport', () => {
     // Then
     expect(unsubscribed).toHaveBeenCalledOnce();
     expect(dispose).toHaveBeenCalledOnce();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('As an owner, a provider not in a correct environment closes my transport at once and nothing is posted', async () => {
+    // Given
+    const { left } = createProviderPair();
+    const timers = manualTimers();
+    const post = vi.fn();
+    const provider: Provider = { ...left, isCorrectEnvironment: () => false, postMessage: post };
+
+    // When
+    const transport = createTransport(testSchema, provider, { handshake: 'open', hello: 'opener', timers });
+    transport.connect();
+    const heard = watcher();
+    transport.subscribe(notes.watch, 'from the top', heard);
+    const call = outcomeOf(transport.request(notes.touch, undefined));
+    await timers.advance(1_000);
+
+    // Then
+    const closed = expect.objectContaining({ message: 'Environment is not correct' }) as Error;
+    expect(await call).toEqual(closed);
+    expect(await outcomeOf(transport.whenConnected())).toEqual(closed);
+    expect(heard.closes).toEqual([closed]);
+    expect(heard.ends).toEqual([]);
     expect(post).not.toHaveBeenCalled();
   });
 });
@@ -606,7 +632,7 @@ describe('calls', () => {
     const call = outcomeOf(transport.request(notes.touch, undefined));
     await timers.advance(100);
     expect(peer.names()).toEqual(['open', 'open', 'open']);
-    const post = vi.spyOn(left, 'post');
+    const post = vi.spyOn(left, 'postMessage');
     const reason = new Error('the peer left');
 
     // When
@@ -1194,20 +1220,12 @@ describe('calls', () => {
 });
 
 describe('serving', () => {
-  it("As a handler, I read the caller's origin and hello", async () => {
+  it("As a handler, I read the caller's hello", async () => {
     // Given
     const { left, right } = createProviderPair();
     const timers = manualTimers();
-    const opener = createTransport(
-      testSchema,
-      { ...left, peerOrigin: () => 'https://accepter.example' },
-      { handshake: 'open', hello: 'opener', timers },
-    );
-    const accepter = createTransport(
-      testSchema,
-      { ...right, peerOrigin: () => 'https://opener.example' },
-      { handshake: 'accept', hello: 'accepter' },
-    );
+    const opener = createTransport(testSchema, left, { handshake: 'open', hello: 'opener', timers });
+    const accepter = createTransport(testSchema, right, { handshake: 'accept', hello: 'accepter' });
     const servedByAccepter = vi.fn(() => ok('a'));
     const servedByOpener = vi.fn(() => ok('b'));
     accepter.handleRequest(echo.say, servedByAccepter);
@@ -1220,14 +1238,8 @@ describe('serving', () => {
     await Promise.all(calls);
 
     // Then
-    expect(servedByAccepter).toHaveBeenCalledExactlyOnceWith('to the accepter', {
-      origin: 'https://opener.example',
-      hello: 'opener',
-    });
-    expect(servedByOpener).toHaveBeenCalledExactlyOnceWith('to the opener', {
-      origin: 'https://accepter.example',
-      hello: 'accepter',
-    });
+    expect(servedByAccepter).toHaveBeenCalledExactlyOnceWith('to the accepter', { hello: 'opener' });
+    expect(servedByOpener).toHaveBeenCalledExactlyOnceWith('to the opener', { hello: 'accepter' });
   });
 
   it('As a serving side, a handler that throws or rejects answers HostFailure with its name and message, bounded', async () => {
@@ -1548,7 +1560,7 @@ describe('serving', () => {
     expect(await first).toEqual(ok('slow'));
   });
 
-  it("As a handler, I read the subscriber's start, origin and hello, and the peer's stop runs my stop function once", async () => {
+  it("As a handler, I read the subscriber's start and hello, and the peer's stop runs my stop function once", async () => {
     // Given
     const { transport, timers, peer, issues } = await acceptedRaw();
     const started: unknown[] = [];
@@ -1566,7 +1578,7 @@ describe('serving', () => {
     await timers.advance(0);
 
     // Then the second stop is the peer's fault
-    expect(started).toEqual([{ start: 'from the top', context: { origin: null, hello: 'peer' } }]);
+    expect(started).toEqual([{ start: 'from the top', context: { hello: 'peer' } }]);
     expect(stop).toHaveBeenCalledOnce();
     expect(peer.names()).toEqual(['accept']);
     expect(issues).toEqual([
@@ -2187,7 +2199,7 @@ describe('the handshake', () => {
   it('As an opener, every retry and flush posts a fresh buffer', async () => {
     // Given
     const { transport, timers, peer, left, answerHandshake } = rawRig('open');
-    const post = vi.spyOn(left, 'post');
+    const post = vi.spyOn(left, 'postMessage');
     const calls = [1, 2, 3].map(() => outcomeOf(transport.request(notes.touch, undefined)));
 
     // When
@@ -2219,7 +2231,7 @@ describe('the handshake', () => {
     const broken = new Error('port closed');
     const provider: Provider = {
       ...left,
-      post: () => {
+      postMessage: () => {
         throw broken;
       },
     };

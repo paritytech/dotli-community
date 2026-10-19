@@ -8,14 +8,14 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { protocolSchema } from '@dotli/protocol';
 import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
 import { memoryIdb } from '@dotli/storage/testing';
-import { denied, err, hostFailure, ok, unsupported } from '@dotli/transport';
+import { err, hostFailure, ok, unsupported } from '@dotli/transport';
 import {
   createSharedStoreHandler,
   serveLocalWallet,
   type SharedAuthChannel,
   type SharedStoreDeps,
 } from './shared-store-handler.js';
-import { closeHostLinks, HOST_ORIGIN, linkHost, PRODUCT_ORIGIN, record, type HostLink } from './testing/host-link.js';
+import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
 
 afterEach(closeHostLinks);
 
@@ -57,10 +57,7 @@ function fakeChannel(post: () => void = () => undefined): FakeChannel {
   };
 }
 
-function setup(
-  overrides: Partial<SharedStoreDeps> = {},
-  origin = HOST_ORIGIN,
-): {
+function setup(overrides: Partial<SharedStoreDeps> = {}): {
   link: ReturnType<typeof linkHost>;
   storage: Storage;
   channel: FakeChannel;
@@ -68,7 +65,7 @@ function setup(
 } {
   const storage = memoryStorage();
   const channel = fakeChannel();
-  const link = linkHost(origin);
+  const link = linkHost();
   const store = createSharedStoreHandler(link.serving, {
     storage: () => storage,
     channel: channel.channel,
@@ -154,20 +151,6 @@ describe('the shared auth store', () => {
     // Then
     expect(changes.events).toEqual([]);
     expect(later.events).toEqual([{ siteId: SITE_ID, key: 'session', value: 'abc' }]);
-  });
-
-  it('As a dotli user, a product page cannot read my shared session nor hear it change', async () => {
-    // Given
-    const { link, storage } = setup({}, PRODUCT_ORIGIN);
-    storage.setItem(`TRUAPI_${SITE_ID}_session`, 'secret');
-
-    // When
-    const read = link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
-    const changes = record(link.host, authChanges, undefined);
-
-    // Then
-    await expect(read).resolves.toEqual(err(denied()));
-    expect(await changes.ended).toEqual(err(denied()));
   });
 
   it('As a dotli operator, a failed broadcast is reported and the write is still answered', async () => {
@@ -267,18 +250,6 @@ describe('the shared mode store', () => {
     // Then
     expect(storage.length).toBe(0);
   });
-
-  it('As a dotli user, a product page cannot change my protocol mode', async () => {
-    // Given
-    const { link, storage } = setup({}, PRODUCT_ORIGIN);
-
-    // When
-    const write = link.host.request(modeWrite, { siteId: SITE_ID, key: 'mode', value: 'rpc' });
-
-    // Then
-    await expect(write).resolves.toEqual(err(denied()));
-    expect(storage.length).toBe(0);
-  });
 });
 
 const { wallet } = protocolSchema.sections;
@@ -293,8 +264,8 @@ beforeEach(() => {
   store = createLocalWalletStore(memoryIdb());
 });
 
-function served(origin: string | null = HOST_ORIGIN, walletStore: LocalWalletStore = store): HostLink {
-  const link = linkHost(origin);
+function served(walletStore: LocalWalletStore = store): HostLink {
+  const link = linkHost();
   serveLocalWallet(link.serving, walletStore);
   return link;
 }
@@ -350,31 +321,6 @@ describe('the local wallet', () => {
     expect(await store.loadLocalWallet()).toBeNull();
   });
 
-  it('As a product origin, I am refused the wallet', async () => {
-    // Given
-    const { host } = served(PRODUCT_ORIGIN);
-    await store.saveLocalWallet(ENTROPY);
-
-    // When
-    const read = host.request(wallet.read, { siteId: SITE_ID });
-
-    // Then
-    await expect(read).resolves.toEqual(err(denied()));
-  });
-
-  it('As a peer with no origin, I am refused the wallet', async () => {
-    // Given
-    const { host } = served(null);
-    await store.saveLocalWallet(ENTROPY);
-
-    // When
-    const forget = host.request(wallet.forget, { siteId: SITE_ID });
-
-    // Then
-    await expect(forget).resolves.toEqual(err(denied()));
-    expect(await store.loadLocalWallet()).not.toBeNull();
-  });
-
   it('As a page on another root domain, I am refused the wallet', async () => {
     // Given
     const { host } = served();
@@ -406,7 +352,7 @@ describe('the local wallet', () => {
       ...store,
       loadLocalWallet: () => Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'))),
     };
-    const { host } = served(HOST_ORIGIN, unreadable);
+    const { host } = served(unreadable);
 
     // When
     const result = await host.request(wallet.read, { siteId: SITE_ID });

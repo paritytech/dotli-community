@@ -11,7 +11,7 @@ import { createProviderPair } from '../provider.fake.js';
 import type { Provider } from '../provider.js';
 import { defineSchema, request, subscription, type AnyMethod } from '../schema.js';
 import { createTransport, type Sink, type Transport } from '../transport.js';
-import { encodeFrame, frame, type Frame } from '../wire.js';
+import { frame, type Frame } from '../wire.js';
 import { readFrame, type RecordedFrame } from './index.js';
 
 export const RETRY_MS = 50;
@@ -146,15 +146,15 @@ function rawPeer(provider: Provider) {
     ) => {
       const address = testSchema.addressOf(at);
       const value = { sectionId: address.sectionId, methodId: address.methodId, message };
-      provider.post(encodeFrame(method.frame, { id, body: { tag: 'call', value } }));
+      provider.postMessage(method.frame.enc({ id, body: { tag: 'call', value } }));
     },
     /** Posts one of the library's own frames. */
     send: (id: number, body: Frame<Uint8Array>['body']) => {
-      provider.post(encodeFrame(frame, { id, body }));
+      provider.postMessage(frame.enc({ id, body }));
     },
     /** Posts bytes that are no frame. */
     sendBytes: (...bytes: number[]) => {
-      provider.post(Uint8Array.from(bytes).buffer);
+      provider.postMessage(Uint8Array.from(bytes));
     },
     names: () => heard.map(nameOf),
     /** The handshake answers heard, by id. */
@@ -219,11 +219,11 @@ export function breakable(broken: Error) {
   return {
     wrap: (provider: Provider): Provider => ({
       ...provider,
-      post: data => {
+      postMessage: message => {
         if (!posting) {
           throw broken;
         }
-        provider.post(data);
+        provider.postMessage(message);
       },
     }),
     breakPosts: () => {

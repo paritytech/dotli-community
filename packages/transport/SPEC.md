@@ -7,35 +7,12 @@ created: 2026-10-19
 
 # Transport Protocol Design
 
-## Changelog
-
-### v0.1 - 2026-10-19
-
-First implementation, derived from the Host API Protocol Design v0.7. Changes against it:
-
-- The protocol defines no methods. A schema defines them, grouped in sections, and both peers share it.
-- Both peers call and serve. There is no host and product side, only an opener and an accepter of the handshake.
-- A frame names its method by section and method ids, and its message by the method's own enum, in place of one
-  `Payload` enum of every action.
-- A call id is a `u32` that each peer numbers itself, in place of a `requestId: str`.
-- One schema version for every message, checked in the handshake, in place of a `Versioned` wrapper on each action.
-- Errors follow truapi's `CallError`: the method's own `Domain` error, or a `Failure` the transport answers any call
-  with. A subscription's `interrupt` carries a `Result` of the same shape.
-- The handshake is part of the transport and carries each peer's hello.
-- Serialization is plain SCALE codec.
-
 ## Overview
 
 The transport is language-agnostic. All code examples are written in Rust, but authors can easily map these interfaces
 into other languages.
 
 This document defines the transport and no methods. The examples use an imaginary schema.
-
-## Technical Requirements
-
-- Solution MUST provide a transport layer between two peers, each of which both calls and serves the other.
-- Message format MUST be well-defined and serializable to support different platforms.
-- The bytes MUST be moved by a provider that the user of the transport MAY replace.
 
 ## General Interface
 
@@ -75,16 +52,20 @@ A provider moves bytes between two contexts and knows nothing of their meaning.
 
 ```rust
 trait Provider {
-  fn post(data: Vec<u8>);
-  fn subscribe(listener: fn(Vec<u8>)) -> fn();
-  fn peerOrigin() -> Option<str>;
+  fn isCorrectEnvironment() -> bool;
+  fn postMessage(message: Vec<u8>);
+  fn subscribe(callback: fn(Vec<u8>)) -> fn();
   fn dispose();
 }
 ```
 
-`post` MUST NOT deliver to the provider's own listeners before it returns. Data that is not bytes MUST be dropped by the
-provider. The library ships a window provider, which admits one peer window at a fixed origin or at the first origin a
-predicate allows, and a port provider, which speaks over a message port.
+`postMessage` MUST NOT deliver to the provider's own subscribers before it returns. Data that is not bytes MUST be
+dropped by the provider. A transport over a provider that is not in a correct environment MUST close at once.
+
+The provider is the trust boundary: the transport serves every peer whose bytes the provider delivers, and tells a
+handler nothing of where they came from. The library ships a window provider, which admits one peer window at a fixed
+origin or at the first origin a predicate allows and delivers nothing from any other origin, and a port provider, which
+speaks over a message port.
 
 ### Serialization
 
@@ -251,10 +232,10 @@ listener.
 
 #### Closing
 
-A transport closes when the handshake fails or times out, the versions differ, or its owner disposes it. Every pending
-and later request then fails with that error, and every subscription hears it once through `onClose`. Disposing also
-answers each request the peer is serving, and ends each subscription it serves, with a `failed` frame carrying
-`HostFailure`, and sends `stop` for each subscription it made.
+A transport closes when its provider is not in a correct environment, the handshake fails or times out, the versions
+differ, or its owner disposes it. Every pending and later request then fails with that error, and every subscription
+hears it once through `onClose`. Disposing also answers each request the peer is serving, and ends each subscription it
+serves, with a `failed` frame carrying `HostFailure`, and sends `stop` for each subscription it made.
 
 A peer leaves when its own `stop` leaves nothing it opened running and no request of its is in flight.
 

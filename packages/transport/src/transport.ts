@@ -34,7 +34,7 @@ import {
   type Subscription,
   type Sections,
 } from './schema.js';
-import { decode, encodeCall, encodeFrame, frame, type Accept, type Call, type Frame, type Open } from './wire.js';
+import { decode, encodeCall, frame, type Accept, type Call, type Frame, type Open } from './wire.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
 export interface SubscriptionListeners<V, I> {
@@ -47,8 +47,6 @@ export interface SubscriptionListeners<V, I> {
 
 /** What a handler knows about the peer that called it. */
 export interface CallContext<H> {
-  /** The peer's origin when the call arrived, or null when it has none. */
-  origin: string | null;
   /** The peer's handshake hello. */
   hello: H;
 }
@@ -230,9 +228,9 @@ export function createTransport<H, T extends Sections>(
    * Posts bytes, of the call at `address` when they belong to one. A post the provider throws on is already reported
    * when it returns the error.
    */
-  const post = (data: ArrayBuffer, address?: Address): ResultPayload<undefined, Error> => {
+  const post = (data: Uint8Array, address?: Address): ResultPayload<undefined, Error> => {
     try {
-      provider.post(data);
+      provider.postMessage(data);
       return ok();
     } catch (thrown) {
       const error = toError(thrown);
@@ -516,7 +514,7 @@ export function createTransport<H, T extends Sections>(
 
   /** Answers call `id` with a failure of the library's own. */
   const postFailed = (id: number, error: Failure, address?: Address): void => {
-    post(encodeFrame(frame, { id, body: { tag: 'failed', value: error } }), address);
+    post(frame.enc({ id, body: { tag: 'failed', value: error } }), address);
   };
 
   /** Answers a call whose message does not decode. */
@@ -778,7 +776,7 @@ export function createTransport<H, T extends Sections>(
   // An attempt is no call, so it takes no call id, and the accepter's answer echoes it.
   const attempt = (): never => {
     const hello = schema.hello.enc(options.hello);
-    const data = encodeFrame(frame, { id: 0, body: { tag: 'open', value: { version: schema.version, hello } } });
+    const data = frame.enc({ id: 0, body: { tag: 'open', value: { version: schema.version, hello } } });
     const posted = post(data);
     if (!posted.success) {
       throw new Error('The handshake could not be posted', { cause: posted.value });
@@ -823,7 +821,7 @@ export function createTransport<H, T extends Sections>(
       return;
     }
     // An answer the opener never heard decides nothing, so its next attempt is answered afresh.
-    const posted = post(encodeFrame(frame, { id, body: { tag: 'accept', value: answer } }));
+    const posted = post(frame.enc({ id, body: { tag: 'accept', value: answer } }));
     if (!posted.success || !deciding) {
       return;
     }
@@ -835,7 +833,7 @@ export function createTransport<H, T extends Sections>(
     }
   };
 
-  const receive = (data: ArrayBuffer): void => {
+  const receive = (data: Uint8Array): void => {
     const received = decode(frame, data);
     if (!received.success) {
       refuse('malformed', received.value);
@@ -864,7 +862,7 @@ export function createTransport<H, T extends Sections>(
         if (ownCall(id)) {
           hearOwn(id, body.value);
         } else if (phase.name === 'connected') {
-          hearPeer(id, body.value, { origin: provider.peerOrigin(), hello: phase.peerHello });
+          hearPeer(id, body.value, { hello: phase.peerHello });
         } else {
           // The peer acts on this side only once the handshake told who it is.
           const when =
@@ -876,7 +874,7 @@ export function createTransport<H, T extends Sections>(
     }
   };
   // Nothing thrown while a frame is handled reaches the provider, whose other listeners must still hear it.
-  const onData = (data: ArrayBuffer): void => {
+  const onData = (data: Uint8Array): void => {
     try {
       receive(data);
     } catch (error) {
@@ -885,6 +883,12 @@ export function createTransport<H, T extends Sections>(
   };
   // Providers do not buffer, so the listener is bound before anything can arrive.
   const unsubscribeProvider = provider.subscribe(onData);
+  // With no peer here the transport is closed from the start, so `connect` posts no handshake.
+  if (!provider.isCorrectEnvironment()) {
+    const error = new Error('Environment is not correct');
+    stopAttempts.abort(error);
+    close(error);
+  }
 
   return {
     connect() {

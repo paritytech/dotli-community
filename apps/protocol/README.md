@@ -35,9 +35,9 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   subscriber hears on subscribe. The status tells each subscriber on its own, so one that throws is reported and the
   others still hear. It ends typed, as a fatal light client, a failed init, a released port or a version mismatch, so
   the host tells them apart, and any other error ends it as that error's failure.
-- A handler answers with a result. A refused origin is denied, a resolver's sync timeout and a stopped light client are
-  typed failures the host's error screen tells apart, and any other failure is thrown, so it crosses as the handler's
-  failure under its error's name and message. A subscription a handler cannot start ends the same way.
+- A handler answers with a result. A resolver's sync timeout and a stopped light client are typed failures the host's
+  error screen tells apart, and any other failure is thrown, so it crosses as the handler's failure under its error's
+  name and message. A subscription a handler cannot start ends the same way.
 - No deadline crosses the wire. A name read sizes its sync budget from its method's budget, the one the host gives up
   on, less a grace for the typed failure to cross back, counted from when the call arrives. A tester can cap it from
   session storage.
@@ -51,9 +51,9 @@ to the network on the host's behalf. See the root [README](../../README.md) for 
   sent to the host is reported, and a result that cannot be sent ends the read with that error, so the host does not
   wait.
 - Two handlers serve the shared stores and the local wallet under the shared-auth trust boundary: host and landing
-  origins only, never product origins. The iframe's provider already admits no other origin, so the handlers' own check
-  holds the boundary on any transport they are served over. What the stores refuse is counted as bad input, and what the
-  wallet refuses is logged.
+  origins only, never product origins. The iframe's provider holds it, since it admits no other origin, and it guards
+  every method the iframe serves. No other transport serves the stores or the wallet. What the stores refuse is counted
+  as bad input, and what the wallet refuses is logged.
 - In shared-worker mode the iframe serves the store and wallet methods itself and relays the others to the SharedWorker
   through its own transport, including the frame status and telemetry subscriptions. That transport opens the handshake
   toward the worker, with this page load's resolution id as its hello. The relay adds nothing to a call and passes each
