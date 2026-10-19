@@ -260,7 +260,9 @@ the one local end, the transport closing. Exactly one of them is called, once. `
 A peer MAY forward calls of methods to another peer of the same schema. It numbers the forwarded calls itself, as calls
 of its own on the other link, and passes every message as it is, in both directions. A forwarded call is ordinary frames
 on both links, so each link keeps its own rules. When the link it forwards to closes under a forwarded call, the
-forwarding peer answers the call with a `failed` frame carrying `HostFailure`.
+forwarding peer answers the call with a `failed` frame carrying `HostFailure`. When the forwarding peer closes, or a
+`start` replaces a forwarded subscription, it posts a `stop` of its own for that subscription on the other link, which
+is still open.
 
 #### Closing
 

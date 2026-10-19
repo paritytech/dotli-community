@@ -72,6 +72,9 @@ const subscriptionLeg = voidSubscriptionLegs.dec;
 /** The stop of any subscription, which carries nothing, so a side that decodes none of its messages can send it. */
 export const SUBSCRIPTION_STOP = voidSubscriptionLegs.enc({ tag: 'stop', value: undefined });
 
+/** Reads a subscription message's leg and refuses bytes left unread, so a stop is checked with no payload codec. */
+export const wholeSubscriptionLeg = whole(voidSubscriptionLegs);
+
 /** Declares a request. `error` is the method's own error, and a method without one has an empty one. */
 export function request<P, R>(def: { request: Codec<P>; response: Codec<R> }): Request<P, R, undefined>;
 export function request<P, R, E>(def: { request: Codec<P>; response: Codec<R>; error: Codec<E> }): Request<P, R, E>;

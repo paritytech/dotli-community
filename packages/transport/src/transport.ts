@@ -30,6 +30,7 @@ import { createRecentIds } from './recent-ids.js';
 import {
   SUBSCRIPTION_STOP,
   sameMethod,
+  wholeSubscriptionLeg,
   type Address,
   type AnyMethod,
   type Request,
@@ -893,7 +894,14 @@ export function createTransport<H, T extends Sections>(
         if (!leg.success) {
           refuse('malformed', leg.value);
         } else if (leg.value.tag === 'stop') {
-          stopWith(message);
+          // A stop the far end refuses would leave its subscription running with nothing here to stop it, so it goes on
+          // only once it reads whole, as the served path reads it.
+          const wholeStop = decode(wholeSubscriptionLeg, message);
+          if (wholeStop.success) {
+            stopWith(message);
+          } else {
+            refuse('malformed', wholeStop.value);
+          }
         } else {
           refuse('invalid', new Error(`A ${leg.value.tag} names subscription ${String(id)}, which is running`));
         }
@@ -931,7 +939,11 @@ export function createTransport<H, T extends Sections>(
     (id, message) => {
       const leg = decode(method.leg, message);
       if (!leg.success) {
-        malformed(id, leg.value, address);
+        // Refused before it is answered, as the served path refuses a reused id, so a request in flight on it keeps its
+        // one answer.
+        if (!reusesInFlight(id)) {
+          malformed(id, leg.value, address);
+        }
         return;
       }
       switch (leg.value.tag) {

@@ -45,6 +45,7 @@ import {
   testSchema,
   TIMEOUT_MS,
   TRAILED_REASON,
+  TRAILED_STOP,
   TRAILED_TEXT,
   UNKNOWN_LEG,
   VERSION,
@@ -2560,6 +2561,19 @@ async function forwardingToRaw() {
   return { peer: near.opener, timers: near.timers, issues: near.issues, server: far.peer, toPeer: near.delivered };
 }
 
+/** A raw peer and its forwarder, whose upstream faces a server that answers `notes.read` once the test resolves it. */
+async function forwardingFromRaw() {
+  const near = rawRig('respond');
+  const far = rig();
+  const answer = deferred<ResultPayload<string, CallError<string>>>();
+  const served = vi.fn(() => answer.promise);
+  far.accepter.handleRequest(notes.read, served);
+  near.transport.forward([notes.read, notes.watch], far.opener);
+  near.openHandshake();
+  await near.timers.advance(0);
+  return { ...near, server: far.accepter, answer, served };
+}
+
 /** The id of the one call the raw server heard by `name`, such as `request:notes.read`. */
 const heardId = (server: { find: (name: string) => { id: number }[] }, name: string): number =>
   must(server.find(name)[0], name).id;
@@ -2720,6 +2734,85 @@ describe('forwarding', () => {
     expect(toForwarder).toHaveLength(posted);
     expect([heard.values, heard.ends, heard.fails, heard.closes]).toEqual([[], [], [], []]);
     expect(issues).toEqual([]);
+  });
+
+  it("As a forwarder, I refuse an unreadable message that reuses an in-flight request id and the peer hears only the upstream's answer", async () => {
+    // Given a forwarded request in flight on id 1
+    const { peer, timers, issues, answer } = await forwardingFromRaw();
+    peer.call(notes.read, 1, { tag: 'request', value: 'a note' });
+    await timers.advance(0);
+
+    // When
+    peer.send(1, unreadableLeg(notes.read));
+    await timers.advance(0);
+
+    // Then
+    const reused = new Error('A request reuses call 1, which is still in flight');
+    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: reused }]);
+    expect(peer.names()).toEqual(['handshakeResponse']);
+
+    // When
+    answer.resolve(ok('the note'));
+    await timers.advance(0);
+
+    // Then
+    expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
+    expect(peer.values(notes.read, 'response:notes.read')).toEqual([ok('the note')]);
+  });
+
+  it('As a forwarder, I refuse a request that reuses an in-flight id and the upstream serves it once', async () => {
+    // Given a forwarded request in flight on id 1
+    const { peer, timers, issues, answer, served } = await forwardingFromRaw();
+    peer.call(notes.read, 1, { tag: 'request', value: 'a note' });
+    await timers.advance(0);
+
+    // When
+    peer.call(notes.read, 1, { tag: 'request', value: 'the same note again' });
+    await timers.advance(0);
+    answer.resolve(ok('the note'));
+    await timers.advance(0);
+
+    // Then
+    expect(served).toHaveBeenCalledOnce();
+    const reused = new Error('A request reuses call 1, which is still in flight');
+    expect(issues).toEqual([{ kind: 'refused', reason: 'invalid', cause: reused }]);
+    expect(peer.names()).toEqual(['handshakeResponse', 'response:notes.read']);
+    expect(peer.values(notes.read, 'response:notes.read')).toEqual([ok('the note')]);
+  });
+
+  it('As a forwarder, I refuse a stop with trailing bytes and the subscription keeps running on both links until a whole stop ends it', async () => {
+    // Given a forwarded subscription on id 1
+    const { peer, timers, issues, server } = await forwardingFromRaw();
+    const { sinks, stops } = serveWatch(server);
+    peer.call(notes.watch, 1, { tag: 'start', value: 'from the top' });
+    await timers.advance(0);
+    const { sectionId, methodId } = testSchema.addressOf(notes.watch);
+
+    // When
+    peer.send(1, { tag: 'call', value: { sectionId, methodId, message: TRAILED_STOP } });
+    await timers.advance(0);
+    must(sinks[0], 'the sink').send('still here');
+    await timers.advance(0);
+
+    // Then
+    expect(issues).toEqual([
+      {
+        kind: 'refused',
+        reason: 'malformed',
+        cause: expect.objectContaining({ message: 'The value is followed by unread bytes, 1 in all' }) as Error,
+      },
+    ]);
+    expect(stops).toEqual([0]);
+    expect(peer.values(notes.watch, 'receive:notes.watch')).toEqual(['still here']);
+    expect(peer.failures()).toEqual([]);
+
+    // When
+    peer.call(notes.watch, 1, { tag: 'stop', value: undefined });
+    await timers.advance(0);
+
+    // Then
+    expect(stops).toEqual([1]);
+    expect(issues).toHaveLength(1);
   });
 
   it('As a forwarder, I replace a forwarded subscription on a reused start and stop the old one on the upstream', async () => {

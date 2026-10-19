@@ -68,6 +68,9 @@ export const CUT_SHORT_TEXT = Uint8Array.of(8);
 /** The text `a` followed by a byte it leaves unread, so a whole decode refuses it. */
 export const TRAILED_TEXT = Uint8Array.of(4, 0x61, 0);
 
+/** A subscription's stop followed by a byte it leaves unread, so a whole decode refuses it. */
+export const TRAILED_STOP = Uint8Array.of(...notes.watch.message.enc({ tag: 'stop', value: undefined }), 0);
+
 /** Why a whole decode refuses `TRAILED_TEXT`. */
 export const TRAILED_REASON = 'RangeError: The value is followed by unread bytes, 1 in all';
 
