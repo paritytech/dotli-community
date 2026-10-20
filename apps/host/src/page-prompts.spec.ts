@@ -46,6 +46,52 @@ describe('host prompts', () => {
     await expect(answer).resolves.toBe('accepted');
   });
 
+  it('As a dotli user, I approve a review and its dialog hands its place to the next step', async () => {
+    // Given
+    const heard: string[] = [];
+    const closed: string[] = [];
+    const answer = prompts.confirmReview(
+      {
+        title: 'Sign Transaction',
+        fields: [],
+        buttons: [
+          { label: 'Cancel', variant: 'danger', result: 'rejected' },
+          { label: 'Sign', variant: 'primary', result: 'accepted' },
+        ],
+        dismissOnBackdrop: false,
+      },
+      live(),
+      result => {
+        heard.push(result);
+        return {
+          view: {
+            title: 'Waiting',
+            fields: [],
+            buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
+            dismissOnBackdrop: false,
+          },
+          signal: live(),
+          closed: how => closed.push(how),
+        };
+      },
+    );
+
+    // When
+    chooseModalButton('Sign');
+
+    // Then
+    await expect(answer).resolves.toBe('accepted');
+    expect(heard).toEqual(['accepted']);
+    expect(shownModal().view.title).toBe('Waiting');
+
+    // When
+    chooseModalButton('Wait in background');
+
+    // Then
+    expect(closed).toEqual(['background']);
+    expect(() => shownModal()).toThrow();
+  });
+
   it('As a dotli user, a review with no glyph shows none', async () => {
     // Given
     const answer = prompts.confirmReview(

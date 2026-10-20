@@ -9,6 +9,8 @@ import { SUBMIT_MAX_PER_WINDOW } from './rate-limit.js';
 import type { NotificationScheduler } from './push-notification.js';
 import type { HostPrompts } from '../host-prompts.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
+import { requestFrame } from '../phone-requests.fake.js';
+import { createPhoneRequestTracker } from '../phone-requests.js';
 import { createPermissionAuthorizations } from '../permissions.js';
 import { createProductPermissions } from '../state/product-permissions.js';
 import { productStore } from '../state/product.js';
@@ -80,6 +82,51 @@ describe('blocking modal queue across host callbacks', () => {
     await expect(camera).resolves.toEqual('AllowAlways');
     expect(page.pending()).toEqual([]);
     scope.dispose();
+  });
+
+  it("As a paired phone's product, the account access I am allowed waits on the phone before the next prompt", async () => {
+    // Given
+    const scope = createBlockingModalCoordinator().createScope();
+    const page = createFakePrompts();
+    const phoneRequests = createPhoneRequestTracker();
+    const tap = phoneRequests.connect();
+    const callbacks = createHostCallbacks({
+      permissions: permissionsOfTest(),
+      label: 'localhost:3000',
+      blockingModalScope: scope,
+      prompts: page.prompts,
+      notifications: scheduler,
+      phoneRequests,
+    });
+    tap.fromProduct(
+      requestFrame('a', 'getAccount', {
+        productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+      }),
+    );
+    const accountAccess = callbacks.userConfirmation.confirmUserAction({
+      tag: 'AccountAccess',
+      value: { requestingProductId: 'truapi-playground.dot', targetProductId: 'other-product.dot' },
+    });
+    const camera = callbacks.permissions.devicePermission(PRODUCT, 'Camera');
+    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account Access');
+
+    // When
+    page.chooseReviewButton('Allow');
+
+    // Then
+    await expect(accountAccess).resolves.toBe(true);
+    expect(page.pending()).toHaveLength(1);
+    expect(page.shownReview().buttons.map(b => b.label)).toEqual(['Wait in background']);
+
+    // When
+    page.chooseReviewButton('Wait in background');
+
+    // Then
+    await page.promptShown(prompt => prompt.kind === 'permission');
+    page.decide('granted');
+    await expect(camera).resolves.toEqual('AllowAlways');
+    scope.dispose();
+    phoneRequests.dispose();
   });
 });
 

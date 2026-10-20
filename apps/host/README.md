@@ -55,6 +55,11 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   the frame reloads only when its `allow` attribute changes.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time.
+- An approved review that goes to the paired phone waits there. Until the core reports its phone requests, each pairing
+  core infers them from the frames it relays and matches the review to its request. The core has its answer at once, and
+  the dialog swaps in place for a waiting step that holds the prompt slot until the user sends it to the background or
+  the request ends. Each waited request ends with one toast, and a torn down connection ends it with none. A local
+  wallet's dialogs close on their answer.
 - The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,

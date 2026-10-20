@@ -6,7 +6,7 @@
 
 import { toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from './permissions.js';
-import type { ModalView, NotificationParams } from '@dotli/ui';
+import type { ModalHandoff, ModalView, NotificationParams } from '@dotli/ui';
 import type { HostPrompts, PermissionPromptDecision } from './host-prompts.js';
 
 export type FakePrompt =
@@ -15,6 +15,7 @@ export type FakePrompt =
   | { kind: 'review'; dialog: ModalView<string> };
 
 interface Pending {
+  /** A handed-off review swaps its dialog in place. */
   prompt: FakePrompt;
   settle: (answer: string | boolean) => void;
 }
@@ -31,11 +32,15 @@ export interface FakePrompts {
   shownReview: () => ModalView<string>;
   /** Resolves with the ask on screen once one that `matches` is up, woken by each ask rather than polling. */
   promptShown: (matches?: (prompt: FakePrompt) => boolean) => Promise<FakePrompt>;
+  /** Resolves once no ask is on screen, woken by each change rather than polling. */
+  screenCleared: () => Promise<void>;
+  /** Resolves with the notices once `count` have been shown, woken by each notice rather than polling. */
+  noticesShown: (count: number) => Promise<readonly NotificationParams[]>;
   /** Answers the permission prompt on screen. */
   decide: (decision: PermissionPromptDecision) => void;
   /** Answers the preimage prompt on screen. */
   allowPreimage: (allowed: boolean) => void;
-  /** Settles the review on screen with `result`. */
+  /** Settles the review on screen with `result`, or closes the step a review handed off to with it. */
   settleReview: (result: string) => void;
   /** Presses the review button with this label. */
   chooseReviewButton: (label: string) => void;
@@ -47,14 +52,30 @@ export function createFakePrompts(): FakePrompts {
   const queue: Pending[] = [];
   const waiters = new Set<() => void>();
   const notices: NotificationParams[] = [];
-  // Every change of the queue, so a waiter also sees a queued ask that became the one on screen.
+  // Every change of the queue and every notice, so a waiter also sees a queued ask that became the one on screen.
   const wake = (): void => {
     for (const check of [...waiters]) {
       check();
     }
   };
+  const until = <T>(ready: () => T | undefined): Promise<T> =>
+    new Promise(resolve => {
+      const check = (): void => {
+        const value = ready();
+        if (value !== undefined) {
+          waiters.delete(check);
+          resolve(value);
+        }
+      };
+      waiters.add(check);
+      check();
+    });
 
-  const ask = <T>(prompt: FakePrompt, signal: AbortSignal): Promise<T> => {
+  const ask = <T>(
+    prompt: FakePrompt,
+    signal: AbortSignal,
+    handoff?: (answer: string) => ModalHandoff | undefined,
+  ): Promise<T> => {
     if (signal.aborted) {
       return Promise.reject(toAbortError(signal.reason, 'Prompt aborted'));
     }
@@ -74,10 +95,33 @@ export function createFakePrompts(): FakePrompts {
           reject(toAbortError(signal.reason, 'Prompt aborted'));
         }
       }
+      // As the page's dialogs do: the handoff sees every answer, and its step closes on its own signal only.
+      function handOff(next: ModalHandoff): void {
+        signal.removeEventListener('abort', onAbort);
+        const onStepAbort = (): void => {
+          if (take()) {
+            next.closed('aborted');
+          }
+        };
+        next.signal.addEventListener('abort', onStepAbort, { once: true });
+        entry.prompt = { kind: 'review', dialog: next.view };
+        entry.settle = answer => {
+          next.signal.removeEventListener('abort', onStepAbort);
+          take();
+          next.closed(String(answer));
+        };
+        wake();
+      }
       const entry: Pending = {
         prompt,
         settle: answer => {
-          take();
+          const next = handoff?.(String(answer));
+          if (next !== undefined && !next.signal.aborted) {
+            handOff(next);
+          } else {
+            take();
+            next?.closed('aborted');
+          }
           resolve(answer as T);
         },
       };
@@ -108,9 +152,11 @@ export function createFakePrompts(): FakePrompts {
       askPermission: (label, permission, signal, { allowOnce }) =>
         ask({ kind: 'permission', label, permission, allowOnce }, signal),
       confirmPreimage: (label, size, signal) => ask({ kind: 'preimage', label, size }, signal),
-      confirmReview: (dialog, signal) => ask({ kind: 'review', dialog }, signal),
+      confirmReview: (dialog, signal, handoff) =>
+        ask({ kind: 'review', dialog }, signal, handoff as ((answer: string) => ModalHandoff | undefined) | undefined),
       notify: notice => {
         notices.push(notice);
+        wake();
       },
     },
     notices,
@@ -118,17 +164,12 @@ export function createFakePrompts(): FakePrompts {
     shown: () => top().prompt,
     shownReview,
     promptShown: (matches = () => true) =>
-      new Promise(resolve => {
-        const check = (): void => {
-          const entry = queue[0];
-          if (entry !== undefined && matches(entry.prompt)) {
-            waiters.delete(check);
-            resolve(entry.prompt);
-          }
-        };
-        waiters.add(check);
-        check();
+      until(() => {
+        const entry = queue[0];
+        return entry !== undefined && matches(entry.prompt) ? entry.prompt : undefined;
       }),
+    screenCleared: () => until(() => (queue.length === 0 ? true : undefined)).then(() => undefined),
+    noticesShown: count => until(() => (notices.length >= count ? [...notices] : undefined)),
     decide: decision => {
       const entry = top();
       if (entry.prompt.kind !== 'permission') {
