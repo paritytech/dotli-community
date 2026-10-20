@@ -8,9 +8,14 @@ import { modalsStore, type ModalEntry } from '../../page/state/modals.js';
 import { PromptDialog } from './PromptDialog.js';
 
 export function ModalOutlet(): JSX.Element {
-  const entries = useStore(modalsStore);
+  // The first entry, kept while only its view changes, so a handed-off dialog stays mounted.
+  const first = useStore(
+    modalsStore,
+    entries => entries[0],
+    (prev, next) => prev?.id === next?.id,
+  );
   return (
-    <Show when={entries()[0]} keyed>
+    <Show when={first()} keyed>
       {(entry: ModalEntry) => <PromptDialog entry={entry} />}
     </Show>
   );

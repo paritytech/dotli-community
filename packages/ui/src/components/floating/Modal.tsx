@@ -28,6 +28,8 @@ export interface ModalProps {
   class?: string | undefined;
   /** On the card or sheet, with `-backdrop`, `-scrim` and `-sheet-*` variants. */
   testId: string;
+  /** False hides the sheet head's close button. A swipe still closes. Default true. */
+  closable?: boolean | undefined;
   /** Receives the frame. */
   frameRef?: (el: HTMLDivElement) => void;
   children: JSX.Element;
@@ -110,6 +112,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
           testId={props.testId}
           open={props.open}
           closeLabel="Close"
+          closable={props.closable}
           body={{ class: s['sheetScroll'] }}
         >
           <div class={s['sheetBody']}>{content()}</div>

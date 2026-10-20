@@ -8,7 +8,7 @@ import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { Button } from '../../components/primitives/Button.js';
 import { ModalFocusFallback } from '../../components/floating/layer-context.js';
-import { openModal, type ModalOutcome, type ModalView } from '../../page/state/modals.js';
+import { openModal, type ModalHandoff, type ModalOutcome, type ModalView } from '../../page/state/modals.js';
 import { ModalOutlet } from './ModalOutlet.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -39,7 +39,48 @@ const passwordView: ModalView<'cancel' | 'unlock'> = {
 };
 
 /** What the story asks each time I press the page's Ask button, and every outcome it got back, in order. */
-const asked: { views: ModalView<string>[]; outcomes: Promise<ModalOutcome<string>>[] } = { views: [], outcomes: [] };
+const asked: {
+  views: ModalView<string>[];
+  outcomes: Promise<ModalOutcome<string>>[];
+  /** Replaces opening `views` when a story needs a handoff. */
+  start?: (() => void) | undefined;
+} = { views: [], outcomes: [] };
+/** How the handed-off view closed, for the handoff stories. */
+const handoffClosed: string[] = [];
+/** The view an answered dialog hands its place to. */
+const waitingView = (overrides: Partial<ModalView<string>> = {}): ModalView<string> => ({
+  title: 'Waiting',
+  fields: [],
+  body: () => <p>Waiting step body</p>,
+  buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
+  dismissOnBackdrop: true,
+  dismissResult: 'background',
+  ...overrides,
+});
+/** Asks `view`, which hands its place to `next` once answered. */
+const askWithHandoff = (view: ModalView<Choice>, next: ModalView<string>) => () => {
+  resetAllStoresForTests();
+  appFrame = undefined;
+  handoffClosed.length = 0;
+  asked.views = [];
+  asked.outcomes = [];
+  asked.start = () => {
+    asked.outcomes.push(
+      openModal(view, undefined, (): ModalHandoff => ({
+        view: next,
+        signal: new AbortController().signal,
+        closed: result => {
+          handoffClosed.push(result);
+        },
+      })),
+    );
+  };
+  return () => {
+    asked.start = undefined;
+    resetAllStoresForTests();
+    appFrame = undefined;
+  };
+};
 /** The app frame the page hands focus to, as the host page gives its product frame. */
 let appFrame: HTMLIFrameElement | undefined;
 const ask =
@@ -62,7 +103,11 @@ function Page(props: { frames?: number }) {
       <Button
         testId="opener"
         onClick={() => {
-          asked.outcomes.push(...asked.views.map(view => openModal(view)));
+          if (asked.start === undefined) {
+            asked.outcomes.push(...asked.views.map(view => openModal(view)));
+          } else {
+            asked.start();
+          }
         }}
       >
         Ask
@@ -432,6 +477,70 @@ export const LaterPromptBringsScrim: Story = {
     await step('Then it brings its own scrim in', async () => {
       await expect(title()).toBe('Later');
       await expect(backdrop()).not.toHaveAttribute('data-follows');
+    });
+  },
+};
+
+const reviewWithSign = (): ModalView<Choice> =>
+  permissionLike({
+    title: 'Sign',
+    buttons: [
+      { label: 'Reject', variant: 'danger', result: 'deny' },
+      { label: 'Sign', variant: 'primary', result: 'once' },
+    ],
+  });
+
+/** As a dotli user, I answer a review and the same dialog shows the next step in place. */
+export const HandoffSwapsInPlace: Story = {
+  beforeEach: askWithHandoff(reviewWithSign(), waitingView()),
+  play: async ({ step }) => {
+    let dialog: HTMLElement | undefined;
+    await step('Given a review is up', async () => {
+      await askNow();
+      dialog = body.getByTestId('prompt-dialog');
+    });
+    await step('When I press Sign', () => press(body.getByRole('button', { name: 'Sign' })));
+    await step('Then the same dialog shows the next step and the review fields are gone', async () => {
+      await waitFor(() => expect(body.getByText('Waiting step body')).toBeVisible());
+      await expect(body.getByTestId('prompt-dialog')).toBe(dialog);
+      await expect(body.queryByTestId('prompt-dialog-field')).toBeNull();
+      await expect(asked.outcomes[0]).resolves.toEqual({ result: 'once' });
+    });
+  },
+};
+
+/** As a dotli user, I press Escape on the next step and it closes as the view's dismiss answer. */
+export const HandoffBackgroundsOnEscape: Story = {
+  beforeEach: askWithHandoff(reviewWithSign(), waitingView()),
+  play: async ({ step }) => {
+    await step('Given I signed and the next step is up', async () => {
+      await askNow();
+      await press(body.getByRole('button', { name: 'Sign' }));
+      await waitFor(() => expect(body.getByText('Waiting step body')).toBeVisible());
+    });
+    await step('When I press Escape', async () => {
+      await (await trustedInput()).keyboard('{Escape}');
+    });
+    await step("Then the dialog is gone and the caller heard the view's dismiss answer", async () => {
+      await closed();
+      await expect(handoffClosed).toEqual(['background']);
+    });
+  },
+};
+
+/** As a phone user, I see the next step's sheet without a close button when it cannot be closed that way. */
+export const HandoffSheetHasNoClose: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  beforeEach: askWithHandoff(reviewWithSign(), waitingView({ closable: false })),
+  play: async ({ step }) => {
+    await step('Given a review is up on a phone, with a close button', async () => {
+      await askNow();
+      await body.findByTestId('prompt-dialog-sheet-close');
+    });
+    await step('When I press Sign', () => press(body.getByRole('button', { name: 'Sign' })));
+    await step('Then the next step shows and the sheet has no close button', async () => {
+      await waitFor(() => expect(body.getByText('Waiting step body')).toBeVisible());
+      await expect(body.queryByTestId('prompt-dialog-sheet-close')).toBeNull();
     });
   },
 };

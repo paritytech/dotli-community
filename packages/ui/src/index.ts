@@ -47,6 +47,7 @@ export {
   type ModalButtonVariant,
   type ModalEntry,
   type ModalField,
+  type ModalHandoff,
   type ModalOutcome,
   type ModalView,
 } from './page/state/modals.js';

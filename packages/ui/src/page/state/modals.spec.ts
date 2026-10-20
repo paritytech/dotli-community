@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { modalsStore, openModal, refuseModals, settleModal, type ModalView } from './modals.js';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { modalsStore, openModal, refuseModals, settleModal, type ModalHandoff, type ModalView } from './modals.js';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 
 type Choice = 'yes' | 'no' | 'dismissed';
@@ -146,5 +146,105 @@ describe('dialogs that cannot be shown', () => {
 
     // Then
     expect(modalsStore.get()).toHaveLength(1);
+  });
+});
+
+describe('a dialog that hands its place to a second view', () => {
+  const next = (signal: AbortSignal, closed: (result: string) => void): ModalHandoff => ({
+    view: {
+      title: 'Waiting',
+      fields: [],
+      buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
+      dismissOnBackdrop: true,
+      dismissResult: 'background',
+    },
+    signal,
+    closed,
+  });
+
+  it('As a product, I get my answer while the dialog hands its place to the next view', async () => {
+    // Given
+    const asked = openModal(view('Review'), undefined, () => next(new AbortController().signal, () => undefined));
+    const before = nth(modalsStore.get(), 0);
+
+    // When
+    settleModal(before.id, 'yes');
+
+    // Then
+    await expect(asked).resolves.toEqual({ result: 'yes' });
+    expect(modalsStore.get()).toHaveLength(1);
+    const after = nth(modalsStore.get(), 0);
+    expect(after.id).toBe(before.id);
+    expect(after.view.title).toBe('Waiting');
+  });
+
+  it('As a user, I close the handed-off view with its button and the caller hears which', () => {
+    // Given
+    const closed = vi.fn();
+    void openModal(view('Review'), undefined, () => next(new AbortController().signal, closed));
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // When
+    settleModal(nth(modalsStore.get(), 0).id, 'background');
+
+    // Then
+    expect(closed).toHaveBeenCalledExactlyOnceWith('background');
+    expect(modalsStore.get()).toEqual([]);
+  });
+
+  it('As a host, I close the handed-off view from elsewhere', () => {
+    // Given
+    const closed = vi.fn();
+    const controller = new AbortController();
+    void openModal(view('Review'), undefined, () => next(controller.signal, closed));
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // When
+    controller.abort();
+
+    // Then
+    expect(closed).toHaveBeenCalledExactlyOnceWith('aborted');
+    expect(modalsStore.get()).toEqual([]);
+  });
+
+  it('As a host, a handoff that returns nothing closes the dialog as before', async () => {
+    // Given
+    const asked = openModal(view('Review'), undefined, () => undefined);
+
+    // When
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // Then
+    await expect(asked).resolves.toEqual({ result: 'yes' });
+    expect(modalsStore.get()).toEqual([]);
+  });
+
+  it('As a host, an aborted handoff signal never shows the view', () => {
+    // Given
+    const closed = vi.fn();
+    const controller = new AbortController();
+    controller.abort();
+    void openModal(view('Review'), undefined, () => next(controller.signal, closed));
+
+    // When
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // Then
+    expect(modalsStore.get()).toEqual([]);
+    expect(closed).toHaveBeenCalledExactlyOnceWith('aborted');
+  });
+
+  it('As a page whose overlays broke, refuseModals answers a handed-off view with its dismiss result', () => {
+    // Given
+    const closed = vi.fn();
+    void openModal(view('Review'), undefined, () => next(new AbortController().signal, closed));
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // When
+    onTestFinished(refuseModals());
+
+    // Then
+    expect(closed).toHaveBeenCalledExactlyOnceWith('background');
+    expect(modalsStore.get()).toEqual([]);
   });
 });

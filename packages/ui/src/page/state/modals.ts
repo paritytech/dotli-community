@@ -48,6 +48,19 @@ export interface ModalView<R extends string> {
   dismissOnBackdrop: boolean;
   /** Result of a backdrop click or Escape. Required when `dismissOnBackdrop`. */
   dismissResult?: R;
+  /** Drawn in the body after fields and notice, for a step that is not a form. */
+  body?: Component;
+  /** False hides the sheet head's close button. A swipe still closes and answers like the scrim. Default true. */
+  closable?: boolean;
+}
+
+/** The view an answered dialog shows in its place, until a button, Escape, the scrim or `signal` closes it. */
+export interface ModalHandoff {
+  view: ModalView<string>;
+  /** Closes the step from elsewhere. */
+  signal: AbortSignal;
+  /** Hears once how it closed: a button's result, the view's `dismissResult`, or `aborted`. */
+  closed: (result: string) => void;
 }
 
 export interface ModalOutcome<R extends string> {
@@ -64,6 +77,7 @@ export interface ModalEntry {
 const MODAL_ABORTED = 'Blocking modal scope disposed';
 
 interface Pending {
+  handoff?: ((outcome: ModalOutcome<string>) => ModalHandoff | undefined) | undefined;
   resolve: (outcome: ModalOutcome<string>) => void;
   detach: () => void;
 }
@@ -88,8 +102,15 @@ function take(id: number): Pending | undefined {
   return entry;
 }
 
-/** Rejects with an AbortError when `signal` fires. */
-export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSignal): Promise<ModalOutcome<R>> {
+/**
+ * Rejects with an AbortError when `signal` fires. Once answered, `handoff` may return the view that takes the
+ * dialog's place without closing it.
+ */
+export function openModal<R extends string>(
+  view: ModalView<R>,
+  signal?: AbortSignal,
+  handoff?: (outcome: ModalOutcome<R>) => ModalHandoff | undefined,
+): Promise<ModalOutcome<R>> {
   if (signal?.aborted === true) {
     return Promise.reject(toAbortError(signal.reason, MODAL_ABORTED));
   }
@@ -102,6 +123,7 @@ export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSi
     };
     signal?.addEventListener('abort', onAbort, { once: true });
     pending.set(id, {
+      handoff: handoff as Pending['handoff'],
       resolve: resolve as (outcome: ModalOutcome<string>) => void,
       detach: () => {
         signal?.removeEventListener('abort', onAbort);
@@ -111,9 +133,41 @@ export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSi
   });
 }
 
+/** Puts the handed-off view in the entry's place, closing it on its own signal. */
+function showHandoff(id: number, next: ModalHandoff): void {
+  const onAbort = (): void => {
+    if (take(id) !== undefined) {
+      next.closed('aborted');
+    }
+  };
+  next.signal.addEventListener('abort', onAbort, { once: true });
+  pending.set(id, {
+    resolve: outcome => {
+      next.closed(outcome.result);
+    },
+    detach: () => {
+      next.signal.removeEventListener('abort', onAbort);
+    },
+  });
+  modals.set(modals.get().map(e => (e.id === id ? { id, view: next.view } : e)));
+}
+
 /** Ignored if the dialog has already settled. */
 export function settleModal(id: number, result: string, value?: string): void {
-  take(id)?.resolve(value === undefined ? { result } : { result, value });
+  const entry = pending.get(id);
+  if (entry === undefined) {
+    return;
+  }
+  const outcome: ModalOutcome<string> = value === undefined ? { result } : { result, value };
+  const next = entry.handoff?.(outcome);
+  if (next !== undefined && !next.signal.aborted) {
+    entry.detach();
+    showHandoff(id, next);
+  } else {
+    take(id);
+    next?.closed('aborted');
+  }
+  entry.resolve(outcome);
 }
 
 /** A dialog's refusal: its dismiss result, else its cancel or reject button's. */

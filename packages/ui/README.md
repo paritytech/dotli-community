@@ -76,7 +76,10 @@ and no data source.
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar` and `ActionEntry`.
 - Stores: the modal store (`openModal`, `refuseModals`, which answers every dialog with its refusal while the overlays
   cannot render, and the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
-  `ModalButtonVariant`) and the toast store (`toastsStore` and the type `ToastEntry`).
+  `ModalButtonVariant`, `ModalHandoff`) and the toast store (`toastsStore` and the type `ToastEntry`). `openModal` takes
+  an optional handoff: once the dialog is answered it returns the view that takes the dialog's place without closing it,
+  until a button, Escape, the scrim or its signal closes that view. A view may draw its own `body` and set
+  `closable: false` to hide the sheet's close button.
 - Page helpers: `focusables`, `runWhenIdle` and `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`,
   `watchPhoneViewport`, `prefersReducedMotion` and the type `StatusTone`.
 - Helpers: `useStore`, `createDrags` with the type `Drags` (one owner for a component's pointer drags, which cancels

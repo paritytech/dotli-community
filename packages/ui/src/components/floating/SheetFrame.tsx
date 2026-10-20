@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { flush, onCleanup } from 'solid-js';
+import { flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../drag.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
@@ -100,6 +100,8 @@ export interface SheetFrameProps {
   title: string;
   onDismiss: () => void;
   closeLabel?: string;
+  /** False draws no close button, and a swipe still calls `onDismiss`. Default true. */
+  closable?: boolean | undefined;
   /** Prefix for `-sheet-head`, `-sheet-title`, `-sheet-close`. */
   testId: string;
   /** Whether its layer is open. The sheet slides on this. */
@@ -161,16 +163,18 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         <h2 class={s['title']} data-testid={`${props.testId}-sheet-title`}>
           {props.title}
         </h2>
-        <IconButton
-          size="sm"
-          testId={`${props.testId}-sheet-close`}
-          aria-label={props.closeLabel ?? `Close ${props.title}`}
-          onClick={() => {
-            props.onDismiss();
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
+        <Show when={props.closable !== false}>
+          <IconButton
+            size="sm"
+            testId={`${props.testId}-sheet-close`}
+            aria-label={props.closeLabel ?? `Close ${props.title}`}
+            onClick={() => {
+              props.onDismiss();
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Show>
       </div>
       <div
         class={[s['body'], props.body?.class]}
