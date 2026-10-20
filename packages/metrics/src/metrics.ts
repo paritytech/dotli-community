@@ -24,7 +24,13 @@ export type MetricOutcome =
   | 'update'
   | 'cleared'
   // Protocol wire
-  | 'refused';
+  | 'refused'
+  // Phone requests
+  | 'rejected'
+  | 'withdrawn'
+  | 'failed'
+  | 'gone'
+  | 'undecodable';
 
 /** Dashboards slice on the named keys, so keep new attributes within them. */
 export type MetricAttributes = {

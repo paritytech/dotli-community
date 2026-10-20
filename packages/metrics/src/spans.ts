@@ -330,3 +330,9 @@ export const PREIMAGE_LOOKUP = 'preimage.lookup';
  * the backend no longer serves the chain, `halted` when the new lease halted at once, or the error's name.
  */
 export const TRUAPI_CHAIN_REOPEN = 'truapi_chain.reopen';
+
+/**
+ * Count. A phone-bound request a waiting step followed to its end. Tagged `outcome` (`ok, rejected, withdrawn, failed,
+ * gone, undecodable`), `reason` (the method, or the failure's reason) and `background`.
+ */
+export const PHONE_REQUEST = 'signing.phone_request';
