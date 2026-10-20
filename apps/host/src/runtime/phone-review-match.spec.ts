@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { HostSignPayloadData } from '@parity/truapi';
+import type { ContactHandle, HostSignPayloadData } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
 import { describe, expect, it } from 'vitest';
 import type { PhoneAsk } from '../components/signing/phone-waiting-view.js';
@@ -210,5 +210,64 @@ describe('phone review match', () => {
 
     // Then
     expect(match).toBeUndefined();
+  });
+});
+
+describe('phone review match against the core rewrites', () => {
+  const productTx = (callData: Hex, contacts: ContactHandle[]) => ({ ...txPayload(callData), contacts });
+  const txReview = (payload: ReturnType<typeof productTx>): UserConfirmationReview => ({
+    tag: 'CreateTransaction',
+    value: { tag: 'Product', value: { payload } },
+  });
+
+  it('As a host, a create-transaction review with contacts matches its request despite the rewritten call data', () => {
+    // Given
+    const contacts: ContactHandle[] = [{ bytes: `0x${'11'.repeat(32)}` }];
+    const match = phoneReviewMatch(txReview(productTx('0xbeef', contacts)));
+
+    // When
+    const same = match?.matches(requestOf('createTransaction', productTx('0x01', contacts)));
+    const other = match?.matches(
+      requestOf('createTransaction', { ...productTx('0x01', contacts), genesisHash: '0x05' }),
+    );
+
+    // Then
+    expect(same).toBe(true);
+    expect(other).toBe(false);
+  });
+
+  it('As a host, a review matches a request whose product id is spelled differently', () => {
+    // Given
+    const request = (id: string) => requestOf('signVrf', { ...vrf('0xaa'), account: account(id) });
+    const vrfMatch = phoneReviewMatch({
+      tag: 'SignVrf',
+      value: { callingProductId: 'product.dot', request: vrf('0xaa') },
+    });
+    const accessMatch = phoneReviewMatch({
+      tag: 'AccountAccess',
+      value: { requestingProductId: 'a.dot', targetProductId: 'target.dot' },
+    });
+
+    // When
+    const spelled = vrfMatch?.matches(request('  Product.DOT '));
+    const getAccount = accessMatch?.matches(requestOf('getAccount', { productAccountId: account(' Target.Dot') }));
+
+    // Then
+    expect(spelled).toBe(true);
+    expect(getAccount).toBe(true);
+  });
+
+  it('As a host, a review that cannot be encoded matches nothing and does not throw', () => {
+    // Given
+    const review: UserConfirmationReview = {
+      tag: 'SignVrf',
+      value: { callingProductId: 'p.dot', request: {} as never },
+    };
+
+    // When
+    const match = phoneReviewMatch(review);
+
+    // Then
+    expect(match?.matches(requestOf('signVrf', vrf('0xaa')))).toBe(false);
   });
 });
