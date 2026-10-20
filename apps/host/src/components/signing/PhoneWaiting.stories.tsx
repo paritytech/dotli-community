@@ -41,10 +41,24 @@ const assertWaiting = async (lead: string): Promise<void> => {
   await waitFor(() => expect(body.getByRole('button', { name: 'Wait in background' })).toBeVisible());
 };
 
+/** The phone's own buttons, as the illustration labels them. */
+const phoneButtons = (): (string | null)[] =>
+  ['phone-illustration-reject', 'phone-illustration-primary'].map(id => body.getByTestId(id).textContent);
+
+const assertAnnounced = async (lead: string): Promise<void> => {
+  const region = body.getByRole('status');
+  await expect(region).toHaveTextContent(lead);
+  await expect(region).toHaveTextContent('Waiting for your phone');
+};
+
 /** As a user signing, I am told to open Polkadot App and tap Sign or Reject while the request waits. */
 export const Signing: Story = {
   play: async ({ step }) => {
     await step('Then the step names the phone and offers to wait in the background', () => assertWaiting(SIGN_LEAD));
+    await step('And the phone drawn shows Reject and Sign', async () => {
+      await expect(phoneButtons()).toEqual(['Reject', 'Sign']);
+    });
+    await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(SIGN_LEAD));
   },
 };
 
@@ -53,6 +67,10 @@ export const Approving: Story = {
   args: { ask: 'approve', title: 'Allowance' },
   play: async ({ step }) => {
     await step('Then the step names the phone and offers to wait in the background', () => assertWaiting(APPROVE_LEAD));
+    await step('And the phone drawn shows Reject and Approve, as the lead says', async () => {
+      await expect(phoneButtons()).toEqual(['Reject', 'Approve']);
+    });
+    await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(APPROVE_LEAD));
   },
 };
 

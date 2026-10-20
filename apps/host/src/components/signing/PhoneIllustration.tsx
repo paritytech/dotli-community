@@ -4,12 +4,19 @@
 import { createUniqueId } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { LogoSymbol } from '@dotli/ui/brand';
+import type { PhoneAsk } from './phone-waiting-view.js';
 import s from './PhoneIllustration.module.css';
 
 const SYMBOL_HEIGHT = 46;
 
-/** A phone showing Polkadot App with its Reject and Sign buttons, the Sign button pressed on a slow loop. */
-export function PhoneIllustration(): JSX.Element {
+/** The phone's primary button, labelled as Polkadot App labels it for the ask. */
+const PRIMARY: Record<PhoneAsk, string> = {
+  sign: 'Sign',
+  approve: 'Approve',
+};
+
+/** A phone showing Polkadot App with its Reject and primary buttons, the primary pressed on a slow loop. */
+export function PhoneIllustration(props: { ask: PhoneAsk }): JSX.Element {
   // Gradients are referenced by id across the whole document, so each phone names its own.
   const id = createUniqueId();
   const body = `phone-body-${id}`;
@@ -33,13 +40,13 @@ export function PhoneIllustration(): JSX.Element {
           d="M40 0.75H194C215.677 0.75 233.25 18.3228 233.25 40V308.25H0.75V40C0.75 18.3228 18.3228 0.75 40 0.75Z"
         />
         <rect class={s['reject']} x="11" y="246" width="100" height="30" rx="8" />
-        <text class={s['rejectText']} x="61" y="265">
+        <text class={s['rejectText']} x="61" y="265" data-testid="phone-illustration-reject">
           Reject
         </text>
         <g class={s['tap']}>
           <rect class={s['sign']} x="120" y="246" width="100" height="30" rx="8" />
-          <text class={s['signText']} x="170" y="265">
-            Sign
+          <text class={s['signText']} x="170" y="265" data-testid="phone-illustration-primary">
+            {PRIMARY[props.ask]}
           </text>
         </g>
         <rect class={s['fade']} fill={`url(#${fade})`} y="188" width="234" height="121" />

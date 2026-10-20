@@ -14,12 +14,13 @@ const LEAD: Record<PhoneAsk, string> = {
 
 /** Sends the user to Polkadot App and says the request waits for the phone. */
 export function PhoneWaiting(props: { ask: PhoneAsk }): JSX.Element {
+  // A polite live region, as focus lands on the dialog and a screen reader would not otherwise read the new step.
   return (
-    <div class={s['waiting']} data-testid="phone-waiting">
+    <div class={s['waiting']} data-testid="phone-waiting" role="status">
       <p class={s['lead']} data-testid="phone-waiting-lead">
         {LEAD[props.ask]}
       </p>
-      <PhoneIllustration />
+      <PhoneIllustration ask={props.ask} />
       <div class={s['status']} data-testid="phone-waiting-status">
         <StatusDot tone="info" size="sm" pulse />
         Waiting for your phone
