@@ -337,3 +337,9 @@ export const TRUAPI_CHAIN_REOPEN = 'truapi_chain.reopen';
  * `background`, `undecodable` and `unmatchable` do not.
  */
 export const PHONE_REQUEST = 'signing.phone_request';
+
+/**
+ * A view an answered dialog was to hand its place to that could not be built, so the dialog closed instead. Tagged
+ * `outcome` (error) and `reason` (the error's name).
+ */
+export const MODAL_HANDOFF = 'modal.handoff';

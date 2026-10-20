@@ -53,15 +53,15 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   let input: HTMLInputElement | undefined;
   let frame: HTMLDivElement | undefined;
   let shown = first;
-  // A new step starts without the last one's typed value, and the pressed button is gone, so focus moves in.
+  // A new step starts without the last one's typed value. The pressed button is gone, so focus moves to the surface
+  // rather than a button, where a second click or a repeated Enter would answer the new step at once.
   createEffect(view, next => {
     if (next === shown) {
       return;
     }
     shown = next;
     setPassword('');
-    const target =
-      frame?.querySelector('[data-testid$="-footer"] button') ?? frame?.querySelector('[data-modal-surface]');
+    const target = frame?.querySelector('[data-modal-surface]');
     if (target instanceof HTMLElement) {
       target.focus();
     }
@@ -162,6 +162,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
                 data-testid={`${root}-input`}
                 aria-labelledby={titleId}
                 placeholder={spec().placeholder}
+                value={password()}
                 autocomplete="off"
                 spellcheck="false"
                 onInput={event => setPassword(event.currentTarget.value)}

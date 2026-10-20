@@ -496,8 +496,36 @@ export const HandoffSwapsInPlace: Story = {
       await expect(body.queryByTestId('prompt-dialog-field')).toBeNull();
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'once' });
     });
-    await step('And focus is inside the dialog, not lost to the page', async () => {
-      await waitFor(() => expect(body.getByTestId('prompt-dialog').contains(document.activeElement)).toBe(true));
+    await step('And focus is on the dialog itself, not lost to the page or put on its button', async () => {
+      await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
+    });
+    await step('When I press Enter right after the swap, as a repeated key would', async () => {
+      await (await trustedInput()).keyboard('{Enter}');
+    });
+    await step('Then the next step is still up and nothing closed it', async () => {
+      await expect(body.getByText('Waiting step body')).toBeVisible();
+      await expect(handoffClosed).toEqual([]);
+    });
+  },
+};
+
+/** As a dotli user, I unlock a password prompt that hands its place to another and the next one starts empty. */
+export const HandoffClearsPassword: Story = {
+  beforeEach: askWithHandoff(passwordView, { ...passwordView, title: 'Try Again' }),
+  play: async ({ step }) => {
+    const field = () => body.getByTestId<HTMLInputElement>('prompt-dialog-input');
+    await step('Given I typed in a password prompt', async () => {
+      await askNow();
+      await (await trustedInput()).type(field(), 'hunter2');
+    });
+    await step('When I press Unlock and the next prompt takes its place', async () => {
+      await press(body.getByRole('button', { name: 'Unlock' }));
+      await waitFor(() => expect(title()).toBe('Try Again'));
+    });
+    await step('Then the first prompt got what I typed, and the next one starts empty', async () => {
+      await expect(asked.outcomes[0]).resolves.toEqual({ result: 'unlock', value: 'hunter2' });
+      await expect(field()).toHaveValue('');
+      await expect(body.getByRole('button', { name: 'Unlock' })).toBeDisabled();
     });
   },
 };
