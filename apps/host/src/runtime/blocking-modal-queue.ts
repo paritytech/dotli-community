@@ -13,7 +13,8 @@ type BlockingModalTask<T> = (signal: AbortSignal, hold: HoldSlot) => Promise<T> 
 export interface BlockingModalScope {
   /**
    * Resolves with the task's value as soon as it returns. A promise the task holds keeps the slot, and the counts,
-   * taken until it settles or the scope is disposed, so no other prompt covers what it shows.
+   * taken until it settles or the scope is disposed, so no other prompt covers what it shows. Rejects with an
+   * AbortError when the scope is disposed before the task answers, so a caller must handle it.
    */
   enqueue<T>(task: BlockingModalTask<T>): Promise<T>;
   dispose(reason?: string): void;

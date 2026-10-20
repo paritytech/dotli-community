@@ -13,6 +13,7 @@ import { createPhoneRequestTracker, type PhoneRequestTracker } from '../phone-re
 import { createUserConfirmationAdapters as createAdapters } from './user-confirmation.js';
 import type { ModalButton, ModalButtonVariant, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
+import { phoneWaitingView } from '../../components/signing/phone-waiting-view.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
 import { recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 
@@ -1157,9 +1158,13 @@ describe('waiting on the phone', () => {
 
   it('As a user, a phone answer already in as the step opens closes it at once with one toast', async () => {
     // Given
-    const { tap, confirmation } = await signedForPhone();
+    const { tap, confirmUserAction } = pairedPhone();
+    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
+    const confirmation = confirmUserAction(signReview('0x06'));
+    await modalShown();
 
     // When
+    press('sign');
     tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
 
     // Then
@@ -1200,6 +1205,31 @@ describe('waiting on the phone', () => {
     // Then
     await expect(confirmation).resolves.toBe(true);
     expect(page.pending()).toEqual([]);
+  });
+
+  it('As a local wallet, a review that cannot be matched to a request reports nothing', async () => {
+    // Given a local wallet core's disposed tracker, and a review whose request would not encode
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const tracker = createPhoneRequestTracker();
+    tracker.dispose();
+    const confirmation = createUserConfirmationAdapters('localhost:3000', tracker).confirmUserAction({
+      tag: 'SignVrf',
+      value: {
+        callingProductId: 'product.dot',
+        request: { account: productAccount, transcriptLabel: '0xaa', items: [{} as never] },
+      },
+    });
+    await modalShown();
+
+    // When
+    press('sign');
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
+    expect(page.pending()).toEqual([]);
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([]);
+    expect(captured).toEqual([]);
   });
 
   it('As a product, a request that never reached the frame closes the dialog as today', async () => {
@@ -1257,6 +1287,23 @@ describe('waiting on the phone', () => {
     const notices = await page.noticesShown(1);
     expect(page.pending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(['Allowance granted']);
+  });
+
+  it('As a user granting an allowance, the waiting step asks me to approve on my phone, not to sign', async () => {
+    // Given
+    const resources = [{ tag: 'SmartContractAllowance' as const, value: { tag: 'Index' as const, value: 1 } }];
+    const { tap, confirmUserAction } = pairedPhone();
+    tap.fromProduct(requestFrame('a', 'requestResourceAllocation', { resources }));
+    void confirmUserAction({ tag: 'ResourceAllocation', value: { callingProductId: 'product.dot', resources } });
+    await modalShown();
+
+    // When
+    press('sign');
+
+    // Then
+    expect(waiting()).toBe(true);
+    expect(shownDialog().body).toBe(phoneWaitingView({ title: 'Resource Allocation', ask: 'approve' }).body);
+    expect(shownDialog().body).not.toBe(phoneWaitingView({ title: 'Resource Allocation', ask: 'sign' }).body);
   });
 
   it('As a user, allowing account access once waits on the phone and the core hears AllowOnce', async () => {

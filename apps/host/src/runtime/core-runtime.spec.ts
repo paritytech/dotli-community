@@ -127,6 +127,23 @@ describe('core runtime boot', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['As a Polkadot App user, my callbacks claim from the tracker my core was booted with', null],
+    [
+      'As a local wallet user, my callbacks get the tracker my core was booted with, which the page core disposes',
+      WALLET,
+    ],
+  ] as [string, LocalWalletBoot | null][])('%s', async (_name, read) => {
+    // Given
+    const { deps, callbackOptions } = harness(read);
+
+    // When
+    await createCoreRuntimeBoot(deps)(request);
+
+    // Then
+    expect(callbackOptions[0]?.phoneRequests).toBe(request.phoneRequests);
+  });
+
   it('As a user on the landing page, I pair under the name the page asked for', async () => {
     // Given
     const { deps, callbackOptions } = harness(null);

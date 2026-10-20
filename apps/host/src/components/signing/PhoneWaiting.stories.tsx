@@ -7,11 +7,10 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import type { PhoneAsk } from '../../runtime/phone-methods.js';
 import { SignIcon } from '../icons/SignIcon.js';
-import { ASK_COPY } from './phone-ask-copy.js';
 import { phoneWaitingView } from './phone-waiting-view.js';
 
-const SIGN_LEAD = ASK_COPY.sign.lead;
-const APPROVE_LEAD = ASK_COPY.approve.lead;
+const SIGN_LEAD = 'Open Polkadot App on your phone, then tap Sign or Reject';
+const APPROVE_LEAD = 'Open Polkadot App on your phone, then Approve or Reject';
 
 const meta = {
   title: 'Host/Signing/PhoneWaiting',
@@ -62,7 +61,7 @@ export const Signing: Story = {
   play: async ({ step }) => {
     await step('Then the step names the phone and offers to wait in the background', () => assertWaiting(SIGN_LEAD));
     await step('And the phone drawn shows Reject and Sign', async () => {
-      await expect(phoneButtons()).toEqual(['Reject', ASK_COPY.sign.primary]);
+      await expect(phoneButtons()).toEqual(['Reject', 'Sign']);
     });
     await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(SIGN_LEAD));
   },
@@ -74,7 +73,7 @@ export const Approving: Story = {
   play: async ({ step }) => {
     await step('Then the step names the phone and offers to wait in the background', () => assertWaiting(APPROVE_LEAD));
     await step('And the phone drawn shows Reject and Approve, as the lead says', async () => {
-      await expect(phoneButtons()).toEqual(['Reject', ASK_COPY.approve.primary]);
+      await expect(phoneButtons()).toEqual(['Reject', 'Approve']);
     });
     await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(APPROVE_LEAD));
   },

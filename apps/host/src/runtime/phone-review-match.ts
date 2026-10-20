@@ -66,28 +66,38 @@ export function phoneReviewMatch(
    * call data is read as `callData` (the core rewrites it for declared contacts before it builds the review).
    */
   const byRequest = (methods: [PhoneMethod, ...PhoneMethod[]], value: unknown, callData?: string): PhoneReviewMatch => {
-    try {
-      const encoded = new Map(methods.map(method => [method, encodeV1(method, value)]));
-      return request => {
-        const expected = encoded.get(request.method);
-        if (expected === undefined) {
-          return false;
-        }
+    // Encoded at the first request matched, so a review with nothing in flight, as on a local wallet, encodes nothing.
+    let encoded: Map<PhoneMethod, Uint8Array> | null | undefined;
+    const expectedFor = (method: PhoneMethod): Uint8Array | undefined => {
+      if (encoded === undefined) {
         try {
-          let body = withNormalizedProductIds(request.body);
-          if (callData !== undefined) {
-            body = { ...(body as object), callData };
-          }
-          return sameBytes(expected, encodeV1(request.method, body));
+          encoded = new Map(methods.map(each => [each, encodeV1(each, value)]));
         } catch (error) {
-          reportEncodeFailure(request.method, error);
-          return false;
+          reportEncodeFailure(methods[0], error);
+          encoded = null;
         }
-      };
-    } catch (error) {
-      reportEncodeFailure(methods[0], error);
-      return () => false;
-    }
+      }
+      return encoded?.get(method);
+    };
+    return request => {
+      if (!methods.includes(request.method)) {
+        return false;
+      }
+      const expected = expectedFor(request.method);
+      if (expected === undefined) {
+        return false;
+      }
+      try {
+        let body = withNormalizedProductIds(request.body);
+        if (callData !== undefined) {
+          body = { ...(body as object), callData };
+        }
+        return sameBytes(expected, encodeV1(request.method, body));
+      } catch (error) {
+        reportEncodeFailure(request.method, error);
+        return false;
+      }
+    };
   };
   switch (review.tag) {
     case 'SignPayload':

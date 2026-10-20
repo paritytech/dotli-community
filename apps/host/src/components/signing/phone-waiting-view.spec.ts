@@ -22,4 +22,14 @@ describe('phone waiting view', () => {
     expect(view.closable).toBe(false);
     expect(view.body).toBeTypeOf('function');
   });
+
+  it('As a user, the step for a signature and the step for an approval draw different bodies', () => {
+    // When
+    const sign = phoneWaitingView({ title: 'Sign Transaction', ask: 'sign' });
+    const approve = phoneWaitingView({ title: 'Allowance', ask: 'approve' });
+
+    // Then
+    expect(sign.body).not.toBe(approve.body);
+    expect(phoneWaitingView({ title: 'Sign Raw', ask: 'sign' }).body).toBe(sign.body);
+  });
 });

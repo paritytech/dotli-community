@@ -4,7 +4,7 @@
 import type { ContactHandle, HostSignPayloadData } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
 import { describe, expect, it, vi } from 'vitest';
-import { PHONE_METHODS, type PhoneAsk, type PhoneMethod } from './phone-methods.js';
+import type { PhoneMethod } from './phone-methods.js';
 import { phoneReviewMatch } from './phone-review-match.js';
 import type { PhoneRequest } from './phone-requests.js';
 
@@ -76,7 +76,6 @@ const signPayloadReview: UserConfirmationReview = {
 interface Row {
   name: string;
   review: UserConfirmationReview;
-  ask: PhoneAsk;
   matching: PhoneRequest[];
   differing: PhoneRequest;
 }
@@ -85,7 +84,6 @@ const rows: Row[] = [
   {
     name: 'product sign-payload review',
     review: signPayloadReview,
-    ask: 'sign',
     matching: [requestOf('signPayload', { account: account('product.dot'), payload: signPayloadData('0x06') })],
     differing: requestOf('signPayload', { account: account('product.dot'), payload: signPayloadData('0x99') }),
   },
@@ -95,7 +93,6 @@ const rows: Row[] = [
       tag: 'SignPayload',
       value: { tag: 'LegacyAccount', value: { signer: '0x0a', payload: signPayloadData('0x06') } },
     },
-    ask: 'sign',
     matching: [requestOf('signPayloadWithLegacyAccount', { signer: '0x0a', payload: signPayloadData('0x06') })],
     differing: requestOf('signPayloadWithLegacyAccount', { signer: '0x0b', payload: signPayloadData('0x06') }),
   },
@@ -105,7 +102,6 @@ const rows: Row[] = [
       tag: 'SignRaw',
       value: { tag: 'Product', value: { request: signRaw('product.dot', '0xaa'), watermarked: true } },
     },
-    ask: 'sign',
     matching: [
       requestOf('signRaw', signRaw('product.dot', '0xaa')),
       requestOf('signRawUnwatermarkedDeprecated', signRaw('product.dot', '0xaa')),
@@ -121,7 +117,6 @@ const rows: Row[] = [
         value: { request: { signer: '0x0a', payload: rawPayload('0xaa') }, watermarked: false },
       },
     },
-    ask: 'sign',
     matching: [
       requestOf('signRawWithLegacyAccount', { signer: '0x0a', payload: rawPayload('0xaa') }),
       requestOf('signRawUnwatermarkedDeprecatedWithLegacyAccount', { signer: '0x0a', payload: rawPayload('0xaa') }),
@@ -131,21 +126,18 @@ const rows: Row[] = [
   {
     name: 'product create-transaction review',
     review: { tag: 'CreateTransaction', value: { tag: 'Product', value: { payload: txPayload('0x01') } } },
-    ask: 'sign',
     matching: [requestOf('createTransaction', txPayload('0x01'))],
     differing: requestOf('createTransaction', txPayload('0x02')),
   },
   {
     name: 'legacy create-transaction review',
     review: { tag: 'CreateTransaction', value: { tag: 'LegacyAccount', value: legacyTxPayload('0x01') } },
-    ask: 'sign',
     matching: [requestOf('createTransactionWithLegacyAccount', legacyTxPayload('0x01'))],
     differing: requestOf('createTransactionWithLegacyAccount', legacyTxPayload('0x02')),
   },
   {
     name: 'sign-vrf review',
     review: { tag: 'SignVrf', value: { callingProductId: 'product.dot', request: vrf('0xaa') } },
-    ask: 'sign',
     matching: [requestOf('signVrf', vrf('0xaa'))],
     differing: requestOf('signVrf', vrf('0xbb')),
   },
@@ -155,28 +147,25 @@ const rows: Row[] = [
       tag: 'ResourceAllocation',
       value: { callingProductId: 'product.dot', resources: [allowance(1)] },
     },
-    ask: 'approve',
     matching: [requestOf('requestResourceAllocation', { resources: [allowance(1)] })],
     differing: requestOf('requestResourceAllocation', { resources: [allowance(2)] }),
   },
   {
     name: 'product subtree review',
     review: { tag: 'ProductSubtree', value: { productId: 'product.dot' } },
-    ask: 'approve',
     matching: [requestOf('getAccount', { productAccountId: account('product.dot') })],
     differing: requestOf('getAccount', { productAccountId: account('other.dot') }),
   },
   {
     name: 'account access review',
     review: { tag: 'AccountAccess', value: { requestingProductId: 'product.dot', targetProductId: 'target.dot' } },
-    ask: 'approve',
     matching: [requestOf('getAccount', { productAccountId: account('target.dot') })],
     differing: requestOf('getAccount', { productAccountId: account('product.dot') }),
   },
 ];
 
 describe('phone review match', () => {
-  it.each(rows)('As a host, a $name matches only its own request', ({ review, ask, matching, differing }) => {
+  it.each(rows)('As a host, a $name matches only its own request', ({ review, matching, differing }) => {
     // Given
     const match = phoneReviewMatch(review);
 
@@ -185,7 +174,6 @@ describe('phone review match', () => {
     const other = match?.(differing);
 
     // Then
-    expect(matching.map(request => PHONE_METHODS[request.method].ask)).toEqual(matching.map(() => ask));
     expect(results).toEqual(matching.map(() => true));
     expect(other).toBe(false);
   });
@@ -269,5 +257,24 @@ describe('phone review match against the core rewrites', () => {
     // Then
     expect(match?.(requestOf('signVrf', vrf('0xaa')))).toBe(false);
     expect(reportEncodeFailure).toHaveBeenCalledWith('signVrf', expect.anything());
+  });
+
+  it('As a host, a review that cannot be encoded reports nothing until a request is matched against it', () => {
+    // Given
+    const reportEncodeFailure = vi.fn();
+    const match = phoneReviewMatch(
+      { tag: 'SignVrf', value: { callingProductId: 'p.dot', request: {} as never } },
+      { reportEncodeFailure },
+    );
+
+    // Then
+    expect(reportEncodeFailure).not.toHaveBeenCalled();
+
+    // When
+    match?.(requestOf('signVrf', vrf('0xaa')));
+    match?.(requestOf('signVrf', vrf('0xbb')));
+
+    // Then
+    expect(reportEncodeFailure).toHaveBeenCalledOnce();
   });
 });
