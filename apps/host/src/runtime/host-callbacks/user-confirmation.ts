@@ -27,8 +27,8 @@ import type {
   RingLocationJunction,
 } from '@parity/truapi';
 import { withActiveTld } from '@dotli/config';
-import { m, spans as S } from '@dotli/metrics';
-import { toHex } from '@dotli/shared';
+import { captureException, m, spans as S } from '@dotli/metrics';
+import { log, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import type { BlockingModalScope } from '../blocking-modal-queue.js';
 import type { ModalButton, ModalField, ModalHandoff, ModalView } from '@dotli/ui';
@@ -411,15 +411,24 @@ function phoneWaitHandoff(
     let background = false;
     void claim.ended.then(outcome => {
       answered.abort();
-      const notice = phoneOutcomeNotice({ outcome, title, app: withActiveTld(label) });
-      if (notice !== undefined) {
-        phone.notify(notice);
-      }
       m.count(S.PHONE_REQUEST, {
         outcome: phoneMetricOutcome(outcome.kind),
         reason: claim.request.method,
         background: background ? 'yes' : 'no',
       });
+      try {
+        const notice = phoneOutcomeNotice({ outcome, title, app: withActiveTld(label) });
+        if (notice !== undefined) {
+          phone.notify(notice);
+        }
+      } catch (error) {
+        captureException(error, {
+          flow: 'wallet',
+          step: 'phone_request_notice',
+          tags: { method: claim.request.method },
+        });
+        log.error(`[dot.li phone request] ${claim.request.method} toast failed:`, error);
+      }
     });
     const view = phoneWaitingView({ title, ...(icon === undefined ? {} : { icon }), ask: match.ask });
     let release = (): void => undefined;

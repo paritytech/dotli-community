@@ -3,10 +3,11 @@
 
 import type { UserConfirmation } from '@parity/truapi-host';
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry, recordCaptures, type RecordingSentry } from '@dotli/metrics/testing';
 import { spans as S } from '@dotli/metrics';
 import { withActiveTld } from '@dotli/config';
-import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
+import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../blocking-modal-queue.js';
+import type { HostPrompts } from '../host-prompts.js';
 import { requestFrame, responseFrame } from '../phone-requests.fake.js';
 import { createPhoneRequestTracker } from '../phone-requests.js';
 import { createUserConfirmationAdapters as createAdapters } from './user-confirmation.js';
@@ -896,20 +897,28 @@ const SIGNED = { ok: { signature: '0x01' } };
 const REJECTED = { domain: { tag: 'Rejected' } };
 
 /** A paired phone's adapters, whose product frame relays through `tap`. */
-function pairedPhone() {
+function pairedPhone({
+  prompts = page.prompts,
+  coordinator = createBlockingModalCoordinator(),
+}: { prompts?: HostPrompts; coordinator?: BlockingModalCoordinator } = {}) {
   const tracker = createPhoneRequestTracker({
     reportUndecodable: (method, error) => {
       throw new Error(`${method} frame did not decode`, { cause: error });
     },
   });
   const tap = tracker.connect();
-  const adapters = createAdapters(
-    'localhost:3000',
-    page.prompts,
-    createBlockingModalCoordinator().createScope(),
-    tracker,
-  );
-  return { tracker, tap, ...adapters };
+  const scope = coordinator.createScope();
+  const adapters = createAdapters('localhost:3000', prompts, scope, tracker);
+  return { tracker, tap, scope, ...adapters };
+}
+
+/** Resolves on the next metric recorded, so a spec waits on the count rather than polling. */
+function nextRecord(): { sentry: RecordingSentry; recorded: Promise<void> } {
+  let record = (): void => undefined;
+  const recorded = new Promise<void>(resolve => {
+    record = resolve;
+  });
+  return { sentry: bindRecordingSentry({ onFinished: onTestFinished, onRecord: record }), recorded };
 }
 
 /** Whether the dialog on screen is the waiting step. */
@@ -984,6 +993,7 @@ describe('waiting on the phone', () => {
 
   it('As a user, I press Escape on the waiting step and it goes to the background, rejecting nothing', async () => {
     // Given
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const { tap, confirmUserAction } = pairedPhone();
     tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
     const confirmation = confirmUserAction(signReview('0x06'));
@@ -1004,6 +1014,7 @@ describe('waiting on the phone', () => {
     // Then
     const notices = await page.noticesShown(1);
     expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'yes' }]);
   });
 
   it('As a user, the next prompt shows once I send the wait to the background', async () => {
@@ -1014,22 +1025,116 @@ describe('waiting on the phone', () => {
     const first = confirmUserAction(signReview('0x06'));
     const second = confirmUserAction(signReview('0x07'));
     await modalShown();
+
+    // When
     press('sign');
-    await expect(first).resolves.toBe(true);
 
     // Then
+    await expect(first).resolves.toBe(true);
     expect(page.pending()).toHaveLength(1);
     expect(waiting()).toBe(true);
 
     // When
     page.settleReview('background');
-    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel');
 
     // Then
-    expect(modalFields()['Call Data']).toBe('0x05');
+    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel');
+    expect(page.pending()).toHaveLength(1);
+
+    // When
     press('sign');
+
+    // Then
     await expect(second).resolves.toBe(true);
     expect(waiting()).toBe(true);
+  });
+
+  it('As a user, a torn down host closes the waiting step, frees the prompt slot and still counts the request once', async () => {
+    // Given
+    const coordinator = createBlockingModalCoordinator();
+    const { tracker, tap, scope, confirmUserAction } = pairedPhone({ coordinator });
+    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
+    const confirmation = confirmUserAction(signReview('0x06'));
+    await modalShown();
+    press('sign');
+    await expect(confirmation).resolves.toBe(true);
+    const next = createAdapters('localhost:3000', page.prompts, coordinator.createScope()).confirmUserAction(
+      signReview('0x07'),
+    );
+
+    // When
+    scope.dispose();
+
+    // Then
+    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel');
+    expect(page.pending()).toHaveLength(1);
+    press('sign');
+    await expect(next).resolves.toBe(true);
+
+    // When
+    const { sentry, recorded } = nextRecord();
+    tracker.dispose();
+    await recorded;
+
+    // Then
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'gone', reason: 'signPayload', background: 'no' }]);
+    expect(page.notices).toEqual([]);
+  });
+
+  it('As a user, a toast that fails to show is reported and the request is still counted', async () => {
+    // Given
+    const errors: unknown[] = [];
+    const captured = recordCaptures({ onFinished: onTestFinished, errors });
+    const { sentry, recorded } = nextRecord();
+    const { tap, confirmUserAction } = pairedPhone({
+      prompts: {
+        ...page.prompts,
+        notify: () => {
+          throw new Error('toast stack gone');
+        },
+      },
+    });
+    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
+    const confirmation = confirmUserAction(signReview('0x06'));
+    await modalShown();
+    press('sign');
+    await expect(confirmation).resolves.toBe(true);
+
+    // When
+    tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
+    await recorded;
+
+    // Then
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'no' }]);
+    await page.screenCleared();
+    expect(captured.map(c => c.step)).toEqual(['phone_request_notice']);
+    expect(errors).toEqual([new Error('toast stack gone')]);
+  });
+
+  it('As a user, a review whose phone lookup throws closes as today, answers the core and is reported', async () => {
+    // Given
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const tracker = createPhoneRequestTracker();
+    const confirmation = createAdapters(
+      'localhost:3000',
+      page.prompts,
+      createBlockingModalCoordinator().createScope(),
+      {
+        ...tracker,
+        claim: () => {
+          throw new Error('tracker broken');
+        },
+      },
+    ).confirmUserAction(signReview('0x06'));
+    await modalShown();
+
+    // When
+    press('sign');
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
+    expect(page.pending()).toEqual([]);
+    expect(captured.map(c => c.step)).toEqual(['modal_handoff']);
   });
 
   it('As a user, a phone answer already in as the step opens closes it at once with one toast', async () => {

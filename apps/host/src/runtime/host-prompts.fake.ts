@@ -4,6 +4,7 @@
 // The page's side of HostPrompts for specs: each ask waits in a queue until the spec answers it as the user would, and
 // notices are recorded.
 
+import { captureException } from '@dotli/metrics';
 import { toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from './permissions.js';
 import type { ModalHandoff, ModalView, NotificationParams } from '@dotli/ui';
@@ -115,7 +116,13 @@ export function createFakePrompts(): FakePrompts {
       const entry: Pending = {
         prompt,
         settle: answer => {
-          const next = handoff?.(String(answer));
+          let next: ModalHandoff | undefined;
+          try {
+            next = handoff?.(String(answer));
+          } catch (err) {
+            // The answer still reaches the caller, and the dialog closes as without a handoff.
+            captureException(err, { flow: 'ui', step: 'modal_handoff', tags: { kind: 'modal_handoff_error' } });
+          }
           if (next !== undefined && !next.signal.aborted) {
             handOff(next);
           } else {
