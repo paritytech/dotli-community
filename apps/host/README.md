@@ -10,9 +10,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   it. A subname such as `pr16.my-app` opens by path only, since a wildcard certificate covers one label.
 - Take a `.dot` label to a product on screen, or to the screen that says why not.
 - Own the page chrome: topbar, URL pill, loading screen, settings, account, permissions and network views.
-- Own the domain building blocks the chrome composes: account, chat, permission, appearance and chain views and their
-  icons. Each takes props, reads no store and reports the user's intent through a callback, so the flow that composes it
-  owns the data.
+- Own the domain building blocks the chrome composes: account, chat, permission, appearance, signing and chain views and
+  their icons. Each takes props, reads no store and reports the user's intent through a callback, so the flow that
+  composes it owns the data.
 - Own the page state only the host reads: the network monitor behind the network panel (block bars, phases, peers,
   transfer and the health verdict) and the landing page's recently visited names.
 - Start the protocol iframe, the TrUAPI bridge and the auth controller.
@@ -55,9 +55,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   the frame reloads only when its `allow` attribute changes.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time.
-- An approved review that goes to the paired phone waits there. Each pairing core keeps a tracker of its phone requests,
-  which it infers from the frames it relays and matches the review to its request. This is a temporary workaround
-  because the core does not report phone requests to the host. It goes once
+- An approved review that goes to the paired phone waits there. Each pairing core keeps a tracker that infers its phone
+  requests from the frames the host relays, and an approved review claims the request it belongs to. This is a temporary
+  workaround, as the core does not report phone requests to the host. Remove it once
   [the core issue](https://github.com/paritytech/trinity-user-agents/issues/1552) lands. The core has its answer at
   once, and the dialog swaps in place for a waiting step that holds the prompt slot until the user sends it to the
   background or the request ends. Each waited request ends with one toast, and a torn down connection ends it with none.
