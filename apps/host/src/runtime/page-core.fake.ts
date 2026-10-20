@@ -50,7 +50,8 @@ export interface FakeCoreRuntime {
 export interface RecordedTap {
   fromProduct: Uint8Array[];
   fromCore: Uint8Array[];
-  closed: boolean;
+  /** How many times the tap was closed. */
+  closed: number;
 }
 
 export interface FakePageCore {
@@ -175,7 +176,7 @@ export function createFakePageCore(): FakePageCore {
         ...tracker,
         connect() {
           const tap = tracker.connect();
-          const recorded: RecordedTap = { fromProduct: [], fromCore: [], closed: false };
+          const recorded: RecordedTap = { fromProduct: [], fromCore: [], closed: 0 };
           taps.push(recorded);
           return {
             fromProduct(message) {
@@ -187,7 +188,7 @@ export function createFakePageCore(): FakePageCore {
               tap.fromCore(message);
             },
             close() {
-              recorded.closed = true;
+              recorded.closed += 1;
               changes.notify();
               tap.close();
             },

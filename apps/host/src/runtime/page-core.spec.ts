@@ -10,7 +10,7 @@ import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './core-runtime.js';
 import { CoreRedialError, createPageCore, type PageCore } from './page-core.js';
 import { labelToProductId } from './runtime-config.js';
-import { requestFrame } from './phone-requests.fake.js';
+import { garbageRequestFrame, requestFrame } from './phone-requests.fake.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 
@@ -214,7 +214,7 @@ describe('page core', () => {
     expect(outcomes).toEqual(['ok']);
   });
 
-  it("As a frame, my lease and the core's callbacks share one tracker", async () => {
+  it("As a frame, I share one tracker with my core's callbacks and see it through my lease", async () => {
     // Given
     const { core, requests } = harness();
 
@@ -226,7 +226,7 @@ describe('page core', () => {
     expect(requests[0]?.phoneRequests).toBe(lease.phoneRequests);
   });
 
-  it('As a page, a redialed core gets a new tracker and the old one ends its claims as gone', async () => {
+  it('As a page, I redial a core and get a new tracker while the old one ends its claims as gone', async () => {
     // Given a request in flight on the first core, claimed
     const { core, runtimes, requests, changes } = harness();
     const lease = await core.acquire();
@@ -243,6 +243,21 @@ describe('page core', () => {
     // Then
     expect(requests[1]?.phoneRequests).not.toBe(first);
     await expect(claim?.ended).resolves.toEqual({ kind: 'gone' });
+  });
+
+  it('As a local wallet user, I use a product and none of its requests are tracked', async () => {
+    // Given a local wallet core
+    const { core, captures } = reportingHarness({ local: true });
+    const lease = await core.acquire();
+
+    // When a frame the tracker could not decode, and a sign request, reach its tap
+    const tap = lease.phoneRequests.connect();
+    tap.fromProduct(garbageRequestFrame('r1', 'signRaw'));
+    tap.fromProduct(requestFrame('r2', 'signRaw', SIGN_RAW_BODY));
+
+    // Then nothing is reported and nothing can be claimed
+    expect(captures.exception).not.toHaveBeenCalled();
+    expect(lease.phoneRequests.claim(() => true)).toBeUndefined();
   });
 
   it('As a dApp user, I use one core from two parts of the page and it goes with the last lease', async () => {

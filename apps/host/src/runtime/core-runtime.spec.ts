@@ -138,7 +138,7 @@ describe('core runtime boot', () => {
     expect(callbackOptions[0]?.phoneRequests).toBe(request.phoneRequests);
   });
 
-  it('As a local wallet user, my callbacks get no tracker', async () => {
+  it('As a local wallet user, I boot a core and its callbacks get no tracker', async () => {
     // Given
     const { deps, callbackOptions } = harness(WALLET);
 

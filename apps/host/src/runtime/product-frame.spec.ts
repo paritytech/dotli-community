@@ -893,7 +893,7 @@ describe('product frame and the phone request tracker', () => {
     payload: { tag: 'Payload', value: { payload: 'x' } },
   };
 
-  it('As a host, the tracker sees every frame in both directions, unchanged', async () => {
+  it('As a dApp user, I send and receive frames and the tracker sees each one unchanged', async () => {
     // Given a product frame piped to a core the test speaks for
     const fakes = harness();
     const port = new MessageChannel();
@@ -924,7 +924,7 @@ describe('product frame and the phone request tracker', () => {
     port.port2.close();
   });
 
-  it('As a host, a disposed frame closes its tap', async () => {
+  it('As a dApp user, I open another product and the old frame closes its tap once', async () => {
     // Given
     const fakes = harness();
     const port = new MessageChannel();
@@ -936,25 +936,8 @@ describe('product frame and the phone request tracker', () => {
 
     // Then
     expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalled();
-    expect(nth(fakes.taps, 0).closed).toBe(true);
+    expect(nth(fakes.taps, 0).closed).toBe(1);
     port.port2.close();
-  });
-
-  it('As a host, a product that loads again gets a new tap and the old one is closed', async () => {
-    // Given
-    const fakes = harness();
-    const first = new MessageChannel();
-    const second = new MessageChannel();
-    await settle(fakes, subdomainProduct('reloaded'), 0);
-    nth(fakes.hosts, 0).options.onPort(first.port1);
-
-    // When
-    nth(fakes.hosts, 0).options.onPort(second.port1);
-
-    // Then
-    expect(fakes.taps.map(tap => tap.closed)).toEqual([true, false]);
-    first.port2.close();
-    second.port2.close();
   });
 });
 

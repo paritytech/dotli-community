@@ -469,8 +469,6 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         allow,
         sandbox: args.sandbox,
         onPort: port => {
-          // A new port is a product that loaded again, so what the old one had in flight is gone.
-          phoneTap?.close();
           phoneTap = lease.phoneRequests.connect();
           productProvider = createMessagePortProvider(port);
           disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs, responses.forwarded, phoneTap);

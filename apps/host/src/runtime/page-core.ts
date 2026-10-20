@@ -161,6 +161,10 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           }
           throw dropped.signal.reason;
         }
+        // A local wallet core has no phone. Leases are handed out only after this runs, so no frame is tapped first.
+        if (booted.local) {
+          phoneRequests.dispose();
+        }
         // A local wallet core holds its session in memory, so the stored one is not its to follow.
         if (!booted.local) {
           const followStore = (): void => {
