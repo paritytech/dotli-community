@@ -11,27 +11,22 @@ import { phoneWaitingView, type PhoneAsk } from './phone-waiting-view.js';
 const SIGN_LEAD = 'Open Polkadot App on your phone, then tap Sign or Reject';
 const APPROVE_LEAD = 'Open Polkadot App on your phone, then Approve or Reject';
 
-/** The ask the story's dialog is opened with. */
-let current: { ask: PhoneAsk; title: string } = { ask: 'sign', title: 'Sign Transaction' };
-
-const open = (ask: PhoneAsk, title: string) => (): (() => void) => {
-  resetAllStoresForTests();
-  current = { ask, title };
-  return resetAllStoresForTests;
-};
-
 const meta = {
   title: 'Host/Signing/PhoneWaiting',
   // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
   parameters: { chrome: true, docs: { story: { inline: false, height: '640px' } } },
-  beforeEach: open('sign', 'Sign Transaction'),
-  render: () => {
-    const view: ModalView<string> = phoneWaitingView({ ...current, icon: SignIcon });
+  args: { ask: 'sign', title: 'Sign Transaction' },
+  beforeEach: () => {
+    resetAllStoresForTests();
+    return resetAllStoresForTests;
+  },
+  render: args => {
+    const view: ModalView<string> = phoneWaitingView({ ...args, icon: SignIcon });
     // The step is open before anyone answers it, since nothing here settles it.
     void openModal(view);
     return <Overlays />;
   },
-} satisfies Meta;
+} satisfies Meta<{ ask: PhoneAsk; title: string }>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -55,7 +50,7 @@ export const Signing: Story = {
 
 /** As a user granting an allowance, I am told to open Polkadot App and Approve or Reject. */
 export const Approving: Story = {
-  beforeEach: open('approve', 'Allowance'),
+  args: { ask: 'approve', title: 'Allowance' },
   play: async ({ step }) => {
     await step('Then the step names the phone and offers to wait in the background', () => assertWaiting(APPROVE_LEAD));
   },

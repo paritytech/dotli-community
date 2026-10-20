@@ -14,7 +14,6 @@
 }
 
 .outline {
-  fill: url(#phone-body);
   stroke: var(--border);
   stroke-width: 1.5;
 }
@@ -30,7 +29,6 @@
 }
 
 .fade {
-  fill: url(#phone-fade);
   opacity: 0.55;
 }
 
