@@ -3,7 +3,10 @@
 
 import { encodeWireMessage, MESSAGE_TYPE_REQUEST } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { spans as S } from '@dotli/metrics';
+import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
+import { recordLog } from '@dotli/shared/testing';
 import { garbageRequestFrame, requestFrame, responseFrame } from './phone-requests.fake.js';
 import { createPhoneRequestTracker, type PhoneRequest } from './phone-requests.js';
 
@@ -232,6 +235,61 @@ describe('phone request tracker', () => {
     // Then
     await expect(claim?.ended).resolves.toEqual({ kind: 'failed', tag: 'undecodable', reason: 'undecodable' });
     expect(reportUndecodable).toHaveBeenCalledOnce();
+    expect(reportUndecodable.mock.calls[0]?.[0]).toBe('signRaw');
+    expect(reportUndecodable.mock.calls[0]?.[2]).toBe('response');
+  });
+
+  it('As a host, I count an undecodable request once as undecodable and report it', () => {
+    // Given
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const requests = createPhoneRequestTracker();
+    const tap = requests.connect();
+
+    // When
+    tap.fromProduct(garbageRequestFrame('a', 'signPayload'));
+
+    // Then
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'undecodable', reason: 'signPayload' }]);
+    expect(captured).toEqual([{ flow: 'wallet', step: 'phone_request', tags: { method: 'signPayload' } }]);
+    expect(logged).toHaveLength(1);
+  });
+
+  it('As a host, I report an undecodable answer and leave its count to the claim', async () => {
+    // Given
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const requests = createPhoneRequestTracker();
+    const tap = requests.connect();
+    tap.fromProduct(requestFrame('a', 'signRaw', signRawBody('x')));
+    const claim = requests.claim(isSignRaw);
+    const answer = responseFrame('a', 'signRaw', { ok: SIGNATURE });
+
+    // When
+    tap.fromCore(answer.subarray(0, answer.length - 3));
+
+    // Then
+    await expect(claim?.ended).resolves.toMatchObject({ kind: 'failed', tag: 'undecodable' });
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([]);
+    expect(captured).toEqual([{ flow: 'wallet', step: 'phone_request', tags: { method: 'signRaw' } }]);
+    expect(logged).toHaveLength(1);
+  });
+
+  it('As a host, a response on a closed tap settles nothing', async () => {
+    // Given
+    const { tracker: requests } = tracker();
+    const tap = requests.connect();
+    tap.fromProduct(requestFrame('a', 'signRaw', signRawBody('x')));
+    const claim = requests.claim(isSignRaw);
+    tap.close();
+
+    // When
+    tap.fromCore(responseFrame('a', 'signRaw', { ok: SIGNATURE }));
+
+    // Then
+    await expect(claim?.ended).resolves.toEqual({ kind: 'gone' });
   });
 
   it('As a host, I ignore frames of other methods and find nothing to claim', () => {

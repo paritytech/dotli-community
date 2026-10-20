@@ -719,8 +719,9 @@ function pipeProviders(
         });
       }
       product.postMessage(message);
-      tap.fromCore(message);
       forwarded(message);
+      // Last, so the temporary tap can never keep a frame from the product or the gate.
+      tap.fromCore(message);
     }),
     product.subscribeClose?.(() => {
       core.dispose();

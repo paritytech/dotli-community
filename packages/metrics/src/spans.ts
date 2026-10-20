@@ -333,8 +333,9 @@ export const TRUAPI_CHAIN_REOPEN = 'truapi_chain.reopen';
 
 /**
  * Count. A phone-bound request a waiting step followed to its end. Tagged `outcome` (`ok, refused, aborted, error,
- * gone, undecodable, unmatchable`) and `reason` (the method). Only a claim that ended after a waiting step carries
- * `background`, `undecodable` and `unmatchable` do not.
+ * gone, undecodable, unmatchable`) and `reason` (the method). A claim's end carries `background`, and an answer that
+ * did not decode ends its claim as `undecodable`. A request that did not decode and a review that matched no request
+ * are counted on their own, without `background`.
  */
 export const PHONE_REQUEST = 'signing.phone_request';
 

@@ -34,7 +34,7 @@ import {
 import type { Codec } from '@parity/truapi/scale';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
-import { decodePhoneOutcome, type PhoneOutcome } from './phone-outcome.js';
+import { decodePhoneOutcome, UNDECODABLE_TAG, type PhoneOutcome } from './phone-outcome.js';
 
 export type PhoneMethod =
   | 'signPayload'
@@ -81,9 +81,15 @@ export interface PhoneRequestTracker {
   dispose: () => void;
 }
 
+/** Which way a frame was going. */
+export type PhoneLeg = 'request' | 'response';
+
 export interface PhoneRequestTrackerDeps {
-  /** A tracked frame that would not decode. Default: `captureException`, `log.error` and the `undecodable` count. */
-  reportUndecodable?: (method: PhoneMethod, error: unknown) => void;
+  /**
+   * A tracked frame that would not decode. Default: `captureException` and `log.error`, and the `undecodable` count for
+   * a request. A response ends its claim, and the claim's end is counted.
+   */
+  reportUndecodable?: (method: PhoneMethod, error: unknown, leg: PhoneLeg) => void;
 }
 
 interface RequestEntry {
@@ -131,10 +137,12 @@ function methodAt(traitId: number, methodId: number): PhoneMethod | undefined {
   return METHOD_BY_ADDRESS.get((traitId << 8) | methodId);
 }
 
-function reportUndecodableDefault(method: PhoneMethod, error: unknown): void {
+function reportUndecodableDefault(method: PhoneMethod, error: unknown, leg: PhoneLeg): void {
   captureException(error, { flow: 'wallet', step: 'phone_request', tags: { method } });
-  log.error(`[dot.li phone request] ${method} frame did not decode:`, error);
-  m.count(S.PHONE_REQUEST, { outcome: 'undecodable', reason: method });
+  log.error(`[dot.li phone request] ${method} ${leg} did not decode:`, error);
+  if (leg === 'request') {
+    m.count(S.PHONE_REQUEST, { outcome: 'undecodable', reason: method });
+  }
 }
 
 interface Tracked {
@@ -194,7 +202,7 @@ export function createPhoneRequestTracker({
               settle: undefined,
             });
           } catch (error) {
-            reportUndecodable(method, error);
+            reportUndecodable(method, error, 'request');
           }
         },
         fromCore(message) {
@@ -222,8 +230,8 @@ export function createPhoneRequestTracker({
           try {
             tracked.settle(decodePhoneOutcome(tracked.request.method, payload.value));
           } catch (error) {
-            reportUndecodable(tracked.request.method, error);
-            tracked.settle({ kind: 'failed', tag: 'undecodable', reason: 'undecodable' });
+            reportUndecodable(tracked.request.method, error, 'response');
+            tracked.settle({ kind: 'failed', tag: UNDECODABLE_TAG, reason: UNDECODABLE_TAG });
           }
         },
         close() {

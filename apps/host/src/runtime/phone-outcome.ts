@@ -134,9 +134,12 @@ export function decodePhoneOutcome(method: PhoneMethod, payload: Uint8Array): Ph
   return allocations === undefined ? { kind: 'ok', method } : { kind: 'ok', method, allocations };
 }
 
+/** The tag of a claim whose response did not decode. */
+export const UNDECODABLE_TAG = 'undecodable';
+
 /** The shared metric vocabulary's word for how a request ended. */
-export function phoneMetricOutcome(kind: PhoneOutcome['kind']): MetricOutcome {
-  switch (kind) {
+export function phoneMetricOutcome(outcome: PhoneOutcome): MetricOutcome {
+  switch (outcome.kind) {
     case 'ok':
       return 'ok';
     case 'rejected':
@@ -144,7 +147,7 @@ export function phoneMetricOutcome(kind: PhoneOutcome['kind']): MetricOutcome {
     case 'withdrawn':
       return 'aborted';
     case 'failed':
-      return 'error';
+      return outcome.tag === UNDECODABLE_TAG ? 'undecodable' : 'error';
     case 'gone':
       return 'gone';
   }

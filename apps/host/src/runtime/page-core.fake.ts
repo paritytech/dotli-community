@@ -127,7 +127,12 @@ function makeRuntime(connections: PromiseWithResolvers<FakeCoreProvider>[], chan
 }
 
 /** The real page core over fake Polkadot App runtimes. A redial gets one attempt, so a failed one fails at once. */
-export function createFakePageCore(): FakePageCore {
+export function createFakePageCore({
+  onTapFromCore,
+}: {
+  /** Runs inside each tap's `fromCore`, after it recorded the frame, as a broken tap would. */
+  onTapFromCore?: (message: Uint8Array) => void;
+} = {}): FakePageCore {
   const runtimes: FakeCoreRuntime[] = [];
   const connections: PromiseWithResolvers<FakeCoreProvider>[] = [];
   const nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[] = [];
@@ -185,6 +190,7 @@ export function createFakePageCore(): FakePageCore {
             },
             fromCore(message) {
               recorded.fromCore.push(message);
+              onTapFromCore?.(message);
               tap.fromCore(message);
             },
             close() {

@@ -3,7 +3,7 @@
 
 import { decodeWireMessage } from '@parity/truapi';
 import { describe, expect, it } from 'vitest';
-import { decodePhoneOutcome, phoneMetricOutcome } from './phone-outcome.js';
+import { decodePhoneOutcome, phoneMetricOutcome, type PhoneOutcome } from './phone-outcome.js';
 import { responseFrame } from './phone-requests.fake.js';
 import type { PhoneMethod } from './phone-requests.js';
 
@@ -136,12 +136,29 @@ describe('phone outcome failures', () => {
 describe('phone metric outcome', () => {
   it('As a host, I count each ending with the shared metric vocabulary', () => {
     // Given
-    const kinds = ['ok', 'rejected', 'withdrawn', 'failed', 'gone'] as const;
+    const endings: PhoneOutcome[] = [
+      { kind: 'ok', method: 'signRaw' },
+      { kind: 'rejected' },
+      { kind: 'withdrawn' },
+      { kind: 'failed', tag: 'HostFailure', reason: 'Phone went offline' },
+      { kind: 'gone' },
+    ];
 
     // When
-    const outcomes = kinds.map(kind => phoneMetricOutcome(kind));
+    const outcomes = endings.map(outcome => phoneMetricOutcome(outcome));
 
     // Then
     expect(outcomes).toEqual(['ok', 'refused', 'aborted', 'error', 'gone']);
+  });
+
+  it('As a host, I count an answer that did not decode as undecodable, not as an error', () => {
+    // Given
+    const outcome: PhoneOutcome = { kind: 'failed', tag: 'undecodable', reason: 'undecodable' };
+
+    // When
+    const counted = phoneMetricOutcome(outcome);
+
+    // Then
+    expect(counted).toBe('undecodable');
   });
 });

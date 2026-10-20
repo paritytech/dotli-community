@@ -893,6 +893,51 @@ describe('product frame and the phone request tracker', () => {
     payload: { tag: 'Payload', value: { payload: 'x' } },
   };
 
+  it("As a user granting a device permission in the app's own prompt, the app is rebuilt even when the tap breaks", async () => {
+    // Given a product frame whose tap throws on every core frame
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const fakes = harness(
+      createFakePageCore({
+        onTapFromCore: () => {
+          throw new Error('tap broke');
+        },
+      }),
+    );
+    const port = new MessageChannel();
+    const rendered = fakes.frame.render(subdomainProduct('tap-broke'));
+    const core = await answerConnection(fakes, 0);
+    await rendered;
+    nth(fakes.hosts, 0).options.onPort(port.port1);
+    fakes.announce({ label: 'tap-broke', permissions: ['Camera'], fromPrompt: true });
+    const answer = encodeWireMessage({
+      requestId: 'camera-prompt',
+      payload: {
+        traitId: PERMISSIONS_REQUEST_DEVICE_PERMISSION.trait,
+        methodId: PERMISSIONS_REQUEST_DEVICE_PERMISSION.method,
+        messageType: MESSAGE_TYPE_RESPONSE,
+        value: new Uint8Array(),
+      },
+    });
+    if (answer.isErr()) {
+      throw answer.error;
+    }
+
+    const errors: unknown[] = [];
+    recordCaptures({ onFinished: onTestFinished, errors });
+
+    // When the answer passes the broken tap
+    core.listener?.(answer.value);
+
+    // Then the permission gate still saw it, and the app is rebuilt without waiting out the gate
+    await answerConnection(fakes, 1);
+    expect(fakes.connections).toHaveLength(2);
+    expect(errors).toEqual([new Error('tap broke')]);
+    port.port2.close();
+  });
+
   it('As a dApp user, I send and receive frames and the tracker sees each one unchanged', async () => {
     // Given a product frame piped to a core the test speaks for
     const fakes = harness();

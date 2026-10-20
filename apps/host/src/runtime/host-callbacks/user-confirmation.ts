@@ -412,7 +412,7 @@ function phoneWaitHandoff(
     void claim.ended.then(outcome => {
       answered.abort();
       m.count(S.PHONE_REQUEST, {
-        outcome: phoneMetricOutcome(outcome.kind),
+        outcome: phoneMetricOutcome(outcome),
         reason: claim.request.method,
         background: background ? 'yes' : 'no',
       });

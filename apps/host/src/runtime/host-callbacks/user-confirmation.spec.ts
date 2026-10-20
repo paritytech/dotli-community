@@ -14,6 +14,7 @@ import { createUserConfirmationAdapters as createAdapters } from './user-confirm
 import type { ModalButton, ModalButtonVariant, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
+import { recordLog } from '@dotli/shared/testing';
 
 type UserConfirmationReview = Parameters<Required<UserConfirmation>['confirmUserAction']>[0];
 
@@ -1111,9 +1112,42 @@ describe('waiting on the phone', () => {
     expect(errors).toEqual([new Error('toast stack gone')]);
   });
 
+  it('As a user, an answer that does not decode ends the wait, is reported and is counted once as undecodable', async () => {
+    // Given
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    recordLog({ onFinished: onTestFinished });
+    const tracker = createPhoneRequestTracker();
+    const tap = tracker.connect();
+    const confirmation = createAdapters(
+      'localhost:3000',
+      page.prompts,
+      createBlockingModalCoordinator().createScope(),
+      tracker,
+    ).confirmUserAction(signReview('0x06'));
+    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
+    await modalShown();
+    press('sign');
+    await expect(confirmation).resolves.toBe(true);
+    const answer = responseFrame('a', 'signPayload', SIGNED);
+
+    // When
+    tap.fromCore(answer.subarray(0, answer.length - 3));
+
+    // Then
+    await page.noticesShown(1);
+    expect(page.pending()).toEqual([]);
+    expect(captured.map(c => c.step)).toEqual(['phone_request']);
+    expect(sentry.counted(S.PHONE_REQUEST)).toEqual([
+      { outcome: 'undecodable', reason: 'signPayload', background: 'no' },
+    ]);
+  });
+
   it('As a user, a review whose phone lookup throws closes as today, answers the core and is reported', async () => {
     // Given
     const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    recordLog({ onFinished: onTestFinished });
     const tracker = createPhoneRequestTracker();
     const confirmation = createAdapters(
       'localhost:3000',
@@ -1135,6 +1169,7 @@ describe('waiting on the phone', () => {
     await expect(confirmation).resolves.toBe(true);
     expect(page.pending()).toEqual([]);
     expect(captured.map(c => c.step)).toEqual(['modal_handoff']);
+    expect(sentry.counted(S.MODAL_HANDOFF)).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a user, a phone answer already in as the step opens closes it at once with one toast', async () => {

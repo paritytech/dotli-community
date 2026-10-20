@@ -4,8 +4,8 @@
 // The page's side of HostPrompts for specs: each ask waits in a queue until the spec answers it as the user would, and
 // notices are recorded.
 
-import { captureException } from '@dotli/metrics';
-import { toAbortError } from '@dotli/shared';
+import { captureException, m, spans as S } from '@dotli/metrics';
+import { errorName, log, toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from './permissions.js';
 import type { ModalHandoff, ModalView, NotificationParams } from '@dotli/ui';
 import type { HostPrompts, PermissionPromptDecision } from './host-prompts.js';
@@ -122,6 +122,8 @@ export function createFakePrompts(): FakePrompts {
           } catch (err) {
             // The answer still reaches the caller, and the dialog closes as without a handoff.
             captureException(err, { flow: 'ui', step: 'modal_handoff', tags: { kind: 'modal_handoff_error' } });
+            log.error('[dot.li modal] handoff failed, closing the dialog:', err);
+            m.count(S.MODAL_HANDOFF, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
           }
           if (next !== undefined && !next.signal.aborted) {
             handOff(next);
