@@ -127,28 +127,6 @@ describe('core runtime boot', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("As a Polkadot App user, my callbacks get the core's phone request tracker", async () => {
-    // Given
-    const { deps, callbackOptions } = harness(null);
-
-    // When
-    await createCoreRuntimeBoot(deps)(request);
-
-    // Then
-    expect(callbackOptions[0]?.phoneRequests).toBe(request.phoneRequests);
-  });
-
-  it('As a local wallet user, I boot a core and its callbacks get no tracker', async () => {
-    // Given
-    const { deps, callbackOptions } = harness(WALLET);
-
-    // When
-    await createCoreRuntimeBoot(deps)(request);
-
-    // Then
-    expect(callbackOptions[0]?.phoneRequests).toBeUndefined();
-  });
-
   it('As a user on the landing page, I pair under the name the page asked for', async () => {
     // Given
     const { deps, callbackOptions } = harness(null);

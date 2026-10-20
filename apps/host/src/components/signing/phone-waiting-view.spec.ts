@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { phoneWaitingView, WAITING_BACKGROUND, type PhoneAsk } from './phone-waiting-view.js';
+import type { PhoneAsk } from '../../runtime/phone-methods.js';
+import { phoneWaitingView, WAITING_BACKGROUND } from './phone-waiting-view.js';
 
 describe('phone waiting view', () => {
   it.each<[string, PhoneAsk, string]>([

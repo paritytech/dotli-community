@@ -5,11 +5,16 @@
 
 import { encodeWireMessage, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
 import type { CallErrorValue } from '@parity/truapi/scale';
-import { PHONE_RESPONSE_CODECS } from './phone-outcome.js';
-import { PHONE_REQUEST_CODECS, type PhoneMethod } from './phone-requests.js';
+import { PHONE_METHODS, type PhoneMethod } from './phone-methods.js';
+
+/** A V1 `signRaw` request body of the product's first account. */
+export const SIGN_RAW_BODY = {
+  account: { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+  payload: { tag: 'Payload', value: { payload: 'x' } },
+};
 
 function frame(requestId: string, method: PhoneMethod, messageType: number, value: Uint8Array): Uint8Array {
-  const { ids } = PHONE_REQUEST_CODECS[method];
+  const { ids } = PHONE_METHODS[method];
   const encoded = encodeWireMessage({
     requestId,
     payload: { traitId: ids.trait, methodId: ids.method, messageType, value },
@@ -22,12 +27,7 @@ function frame(requestId: string, method: PhoneMethod, messageType: number, valu
 
 /** A request frame carrying `body` as the method's V1 request. */
 export function requestFrame(requestId: string, method: PhoneMethod, body: unknown): Uint8Array {
-  return frame(
-    requestId,
-    method,
-    MESSAGE_TYPE_REQUEST,
-    PHONE_REQUEST_CODECS[method].request.enc({ tag: 'V1', value: body }),
-  );
+  return frame(requestId, method, MESSAGE_TYPE_REQUEST, PHONE_METHODS[method].request.enc({ tag: 'V1', value: body }));
 }
 
 /**
@@ -47,7 +47,7 @@ export function responseFrame(
           value:
             'domain' in result ? { tag: 'Domain' as const, value: { tag: 'V1', value: result.domain } } : result.error,
         };
-  return frame(requestId, method, MESSAGE_TYPE_RESPONSE, PHONE_RESPONSE_CODECS[method].enc(payload));
+  return frame(requestId, method, MESSAGE_TYPE_RESPONSE, PHONE_METHODS[method].response.enc(payload));
 }
 
 /** A request frame at `method`'s address whose body is not a request. */

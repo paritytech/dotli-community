@@ -3,30 +3,10 @@
 
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
 
-import {
-  VersionedHostAccountGetError,
-  VersionedHostAccountGetResponse,
-  VersionedHostAccountSignVrfError,
-  VersionedHostAccountSignVrfResponse,
-  VersionedHostCreateTransactionError,
-  VersionedHostCreateTransactionResponse,
-  VersionedHostCreateTransactionWithLegacyAccountError,
-  VersionedHostCreateTransactionWithLegacyAccountResponse,
-  VersionedHostRequestResourceAllocationError,
-  VersionedHostRequestResourceAllocationResponse,
-  VersionedHostSignPayloadError,
-  VersionedHostSignPayloadResponse,
-  VersionedHostSignPayloadWithLegacyAccountError,
-  VersionedHostSignPayloadWithLegacyAccountResponse,
-  VersionedHostSignRawError,
-  VersionedHostSignRawResponse,
-  VersionedHostSignRawWithLegacyAccountError,
-  VersionedHostSignRawWithLegacyAccountResponse,
-  type AllocationOutcome,
-} from '@parity/truapi';
-import { CallError, Result, type CallErrorValue, type Codec } from '@parity/truapi/scale';
+import type { AllocationOutcome } from '@parity/truapi';
+import type { CallErrorValue } from '@parity/truapi/scale';
 import type { MetricOutcome } from '@dotli/metrics';
-import type { PhoneMethod } from './phone-requests.js';
+import { PHONE_METHODS, type PhoneMethod } from './phone-methods.js';
 
 export type PhoneOutcome =
   | { kind: 'ok'; method: PhoneMethod; allocations?: readonly AllocationOutcome[] }
@@ -34,47 +14,9 @@ export type PhoneOutcome =
   | { kind: 'withdrawn' }
   /** `tag` is the bounded error tag a metric may count, `reason` the free text a toast may show. */
   | { kind: 'failed'; tag: string; reason: string }
+  /** The answer came back but did not decode. */
+  | { kind: 'undecodable' }
   | { kind: 'gone' };
-
-type ResponseCodec = Codec<Result<unknown, CallErrorValue<unknown>>>;
-
-/**
- * Must be the generated client's exact composition, as a bare codec would decode real response bytes as garbage.
- * The widening cast is the one place the method-specific types are erased.
- */
-function responseOf<T, E>(ok: Codec<T>, err: Codec<E>): ResponseCodec {
-  return Result(ok, CallError(err)) as unknown as ResponseCodec;
-}
-
-const SIGN_RAW = responseOf(VersionedHostSignRawResponse, VersionedHostSignRawError);
-const SIGN_RAW_LEGACY = responseOf(
-  VersionedHostSignRawWithLegacyAccountResponse,
-  VersionedHostSignRawWithLegacyAccountError,
-);
-
-/** The response codec of each method, as the generated wire decode table pairs them. */
-export const PHONE_RESPONSE_CODECS: Record<PhoneMethod, ResponseCodec> = {
-  signPayload: responseOf(VersionedHostSignPayloadResponse, VersionedHostSignPayloadError),
-  signPayloadWithLegacyAccount: responseOf(
-    VersionedHostSignPayloadWithLegacyAccountResponse,
-    VersionedHostSignPayloadWithLegacyAccountError,
-  ),
-  createTransaction: responseOf(VersionedHostCreateTransactionResponse, VersionedHostCreateTransactionError),
-  createTransactionWithLegacyAccount: responseOf(
-    VersionedHostCreateTransactionWithLegacyAccountResponse,
-    VersionedHostCreateTransactionWithLegacyAccountError,
-  ),
-  signRaw: SIGN_RAW,
-  signRawWithLegacyAccount: SIGN_RAW_LEGACY,
-  signRawUnwatermarkedDeprecated: SIGN_RAW,
-  signRawUnwatermarkedDeprecatedWithLegacyAccount: SIGN_RAW_LEGACY,
-  signVrf: responseOf(VersionedHostAccountSignVrfResponse, VersionedHostAccountSignVrfError),
-  getAccount: responseOf(VersionedHostAccountGetResponse, VersionedHostAccountGetError),
-  requestResourceAllocation: responseOf(
-    VersionedHostRequestResourceAllocationResponse,
-    VersionedHostRequestResourceAllocationError,
-  ),
-};
 
 interface Tagged {
   tag: string;
@@ -126,16 +68,13 @@ function allocationsOf(method: PhoneMethod, value: unknown): readonly Allocation
  * Throws when the payload does not decode, which the caller reports.
  */
 export function decodePhoneOutcome(method: PhoneMethod, payload: Uint8Array): PhoneOutcome {
-  const result = PHONE_RESPONSE_CODECS[method].dec(payload);
+  const result = PHONE_METHODS[method].response.dec(payload);
   if (!result.success) {
     return failureOf(result.value);
   }
   const allocations = allocationsOf(method, result.value);
   return allocations === undefined ? { kind: 'ok', method } : { kind: 'ok', method, allocations };
 }
-
-/** The tag of a claim whose response did not decode. */
-export const UNDECODABLE_TAG = 'undecodable';
 
 /** The shared metric vocabulary's word for how a request ended. */
 export function phoneMetricOutcome(outcome: PhoneOutcome): MetricOutcome {
@@ -147,7 +86,9 @@ export function phoneMetricOutcome(outcome: PhoneOutcome): MetricOutcome {
     case 'withdrawn':
       return 'aborted';
     case 'failed':
-      return outcome.tag === UNDECODABLE_TAG ? 'undecodable' : 'error';
+      return 'error';
+    case 'undecodable':
+      return 'undecodable';
     case 'gone':
       return 'gone';
   }

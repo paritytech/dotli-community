@@ -3,14 +3,10 @@
 
 import type { JSX } from '@solidjs/web';
 import { StatusDot } from '@dotli/ui';
+import type { PhoneAsk } from '../../runtime/phone-methods.js';
 import { PhoneIllustration } from './PhoneIllustration.js';
-import type { PhoneAsk } from './phone-waiting-view.js';
+import { ASK_COPY } from './phone-ask-copy.js';
 import s from './PhoneWaiting.module.css';
-
-const LEAD: Record<PhoneAsk, string> = {
-  sign: 'Open Polkadot App on your phone, then tap Sign or Reject',
-  approve: 'Open Polkadot App on your phone, then Approve or Reject',
-};
 
 /** Sends the user to Polkadot App and says the request waits for the phone. */
 export function PhoneWaiting(props: { ask: PhoneAsk }): JSX.Element {
@@ -18,7 +14,7 @@ export function PhoneWaiting(props: { ask: PhoneAsk }): JSX.Element {
   return (
     <div class={s['waiting']} data-testid="phone-waiting" role="status">
       <p class={s['lead']} data-testid="phone-waiting-lead">
-        {LEAD[props.ask]}
+        {ASK_COPY[props.ask].lead}
       </p>
       <PhoneIllustration ask={props.ask} />
       <div class={s['status']} data-testid="phone-waiting-status">

@@ -165,6 +165,21 @@ describe('phone outcome notice', () => {
     });
   });
 
+  it('As a user, I get an answer Polkadot App sent that did not decode and see that it did not complete', () => {
+    // Given
+    const outcome: PhoneOutcome = { kind: 'undecodable' };
+
+    // When
+    const notice = noticeOf(outcome);
+
+    // Then
+    expect(notice).toMatchObject({
+      text: "Polkadot App didn't complete the request: undecodable",
+      label: APP,
+      tone: 'err',
+    });
+  });
+
   it('As a user, I get no toast when the request went away with the page', () => {
     // Given
     const outcome: PhoneOutcome = { kind: 'gone' };

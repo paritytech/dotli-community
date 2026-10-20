@@ -5,7 +5,7 @@ import { decodeWireMessage } from '@parity/truapi';
 import { describe, expect, it } from 'vitest';
 import { decodePhoneOutcome, phoneMetricOutcome, type PhoneOutcome } from './phone-outcome.js';
 import { responseFrame } from './phone-requests.fake.js';
-import type { PhoneMethod } from './phone-requests.js';
+import type { PhoneMethod } from './phone-methods.js';
 
 function outcomeOf(method: PhoneMethod, result: Parameters<typeof responseFrame>[2]) {
   const decoded = decodeWireMessage(responseFrame('a', method, result));
@@ -153,7 +153,7 @@ describe('phone metric outcome', () => {
 
   it('As a host, I count an answer that did not decode as undecodable, not as an error', () => {
     // Given
-    const outcome: PhoneOutcome = { kind: 'failed', tag: 'undecodable', reason: 'undecodable' };
+    const outcome: PhoneOutcome = { kind: 'undecodable' };
 
     // When
     const counted = phoneMetricOutcome(outcome);

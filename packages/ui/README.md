@@ -98,8 +98,9 @@ and no data source.
 
 Fakes for other packages' specs, stories and functional tests. Never imported by shipped code.
 
-- Modal store: `modalsStore`, `shownModal`, `chooseModalButton`, `dismissModal`. Modal and toast state reset with the
-  store registry's reset. Toasts: `bindToastPage`. Viewport: `PHONE_QUERY`.
+- Modal store: `modalsStore`, `settleModal` (answers a dialog by its id, as its buttons do), `shownModal`,
+  `chooseModalButton`, `dismissModal`. Modal and toast state reset with the store registry's reset. Toasts:
+  `bindToastPage`. Viewport: `PHONE_QUERY`.
 - Other: `settle`, the page queries `appears`, `byId`, `byTestId`, `query`, and `installPopoverPolyfill` for functional
   tests under happy-dom.
 

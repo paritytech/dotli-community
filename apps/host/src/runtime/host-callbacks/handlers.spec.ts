@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
 import { createHostCallbacks } from './handlers.js';
@@ -40,6 +41,10 @@ const scheduler: NotificationScheduler = {
   cancel: () => Promise.resolve(true),
 };
 
+afterEach(() => {
+  resetAllStoresForTests();
+});
+
 describe('blocking modal queue across host callbacks', () => {
   it('As a dotli integrator, I raise a user confirmation and a device permission prompt and the host shows them one at a time', async () => {
     // Given
@@ -48,6 +53,7 @@ describe('blocking modal queue across host callbacks', () => {
     const callbacks = createHostCallbacks({
       permissions: permissionsOfTest(),
       label: 'localhost:3000',
+      phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: scope,
       prompts: page.prompts,
       notifications: scheduler,
@@ -150,6 +156,7 @@ describe('notifications across host callbacks', () => {
     const { notifications } = createHostCallbacks({
       permissions: permissionsOfTest(),
       label: 'myapp',
+      phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
       prompts: promptsWith(ask),
@@ -179,6 +186,7 @@ describe('prompt rate limiting across host callbacks', () => {
     const { permissions } = createHostCallbacks({
       permissions: permissionsOfTest(),
       label: 'myapp',
+      phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
       prompts: promptsWith(ask),
@@ -202,6 +210,7 @@ describe('prompt rate limiting across host callbacks', () => {
     const { permissions, notifications } = createHostCallbacks({
       permissions: permissionsOfTest(),
       label: 'myapp',
+      phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
       prompts: promptsWith(ask),

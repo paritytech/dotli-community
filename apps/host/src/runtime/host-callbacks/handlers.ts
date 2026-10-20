@@ -40,8 +40,8 @@ export interface CreateHostCallbacksOptions {
   local?: boolean | undefined;
   /** Whether the core still speaks for the session. */
   inService?: (() => boolean) | undefined;
-  /** Set only for a pairing core, whose confirmations go to the phone. */
-  phoneRequests?: PhoneRequestTracker | undefined;
+  /** What the core's confirmations claim the phone's requests from. A local wallet core's claims nothing. */
+  phoneRequests: PhoneRequestTracker;
 }
 
 /**

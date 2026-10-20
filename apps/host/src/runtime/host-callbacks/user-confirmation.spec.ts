@@ -9,23 +9,27 @@ import { withActiveTld } from '@dotli/config';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../blocking-modal-queue.js';
 import type { HostPrompts } from '../host-prompts.js';
 import { requestFrame, responseFrame } from '../phone-requests.fake.js';
-import { createPhoneRequestTracker } from '../phone-requests.js';
+import { createPhoneRequestTracker, type PhoneRequestTracker } from '../phone-requests.js';
 import { createUserConfirmationAdapters as createAdapters } from './user-confirmation.js';
 import type { ModalButton, ModalButtonVariant, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
 import { createFakePrompts } from '../host-prompts.fake.js';
-import { recordLog } from '@dotli/shared/testing';
+import { recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 
 type UserConfirmationReview = Parameters<Required<UserConfirmation>['confirmUserAction']>[0];
 
 let page = createFakePrompts();
 
-/** The adapters with their dialogs shown through the page's fake prompts. */
-function createUserConfirmationAdapters(label: string): ReturnType<typeof createAdapters> {
-  return createAdapters(label, page.prompts, createBlockingModalCoordinator().createScope());
+/** The adapters with their dialogs shown through the page's fake prompts, with no request on the way to a phone. */
+function createUserConfirmationAdapters(
+  label: string,
+  phoneRequests: PhoneRequestTracker = createPhoneRequestTracker(),
+): ReturnType<typeof createAdapters> {
+  return createAdapters(label, page.prompts, createBlockingModalCoordinator().createScope(), phoneRequests);
 }
 
 afterEach(() => {
+  resetAllStoresForTests();
   page = createFakePrompts();
 });
 
@@ -901,16 +905,26 @@ const REJECTED = { domain: { tag: 'Rejected' } };
 function pairedPhone({
   prompts = page.prompts,
   coordinator = createBlockingModalCoordinator(),
-}: { prompts?: HostPrompts; coordinator?: BlockingModalCoordinator } = {}) {
-  const tracker = createPhoneRequestTracker({
+  tracker = createPhoneRequestTracker({
     reportUndecodable: (method, error) => {
       throw new Error(`${method} frame did not decode`, { cause: error });
     },
-  });
+  }),
+}: { prompts?: HostPrompts; coordinator?: BlockingModalCoordinator; tracker?: PhoneRequestTracker } = {}) {
   const tap = tracker.connect();
   const scope = coordinator.createScope();
   const adapters = createAdapters('localhost:3000', prompts, scope, tracker);
   return { tracker, tap, scope, ...adapters };
+}
+
+/** A paired phone whose sign request the user signed in the dialog, so the review goes to the phone. */
+async function signedForPhone(options?: Parameters<typeof pairedPhone>[0]) {
+  const phone = pairedPhone(options);
+  phone.tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
+  const confirmation = phone.confirmUserAction(signReview('0x06'));
+  await modalShown();
+  press('sign');
+  return { ...phone, confirmation };
 }
 
 /** Resolves on the next metric recorded, so a spec waits on the count rather than polling. */
@@ -948,11 +962,7 @@ describe('waiting on the phone', () => {
   it('As a user, the waiting step closes when the phone signs and I see it signed', async () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const { tap, confirmUserAction } = pairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
-    press('sign');
+    const { tap, confirmation } = await signedForPhone();
     await confirmation;
 
     // When
@@ -969,11 +979,7 @@ describe('waiting on the phone', () => {
   it('As a user, I wait in background and still hear the outcome', async () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const { tap, confirmUserAction } = pairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
-    press('sign');
+    const { tap, confirmation } = await signedForPhone();
     await confirmation;
 
     // When
@@ -995,11 +1001,7 @@ describe('waiting on the phone', () => {
   it('As a user, I press Escape on the waiting step and it goes to the background, rejecting nothing', async () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const { tap, confirmUserAction } = pairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
-    press('sign');
+    const { tap, confirmation } = await signedForPhone();
 
     // When
     dismissModal();
@@ -1053,15 +1055,14 @@ describe('waiting on the phone', () => {
   it('As a user, a torn down host closes the waiting step, frees the prompt slot and still counts the request once', async () => {
     // Given
     const coordinator = createBlockingModalCoordinator();
-    const { tracker, tap, scope, confirmUserAction } = pairedPhone({ coordinator });
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
-    press('sign');
+    const { tracker, scope, confirmation } = await signedForPhone({ coordinator });
     await expect(confirmation).resolves.toBe(true);
-    const next = createAdapters('localhost:3000', page.prompts, coordinator.createScope()).confirmUserAction(
-      signReview('0x07'),
-    );
+    const next = createAdapters(
+      'localhost:3000',
+      page.prompts,
+      coordinator.createScope(),
+      createPhoneRequestTracker(),
+    ).confirmUserAction(signReview('0x07'));
 
     // When
     scope.dispose();
@@ -1087,7 +1088,7 @@ describe('waiting on the phone', () => {
     const errors: unknown[] = [];
     const captured = recordCaptures({ onFinished: onTestFinished, errors });
     const { sentry, recorded } = nextRecord();
-    const { tap, confirmUserAction } = pairedPhone({
+    const { tap, confirmation } = await signedForPhone({
       prompts: {
         ...page.prompts,
         notify: () => {
@@ -1095,10 +1096,6 @@ describe('waiting on the phone', () => {
         },
       },
     });
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
-    press('sign');
     await expect(confirmation).resolves.toBe(true);
 
     // When
@@ -1117,17 +1114,7 @@ describe('waiting on the phone', () => {
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const captured = recordCaptures({ onFinished: onTestFinished });
     recordLog({ onFinished: onTestFinished });
-    const tracker = createPhoneRequestTracker();
-    const tap = tracker.connect();
-    const confirmation = createAdapters(
-      'localhost:3000',
-      page.prompts,
-      createBlockingModalCoordinator().createScope(),
-      tracker,
-    ).confirmUserAction(signReview('0x06'));
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    await modalShown();
-    press('sign');
+    const { tap, confirmation } = await signedForPhone({ tracker: createPhoneRequestTracker() });
     await expect(confirmation).resolves.toBe(true);
     const answer = responseFrame('a', 'signPayload', SIGNED);
 
@@ -1135,31 +1122,29 @@ describe('waiting on the phone', () => {
     tap.fromCore(answer.subarray(0, answer.length - 3));
 
     // Then
-    await page.noticesShown(1);
+    const notices = await page.noticesShown(1);
     expect(page.pending()).toEqual([]);
+    expect(notices.map(n => n.text)).toEqual(["Polkadot App didn't complete the request: undecodable"]);
     expect(captured.map(c => c.step)).toEqual(['phone_request']);
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([
       { outcome: 'undecodable', reason: 'signPayload', background: 'no' },
     ]);
   });
 
-  it('As a user, a review whose phone lookup throws closes as today, answers the core and is reported', async () => {
+  it('As a user, a review whose phone lookup throws closes as today and answers the core', async () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
-    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    recordCaptures({ onFinished: onTestFinished });
     recordLog({ onFinished: onTestFinished });
     const tracker = createPhoneRequestTracker();
-    const confirmation = createAdapters(
-      'localhost:3000',
-      page.prompts,
-      createBlockingModalCoordinator().createScope(),
-      {
+    const { confirmUserAction } = pairedPhone({
+      tracker: {
         ...tracker,
         claim: () => {
           throw new Error('tracker broken');
         },
       },
-    ).confirmUserAction(signReview('0x06'));
+    });
+    const confirmation = confirmUserAction(signReview('0x06'));
     await modalShown();
 
     // When
@@ -1168,19 +1153,13 @@ describe('waiting on the phone', () => {
     // Then
     await expect(confirmation).resolves.toBe(true);
     expect(page.pending()).toEqual([]);
-    expect(captured.map(c => c.step)).toEqual(['modal_handoff']);
-    expect(sentry.counted(S.MODAL_HANDOFF)).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a user, a phone answer already in as the step opens closes it at once with one toast', async () => {
     // Given
-    const { tap, confirmUserAction } = pairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
+    const { tap, confirmation } = await signedForPhone();
 
     // When
-    press('sign');
     tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
 
     // Then
@@ -1193,11 +1172,7 @@ describe('waiting on the phone', () => {
   it('As a user, a torn down connection closes the waiting step without a toast', async () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const { tracker, tap, confirmUserAction } = pairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
-    const confirmation = confirmUserAction(signReview('0x06'));
-    await modalShown();
-    press('sign');
+    const { tracker, confirmation } = await signedForPhone();
     await confirmation;
 
     // When
@@ -1210,8 +1185,13 @@ describe('waiting on the phone', () => {
   });
 
   it('As a local wallet, signing closes the dialog as today', async () => {
-    // Given
-    const confirmation = createUserConfirmationAdapters('localhost:3000').confirmUserAction(signReview('0x06'));
+    // Given a local wallet core, whose tracker is disposed as it has no phone
+    const tracker = createPhoneRequestTracker();
+    tracker.dispose();
+    tracker.connect().fromProduct(requestFrame('a', 'signPayload', signRequest('0x06')));
+    const confirmation = createUserConfirmationAdapters('localhost:3000', tracker).confirmUserAction(
+      signReview('0x06'),
+    );
     await modalShown();
 
     // When

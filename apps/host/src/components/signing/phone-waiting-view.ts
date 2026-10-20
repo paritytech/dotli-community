@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ModalView } from '@dotli/ui';
+import type { PhoneAsk } from '../../runtime/phone-methods.js';
 import { PhoneWaiting } from './PhoneWaiting.js';
 
-/** What the phone is asked to do, which words the lead line. */
-export type PhoneAsk = 'sign' | 'approve';
-
-/** The result of every way out of the waiting step. */
 export const WAITING_BACKGROUND = 'background';
 
 /**

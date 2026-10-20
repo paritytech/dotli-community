@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { NotificationParams } from '@dotli/ui';
+import { PHONE_METHODS } from './phone-methods.js';
 import type { PhoneOutcome } from './phone-outcome.js';
 
 type Tone = NonNullable<NotificationParams['tone']>;
@@ -24,6 +25,8 @@ export function phoneOutcomeNotice(args: {
       return toast(app, 'The app stopped waiting', 'info');
     case 'failed':
       return toast(app, `Polkadot App didn't complete the request: ${outcome.reason}`, 'err');
+    case 'undecodable':
+      return toast(app, "Polkadot App didn't complete the request: undecodable", 'err');
     case 'gone':
       return undefined;
   }
@@ -34,13 +37,14 @@ function toast(app: string, text: string, tone: Tone): NotificationParams {
 }
 
 function okNotice(outcome: OkOutcome, title: string, app: string): NotificationParams {
-  if (outcome.method === 'getAccount') {
-    return toast(app, 'Accounts shared', 'ok');
+  if (PHONE_METHODS[outcome.method].ask === 'sign') {
+    return toast(app, `${title}: signed in Polkadot App`, 'ok');
   }
+  // Of the approvals, only an allowance answers with outcomes of its own.
   if (outcome.method === 'requestResourceAllocation') {
     return allocationNotice(outcome.allocations ?? [], app);
   }
-  return toast(app, `${title}: signed in Polkadot App`, 'ok');
+  return toast(app, 'Accounts shared', 'ok');
 }
 
 function allocationNotice(allocations: NonNullable<OkOutcome['allocations']>, app: string): NotificationParams {

@@ -21,7 +21,7 @@ import type { LocalWalletBoot } from './wallet-boot.js';
 export interface CoreRuntimeRequest {
   product: PageProduct;
   blockingModalScope: BlockingModalScope;
-  /** What the core's frames report phone requests to. Only a pairing core hands it to its callbacks. */
+  /** What the core's frames report phone requests to, and its confirmations claim from. */
   phoneRequests: PhoneRequestTracker;
   /** False once the core is gone, so a late step of its boot stands down. */
   isLive: () => boolean;
@@ -67,7 +67,7 @@ export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
         blockingModalScope,
         local,
         inService,
-        phoneRequests: local ? undefined : phoneRequests,
+        phoneRequests,
       });
     // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower. The
     // worker wrapper fetches its worker script only when constructed, so local mode pays nothing for it.

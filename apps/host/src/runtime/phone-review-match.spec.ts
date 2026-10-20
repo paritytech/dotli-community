@@ -4,12 +4,12 @@
 import type { ContactHandle, HostSignPayloadData } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
 import { describe, expect, it, vi } from 'vitest';
-import type { PhoneAsk } from '../components/signing/phone-waiting-view.js';
+import { PHONE_METHODS, type PhoneAsk, type PhoneMethod } from './phone-methods.js';
 import { phoneReviewMatch } from './phone-review-match.js';
-import { PHONE_REQUEST_CODECS, type PhoneMethod, type PhoneRequest } from './phone-requests.js';
+import type { PhoneRequest } from './phone-requests.js';
 
 function requestOf(method: PhoneMethod, body: unknown): PhoneRequest {
-  return { method, body, bytes: PHONE_REQUEST_CODECS[method].request.enc({ tag: 'V1', value: body }) };
+  return { method, body };
 }
 
 type Hex = `0x${string}`;
@@ -181,11 +181,11 @@ describe('phone review match', () => {
     const match = phoneReviewMatch(review);
 
     // When
-    const results = matching.map(request => match?.matches(request));
-    const other = match?.matches(differing);
+    const results = matching.map(request => match?.(request));
+    const other = match?.(differing);
 
     // Then
-    expect(match?.ask).toBe(ask);
+    expect(matching.map(request => PHONE_METHODS[request.method].ask)).toEqual(matching.map(() => ask));
     expect(results).toEqual(matching.map(() => true));
     expect(other).toBe(false);
   });
@@ -195,7 +195,7 @@ describe('phone review match', () => {
     const match = phoneReviewMatch(signPayloadReview);
 
     // When
-    const result = match?.matches(requestOf('createTransaction', txPayload('0x01')));
+    const result = match?.(requestOf('createTransaction', txPayload('0x01')));
 
     // Then
     expect(result).toBe(false);
@@ -226,10 +226,8 @@ describe('phone review match against the core rewrites', () => {
     const match = phoneReviewMatch(txReview(productTx('0xbeef', contacts)));
 
     // When
-    const same = match?.matches(requestOf('createTransaction', productTx('0x01', contacts)));
-    const other = match?.matches(
-      requestOf('createTransaction', { ...productTx('0x01', contacts), genesisHash: '0x05' }),
-    );
+    const same = match?.(requestOf('createTransaction', productTx('0x01', contacts)));
+    const other = match?.(requestOf('createTransaction', { ...productTx('0x01', contacts), genesisHash: '0x05' }));
 
     // Then
     expect(same).toBe(true);
@@ -249,8 +247,8 @@ describe('phone review match against the core rewrites', () => {
     });
 
     // When
-    const spelled = vrfMatch?.matches(request('  Product.DOT '));
-    const getAccount = accessMatch?.matches(requestOf('getAccount', { productAccountId: account(' Target.Dot') }));
+    const spelled = vrfMatch?.(request('  Product.DOT '));
+    const getAccount = accessMatch?.(requestOf('getAccount', { productAccountId: account(' Target.Dot') }));
 
     // Then
     expect(spelled).toBe(true);
@@ -269,7 +267,7 @@ describe('phone review match against the core rewrites', () => {
     const match = phoneReviewMatch(review, { reportEncodeFailure });
 
     // Then
-    expect(match?.matches(requestOf('signVrf', vrf('0xaa')))).toBe(false);
+    expect(match?.(requestOf('signVrf', vrf('0xaa')))).toBe(false);
     expect(reportEncodeFailure).toHaveBeenCalledWith('signVrf', expect.anything());
   });
 });

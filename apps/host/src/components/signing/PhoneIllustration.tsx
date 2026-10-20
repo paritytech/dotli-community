@@ -4,16 +4,11 @@
 import { createUniqueId } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { LogoSymbol } from '@dotli/ui/brand';
-import type { PhoneAsk } from './phone-waiting-view.js';
+import type { PhoneAsk } from '../../runtime/phone-methods.js';
+import { ASK_COPY } from './phone-ask-copy.js';
 import s from './PhoneIllustration.module.css';
 
 const SYMBOL_HEIGHT = 46;
-
-/** The phone's primary button, labelled as Polkadot App labels it for the ask. */
-const PRIMARY: Record<PhoneAsk, string> = {
-  sign: 'Sign',
-  approve: 'Approve',
-};
 
 /** A phone showing Polkadot App with its Reject and primary buttons, the primary pressed on a slow loop. */
 export function PhoneIllustration(props: { ask: PhoneAsk }): JSX.Element {
@@ -46,7 +41,7 @@ export function PhoneIllustration(props: { ask: PhoneAsk }): JSX.Element {
         <g class={s['tap']}>
           <rect class={s['sign']} x="120" y="246" width="100" height="30" rx="8" />
           <text class={s['signText']} x="170" y="265" data-testid="phone-illustration-primary">
-            {PRIMARY[props.ask]}
+            {ASK_COPY[props.ask].primary}
           </text>
         </g>
         <rect class={s['fade']} fill={`url(#${fade})`} y="188" width="234" height="121" />

@@ -59,9 +59,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   requests from the frames the host relays, and an approved review claims the request it belongs to. This is a temporary
   workaround, as the core does not report phone requests to the host. Remove it once
   [the core issue](https://github.com/paritytech/trinity-user-agents/issues/1552) lands. The core has its answer at
-  once, and the dialog swaps in place for a waiting step that holds the prompt slot until the user sends it to the
-  background or the request ends. Each waited request ends with one toast, and a torn down connection ends it with none.
-  A local wallet's dialogs close on their answer.
+  once, and the dialog swaps in place for a waiting step. The prompt queue lets a prompt hold its slot past its answer,
+  so the step keeps the slot until the user sends it to the background or the request ends. Each waited request ends
+  with one toast, and a torn down connection ends it with none. A local wallet core's tracker is disposed, so it claims
+  nothing and its dialogs close on their answer.
 - The toasts and dialogs are one idle island on each page. What boot queues before it hydrates shows once it does.
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,

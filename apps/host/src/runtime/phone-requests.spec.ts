@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { encodeWireMessage, MESSAGE_TYPE_REQUEST } from '@parity/truapi';
+import { decodeWireMessage, encodeWireMessage, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { spans as S } from '@dotli/metrics';
@@ -43,7 +43,25 @@ const isSignRaw = (request: PhoneRequest): boolean => request.method === 'signRa
 
 function tracker() {
   const reportUndecodable = vi.fn();
-  return { tracker: createPhoneRequestTracker({ reportUndecodable }), reportUndecodable };
+  const decode = vi.fn(decodeWireMessage);
+  return { tracker: createPhoneRequestTracker({ reportUndecodable, decode }), reportUndecodable, decode };
+}
+
+/** A frame of a method that never goes to the phone. */
+function loginFrame(requestId: string, messageType: number): Uint8Array {
+  const frame = encodeWireMessage({
+    requestId,
+    payload: {
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType,
+      value: new Uint8Array([1, 2, 3]),
+    },
+  });
+  if (frame.isErr()) {
+    throw frame.error;
+  }
+  return frame.value;
 }
 
 describe('phone request tracker', () => {
@@ -58,8 +76,7 @@ describe('phone request tracker', () => {
     tap.fromCore(responseFrame('a', 'signPayload', { ok: SIGNATURE }));
 
     // Then
-    expect(claim?.request.body).toEqual(signPayloadBody());
-    expect(claim?.request.bytes.length).toBeGreaterThan(0);
+    expect(claim?.request).toEqual({ method: 'signPayload', body: signPayloadBody() });
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signPayload' });
   });
 
@@ -221,7 +238,7 @@ describe('phone request tracker', () => {
     expect(reportUndecodable.mock.calls[0]?.[0]).toBe('signPayload');
   });
 
-  it('As a host, I report an undecodable answer and hear the claim end as failed', async () => {
+  it('As a host, I report an undecodable answer and hear the claim end as undecodable', async () => {
     // Given
     const { tracker: requests, reportUndecodable } = tracker();
     const tap = requests.connect();
@@ -233,7 +250,7 @@ describe('phone request tracker', () => {
     tap.fromCore(answer.subarray(0, answer.length - 3));
 
     // Then
-    await expect(claim?.ended).resolves.toEqual({ kind: 'failed', tag: 'undecodable', reason: 'undecodable' });
+    await expect(claim?.ended).resolves.toEqual({ kind: 'undecodable' });
     expect(reportUndecodable).toHaveBeenCalledOnce();
     expect(reportUndecodable.mock.calls[0]?.[0]).toBe('signRaw');
     expect(reportUndecodable.mock.calls[0]?.[2]).toBe('response');
@@ -271,7 +288,7 @@ describe('phone request tracker', () => {
     tap.fromCore(answer.subarray(0, answer.length - 3));
 
     // Then
-    await expect(claim?.ended).resolves.toMatchObject({ kind: 'failed', tag: 'undecodable' });
+    await expect(claim?.ended).resolves.toEqual({ kind: 'undecodable' });
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([]);
     expect(captured).toEqual([{ flow: 'wallet', step: 'phone_request', tags: { method: 'signRaw' } }]);
     expect(logged).toHaveLength(1);
@@ -296,25 +313,39 @@ describe('phone request tracker', () => {
     // Given
     const { tracker: requests, reportUndecodable } = tracker();
     const tap = requests.connect();
-    const other = encodeWireMessage({
-      requestId: 'a',
-      payload: {
-        traitId: ACCOUNT_REQUEST_LOGIN.trait,
-        methodId: ACCOUNT_REQUEST_LOGIN.method,
-        messageType: MESSAGE_TYPE_REQUEST,
-        value: new Uint8Array([1, 2, 3]),
-      },
-    });
-    if (other.isErr()) {
-      throw other.error;
-    }
 
     // When
-    tap.fromProduct(other.value);
+    tap.fromProduct(loginFrame('a', MESSAGE_TYPE_REQUEST));
     tap.fromProduct(new Uint8Array([0xff]));
 
     // Then
     expect(requests.claim(() => true)).toBeUndefined();
     expect(reportUndecodable).not.toHaveBeenCalled();
+  });
+
+  it('As a host, I relay frames that are not tracked without decoding them', async () => {
+    // Given a sign request in flight, and frames of another method, another id and a request echoed back
+    const { tracker: requests, decode } = tracker();
+    const tap = requests.connect();
+    tap.fromProduct(requestFrame('a', 'signRaw', signRawBody('x')));
+    const claim = requests.claim(isSignRaw);
+    decode.mockClear();
+
+    // When
+    tap.fromProduct(loginFrame('b', MESSAGE_TYPE_REQUEST));
+    tap.fromProduct(requestFrame('a', 'signRaw', signRawBody('again')));
+    tap.fromCore(loginFrame('b', MESSAGE_TYPE_RESPONSE));
+    tap.fromCore(responseFrame('other', 'signRaw', { ok: SIGNATURE }));
+    tap.fromCore(requestFrame('a', 'signRaw', signRawBody('x')));
+
+    // Then
+    expect(decode).not.toHaveBeenCalled();
+
+    // When the tracked answer comes
+    tap.fromCore(responseFrame('a', 'signRaw', { ok: SIGNATURE }));
+
+    // Then it is the one frame decoded
+    expect(decode).toHaveBeenCalledOnce();
+    await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
   });
 });

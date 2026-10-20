@@ -3,59 +3,17 @@
 
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
 
-import {
-  decodeWireMessage,
-  MESSAGE_TYPE_REQUEST,
-  MESSAGE_TYPE_RESPONSE,
-  VersionedHostAccountGetRequest,
-  VersionedHostAccountSignVrfRequest,
-  VersionedHostCreateTransactionRequest,
-  VersionedHostCreateTransactionWithLegacyAccountRequest,
-  VersionedHostRequestResourceAllocationRequest,
-  VersionedHostSignPayloadRequest,
-  VersionedHostSignPayloadWithLegacyAccountRequest,
-  VersionedHostSignRawRequest,
-  VersionedHostSignRawWithLegacyAccountRequest,
-  type MethodIds,
-} from '@parity/truapi';
-import {
-  ACCOUNT_GET_ACCOUNT,
-  ACCOUNT_SIGN_VRF,
-  RESOURCE_ALLOCATION_REQUEST,
-  SIGNING_CREATE_TRANSACTION,
-  SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-  SIGNING_SIGN_PAYLOAD,
-  SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-  SIGNING_SIGN_RAW,
-  SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
-  SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
-  SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
-} from '@parity/truapi/wire-table';
-import type { Codec } from '@parity/truapi/scale';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { log } from '@dotli/shared';
-import { decodePhoneOutcome, UNDECODABLE_TAG, type PhoneOutcome } from './phone-outcome.js';
-
-export type PhoneMethod =
-  | 'signPayload'
-  | 'signPayloadWithLegacyAccount'
-  | 'createTransaction'
-  | 'createTransactionWithLegacyAccount'
-  | 'signRaw'
-  | 'signRawWithLegacyAccount'
-  | 'signRawUnwatermarkedDeprecated'
-  | 'signRawUnwatermarkedDeprecatedWithLegacyAccount'
-  | 'signVrf'
-  | 'getAccount'
-  | 'requestResourceAllocation';
+import { decodeWireMessage, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
+import { compact } from '@parity/truapi/scale';
+import { PHONE_METHODS, type PhoneMethod } from './phone-methods.js';
+import { decodePhoneOutcome, type PhoneOutcome } from './phone-outcome.js';
+import { reportUndecodablePhoneFrame, type PhoneLeg } from './phone-report.js';
 
 /** A phone-bound request in flight, with its V1 request body as `@parity/truapi` decodes it. */
 export interface PhoneRequest {
   method: PhoneMethod;
   /** The unwrapped V1 value of the method's `Versioned...Request` codec. */
   body: unknown;
-  /** The request as the `Versioned...Request` codec encodes it with the V1 tag, for exact comparison. */
-  bytes: Uint8Array;
 }
 
 export interface PhoneClaim {
@@ -67,7 +25,7 @@ export interface PhoneClaim {
 export interface PhoneRequestTap {
   /** Each frame the product sent to the core. */
   fromProduct: (message: Uint8Array) => void;
-  /** Each frame the core sent to the product, after it was forwarded. */
+  /** Each frame the core sent to the product. */
   fromCore: (message: Uint8Array) => void;
   /** Ends this connection's claims as `gone`. Idempotent. */
   close: () => void;
@@ -81,68 +39,55 @@ export interface PhoneRequestTracker {
   dispose: () => void;
 }
 
-/** Which way a frame was going. */
-export type PhoneLeg = 'request' | 'response';
-
 export interface PhoneRequestTrackerDeps {
-  /**
-   * A tracked frame that would not decode. Default: `captureException` and `log.error`, and the `undecodable` count for
-   * a request. A response ends its claim, and the claim's end is counted.
-   */
+  /** A tracked frame that would not decode. A response ends its claim as `undecodable`, which the claim counts. */
   reportUndecodable?: (method: PhoneMethod, error: unknown, leg: PhoneLeg) => void;
+  /** Decodes a tracked frame in full. Every other frame is only peeked at. */
+  decode?: typeof decodeWireMessage;
 }
 
-interface RequestEntry {
-  ids: MethodIds;
-  request: Codec<unknown>;
-}
-
-/** Erases the method-specific request type, the one place the table's codecs are widened. */
-function entryOf<T>(ids: MethodIds, request: Codec<T>): RequestEntry {
-  return { ids, request: request as Codec<unknown> };
-}
-
-/** The wire id and request codec of each method, exported for the frame builders of specs. */
-export const PHONE_REQUEST_CODECS: Record<PhoneMethod, RequestEntry> = {
-  signPayload: entryOf(SIGNING_SIGN_PAYLOAD, VersionedHostSignPayloadRequest),
-  signPayloadWithLegacyAccount: entryOf(
-    SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-    VersionedHostSignPayloadWithLegacyAccountRequest,
-  ),
-  createTransaction: entryOf(SIGNING_CREATE_TRANSACTION, VersionedHostCreateTransactionRequest),
-  createTransactionWithLegacyAccount: entryOf(
-    SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-    VersionedHostCreateTransactionWithLegacyAccountRequest,
-  ),
-  signRaw: entryOf(SIGNING_SIGN_RAW, VersionedHostSignRawRequest),
-  signRawWithLegacyAccount: entryOf(SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT, VersionedHostSignRawWithLegacyAccountRequest),
-  signRawUnwatermarkedDeprecated: entryOf(SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED, VersionedHostSignRawRequest),
-  signRawUnwatermarkedDeprecatedWithLegacyAccount: entryOf(
-    SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
-    VersionedHostSignRawWithLegacyAccountRequest,
-  ),
-  signVrf: entryOf(ACCOUNT_SIGN_VRF, VersionedHostAccountSignVrfRequest),
-  getAccount: entryOf(ACCOUNT_GET_ACCOUNT, VersionedHostAccountGetRequest),
-  requestResourceAllocation: entryOf(RESOURCE_ALLOCATION_REQUEST, VersionedHostRequestResourceAllocationRequest),
-};
-
-const METHOD_BY_ADDRESS = new Map<number, PhoneMethod>(
-  (Object.entries(PHONE_REQUEST_CODECS) as [PhoneMethod, { ids: MethodIds }][]).map(([method, { ids }]) => [
-    (ids.trait << 8) | ids.method,
-    method,
-  ]),
+const METHOD_AT = new Map<number, PhoneMethod>(
+  (Object.keys(PHONE_METHODS) as PhoneMethod[]).map(method => {
+    const { ids } = PHONE_METHODS[method];
+    return [(ids.trait << 8) | ids.method, method];
+  }),
 );
 
-function methodAt(traitId: number, methodId: number): PhoneMethod | undefined {
-  return METHOD_BY_ADDRESS.get((traitId << 8) | methodId);
+interface FrameHeader {
+  requestId: string;
+  /** Undefined for a method that does not go to the phone. */
+  method: PhoneMethod | undefined;
+  messageType: number;
 }
 
-function reportUndecodableDefault(method: PhoneMethod, error: unknown, leg: PhoneLeg): void {
-  captureException(error, { flow: 'wallet', step: 'phone_request', tags: { method } });
-  log.error(`[dot.li phone request] ${method} ${leg} did not decode:`, error);
-  if (leg === 'request') {
-    m.count(S.PHONE_REQUEST, { outcome: 'undecodable', reason: method });
+const UTF8 = new TextDecoder();
+
+/** The bytes of a SCALE compact prefix by its mode, the low two bits. The big-integer mode never prefixes a frame. */
+const COMPACT_PREFIX_BYTES = [1, 2, 4] as const;
+
+/**
+ * A frame's header without copying its payload: `[requestId: compact length + UTF-8][trait][method][messageType]`.
+ * Undefined for a frame too short to have one, which the core reports itself since the tap is passive.
+ */
+function peekHeader(message: Uint8Array): FrameHeader | undefined {
+  const first = message[0];
+  const prefix = first === undefined ? undefined : COMPACT_PREFIX_BYTES[first & 0b11];
+  if (prefix === undefined || message.length < prefix) {
+    return undefined;
   }
+  // A copy of the prefix only, as the codec reads from the start of a view's whole buffer.
+  const end = prefix + Number(compact.dec(message.slice(0, prefix)));
+  const traitId = message[end];
+  const methodId = message[end + 1];
+  const messageType = message[end + 2];
+  if (traitId === undefined || methodId === undefined || messageType === undefined) {
+    return undefined;
+  }
+  return {
+    requestId: UTF8.decode(message.subarray(prefix, end)),
+    method: METHOD_AT.get((traitId << 8) | methodId),
+    messageType,
+  };
 }
 
 interface Tracked {
@@ -153,7 +98,8 @@ interface Tracked {
 }
 
 export function createPhoneRequestTracker({
-  reportUndecodable = reportUndecodableDefault,
+  reportUndecodable = reportUndecodablePhoneFrame,
+  decode = decodeWireMessage,
 }: PhoneRequestTrackerDeps = {}): PhoneRequestTracker {
   const taps = new Set<Map<string, Tracked>>();
   let seq = 0;
@@ -165,6 +111,15 @@ export function createPhoneRequestTracker({
     for (const tracked of ended) {
       tracked.settle?.({ kind: 'gone' });
     }
+  };
+
+  /** The payload of a frame whose header was already peeked, so only a frame it cannot read fails. */
+  const payloadOf = (message: Uint8Array): Uint8Array => {
+    const decoded = decode(message);
+    if (decoded.isErr()) {
+      throw decoded.error;
+    }
+    return decoded.value.payload.value;
   };
 
   return {
@@ -180,27 +135,22 @@ export function createPhoneRequestTracker({
           if (closed || disposed) {
             return;
           }
-          const decoded = decodeWireMessage(message);
-          if (decoded.isErr()) {
-            // The tap is passive, so the core reports a malformed frame itself.
+          const header = peekHeader(message);
+          if (
+            header?.method === undefined ||
+            header.messageType !== MESSAGE_TYPE_REQUEST ||
+            inflight.has(header.requestId)
+          ) {
             return;
           }
-          const { requestId, payload } = decoded.value;
-          const method = methodAt(payload.traitId, payload.methodId);
-          if (method === undefined || payload.messageType !== MESSAGE_TYPE_REQUEST || inflight.has(requestId)) {
-            return;
-          }
+          const { requestId } = header;
+          const method = header.method;
           try {
-            const codec = PHONE_REQUEST_CODECS[method].request;
-            const versioned = codec.dec(payload.value) as { tag: string; value: unknown };
+            const versioned = PHONE_METHODS[method].request.dec(payloadOf(message)) as { tag: string; value: unknown };
             if (versioned.tag !== 'V1') {
               throw new Error(`unsupported request version ${versioned.tag}`);
             }
-            inflight.set(requestId, {
-              seq: seq++,
-              request: { method, body: versioned.value, bytes: codec.enc(versioned) },
-              settle: undefined,
-            });
+            inflight.set(requestId, { seq: seq++, request: { method, body: versioned.value }, settle: undefined });
           } catch (error) {
             reportUndecodable(method, error, 'request');
           }
@@ -210,29 +160,23 @@ export function createPhoneRequestTracker({
           if (inflight.size === 0) {
             return;
           }
-          const decoded = decodeWireMessage(message);
-          if (decoded.isErr()) {
-            // The tap is passive, so the core reports a malformed frame itself.
+          const header = peekHeader(message);
+          if (header?.messageType !== MESSAGE_TYPE_RESPONSE) {
             return;
           }
-          const { requestId, payload } = decoded.value;
-          const tracked = inflight.get(requestId);
-          if (
-            tracked === undefined ||
-            payload.messageType !== MESSAGE_TYPE_RESPONSE ||
-            methodAt(payload.traitId, payload.methodId) !== tracked.request.method
-          ) {
+          const tracked = inflight.get(header.requestId);
+          if (tracked === undefined || header.method !== tracked.request.method) {
             return;
           }
-          inflight.delete(requestId);
+          inflight.delete(header.requestId);
           if (tracked.settle === undefined) {
             return;
           }
           try {
-            tracked.settle(decodePhoneOutcome(tracked.request.method, payload.value));
+            tracked.settle(decodePhoneOutcome(tracked.request.method, payloadOf(message)));
           } catch (error) {
             reportUndecodable(tracked.request.method, error, 'response');
-            tracked.settle({ kind: 'failed', tag: UNDECODABLE_TAG, reason: UNDECODABLE_TAG });
+            tracked.settle({ kind: 'undecodable' });
           }
         },
         close() {
