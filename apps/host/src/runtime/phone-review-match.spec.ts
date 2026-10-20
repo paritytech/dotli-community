@@ -1,0 +1,214 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { HostSignPayloadData } from '@parity/truapi';
+import type { UserConfirmationReview } from '@parity/truapi-host';
+import { describe, expect, it } from 'vitest';
+import type { PhoneAsk } from '../components/signing/phone-waiting-view.js';
+import { phoneReviewMatch } from './phone-review-match.js';
+import { PHONE_REQUEST_CODECS, type PhoneMethod, type PhoneRequest } from './phone-requests.js';
+
+function requestOf(method: PhoneMethod, body: unknown): PhoneRequest {
+  return { method, body, bytes: PHONE_REQUEST_CODECS[method].request.enc({ tag: 'V1', value: body }) };
+}
+
+type Hex = `0x${string}`;
+
+const account = (id: string) => ({ dotNsIdentifier: id, derivationIndex: { tag: 'Index' as const, value: 0 } });
+
+const signPayloadData = (nonce: Hex): HostSignPayloadData => ({
+  blockHash: '0x01',
+  blockNumber: '0x02',
+  era: '0x03',
+  genesisHash: '0x04',
+  method: '0x05',
+  nonce,
+  specVersion: '0x07',
+  tip: '0x08',
+  transactionVersion: '0x09',
+  signedExtensions: [],
+  version: 4,
+});
+
+const txPayload = (callData: Hex) => ({
+  signer: account('product.dot'),
+  genesisHash: '0x04' as Hex,
+  callData,
+  extensions: [],
+  txExtVersion: 0,
+  contacts: [],
+});
+
+const legacyTxPayload = (callData: Hex) => ({
+  signer: '0x0a' as Hex,
+  genesisHash: '0x04' as Hex,
+  callData,
+  extensions: [],
+  txExtVersion: 0,
+});
+
+const rawPayload = (payload: Hex) => ({ tag: 'Payload' as const, value: { payload } });
+
+const signRaw = (id: string, payload: Hex) => ({ account: account(id), payload: rawPayload(payload) });
+
+const allowance = (index: number) => ({
+  tag: 'SmartContractAllowance' as const,
+  value: { tag: 'Index' as const, value: index },
+});
+
+const vrf = (message: Hex) => ({
+  account: account('product.dot'),
+  transcriptLabel: message,
+  items: [],
+});
+
+const signPayloadReview: UserConfirmationReview = {
+  tag: 'SignPayload',
+  value: {
+    tag: 'Product',
+    value: {
+      callingProductId: 'product.dot',
+      request: { account: account('product.dot'), payload: signPayloadData('0x06') },
+    },
+  },
+};
+
+interface Row {
+  name: string;
+  review: UserConfirmationReview;
+  ask: PhoneAsk;
+  matching: PhoneRequest[];
+  differing: PhoneRequest;
+}
+
+const rows: Row[] = [
+  {
+    name: 'product sign-payload review',
+    review: signPayloadReview,
+    ask: 'sign',
+    matching: [requestOf('signPayload', { account: account('product.dot'), payload: signPayloadData('0x06') })],
+    differing: requestOf('signPayload', { account: account('product.dot'), payload: signPayloadData('0x99') }),
+  },
+  {
+    name: 'legacy sign-payload review',
+    review: {
+      tag: 'SignPayload',
+      value: { tag: 'LegacyAccount', value: { signer: '0x0a', payload: signPayloadData('0x06') } },
+    },
+    ask: 'sign',
+    matching: [requestOf('signPayloadWithLegacyAccount', { signer: '0x0a', payload: signPayloadData('0x06') })],
+    differing: requestOf('signPayloadWithLegacyAccount', { signer: '0x0b', payload: signPayloadData('0x06') }),
+  },
+  {
+    name: 'product sign-raw review',
+    review: {
+      tag: 'SignRaw',
+      value: { tag: 'Product', value: { request: signRaw('product.dot', '0xaa'), watermarked: true } },
+    },
+    ask: 'sign',
+    matching: [
+      requestOf('signRaw', signRaw('product.dot', '0xaa')),
+      requestOf('signRawUnwatermarkedDeprecated', signRaw('product.dot', '0xaa')),
+    ],
+    differing: requestOf('signRaw', signRaw('product.dot', '0xbb')),
+  },
+  {
+    name: 'legacy sign-raw review',
+    review: {
+      tag: 'SignRaw',
+      value: {
+        tag: 'LegacyAccount',
+        value: { request: { signer: '0x0a', payload: rawPayload('0xaa') }, watermarked: false },
+      },
+    },
+    ask: 'sign',
+    matching: [
+      requestOf('signRawWithLegacyAccount', { signer: '0x0a', payload: rawPayload('0xaa') }),
+      requestOf('signRawUnwatermarkedDeprecatedWithLegacyAccount', { signer: '0x0a', payload: rawPayload('0xaa') }),
+    ],
+    differing: requestOf('signRawWithLegacyAccount', { signer: '0x0a', payload: rawPayload('0xbb') }),
+  },
+  {
+    name: 'product create-transaction review',
+    review: { tag: 'CreateTransaction', value: { tag: 'Product', value: { payload: txPayload('0x01') } } },
+    ask: 'sign',
+    matching: [requestOf('createTransaction', txPayload('0x01'))],
+    differing: requestOf('createTransaction', txPayload('0x02')),
+  },
+  {
+    name: 'legacy create-transaction review',
+    review: { tag: 'CreateTransaction', value: { tag: 'LegacyAccount', value: legacyTxPayload('0x01') } },
+    ask: 'sign',
+    matching: [requestOf('createTransactionWithLegacyAccount', legacyTxPayload('0x01'))],
+    differing: requestOf('createTransactionWithLegacyAccount', legacyTxPayload('0x02')),
+  },
+  {
+    name: 'sign-vrf review',
+    review: { tag: 'SignVrf', value: { callingProductId: 'product.dot', request: vrf('0xaa') } },
+    ask: 'sign',
+    matching: [requestOf('signVrf', vrf('0xaa'))],
+    differing: requestOf('signVrf', vrf('0xbb')),
+  },
+  {
+    name: 'resource allocation review',
+    review: {
+      tag: 'ResourceAllocation',
+      value: { callingProductId: 'product.dot', resources: [allowance(1)] },
+    },
+    ask: 'approve',
+    matching: [requestOf('requestResourceAllocation', { resources: [allowance(1)] })],
+    differing: requestOf('requestResourceAllocation', { resources: [allowance(2)] }),
+  },
+  {
+    name: 'product subtree review',
+    review: { tag: 'ProductSubtree', value: { productId: 'product.dot' } },
+    ask: 'approve',
+    matching: [requestOf('getAccount', { productAccountId: account('product.dot') })],
+    differing: requestOf('getAccount', { productAccountId: account('other.dot') }),
+  },
+  {
+    name: 'account access review',
+    review: { tag: 'AccountAccess', value: { requestingProductId: 'product.dot', targetProductId: 'target.dot' } },
+    ask: 'approve',
+    matching: [requestOf('getAccount', { productAccountId: account('target.dot') })],
+    differing: requestOf('getAccount', { productAccountId: account('product.dot') }),
+  },
+];
+
+describe('phone review match', () => {
+  it.each(rows)('As a host, a $name matches only its own request', ({ review, ask, matching, differing }) => {
+    // Given
+    const match = phoneReviewMatch(review);
+
+    // When
+    const results = matching.map(request => match?.matches(request));
+    const other = match?.matches(differing);
+
+    // Then
+    expect(match?.ask).toBe(ask);
+    expect(results).toEqual(matching.map(() => true));
+    expect(other).toBe(false);
+  });
+
+  it('As a host, a sign review does not match a request of another method', () => {
+    // Given
+    const match = phoneReviewMatch(signPayloadReview);
+
+    // When
+    const result = match?.matches(requestOf('createTransaction', txPayload('0x01')));
+
+    // Then
+    expect(result).toBe(false);
+  });
+
+  it('As a host, an identity disclosure review never waits on the phone', () => {
+    // Given
+    const review: UserConfirmationReview = { tag: 'IdentityDisclosure', value: { productId: 'product.dot' } };
+
+    // When
+    const match = phoneReviewMatch(review);
+
+    // Then
+    expect(match).toBeUndefined();
+  });
+});
