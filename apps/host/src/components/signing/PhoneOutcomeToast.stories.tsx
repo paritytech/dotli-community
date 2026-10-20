@@ -30,19 +30,23 @@ const meta = {
   },
   render: () => <Overlays />,
   play: async ({ args, step }) => {
+    let notice: NotificationParams | undefined;
     await step('When the waited request ends', () => {
-      const notice = phoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
-      if (notice !== undefined) {
-        showNotification(notice);
-      }
+      notice = phoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
     });
-    if (args.text === undefined) {
-      await step('Then no toast shows', async () => {
-        await expect(body.queryAllByTestId('notif-card')).toEqual([]);
+    const { text, tone } = args;
+    if (text === undefined) {
+      await step('Then there is no toast to show', async () => {
+        await expect(notice).toBeUndefined();
       });
       return;
     }
-    const { text, tone } = args;
+    await step('And its toast goes to the page', () => {
+      if (notice === undefined) {
+        throw new Error('the outcome gave no toast');
+      }
+      showNotification(notice);
+    });
     await step('Then one toast shows the outcome, named for the app it came from', async () => {
       await waitFor(() => expect(body.getAllByTestId('notif-card')).toHaveLength(1));
       const card = within(body.getByTestId('notif-card'));
@@ -116,7 +120,7 @@ export const Failed: Story = {
   },
 };
 
-/** As a user, my request went away with the page and no toast shows. */
+/** As a user, my request went away with the page and there is no toast to show. */
 export const Gone: Story = {
   args: { outcome: { kind: 'gone' }, text: undefined },
 };

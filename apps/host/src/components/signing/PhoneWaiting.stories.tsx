@@ -49,6 +49,10 @@ const assertAnnounced = async (lead: string): Promise<void> => {
   const region = body.getByRole('status');
   await expect(region).toHaveTextContent(lead);
   await expect(region).toHaveTextContent('Waiting for your phone');
+  // The surface that takes focus is described by the step, so moving focus there reads it.
+  const surface = body.getByTestId('prompt-dialog');
+  await expect(surface).toHaveAccessibleDescription(expect.stringContaining(lead));
+  await expect(surface).toHaveAccessibleDescription(expect.stringContaining('Waiting for your phone'));
 };
 
 /** As a user signing, I am told to open Polkadot App and tap Sign or Reject while the request waits. */
@@ -88,5 +92,6 @@ export const Phone: Story = {
     await step('And the step still names the phone and offers to wait in the background', () =>
       assertWaiting(SIGN_LEAD),
     );
+    await step('And a screen reader hears the lead and the waiting line', () => assertAnnounced(SIGN_LEAD));
   },
 };

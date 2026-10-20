@@ -277,7 +277,7 @@ describe('phone request tracker', () => {
     expect(logged).toHaveLength(1);
   });
 
-  it('As a host, a response on a closed tap settles nothing', async () => {
+  it('As a host, I close a tap and a late answer leaves its claim ended as gone, not signed', async () => {
     // Given
     const { tracker: requests } = tracker();
     const tap = requests.connect();

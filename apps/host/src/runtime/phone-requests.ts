@@ -206,7 +206,8 @@ export function createPhoneRequestTracker({
           }
         },
         fromCore(message) {
-          if (closed || inflight.size === 0) {
+          // A closed tap has already ended its claims and emptied its map, so this covers it too.
+          if (inflight.size === 0) {
             return;
           }
           const decoded = decodeWireMessage(message);
