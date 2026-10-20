@@ -23,6 +23,8 @@ export interface ModalProps {
   initialFocus?: (() => HTMLElement | undefined) | undefined;
   /** Overrides what held focus at opening, for a trigger the browser may not focus on click. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
+  /** Moves focus to the card or sheet each time its value changes after opening, for content swapped in place. */
+  refocusOn?: (() => unknown) | undefined;
   placement?: 'center' | 'topbar-end';
   scrim?: 'dark' | 'light';
   id?: string | undefined;
@@ -67,6 +69,21 @@ function ModalRoot(props: ModalProps): JSX.Element {
       target.focus();
     }
   });
+
+  let opened = false;
+  createEffect(
+    () => props.refocusOn?.(),
+    () => {
+      if (!opened) {
+        opened = true;
+        return;
+      }
+      const surface = frame?.querySelector('[data-modal-surface]');
+      if (surface instanceof HTMLElement) {
+        surface.focus();
+      }
+    },
+  );
 
   // Created under InSheet once, so Surface follows the form rather than keep the one it was made in.
   const content = children(() => <InSheet value={phone}>{props.children}</InSheet>);

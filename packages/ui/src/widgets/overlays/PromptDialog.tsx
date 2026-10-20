@@ -52,20 +52,14 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   const [password, setPassword] = createSignal('');
   const Body = dynamic(() => view().body);
   let input: HTMLInputElement | undefined;
-  let frame: HTMLDivElement | undefined;
   let shown = first;
-  // A new step starts without the last one's typed value. The pressed button is gone, so focus moves to the surface
-  // rather than a button, where a second click or a repeated Enter would answer the new step at once.
+  // A new step starts without the last one's typed value.
   createEffect(view, next => {
     if (next === shown) {
       return;
     }
     shown = next;
     setPassword('');
-    const target = frame?.querySelector('[data-modal-surface]');
-    if (target instanceof HTMLElement) {
-      target.focus();
-    }
   });
 
   const needsPassword = (button: ModalButton<string>): boolean =>
@@ -107,10 +101,10 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       // focus there reads the step.
       describedBy={view().body === undefined ? undefined : bodyId}
       initialFocus={() => input}
+      // The pressed button is gone with its step, so focus moves to the surface rather than a button, where a second
+      // click or a repeated Enter would answer the new step at once.
+      refocusOn={view}
       testId={root}
-      frameRef={el => {
-        frame = el;
-      }}
       closable={view().closable}
     >
       <Modal.Head titleId={titleId} title={view().title} icon={view().icon} iconTestId={`${root}-icon`} />
