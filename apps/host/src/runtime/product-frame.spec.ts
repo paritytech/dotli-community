@@ -34,7 +34,6 @@ import {
 } from './page-core.fake.js';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
-import { requestFrame, responseFrame } from './phone-requests.fake.js';
 import { fakeIframe, fakeProductFrameView, type FakeProductFrameView } from './product-frame.fake.js';
 
 /** A handler that throws fails the test. */
@@ -883,105 +882,6 @@ describe('product frame rebuilds', () => {
     await answerConnection(fakes, 1);
     await fakes.changes.until(() => (fakes.hosts[0]?.dispose.mock.calls.length ?? 0) > 0 && toProduct.length === 2);
     expect(toProduct).toHaveLength(2);
-    port.port2.close();
-  });
-});
-
-describe('product frame and the phone request tracker', () => {
-  const SIGN_RAW_BODY = {
-    account: { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index', value: 0 } },
-    payload: { tag: 'Payload', value: { payload: 'x' } },
-  };
-
-  it("As a user granting a device permission in the app's own prompt, the app is rebuilt even when the tap breaks", async () => {
-    // Given a product frame whose tap throws on every core frame
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    const fakes = harness(
-      createFakePageCore({
-        onTapFromCore: () => {
-          throw new Error('tap broke');
-        },
-      }),
-    );
-    const port = new MessageChannel();
-    const rendered = fakes.frame.render(subdomainProduct('tap-broke'));
-    const core = await answerConnection(fakes, 0);
-    await rendered;
-    nth(fakes.hosts, 0).options.onPort(port.port1);
-    fakes.announce({ label: 'tap-broke', permissions: ['Camera'], fromPrompt: true });
-    const answer = encodeWireMessage({
-      requestId: 'camera-prompt',
-      payload: {
-        traitId: PERMISSIONS_REQUEST_DEVICE_PERMISSION.trait,
-        methodId: PERMISSIONS_REQUEST_DEVICE_PERMISSION.method,
-        messageType: MESSAGE_TYPE_RESPONSE,
-        value: new Uint8Array(),
-      },
-    });
-    if (answer.isErr()) {
-      throw answer.error;
-    }
-
-    const errors: unknown[] = [];
-    recordCaptures({ onFinished: onTestFinished, errors });
-
-    // When the answer passes the broken tap
-    core.listener?.(answer.value);
-
-    // Then the permission gate still saw it, and the app is rebuilt without waiting out the gate
-    await answerConnection(fakes, 1);
-    expect(fakes.connections).toHaveLength(2);
-    expect(errors).toEqual([new Error('tap broke')]);
-    port.port2.close();
-  });
-
-  it('As a dApp user, I send and receive frames and the tracker sees each one unchanged', async () => {
-    // Given a product frame piped to a core the test speaks for
-    const fakes = harness();
-    const port = new MessageChannel();
-    const toProduct: Uint8Array[] = [];
-    port.port2.onmessage = event => {
-      toProduct.push(event.data as Uint8Array);
-      fakes.changes.notify();
-    };
-    const rendered = fakes.frame.render(subdomainProduct('tracked'));
-    const core = await answerConnection(fakes, 0);
-    await rendered;
-    nth(fakes.hosts, 0).options.onPort(port.port1);
-    const request = requestFrame('r1', 'signRaw', SIGN_RAW_BODY);
-    const response = responseFrame('r1', 'signRaw', { ok: { signature: '0x01' } });
-
-    // When the product sends a request and the core answers it
-    port.port2.postMessage(request);
-    await fakes.changes.until(() => core.postMessage.mock.calls.length === 1);
-    core.listener?.(response);
-    await fakes.changes.until(() => toProduct.length === 1);
-
-    // Then each side got the frame as sent and the tap recorded the same bytes
-    expect(core.postMessage.mock.calls[0]?.[0]).toEqual(request);
-    expect(toProduct[0]).toEqual(response);
-    const tap = nth(fakes.taps, 0);
-    expect(tap.fromProduct).toEqual([request]);
-    expect(tap.fromCore).toEqual([response]);
-    port.port2.close();
-  });
-
-  it('As a dApp user, I open another product and the old frame closes its tap once', async () => {
-    // Given
-    const fakes = harness();
-    const port = new MessageChannel();
-    await settle(fakes, subdomainProduct('closing'), 0);
-    nth(fakes.hosts, 0).options.onPort(port.port1);
-
-    // When another product replaces the frame
-    await settle(fakes, subdomainProduct('replacing'), 1);
-
-    // Then
-    expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalled();
-    expect(nth(fakes.taps, 0).closed).toBe(1);
     port.port2.close();
   });
 });

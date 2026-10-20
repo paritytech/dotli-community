@@ -6,17 +6,23 @@ import type { TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { bindCaptureSink } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
+import { recordLog } from '@dotli/shared/testing';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './core-runtime.js';
 import { CoreRedialError, createPageCore, type PageCore } from './page-core.js';
 import { labelToProductId } from './runtime-config.js';
-import { garbageRequestFrame, requestFrame } from './phone-requests.fake.js';
+import { garbageRequestFrame, requestFrame, responseFrame, SIGN_RAW_BODY } from './phone-requests.fake.js';
+import { createPhoneRequestTracker, type PhoneRequestTracker } from './phone-requests.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 
 interface FakeProvider {
   provider: TrUApiProductProvider;
   dispose: ReturnType<typeof vi.fn<() => void>>;
+  /** Every frame posted to the core, in order. */
+  posted: Uint8Array[];
+  /** The core sending a frame to its subscribers. */
+  send(message: Uint8Array): void;
   /** The core going down under the connection. */
   goDown(): void;
 }
@@ -42,7 +48,18 @@ function fakeProvider(changes: Changes): FakeProvider {
     closeAll(new Error('disposed'));
     changes.notify();
   });
+  const posted: Uint8Array[] = [];
+  const subscribers = new Set<(message: Uint8Array) => void>();
   const provider = {
+    postMessage: (message: Uint8Array) => {
+      posted.push(message);
+    },
+    subscribe: (listener: (message: Uint8Array) => void) => {
+      subscribers.add(listener);
+      return () => {
+        subscribers.delete(listener);
+      };
+    },
     subscribeClose: (listener: (error: Error) => void) => {
       listeners.add(listener);
       return () => {
@@ -54,6 +71,12 @@ function fakeProvider(changes: Changes): FakeProvider {
   return {
     provider,
     dispose,
+    posted,
+    send: message => {
+      for (const subscriber of [...subscribers]) {
+        subscriber(message);
+      }
+    },
     goDown: () => {
       closeAll(new Error('worker gone'));
     },
@@ -100,6 +123,8 @@ interface Harness {
 
 interface HarnessOptions {
   local?: boolean;
+  /** Makes each core's phone request tracker. */
+  createPhoneRequests?: () => PhoneRequestTracker;
   /** Whether a wallet read now finds the local wallet, which makes a pairing core stale. */
   walletFound?: () => boolean;
 }
@@ -154,6 +179,7 @@ function harness(options: HarnessOptions = {}): Harness {
     },
     coordinator: createBlockingModalCoordinator(),
     redials: createAsyncTaskPool({ poolSize: 1, retryCount: 2 }),
+    ...(options.createPhoneRequests === undefined ? {} : { createPhoneRequests: options.createPhoneRequests }),
   });
   return { core, runtimes, requests, outcomes, storeListeners, nextBoots, staleChecks, changes };
 }
@@ -196,10 +222,45 @@ function reportingHarness(
   return { ...fakes, counted: metrics.counted, captures };
 }
 
-const SIGN_RAW_BODY = {
-  account: { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index', value: 0 } },
-  payload: { tag: 'Payload', value: { payload: 'x' } },
-};
+/** A real tracker whose taps record every frame they are told of first, and then throw if `broken`. */
+function recordingTracker({ broken = false }: { broken?: boolean } = {}): {
+  tracker: PhoneRequestTracker;
+  fromProduct: Uint8Array[];
+  fromCore: Uint8Array[];
+} {
+  const real = createPhoneRequestTracker();
+  const fromProduct: Uint8Array[] = [];
+  const fromCore: Uint8Array[] = [];
+  const recorded = (frames: Uint8Array[], next: (message: Uint8Array) => void) => (message: Uint8Array) => {
+    frames.push(message);
+    if (broken) {
+      throw new Error('tap broke');
+    }
+    next(message);
+  };
+  return {
+    tracker: {
+      ...real,
+      connect() {
+        const tap = real.connect();
+        return {
+          ...tap,
+          fromProduct: recorded(fromProduct, tap.fromProduct),
+          fromCore: recorded(fromCore, tap.fromCore),
+        };
+      },
+    },
+    fromProduct,
+    fromCore,
+  };
+}
+
+function trackerOf(request: CoreRuntimeRequest | undefined): PhoneRequestTracker {
+  if (request === undefined) {
+    throw new Error('no core was requested');
+  }
+  return request.phoneRequests;
+}
 
 describe('page core', () => {
   it('As a dApp user, I open a product and the page core boots one core for it', async () => {
@@ -214,26 +275,74 @@ describe('page core', () => {
     expect(outcomes).toEqual(['ok']);
   });
 
-  it("As a frame, I share one tracker with my core's callbacks and see it through my lease", async () => {
+  it("As a dApp user, my frames pass the connection unchanged both ways and my core's tracker hears each one", async () => {
     // Given
-    const { core, requests } = harness();
+    const recording = recordingTracker();
+    const { core, runtimes } = harness({ createPhoneRequests: () => recording.tracker });
+    const lease = await core.acquire();
+    const connection = await lease.connect();
+    const toProduct: Uint8Array[] = [];
+    connection.provider.subscribe(message => toProduct.push(message));
+    const request = requestFrame('r1', 'signRaw', SIGN_RAW_BODY);
+    const response = responseFrame('r1', 'signRaw', { ok: { signature: '0x01' } });
 
     // When
-    const lease = await core.acquire();
+    connection.provider.postMessage(request);
+    nthRuntime(runtimes, 0).providers[0]?.send(response);
 
     // Then
-    expect(lease.phoneRequests).toBeDefined();
-    expect(requests[0]?.phoneRequests).toBe(lease.phoneRequests);
+    expect(nthRuntime(runtimes, 0).providers[0]?.posted).toEqual([request]);
+    expect(toProduct).toEqual([response]);
+    expect(recording.fromProduct).toEqual([request]);
+    expect(recording.fromCore).toEqual([response]);
+  });
+
+  it("As a dApp user, my request is claimed from my core's tracker and closing my connection ends the claim as gone", async () => {
+    // Given
+    const { core, requests } = harness();
+    const lease = await core.acquire();
+    const connection = await lease.connect();
+    connection.provider.postMessage(requestFrame('r1', 'signRaw', SIGN_RAW_BODY));
+    const claim = trackerOf(requests[0]).claim(() => true);
+
+    // When
+    connection.close();
+
+    // Then
+    expect(claim?.request.method).toBe('signRaw');
+    await expect(claim?.ended).resolves.toEqual({ kind: 'gone' });
+  });
+
+  it('As a dApp user, a tap that throws is reported and my frames still pass both ways', async () => {
+    // Given
+    const recording = recordingTracker({ broken: true });
+    const { core, runtimes, captures } = reportingHarness({ createPhoneRequests: () => recording.tracker });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    const lease = await core.acquire();
+    const connection = await lease.connect();
+    const toProduct: Uint8Array[] = [];
+    connection.provider.subscribe(message => toProduct.push(message));
+    const request = requestFrame('r1', 'signRaw', SIGN_RAW_BODY);
+    const response = responseFrame('r1', 'signRaw', { ok: { signature: '0x01' } });
+
+    // When
+    connection.provider.postMessage(request);
+    nthRuntime(runtimes, 0).providers[0]?.send(response);
+
+    // Then
+    expect(nthRuntime(runtimes, 0).providers[0]?.posted).toEqual([request]);
+    expect(toProduct).toEqual([response]);
+    expect(captures.exception).toHaveBeenCalledTimes(2);
   });
 
   it('As a page, I redial a core and get a new tracker while the old one ends its claims as gone', async () => {
     // Given a request in flight on the first core, claimed
     const { core, runtimes, requests, changes } = harness();
     const lease = await core.acquire();
-    const first = lease.phoneRequests;
-    first.connect().fromProduct(requestFrame('r1', 'signRaw', SIGN_RAW_BODY));
+    const connection = await lease.connect();
+    connection.provider.postMessage(requestFrame('r1', 'signRaw', SIGN_RAW_BODY));
+    const first = trackerOf(requests[0]);
     const claim = first.claim(() => true);
-    await lease.connect();
 
     // When the core goes down and is redialed, and the old core goes with its last lease
     nthRuntime(runtimes, 0).providers[0]?.goDown();
@@ -241,23 +350,23 @@ describe('page core', () => {
     lease.release();
 
     // Then
-    expect(requests[1]?.phoneRequests).not.toBe(first);
+    expect(trackerOf(requests[1])).not.toBe(first);
     await expect(claim?.ended).resolves.toEqual({ kind: 'gone' });
   });
 
   it('As a local wallet user, I use a product and none of its requests are tracked', async () => {
     // Given a local wallet core
-    const { core, captures } = reportingHarness({ local: true });
+    const { core, requests, captures } = reportingHarness({ local: true });
     const lease = await core.acquire();
+    const connection = await lease.connect();
 
-    // When a frame the tracker could not decode, and a sign request, reach its tap
-    const tap = lease.phoneRequests.connect();
-    tap.fromProduct(garbageRequestFrame('r1', 'signRaw'));
-    tap.fromProduct(requestFrame('r2', 'signRaw', SIGN_RAW_BODY));
+    // When a frame the tracker could not decode, and a sign request, pass the connection
+    connection.provider.postMessage(garbageRequestFrame('r1', 'signRaw'));
+    connection.provider.postMessage(requestFrame('r2', 'signRaw', SIGN_RAW_BODY));
 
     // Then nothing is reported and nothing can be claimed
     expect(captures.exception).not.toHaveBeenCalled();
-    expect(lease.phoneRequests.claim(() => true)).toBeUndefined();
+    expect(trackerOf(requests[0]).claim(() => true)).toBeUndefined();
   });
 
   it('As a dApp user, I use one core from two parts of the page and it goes with the last lease', async () => {

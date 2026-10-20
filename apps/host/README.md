@@ -55,9 +55,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   the frame reloads only when its `allow` attribute changes.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
   is up, so one blocking prompt shows at a time.
-- An approved review that goes to the paired phone waits there. Each pairing core keeps a tracker that infers its phone
-  requests from the frames the host relays, and an approved review claims the request it belongs to. This is a temporary
-  workaround, as the core does not report phone requests to the host. Remove it once
+- An approved review that goes to the paired phone waits there. Each core keeps a tracker that every connection to it
+  taps, both ways, so it infers the phone requests from the frames that pass. A tap that fails is reported and the frame
+  passes untouched. An approved review claims the request it belongs to. This is a temporary workaround, as the core
+  does not report phone requests to the host. Remove it once
   [the core issue](https://github.com/paritytech/trinity-user-agents/issues/1552) lands. The core has its answer at
   once, and the dialog swaps in place for a waiting step. The prompt queue lets a prompt hold its slot past its answer,
   so the step keeps the slot until the user sends it to the background or the request ends. Each waited request ends

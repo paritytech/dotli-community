@@ -20,7 +20,6 @@ import { CoreRedialError, type CoreConnection, type CoreLease, type PageCore } f
 import { takePendingReset } from './pending-reset.js';
 import { createPermissionResponseGate } from './permission-response-gate.js';
 import type { PermissionAuthorizations } from './permissions.js';
-import type { PhoneRequestTap } from './phone-requests.js';
 import { labelToProductId } from './runtime-config.js';
 import { setProductLoaded } from './state/product.js';
 import type { PermissionsChange } from './state/product-permissions.js';
@@ -432,7 +431,6 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     const unregisterPermissions = deps.permissions.register(args.label, coreProvider);
     let productProvider: Provider | null = null;
     let disposePipe: (() => void) | null = null;
-    let phoneTap: PhoneRequestTap | null = null;
     const lifetime = new AbortController();
     const responses = createPermissionResponseGate({
       signal: lifetime.signal,
@@ -441,10 +439,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     const pipeArgs = { flowId: args.debugFlowId, label: args.label, productId: connection.productId };
     const cleanupProductSide = (): void => {
       disposePipe?.();
-      phoneTap?.close();
       productProvider?.dispose();
       disposePipe = null;
-      phoneTap = null;
       productProvider = null;
     };
     // Runs once, from a dispose, a failed build or a frame that gave up on its core.
@@ -469,9 +465,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         allow,
         sandbox: args.sandbox,
         onPort: port => {
-          phoneTap = lease.phoneRequests.connect();
           productProvider = createMessagePortProvider(port);
-          disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs, responses.forwarded, phoneTap);
+          disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs, responses.forwarded);
         },
       });
       return {
@@ -688,7 +683,6 @@ function pipeProviders(
   core: Provider,
   args: { flowId: string; label: string; productId: string },
   forwarded: (message: Uint8Array) => void,
-  tap: PhoneRequestTap,
 ): () => void {
   let sawInbound = false;
   let sawOutbound = false;
@@ -705,7 +699,6 @@ function pipeProviders(
         });
       }
       core.postMessage(message);
-      tap.fromProduct(message);
     }),
     core.subscribe(message => {
       if (!sawOutbound) {
@@ -720,8 +713,6 @@ function pipeProviders(
       }
       product.postMessage(message);
       forwarded(message);
-      // Last, so the temporary tap can never keep a frame from the product or the gate.
-      tap.fromCore(message);
     }),
     product.subscribeClose?.(() => {
       core.dispose();

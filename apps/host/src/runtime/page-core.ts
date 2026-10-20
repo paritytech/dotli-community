@@ -39,8 +39,6 @@ export interface CoreLease {
   subscribeDown(listener: () => void): () => void;
   /** Idempotent. Drops the down listeners subscribed through this lease. */
   release(): void;
-  /** The core's phone request tracker, which the frames' taps feed and the core's confirmations claim from. */
-  phoneRequests: PhoneRequestTracker;
 }
 
 /**
@@ -65,7 +63,7 @@ export interface PageCoreDeps {
   coordinator: BlockingModalCoordinator;
   /** Boots replacement cores, with the retries a redial gets. */
   redials?: AsyncTaskPool;
-  /** Makes the tracker of each dialed core. Default: {@link createPhoneRequestTracker}. */
+  /** Makes the tracker of each dialed core, which its connections' frames feed. Default: {@link createPhoneRequestTracker}. */
   createPhoneRequests?: () => PhoneRequestTracker;
 }
 
@@ -280,18 +278,44 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       throw error;
     }
     let closing = false;
+    const tap = core.phoneRequests.connect();
+    // The tracker only infers what it can, so a tap that fails is reported and the frame goes on as if untapped.
+    const tapped = (side: 'product' | 'core', message: Uint8Array): void => {
+      try {
+        if (side === 'product') {
+          tap.fromProduct(message);
+        } else {
+          tap.fromCore(message);
+        }
+      } catch (error) {
+        captureException(error, { flow: 'wallet', step: 'phone_request_tap', tags: { side } });
+        log.error(`[dot.li page-core] phone request tap failed on a frame from the ${side}:`, error);
+      }
+    };
+    const unsubscribeTap = provider.subscribe(message => {
+      tapped('core', message);
+    });
     // A deliberate close also fires close listeners. Any other close is the core going down.
     provider.subscribeClose?.(() => {
+      tap.close();
       if (!closing) {
         log.event('wallet core went down under a connection', { flow: 'wallet' });
         wentDown(core, 'closed');
       }
     });
     return {
-      provider,
+      provider: {
+        ...provider,
+        postMessage(message) {
+          provider.postMessage(message);
+          tapped('product', message);
+        },
+      },
       productId,
       close() {
         closing = true;
+        unsubscribeTap();
+        tap.close();
         provider.dispose();
       },
     };
@@ -357,7 +381,6 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           };
         },
         release,
-        phoneRequests: core.phoneRequests,
       };
     },
 

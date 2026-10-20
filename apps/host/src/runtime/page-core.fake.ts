@@ -17,7 +17,6 @@ import { createAsyncTaskPool } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime } from './core-runtime.js';
 import { createPageCore, type PageCore } from './page-core.js';
-import { createPhoneRequestTracker } from './phone-requests.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 type ProviderListener = (message: Uint8Array) => void;
@@ -46,18 +45,8 @@ export interface FakeCoreRuntime {
   dispose: Mock<() => void>;
 }
 
-/** What one frame's tap was told, and whether it was closed. */
-export interface RecordedTap {
-  fromProduct: Uint8Array[];
-  fromCore: Uint8Array[];
-  /** How many times the tap was closed. */
-  closed: number;
-}
-
 export interface FakePageCore {
   core: PageCore;
-  /** Every tap a frame opened on any core's tracker, in order. */
-  taps: RecordedTap[];
   /** Every runtime a boot produced, in order. */
   runtimes: FakeCoreRuntime[];
   /** Every connection asked of any core, in order, each answered by the test. */
@@ -127,18 +116,12 @@ function makeRuntime(connections: PromiseWithResolvers<FakeCoreProvider>[], chan
 }
 
 /** The real page core over fake Polkadot App runtimes. A redial gets one attempt, so a failed one fails at once. */
-export function createFakePageCore({
-  onTapFromCore,
-}: {
-  /** Runs inside each tap's `fromCore`, after it recorded the frame, as a broken tap would. */
-  onTapFromCore?: (message: Uint8Array) => void;
-} = {}): FakePageCore {
+export function createFakePageCore(): FakePageCore {
   const runtimes: FakeCoreRuntime[] = [];
   const connections: PromiseWithResolvers<FakeCoreProvider>[] = [];
   const nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[] = [];
   const storeListeners = new Set<() => void>();
   const heldBoots: PromiseWithResolvers<undefined>[] = [];
-  const taps: RecordedTap[] = [];
   const changes = createChanges();
   let walletFound = false;
   let holding = false;
@@ -175,37 +158,9 @@ export function createFakePageCore({
     },
     coordinator: createBlockingModalCoordinator(),
     redials: createAsyncTaskPool({ poolSize: 1 }),
-    createPhoneRequests() {
-      const tracker = createPhoneRequestTracker();
-      return {
-        ...tracker,
-        connect() {
-          const tap = tracker.connect();
-          const recorded: RecordedTap = { fromProduct: [], fromCore: [], closed: 0 };
-          taps.push(recorded);
-          return {
-            fromProduct(message) {
-              recorded.fromProduct.push(message);
-              tap.fromProduct(message);
-            },
-            fromCore(message) {
-              recorded.fromCore.push(message);
-              onTapFromCore?.(message);
-              tap.fromCore(message);
-            },
-            close() {
-              recorded.closed += 1;
-              changes.notify();
-              tap.close();
-            },
-          };
-        },
-      };
-    },
   });
   return {
     core,
-    taps,
     runtimes,
     connections,
     nextBoots,
