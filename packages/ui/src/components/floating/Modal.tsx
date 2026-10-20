@@ -18,6 +18,8 @@ export interface ModalProps {
   /** The sheet head's title, and the name when nothing labels the card. */
   title: string;
   labelledBy?: string | undefined;
+  /** The id of what describes the card or sheet, which focus on it reads. */
+  describedBy?: string | undefined;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
   /** Overrides what held focus at opening, for a trigger the browser may not focus on click. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
@@ -98,6 +100,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
             data-state={props.open ? 'open' : 'closed'}
             data-testid={props.testId}
             data-placement={props.placement ?? 'center'}
+            aria-describedby={props.describedBy}
             tabindex="-1"
           >
             {content()}
@@ -113,6 +116,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
           open={props.open}
           closeLabel="Close"
           closable={props.closable}
+          describedBy={props.describedBy}
           body={{ class: s['sheetScroll'] }}
         >
           <div class={s['sheetBody']}>{content()}</div>

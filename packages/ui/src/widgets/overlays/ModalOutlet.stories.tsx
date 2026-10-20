@@ -499,6 +499,11 @@ export const HandoffSwapsInPlace: Story = {
     await step('And focus is on the dialog itself, not lost to the page or put on its button', async () => {
       await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
     });
+    await step('And the focused dialog is described by the next step, so a screen reader reads it', async () => {
+      await expect(body.getByTestId('prompt-dialog')).toHaveAccessibleDescription(
+        expect.stringContaining('Waiting step body'),
+      );
+    });
     await step('When I press Enter right after the swap, as a repeated key would', async () => {
       await (await trustedInput()).keyboard('{Enter}');
     });

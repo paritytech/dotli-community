@@ -79,9 +79,9 @@ and no data source.
   `ModalButtonVariant`, `ModalHandoff`) and the toast store (`toastsStore` and the type `ToastEntry`). `openModal` takes
   an optional handoff: once the dialog is answered it returns the view that takes the dialog's place without closing it,
   until a button, Escape, the scrim or its signal closes that view. The new view starts with an empty password field and
-  focus on the dialog, not a button, so a second press cannot answer it at once. A handoff that throws is reported and
-  the dialog closes as without one. A view may draw its own `body` and set `closable: false` to hide the sheet's close
-  button.
+  focus on the dialog, not a button, so a second press cannot answer it at once. A view's own `body` describes the
+  dialog, so a screen reader reads the new step when focus lands there. A handoff that throws is reported and the dialog
+  closes as without one. A view may draw its own `body` and set `closable: false` to hide the sheet's close button.
 - Page helpers: `focusables`, `runWhenIdle` and `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`,
   `watchPhoneViewport`, `prefersReducedMotion` and the type `StatusTone`.
 - Helpers: `useStore`, `createDrags` with the type `Drags` (one owner for a component's pointer drags, which cancels

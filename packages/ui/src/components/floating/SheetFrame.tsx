@@ -108,6 +108,8 @@ export interface SheetFrameProps {
   open: boolean;
   /** Taking another sheet's place, or giving its place to one, so no slide. */
   handedOff?: boolean | undefined;
+  /** The id of what describes the sheet, which focus on it reads. */
+  describedBy?: string | undefined;
   body?:
     | {
         role?: 'menu';
@@ -149,6 +151,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
       data-handoff={props.handedOff === true ? '' : undefined}
       data-modal-surface=""
       data-testid={props.testId}
+      aria-describedby={props.describedBy}
       tabindex="-1"
     >
       <div

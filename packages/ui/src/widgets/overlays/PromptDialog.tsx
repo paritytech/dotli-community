@@ -48,6 +48,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   const view = createMemo<ModalView<string>>(prev => current() ?? prev ?? first);
   const root = first.testId ?? DEFAULT_TEST_ID;
   const titleId = `overlay-modal-title-${String(id)}`;
+  const bodyId = `overlay-modal-body-${String(id)}`;
   const [password, setPassword] = createSignal('');
   const Body = dynamic(() => view().body);
   let input: HTMLInputElement | undefined;
@@ -102,6 +103,9 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       }}
       title={view().title}
       labelledBy={titleId}
+      // A step that draws its own body describes the surface, which takes focus when the step swaps in, so moving
+      // focus there reads the step.
+      describedBy={view().body === undefined ? undefined : bodyId}
       initialFocus={() => input}
       testId={root}
       frameRef={el => {
@@ -179,7 +183,9 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
           )}
         </Show>
         <Show when={view().body}>
-          <Body />
+          <div id={bodyId}>
+            <Body />
+          </div>
         </Show>
       </Modal.Body>
       <Modal.Actions testId={`${root}-footer`}>
