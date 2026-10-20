@@ -3,7 +3,7 @@
 
 import type { ContactHandle, HostSignPayloadData } from '@parity/truapi';
 import type { UserConfirmationReview } from '@parity/truapi-host';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PhoneAsk } from '../components/signing/phone-waiting-view.js';
 import { phoneReviewMatch } from './phone-review-match.js';
 import { PHONE_REQUEST_CODECS, type PhoneMethod, type PhoneRequest } from './phone-requests.js';
@@ -265,9 +265,11 @@ describe('phone review match against the core rewrites', () => {
     };
 
     // When
-    const match = phoneReviewMatch(review);
+    const reportEncodeFailure = vi.fn();
+    const match = phoneReviewMatch(review, { reportEncodeFailure });
 
     // Then
     expect(match?.matches(requestOf('signVrf', vrf('0xaa')))).toBe(false);
+    expect(reportEncodeFailure).toHaveBeenCalledWith('signVrf', expect.anything());
   });
 });

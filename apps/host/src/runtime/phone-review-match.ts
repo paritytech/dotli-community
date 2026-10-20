@@ -47,19 +47,25 @@ function encodeV1(method: PhoneMethod, value: unknown): Uint8Array {
   return PHONE_REQUEST_CODECS[method].request.enc({ tag: 'V1', value });
 }
 
-function reportEncodeFailure(method: PhoneMethod, error: unknown): void {
+export interface PhoneReviewMatchDeps {
+  /** A review or request that would not encode. Default: `captureException`, `log.error` and the `unmatchable` count. */
+  reportEncodeFailure?: (method: PhoneMethod, error: unknown) => void;
+}
+
+function reportEncodeFailureDefault(method: PhoneMethod, error: unknown): void {
   captureException(error, { flow: 'wallet', step: 'phone_review_match', tags: { method } });
   log.error(`[dot.li phone review] ${method} did not encode for matching:`, error);
-  m.count(S.PHONE_REQUEST, { outcome: 'error', reason: 'encode' });
+  m.count(S.PHONE_REQUEST, { outcome: 'unmatchable', reason: method });
 }
 
 /**
  * Matches a request of one of `methods` whose V1 encoding equals that of `value`. With `callData`, the request's
  * call data is read as `callData` (the core rewrites it for declared contacts before it builds the review).
  */
-function byRequest(
+function byRequestWith(
+  reportEncodeFailure: NonNullable<PhoneReviewMatchDeps['reportEncodeFailure']>,
   ask: PhoneAsk,
-  methods: PhoneMethod[],
+  methods: [PhoneMethod, ...PhoneMethod[]],
   value: unknown,
   callData?: { review: string },
 ): PhoneReviewMatch {
@@ -85,7 +91,7 @@ function byRequest(
       },
     };
   } catch (error) {
-    reportEncodeFailure(methods[0] ?? 'signPayload', error);
+    reportEncodeFailure(methods[0], error);
     return { ask, matches: () => false };
   }
 }
@@ -96,15 +102,23 @@ function byAccountOf(productId: string): PhoneReviewMatch {
     ask: 'approve',
     matches: request =>
       request.method === 'getAccount' &&
-      (request.body as { productAccountId: { dotNsIdentifier: string } }).productAccountId.dotNsIdentifier
-        .trim()
-        .normalize('NFC')
-        .toLowerCase() === productId,
+      normalizeProductId(
+        (request.body as { productAccountId: { dotNsIdentifier: string } }).productAccountId.dotNsIdentifier,
+      ) === productId,
   };
 }
 
 /** How to find the request behind `review`, or undefined for a review that never waits on the phone. */
-export function phoneReviewMatch(review: UserConfirmationReview): PhoneReviewMatch | undefined {
+export function phoneReviewMatch(
+  review: UserConfirmationReview,
+  { reportEncodeFailure = reportEncodeFailureDefault }: PhoneReviewMatchDeps = {},
+): PhoneReviewMatch | undefined {
+  const byRequest = (
+    ask: PhoneAsk,
+    methods: [PhoneMethod, ...PhoneMethod[]],
+    value: unknown,
+    callData?: { review: string },
+  ): PhoneReviewMatch => byRequestWith(reportEncodeFailure, ask, methods, value, callData);
   switch (review.tag) {
     case 'SignPayload':
       return review.value.tag === 'Product'
