@@ -1,13 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createAsyncTaskPool, toAbortError } from '@dotli/shared';
+import { createAsyncTaskPool, deferred, toAbortError } from '@dotli/shared';
 
 const BLOCKING_MODAL_DISPOSED = 'Blocking modal scope disposed';
 
-type BlockingModalTask<T> = (signal: AbortSignal) => Promise<T> | T;
+/** Keeps the prompt slot taken until `promise` settles. Call it before the task returns. */
+export type HoldSlot = (promise: Promise<unknown>) => void;
+
+type BlockingModalTask<T> = (signal: AbortSignal, hold: HoldSlot) => Promise<T> | T;
 
 export interface BlockingModalScope {
+  /**
+   * Resolves with the task's value as soon as it returns. A promise the task holds keeps the slot, and the counts,
+   * taken until it settles or the scope is disposed, so no other prompt covers what it shows.
+   */
   enqueue<T>(task: BlockingModalTask<T>): Promise<T>;
   dispose(reason?: string): void;
 }
@@ -71,20 +78,42 @@ export function createBlockingModalCoordinator({
     // Ahead of this prompt's own abort listener in the pool, so its counts drop before the pool moves on. A later prompt
     // of the same scope can still be started then, and its abort check turns it away before its task runs.
     signal.addEventListener('abort', settle, { once: true });
+    const answer = deferred<T>();
     const shown = prompts.call(
-      () => {
+      async () => {
         stage = 'shown';
         waiting -= 1;
         publish();
         // A listener of the counts may have disposed the scope as the prompt came up.
         throwIfAborted(signal);
-        return task(signal);
+        const held: Promise<unknown>[] = [];
+        const value = await task(signal, promise => {
+          held.push(promise);
+        });
+        if (held.length > 0) {
+          answer.resolve(value);
+          // A held step reports its own failure, so only its end matters here.
+          while (held.length > 0) {
+            await Promise.allSettled(held.splice(0));
+          }
+        }
+        return value;
       },
       { signal },
     );
-    void shown.then(settle, settle);
+    // A task that held answered already, so only the scope's abort is left to reject it, and that changes nothing.
+    void shown.then(
+      value => {
+        settle();
+        answer.resolve(value);
+      },
+      (error: unknown) => {
+        settle();
+        answer.reject(error);
+      },
+    );
     publish();
-    return shown;
+    return answer.promise;
   };
 
   return {

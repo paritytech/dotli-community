@@ -17,6 +17,7 @@ import {
   createBlockingModalCoordinator,
   type BlockingModalCoordinator,
   type BlockingModalScope,
+  type HoldSlot,
 } from './blocking-modal-queue.js';
 import type { DotliAuthState } from './session/auth-state.js';
 import { authModalStore, resetAuthModal, type AuthModalState } from '../state/auth-modal.js';
@@ -98,11 +99,11 @@ function manualCoordinator(): {
       const signal = new AbortController().signal;
       let disposed = false;
       return {
-        enqueue<T>(task: (signal: AbortSignal) => Promise<T> | T): Promise<T> {
+        enqueue<T>(task: (signal: AbortSignal, hold: HoldSlot) => Promise<T> | T): Promise<T> {
           return new Promise<T>(resolve => {
             tasks.push({
               run: async () => {
-                resolve(await task(signal));
+                resolve(await task(signal, () => undefined));
               },
               disposed: () => disposed,
             });

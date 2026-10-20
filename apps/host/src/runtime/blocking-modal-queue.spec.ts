@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { deferred } from '@dotli/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createBlockingModalCoordinator, type BlockingModalCounts } from './blocking-modal-queue.js';
 
@@ -114,6 +115,55 @@ describe('blocking modal queue', () => {
 });
 
 describe('blocking modal queue, waiting count', () => {
+  it('As a dotli integrator, I hold the slot past my answer and the next prompt shows once what I hold settles', async () => {
+    // Given
+    const bar = countsSink();
+    const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
+    const step = deferred<undefined>();
+    const next = vi.fn(() => 'next');
+    const first = scope.enqueue((_signal, hold) => {
+      hold(step.promise);
+      return 'answered';
+    });
+    const second = scope.enqueue(next);
+
+    // When
+    const answer = await first;
+
+    // Then
+    expect(answer).toBe('answered');
+    expect(next).not.toHaveBeenCalled();
+    expect(bar.latest()).toEqual({ waiting: 1, active: true });
+
+    // When
+    step.reject(new Error('the step failed'));
+
+    // Then
+    await expect(second).resolves.toBe('next');
+    expect(bar.latest()).toEqual({ waiting: 0, active: false });
+    scope.dispose();
+  });
+
+  it('As a dotli integrator, I dispose a host whose prompt holds the slot and the next prompt shows', async () => {
+    // Given
+    const coordinator = createBlockingModalCoordinator();
+    const holding = coordinator.createScope();
+    const other = coordinator.createScope();
+    const answered = holding.enqueue((_signal, hold) => {
+      hold(new Promise(() => {}));
+      return 'answered';
+    });
+    const next = other.enqueue(() => 'next');
+    await expect(answered).resolves.toBe('answered');
+
+    // When
+    holding.dispose();
+
+    // Then
+    await expect(next).resolves.toBe('next');
+    other.dispose();
+  });
+
   it('As a user, I queue a second prompt and the bar counts it waiting behind the one on screen', async () => {
     // Given
     const bar = countsSink();

@@ -250,7 +250,9 @@ describe('queued permission prompts', () => {
     // Given a dialog that holds the queue until the user answers it
     await registry.setStatus('myapp', 'Notifications', 'granted');
     const scope = createBlockingModalCoordinator().createScope();
-    void scope.enqueue(signal => page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }));
+    const held = scope.enqueue(signal =>
+      page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }),
+    );
     await promptShown();
 
     // When
@@ -260,13 +262,16 @@ describe('queued permission prompts', () => {
     await expect(response).resolves.toBe('AllowOnce');
     expect(page.shown()).toMatchObject({ permission: 'ChainSubmit' });
     scope.dispose();
+    await expect(held).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('As a dotli user with notifications blocked, I am told so while another dialog is open', async () => {
     // Given a dialog that holds the queue until the user answers it
     await registry.setStatus('myapp', 'Notifications', 'denied');
     const scope = createBlockingModalCoordinator().createScope();
-    void scope.enqueue(signal => page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }));
+    const held = scope.enqueue(signal =>
+      page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }),
+    );
     await promptShown();
 
     // When
@@ -276,6 +281,7 @@ describe('queued permission prompts', () => {
     await expect(response).resolves.toBe('Deny');
     expect(page.notices).toEqual([expect.objectContaining({ tone: 'idle' })]);
     scope.dispose();
+    await expect(held).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('As a dotli integrator, I queue a duplicate permission prompt and the host rechecks the permission before showing it', async () => {
