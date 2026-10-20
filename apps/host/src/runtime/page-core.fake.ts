@@ -17,6 +17,7 @@ import { createAsyncTaskPool } from '@dotli/shared';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime } from './core-runtime.js';
 import { createPageCore, type PageCore } from './page-core.js';
+import { createPhoneRequestTracker } from './phone-requests.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 type ProviderListener = (message: Uint8Array) => void;
@@ -45,8 +46,17 @@ export interface FakeCoreRuntime {
   dispose: Mock<() => void>;
 }
 
+/** What one frame's tap was told, and whether it was closed. */
+export interface RecordedTap {
+  fromProduct: Uint8Array[];
+  fromCore: Uint8Array[];
+  closed: boolean;
+}
+
 export interface FakePageCore {
   core: PageCore;
+  /** Every tap a frame opened on any core's tracker, in order. */
+  taps: RecordedTap[];
   /** Every runtime a boot produced, in order. */
   runtimes: FakeCoreRuntime[];
   /** Every connection asked of any core, in order, each answered by the test. */
@@ -122,6 +132,7 @@ export function createFakePageCore(): FakePageCore {
   const nextBoots: ((runtime: FakeCoreRuntime) => Error | undefined)[] = [];
   const storeListeners = new Set<() => void>();
   const heldBoots: PromiseWithResolvers<undefined>[] = [];
+  const taps: RecordedTap[] = [];
   const changes = createChanges();
   let walletFound = false;
   let holding = false;
@@ -158,9 +169,36 @@ export function createFakePageCore(): FakePageCore {
     },
     coordinator: createBlockingModalCoordinator(),
     redials: createAsyncTaskPool({ poolSize: 1 }),
+    createPhoneRequests() {
+      const tracker = createPhoneRequestTracker();
+      return {
+        ...tracker,
+        connect() {
+          const tap = tracker.connect();
+          const recorded: RecordedTap = { fromProduct: [], fromCore: [], closed: false };
+          taps.push(recorded);
+          return {
+            fromProduct(message) {
+              recorded.fromProduct.push(message);
+              tap.fromProduct(message);
+            },
+            fromCore(message) {
+              recorded.fromCore.push(message);
+              tap.fromCore(message);
+            },
+            close() {
+              recorded.closed = true;
+              changes.notify();
+              tap.close();
+            },
+          };
+        },
+      };
+    },
   });
   return {
     core,
+    taps,
     runtimes,
     connections,
     nextBoots,

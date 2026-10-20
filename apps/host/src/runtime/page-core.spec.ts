@@ -10,6 +10,7 @@ import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './core-runtime.js';
 import { CoreRedialError, createPageCore, type PageCore } from './page-core.js';
 import { labelToProductId } from './runtime-config.js';
+import { requestFrame } from './phone-requests.fake.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 
@@ -195,6 +196,11 @@ function reportingHarness(
   return { ...fakes, counted: metrics.counted, captures };
 }
 
+const SIGN_RAW_BODY = {
+  account: { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+  payload: { tag: 'Payload', value: { payload: 'x' } },
+};
+
 describe('page core', () => {
   it('As a dApp user, I open a product and the page core boots one core for it', async () => {
     // Given
@@ -206,6 +212,37 @@ describe('page core', () => {
     // Then
     expect(requests).toHaveLength(1);
     expect(outcomes).toEqual(['ok']);
+  });
+
+  it("As a frame, my lease and the core's callbacks share one tracker", async () => {
+    // Given
+    const { core, requests } = harness();
+
+    // When
+    const lease = await core.acquire();
+
+    // Then
+    expect(lease.phoneRequests).toBeDefined();
+    expect(requests[0]?.phoneRequests).toBe(lease.phoneRequests);
+  });
+
+  it('As a page, a redialed core gets a new tracker and the old one ends its claims as gone', async () => {
+    // Given a request in flight on the first core, claimed
+    const { core, runtimes, requests, changes } = harness();
+    const lease = await core.acquire();
+    const first = lease.phoneRequests;
+    first.connect().fromProduct(requestFrame('r1', 'signRaw', SIGN_RAW_BODY));
+    const claim = first.claim(() => true);
+    await lease.connect();
+
+    // When the core goes down and is redialed, and the old core goes with its last lease
+    nthRuntime(runtimes, 0).providers[0]?.goDown();
+    await changes.until(() => requests.length === 2);
+    lease.release();
+
+    // Then
+    expect(requests[1]?.phoneRequests).not.toBe(first);
+    await expect(claim?.ended).resolves.toEqual({ kind: 'gone' });
   });
 
   it('As a dApp user, I use one core from two parts of the page and it goes with the last lease', async () => {

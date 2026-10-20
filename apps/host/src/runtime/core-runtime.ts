@@ -14,12 +14,15 @@ import type { BlockingModalScope } from './blocking-modal-queue.js';
 import type { CreateHostCallbacksOptions } from './host-callbacks/handlers.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
 import type { PageProduct } from './page-core.js';
+import type { PhoneRequestTracker } from './phone-requests.js';
 import { createTruapiRuntimeConfig } from './runtime-config.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
 
 export interface CoreRuntimeRequest {
   product: PageProduct;
   blockingModalScope: BlockingModalScope;
+  /** What the core's frames report phone requests to. Only a pairing core hands it to its callbacks. */
+  phoneRequests: PhoneRequestTracker;
   /** False once the core is gone, so a late step of its boot stands down. */
   isLive: () => boolean;
   /**
@@ -53,7 +56,7 @@ export interface CoreRuntimeDeps {
 }
 
 export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
-  return async ({ product, blockingModalScope, isLive, inService }) => {
+  return async ({ product, blockingModalScope, phoneRequests, isLive, inService }) => {
     const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
     const callbacksFor = (local: boolean): WebWorkerHostCallbacks =>
       deps.createCallbacks({
@@ -64,6 +67,7 @@ export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
         blockingModalScope,
         local,
         inService,
+        phoneRequests: local ? undefined : phoneRequests,
       });
     // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower. The
     // worker wrapper fetches its worker script only when constructed, so local mode pays nothing for it.

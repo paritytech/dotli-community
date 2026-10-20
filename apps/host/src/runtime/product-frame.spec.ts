@@ -34,6 +34,7 @@ import {
 } from './page-core.fake.js';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
+import { requestFrame, responseFrame } from './phone-requests.fake.js';
 import { fakeIframe, fakeProductFrameView, type FakeProductFrameView } from './product-frame.fake.js';
 
 /** A handler that throws fails the test. */
@@ -883,6 +884,77 @@ describe('product frame rebuilds', () => {
     await fakes.changes.until(() => (fakes.hosts[0]?.dispose.mock.calls.length ?? 0) > 0 && toProduct.length === 2);
     expect(toProduct).toHaveLength(2);
     port.port2.close();
+  });
+});
+
+describe('product frame and the phone request tracker', () => {
+  const SIGN_RAW_BODY = {
+    account: { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+    payload: { tag: 'Payload', value: { payload: 'x' } },
+  };
+
+  it('As a host, the tracker sees every frame in both directions, unchanged', async () => {
+    // Given a product frame piped to a core the test speaks for
+    const fakes = harness();
+    const port = new MessageChannel();
+    const toProduct: Uint8Array[] = [];
+    port.port2.onmessage = event => {
+      toProduct.push(event.data as Uint8Array);
+      fakes.changes.notify();
+    };
+    const rendered = fakes.frame.render(subdomainProduct('tracked'));
+    const core = await answerConnection(fakes, 0);
+    await rendered;
+    nth(fakes.hosts, 0).options.onPort(port.port1);
+    const request = requestFrame('r1', 'signRaw', SIGN_RAW_BODY);
+    const response = responseFrame('r1', 'signRaw', { ok: { signature: '0x01' } });
+
+    // When the product sends a request and the core answers it
+    port.port2.postMessage(request);
+    await fakes.changes.until(() => core.postMessage.mock.calls.length === 1);
+    core.listener?.(response);
+    await fakes.changes.until(() => toProduct.length === 1);
+
+    // Then each side got the frame as sent and the tap recorded the same bytes
+    expect(core.postMessage.mock.calls[0]?.[0]).toEqual(request);
+    expect(toProduct[0]).toEqual(response);
+    const tap = nth(fakes.taps, 0);
+    expect(tap.fromProduct).toEqual([request]);
+    expect(tap.fromCore).toEqual([response]);
+    port.port2.close();
+  });
+
+  it('As a host, a disposed frame closes its tap', async () => {
+    // Given
+    const fakes = harness();
+    const port = new MessageChannel();
+    await settle(fakes, subdomainProduct('closing'), 0);
+    nth(fakes.hosts, 0).options.onPort(port.port1);
+
+    // When another product replaces the frame
+    await settle(fakes, subdomainProduct('replacing'), 1);
+
+    // Then
+    expect(nth(fakes.hosts, 0).dispose).toHaveBeenCalled();
+    expect(nth(fakes.taps, 0).closed).toBe(true);
+    port.port2.close();
+  });
+
+  it('As a host, a product that loads again gets a new tap and the old one is closed', async () => {
+    // Given
+    const fakes = harness();
+    const first = new MessageChannel();
+    const second = new MessageChannel();
+    await settle(fakes, subdomainProduct('reloaded'), 0);
+    nth(fakes.hosts, 0).options.onPort(first.port1);
+
+    // When
+    nth(fakes.hosts, 0).options.onPort(second.port1);
+
+    // Then
+    expect(fakes.taps.map(tap => tap.closed)).toEqual([true, false]);
+    first.port2.close();
+    second.port2.close();
   });
 });
 

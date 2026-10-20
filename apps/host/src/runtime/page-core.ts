@@ -11,6 +11,7 @@ import { captureException, m, reportListener, spans as S } from '@dotli/metrics'
 import { createAsyncTaskPool, createListenerSet, log, type AsyncTaskPool, type ListenerSet } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './core-runtime.js';
+import { createPhoneRequestTracker, type PhoneRequestTracker } from './phone-requests.js';
 import { labelToProductId } from './runtime-config.js';
 
 export interface PageProduct {
@@ -38,6 +39,8 @@ export interface CoreLease {
   subscribeDown(listener: () => void): () => void;
   /** Idempotent. Drops the down listeners subscribed through this lease. */
   release(): void;
+  /** The core's phone request tracker, which the frames' taps feed and the core's confirmations claim from. */
+  phoneRequests: PhoneRequestTracker;
 }
 
 /**
@@ -62,6 +65,8 @@ export interface PageCoreDeps {
   coordinator: BlockingModalCoordinator;
   /** Boots replacement cores, with the retries a redial gets. */
   redials?: AsyncTaskPool;
+  /** Makes the tracker of each dialed core. Default: {@link createPhoneRequestTracker}. */
+  createPhoneRequests?: () => PhoneRequestTracker;
 }
 
 export interface PageCore {
@@ -78,6 +83,7 @@ interface Core {
   leases: number;
   faulted: boolean;
   downListeners: ListenerSet<undefined>;
+  phoneRequests: PhoneRequestTracker;
   dispose(): void;
 }
 
@@ -118,11 +124,13 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       ...(redial === undefined ? {} : { reason: redial }),
     });
     const blockingModalScope = deps.coordinator.createScope();
+    const phoneRequests = (deps.createPhoneRequests ?? createPhoneRequestTracker)();
     const dropped = new AbortController();
     let unsubscribeStore: (() => void) | null = null;
     const request = {
       product,
       blockingModalScope,
+      phoneRequests,
       isLive: () => cores.has(core),
       inService: () => cores.has(core) && !core.faulted,
     };
@@ -208,6 +216,7 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       runtime,
       leases: 0,
       faulted: false,
+      phoneRequests,
       downListeners: createListenerSet<undefined>({ onListenerError: reportListener('wallet', 'page_core.down') }),
       dispose() {
         if (!cores.delete(core)) {
@@ -220,6 +229,7 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
         dropped.abort(new Error('The page core was disposed'));
         unsubscribeStore?.();
         blockingModalScope.dispose();
+        phoneRequests.dispose();
       },
     };
     cores.add(core);
@@ -343,6 +353,7 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           };
         },
         release,
+        phoneRequests: core.phoneRequests,
       };
     },
 
