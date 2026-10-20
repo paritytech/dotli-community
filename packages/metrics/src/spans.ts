@@ -332,7 +332,7 @@ export const PREIMAGE_LOOKUP = 'preimage.lookup';
 export const TRUAPI_CHAIN_REOPEN = 'truapi_chain.reopen';
 
 /**
- * Count. A phone-bound request a waiting step followed to its end. Tagged `outcome` (`ok, rejected, withdrawn, failed,
- * gone, undecodable`), `reason` (the method, or the failure's reason) and `background`.
+ * Count. A phone-bound request a waiting step followed to its end. Tagged `outcome` (`ok, refused, aborted, error,
+ * gone, undecodable`), `reason` (the method) and `background`.
  */
 export const PHONE_REQUEST = 'signing.phone_request';

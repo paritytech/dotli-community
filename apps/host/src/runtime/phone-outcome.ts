@@ -25,18 +25,25 @@ import {
   type AllocationOutcome,
 } from '@parity/truapi';
 import { CallError, Result, type CallErrorValue, type Codec } from '@parity/truapi/scale';
+import type { MetricOutcome } from '@dotli/metrics';
 import type { PhoneMethod } from './phone-requests.js';
 
 export type PhoneOutcome =
   | { kind: 'ok'; method: PhoneMethod; allocations?: readonly AllocationOutcome[] }
   | { kind: 'rejected' }
   | { kind: 'withdrawn' }
-  | { kind: 'failed'; reason: string }
+  /** `tag` is the bounded error tag a metric may count, `reason` the free text a toast may show. */
+  | { kind: 'failed'; tag: string; reason: string }
   | { kind: 'gone' };
 
-/** Must be the generated client's exact composition, as a bare codec would decode real response bytes as garbage. */
-function responseOf<T, E>(ok: Codec<T>, err: Codec<E>): Codec<Result<T, CallErrorValue<E>>> {
-  return Result(ok, CallError(err));
+type ResponseCodec = Codec<Result<unknown, CallErrorValue<unknown>>>;
+
+/**
+ * Must be the generated client's exact composition, as a bare codec would decode real response bytes as garbage.
+ * The widening cast is the one place the method-specific types are erased.
+ */
+function responseOf<T, E>(ok: Codec<T>, err: Codec<E>): ResponseCodec {
+  return Result(ok, CallError(err)) as unknown as ResponseCodec;
 }
 
 const SIGN_RAW = responseOf(VersionedHostSignRawResponse, VersionedHostSignRawError);
@@ -46,7 +53,7 @@ const SIGN_RAW_LEGACY = responseOf(
 );
 
 /** The response codec of each method, as the generated wire decode table pairs them. */
-export const PHONE_RESPONSE_CODECS: Record<PhoneMethod, Codec<Result<unknown, CallErrorValue<unknown>>>> = {
+export const PHONE_RESPONSE_CODECS: Record<PhoneMethod, ResponseCodec> = {
   signPayload: responseOf(VersionedHostSignPayloadResponse, VersionedHostSignPayloadError),
   signPayloadWithLegacyAccount: responseOf(
     VersionedHostSignPayloadWithLegacyAccountResponse,
@@ -67,7 +74,7 @@ export const PHONE_RESPONSE_CODECS: Record<PhoneMethod, Codec<Result<unknown, Ca
     VersionedHostRequestResourceAllocationResponse,
     VersionedHostRequestResourceAllocationError,
   ),
-} as Record<PhoneMethod, Codec<Result<unknown, CallErrorValue<unknown>>>>;
+};
 
 interface Tagged {
   tag: string;
@@ -93,16 +100,16 @@ function failureOf(error: CallErrorValue<unknown>): PhoneOutcome {
       if (isTagged(inner)) {
         return inner.tag === 'Rejected'
           ? { kind: 'rejected' }
-          : { kind: 'failed', reason: reasonOf(inner.value) ?? inner.tag };
+          : { kind: 'failed', tag: inner.tag, reason: reasonOf(inner.value) ?? inner.tag };
       }
-      return { kind: 'failed', reason: error.tag };
+      return { kind: 'failed', tag: error.tag, reason: error.tag };
     }
     case 'MalformedFrame':
     case 'HostFailure':
-      return { kind: 'failed', reason: reasonOf(error.value) ?? error.tag };
+      return { kind: 'failed', tag: error.tag, reason: reasonOf(error.value) ?? error.tag };
     case 'Denied':
     case 'Unsupported':
-      return { kind: 'failed', reason: error.tag };
+      return { kind: 'failed', tag: error.tag, reason: error.tag };
   }
 }
 
@@ -125,4 +132,20 @@ export function decodePhoneOutcome(method: PhoneMethod, payload: Uint8Array): Ph
   }
   const allocations = allocationsOf(method, result.value);
   return allocations === undefined ? { kind: 'ok', method } : { kind: 'ok', method, allocations };
+}
+
+/** The shared metric vocabulary's word for how a request ended. */
+export function phoneMetricOutcome(kind: PhoneOutcome['kind']): MetricOutcome {
+  switch (kind) {
+    case 'ok':
+      return 'ok';
+    case 'rejected':
+      return 'refused';
+    case 'withdrawn':
+      return 'aborted';
+    case 'failed':
+      return 'error';
+    case 'gone':
+      return 'gone';
+  }
 }

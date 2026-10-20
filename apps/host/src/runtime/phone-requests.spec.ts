@@ -60,7 +60,7 @@ describe('phone request tracker', () => {
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signPayload' });
   });
 
-  it('As a host, I hear a rejection on the phone', async () => {
+  it('As a host, I claim a request and hear it was rejected on the phone', async () => {
     // Given
     const { tracker: requests } = tracker();
     const tap = requests.connect();
@@ -74,7 +74,7 @@ describe('phone request tracker', () => {
     await expect(claim?.ended).resolves.toEqual({ kind: 'rejected' });
   });
 
-  it('As a host, two identical requests are claimed one each', async () => {
+  it('As a host, I claim two identical requests one each', async () => {
     // Given
     const { tracker: requests } = tracker();
     const tap = requests.connect();
@@ -94,7 +94,7 @@ describe('phone request tracker', () => {
     await expect(second?.ended).resolves.toEqual({ kind: 'rejected' });
   });
 
-  it('As a host, I cannot claim a request that already has its response', () => {
+  it('As a host, I find no claim for a request that already has its response', () => {
     // Given
     const { tracker: requests } = tracker();
     const tap = requests.connect();
@@ -108,7 +108,7 @@ describe('phone request tracker', () => {
     expect(claim).toBeUndefined();
   });
 
-  it('As a host, a response for another request id leaves my claim waiting', async () => {
+  it('As a host, I keep waiting when a response is for another request id', async () => {
     // Given
     const { tracker: requests } = tracker();
     const tap = requests.connect();
@@ -133,7 +133,7 @@ describe('phone request tracker', () => {
     await expect(claim?.ended).resolves.toEqual({ kind: 'ok', method: 'signRaw' });
   });
 
-  it('As a host, request ids of two connections never mix', async () => {
+  it('As a host, I keep the request ids of two connections apart', async () => {
     // Given
     const { tracker: requests } = tracker();
     const one = requests.connect();
@@ -153,7 +153,7 @@ describe('phone request tracker', () => {
     await expect(second?.ended).resolves.toEqual({ kind: 'rejected' });
   });
 
-  it('As a host, a closed tap ends its claims as gone and forgets its requests', async () => {
+  it('As a host, I close a tap and hear its claims end as gone', async () => {
     // Given
     const { tracker: requests } = tracker();
     const tap = requests.connect();
@@ -170,7 +170,22 @@ describe('phone request tracker', () => {
     expect(requests.claim(isSignRaw)).toBeUndefined();
   });
 
-  it('As a host, dispose ends every claim as gone', async () => {
+  it('As a host, I send a request on a closed tap and find nothing to claim', () => {
+    // Given
+    const { tracker: requests, reportUndecodable } = tracker();
+    const tap = requests.connect();
+    tap.close();
+
+    // When
+    tap.fromProduct(requestFrame('a', 'signRaw', signRawBody('late')));
+    tap.fromProduct(garbageRequestFrame('b', 'signRaw'));
+
+    // Then
+    expect(requests.claim(isSignRaw)).toBeUndefined();
+    expect(reportUndecodable).not.toHaveBeenCalled();
+  });
+
+  it('As a host, I dispose the tracker and hear every claim end as gone', async () => {
     // Given
     const { tracker: requests } = tracker();
     const one = requests.connect();
@@ -189,7 +204,7 @@ describe('phone request tracker', () => {
     await expect(second?.ended).resolves.toEqual({ kind: 'gone' });
   });
 
-  it('As a host, an undecodable request is reported and never claimed', () => {
+  it('As a host, I report an undecodable request and find nothing to claim', () => {
     // Given
     const { tracker: requests, reportUndecodable } = tracker();
     const tap = requests.connect();
@@ -203,7 +218,7 @@ describe('phone request tracker', () => {
     expect(reportUndecodable.mock.calls[0]?.[0]).toBe('signPayload');
   });
 
-  it('As a host, an undecodable answer is reported and ends the claim as failed', async () => {
+  it('As a host, I report an undecodable answer and hear the claim end as failed', async () => {
     // Given
     const { tracker: requests, reportUndecodable } = tracker();
     const tap = requests.connect();
@@ -215,11 +230,11 @@ describe('phone request tracker', () => {
     tap.fromCore(answer.subarray(0, answer.length - 3));
 
     // Then
-    await expect(claim?.ended).resolves.toEqual({ kind: 'failed', reason: 'undecodable' });
+    await expect(claim?.ended).resolves.toEqual({ kind: 'failed', tag: 'undecodable', reason: 'undecodable' });
     expect(reportUndecodable).toHaveBeenCalledOnce();
   });
 
-  it('As a host, frames of other methods are ignored', () => {
+  it('As a host, I ignore frames of other methods and find nothing to claim', () => {
     // Given
     const { tracker: requests, reportUndecodable } = tracker();
     const tap = requests.connect();

@@ -12,6 +12,6 @@ export {
   type ExpectedReport,
   type Flow,
 } from './capture.js';
-export { getResolutionId, m, setResolutionId, type SpanHandle, type SpanValue } from './metrics.js';
+export { getResolutionId, m, setResolutionId, type MetricOutcome, type SpanHandle, type SpanValue } from './metrics.js';
 export { flushTelemetry, initSentry, installGlobalErrorHandlers } from './sentry.js';
 export * as spans from './spans.js';

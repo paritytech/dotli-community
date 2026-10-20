@@ -25,10 +25,7 @@ export type MetricOutcome =
   | 'cleared'
   // Protocol wire
   | 'refused'
-  // Phone requests
-  | 'rejected'
-  | 'withdrawn'
-  | 'failed'
+  // Phone requests: the connection ended before the phone answered, or a frame did not decode
   | 'gone'
   | 'undecodable';
 

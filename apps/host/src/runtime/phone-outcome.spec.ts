@@ -3,7 +3,7 @@
 
 import { decodeWireMessage } from '@parity/truapi';
 import { describe, expect, it } from 'vitest';
-import { decodePhoneOutcome } from './phone-outcome.js';
+import { decodePhoneOutcome, phoneMetricOutcome } from './phone-outcome.js';
 import { responseFrame } from './phone-requests.fake.js';
 import type { PhoneMethod } from './phone-requests.js';
 
@@ -22,7 +22,7 @@ describe.each([
   ['signRaw', SIGNATURE],
   ['requestResourceAllocation', { outcomes: ['Allocated'] }],
 ] as [PhoneMethod, unknown][])('phone outcome of %s', (method, ok) => {
-  it('As a product, a successful answer reads as ok', () => {
+  it('As a host, I decode a successful answer and read it as ok', () => {
     // Given
     const result = { ok };
 
@@ -34,7 +34,7 @@ describe.each([
     expect(outcome).toMatchObject({ method });
   });
 
-  it('As a product, a cancelled call reads as withdrawn', () => {
+  it('As a host, I decode a cancelled call and read it as withdrawn', () => {
     // Given
     const result = { error: { tag: 'Cancelled' as const } };
 
@@ -45,7 +45,7 @@ describe.each([
     expect(outcome).toEqual({ kind: 'withdrawn' });
   });
 
-  it('As a user, an unknown domain error reads as failed with its reason', () => {
+  it('As a host, I decode an unknown domain error and read it as failed with its reason', () => {
     // Given
     const result = { domain: { tag: 'Unknown', value: { reason: 'phone offline' } } };
 
@@ -53,12 +53,12 @@ describe.each([
     const outcome = outcomeOf(method, result);
 
     // Then
-    expect(outcome).toEqual({ kind: 'failed', reason: 'phone offline' });
+    expect(outcome).toEqual({ kind: 'failed', tag: 'Unknown', reason: 'phone offline' });
   });
 });
 
 describe.each(['signPayload', 'signRaw'] as PhoneMethod[])('phone outcome of %s', method => {
-  it('As a user, a rejection on the phone reads as rejected', () => {
+  it('As a host, I decode a rejection on the phone and read it as rejected', () => {
     // Given
     const result = { domain: { tag: 'Rejected' } };
 
@@ -71,7 +71,7 @@ describe.each(['signPayload', 'signRaw'] as PhoneMethod[])('phone outcome of %s'
 });
 
 describe('phone outcome', () => {
-  it('As a user, an error without a reason reads as failed with its tag', () => {
+  it('As a host, I decode a denied call and read it as failed with its tag', () => {
     // Given
     const result = { error: { tag: 'Denied' as const } };
 
@@ -79,10 +79,10 @@ describe('phone outcome', () => {
     const outcome = outcomeOf('signPayload', result);
 
     // Then
-    expect(outcome).toEqual({ kind: 'failed', reason: 'Denied' });
+    expect(outcome).toEqual({ kind: 'failed', tag: 'Denied', reason: 'Denied' });
   });
 
-  it('As a user, an allocation response carries every outcome', () => {
+  it('As a host, I decode an allocation response and read every outcome', () => {
     // Given
     const result = { ok: { outcomes: ['Allocated', 'Rejected', 'NotAvailable'] } };
 
@@ -95,5 +95,53 @@ describe('phone outcome', () => {
       method: 'requestResourceAllocation',
       allocations: ['Allocated', 'Rejected', 'NotAvailable'],
     });
+  });
+});
+
+describe('phone outcome failures', () => {
+  it('As a host, I decode a malformed frame error and read its reason', () => {
+    // Given
+    const result = { error: { tag: 'MalformedFrame' as const, value: { reason: 'bad bytes' } } };
+
+    // When
+    const outcome = outcomeOf('signRaw', result);
+
+    // Then
+    expect(outcome).toEqual({ kind: 'failed', tag: 'MalformedFrame', reason: 'bad bytes' });
+  });
+
+  it('As a host, I decode a host failure and read its reason', () => {
+    // Given
+    const result = { error: { tag: 'HostFailure' as const, value: { reason: 'phone unreachable' } } };
+
+    // When
+    const outcome = outcomeOf('signRaw', result);
+
+    // Then
+    expect(outcome).toEqual({ kind: 'failed', tag: 'HostFailure', reason: 'phone unreachable' });
+  });
+
+  it('As a host, I decode an unsupported call and read its tag as the reason', () => {
+    // Given
+    const result = { error: { tag: 'Unsupported' as const } };
+
+    // When
+    const outcome = outcomeOf('signRaw', result);
+
+    // Then
+    expect(outcome).toEqual({ kind: 'failed', tag: 'Unsupported', reason: 'Unsupported' });
+  });
+});
+
+describe('phone metric outcome', () => {
+  it('As a host, I count each ending with the shared metric vocabulary', () => {
+    // Given
+    const kinds = ['ok', 'rejected', 'withdrawn', 'failed', 'gone'] as const;
+
+    // When
+    const outcomes = kinds.map(kind => phoneMetricOutcome(kind));
+
+    // Then
+    expect(outcomes).toEqual(['ok', 'refused', 'aborted', 'error', 'gone']);
   });
 });

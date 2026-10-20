@@ -29,7 +29,7 @@ compile time.
 
 ### `@dotli/metrics`
 
-- `m`, `SpanHandle`, `SpanValue`: the metrics API.
+- `m`, `MetricOutcome`, `SpanHandle`, `SpanValue`: the metrics API and its one outcome vocabulary.
 - `spans`: the metric names, imported as `spans as S`.
 - `captureException`, `reportExpected`, `recordExpected`, `bindCaptureSink`, `CaptureContext`, `CaptureSink`,
   `ExpectedReport`, `Flow`.

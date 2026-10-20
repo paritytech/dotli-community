@@ -86,38 +86,39 @@ export interface PhoneRequestTrackerDeps {
   reportUndecodable?: (method: PhoneMethod, error: unknown) => void;
 }
 
+interface RequestEntry {
+  ids: MethodIds;
+  request: Codec<unknown>;
+}
+
+/** Erases the method-specific request type, the one place the table's codecs are widened. */
+function entryOf<T>(ids: MethodIds, request: Codec<T>): RequestEntry {
+  return { ids, request: request as Codec<unknown> };
+}
+
 /** The wire id and request codec of each method, exported for the frame builders of specs. */
-export const PHONE_REQUEST_CODECS: Record<PhoneMethod, { ids: MethodIds; request: Codec<unknown> }> = {
-  signPayload: { ids: SIGNING_SIGN_PAYLOAD, request: VersionedHostSignPayloadRequest },
-  signPayloadWithLegacyAccount: {
-    ids: SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-    request: VersionedHostSignPayloadWithLegacyAccountRequest,
-  },
-  createTransaction: { ids: SIGNING_CREATE_TRANSACTION, request: VersionedHostCreateTransactionRequest },
-  createTransactionWithLegacyAccount: {
-    ids: SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-    request: VersionedHostCreateTransactionWithLegacyAccountRequest,
-  },
-  signRaw: { ids: SIGNING_SIGN_RAW, request: VersionedHostSignRawRequest },
-  signRawWithLegacyAccount: {
-    ids: SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
-    request: VersionedHostSignRawWithLegacyAccountRequest,
-  },
-  signRawUnwatermarkedDeprecated: {
-    ids: SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
-    request: VersionedHostSignRawRequest,
-  },
-  signRawUnwatermarkedDeprecatedWithLegacyAccount: {
-    ids: SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
-    request: VersionedHostSignRawWithLegacyAccountRequest,
-  },
-  signVrf: { ids: ACCOUNT_SIGN_VRF, request: VersionedHostAccountSignVrfRequest },
-  getAccount: { ids: ACCOUNT_GET_ACCOUNT, request: VersionedHostAccountGetRequest },
-  requestResourceAllocation: {
-    ids: RESOURCE_ALLOCATION_REQUEST,
-    request: VersionedHostRequestResourceAllocationRequest,
-  },
-} as Record<PhoneMethod, { ids: MethodIds; request: Codec<unknown> }>;
+export const PHONE_REQUEST_CODECS: Record<PhoneMethod, RequestEntry> = {
+  signPayload: entryOf(SIGNING_SIGN_PAYLOAD, VersionedHostSignPayloadRequest),
+  signPayloadWithLegacyAccount: entryOf(
+    SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+    VersionedHostSignPayloadWithLegacyAccountRequest,
+  ),
+  createTransaction: entryOf(SIGNING_CREATE_TRANSACTION, VersionedHostCreateTransactionRequest),
+  createTransactionWithLegacyAccount: entryOf(
+    SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+    VersionedHostCreateTransactionWithLegacyAccountRequest,
+  ),
+  signRaw: entryOf(SIGNING_SIGN_RAW, VersionedHostSignRawRequest),
+  signRawWithLegacyAccount: entryOf(SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT, VersionedHostSignRawWithLegacyAccountRequest),
+  signRawUnwatermarkedDeprecated: entryOf(SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED, VersionedHostSignRawRequest),
+  signRawUnwatermarkedDeprecatedWithLegacyAccount: entryOf(
+    SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
+    VersionedHostSignRawWithLegacyAccountRequest,
+  ),
+  signVrf: entryOf(ACCOUNT_SIGN_VRF, VersionedHostAccountSignVrfRequest),
+  getAccount: entryOf(ACCOUNT_GET_ACCOUNT, VersionedHostAccountGetRequest),
+  requestResourceAllocation: entryOf(RESOURCE_ALLOCATION_REQUEST, VersionedHostRequestResourceAllocationRequest),
+};
 
 const METHOD_BY_ADDRESS = new Map<number, PhoneMethod>(
   (Object.entries(PHONE_REQUEST_CODECS) as [PhoneMethod, { ids: MethodIds }][]).map(([method, { ids }]) => [
@@ -161,17 +162,19 @@ export function createPhoneRequestTracker({
   return {
     connect() {
       const inflight = new Map<string, Tracked>();
+      let closed = disposed;
       if (!disposed) {
         taps.add(inflight);
       }
 
       return {
         fromProduct(message) {
-          if (disposed) {
+          if (closed || disposed) {
             return;
           }
           const decoded = decodeWireMessage(message);
           if (decoded.isErr()) {
+            // The tap is passive, so the core reports a malformed frame itself.
             return;
           }
           const { requestId, payload } = decoded.value;
@@ -195,11 +198,12 @@ export function createPhoneRequestTracker({
           }
         },
         fromCore(message) {
-          if (inflight.size === 0) {
+          if (closed || inflight.size === 0) {
             return;
           }
           const decoded = decodeWireMessage(message);
           if (decoded.isErr()) {
+            // The tap is passive, so the core reports a malformed frame itself.
             return;
           }
           const { requestId, payload } = decoded.value;
@@ -219,10 +223,11 @@ export function createPhoneRequestTracker({
             tracked.settle(decodePhoneOutcome(tracked.request.method, payload.value));
           } catch (error) {
             reportUndecodable(tracked.request.method, error);
-            tracked.settle({ kind: 'failed', reason: 'undecodable' });
+            tracked.settle({ kind: 'failed', tag: 'undecodable', reason: 'undecodable' });
           }
         },
         close() {
+          closed = true;
           taps.delete(inflight);
           endAll(inflight);
         },
