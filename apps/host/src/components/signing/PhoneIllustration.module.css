@@ -1,0 +1,124 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.phone {
+  position: relative;
+  width: 234px;
+  height: 309px;
+  margin: 0 auto;
+  flex: none;
+}
+
+.art {
+  display: block;
+}
+
+.outline {
+  fill: url(#phone-body);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.bodyTop {
+  stop-color: var(--text-strong);
+  stop-opacity: 0.06;
+}
+
+.bodyBottom {
+  stop-color: var(--text-strong);
+  stop-opacity: 0;
+}
+
+.fade {
+  fill: url(#phone-fade);
+  opacity: 0.55;
+}
+
+.fadeTop {
+  stop-color: var(--surface);
+  stop-opacity: 0;
+}
+
+.fadeBottom {
+  stop-color: var(--surface);
+}
+
+.reject {
+  fill: var(--fill);
+}
+
+.sign {
+  fill: var(--text-strong);
+}
+
+.rejectText {
+  fill: var(--text-secondary);
+  font: var(--fs-caption) var(--font-sans);
+  text-anchor: middle;
+}
+
+.signText {
+  fill: var(--chrome-on-primary);
+  font: 600 var(--fs-caption) var(--font-sans);
+  text-anchor: middle;
+}
+
+.symbol {
+  position: absolute;
+  top: 105px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  color: var(--text-strong);
+}
+
+.label {
+  position: absolute;
+  top: 172px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .symbol {
+    animation: glow 2.4s ease-in-out infinite;
+  }
+  .tap {
+    animation: tap 2.4s ease-in-out infinite;
+    transform-origin: 170px 261px;
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.85;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--text-strong) 35%, transparent));
+  }
+}
+
+@keyframes tap {
+  0%,
+  60%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(0.94);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
