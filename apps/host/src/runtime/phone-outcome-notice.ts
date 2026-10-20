@@ -51,5 +51,9 @@ function allocationNotice(allocations: NonNullable<OkOutcome['allocations']>, ap
   if (granted > 0) {
     return toast(app, 'Allowance partly granted', 'warn');
   }
+  // The core answers NotAvailable for an item that failed after the user approved, so it is not a rejection.
+  if (allocations.includes('NotAvailable')) {
+    return toast(app, "Polkadot App didn't complete the request: allowance not available", 'err');
+  }
   return toast(app, 'Rejected in Polkadot App', 'info');
 }

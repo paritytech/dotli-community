@@ -78,10 +78,48 @@ describe('phone outcome notice', () => {
     expect(notice).toMatchObject({ text: 'Allowance partly granted', label: APP, tone: 'warn' });
   });
 
-  it('As a user, I grant no allowance and see the rejection in Polkadot App', () => {
+  it('As a user, I reject every allowance and see the rejection in Polkadot App', () => {
+    // Given
+    const allocations: AllocationOutcome[] = ['Rejected', 'Rejected'];
+    const outcome: PhoneOutcome = { kind: 'ok', method: 'requestResourceAllocation', allocations };
+
+    // When
+    const notice = noticeOf(outcome);
+
+    // Then
+    expect(notice).toMatchObject({ text: 'Rejected in Polkadot App', label: APP, tone: 'info' });
+  });
+
+  it('As a user, I approve an allowance that is not available and see that Polkadot App did not complete it', () => {
     // Given
     const allocations: AllocationOutcome[] = ['Rejected', 'NotAvailable'];
     const outcome: PhoneOutcome = { kind: 'ok', method: 'requestResourceAllocation', allocations };
+
+    // When
+    const notice = noticeOf(outcome);
+
+    // Then
+    expect(notice).toMatchObject({
+      text: "Polkadot App didn't complete the request: allowance not available",
+      label: APP,
+      tone: 'err',
+    });
+  });
+
+  it('As a user, I get an allowance answer with no outcomes and see the rejection in Polkadot App', () => {
+    // Given
+    const outcome: PhoneOutcome = { kind: 'ok', method: 'requestResourceAllocation', allocations: [] };
+
+    // When
+    const notice = noticeOf(outcome);
+
+    // Then
+    expect(notice).toMatchObject({ text: 'Rejected in Polkadot App', label: APP, tone: 'info' });
+  });
+
+  it('As a user, I get an allowance answer without an outcome list and see the rejection in Polkadot App', () => {
+    // Given
+    const outcome: PhoneOutcome = { kind: 'ok', method: 'requestResourceAllocation' };
 
     // When
     const notice = noticeOf(outcome);
