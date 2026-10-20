@@ -42,8 +42,8 @@ const passwordView: ModalView<'cancel' | 'unlock'> = {
 const asked: {
   views: ModalView<string>[];
   outcomes: Promise<ModalOutcome<string>>[];
-  /** Replaces opening `views` when a story needs a handoff. */
-  start?: (() => void) | undefined;
+  /** What an answered dialog hands its place to, when a story needs it. */
+  next?: ModalView<string> | undefined;
 } = { views: [], outcomes: [] };
 /** How the handed-off view closed, for the handoff stories. */
 const handoffClosed: string[] = [];
@@ -57,44 +57,27 @@ const waitingView = (overrides: Partial<ModalView<string>> = {}): ModalView<stri
   dismissResult: 'background',
   ...overrides,
 });
-/** Asks `view`, which hands its place to `next` once answered. */
-const askWithHandoff = (view: ModalView<Choice>, next: ModalView<string>) => () => {
+/** The app frame the page hands focus to, as the host page gives its product frame. */
+let appFrame: HTMLIFrameElement | undefined;
+const arrange = (views: ModalView<string>[], next?: ModalView<string>): (() => void) => {
   resetAllStoresForTests();
   appFrame = undefined;
   handoffClosed.length = 0;
-  asked.views = [];
+  asked.views = views;
+  asked.next = next;
   asked.outcomes = [];
-  asked.start = () => {
-    asked.outcomes.push(
-      openModal(view, undefined, (): ModalHandoff => ({
-        view: next,
-        signal: new AbortController().signal,
-        closed: result => {
-          handoffClosed.push(result);
-        },
-      })),
-    );
-  };
   return () => {
-    asked.start = undefined;
+    asked.next = undefined;
     resetAllStoresForTests();
     appFrame = undefined;
   };
 };
-/** The app frame the page hands focus to, as the host page gives its product frame. */
-let appFrame: HTMLIFrameElement | undefined;
 const ask =
   (...views: ModalView<string>[]) =>
-  () => {
-    resetAllStoresForTests();
-    appFrame = undefined;
-    asked.views = views;
-    asked.outcomes = [];
-    return () => {
-      resetAllStoresForTests();
-      appFrame = undefined;
-    };
-  };
+  () =>
+    arrange(views);
+/** Asks `view`, which hands its place to `next` once answered. */
+const askWithHandoff = (view: ModalView<string>, next: ModalView<string>) => () => arrange([view], next);
 
 /** The page: the Ask button that queues the story's prompts, the app's frames when given, and the outlet. */
 function Page(props: { frames?: number }) {
@@ -103,11 +86,18 @@ function Page(props: { frames?: number }) {
       <Button
         testId="opener"
         onClick={() => {
-          if (asked.start === undefined) {
-            asked.outcomes.push(...asked.views.map(view => openModal(view)));
-          } else {
-            asked.start();
-          }
+          const { next } = asked;
+          const handoff =
+            next === undefined
+              ? undefined
+              : (): ModalHandoff => ({
+                  view: next,
+                  signal: new AbortController().signal,
+                  closed: result => {
+                    handoffClosed.push(result);
+                  },
+                });
+          asked.outcomes.push(...asked.views.map(view => openModal(view, undefined, handoff)));
         }}
       >
         Ask
@@ -505,6 +495,9 @@ export const HandoffSwapsInPlace: Story = {
       await expect(body.getByTestId('prompt-dialog')).toBe(dialog);
       await expect(body.queryByTestId('prompt-dialog-field')).toBeNull();
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'once' });
+    });
+    await step('And focus is inside the dialog, not lost to the page', async () => {
+      await waitFor(() => expect(body.getByTestId('prompt-dialog').contains(document.activeElement)).toBe(true));
     });
   },
 };

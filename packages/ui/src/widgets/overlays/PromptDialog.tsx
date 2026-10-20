@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
 import { ReloadIcon } from '../../icons.js';
 import { Button, type ButtonVariant } from '../../components/primitives/Button.js';
@@ -45,16 +45,27 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   // An answered dialog may hand its place to another view under the same id, which this follows without
   // remounting. A dialog that left the store keeps its last view while it closes.
   const current = useStore(modalsStore, entries => entries.find(e => e.id === id)?.view);
-  let last: ModalView<string> = first;
-  const view = (): ModalView<string> => {
-    last = current() ?? last;
-    return last;
-  };
+  const view = createMemo<ModalView<string>>(prev => current() ?? prev ?? first);
   const root = first.testId ?? DEFAULT_TEST_ID;
   const titleId = `overlay-modal-title-${String(id)}`;
   const [password, setPassword] = createSignal('');
   const Body = dynamic(() => view().body);
   let input: HTMLInputElement | undefined;
+  let frame: HTMLDivElement | undefined;
+  let shown = first;
+  // A new step starts without the last one's typed value, and the pressed button is gone, so focus moves in.
+  createEffect(view, next => {
+    if (next === shown) {
+      return;
+    }
+    shown = next;
+    setPassword('');
+    const target =
+      frame?.querySelector('[data-testid$="-footer"] button') ?? frame?.querySelector('[data-modal-surface]');
+    if (target instanceof HTMLElement) {
+      target.focus();
+    }
+  });
 
   const needsPassword = (button: ModalButton<string>): boolean =>
     view().input !== undefined && button.variant === 'primary';
@@ -93,6 +104,9 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
       labelledBy={titleId}
       initialFocus={() => input}
       testId={root}
+      frameRef={el => {
+        frame = el;
+      }}
       closable={view().closable}
     >
       <Modal.Head titleId={titleId} title={view().title} icon={view().icon} iconTestId={`${root}-icon`} />

@@ -5,6 +5,7 @@
 // here, outside Solid.
 
 import { createSyncStore, registerStoreStateReset, toAbortError, type ReadableStore } from '@dotli/shared';
+import { captureException } from '@dotli/metrics';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/icon-props.js';
 
@@ -36,7 +37,10 @@ export interface ModalPasswordInput {
 
 export interface ModalView<R extends string> {
   title: string;
-  /** The dialog's test id, which names every id inside it. The caller's own, so ui names none of a domain's. */
+  /**
+   * The dialog's test id, which names every id inside it. The caller's own, so ui names none of a domain's. A view
+   * a dialog hands its place to keeps the first view's ids, so its own is ignored.
+   */
   testId?: string;
   /** Drawn in the dialog's icon tile, which sizes it. */
   icon?: Component<IconProps>;
@@ -50,7 +54,7 @@ export interface ModalView<R extends string> {
   dismissResult?: R;
   /** Drawn in the body after fields and notice, for a step that is not a form. */
   body?: Component;
-  /** False hides the sheet head's close button. A swipe still closes and answers like the scrim. Default true. */
+  /** False hides the sheet head's close button. A swipe still closes and answers like the close button would. Default true. */
   closable?: boolean;
 }
 
@@ -103,8 +107,9 @@ function take(id: number): Pending | undefined {
 }
 
 /**
- * Rejects with an AbortError when `signal` fires. Once answered, `handoff` may return the view that takes the
- * dialog's place without closing it.
+ * Rejects with an AbortError when `signal` fires, until the dialog is answered. Once answered, `handoff` may return
+ * the view that takes the dialog's place without closing it. It sees every answer, refusals from `refuseModals`
+ * included, so return `undefined` for those.
  */
 export function openModal<R extends string>(
   view: ModalView<R>,
@@ -159,7 +164,13 @@ export function settleModal(id: number, result: string, value?: string): void {
     return;
   }
   const outcome: ModalOutcome<string> = value === undefined ? { result } : { result, value };
-  const next = entry.handoff?.(outcome);
+  let next: ModalHandoff | undefined;
+  try {
+    next = entry.handoff?.(outcome);
+  } catch (err) {
+    // The answer still reaches the caller, and the dialog closes as without a handoff.
+    captureException(err, { flow: 'ui', step: 'modal_handoff', tags: { kind: 'modal_handoff_error' } });
+  }
   if (next !== undefined && !next.signal.aborted) {
     entry.detach();
     showHandoff(id, next);

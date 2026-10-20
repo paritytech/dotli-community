@@ -234,6 +234,54 @@ describe('a dialog that hands its place to a second view', () => {
     expect(closed).toHaveBeenCalledExactlyOnceWith('aborted');
   });
 
+  it('As a product, aborting my signal after the answer leaves the next step open', async () => {
+    // Given
+    const closed = vi.fn();
+    const mine = new AbortController();
+    const asked = openModal(view('Review'), mine.signal, () => next(new AbortController().signal, closed));
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+    await asked;
+
+    // When
+    mine.abort();
+
+    // Then
+    expect(modalsStore.get()).toHaveLength(1);
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('As a host, the handoff hears the answer and closes the dialog for a refusal', async () => {
+    // Given
+    const closed = vi.fn();
+    const handoff = (outcome: { result: Choice }): ModalHandoff | undefined =>
+      outcome.result === 'yes' ? next(new AbortController().signal, closed) : undefined;
+    const refused = openModal(view('Refused'), undefined, handoff);
+    const accepted = openModal(view('Accepted'), undefined, handoff);
+
+    // When
+    settleModal(nth(modalsStore.get(), 0).id, 'no');
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // Then
+    await expect(refused).resolves.toEqual({ result: 'no' });
+    await expect(accepted).resolves.toEqual({ result: 'yes' });
+    expect(modalsStore.get().map(e => e.view.title)).toEqual(['Waiting']);
+  });
+
+  it('As a product, I still get my answer when the handoff throws', async () => {
+    // Given
+    const asked = openModal(view('Review'), undefined, () => {
+      throw new Error('boom');
+    });
+
+    // When
+    settleModal(nth(modalsStore.get(), 0).id, 'yes');
+
+    // Then
+    await expect(asked).resolves.toEqual({ result: 'yes' });
+    expect(modalsStore.get()).toEqual([]);
+  });
+
   it('As a page whose overlays broke, refuseModals answers a handed-off view with its dismiss result', () => {
     // Given
     const closed = vi.fn();
