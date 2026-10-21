@@ -74,25 +74,21 @@ export function assertLaunchable(root: ManifestResult<RootManifest>, app: Manife
   assertReadable(app, 'app');
 }
 
-export type RevalidateDecision =
-  | { kind: 'keep' }
-  | { kind: 'update'; cid: string; manifests: CachedManifests }
-  | { kind: 'evict'; reason: 'cleared' | 'rejected' };
+/** A redeploy moves the contenthash, so the CID alone tells whether a cached copy is current. */
+export type CidComparison = { kind: 'keep' } | { kind: 'evict'; reason: 'cleared' } | { kind: 'newer'; cid: string };
 
-/** A redeploy moves the contenthash, so manifests are read again only when the CID changed. */
-export async function revalidateCachedProduct(
-  servedCid: string,
-  readCid: () => Promise<string | null>,
-  readManifests: () => Promise<ProductManifests>,
-): Promise<RevalidateDecision> {
-  const freshCid = await readCid();
+export function compareCachedCid(servedCid: string, freshCid: string | null): CidComparison {
   if (freshCid === null) {
     return { kind: 'evict', reason: 'cleared' };
   }
-  if (freshCid === servedCid) {
-    return { kind: 'keep' };
-  }
-  const manifests = await readManifests();
+  return freshCid === servedCid ? { kind: 'keep' } : { kind: 'newer', cid: freshCid };
+}
+
+export type RedeployDecision =
+  { kind: 'update'; cid: string; manifests: CachedManifests } | { kind: 'evict'; reason: 'rejected' };
+
+/** A redeploy is cached with its manifests, unless this host cannot read them. */
+export function judgeRedeploy(cid: string, manifests: ProductManifests): RedeployDecision {
   try {
     assertLaunchable(manifests.root, manifests.app);
   } catch (err) {
@@ -101,5 +97,5 @@ export async function revalidateCachedProduct(
     }
     throw err;
   }
-  return { kind: 'update', cid: freshCid, manifests: toCache(manifests) };
+  return { kind: 'update', cid, manifests: toCache(manifests) };
 }

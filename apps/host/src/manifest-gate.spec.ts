@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   toExecutableManifestResult,
   toRootManifestResult,
@@ -12,12 +12,12 @@ import {
 
 import {
   assertLaunchable,
+  compareCachedCid,
   fromCache,
+  judgeRedeploy,
   ManifestRejectedError,
   manifestFacts,
-  revalidateCachedProduct,
   toCache,
-  type ProductManifests,
 } from './manifest-gate.js';
 
 const ROOT_TEXT = JSON.stringify({
@@ -107,55 +107,33 @@ describe('cached manifests', () => {
 });
 
 describe('cache revalidation', () => {
-  const readManifests = (manifests: ProductManifests): Mock<() => Promise<ProductManifests>> =>
-    vi.fn(() => Promise.resolve(manifests));
-
-  it('As a dotli user, an app that was not redeployed keeps its cached manifests, without reading them again', async () => {
-    // Given
-    const read = readManifests({ root: ROOT, app: APP });
-
-    // When
-    const decision = await revalidateCachedProduct('bafy-served', () => Promise.resolve('bafy-served'), read);
-
-    // Then
-    expect(decision).toEqual({ kind: 'keep' });
-    expect(read).not.toHaveBeenCalled();
+  it('As a dotli user, an app that was not redeployed keeps its cached copy', () => {
+    // When / Then
+    expect(compareCachedCid('bafy-served', 'bafy-served')).toEqual({ kind: 'keep' });
   });
 
-  it('As a dotli user, a redeployed app is cached again with the manifests it was redeployed with', async () => {
-    // When
-    const decision = await revalidateCachedProduct(
-      'bafy-served',
-      () => Promise.resolve('bafy-fresh'),
-      readManifests({ root: ROOT, app: APP }),
-    );
-
-    // Then
-    expect(decision).toEqual({ kind: 'update', cid: 'bafy-fresh', manifests: toCache({ root: ROOT, app: APP }) });
+  it('As a dotli user, a redeployed app is told apart by its contenthash alone', () => {
+    // When / Then
+    expect(compareCachedCid('bafy-served', 'bafy-fresh')).toEqual({ kind: 'newer', cid: 'bafy-fresh' });
   });
 
-  it('As a dotli user, an app redeployed with manifests this host cannot read is dropped from the cache', async () => {
-    // When
-    const decision = await revalidateCachedProduct(
-      'bafy-served',
-      () => Promise.resolve('bafy-fresh'),
-      readManifests({ root: ROOT, app: APP_V2 }),
-    );
-
-    // Then
-    expect(decision).toEqual({ kind: 'evict', reason: 'rejected' });
+  it('As a dotli user, an app whose name no longer resolves is dropped from the cache', () => {
+    // When / Then
+    expect(compareCachedCid('bafy-served', null)).toEqual({ kind: 'evict', reason: 'cleared' });
   });
 
-  it('As a dotli user, an app whose name no longer resolves is dropped from the cache', async () => {
-    // Given
-    const read = readManifests({ root: ROOT, app: APP });
+  it('As a dotli user, a redeployed app is cached again with the manifests it was redeployed with', () => {
+    // When / Then
+    expect(judgeRedeploy('bafy-fresh', { root: ROOT, app: APP })).toEqual({
+      kind: 'update',
+      cid: 'bafy-fresh',
+      manifests: toCache({ root: ROOT, app: APP }),
+    });
+  });
 
-    // When
-    const decision = await revalidateCachedProduct('bafy-served', () => Promise.resolve(null), read);
-
-    // Then
-    expect(decision).toEqual({ kind: 'evict', reason: 'cleared' });
-    expect(read).not.toHaveBeenCalled();
+  it('As a dotli user, an app redeployed with manifests this host cannot read is dropped from the cache', () => {
+    // When / Then
+    expect(judgeRedeploy('bafy-fresh', { root: ROOT, app: APP_V2 })).toEqual({ kind: 'evict', reason: 'rejected' });
   });
 });
 

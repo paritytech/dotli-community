@@ -80,14 +80,15 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - A flow takes as parameters what sits in another frame or origin (the name source, the product frame and what the
   sandbox reports through it, the protocol frame's version mismatch, the recent list) and what reloads or writes the
   page (the CID cache and the failure screen). A cached copy that revalidation finds cleared is evicted, and the page
-  reloads onto the cold path only once the stale copy is gone. A sandbox that says nothing for 30 seconds after the
-  handoff fails the load, since a blocked origin or a page that never ran would otherwise leave the loading screen up
-  for good. It imports the page's own state (the URL pill, the journey, the network monitor). A protocol frame that
-  refuses the page's wire version, during the load or after the handoff, puts up the reload screen and ends the load
-  once, so nothing after it records success. Under that screen or the silent sandbox's, the product frame halts: it lets
-  go of the product's core and starts no render of its own, so nothing clears the screen until the user reloads or a new
-  render is asked for. Load progress takes the loading screen as a parameter that defaults to the page's, since the
-  page's draws on animation frames, so its spec runs under Node. The product loader drives the page and is tested on
+  reloads onto the cold path only once the stale copy is gone. A redeploy is offered as soon as its new contenthash is
+  known, and a Reload pressed before the new version is cached waits for it. A sandbox that says nothing for 30 seconds
+  after the handoff fails the load, since a blocked origin or a page that never ran would otherwise leave the loading
+  screen up for good. It imports the page's own state (the URL pill, the journey, the network monitor). A protocol frame
+  that refuses the page's wire version, during the load or after the handoff, puts up the reload screen and ends the
+  load once, so nothing after it records success. Under that screen or the silent sandbox's, the product frame halts: it
+  lets go of the product's core and starts no render of its own, so nothing clears the screen until the user reloads or
+  a new render is asked for. Load progress takes the loading screen as a parameter that defaults to the page's, since
+  the page's draws on animation frames, so its spec runs under Node. The product loader drives the page and is tested on
   one, in the functional suite. The bridge chunk is where the page's real dialogs, notifications and frame layout are
   wired in.
 - The network monitor opens no chain. The bridge reports who holds each host chain and its best blocks to it, and the
@@ -102,7 +103,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   and the overlays each have a stand-in that releases the sign-in lease or refuses pending prompts. One that fails
   before page start listens, such as an island that loads with the page, reaches the console alone.
 - The Astro config adds the PWA service worker, the signing worker, the dev SPA fallback and a Sentry release upload,
-  all from the shared Vite tooling.
+  all from the shared Vite tooling. The shell asks for a new release as soon as its worker registers and offers one the
+  moment the browser finds it. A Reload pressed while the release downloads applies it once downloaded.
 
 ```mermaid
 flowchart LR
