@@ -4,12 +4,10 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { TrashIcon } from '../icons/TrashIcon.js';
 import { Button } from '../primitives/Button.js';
 import { Callout } from '../primitives/Well.js';
 import { Modal } from './Modal.js';
-
-const TRASH_SVG =
-  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
 const onOpenChange = fn().mockName('onOpenChange');
 // The modal is portalled into the body, outside the story's canvas.
@@ -30,7 +28,7 @@ function Harness() {
       initialFocus={() => input}
       testId="story-modal"
     >
-      <Modal.Head titleId="story-modal-title" title="Clear site data" icon={TRASH_SVG} />
+      <Modal.Head titleId="story-modal-title" title="Clear site data" icon={TrashIcon} />
       <Modal.Body>
         <Callout>The site forgets its settings and signs you out.</Callout>
         <input
@@ -65,6 +63,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a keyboard user, I tab past the last answer in the card and focus wraps inside it, and Escape reports it closed once. */
 export const Desktop: Story = {
   play: async ({ userEvent, step }) => {
     onOpenChange.mockClear();
@@ -90,6 +89,7 @@ export const Desktop: Story = {
   },
 };
 
+/** As a phone user, I see the dialog as a sheet with its title. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -99,6 +99,7 @@ export const Phone: Story = {
   },
 };
 
+/** As a dotli user, I resize the window across the phone breakpoint and the dialog keeps my typed value and focus. */
 export const SwitchesFormKeepingContent: Story = {
   play: async ({ userEvent, step }) => {
     const input = () => body.getByTestId<HTMLInputElement>('story-password');

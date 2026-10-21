@@ -5,15 +5,11 @@ import type { Browser, BrowserContext, ConsoleMessage, Page } from '@playwright/
 import { IFRAME_FORWARDER, SHARED_WORKER_FORWARDER, WORKER_FORWARDER } from '../../iframe-logs-forwarder.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from '../fixtures/permissions.js';
 import { seedSettings, type SettingsSeed } from '../fixtures/settings.js';
+import { PROTOCOL_SHARED_WORKER, prependToWorker } from './worker-prelude.js';
 
-export interface PageWithCapture {
-  page: Page;
-  consoleErrors: string[];
-  consoleMessages: string[];
-}
-
-export interface TestSetup extends PageWithCapture {
+export interface TestSetup {
   context: BrowserContext;
+  page: Page;
 }
 
 /** The caller closes the returned context. */
@@ -21,11 +17,11 @@ export async function setupTest(browser: Browser, settings: SettingsSeed): Promi
   const context = await setupContext(browser);
   await seedPermissions(context);
   await seedSettings(context, settings);
-  const captured = await newPageWithCapture(context);
-  return { context, ...captured };
+  const page = await newLoggedPage(context);
+  return { context, page };
 }
 
-export async function setupContext(browser: Browser): Promise<BrowserContext> {
+async function setupContext(browser: Browser): Promise<BrowserContext> {
   const context = await browser.newContext({
     serviceWorkers: 'allow',
     permissions: [...BROWSER_PERMISSIONS],
@@ -57,31 +53,8 @@ export async function setupContext(browser: Browser): Promise<BrowserContext> {
       await route.continue();
     }
   });
-  await context.route('**/*smoldot_worker*.js', async route => {
-    try {
-      const response = await route.fetch();
-      const body = await response.text();
-      await route.fulfill({
-        response,
-        body: WORKER_FORWARDER + body,
-        headers: {
-          ...response.headers(),
-          'content-type': 'application/javascript',
-        },
-      });
-    } catch {
-      await route.continue();
-    }
-  });
-
-  await context.route('**/protocol-shared-worker-*.js', async route => {
-    const response = await route.fetch();
-    const body = await response.text();
-    await route.fulfill({
-      body: SHARED_WORKER_FORWARDER + body,
-      contentType: 'application/javascript',
-    });
-  });
+  await prependToWorker(context, '**/*smoldot_worker*.js', WORKER_FORWARDER);
+  await prependToWorker(context, PROTOCOL_SHARED_WORKER, SHARED_WORKER_FORWARDER);
 
   await context.addInitScript(() => {
     const OrigSW = window.SharedWorker;
@@ -100,31 +73,16 @@ export async function setupContext(browser: Browser): Promise<BrowserContext> {
   return context;
 }
 
-export async function newPageWithCapture(context: BrowserContext): Promise<PageWithCapture> {
+/** Echoes the page's frame logs and errors to the runner's output as they arrive. */
+async function newLoggedPage(context: BrowserContext): Promise<Page> {
   const page = await context.newPage();
-  const consoleErrors: string[] = [];
-  const consoleMessages: string[] = [];
   page.on('console', (msg: ConsoleMessage) => {
-    if (msg.type() === 'error') {
-      consoleErrors.push(msg.text());
-    }
     const text = msg.text();
-    consoleMessages.push(text);
     if (text.startsWith('[FRAMELOG]')) {
       console.log(text);
     } else if (msg.type() === 'error') {
       console.log(`[raw:error] ${text}`);
     }
   });
-  return { page, consoleErrors, consoleMessages };
-}
-
-export function dumpConsoleErrors(label: string, errors: string[]): void {
-  if (errors.length === 0) {
-    return;
-  }
-  console.log(`\n--- console errors (${label}) ---`);
-  for (const line of errors.slice(0, 20)) {
-    console.log(`  ${line}`);
-  }
+  return page;
 }

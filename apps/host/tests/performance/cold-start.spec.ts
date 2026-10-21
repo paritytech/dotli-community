@@ -256,7 +256,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   try {
     const timeout = new Promise<null>(resolve => {
       timer = setTimeout(() => {
-        console.log(`  ⏱ ${label} timed out after ${String(ms / 1000)}s — skipping`);
+        console.log(`  ⏱ ${label} timed out after ${String(ms / 1000)}s, skipping`);
         resolve(null);
       }, ms);
     });
@@ -354,7 +354,7 @@ function printStatsTable(
 
     if (totalPhase.cv > 0.3) {
       console.log(
-        `  ${YELLOW}Warning: CV=${totalPhase.cv.toFixed(2)} — high variance, results may not be reliable.${RESET}`,
+        `  ${YELLOW}Warning: CV=${totalPhase.cv.toFixed(2)}: high variance, results may not be reliable.${RESET}`,
       );
     }
   }
@@ -598,7 +598,10 @@ test.describe('Cold Start Performance', () => {
   let warmStats: RunStats | null = null;
   let lukewarmStats: RunStats | null = null;
 
-  test(`measure cold start (${String(NUM_RUNS)} iterations)`, async ({ browser }) => {
+  test(`As a dotli maintainer, I measure a cold start over ${String(NUM_RUNS)} iterations and at least one run is recorded`, async ({
+    browser,
+  }) => {
+    // When
     const runs: SingleRun[] = [];
     for (let i = 0; i < NUM_RUNS; i++) {
       const result = await withTimeout(
@@ -613,34 +616,38 @@ test.describe('Cold Start Performance', () => {
 
     coldStats = aggregateRuns('cold', runs);
 
+    // Then
     const base = loadJson(BASE_FILE);
     const last = loadJson(LAST_FILE);
     printStatsTable('COLD START', coldStats, base?.cold, last?.cold);
-
     expect(runs.length).toBeGreaterThan(0);
   });
 
-  test(`measure warm start (${String(NUM_RUNS)} iterations)`, async ({ browser }) => {
+  test(`As a dotli maintainer, I measure a warm start over ${String(NUM_RUNS)} iterations and at least one run is recorded`, async ({
+    browser,
+  }) => {
+    // When
     const runs = await runWarmIterations(browser, NUM_RUNS);
-
     warmStats = aggregateRuns('warm', runs);
 
+    // Then
     const base = loadJson(BASE_FILE);
     const last = loadJson(LAST_FILE);
     printStatsTable('WARM START', warmStats, base?.warm, last?.warm);
-
     expect(runs.length).toBeGreaterThan(0);
   });
 
-  test(`measure lukewarm start (${String(NUM_RUNS)} iterations, ${DOMAIN_A}→${DOMAIN_B})`, async ({ browser }) => {
+  test(`As a dotli maintainer, I measure a lukewarm start from ${DOMAIN_A} to ${DOMAIN_B} over ${String(NUM_RUNS)} iterations and at least one run is recorded`, async ({
+    browser,
+  }) => {
+    // When
     const runs = await runLukewarmIterations(browser, NUM_RUNS);
-
     lukewarmStats = aggregateRuns('lukewarm', runs);
 
+    // Then
     const base = loadJson(BASE_FILE);
     const last = loadJson(LAST_FILE);
-    printStatsTable(`LUKEWARM START (${DOMAIN_A}→${DOMAIN_B})`, lukewarmStats, base?.lukewarm, last?.lukewarm);
-
+    printStatsTable(`LUKEWARM START (${DOMAIN_A} to ${DOMAIN_B})`, lukewarmStats, base?.lukewarm, last?.lukewarm);
     expect(runs.length).toBeGreaterThan(0);
   });
 
@@ -662,7 +669,7 @@ test.describe('Cold Start Performance', () => {
 
     if (SAVE_AS_BASE) {
       if (fs.existsSync(BASE_FILE)) {
-        console.log(`  Base already exists — not overwritten.`);
+        console.log(`  Base already exists, not overwritten.`);
         console.log(`  Delete ${BASE_FILE} manually to reset.`);
       } else {
         saveJson(BASE_FILE, results);

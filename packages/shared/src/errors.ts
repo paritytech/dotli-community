@@ -15,6 +15,12 @@ export interface ErrorChainNode {
   raw?: unknown;
 }
 
+/** `err` with its `name` set, so it reaches Sentry as its own exception type. */
+export function named<E extends Error>(err: E, name: string): E {
+  err.name = name;
+  return err;
+}
+
 /** Walk a thrown value into a structured chain for Sentry, keeping every aggregated branch. */
 export function fullErrorChain(value: unknown): ErrorChainNode {
   return walk(value, new WeakSet());
@@ -119,6 +125,16 @@ export function serializeError(value: unknown): string {
 /** Pair with `serializeError` on a wire format, so the receiver branches on the class, not the message. */
 export function errorName(value: unknown): string | undefined {
   return value instanceof Error ? value.name : undefined;
+}
+
+/** The message of a thrown `Error`, or the thrown value as text, for copy and logs that read the message alone. */
+export function errorMessage(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+
+/** A thrown value as an `Error`. An `Error` passes through, and anything else becomes the cause of a new one. */
+export function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(serializeError(value), { cause: value });
 }
 
 const CYCLE_MARKER = '[cycle]';

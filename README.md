@@ -12,7 +12,7 @@
 [![Polkadot](https://img.shields.io/badge/polkadot-ecosystem-E6007A?style=flat-square&logo=polkadot)](https://polkadot.com)
 
 A decentralized web browser that runs in your browser. Visit any Polkadot application with fully trustless, client-side
-resolution — no servers in the loop.
+resolution, with no servers in the loop.
 
 [Website](https://paseo.li) | [Report an Issue](https://github.com/paritytech/dotli-community/issues)
 
@@ -22,7 +22,7 @@ resolution — no servers in the loop.
 
 ## How to access apps
 
-dotli resolves apps by **subdomain** — the `.dot` name is the host:
+dotli resolves apps by **subdomain**. The `.dot` name is the host:
 
 | Format        | Example                            |
 | ------------- | ---------------------------------- |
@@ -44,13 +44,13 @@ the app pages (`index.html`) on each app's subdomain.
 dotli uses a **two-build, per-product subdomain architecture** that separates concerns between the host shell and the
 app content layer:
 
-```
-name.paseo.li            Host build (topbar, dotns resolution, smoldot, bridge)
-                          Resolves name -> CID, iframes name.app.paseo.li with the CID
-                          threaded through the URL contract
-
-name.app.paseo.li        App build (CID from URL contract, content fetch, render)
-                          Reads CID from URL, fetches via bitswap/gateway, renders
+```mermaid
+flowchart LR
+  host["name.paseo.li: host build<br/>topbar, dotNS resolution, smoldot, bridge"]
+  app["name.app.paseo.li: app build<br/>content fetch, render"]
+  content["bitswap or IPFS gateway"]
+  host -- "resolves the name to a CID, iframes the app with the CID in the URL contract" --> app
+  app -- fetches --> content
 ```
 
 | URL                            | Role         | What happens                                                                            |
@@ -71,12 +71,14 @@ products stay isolated for SW/storage/security purposes.
 3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request
    accounts, sign transactions, connect to chains, and use scoped storage.
 
-```
-host-playground.paseo.li
-    -> Host: smoldot resolves dotNS -> IPFS CID
-    -> Host: iframes <label>.app.paseo.li with cid in URL contract
-    -> App:  fetches content via smoldot bitswap_v1_get or IPFS gateway
-    -> App:  renders dApp in sandboxed iframe with container bridge
+```mermaid
+sequenceDiagram
+  participant Host as host-playground.paseo.li
+  participant App as host-playground.app.paseo.li
+  Host->>Host: smoldot resolves dotNS to an IPFS CID
+  Host->>App: iframes the app origin with the CID in the URL contract
+  App->>App: fetches content via smoldot bitswap_v1_get or an IPFS gateway
+  App->>App: renders the dApp in a sandboxed iframe with the container bridge
 ```
 
 Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served
@@ -95,18 +97,13 @@ through a Service Worker that acts as a virtual file system.
 ## How resolution works
 
 1. Parse the label from the subdomain (`host-playground.paseo.li` -> `host-playground`)
-2. Compute the ENS-style namehash (`node`) of the name — the resolver tries `app.<label>.dot` first and falls back to
+2. Compute the ENS-style namehash (`node`) of the name. The resolver tries `app.<label>.dot` first and falls back to
    `<label>.dot`
 3. Read the `contenthash` bytes for `node` directly from the dotNS ContentResolver contract storage
 4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
 5. Create an iframe to `<label>.app.paseo.li?cid=<cid>` which fetches and renders the content
 
-A resolver read never outlives its chain follow. When the follow stops, is torn down, or the node refuses to unpin a
-block the resolver no longer needs, every read still in flight fails as stopped instead of reporting the name as not
-found: the light-client resolver reads it again on a rebuilt client, and both backends redial for the next read. A stop
-heard from a follow that was already replaced leaves the replacement alone.
-
-All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
+All chain access is read-only storage reads through the smoldot light client, so no RPC server is needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
 ## How multi-file SPAs work
@@ -116,24 +113,19 @@ When a CID points to an IPFS directory (not a single file):
 1. The gateway returns a CAR (Content-Addressable aRchive) containing all files
 2. `archive.ts` parses the CAR using `@ipld/car` + `@ipld/dag-pb` + `ipfs-unixfs` to extract a file map
 3. The file map is sent to the app Service Worker via `postMessage`
-4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory
-   archive
-5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
-
-Files larger than one chunk are read in full, however deeply the importer nested their chunks, and a file node's own
-inline bytes come before its linked chunks. Gateway CAR requests select their representation with `?format=car`, leaving
-the browser's default Accept header intact: a media-specific Accept header bypasses the gateway's immutable-content
-cache despite returning the same archive. URL-based format selection follows
-[IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block verification are unchanged.
+4. The sandbox writes the product's `index.html` into its own window, and the Service Worker serves every other file
+   from the in-memory archive
+5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) resolve from the archive root, deep links
+   included
 
 ## Caching and verification
 
 dotli uses a two-layer cache for fast repeat visits:
 
-1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
-2. **Block cache** (host IndexedDB) — keeps the content blocks the host relays to the sandbox, hash-checked against
-   their CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is
-   credentialless, so its storage is dropped on reload
+1. **CID cache** (IndexedDB): maps `.dot` labels to their last-known CID
+2. **Block cache** (host IndexedDB): keeps the content blocks the host relays to the sandbox, hash-checked against their
+   CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is credentialless, so
+   its storage is dropped on reload
 
 On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield
 shows how the current page was loaded:
@@ -143,8 +135,8 @@ shows how the current page was loaded:
 | Green (Verified) | Checked by your in-browser light client (the default smoldot backend)         |
 | Orange (Trusted) | Served by an external RPC provider or IPFS gateway, not light-client verified |
 
-If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
-with a **Reload** action rather than swapping content silently.
+If a background re-resolution finds the CID on the network has changed, dotli shows a **New version available**
+notification with a **Reload** action rather than swapping content silently.
 
 ## TrUAPI bridge
 
@@ -153,7 +145,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | Handler                        | What it does                                                                          |
 | ------------------------------ | ------------------------------------------------------------------------------------- |
 | `accountGet`                   | Derives a per-app public key via HDKD soft derivation                                 |
-| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host                |
+| `getLegacyAccounts`            | Returns non-derived (imported) accounts. Always empty on the web host                 |
 | `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
 | `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
@@ -207,6 +199,7 @@ npm install
 export VITE_NETWORKS=paseo-next-v2,previewnet
 npm run dev              # Dev servers with hot reload on localhost:4321
 npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
+HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 ```
 
 `npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
@@ -240,8 +233,9 @@ Local development uses wildcard subdomains:
 ### Running the host-playground E2E locally
 
 The product E2E suite can load the source checkout directly through dotli's localhost proxy instead of resolving the
-published `host-playground.dot` CID. By default it expects the product at `../../../host-playground` relative to this
-repository, and the `truapi-host` CLI from [host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+published `host-playground.dot` CID. By default it expects the product at `../host-playground`, beside this repository
+(checked out inside the truapi repository, set `E2E_PRODUCT_REPO`), and the `truapi-host` CLI from
+[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
@@ -268,7 +262,7 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run test:e2e:local
 Set `SIGNING_HOST_BIN` to a locally built binary (e.g. `../host-rust-core/target/debug/truapi-host`) instead of
 installing, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
 `apps/host/tests/e2e/.auth/signing-host`, so repeat runs reuse one test account; the first run registers a fresh lite
-username on-chain and can take a few minutes.
+username on the network and can take a few minutes.
 
 The command builds dotli with its debug-only localhost proxy enabled, starts both preview servers through Playwright,
 extracts the login QR deeplink, pairs a headless `truapi-host signing-host` process that auto-signs for the rest of the
@@ -277,7 +271,8 @@ run, and runs the same host-product suite used in CI.
 ### Running an approved build
 
 Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dotli deployment
-runs). To reproduce a specific approved version from a fresh checkout:
+runs). Pushing a `vX.Y.Z` tag deploys it to `paseo.li` and `testnet.li`, and the release is published with generated
+notes only after both deploys succeed. To reproduce a specific approved version from a fresh checkout:
 
 ```bash
 git checkout v0.5.0       # any published release tag
@@ -290,25 +285,25 @@ is deployed; rebuild from that tag to verify a deployment.
 
 ## Debug panel
 
-dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI
-host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so
-users who never see it pay no download cost.
+dot.li ships a TrUAPI debug panel that shows the host's boot, resolve, render and bridge events and the messages between
+host and product in one time-aligned inspector. Its chunk loads only in debug mode, so users who never open it pay no
+download cost.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
-`paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in
-the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab
-clears it. Use `?debug=off` to silence it explicitly within the same session.
+`paseoli.dev`) the panel auto-mounts collapsed. Elsewhere it's off until you click **Open in debug mode** in the host
+Settings menu, or append `?debug=true` to any URL. The choice is scoped to the tab's session, so closing the tab clears
+it. Use `?debug=off` to leave debug mode within the same session.
 
-See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources,
-views, filters, correlation keys, and how to add a new instrumentation hook.
+See [packages/truapi-debug-ui/README.md](packages/truapi-debug-ui/README.md) for how to read the panel and add a host
+event.
 
 ## Sandbox API Checker
 
 dApps rendered in dotli's sandboxed iframe should communicate exclusively through the container bridge (postMessage),
 not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
 
-The checker is activated by defining `VITE_SANDBOX_CHECKER` at build time (e.g. `=true`). When the env var is unset, the
-gated import is statically eliminated, so the checker is tree-shaken out of production builds entirely.
+The checker is activated by setting `VITE_SANDBOX_CHECKER=true` at build time. Otherwise the gated import is statically
+eliminated, so the checker is tree-shaken out of production builds entirely.
 
 ### Monitored APIs
 
@@ -348,11 +343,11 @@ take the same network override at **run time**, so one artifact works against an
 # container
 docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-community:0.7.4
 
-# tarball — needs only node >= 22 or bun
+# tarball: needs only node >= 22 or bun
 DOTLI_NETWORK='{…}' node serve.mjs
 ```
 
-Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
+Overrides patch the tables above and reach endpoints only: `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
 contract addresses stay fixed at build time, because they are the trust root for name resolution. See
 [docs/docker.md](docs/docker.md).
 

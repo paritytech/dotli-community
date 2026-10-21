@@ -4,6 +4,8 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
+import { byId } from '@dotli/ui/testing';
 import { Tooltip } from './Tooltip.js';
 
 // The tooltip is portalled into the body, outside the story's canvas.
@@ -28,6 +30,28 @@ function Harness() {
   );
 }
 
+function SwapHarness() {
+  const [first, setFirst] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const [second, setSecond] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const [onSecond, setOnSecond] = createSignal(false);
+  return (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <button ref={setFirst} type="button" data-testid="tip-first">
+        First
+      </button>
+      <button ref={setSecond} type="button" data-testid="tip-second">
+        Second
+      </button>
+      <button type="button" data-testid="tip-swap" onClick={() => setOnSecond(true)}>
+        Swap
+      </button>
+      <Tooltip id="swap-tip" trigger={onSecond() ? second() : first()}>
+        <p style={{ margin: 0, padding: '12px' }}>Loaded through a light client.</p>
+      </Tooltip>
+    </div>
+  );
+}
+
 const meta = {
   title: 'Floating/Tooltip',
   component: Harness,
@@ -37,12 +61,6 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
-
-/**
- * Trusted input, so `:focus-visible` tells a real Tab from a click. Imported lazily so Storybook loads the stories
- * outside Vitest.
- */
-const input = async () => (await import('vitest/browser')).userEvent;
 
 /**
  * A real tap through the DevTools protocol, in top-page coordinates since the runner may scale the test's frame.
@@ -73,19 +91,14 @@ const tap = async (el: Element) => {
   }
 };
 
-const tip = (): HTMLElement => {
-  const el = document.getElementById('story-tip');
-  if (el === null) {
-    throw new Error('No #story-tip');
-  }
-  return el;
-};
+const tip = (): HTMLElement => byId('story-tip');
 const trigger = () => body.getByTestId('tip-trigger');
 
+/** As a mouse user, I rest on the trigger and the tooltip shows and stays while I am on it, then hides when I leave. */
 export const ShowsOnHover: Story = {
   play: async ({ step }) => {
     await step('When the mouse rests on the trigger', async () => {
-      await (await input()).hover(trigger());
+      await (await trustedInput()).hover(trigger());
     });
     await step('Then the tooltip shows, describing the trigger, and focus stays put', async () => {
       await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
@@ -96,13 +109,13 @@ export const ShowsOnHover: Story = {
       await expect(trigger()).not.toHaveFocus();
     });
     await step('When the mouse moves onto the tooltip', async () => {
-      await (await input()).hover(body.getByTestId('tip-text'));
+      await (await trustedInput()).hover(body.getByTestId('tip-text'));
     });
     await step('Then it stays', async () => {
       await expect(tip()).toHaveAttribute('data-open');
     });
     await step('When the mouse leaves both', async () => {
-      await (await input()).hover(body.getByTestId('elsewhere'));
+      await (await trustedInput()).hover(body.getByTestId('elsewhere'));
     });
     await step('Then it hides', async () => {
       await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
@@ -111,30 +124,31 @@ export const ShowsOnHover: Story = {
   },
 };
 
+/** As a keyboard user, I tab to the trigger and the tooltip shows, and Escape hides it while focus stays. */
 export const ShowsOnKeyboardFocusAndEscapeHides: Story = {
   play: async ({ step }) => {
     await step('When I Tab to the trigger', async () => {
-      await (await input()).tab();
+      await (await trustedInput()).tab();
       await expect(trigger()).toHaveFocus();
     });
     await step('Then the tooltip shows at once', async () => {
       await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it hides and focus stays on the trigger', async () => {
       await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
       await expect(trigger()).toHaveFocus();
     });
     await step('When I press Enter on the trigger', async () => {
-      await (await input()).keyboard('{Enter}');
+      await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then it shows again', async () => {
       await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
     });
     await step('When I Tab on', async () => {
-      await (await input()).tab();
+      await (await trustedInput()).tab();
       await expect(body.getByTestId('elsewhere')).toHaveFocus();
     });
     await step('Then it hides', async () => {
@@ -143,6 +157,7 @@ export const ShowsOnKeyboardFocusAndEscapeHides: Story = {
   },
 };
 
+/** As a phone user, I tap the trigger to show the tooltip and tap elsewhere or on it again to hide it. */
 export const TapToggles: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
@@ -165,6 +180,28 @@ export const TapToggles: Story = {
     });
     await step('Then the second tap hid it', async () => {
       await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
+    });
+  },
+};
+
+/** As a screen reader user, I meet a tooltip moved to another trigger, and the old trigger refers to nothing. */
+export const MovedTriggerKeepsNoAria: Story = {
+  render: () => <SwapHarness />,
+  play: async ({ step }) => {
+    const first = () => body.getByTestId('tip-first');
+    const second = () => body.getByTestId('tip-second');
+    await step('Given the tooltip on the first trigger', async () => {
+      await waitFor(() => expect(first()).toHaveAttribute('aria-describedby', 'swap-tip'));
+      await expect(first()).toHaveAttribute('aria-expanded', 'false');
+    });
+    await step('When it moves to the second trigger', async () => {
+      await (await trustedInput()).click(body.getByTestId('tip-swap'));
+    });
+    await step('Then only the second trigger refers to it', async () => {
+      await waitFor(() => expect(second()).toHaveAttribute('aria-describedby', 'swap-tip'));
+      await expect(second()).toHaveAttribute('aria-expanded', 'false');
+      await expect(first()).not.toHaveAttribute('aria-describedby');
+      await expect(first()).not.toHaveAttribute('aria-expanded');
     });
   },
 };

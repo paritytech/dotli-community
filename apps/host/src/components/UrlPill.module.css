@@ -15,7 +15,7 @@
   flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   min-width: 0;
   height: var(--h-bar-control);
@@ -47,13 +47,15 @@
   color: var(--chrome-text-muted);
 }
 .localhost-icon {
+  display: none;
   flex-shrink: 0;
   width: 10px;
   height: 10px;
   color: var(--chrome-text-muted);
 }
-.pill:not([data-localhost]) .localhost-icon {
-  display: none;
+/* A flex item, so `block` is what the icon showed as before. */
+.pill[data-localhost] .localhost-icon {
+  display: block;
 }
 .pill[data-localhost] .domain {
   font-family: var(--font-mono);

@@ -45,12 +45,12 @@ test('As a developer, I switch every app to a local wallet with my phrase and ba
     await Promise.all([page.waitForEvent('load'), page.getByTestId('td-wallet-forget').click()]);
 
     // Then: signed out here and in every other app
-    await expect(page.getByRole('button', { name: 'Sign in with Polkadot Mobile' })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Sign in with Polkadot App' })).toBeVisible({
       timeout: TIMEOUT_MS,
     });
     await expect(page.getByTestId('user-badge')).toHaveCount(0);
     await landing.reload();
-    await expect(landing.getByRole('button', { name: 'Sign in with Polkadot Mobile' })).toBeVisible({
+    await expect(landing.getByRole('button', { name: 'Sign in with Polkadot App' })).toBeVisible({
       timeout: TIMEOUT_MS,
     });
     await expect(landing.getByTestId('user-badge')).toHaveCount(0);

@@ -23,5 +23,5 @@ export function Counter(props: { start: number; children?: JSX.Element }): JSX.E
 }
 
 export function Label(props: { text: string }): JSX.Element {
-  return <span class="label">{props.text}</span>;
+  return <span data-testid="label">{props.text}</span>;
 }

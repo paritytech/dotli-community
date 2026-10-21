@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   width: var(--h-bar-control);
   height: var(--h-bar-control);

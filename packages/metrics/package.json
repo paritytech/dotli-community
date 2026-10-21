@@ -4,10 +4,13 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/testing/setup.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
-    "./vite": "./src/vite.ts",
+    "./testing": "./src/testing/index.ts",
+    "./testing/setup": "./src/testing/setup.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -20,14 +23,7 @@
     "@config/typescript": "*"
   },
   "dependencies": {
-    "@dotli/shared": "*"
-  },
-  "peerDependencies": {
-    "@sentry/browser": ">=10.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@sentry/browser": {
-      "optional": true
-    }
+    "@dotli/shared": "*",
+    "@sentry/browser": "^11.8.0"
   }
 }

@@ -1,297 +1,365 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import type { StringJsonRpcConnection } from '@dotli/protocol';
-import type {
-  ChainTransportHooks,
-  ExecutableManifest,
-  ManifestResult,
-  RootManifest,
-  ResolveOptions,
-} from '@dotli/resolver';
-import { isExecutableKind } from '@dotli/shared';
+// The chain and name methods, for every mode. A scope holds one tab's chain connections and budget, while the chains
+// themselves are shared by every scope of the engine.
+
+import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
+import { TIMEOUTS } from '@dotli/config';
 import {
-  createChainPool,
-  type ChainBrokerManager,
-  isSharedAuthRequestMethod,
-  isSharedModeRequestMethod,
-  isSharedWalletRequestMethod,
-  getRequestSyncTimeoutMs,
-  type ProtocolEnvelope,
-  type ProtocolRequestEnvelope,
-  type ProtocolRequestMap,
+  budgetOf,
+  type DomainFailure,
+  type ProtocolHandler,
+  type ProtocolHello,
+  protocolSchema,
+  type ProtocolServing,
+  type RemoteFailure,
+  remoteEnd,
+  type SubscriptionEnd,
 } from '@dotli/protocol';
+import type { DotnsResolver } from '@dotli/resolver';
+import { toError } from '@dotli/shared';
+import {
+  err,
+  ok,
+  type AnyMethod,
+  type CallError,
+  type Request,
+  type RequestHandler,
+  type ResultPayload,
+  type Subscription,
+  type SubscriptionHandler,
+} from '@dotli/transport';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
-export type ResponseCallback = (envelope: ProtocolEnvelope) => void;
+const methods = protocolSchema.sections;
+
+type ChainSink = Parameters<ProtocolHandler<typeof methods.chain.connect>>[2];
+
+export interface EngineScope {
+  /** Opens a chain connection for the subscription. Stopping it disconnects it, and a chain halt ends it cleanly. */
+  connect: ProtocolHandler<typeof methods.chain.connect>;
+  send: ProtocolHandler<typeof methods.chain.send>;
+  /** Ends each connection's subscription cleanly and releases it. The scope stays usable. */
+  close: () => void;
+}
 
 export interface ProtocolEngine {
-  handleRequest: (request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback) => Promise<void>;
+  /** A new tab's scope. The iframe modes serve one tab, the SharedWorker one per port. */
+  openScope: () => EngineScope;
+  warmup: ProtocolHandler<typeof methods.frame.warmup>;
+  /** Sends each phase, then the result, then ends cleanly. */
+  resolveDotName: ProtocolHandler<typeof methods.resolve.dotName>;
+  resolveOwner: ProtocolHandler<typeof methods.resolve.owner>;
+  resolveExecutableManifest: ProtocolHandler<typeof methods.resolve.executableManifest>;
+  resolveRootManifest: ProtocolHandler<typeof methods.resolve.rootManifest>;
   cleanup: () => void;
 }
 
 export interface EngineOptions {
-  createChainProvider: (genesisHash: string, hooks?: ChainTransportHooks) => JsonRpcProvider | null;
-  /** How long a chain outlives its last connection, in ms (`Infinity` keeps it). */
-  destroyDelay: number;
-  isChainSupported: (genesisHash: string) => boolean;
-  /** Smoldot modes route the resolver's Asset Hub reads through the broker's shared follow here. */
-  onBrokerReady?: (broker: ChainBrokerManager) => void;
-  onWarmup?: () => Promise<void>;
   /**
-   * Unset resolvers reject at once so callers do not hang. Signatures match `@dotli/resolver` for wiring by reference.
+   * The chains every scope connects to. The caller builds it, so the name resolver can read through the same
+   * follows. `cleanup` releases its chains.
    */
-  resolveDotName?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
-  resolveOwner?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
-  /** Unwired in `rpc-gateway` mode, which resolves manifests in the host process. */
-  resolveExecutableManifest?: (
-    label: string,
-    kind: 'app' | 'widget' | 'worker',
-    opts?: ResolveOptions,
-  ) => Promise<ManifestResult<ExecutableManifest>>;
-  resolveRootManifest?: (label: string, opts?: ResolveOptions) => Promise<ManifestResult<RootManifest>>;
+  pool: ChainPool;
+  isChainSupported: (genesisHash: string) => boolean;
+  onWarmup?: () => Promise<void>;
+  /** Breadcrumbs for each connection's first answer, halt and close, which the SharedWorker keeps. */
+  log?: (message: string) => void;
+  /**
+   * The name reads. Unset in `rpc-gateway` mode, which resolves in the host process, so each read is refused at once
+   * instead of leaving the caller to hang.
+   */
+  resolver?: EngineResolver;
+  /** Caps each read's sync budget, for a tester who needs a timeout to show quickly. */
+  syncBudgetCapMs?: number | undefined;
 }
 
-/** One tab's budget. */
+export type EngineResolver = Pick<
+  DotnsResolver,
+  'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest'
+>;
+
+/** One scope's budget, which is one tab's. */
 export const MAX_CONNS = 10;
 
+interface Connection {
+  readonly connectionId: string;
+  readonly connection: StringJsonRpcConnection;
+  readonly sink: ChainSink;
+}
+
+function assertStr(value: string, name: string): void {
+  if (value.length === 0) {
+    throw new Error(`Invalid ${name}: expected non-empty string`);
+  }
+}
+
+/** Answers a read with its value, or with its failure as a remote error ends a call. */
+async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, CallError<RemoteFailure>>> {
+  try {
+    return ok(await read());
+  } catch (error) {
+    return err(remoteEnd(toError(error)));
+  }
+}
+
+/** What serves the chain and name methods: the engine and its scope, or the worker's traces. */
+export type EngineMethods = Omit<ProtocolEngine, 'openScope' | 'cleanup'> & Pick<EngineScope, 'connect' | 'send'>;
+
+/** One engine method, and how its handler `H` is registered. */
+interface EngineMethod<H> {
+  readonly method: AnyMethod;
+  readonly serve: (serving: ProtocolServing, handler: H) => void;
+}
+
+const requestMethod = <P, R, E extends DomainFailure>(
+  method: Request<P, R, E>,
+): EngineMethod<RequestHandler<P, R, E, ProtocolHello>> => ({
+  method,
+  serve: (serving, handler) => {
+    serving.handleRequest(method, handler);
+  },
+});
+
+const subscriptionMethod = <S, V, I extends SubscriptionEnd<DomainFailure>>(
+  method: Subscription<S, V, I>,
+): EngineMethod<SubscriptionHandler<S, V, I, ProtocolHello>> => ({
+  method,
+  serve: (serving, handler) => {
+    serving.handleSubscription(method, handler);
+  },
+});
+
+/** Each chain and name method under the name of its handler, so a method without a handler fails the build. */
+const ENGINE: { readonly [K in keyof EngineMethods]: EngineMethod<EngineMethods[K]> } = {
+  warmup: requestMethod(methods.frame.warmup),
+  resolveDotName: subscriptionMethod(methods.resolve.dotName),
+  resolveOwner: requestMethod(methods.resolve.owner),
+  resolveExecutableManifest: requestMethod(methods.resolve.executableManifest),
+  resolveRootManifest: requestMethod(methods.resolve.rootManifest),
+  connect: subscriptionMethod(methods.chain.connect),
+  send: requestMethod(methods.chain.send),
+};
+
+/** Every chain and name method, for a side that forwards them instead of serving them. */
+export const ENGINE_METHODS: readonly AnyMethod[] = Object.values(ENGINE).map(({ method }) => method);
+
+/** The names of a record's own keys, typed by it. */
+function namesOf<T extends object>(record: T): Extract<keyof T, string>[] {
+  const names: Extract<keyof T, string>[] = [];
+  for (const name in record) {
+    names.push(name);
+  }
+  return names;
+}
+
+function serveEngineMethod<K extends keyof EngineMethods>(
+  serving: ProtocolServing,
+  served: Pick<EngineMethods, K>,
+  name: K,
+): void {
+  ENGINE[name].serve(serving, served[name]);
+}
+
+/** Serves every chain and name method on `serving`, so no side can leave one out. */
+export function serveEngineMethods(serving: ProtocolServing, served: EngineMethods): void {
+  for (const name of namesOf(ENGINE)) {
+    serveEngineMethod(serving, served, name);
+  }
+}
+
+/** Serves a new scope of `engine` on `serving`: that scope's chain connections, and the engine's name reads. */
+export function serveEngineScope(serving: ProtocolServing, engine: ProtocolEngine): EngineScope {
+  const scope = engine.openScope();
+  serveEngineMethods(serving, { ...engine, ...scope });
+  return scope;
+}
+
 export function createEngine(options: EngineOptions): ProtocolEngine {
-  const connections = new Map<string, StringJsonRpcConnection>();
-  const broker = createChainPool({
-    createTransport: options.createChainProvider,
-    destroyDelay: options.destroyDelay,
-  });
-  options.onBrokerReady?.(broker);
+  const { pool } = options;
+  const note = options.log ?? ((): void => undefined);
 
-  /** Connection ids are the client's own, so each origin has its own namespace (origins contain no spaces). */
-  function connectionKey(origin: string, connectionId: string): string {
-    return `${origin} ${connectionId}`;
+  const scopes = new Set<Map<string, Connection>>();
+  let scopeCount = 0;
+
+  function totalConnections(): number {
+    let total = 0;
+    for (const connections of scopes) {
+      total += connections.size;
+    }
+    return total;
   }
 
-  function forget(key: string): StringJsonRpcConnection | null {
-    const connection = connections.get(key);
-    connections.delete(key);
-    return connection ?? null;
+  function openScope(): EngineScope {
+    // Connection ids are the host's own, and a scope serves one host page.
+    const connections = new Map<string, Connection>();
+    // The pool's session ids are engine-wide, so each scope prefixes its own.
+    const scopeId = String(scopeCount++);
+
+    /** Forgets the connection if it is still the one held under its id. */
+    function forget(held: Connection): boolean {
+      if (connections.get(held.connectionId) !== held) {
+        return false;
+      }
+      connections.delete(held.connectionId);
+      return true;
+    }
+
+    const connect: EngineScope['connect'] = ({ genesisHash, connectionId }, _context, sink) => {
+      assertStr(genesisHash, 'genesisHash');
+      assertStr(connectionId, 'connectionId');
+      if (connections.has(connectionId)) {
+        throw new Error(`Duplicate chain connection: ${connectionId}`);
+      }
+      if (connections.size >= MAX_CONNS) {
+        throw new Error(`Connection limit reached (max ${String(MAX_CONNS)})`);
+      }
+      if (!options.isChainSupported(genesisHash)) {
+        throw new Error(`Unsupported chain: ${genesisHash}`);
+      }
+      // Only the first message is noted, later ones would push the load's steps out of the breadcrumb trail.
+      let answered = false;
+      let held: Connection | null = null;
+      const connection = pool.connectRemote(
+        genesisHash,
+        `${scopeId} ${connectionId}`,
+        message => {
+          if (!answered) {
+            answered = true;
+            note(`First chain message for ${connectionId} (${String(message.length)} bytes)`);
+          }
+          sink.send({ tag: 'message', value: message });
+        },
+        () => {
+          // The broker has already answered pending requests and stopped follows, so there is nothing to disconnect.
+          if (held === null || !forget(held)) {
+            return;
+          }
+          note(`Chain halted: ${connectionId} (${String(totalConnections())} remaining)`);
+          sink.interrupt(ok());
+        },
+      );
+      if (connection === null) {
+        throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
+      }
+      const opened: Connection = { connectionId, connection, sink };
+      held = opened;
+      connections.set(connectionId, opened);
+      scopes.add(connections);
+      note(`Chain connected: ${connectionId} (${String(totalConnections())} total)`);
+      sink.send({ tag: 'connected', value: undefined });
+      return () => {
+        if (forget(opened)) {
+          opened.connection.disconnect();
+          note(`Chain disconnected: ${connectionId} (${String(totalConnections())} remaining)`);
+        }
+      };
+    };
+
+    const send: EngineScope['send'] = ({ connectionId, message }) => {
+      assertStr(connectionId, 'connectionId');
+      assertStr(message, 'message');
+      const held = connections.get(connectionId);
+      if (held === undefined) {
+        throw new Error(`Unknown chain connection: ${connectionId}`);
+      }
+      held.connection.send(message);
+      return ok();
+    };
+
+    function close(): void {
+      for (const held of [...connections.values()]) {
+        // Forgotten first, so neither the end nor a halt the disconnect causes releases it again.
+        forget(held);
+        held.sink.interrupt(ok());
+        held.connection.disconnect();
+      }
+      scopes.delete(connections);
+    }
+
+    return { connect, send, close };
   }
 
-  function assertStr(value: unknown, name: string): asserts value is string {
-    if (typeof value !== 'string' || value.length === 0) {
-      throw new Error(`Invalid ${name}: expected non-empty string`);
+  function requireResolver(unsupported: string): EngineResolver {
+    if (options.resolver === undefined) {
+      throw new Error(unsupported);
     }
+    return options.resolver;
   }
 
-  async function handleRequest(
-    request: ProtocolRequestEnvelope,
-    origin: string,
-    respond: ResponseCallback,
-  ): Promise<void> {
-    // Both engine-facing listeners filter these out, so reaching here means a filter is broken.
-    if (
-      isSharedAuthRequestMethod(request.method) ||
-      isSharedModeRequestMethod(request.method) ||
-      isSharedWalletRequestMethod(request.method)
-    ) {
-      throw new Error(`Shared storage request reached the chain engine: ${request.method}`);
+  /**
+   * The resolver's sync budget for a read the host gives up on after the method's budget, counted from when the call
+   * arrives, less a grace for the typed error to cross back before the host gives up.
+   */
+  function syncOptions(method: AnyMethod): { syncTimeoutMs?: number } {
+    const budgetMs = budgetOf(method);
+    if (budgetMs === null) {
+      return {};
     }
-
-    const syncTimeoutMs = getRequestSyncTimeoutMs(request);
-    const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
-
-    switch (request.method) {
-      case 'warmup': {
-        if (options.onWarmup) {
-          await options.onWarmup();
-        }
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case 'resolveDotName': {
-        if (!options.resolveDotName) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveDotName'];
-        assertStr(payload.label, 'label');
-        const result = await options.resolveDotName(payload.label, {
-          onStatus: message => {
-            respond({
-              namespace: 'dotli:protocol',
-              kind: 'progress',
-              id: request.id,
-              message,
-            });
-          },
-          ...syncOptions,
-        });
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'resolveOwner': {
-        if (!options.resolveOwner) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveOwner'];
-        assertStr(payload.label, 'label');
-        const result = await options.resolveOwner(payload.label, syncOptions);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'resolveExecutableManifest': {
-        if (!options.resolveExecutableManifest) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveExecutableManifest'];
-        assertStr(payload.label, 'label');
-        const kind: string = payload.kind;
-        if (!isExecutableKind(kind)) {
-          throw new Error(`Unsupported executable kind: ${kind}`);
-        }
-        const result = await options.resolveExecutableManifest(payload.label, payload.kind, syncOptions);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'resolveRootManifest': {
-        if (!options.resolveRootManifest) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveRootManifest'];
-        assertStr(payload.label, 'label');
-        const result = await options.resolveRootManifest(payload.label, syncOptions);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'chainConnect': {
-        const payload = request.payload as ProtocolRequestMap['chainConnect'];
-        assertStr(payload.genesisHash, 'genesisHash');
-        assertStr(payload.connectionId, 'connectionId');
-        const key = connectionKey(origin, payload.connectionId);
-        if (connections.has(key)) {
-          throw new Error(`Duplicate chain connection: ${payload.connectionId}`);
-        }
-        if (connections.size >= MAX_CONNS) {
-          throw new Error(`Connection limit reached (max ${String(MAX_CONNS)})`);
-        }
-        if (!options.isChainSupported(payload.genesisHash)) {
-          throw new Error(`Unsupported chain: ${payload.genesisHash}`);
-        }
-        const { connectionId } = payload;
-        const connection = broker.connectRemote(
-          payload.genesisHash,
-          key,
-          message => {
-            respond({
-              namespace: 'dotli:protocol',
-              kind: 'chain-message',
-              connectionId,
-              message,
-            });
-          },
-          () => {
-            // The broker has already answered pending requests and stopped follows. The client drops it on `chain-
-            // halt`.
-            if (forget(key) === null) {
-              return;
-            }
-            respond({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
-          },
-        );
-        if (connection === null) {
-          throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
-        }
-        connections.set(key, connection);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case 'chainSend': {
-        const payload = request.payload as ProtocolRequestMap['chainSend'];
-        assertStr(payload.connectionId, 'connectionId');
-        assertStr(payload.message, 'message');
-        const conn = connections.get(connectionKey(origin, payload.connectionId));
-        if (conn === undefined) {
-          throw new Error(`Unknown chain connection: ${payload.connectionId}`);
-        }
-        conn.send(payload.message);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case 'chainDisconnect': {
-        const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
-        assertStr(payload.connectionId, 'connectionId');
-        forget(connectionKey(origin, payload.connectionId))?.disconnect();
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      default: {
-        const _method: never = request.method;
-        throw new Error(`Unknown protocol method: ${_method as string}`);
-      }
-    }
+    const budget = Math.max(1, budgetMs - TIMEOUTS.RESPONSE_DELIVERY_GRACE);
+    const cap = options.syncBudgetCapMs;
+    return { syncTimeoutMs: cap === undefined ? budget : Math.min(budget, cap) };
   }
 
   function cleanup(): void {
-    for (const connection of connections.values()) {
-      connection.disconnect();
+    for (const connections of [...scopes]) {
+      for (const held of connections.values()) {
+        held.connection.disconnect();
+      }
+      connections.clear();
     }
-    connections.clear();
-    broker.disconnectAll();
+    scopes.clear();
+    pool.disconnectAll();
   }
 
-  return { handleRequest, cleanup };
+  return {
+    openScope,
+    warmup: async () => {
+      await options.onWarmup?.();
+      return ok();
+    },
+    resolveDotName: ({ label }, _context, sink) => {
+      const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
+      assertStr(label, 'label');
+      void resolver
+        .resolveDotName(label, {
+          onPhase: phase => {
+            sink.send({ tag: 'phase', value: phase });
+          },
+          ...syncOptions(methods.resolve.dotName),
+        })
+        .then(
+          resolved => {
+            sink.send({ tag: 'resolved', value: resolved });
+            sink.interrupt(ok());
+          },
+          (error: unknown) => {
+            sink.interrupt(err(remoteEnd(toError(error))));
+          },
+        );
+      // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.
+      return () => undefined;
+    },
+    resolveOwner: ({ label }) =>
+      answerRead(() => {
+        const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
+        assertStr(label, 'label');
+        return resolver.resolveOwner(label, syncOptions(methods.resolve.owner));
+      }),
+    resolveExecutableManifest: ({ label, kind }) =>
+      answerRead(() => {
+        const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
+        assertStr(label, 'label');
+        return resolver.resolveExecutableManifest(label, kind, syncOptions(methods.resolve.executableManifest));
+      }),
+    resolveRootManifest: ({ label }) =>
+      answerRead(() => {
+        const resolver = requireResolver(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
+        assertStr(label, 'label');
+        return resolver.resolveRootManifest(label, syncOptions(methods.resolve.rootManifest));
+      }),
+    cleanup,
+  };
 }

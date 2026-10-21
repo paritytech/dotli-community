@@ -13,15 +13,21 @@
   "scripts": {
     "build": "turbo run build",
     "build:prod": "turbo run build:prod",
+    "build:test": "VITE_NETWORKS=paseo-next-v2,previewnet VITE_METRICS=true VITE_SENTRY_DSN=http://publickey@127.0.0.1:5173/1 npm run build",
     "dev": "turbo run dev",
     "preview": "turbo run build && node scripts/preview-server.ts",
     "preview:debug": "VITE_APP_DEBUG=true npm run preview",
     "serve": "node scripts/serve.ts",
-    "storybook": "npm run storybook -w @dotli/ui",
-    "test": "turbo run test",
-    "test:e2e:local": "E2E_PRODUCT_REPO=${E2E_PRODUCT_REPO:-../../../host-playground} E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} npm run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build && npm run --workspace apps/host test:e2e:local",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o storybook-static",
+    "test:stories": "vitest run --config vitest.storybook.config.ts",
+    "test:vrt": "VRT=1 vitest run --config vitest.storybook.config.ts",
+    "test": "turbo run test test:root",
+    "test:root": "node --test scripts/*.test.ts",
+    "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} npm run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build && npm run --workspace apps/host test:e2e:local",
     "lint": "turbo run lint lint:root",
     "lint:root": "eslint .",
+    "knip": "knip",
     "format": "prettier --write --ignore-unknown .",
     "format:check": "prettier --check --ignore-unknown .",
     "typecheck": "turbo run typecheck typecheck:root",
@@ -34,20 +40,28 @@
   },
   "devDependencies": {
     "@config/eslint": "*",
+    "@config/storybook": "*",
     "@config/vite": "*",
-    "@types/node": "^26.6.4",
+    "@dotli/ui": "*",
+    "@storybook/addon-a11y": "^10.6.2",
+    "@storybook/addon-docs": "^10.6.2",
+    "@storybook/addon-vitest": "^10.6.2",
+    "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
-    "eslint": "^10.12.0",
-    "happy-dom": "^20.14.5",
+    "eslint": "^10.13.0",
+    "happy-dom": "^21.0.3",
     "husky": "^9.1.7",
+    "knip": "^6.42.0",
     "lint-staged": "^17.6.0",
-    "prettier": "3.9.9",
-    "prettier-plugin-astro": "1.1.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-astro": "1.1.1",
+    "storybook": "^10.6.2",
+    "storybook-solidjs-vite": "^10.7.2",
     "terser": "^5.51.2",
-    "turbo": "^2.11.7",
+    "turbo": "^2.11.9",
     "typescript": "~6.0.3",
-    "vite": "^8.3.3",
-    "vitest": "^5.0.3"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "packageManager": "npm@12.2.0",
   "workspaces": [
@@ -56,7 +70,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.24.0"
+    "@parity/truapi": "0.25.0"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"

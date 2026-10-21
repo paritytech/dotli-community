@@ -17,7 +17,6 @@ export const baseConfig: PlaywrightTestConfig = {
     browserName: 'chromium',
     channel: process.env['CHANNEL'],
     headless: process.env['HEADED'] !== '1',
-    bypassCSP: true,
     launchOptions: {
       slowMo: process.env['SLOWMO'] !== undefined && process.env['SLOWMO'] !== '' ? Number(process.env['SLOWMO']) : 0,
     },

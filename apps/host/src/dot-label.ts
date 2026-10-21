@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BASE_DOMAIN } from '@dotli/config';
-import { isValidDotLabel } from '@dotli/shared';
+import { isValidDotLabel } from '@dotli/resolver';
 
 /**
  * `null` for landing and sandbox origins. Validated before it reaches key derivation and origin construction, since a
  * malformed label can never be a registered name.
  */
-export function parseDotLabel(): string | null {
-  const hostname = window.location.hostname;
-
+export function parseDotLabel(hostname: string = window.location.hostname): string | null {
   if (hostname.endsWith(`.${BASE_DOMAIN}`)) {
     if (hostname.endsWith(`.app.${BASE_DOMAIN}`)) {
       return null;

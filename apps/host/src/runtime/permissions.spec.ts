@@ -1,0 +1,312 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  ALL_PERMISSIONS,
+  AUTO_GRANT_DEVICE_PERMISSIONS,
+  DEVICE_PERMISSION_POLICY,
+  createPermissionAuthorizations,
+  isDevicePermission,
+  isEnforceableDevicePermission,
+  type PermissionAuthorizations,
+} from './permissions.js';
+import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
+
+type Store = Map<string, PermissionAuthorizationStatus>;
+
+let unregisterMyapp: (() => void) | null = null;
+let permissions: PermissionAuthorizations;
+let myappStore: Store;
+let myappBatchReads = 0;
+
+beforeEach(() => {
+  permissions = createPermissionAuthorizations();
+  myappStore = new Map();
+  myappBatchReads = 0;
+  unregisterMyapp = registerTestProvider('myapp', myappStore);
+});
+
+afterEach(() => {
+  unregisterMyapp?.();
+  unregisterMyapp = null;
+});
+
+function registerTestProvider(label: string, store: Store): () => void {
+  return permissions.register(label, {
+    getPermissionAuthorizationStatuses(requests) {
+      if (label === 'myapp') {
+        myappBatchReads += 1;
+      }
+      return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
+    },
+    setPermissionAuthorizationStatus(request, status) {
+      const key = requestKey(request);
+      if (status === 'NotDetermined') {
+        store.delete(key);
+      } else {
+        store.set(key, status);
+      }
+      return Promise.resolve();
+    },
+  });
+}
+
+function requestKey(request: PermissionAuthorizationRequest): string {
+  switch (request.tag) {
+    case 'Device':
+      return `Device:${request.value}`;
+    case 'Remote':
+      return `Remote:${request.value.permission.tag}`;
+    case 'IdentityDisclosure':
+      return 'IdentityDisclosure';
+    case 'AccountAccess':
+      return `AccountAccess:${request.value.targetProductId}`;
+  }
+}
+
+describe('createPermissionAuthorizations', () => {
+  it('As a page, two registries keep their connections apart', async () => {
+    // Given a second registry with no connection for myapp
+    const other = createPermissionAuthorizations();
+    await permissions.setStatus('myapp', 'Camera', 'granted');
+
+    // When
+    const status = await other.status('myapp', 'Camera');
+
+    // Then
+    expect(status).toBe('ask');
+  });
+
+  it('As a product rendered again on a replacement core, my newest connection answers until it goes', async () => {
+    // Given the connection on screen, then a newer one with its own answer
+    const newer: Store = new Map([['Device:Camera', 'Denied']]);
+    const unregister = registerTestProvider('myapp', newer);
+    myappStore.set('Device:Camera', 'Authorized');
+
+    // When / Then
+    expect(await permissions.status('myapp', 'Camera')).toBe('denied');
+    unregister();
+    expect(await permissions.status('myapp', 'Camera')).toBe('granted');
+  });
+});
+
+describe('status / setStatus', () => {
+  it('As a product, my permissions default to ask', async () => {
+    // When / Then
+    expect(await permissions.status('myapp', 'Camera')).toBe('ask');
+    expect(await permissions.status('myapp', 'ChainSubmit')).toBe('ask');
+    expect(await permissions.status('myapp', 'IdentityDisclosure')).toBe('ask');
+  });
+
+  it('As a product, my status defaults to ask when the provider returns fewer statuses than requested', async () => {
+    // Given: a provider that violates the length contract.
+    const unregister = permissions.register('shortapp', {
+      getPermissionAuthorizationStatuses() {
+        return Promise.resolve([]);
+      },
+      setPermissionAuthorizationStatus() {
+        return Promise.resolve();
+      },
+    });
+
+    try {
+      // Then: the missing entry surfaces as "ask", not undefined.
+      expect(await permissions.status('shortapp', 'Camera')).toBe('ask');
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a product, my permission decisions use the core authorization store', async () => {
+    // Given
+    expect(myappStore).toEqual(new Map());
+
+    // When
+    await permissions.setStatus('myapp', 'ChainSubmit', 'granted');
+    await permissions.setStatus('myapp', 'Camera', 'denied');
+    await permissions.setStatus('myapp', 'IdentityDisclosure', 'granted');
+
+    // Then
+    expect(myappStore).toEqual(
+      new Map([
+        ['Remote:ChainSubmit', 'Authorized'],
+        ['Device:Camera', 'Denied'],
+        ['IdentityDisclosure', 'Authorized'],
+      ]),
+    );
+    expect(await permissions.status('myapp', 'ChainSubmit')).toBe('granted');
+    expect(await permissions.status('myapp', 'Camera')).toBe('denied');
+    expect(await permissions.status('myapp', 'IdentityDisclosure')).toBe('granted');
+  });
+
+  it('As a product, my permission statuses are read in one provider call', async () => {
+    // Given
+    await permissions.setStatus('myapp', 'ChainSubmit', 'granted');
+    await permissions.setStatus('myapp', 'Camera', 'denied');
+    const callsBeforeRead = myappBatchReads;
+
+    // When
+    const statuses = permissions.statuses('myapp', ['ChainSubmit', 'Camera', 'Microphone']);
+
+    // Then
+    await expect(statuses).resolves.toEqual(['granted', 'denied', 'ask']);
+    expect(myappBatchReads - callsBeforeRead).toBe(1);
+  });
+
+  it('As a product, my permission grants are isolated from other products', async () => {
+    // Given
+    await permissions.setStatus('myapp', 'Camera', 'granted');
+
+    // When / Then
+    expect(await permissions.status('otherapp', 'Camera')).toBe('ask');
+  });
+
+  it('As a product, my active permission provider survives a failed replacement', async () => {
+    // Given
+    await permissions.setStatus('myapp', 'Camera', 'granted');
+    const replacementStore: Store = new Map([['Device:Camera', 'Denied']]);
+    const unregisterReplacement = registerTestProvider('myapp', replacementStore);
+
+    // Then
+    expect(await permissions.status('myapp', 'Camera')).toBe('denied');
+
+    // When
+    unregisterReplacement();
+
+    // Then
+    expect(await permissions.status('myapp', 'Camera')).toBe('granted');
+  });
+});
+
+describe('isDevicePermission', () => {
+  it('As the host gating a product frame, I treat every permission with a Permissions Policy directive as a device permission', () => {
+    // When / Then
+    expect(isDevicePermission('Camera')).toBe(true);
+    expect(isDevicePermission('Microphone')).toBe(true);
+    expect(isDevicePermission('Bluetooth')).toBe(true);
+    expect(isDevicePermission('Location')).toBe(true);
+    expect(isDevicePermission('Clipboard')).toBe(true);
+    expect(isDevicePermission('Biometrics')).toBe(true);
+    expect(isDevicePermission('NFC')).toBe(true);
+  });
+
+  it('As the host gating a product frame, I do not treat submit and disclosure permissions as device permissions', () => {
+    // When / Then
+    expect(isDevicePermission('ChainSubmit')).toBe(false);
+    expect(isDevicePermission('PreimageSubmit')).toBe(false);
+    expect(isDevicePermission('StatementSubmit')).toBe(false);
+    expect(isDevicePermission('IdentityDisclosure')).toBe(false);
+  });
+
+  it('As the host gating a product frame, I do not treat a permission without a Permissions Policy directive as a device permission', () => {
+    // When / Then
+    // Notifications is host-gated separately but has no Permissions Policy directive. OpenUrl is auto-granted.
+    expect(isDevicePermission('Notifications')).toBe(false);
+    expect(isDevicePermission('OpenUrl')).toBe(false);
+  });
+});
+
+describe('isEnforceableDevicePermission', () => {
+  it('As the host gating a product frame, I do not enforce an auto-granted device permission', () => {
+    // When / Then
+    expect(isEnforceableDevicePermission('OpenUrl')).toBe(false);
+  });
+
+  it('As the host gating a product frame, I enforce the device permissions a user can be asked for', () => {
+    // When / Then
+    expect(isEnforceableDevicePermission('Notifications')).toBe(true);
+    expect(isEnforceableDevicePermission('Camera')).toBe(true);
+    expect(isEnforceableDevicePermission('Microphone')).toBe(true);
+  });
+});
+
+describe('grantedDevicePermissions', () => {
+  it('As a product, my iframe receives only granted device permissions', async () => {
+    // Given
+    await permissions.setStatus('myapp', 'Camera', 'granted');
+    await permissions.setStatus('myapp', 'Microphone', 'denied');
+    await permissions.setStatus('myapp', 'ChainSubmit', 'granted');
+    await permissions.setStatus('myapp', 'IdentityDisclosure', 'granted');
+
+    // When
+    const granted = await permissions.grantedDevicePermissions('myapp');
+
+    // Then
+    expect(granted).toEqual(['Camera']);
+  });
+});
+
+describe('allowAttribute', () => {
+  it('As a product, my iframe always receives clipboard-write and screen sharing access', async () => {
+    // When / Then
+    expect(await permissions.allowAttribute('myapp')).toBe('clipboard-write; display-capture');
+  });
+
+  it('As a product, my granted device permissions appear in iframe policy', async () => {
+    // Given
+    await permissions.setStatus('myapp', 'Camera', 'granted');
+    await permissions.setStatus('myapp', 'Microphone', 'granted');
+
+    // When
+    // Order follows JSON insertion order, so assert on the directive set.
+    const directives = (await permissions.allowAttribute('myapp')).split('; ').sort();
+
+    // Then
+    expect(directives).toEqual(['camera', 'clipboard-write', 'display-capture', 'microphone']);
+  });
+
+  it('As a product, denied and submit permissions stay out of iframe policy', async () => {
+    // Given
+    await permissions.setStatus('myapp', 'Camera', 'denied');
+    await permissions.setStatus('myapp', 'ChainSubmit', 'granted');
+
+    // When
+    const allow = await permissions.allowAttribute('myapp');
+
+    // Then
+    expect(allow).toBe('clipboard-write; display-capture');
+  });
+});
+
+describe('ALL_PERMISSIONS (data invariants)', () => {
+  it('As the host listing permissions, I list no auto-granted device permission among the ones I ask for', () => {
+    // When / Then
+    for (const { name } of ALL_PERMISSIONS) {
+      expect(AUTO_GRANT_DEVICE_PERMISSIONS.has(name as never)).toBe(false);
+    }
+  });
+
+  it('As a user, the menu lists the eight device permissions, then the four app permissions', () => {
+    // Then
+    expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([
+      'Notifications',
+      'Camera',
+      'Microphone',
+      'Location',
+      'Bluetooth',
+      'NFC',
+      'Clipboard',
+      'Biometrics',
+    ]);
+    expect(ALL_PERMISSIONS.filter(({ group }) => group === 'app').map(({ name }) => name)).toEqual([
+      'IdentityDisclosure',
+      'ChainSubmit',
+      'PreimageSubmit',
+      'StatementSubmit',
+    ]);
+    expect(ALL_PERMISSIONS.map(({ group }) => group)).toEqual([
+      ...ALL_PERMISSIONS.slice(0, 8).map(() => 'device'),
+      ...ALL_PERMISSIONS.slice(8).map(() => 'app'),
+    ]);
+  });
+});
+
+describe('DEVICE_PERMISSION_POLICY (sanity)', () => {
+  it('As the host gating a product frame, I give no Permissions Policy directive to an auto-granted device permission', () => {
+    // When / Then
+    for (const auto of AUTO_GRANT_DEVICE_PERMISSIONS) {
+      expect(auto in DEVICE_PERMISSION_POLICY).toBe(false);
+    }
+  });
+});

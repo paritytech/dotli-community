@@ -3,11 +3,13 @@
 
 /// <reference types="node" />
 
-import { defineConfig } from 'eslint/config';
+import { defineConfig, globalIgnores } from 'eslint/config';
 import { config } from '@config/eslint/astro';
 
 export default defineConfig([
   ...config,
+  // The functional suite's global setup builds the wire bundle here.
+  globalIgnores(['tests/functional/.wire/']),
   {
     languageOptions: {
       parserOptions: {
@@ -17,9 +19,8 @@ export default defineConfig([
   },
   {
     // The Playwright suites read env knobs straight from the shell, never through a turbo task, so turbo has no
-    // cache to key on them. The Vitest unit tests run under turbo and keep the rule.
+    // cache to key on them.
     files: ['tests/**/*.ts'],
-    ignores: ['tests/unit/**'],
     rules: {
       'turbo/no-undeclared-env-vars': 'off',
     },

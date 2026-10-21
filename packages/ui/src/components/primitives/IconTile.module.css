@@ -24,7 +24,6 @@
   stroke-width: 1.75;
 }
 
-/* Keep in step with PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   :where(.tile) {
     width: var(--h-row);

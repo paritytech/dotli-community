@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createMemo, createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
-import type { ReadableStore } from '../state/create-store.js';
+import type { ReadableStore } from '@dotli/shared';
 
 /**
  * Read a store as a Solid accessor that unsubscribes when its owner is disposed.

@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -15,4 +15,19 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([
+    onlyAllowedScopes(
+      [
+        '@dotli/config',
+        '@dotli/content',
+        '@dotli/metrics',
+        '@dotli/sandbox-wire',
+        '@dotli/shared',
+        '@dotli/ui',
+        '@config/eslint',
+        '@config/vite',
+      ],
+      'The sandbox renders a product, and never takes the runtime, the chains or the storage.',
+    ),
+  ]),
 ]);

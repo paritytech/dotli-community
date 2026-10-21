@@ -19,7 +19,7 @@ client for Rust-core `chain.connect` requests.
 | Origin | Purpose | Triggered by |
 |---|---|---|
 | Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/ui/src/host-callbacks/Chain.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `apps/host/src/runtime/host-callbacks/Chain.ts` |
 
 Both origins construct smoldot through the singletons in
 `packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
@@ -58,29 +58,29 @@ The protocol iframe parses a `?mode=` URL parameter (`apps/protocol/src/main.ts:
 - `?mode=direct` runs `initDirectMode()` (`main.ts:593`), which dynamic-imports the resolver and runs smoldot on the iframe main thread.
 - `?mode=rpc` runs `initRpcMode()` (`main.ts:658`). No smoldot. Chain calls go to a trusted WSS JSON-RPC endpoint.
 
-The host shell selects the submode from `chainBackend` at `apps/host/src/main.ts:366-371`.
+The host configures the frame with the backend at boot, and the frame names it in its URL as `mode`.
 
 ## Talking to a chain
 
 Sandbox-facing consumers use the cross-origin seam exposed by
 `@dotli/protocol`. The host's Rust-core `chain.connect` callback is the
-exception: it imports the chain providers from `@dotli/resolver` to honor the
+exception: it imports the chain providers from `@dotli/chains` to honor the
 selected backend.
 
 ```ts
-import { createRemoteChainProvider } from "@dotli/protocol";
+import { protocolClient } from "@dotli/protocol";
 import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config";
 
-const provider = createRemoteChainProvider(ASSET_HUB_PASEO_GENESIS);
+const provider = protocolClient().createRemoteChainProvider(ASSET_HUB_PASEO_GENESIS);
 if (provider === null) {
   throw new Error("Chain not in SUPPORTED_GENESIS_HASHES");
 }
 const client = createClient(provider); // polkadot-api
 ```
 
-`createRemoteChainProvider(genesisHash)` (`packages/protocol/src/client.ts:619`) returns a polkadot-api `JsonRpcProvider` that bridges to the protocol iframe via `chainConnect` / `chainSend` / `chainDisconnect` postMessage envelopes. The protocol iframe's smoldot is the actual backend. Returns `null` if the genesis hash is not in `SUPPORTED_GENESIS_HASHES`.
+`protocolClient().createRemoteChainProvider(genesisHash)` returns a polkadot-api `JsonRpcProvider` that bridges to the protocol iframe via `chainConnect` / `chainSend` / `chainDisconnect` postMessage envelopes. The protocol iframe's smoldot is the actual backend. Returns `null` if the genesis hash is not in `SUPPORTED_GENESIS_HASHES`.
 
-Resolution helpers are pre-built: `resolveDotNameRemote(label)` and `resolveOwnerRemote(label)` at `client.ts:525` and `client.ts:537`. Call these instead of the resolver's local equivalents.
+Resolution helpers are pre-built: `protocolClient().resolveDotNameRemote(label)` and `protocolClient().resolveOwnerRemote(label)`. Call these instead of the resolver's local equivalents.
 
 Bulletin preimage submission is built, signed, and submitted entirely by the Rust core (`truapi-server`), which routes its `TransactionStorage.store` traffic through the host `chain.connect` callback like any other chain access. The host only provides `PreimageHost.lookupPreimage` for content retrieval; it no longer builds or signs the transaction.
 
@@ -104,7 +104,7 @@ These resolver-package exports are owner-only and must not be imported outside
 
 - `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getDappAssetHubChain`, `getDappAssetHubProvider`, `makeNonRemovingChain`, `getPeopleChainProvider`
 - `chains.ts`: `createChainProvider`, `isChainSupported` (host chain callback only)
-- `resolve.ts` re-exports of `getSmoldot`, `getSmoldotDirect`, `getRelayChain`, `onConnectionIssue` plus the chain-touching helpers `resolveDotName`, `resolveOwner`, `waitForAssetHubFinalized`, `destroyResolverClient`, and `setResolverAssetHubProvider` (the bootstrap seam that points the resolver's Asset Hub reads at the broker's local session)
+- `resolve.ts`: `createDotnsResolver`, which the iframe and the SharedWorker build on the broker's local sessions. The host builds one on its own chain pool for rpc-gateway.
 
 ## Adding a new chain
 
@@ -115,7 +115,7 @@ Steps to make a parachain reachable through the protocol iframe. The sequence be
 3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
 4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
 5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol`. Rust-core access uses the host `chain.connect` callback.
+6. Sandbox consumers call `protocolClient().createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol`. Rust-core access uses the host `chain.connect` callback.
 
 Steps 4 and 5 make a chain reachable from both the protocol broker and the
 host callback. Skip them and the request fails with `"Unsupported chain"`.

@@ -38,7 +38,7 @@ export function signingHostVersion(binary: string): string | null {
   return probe.stdout.trim();
 }
 
-export function sanitizeSigningHostOutput(text: string): string {
+function sanitizeSigningHostOutput(text: string): string {
   return text.replace(PAIRING_DEEPLINK, '<pairing deeplink>');
 }
 
@@ -124,6 +124,7 @@ export async function stopSigningHostPid(pid: number): Promise<void> {
     if (!isAlive(pid)) {
       return;
     }
+    // A process that is not this one's child has no exit event, so its liveness is polled.
     await new Promise(r => setTimeout(r, 200));
   }
   try {

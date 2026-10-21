@@ -3,9 +3,11 @@
 
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissToast, removeToast, type ToastEntry } from '../../state/toasts.js';
+import { dismissToast, removeToast, type ToastEntry } from '../../page/state/toasts.js';
+import { toastIcon } from './toast-icon.js';
 import { Button } from '../primitives/Button.js';
-import { CloseIcon, IconButton } from '../primitives/IconButton.js';
+import { CloseIcon } from '../icons/CloseIcon.js';
+import { IconButton } from '../primitives/IconButton.js';
 import s from './ToastCard.module.css';
 
 export interface ToastCardProps {
@@ -21,6 +23,8 @@ export interface ToastCardProps {
 export function ToastCard(props: ToastCardProps): JSX.Element {
   // The stack keys cards by id, so it never changes.
   const id = untrack(() => props.entry.id);
+  // A toast keeps the icon it shows first.
+  const Icon = untrack(() => toastIcon(props.entry));
   const [entering, setEntering] = createSignal(true);
   // A leaving card keeps the layout it had when it started to leave.
   const hidden = createMemo<boolean>(prev => (props.entry.leaving ? (prev ?? false) : props.hidden));
@@ -38,13 +42,15 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
 
   return (
     <div
-      class={[s['card'], props.expanded ? s['expanded'] : s['stacked'], props.single && s['single']]}
+      class={s['card']}
+      data-layout={props.expanded ? 'expanded' : 'stacked'}
+      data-piled={!props.expanded && !props.single ? '' : undefined}
+      data-depth={String(depth())}
       data-testid="notif-card"
       data-id={String(id)}
       data-entering={entering() ? '' : undefined}
       data-leaving={props.entry.leaving ? '' : undefined}
       data-hidden={hidden() ? '' : undefined}
-      style={{ '--i': String(depth()) }}
       onAnimationEnd={() => {
         if (props.entry.leaving) {
           removeToast(id);
@@ -53,13 +59,9 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
         }
       }}
     >
-      <div
-        class={s['icon']}
-        data-testid="notif-icon"
-        data-tone={props.entry.tone}
-        // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
-        innerHTML={props.entry.icon}
-      />
+      <div class={s['icon']} data-testid="notif-icon" data-tone={props.entry.tone}>
+        <Icon class={s['iconGlyph']} />
+      </div>
       <div class={s['text']} data-testid="notif-text">
         <span class={s['title']} data-testid="notif-title">
           {props.entry.label}

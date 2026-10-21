@@ -130,15 +130,15 @@ describe('Solid client entrypoint', () => {
     flush();
 
     // Then
-    expect(element.innerHTML).toBe('<span class="label">one</span>');
-    const label = element.querySelector('.label');
+    expect(element.innerHTML).toBe('<span data-testid="label">one</span>');
+    const label = element.querySelector('[data-testid="label"]');
 
     // When: Astro renders the island again with new props.
     client(element)(Label, { text: 'two' }, {}, { client: 'only' });
     flush();
 
     // Then
-    expect(element.querySelector('.label')).toBe(label);
+    expect(element.querySelector('[data-testid="label"]')).toBe(label);
     expect(label?.textContent).toBe('two');
   });
 

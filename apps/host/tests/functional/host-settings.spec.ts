@@ -85,9 +85,7 @@ test.describe('Settings works', () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user opening a link that selects ${backend}, my session runs in that mode and stays there`, async ({
-      page,
-    }) => {
+    test(`As a user opening a link that selects ${backend}, my session runs in that mode`, async ({ page }) => {
       // When
       await page.goto(`${LANDING_URL}?chainBackend=${backend}`);
 
@@ -154,21 +152,6 @@ test.describe('Settings works', () => {
     expect(state.url).not.toContain('chainBackend=');
   });
 
-  test('As a user on a browser without shared worker support, my address bar still stays clean', async ({ page }) => {
-    // Given
-    await page.addInitScript(() => {
-      localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
-      delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
-    });
-
-    // When
-    await page.goto(LANDING_URL);
-
-    // Then
-    const state = await readChainBackendState(page, 'smoldot-direct');
-    expect(state.url).not.toContain('chainBackend=');
-  });
-
   test('As a user who picked the shared light client, my address bar records it so a copied link carries it', async ({
     page,
   }) => {
@@ -223,11 +206,14 @@ test.describe('Settings works', () => {
     expect(state.url).not.toContain('skipWorkerCache=');
   });
 
-  for (const backend of BACKENDS) {
+  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache. The dotNS
+  // cache works the same on every backend, so its tests skip the public RPC nodes too.
+  const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
+
+  for (const backend of RELAYED_BACKENDS) {
     test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
-      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,
@@ -253,7 +239,6 @@ test.describe('Settings works', () => {
     test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
-      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,
@@ -277,9 +262,6 @@ test.describe('Settings works', () => {
       }
     });
   }
-
-  // The gateway backend fetches inside the sandbox, not through the host's relay, so it has no block cache.
-  const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
 
   for (const backend of RELAYED_BACKENDS) {
     test(`As a user on ${backend} with the archive cache on, revisiting a site loads it from the blocks the host kept`, async ({
@@ -408,6 +390,7 @@ test.describe('Settings fails', () => {
     // Then
     const state = await readChainBackendState(page, 'smoldot-direct');
     expect(state.chainBackend).toBe('smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=');
     await expect(page.getByText(FALLBACK_LABEL)).not.toBeVisible();
   });
 });

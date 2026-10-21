@@ -5,12 +5,10 @@ on:
     types: [labeled, synchronize]
   push:
     branches: [main]
-  release:
-    types: [published]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
-concurrency:
-  group: deploy-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   plan:
@@ -27,19 +25,21 @@ jobs:
           ADDED_LABEL: ${{ github.event.label.name }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           # PR labels may target only these development environments.
           ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
-            release)
-              echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
-              echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-              ;;
             push)
-              echo 'environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
-              echo "ref=" >> "$GITHUB_OUTPUT"
+              if [ "$REF_TYPE" = "tag" ]; then
+                echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
+                echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+              else
+                echo 'environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
+                echo "ref=" >> "$GITHUB_OUTPUT"
+              fi
               ;;
             pull_request)
               # On `labeled` only the added label counts, on `synchronize` every label on the PR.
@@ -64,28 +64,43 @@ jobs:
     needs: plan
     if: needs.plan.outputs.environments != '[]'
     runs-on: ubuntu-latest
+    # A newer push to the same PR or branch cancels this gate, so the superseded run never deploys.
+    concurrency:
+      group: deploy-gate-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+      cancel-in-progress: true
     steps:
+      # The commit the deploy builds. A PR's default checkout is its merge commit, which the deploy never builds.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.ref || github.sha }}
 
       - uses: ./.github/actions/setup-node
 
+      # The PR checks' own scripts, so whatever deploys passes them too.
       - name: Check formatting
-        run: npx prettier --check "**/*.{ts,tsx,md}"
+        run: npm run format:check
 
       - name: Lint
-        run: npx turbo run lint
+        run: npm run lint
 
       - name: Type check
-        run: npx turbo run typecheck
+        run: npm run typecheck
+
+      - name: Unused files, exports and dependencies
+        run: npm run knip
 
       - name: Unit tests
-        run: npx turbo run test
+        run: npm test
 
   deploy:
     name: Deploy ${{ matrix.environment }}
     needs: [plan, quality-gate]
     runs-on: ubuntu-latest
     environment: ${{ matrix.environment }}
+    # One deploy per environment at a time, whichever event started it. A running deploy is never cut mid-rsync.
+    concurrency:
+      group: deploy-env-${{ matrix.environment }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -100,14 +115,16 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Sync package versions to release tag
-        if: github.event_name == 'release'
-        run: node scripts/set-version.ts "${{ github.event.release.tag_name }}"
+        if: github.ref_type == 'tag'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/set-version.ts "$RELEASE_TAG"
 
+      # No VITE_COMMIT_SHA: the build reads it from the checkout, which is the PR head on a PR deploy.
       - run: npx turbo run build:prod
         env:
           VITE_APP_URL: ${{ vars.APP_URL }}
           VITE_APP_DEBUG: ${{ vars.APP_DEBUG }}
-          VITE_COMMIT_SHA: ${{ github.sha }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
           VITE_NETWORKS: ${{ vars.NETWORKS }}
@@ -125,3 +142,37 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+  # The release goes out only once every environment runs the tag, so its announcement never runs ahead of the deploy.
+  publish-release:
+    name: Publish release
+    needs: deploy
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        # A re-run after a failed artifacts build finds the release already published.
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null; then
+            echo "Release $TAG is already published"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG"
+          fi
+
+  # A release published with the workflow token starts no workflow, so the artifacts build is called here.
+  release-artifacts:
+    name: Release artifacts
+    needs: publish-release
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release-artifacts.yml
+    with:
+      tag: ${{ github.ref_name }}
+      latest: true

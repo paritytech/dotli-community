@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, Errored, Loading, onCleanup, untrack } from 'solid-js';
+import { createEffect, createSignal, Loading, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Broken } from './broken.js';
+import { RootBoundary } from '../../mount/root-boundary.js';
 import { anchorName } from './anchor-name.js';
 import { FloatingLayer, type Placement } from './FloatingLayer.js';
 import { Surface, type SurfaceWidth } from '../primitives/Surface.js';
@@ -126,6 +126,9 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         el.removeEventListener('blur', hide);
         el.removeEventListener('click', onClick);
         el.style.removeProperty('anchor-name');
+        // The next trigger gets them from the effects that run for it.
+        el.removeAttribute('aria-describedby');
+        el.removeAttribute('aria-expanded');
       };
     },
   );
@@ -191,11 +194,11 @@ export function Tooltip(props: TooltipProps): JSX.Element {
         }
       }}
     >
-      <Errored fallback={err => <Broken root={`tooltip:${props.id}`} error={err()} fail={hide} />}>
+      <RootBoundary root={`tooltip:${props.id}`} onBroken={hide}>
         <Loading fallback={null}>
           <Surface width={props.width ?? 'md'}>{props.children}</Surface>
         </Loading>
-      </Errored>
+      </RootBoundary>
     </FloatingLayer>
   );
 }

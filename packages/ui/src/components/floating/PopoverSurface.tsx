@@ -1,17 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Errored, Loading, onSettled } from 'solid-js';
+import { Loading, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { focusables, focusInto } from '../focus.js';
+import { focusables } from '../../page/focusables.js';
+import { focusInto } from '../focus.js';
 import { Spinner } from '../primitives/Spinner.js';
 import { AnchoredContent } from './AnchoredContent.js';
-import { Broken } from './broken.js';
+import { RootBoundary } from '../../mount/root-boundary.js';
 import type { Placement } from './FloatingLayer.js';
 import type { PopoverState } from './Popover.js';
 import s from './Popover.module.css';
 
-/** Popover's lazy chunk. */
+/** Popover's surface: an anchored layer or a sheet, with the content's own loading and failure. */
 export function PopoverSurface(props: {
   state: PopoverState;
   class?: string | undefined;
@@ -20,7 +21,7 @@ export function PopoverSurface(props: {
   children: JSX.Element;
 }): JSX.Element {
   const body = (root: () => HTMLElement | null | undefined): JSX.Element => (
-    <Errored fallback={err => <Broken root={`popover:${props.state.id}`} error={err()} fail={props.state.close} />}>
+    <RootBoundary root={`popover:${props.state.id}`} onBroken={props.state.close}>
       <Loading
         fallback={
           <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">
@@ -31,7 +32,7 @@ export function PopoverSurface(props: {
         {props.children}
         <FocusWhenLoaded root={root} />
       </Loading>
-    </Errored>
+    </RootBoundary>
   );
   return (
     <AnchoredContent

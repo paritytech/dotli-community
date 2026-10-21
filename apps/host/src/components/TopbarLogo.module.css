@@ -7,11 +7,11 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   box-sizing: border-box;
   height: var(--h-bar-control);
   margin: 0;
-  padding: 0 8px;
+  padding: 0 var(--sp-2);
   border-radius: var(--r-full);
   color: var(--chrome-text);
   text-decoration: none;
@@ -33,7 +33,7 @@
   display: inline-flex;
   align-items: center;
   height: 12px;
-  padding: 0 3px;
+  padding: 0 var(--sp-hair);
   border-radius: var(--r-full);
   background: var(--chrome-fill-strong);
   color: var(--chrome-text-muted);
@@ -44,7 +44,7 @@
 /* Narrow pills: the mark alone, so the wordmark doesn't push actions into More. */
 @media (max-width: 620px) {
   .home {
-    padding-right: 12px;
+    padding-right: var(--sp-3);
   }
   /* Out of sight but still the link's accessible name. */
   .brand {

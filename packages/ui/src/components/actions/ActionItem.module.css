@@ -1,0 +1,26 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.item {
+  display: flex;
+  align-items: center;
+}
+.item[hidden] {
+  display: none;
+}
+/* On the item, so the group's measure counts it. */
+.item[data-separated]::before {
+  content: '';
+  align-self: center;
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--sp-1_5) 0 var(--sp-hair);
+  background: var(--chrome-ring);
+}
+
+@media (max-width: 560px) {
+  .item[data-separated]::before {
+    display: none;
+  }
+}

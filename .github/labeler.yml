@@ -26,6 +26,12 @@ github-actions:
           - 'packages/config/**'
           - '!packages/config/package.json'
 
+'pkg: sandbox-wire':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/sandbox-wire/**'
+          - '!packages/sandbox-wire/package.json'
+
 'pkg: shared':
   - changed-files:
       - all-globs-to-any-file:
@@ -44,6 +50,18 @@ github-actions:
           - 'packages/resolver/**'
           - '!packages/resolver/package.json'
 
+'pkg: chains':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/chains/**'
+          - '!packages/chains/package.json'
+
+'pkg: bitswap':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/bitswap/**'
+          - '!packages/bitswap/package.json'
+
 'pkg: content':
   - changed-files:
       - all-globs-to-any-file:
@@ -56,11 +74,11 @@ github-actions:
           - 'packages/ui/**'
           - '!packages/ui/package.json'
 
-'pkg: sandbox-checker':
+'pkg: truapi-debug-ui':
   - changed-files:
       - all-globs-to-any-file:
-          - 'packages/sandbox-checker/**'
-          - '!packages/sandbox-checker/package.json'
+          - 'packages/truapi-debug-ui/**'
+          - '!packages/truapi-debug-ui/package.json'
 
 'pkg: eslint':
   - changed-files:
@@ -79,6 +97,18 @@ github-actions:
       - all-globs-to-any-file:
           - 'config/vite/**'
           - '!config/vite/package.json'
+
+'pkg: storybook':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'config/storybook/**'
+          - '!config/storybook/package.json'
+
+'pkg: astro-solid':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'config/astro-solid/**'
+          - '!config/astro-solid/package.json'
 
 'pkg: metrics':
   - changed-files:

@@ -7,7 +7,7 @@
   flex-direction: column;
   gap: var(--sp-1);
   margin: 0;
-  padding: 10px 0;
+  padding: var(--sp-2) 0;
 }
 .field + .field {
   border-top: 1px solid var(--chrome-line);
@@ -38,7 +38,6 @@
   color: var(--chrome-warn-text);
 }
 
-/* Keep in step with PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   :where(.field) {
     padding: var(--sp-3) 0;

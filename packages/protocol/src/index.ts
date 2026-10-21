@@ -6,73 +6,43 @@ export {
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
-  isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
-  isSharedWalletRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-  type SharedWalletRequestMethod,
 } from './auth-storage.js';
-export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
+export { getProtocolOrigin, protocolClient, type ProtocolClient } from './client.js';
+export { backendOfFrameMode, type ProtocolFrameConfig, type ProtocolStatus } from './frame.js';
+export { isRemoteChainConnectable, isRemoteChainSupported, type RemoteChainProvider } from './remote-chain.js';
+export type { LocalWalletReadResult, SharedStoreStatus } from './shared-store.js';
 export {
-  CHAIN_HALTED_ERROR_DATA,
-  chainHaltedError,
-  ChainHaltError,
-  haltReasonOf,
-  type RemoteChainHalt,
-} from './chain-halted.js';
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  ProtocolPortReleasedError,
+  ProtocolVersionMismatchError,
+  failureOf,
+  frameStatusEnd,
+  fromTransportError,
+  remoteEnd,
+} from './errors.js';
+export type { TelemetryEvent } from './codec-values.js';
 export {
-  createChainPool,
-  type ChainActivity,
-  type ChainPool,
-  type ChainPoolWatcher,
-  type LeaseProvider,
-} from './chain-pool.js';
-export {
-  clearSharedAuthStorage,
-  clearSharedModeStorage,
-  forgetSharedLocalWallet,
-  readSharedLocalWallet,
-  saveSharedLocalWallet,
-  updateSharedLocalWalletIdentity,
-  createRemoteChainProvider,
-  ensureProtocolFrame,
-  getProtocolOrigin,
-  getSharedStoreStatus,
-  getSmoldotDbOutcome,
-  isProtocolBooting,
-  isProtocolReady,
-  isRemoteChainConnectable,
-  isRemoteChainSupported,
-  onProtocolChainDetail,
-  onProtocolChainSync,
-  onProtocolNetBytes,
-  onProtocolReady,
-  readSharedAuthStorage,
-  readSharedModeStorage,
-  resetProtocolFrame,
-  resolveDotNameRemote,
-  resolveExecutableManifestRemote,
-  resolveRootManifestRemote,
-  setProtocolSubMode,
-  type SharedStoreStatus,
-  subscribeSharedAuthStorage,
-  subscribeSharedStoreStatus,
-  type RemoteChainProvider,
-  warmupProtocol,
-  writeSharedAuthStorage,
-  writeSharedModeStorage,
-} from './client.js';
-export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
-export {
-  getRequestSyncTimeoutMs,
-  isProtocolEnvelope,
+  protocolSchema,
+  type DomainFailure,
+  type FrameFailure,
   type LocalWalletIdentity,
-  type LocalWalletReadResult,
-  type ProtocolEnvelope,
-  type ProtocolRequestEnvelope,
-  type ProtocolRequestMap,
-  type SmoldotDbChain,
-  type SmoldotDbOutcome,
-} from './messages.js';
+  type LocalWalletRead,
+  type ProtocolContext,
+  type ProtocolHandler,
+  type ProtocolHello,
+  type ProtocolSchema,
+  type ProtocolServing,
+  type ProtocolTransport,
+  type RemoteFailure,
+  type SharedAuthChange,
+  type SubscriptionEnd,
+} from './schema.js';
+export { budgetOf, callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
+export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
+export { endListeners } from './subscription.js';
+export { createWireReport } from './wire-issues.js';

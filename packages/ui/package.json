@@ -9,64 +9,30 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./islands/*": "./src/islands/*.ts",
+    "./testing": "./src/testing/index.ts",
     "./brand": "./src/brand.ts",
+    "./icons": "./src/icons.ts",
     "./styles.css": "./src/global.css",
     "./package.json": "./package.json"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.shipped.json && tsc --noEmit -p tests",
     "lint": "eslint .",
-    "test": "vitest run",
-    "storybook": "storybook dev -p 6006 --no-open",
-    "build-storybook": "storybook build -o storybook-static",
-    "test:stories": "vitest run --config vitest.storybook.config.ts",
-    "test:vrt": "VRT=1 vitest run --config vitest.storybook.config.ts"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@config/eslint": "*",
+    "@config/storybook": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@solidjs/testing-library": "1.0.0-beta.3",
-    "@solidjs/vite-plugin": "3.0.0-next.47",
-    "@storybook/addon-a11y": "^10.6.1",
-    "@storybook/addon-docs": "^10.6.1",
-    "@storybook/addon-vitest": "^10.6.1",
-    "@types/qrcode": "^1.5.6",
-    "@vitest/browser-playwright": "^5.0.3",
-    "fake-indexeddb": "^6.2.5",
-    "playwright": "^1.63.0",
-    "storybook": "^10.6.1",
-    "storybook-solidjs-vite": "^10.7.2",
-    "vite-plugin-solid": "3.0.0-next.27"
+    "@solidjs/vite-plugin": "3.0.0-next.50",
+    "storybook": "^10.6.2",
+    "storybook-solidjs-vite": "^10.7.2"
   },
   "dependencies": {
-    "@dotli/config": "*",
-    "@dotli/content": "*",
     "@dotli/metrics": "*",
-    "@dotli/protocol": "*",
-    "@dotli/sandbox-checker": "*",
     "@dotli/shared": "*",
-    "@dotli/storage": "*",
-    "@dotli/truapi-debug": "*",
-    "@noble/hashes": "^2.4.0",
-    "@parity/truapi": "0.24.0",
-    "@parity/truapi-host": "0.24.0",
-    "@polkadot-api/json-rpc-provider": "^0.2.0",
-    "@polkadot-labs/hdkd-helpers": "^0.0.34",
-    "@scure/base": "^2.4.0",
-    "@solidjs/web": "2.0.0-rc.13",
-    "neverthrow": "^8.2.0",
-    "polkadot-api": "^3.2.1",
-    "qrcode": "^1.5.4",
-    "solid-js": "2.0.0-rc.13"
-  },
-  "peerDependencies": {
-    "@dotli/resolver": "*"
-  },
-  "peerDependenciesMeta": {
-    "@dotli/resolver": {
-      "optional": true
-    }
+    "@solidjs/web": "2.0.0-rc.15",
+    "solid-js": "2.0.0-rc.15"
   }
 }

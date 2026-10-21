@@ -1,4 +1,0 @@
-{
-  "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"],
-  "include": ["src", "eslint.config.js"]
-}

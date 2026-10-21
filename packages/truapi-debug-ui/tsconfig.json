@@ -1,0 +1,7 @@
+{
+  "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"],
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src", "eslint.config.js", "vitest.config.ts"]
+}

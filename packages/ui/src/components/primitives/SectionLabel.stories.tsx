@@ -14,5 +14,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I read a section label drawn as plain text. */
 export const Div: Story = {};
+/** As a dotli user, I read a section label that is also a heading. */
 export const Heading: Story = { args: { as: 'h3' } };

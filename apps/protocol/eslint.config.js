@@ -4,7 +4,23 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, fixedConfigOnly, importBans, onlyAllowedScopes } from '@config/eslint/vite';
+
+const scopeBan = onlyAllowedScopes(
+  [
+    '@dotli/chains',
+    '@dotli/config',
+    '@dotli/metrics',
+    '@dotli/protocol',
+    '@dotli/resolver',
+    '@dotli/shared',
+    '@dotli/storage',
+    '@dotli/transport',
+    '@config/eslint',
+    '@config/vite',
+  ],
+  'The protocol app serves chains and names to every tab, and never takes the UI.',
+);
 
 export default defineConfig([
   ...config,
@@ -15,4 +31,6 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([scopeBan]),
+  ...importBans([scopeBan, fixedConfigOnly], ['src/protocol-worker.ts', 'src/light-client-service.ts']),
 ]);

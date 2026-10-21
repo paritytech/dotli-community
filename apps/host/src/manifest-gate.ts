@@ -11,6 +11,7 @@ import {
   type ManifestResult,
   type RootManifest,
 } from '@dotli/resolver';
+import type { ManifestFacts } from './runtime/manifest-facts.js';
 import type { CachedManifests } from '@dotli/storage';
 
 export interface ProductManifests {
@@ -26,6 +27,14 @@ export function fromCache(cached: CachedManifests): ProductManifests {
 export function toCache(manifests: ProductManifests): CachedManifests {
   const text = (result: ManifestResult<unknown>): string | null => ('raw' in result ? result.raw : null);
   return { root: text(manifests.root), app: text(manifests.app) };
+}
+
+/** What the manifests publish that the page shows, without the keys they lack. */
+export function manifestFacts({ root, app }: ProductManifests): ManifestFacts {
+  return {
+    ...(root.kind === 'ok' ? { displayName: root.value.displayName, manifestVersion: root.value.$v } : {}),
+    ...(app.kind === 'ok' && app.value.kind === 'app' ? { appVersion: app.value.appVersion } : {}),
+  };
 }
 
 export type ManifestRejection = 'unsupported-version' | 'invalid' | 'missing-root';
@@ -49,11 +58,7 @@ function present(result: ManifestResult<unknown>): boolean {
 
 function assertReadable(result: ManifestResult<unknown>, record: 'root' | 'app'): void {
   if (result.kind === 'unsupported-version') {
-    throw new ManifestRejectedError(
-      'unsupported-version',
-      record,
-      `$v ${result.version === undefined ? 'undefined' : JSON.stringify(result.version)}`,
-    );
+    throw new ManifestRejectedError('unsupported-version', record, `$v ${result.version}`);
   }
   if (result.kind === 'invalid') {
     throw new ManifestRejectedError('invalid', record, result.errors.join('; '));

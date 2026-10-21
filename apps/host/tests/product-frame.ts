@@ -4,10 +4,9 @@
 // The sandbox swaps in the product HTML with `document.write`, which keeps the Frame, so the sandbox Frame is the
 // product Frame once `dotli:app:end` fires.
 
-import { expect, type Frame, type Page } from '@playwright/test';
-// From its source file: the `@dotli/config` barrel reads `self.location` and `import.meta.env` at load, so Node
-// cannot load it.
-import { SANDBOX_CONTRACT_PARAMS } from '../../../packages/config/src/host-sandbox-contract.js';
+import { errors, expect, type Frame, type Page } from '@playwright/test';
+import { isSandboxUrl, waitForFrame } from './functional/helpers/frames.js';
+import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire/contract-params';
 
 export interface ProductLocation {
   pathname: string;
@@ -16,18 +15,16 @@ export interface ProductLocation {
   href: string;
 }
 
-/** Does not wait for the frame to finish loading. */
+/** Does not wait for the frame to finish loading. Null when no sandbox frame navigates within `timeoutMs`. */
 export async function findAppFrame(page: Page, timeoutMs: number): Promise<Frame | null> {
-  // The live frame tree catches an iframe navigated through `contentWindow.location`, which a locator misses.
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const frame = page.frames().find(f => f.url().includes('.app.localhost'));
-    if (frame !== undefined) {
-      return frame;
+  try {
+    return await waitForFrame(page, isSandboxUrl, timeoutMs);
+  } catch (error) {
+    if (error instanceof errors.TimeoutError) {
+      return null;
     }
-    await page.waitForTimeout(200);
+    throw error;
   }
-  return null;
 }
 
 /** Throws at once on the sandbox's error page, since a failed fetch never sets `dotli:app:end`. */
@@ -113,7 +110,7 @@ async function readErrorText(scope: Page | Frame): Promise<string> {
 }
 
 /** "" on timeout. */
-export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
+async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
   try {
     await page.getByTestId('error-page-title').first().waitFor({ timeout: timeoutMs });
   } catch {

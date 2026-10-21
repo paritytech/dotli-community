@@ -2,19 +2,94 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type Frame, type Locator } from '@playwright/test';
+import { entryText } from './run-test.js';
 
 type PageLike = Page | Frame;
+
+/** The title of a host dialog, as the host draws it. */
+export type HostDialogTitle =
+  | 'Account Access'
+  | 'Identity Disclosure'
+  | 'Permission Request'
+  | 'Product Account'
+  | 'Resource Allocation'
+  | 'Sign Message'
+  | 'Sign Transaction'
+  | 'Submit Preimage';
+
+/** The button that answers a host dialog. */
+export type HostAnswer = 'Always allow' | 'Allow' | 'Allow once' | 'Sign';
+
+/** A dialog the host is expected to show, and the button that answers it. */
+export interface HostDialog {
+  title: HostDialogTitle;
+  answer: HostAnswer;
+}
+
+/**
+ * Answers each expected dialog in order, failing when one never shows. The button is looked up inside the dialog with
+ * that title, so another dialog with the same button does not stand in for it. Each answer waits for its own dialog to
+ * close, found by the title id the host gives every dialog, so two dialogs in a row with the same title stay apart.
+ * A paired phone's approval turns the dialog into the waiting step instead, which is sent to the background, so the
+ * product's own result tells how the request ended.
+ */
+export async function answerHostDialogs(page: Page, dialogs: readonly HostDialog[], timeoutMs = 60_000): Promise<void> {
+  for (const { title, answer } of dialogs) {
+    const dialog = page.getByRole('dialog', { name: title, exact: true });
+    const button = dialog.getByRole('button', { name: answer, exact: true });
+    await expect(button, `the host asked "${title}", answered by "${answer}"`).toBeVisible({ timeout: timeoutMs });
+    const titleId = await dialog.getAttribute('aria-labelledby');
+    if (titleId === null) {
+      throw new Error(`the "${title}" dialog has no title id`);
+    }
+    await button.click();
+    const answered = page.locator(`[data-testid="host-prompt-backdrop"][aria-labelledby="${titleId}"]`);
+    const waiting = answered.getByTestId('phone-waiting');
+    await expect
+      .poll(async () => (await answered.count()) === 0 || (await waiting.count()) > 0, {
+        message: `the "${title}" dialog closed or waits on the phone`,
+        timeout: timeoutMs,
+      })
+      .toBe(true);
+    if ((await waiting.count()) > 0) {
+      const background = answered.getByRole('button', { name: 'Wait in background', exact: true });
+      await background.click({ timeout: 10_000 }).catch(async (error: unknown) => {
+        // The phone may answer first and close the step under the click, which leaves nothing to press.
+        if ((await answered.count()) > 0) {
+          throw error;
+        }
+      });
+    }
+    await expect(answered).toHaveCount(0);
+  }
+}
+
+/**
+ * Answers the dialog the core opens before it first shares the product's account. The product's own account asks
+ * "Product Account", and another product's asks "Account Access", whose lasting grant keeps later reads quiet.
+ */
+export async function answerAccountDialog(page: Page, timeoutMs: number): Promise<void> {
+  const ownAccount = page.getByRole('dialog', { name: 'Product Account', exact: true });
+  const otherAccount = page.getByRole('dialog', { name: 'Account Access', exact: true });
+  await expect(ownAccount.or(otherAccount), 'the host asked to share the product account').toBeVisible({
+    timeout: timeoutMs,
+  });
+  const dialog: HostDialog =
+    (await ownAccount.count()) > 0
+      ? { title: 'Product Account', answer: 'Allow' }
+      : { title: 'Account Access', answer: 'Always allow' };
+  await answerHostDialogs(page, [dialog], timeoutMs);
+}
 
 /** The signing-host CLI signs once the SignRequest reaches the Statement Store, so only host dialogs need clicks. */
 export async function runWebSignedTest(
   hostPage: Page,
   productFrame: PageLike,
   testId: string,
-  dialogButtons: readonly string[],
-  opts: { timeoutMs?: number; preClickDelayMs?: number } = {},
+  dialogs: readonly HostDialog[],
+  opts: { timeoutMs?: number } = {},
 ): Promise<'success' | 'error'> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
-  const preClickDelayMs = opts.preClickDelayMs ?? 0;
   const entries = productFrame.locator('[data-testid="log-entry"]');
   const initialCount = await entries.count();
 
@@ -29,83 +104,9 @@ export async function runWebSignedTest(
   console.log(`[signed] ${testId}: clicking run`);
   await btn.click();
 
-  const dialogController = new AbortController();
-  const dialogTask =
-    dialogButtons.length > 0
-      ? clickHostDialogs(hostPage, dialogButtons, 60_000, preClickDelayMs, dialogController.signal).catch(() => {})
-      : Promise.resolve();
+  await answerHostDialogs(hostPage, dialogs);
 
-  const result = await waitForLogResult(entries, initialCount, testId, timeoutMs);
-  dialogController.abort();
-  await dialogTask;
-  if (result === 'error') {
-    // Shows a dialog selector mismatch, where the signer signed but no Allow or Sign button was found.
-    const visibleButtons = await hostPage
-      .locator('button:visible')
-      .evaluateAll(els => els.map(e => e.textContent.trim().slice(0, 60)).filter(Boolean))
-      .catch(() => []);
-    console.log(`[signed] ${testId}: visible buttons on host: ${JSON.stringify(visibleButtons)}`);
-  }
-  return result;
-}
-
-/** Clicks whichever of `buttonNames` shows until none has for a while, so callers need not know the dialog order. */
-async function clickHostDialogs(
-  page: Page,
-  buttonNames: readonly string[],
-  timeoutMs: number,
-  preClickDelayMs: number,
-  signal: AbortSignal,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  const idleStopMs = 5_000;
-  let lastSeenAt = Date.now();
-  const seen = new Set<string>();
-
-  while (!signal.aborted && Date.now() < deadline) {
-    if (Date.now() - lastSeenAt > idleStopMs && seen.size > 0) {
-      return;
-    }
-
-    let clickedThisPass = false;
-    for (const name of buttonNames) {
-      const btn = page.getByRole('button', { name, exact: true }).first();
-      const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
-      if (!visible) {
-        continue;
-      }
-
-      if (preClickDelayMs > 0) {
-        console.log(`[signed] dialog "${name}" visible — pausing ${String(preClickDelayMs)}ms before click`);
-        await page.waitForTimeout(preClickDelayMs);
-      }
-      // The fixture's auto-allow poller can close this modal during the pause, and an unbounded click would then
-      // never reach the next dialog.
-      console.log(`[signed] dialog "${name}" — clicking`);
-      await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
-        const reason = e instanceof Error ? e.message : String(e);
-        console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
-      });
-      seen.add(name);
-      lastSeenAt = Date.now();
-      clickedThisPass = true;
-      // Lets the modal close, or the next pass sees the same button.
-      await page.waitForTimeout(500);
-    }
-
-    if (!clickedThisPass) {
-      await page.waitForTimeout(500);
-    }
-  }
-
-  if (signal.aborted) {
-    return;
-  }
-  if (seen.size === 0) {
-    console.log(`[signed] no host dialog appeared (looked for: ${buttonNames.join(', ')})`);
-  } else {
-    console.log(`[signed] dialog budget exhausted after seeing: ${[...seen].join(', ')}`);
-  }
+  return waitForLogResult(entries, initialCount, testId, timeoutMs);
 }
 
 async function waitForLogResult(
@@ -133,11 +134,7 @@ async function waitForLogResult(
 
   const status = await newest.getAttribute('data-status');
   if (status !== 'success') {
-    const msg = await newest
-      .locator('div.break-all')
-      .textContent()
-      .catch(() => '');
-    console.log(`[signed] ${testId}: ${(msg ?? '').slice(0, 300)}`);
+    console.log(`[signed] ${testId}: ${await entryText(newest)}`);
   }
   return status === 'success' ? 'success' : 'error';
 }

@@ -5,3 +5,22 @@ dist
 .git
 coverage
 *.log
+
+# Local state stays out of the image. Vite reads `.env` through envDir, and a turbo cache could restore an old dist.
+.env
+.env.*
+!.env.example
+deploy.env
+**/.turbo
+**/.astro
+**/storybook-static
+**/test-results
+**/playwright-report
+**/.vrt
+**/.vitest
+apps/host/tests/performance/results
+.idea
+.vscode
+.claude
+.superpowers
+docs/superpowers

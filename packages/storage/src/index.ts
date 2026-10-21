@@ -10,25 +10,17 @@ export {
   listMessages,
   listRooms,
   registerBot,
+  setRoomFooter,
   type ChatBotRecord,
   type ChatMessageRecord,
+  type ChatRoomFooter,
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';
+export { DB_NAME } from './schema.js';
+export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cid-cache.js';
 export {
-  RECENT_KEY,
-  clearCidCache,
-  evictCachedCid,
-  getCachedCid,
-  getRecentLabels,
-  parseRecentLabels,
-  serializeRecentLabels,
-  setCachedCid,
-  withRecentLabel,
-  writeRecentLabels,
-  type CachedManifests,
-} from './cid-cache.js';
-export {
+  createLocalWalletStore,
   forgetLocalWallet,
   loadLocalWallet,
   LocalWalletUnreadableError,
@@ -36,6 +28,7 @@ export {
   updateLocalWalletIdentity,
   type LocalWallet,
   type LocalWalletIdentity,
+  type LocalWalletStore,
 } from './local-wallet.js';
 export {
   allocateId,

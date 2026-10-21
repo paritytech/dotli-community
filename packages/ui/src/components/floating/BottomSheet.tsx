@@ -61,7 +61,14 @@ export function BottomSheet(props: BottomSheetProps): JSX.Element {
       layout="sheet"
       handedOff={layer().handedOff}
     >
-      <SheetFrame title={props.title} onDismiss={dismiss} testId={props.testId} body={props.body}>
+      <SheetFrame
+        title={props.title}
+        onDismiss={dismiss}
+        testId={props.testId}
+        open={layer().open}
+        handedOff={layer().handedOff}
+        body={props.body}
+      >
         {props.children}
       </SheetFrame>
     </ModalLayer>

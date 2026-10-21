@@ -4,6 +4,8 @@
 // Manifests from dotNS text records: the root on `<id>.<tld>`, one executable per kind on `<kind>.<id>.<tld>`.
 // CIDs live in each name's contenthash, not the JSON. Validators are handwritten to avoid a schema library.
 
+import { errorMessage } from '@dotli/shared';
+
 /** Formats v1 defines. Any other value only loses the icon. */
 export type IconFormat = 'jpeg' | 'png';
 
@@ -20,7 +22,7 @@ export interface RootManifest {
   description: string;
   icon: Icon;
   /** Keyed by product id, listing what that product may do to this one. Unknown grants are kept. */
-  trustedProducts?: Record<string, readonly string[]>;
+  trustedProducts?: Record<string, readonly string[]> | undefined;
 }
 
 interface CommonExecutableFields {
@@ -34,20 +36,20 @@ export interface AppManifest extends CommonExecutableFields {
 
 export interface WidgetDimensions {
   height: readonly number[];
-  width?: number;
+  width?: number | undefined;
 }
 
 export interface WidgetManifest extends CommonExecutableFields {
   kind: 'widget';
-  description?: string;
+  description?: string | undefined;
   dimensions: WidgetDimensions;
 }
 
 /** An omitted key means `false`. All off is a background-only worker. */
 export interface WorkerIncludes {
-  chat?: boolean;
-  pocket?: boolean;
-  input?: boolean;
+  chat?: boolean | undefined;
+  pocket?: boolean | undefined;
+  input?: boolean | undefined;
 }
 
 export interface WorkerManifest extends CommonExecutableFields {
@@ -102,7 +104,7 @@ function isAppVersion(value: unknown): value is AppVersion {
   if (value.length !== 3 && value.length !== 4) {
     return false;
   }
-  if (!value.slice(0, 3).every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
+  if (!value.slice(0, 3).every(n => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0)) {
     return false;
   }
   if (value.length === 4 && typeof value[3] !== 'string') {
@@ -178,7 +180,7 @@ export function parseRootManifest(json: string): ValidationResult<RootManifest> 
   } catch (err) {
     return {
       ok: false,
-      errors: [`root manifest is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
+      errors: [`root manifest is not valid JSON: ${errorMessage(err)}`],
     };
   }
   return validateRootManifest(raw);
@@ -191,7 +193,7 @@ export function parseExecutableManifest(json: string): ValidationResult<Executab
   } catch (err) {
     return {
       ok: false,
-      errors: [`executable manifest is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
+      errors: [`executable manifest is not valid JSON: ${errorMessage(err)}`],
     };
   }
   return validateExecutableManifest(raw);
@@ -256,13 +258,13 @@ export function validateExecutableManifest(input: unknown): ValidationResult<Exe
 
 /**
  * `raw` lets a caller keep the text and revalidate it later. `unsupported` means the network has no text
- * records, `unsupported-version` a `$v` other than 1.
+ * records, `unsupported-version` a `$v` other than 1, with `version` as JSON, or `undefined` when absent.
  */
 export type ManifestResult<T> =
   | { kind: 'ok'; value: T; raw: string }
   | { kind: 'empty' }
   | { kind: 'unsupported'; reason: string }
-  | { kind: 'unsupported-version'; version: unknown; raw: string }
+  | { kind: 'unsupported-version'; version: string; raw: string }
   | { kind: 'invalid'; errors: string[]; raw: string };
 
 export type ManifestRecordResult<T> = Exclude<ManifestResult<T>, { kind: 'unsupported' }>;
@@ -279,7 +281,8 @@ function toManifestResult<T>(
     return { kind: 'ok', value: parsed.value, raw };
   }
   if ('unsupportedVersion' in parsed) {
-    return { kind: 'unsupported-version', version: parsed.unsupportedVersion, raw };
+    const version = parsed.unsupportedVersion === undefined ? 'undefined' : JSON.stringify(parsed.unsupportedVersion);
+    return { kind: 'unsupported-version', version, raw };
   }
   return { kind: 'invalid', errors: parsed.errors, raw };
 }

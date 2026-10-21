@@ -1,0 +1,72 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Pulled into the address's end padding, so its glyph sits where the text ends on the other side. */
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0 0 0 -6px;
+}
+.shield {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--chrome-idle);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    color var(--dur);
+}
+.shield:hover,
+.shield[aria-expanded='true'] {
+  background: var(--chrome-fill-strong);
+}
+.shield:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.shield[data-state='trusted'] {
+  color: var(--chrome-warn);
+}
+.shield[data-state='verified'] {
+  color: var(--chrome-ok);
+}
+/* The verified glyph shows until the host knows the product was only trusted. */
+.glyph {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.trusted-glyph,
+.shield[data-state='trusted'] .verified-glyph {
+  display: none;
+}
+.shield[data-state='trusted'] .trusted-glyph {
+  display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shield {
+    transition: none;
+  }
+}
+
+/* Drops from the bar's bottom like every topbar surface, not from the shield's. An anchored area from
+   the horizontal axis alone spans the whole height, so `top` is set from the viewport. */
+.tooltip {
+  width: var(--w-pop-md);
+  position-area: span-right;
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
+  margin-top: 0;
+}

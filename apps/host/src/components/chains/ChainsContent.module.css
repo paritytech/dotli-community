@@ -1,0 +1,72 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The Surface around these parts sets the rhythm between them. */
+
+.status {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.status-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.status-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.status-detail {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+
+.other {
+  padding: 0 var(--sp-1);
+}
+.transfer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+}
+/* Both rows empty (the product is on screen): no gap left behind. */
+.transfer:not(:has(> .transfer-row:not(:empty))) {
+  display: none;
+}
+.transfer-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  white-space: nowrap;
+}
+.transfer-row:empty {
+  display: none;
+}
+.transfer-label {
+  color: var(--chrome-text-muted);
+}
+.transfer-value {
+  color: var(--chrome-text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .status {
+    gap: var(--sp-3);
+  }
+  .transfer-row {
+    gap: var(--sp-3);
+  }
+}

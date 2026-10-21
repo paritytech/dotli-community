@@ -3,91 +3,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The shell around a product, on its `<label>.<BASE_DOMAIN>` host. The bare host's root serves landing.astro instead.
-import { ChatDock } from '@dotli/ui/islands/ChatDock';
-import { LoadingScreen } from '@dotli/ui/islands/LoadingScreen';
-import { TopbarReveal } from '@dotli/ui/islands/TopbarReveal';
 import PageHead from '../components/PageHead.astro';
 import Shell from '../components/Shell.astro';
+import { LoadingScreen } from '../islands/LoadingScreen.jsx';
+import { Overlays } from '../islands/Overlays.jsx';
+import { TopbarReveal } from '../islands/TopbarReveal.jsx';
 import s from './index.module.css';
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" class={s['page']}>
   <head>
     <PageHead />
-    {/* Opens the shared IndexedDB during HTML parse, overlapping module loading. src/db.ts takes window.__dotliDb. */}
-    <script is:inline>
-      window.__dotliDb = new Promise(function (resolve, reject) {
-        const req = indexedDB.open('dotli', 6);
-        req.onupgradeneeded = function () {
-          const db = req.result;
-          if (!db.objectStoreNames.contains('cids')) {
-            db.createObjectStore('cids', { keyPath: 'label' });
-          }
-          if (!db.objectStoreNames.contains('chains')) {
-            db.createObjectStore('chains', { keyPath: 'chain' });
-          }
-          // v2: scheduled notifications + per-product id counters.
-          if (!db.objectStoreNames.contains('scheduled_notifications')) {
-            const s = db.createObjectStore('scheduled_notifications', { keyPath: 'hostId', autoIncrement: true });
-            s.createIndex('byProductId', 'productId', { unique: false });
-            s.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
-          }
-          if (!db.objectStoreNames.contains('notification_counters')) {
-            db.createObjectStore('notification_counters', { keyPath: 'productId' });
-          }
-          // v3: product chat rooms and messages.
-          if (!db.objectStoreNames.contains('chat_rooms')) {
-            db.createObjectStore('chat_rooms', { keyPath: ['productId', 'roomId'] });
-          }
-          if (!db.objectStoreNames.contains('chat_messages')) {
-            const c = db.createObjectStore('chat_messages', { keyPath: 'seq', autoIncrement: true });
-            c.createIndex('byRoom', ['productId', 'roomId'], { unique: false });
-          }
-          // v4: product chat bot identities.
-          if (!db.objectStoreNames.contains('chat_bots')) {
-            db.createObjectStore('chat_bots', { keyPath: ['productId', 'botId'] });
-          }
-          // v5: content block cache.
-          if (!db.objectStoreNames.contains('blocks')) {
-            db.createObjectStore('blocks', { keyPath: 'cid' });
-          }
-          if (!db.objectStoreNames.contains('block_meta')) {
-            const b = db.createObjectStore('block_meta', { keyPath: 'cid' });
-            b.createIndex('byLastUsed', 'lastUsed', { unique: false });
-          }
-          // v6: the local wallet, one encrypted record.
-          if (!db.objectStoreNames.contains('local_wallet')) {
-            db.createObjectStore('local_wallet', { keyPath: 'id' });
-          }
-        };
-        req.onsuccess = function () {
-          resolve(req.result);
-        };
-        req.onerror = function () {
-          // Only the cause keeps the DOMException's message for src/db.ts to report.
-          const cause = req.error;
-          reject(
-            new Error(
-              'Failed to open dotli DB: ' + (cause ? cause.name : 'unknown'),
-              cause ? { cause: cause } : undefined,
-            ),
-          );
-        };
-        // A tab still open on an older schema blocks the upgrade, so reject rather than hang.
-        req.onblocked = function () {
-          reject(new Error('Failed to open dotli DB: blocked by another tab'));
-        };
-      });
-      window.__dotliDb.catch(function () {
-        // src/db.ts reports it once it takes the promise, so it must not also surface as unhandled.
-      });
-    </script>
   </head>
-  <body data-host>
+  <body class={s['page']} data-host>
     <Shell />
-
-    <ChatDock client:idle />
 
     {/* Outside `#app`, whose content the product replaces. */}
     <LoadingScreen client:load />
@@ -95,6 +25,10 @@ import s from './index.module.css';
     <div id="app" class={s['app']}></div>
     {/* After the app frame, so it is one Tab past it. */}
     <TopbarReveal client:idle />
+    {/* Marked, so a full-page screen keeps it. */}
+    <div data-overlays>
+      <Overlays client:idle={{ timeout: 1000 }} />
+    </div>
     <script src="../main.ts"></script>
   </body>
 </html>

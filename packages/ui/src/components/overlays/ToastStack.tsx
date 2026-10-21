@@ -1,15 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../state/toasts.js';
+import { dismissAllToasts, setToastsExpanded, showToasts, toastsStore } from '../../page/state/toasts.js';
 import { useStore } from '../use-store.js';
-import { CloseIcon } from '../primitives/IconButton.js';
+import { CloseIcon } from '../icons/CloseIcon.js';
 import { ToastCard } from './ToastCard.js';
+import { pileDepths, scrollsToNewest, visibleToasts } from './toast-pile.js';
 import s from './ToastStack.module.css';
-
-const MAX_STACK = 3;
 
 export function ToastStack(): JSX.Element {
   const items = useStore(toastsStore, state => state.items);
@@ -17,26 +16,19 @@ export function ToastStack(): JSX.Element {
   let root: HTMLDivElement | undefined;
   let cards: HTMLDivElement | undefined;
 
+  // Countdowns start only once a view shows the toasts.
+  onSettled(showToasts);
+
   // Worked out once per update, not once per card.
   const active = createMemo(() => items().filter(t => !t.leaving));
-  const visible = createMemo(() => (expanded() ? active() : active().slice(-MAX_STACK)));
-  // Depth in the collapsed pile, 0 for the newest. A card missing from the map is hidden behind the pile.
-  const depths = createMemo(() => {
-    const shown = visible();
-    const collapsed = !expanded();
-    const map = new Map<number, number>();
-    shown.forEach((t, i) => {
-      map.set(t.id, collapsed ? shown.length - 1 - i : 0);
-    });
-    return map;
-  });
+  const visible = createMemo(() => visibleToasts(active(), expanded()));
+  const depths = createMemo(() => pileDepths(visible(), expanded()));
   const many = createMemo(() => active().length > 1);
 
-  // Only a new toast scrolls to the newest card, not a dismissal or an unrelated write.
   createEffect(
     () => items().length,
     (count, previous) => {
-      if (previous !== undefined && count > previous && cards !== undefined && untrack(expanded)) {
+      if (cards !== undefined && scrollsToNewest(count, previous, untrack(expanded))) {
         cards.scrollTop = cards.scrollHeight;
       }
     },
@@ -92,9 +84,7 @@ export function ToastStack(): JSX.Element {
           data-testid="notif-cards"
           role="status"
           aria-live="polite"
-          style={{
-            cursor: !expanded() && many() ? 'pointer' : '',
-          }}
+          data-expandable={!expanded() && many() ? '' : undefined}
         >
           <For each={items()} keyed={t => t.id}>
             {entry => (
@@ -113,14 +103,14 @@ export function ToastStack(): JSX.Element {
           class={s['closeAll']}
           data-testid="notif-close-all"
           aria-label="Dismiss all"
-          style={{ display: many() ? '' : 'none' }}
+          hidden={!many()}
           onClick={event => {
             event.stopPropagation();
             dismissAllToasts();
             setToastsExpanded(false);
           }}
         >
-          <CloseIcon />
+          <CloseIcon class={s['closeAllIcon']} />
         </button>
       </div>
     </Show>

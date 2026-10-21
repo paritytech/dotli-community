@@ -1,9 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { flush, onCleanup } from 'solid-js';
+import { flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { CloseIcon, IconButton } from '../primitives/IconButton.js';
+import { createDrags } from '../drag.js';
+import { CloseIcon } from '../icons/CloseIcon.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { InSheet } from './in-sheet.js';
 import { dragSheet } from './sheet-drag.js';
 import s from './SheetFrame.module.css';
@@ -98,8 +100,16 @@ export interface SheetFrameProps {
   title: string;
   onDismiss: () => void;
   closeLabel?: string;
+  /** False draws no close button, and a swipe still calls `onDismiss`. Default true. */
+  closable?: boolean | undefined;
   /** Prefix for `-sheet-head`, `-sheet-title`, `-sheet-close`. */
   testId: string;
+  /** Whether its layer is open. The sheet slides on this. */
+  open: boolean;
+  /** Taking another sheet's place, or giving its place to one, so no slide. */
+  handedOff?: boolean | undefined;
+  /** The id of what describes the sheet, which focus on it reads. */
+  describedBy?: string | undefined;
   body?:
     | {
         role?: 'menu';
@@ -118,8 +128,8 @@ export interface SheetFrameProps {
 export function SheetFrame(props: SheetFrameProps): JSX.Element {
   let sheet: HTMLDivElement | undefined;
   let head: HTMLDivElement | undefined;
-  let stopDrag: (() => void) | undefined;
-  onCleanup(() => stopDrag?.());
+  const drags = createDrags();
+  onCleanup(drags.stopAll);
 
   const onPointerDown = (down: PointerEvent): void => {
     if (head === undefined || sheet === undefined || down.button !== 0) {
@@ -128,7 +138,7 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
     if (down.target instanceof Element && down.target.closest('button') !== null) {
       return;
     }
-    stopDrag = dragSheet(head, sheet, down, props.onDismiss);
+    dragSheet(drags, head, sheet, down, props.onDismiss);
   };
 
   return (
@@ -137,8 +147,11 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         sheet = el;
       }}
       class={s['sheet']}
+      data-state={props.open ? 'open' : 'closed'}
+      data-handoff={props.handedOff === true ? '' : undefined}
       data-modal-surface=""
       data-testid={props.testId}
+      aria-describedby={props.describedBy}
       tabindex="-1"
     >
       <div
@@ -153,16 +166,18 @@ export function SheetFrame(props: SheetFrameProps): JSX.Element {
         <h2 class={s['title']} data-testid={`${props.testId}-sheet-title`}>
           {props.title}
         </h2>
-        <IconButton
-          size="sm"
-          testId={`${props.testId}-sheet-close`}
-          aria-label={props.closeLabel ?? `Close ${props.title}`}
-          onClick={() => {
-            props.onDismiss();
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
+        <Show when={props.closable !== false}>
+          <IconButton
+            size="sm"
+            testId={`${props.testId}-sheet-close`}
+            aria-label={props.closeLabel ?? `Close ${props.title}`}
+            onClick={() => {
+              props.onDismiss();
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Show>
       </div>
       <div
         class={[s['body'], props.body?.class]}

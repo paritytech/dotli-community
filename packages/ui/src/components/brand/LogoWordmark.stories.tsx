@@ -11,4 +11,5 @@ const meta = { title: 'Brand/LogoWordmark', component: LogoWordmark, parameters:
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see the dot.li wordmark. */
 export const Default: Story = {};

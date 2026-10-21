@@ -10,8 +10,12 @@ server {
 
     root ${WEBROOT}/host;
     index index.html;
+    # Reaches only the locations with no add_header of their own, such as the landing page and the shell.
+    include /etc/nginx/snippets/dotli-headers-host.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    # The landing page. Every other path gets the shell, which sends a URL with no product back here.
+    # The landing page. Every other path gets the shell, which opens the product `/<label>` names and sends a URL with no
+    # product back here.
     location = / {
         try_files /landing.html =404;
     }
@@ -21,6 +25,9 @@ server {
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
         try_files /index.html =404;
     }
+
+    # The host's chunks and workers, which carry COEP so the cross-origin isolated /__preview page can start them.
+    include /etc/nginx/snippets/dotli-assets-preview.conf;
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 

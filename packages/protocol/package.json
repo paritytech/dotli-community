@@ -16,13 +16,17 @@
   },
   "devDependencies": {
     "@config/eslint": "*",
-    "@config/typescript": "*"
+    "@config/typescript": "*",
+    "@config/vite": "*"
   },
   "dependencies": {
+    "@dotli/chains": "*",
     "@dotli/config": "*",
     "@dotli/metrics": "*",
     "@dotli/resolver": "*",
     "@dotli/shared": "*",
-    "@polkadot-api/json-rpc-provider": "^0.2.0"
+    "@dotli/transport": "*",
+    "@polkadot-api/json-rpc-provider": "^0.2.0",
+    "scale-ts": "^1.6.1"
   }
 }

@@ -1,17 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For } from 'solid-js';
+import { createSignal, For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn } from 'storybook/test';
-import { SLIDERS_PATH } from '../../settings-glyph.js';
-import { CloseIcon, IconButton } from './IconButton.js';
-
-const Sliders = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-    <path d={SLIDERS_PATH} />
-  </svg>
-);
+import { CloseIcon } from '../icons/CloseIcon.js';
+import { SlidersIcon } from '../icons/SlidersIcon.js';
+import { IconButton } from './IconButton.js';
 
 const meta = {
   title: 'Primitives/IconButton',
@@ -21,7 +16,7 @@ const meta = {
   // Per story, since one node in the args would move between every button that shows it.
   render: args => (
     <IconButton {...args}>
-      <Sliders />
+      <SlidersIcon />
     </IconButton>
   ),
 } satisfies Meta<typeof IconButton>;
@@ -29,6 +24,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I press an icon button and its handler runs. */
 export const Default: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
     await step('When I press it', async () => {
@@ -39,19 +35,21 @@ export const Default: Story = {
     });
   },
 };
+/** As a dotli user, I see an icon button's badge in each tone and tell the tones apart. */
 export const Badges: Story = {
   render: args => (
     <div style={{ display: 'flex', gap: '12px' }}>
       <For each={['ok', 'warn', 'err', 'info', 'idle'] as const} keyed={false}>
         {tone => (
           <IconButton {...args} aria-label={`Settings, ${tone()}`} badge badgeTone={tone()}>
-            <Sliders />
+            <SlidersIcon />
           </IconButton>
         )}
       </For>
     </div>
   ),
 };
+/** As a dotli user, I see the small icon button. */
 export const Small: Story = {
   args: { size: 'sm', 'aria-label': 'Close' },
   render: args => (
@@ -59,4 +57,35 @@ export const Small: Story = {
       <CloseIcon />
     </IconButton>
   ),
+};
+
+/** As a dotli user, I press an icon button in a form and its handler runs without submitting the form. */
+export const InForm: Story = {
+  args: { 'aria-label': 'Clear' },
+  render: args => {
+    const [submitted, setSubmitted] = createSignal(false);
+    return (
+      <form
+        data-testid="form"
+        data-submitted={submitted() ? '' : undefined}
+        onSubmit={ev => {
+          ev.preventDefault();
+          setSubmitted(true);
+        }}
+      >
+        <IconButton {...args}>
+          <CloseIcon />
+        </IconButton>
+      </form>
+    );
+  },
+  play: async ({ args, canvas, userEvent, step }) => {
+    await step('When I press the icon button in a form', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Clear' }));
+    });
+    await step('Then its handler runs and the form is not submitted', async () => {
+      await expect(args.onClick).toHaveBeenCalledOnce();
+      await expect(canvas.getByTestId('form')).not.toHaveAttribute('data-submitted');
+    });
+  },
 };

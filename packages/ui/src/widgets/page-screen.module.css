@@ -1,0 +1,7 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The screen inside lays itself out as if it sat in `#app` itself. */
+.holder {
+  display: contents;
+}

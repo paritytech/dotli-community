@@ -36,7 +36,7 @@ CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 
 VALID_ENVS := polkadot paseo dev-paseo fyi-paseo dev-test
 
-RATE_LIMITED_ENVS := paseo dev-test
+RATE_LIMITED_ENVS := polkadot paseo dev-test
 
 # Cut from SENTRY_DSN, shaped https://<key>@<ingest-host>/<project-id>.
 SENTRY_DSN ?=
@@ -54,10 +54,18 @@ TRUAPI_HOST_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi-host/package.json
 # The brotli module is split across two packages on noble, both auto-loaded. curl and ca-certificates back certbot.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-.PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
+.PHONY: build build-prod link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal renew-cert deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
 build: link-truapi-local
 	npm run build
+
+# Deploys ship the .br and .gz siblings that nginx's brotli_static and gzip_static serve. They build against the
+# pinned @parity/truapi: `npm ci` reinstalls from the lockfile, which also drops a link left by `make build` or
+# `npm run link:truapi`. --force, because Turbo does not hash node_modules, so a dist cached from a linked build
+# would otherwise be reused.
+build-prod:
+	npm ci
+	npm run build:prod -- --force
 
 link-truapi-local:
 	@if [ -f "$(TRUAPI_LOCAL_PACKAGE)" ] && [ -f "$(TRUAPI_HOST_LOCAL_PACKAGE)" ]; then \
@@ -102,8 +110,15 @@ provision-renewal: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	ssh $(REMOTE_TARGET) 'sudo systemctl enable --now certbot.timer'
 
+# certbot renews only when the cert is due. nginx reloads either way, since the timer's renewals never reload it.
+# Without a terminal certbot first waits a random delay of up to 8 minutes, which a run on demand has no use for.
+# The keepalive holds the connection while certbot is silent, which the runner's idle timeout otherwise cuts.
+renew-cert: _require-env
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	ssh -o ServerAliveInterval=30 $(REMOTE_TARGET) 'sudo certbot renew -v --non-interactive --no-random-sleep-on-renew --cert-name $(SITE_$(ENV)) && sudo nginx -t && sudo systemctl reload nginx && sudo certbot certificates --cert-name $(SITE_$(ENV))'
+
 # Builds locally, then rsyncs only the dist directories.
-deploy: _require-env build
+deploy: _require-env build-prod
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval REMOTE_PATH   := $(DEPLOY_PATH_$(ENV)))
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'
@@ -120,7 +135,7 @@ _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 
 # Warns on stderr, since render-nginx pipes stdout. Envs without Sentry are legitimate, a silently dead tunnel is not.
 _sentry_warn = @test -n "$(SENTRY_DSN)" || \
-	echo "WARNING: SENTRY_DSN not set — rendering with the Sentry tunnel (/t) disabled." >&2
+	echo "WARNING: SENTRY_DSN not set. Rendering with the Sentry tunnel (/t) disabled." >&2
 
 # Prints the rendered nginx config for ENV, with no remote changes.
 render-nginx: _require-env-name

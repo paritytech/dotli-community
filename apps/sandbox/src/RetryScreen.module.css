@@ -1,0 +1,66 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Its own copy of the loading layout, since sharing that sheet would link a second render-blocking copy of it. */
+
+.screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--content-height);
+  margin: 0;
+  padding: 0 calc(var(--sp-8) + var(--safe-right)) 80px calc(var(--sp-8) + var(--safe-left));
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  text-align: center;
+  color-scheme: dark;
+}
+
+/* The sandbox has no `#app`, so the screen fills its transparent body itself. */
+.standalone {
+  min-height: 100dvh;
+  background: var(--bg-page);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  margin: 0;
+  padding: 0;
+}
+
+.mark {
+  display: block;
+}
+
+.step {
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.line {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-body);
+  text-wrap: balance;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 560px) {
+  .screen {
+    padding: 0 calc(var(--sp-4) + var(--safe-right)) var(--sp-14) calc(var(--sp-4) + var(--safe-left));
+  }
+}

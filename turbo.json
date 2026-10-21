@@ -3,25 +3,34 @@
   "agentGuidance": false,
   "globalEnv": ["DEV", "PROD", "SSR", "BASE_URL", "NODE_ENV", "VITE_*", "DOTLI_NETWORK"],
   "tasks": {
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*"],
       "outputs": ["dist/**"],
       "cache": false
     },
     "build:prod": {
-      "dependsOn": ["^build:prod"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*", "$TURBO_ROOT$/scripts/compress-dist.ts"],
       "outputs": ["dist/**"],
       "env": ["SENTRY_AUTH_TOKEN"]
     },
     "test": {
-      "dependsOn": ["build"]
+      "dependsOn": ["transit"]
+    },
+    "@config/vite#test": {
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/nginx/snippets/**", "$TURBO_ROOT$/docker/dotli-runtime-network.conf"]
     },
     "lint": {
+      "dependsOn": ["transit"],
       "outputs": []
     },
     "typecheck": {
+      "dependsOn": ["transit"],
       "outputs": []
     },
     "dev": {
@@ -29,9 +38,15 @@
       "persistent": true
     },
     "//#lint:root": {
+      "dependsOn": ["^transit"],
       "outputs": []
     },
     "//#typecheck:root": {
+      "dependsOn": ["^transit"],
+      "outputs": []
+    },
+    "//#test:root": {
+      "dependsOn": ["^transit"],
       "outputs": []
     }
   }

@@ -1,0 +1,166 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+:where(.slider) {
+  display: flex;
+  flex-direction: column;
+}
+.track {
+  position: relative;
+  height: 24px;
+  cursor: pointer;
+  outline: none;
+  /* The pointer drags the thumb, so the browser must not take it for a scroll. */
+  touch-action: none;
+}
+.rail {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  left: 5px;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: var(--r-full);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+}
+/* Its inset is the thumb radius, so the end stops land on the rail's rounded ends. */
+.layer {
+  --fill-lead: 3px;
+  position: absolute;
+  inset: 0 8px;
+}
+.fill {
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--fill-lead));
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: var(--r-full);
+  background: var(--chrome-text-muted);
+  transition: width var(--dur) var(--ease-spring);
+}
+.tick {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--chrome-action-dim);
+}
+.tick[data-filled] {
+  background: color-mix(in srgb, var(--chrome-on-primary) 40%, transparent);
+}
+.thumb {
+  --thumb-inset: inset 0 0 0 0 transparent;
+  --thumb-halo: 0 0 0 0 transparent;
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: var(--chrome-text);
+  box-shadow: var(--thumb-inset), var(--chrome-shadow-knob), var(--thumb-halo);
+  transition: left var(--dur) var(--ease-spring);
+}
+.track:hover > .layer > .thumb {
+  --thumb-halo: 0 0 0 6px var(--chrome-fill);
+}
+.track[data-dragging] > .layer > .thumb {
+  --thumb-halo: 0 0 0 7px var(--chrome-fill-strong);
+  transform: scale(1.12);
+}
+.track[data-marked] > .layer > .thumb {
+  --thumb-inset: inset 0 0 0 4px var(--chrome-text);
+  background: var(--chrome-solid);
+}
+.track:focus-visible > .layer > .thumb {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.track[data-dragging] > .layer > .fill,
+.track[data-dragging] > .layer > .thumb {
+  transition: none;
+}
+.stops {
+  position: relative;
+  height: 16px;
+  margin: var(--sp-1_5) 8px 0;
+  /* Only the labels take presses, so the strip between them that overlaps the track on phones still starts a drag. */
+  pointer-events: none;
+}
+.stop {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: var(--fw-medium) var(--fs-caption) / 16px var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  transition: color var(--dur-fast);
+}
+.stop:first-child {
+  transform: translateX(-8px);
+}
+.stop:last-child {
+  transform: translateX(calc(-100% + 8px));
+}
+.stop:hover,
+.stop[data-current] {
+  color: var(--chrome-text);
+}
+@media (max-width: 560px) {
+  .track {
+    height: 44px;
+  }
+  .rail {
+    right: 6px;
+    left: 6px;
+    height: 8px;
+  }
+  .layer {
+    --fill-lead: 4px;
+    inset: 0 10px;
+  }
+  .fill {
+    height: 8px;
+  }
+  .thumb {
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+  }
+  .track[data-marked] > .layer > .thumb {
+    --thumb-inset: inset 0 0 0 5px var(--chrome-text);
+  }
+  .stops {
+    height: 44px;
+    margin: -6px 10px;
+  }
+  .stop {
+    font-size: var(--fs-small);
+  }
+  .stop:first-child {
+    transform: translateX(-10px);
+  }
+  .stop:last-child {
+    transform: translateX(calc(-100% + 10px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fill,
+  .thumb,
+  .stop {
+    transition: none;
+  }
+}

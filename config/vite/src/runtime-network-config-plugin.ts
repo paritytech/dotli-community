@@ -2,20 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Injected only on opt-in, so hosted builds do not carry the hook at all. The reader side is gated separately in
-// network.ts, so neither half alone enables it.
+// network.ts, so neither half alone enables it. Every local server sends this script as the container's nginx does.
 
 import type { Plugin } from 'vite';
 
-/** Path nginx serves from the container's generated config. */
-const SCRIPT_SRC = '/dotli-network.js';
+/** The path of the config script, which nginx serves from the container's generated file. */
+export const RUNTIME_NETWORK_CONFIG_PATH = '/dotli-network.js';
 
 /**
- * The script body, from the same `$DOTLI_NETWORK` the container entrypoint reads.
- * Every server must serve this path, or an SPA fallback answers with HTML the browser runs as JavaScript.
+ * The config script's headers, as the container's nginx sends them. The config can name private RPC endpoints, so it is
+ * same-origin only, with no CORS and no private network grant. no-store, so a restart with a new config applies at once.
  */
-export function runtimeNetworkConfigScriptBody(): string {
-  const raw = process.env['DOTLI_NETWORK']?.trim();
-  const config = raw === undefined || raw === '' ? '{}' : raw;
+export const RUNTIME_NETWORK_CONFIG_HEADERS: Readonly<Record<string, string>> = {
+  'Content-Type': 'application/javascript',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Cache-Control': 'no-store',
+};
+
+/**
+ * The script body for `raw`, the text of `$DOTLI_NETWORK`. Unset or blank keeps the built-in networks. Throws on text
+ * that is not JSON, so a server reads it once at start and refuses to run instead of failing its first request.
+ * Every server must answer the path, or an SPA fallback sends HTML the browser runs as JavaScript.
+ */
+export function runtimeNetworkConfigScriptBody(raw: string | undefined): string {
+  const trimmed = raw?.trim();
+  const config = trimmed === undefined || trimmed === '' ? '{}' : trimmed;
   // Parsed only to fail early on a typo. The original text is served.
   try {
     JSON.parse(config);
@@ -37,7 +50,7 @@ export function runtimeNetworkConfigScript(): Plugin {
       return [
         {
           tag: 'script',
-          attrs: { src: SCRIPT_SRC },
+          attrs: { src: RUNTIME_NETWORK_CONFIG_PATH },
           injectTo: 'head-prepend' as const,
         },
       ];
@@ -47,14 +60,18 @@ export function runtimeNetworkConfigScript(): Plugin {
       if (!enabled) {
         return;
       }
+      const body = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETWORK']);
       server.middlewares.use((req, res, next) => {
-        if (req.url?.split('?')[0] !== SCRIPT_SRC) {
+        if (req.url?.split('?')[0] !== RUNTIME_NETWORK_CONFIG_PATH) {
           next();
           return;
         }
-        res.setHeader('Content-Type', 'application/javascript');
-        res.setHeader('Cache-Control', 'no-store');
-        res.end(runtimeNetworkConfigScriptBody());
+        // Vite's own CORS middleware runs first and allows loopback origins, which this script must not.
+        res.removeHeader('Access-Control-Allow-Origin');
+        for (const [name, value] of Object.entries(RUNTIME_NETWORK_CONFIG_HEADERS)) {
+          res.setHeader(name, value);
+        }
+        res.end(body);
       });
     },
   };

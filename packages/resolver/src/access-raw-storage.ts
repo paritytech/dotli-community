@@ -14,41 +14,10 @@ import {
 import { PartialStorageReadError } from './errors.js';
 import type { Api } from './api.js';
 
-export type StatusCallback = (status: string) => void;
-
-/** Stable phase tokens. Status strings are for humans and change freely. */
-export type ResolvePhase =
-  | 'light-client-starting'
-  | 'relay-chain-adding'
-  | 'asset-hub-connecting'
-  | 'asset-hub-syncing'
-  | 'asset-hub-ready'
-  | 'resolving-content';
+/** How far a name read has come. */
+export type ResolvePhase = 'asset-hub-connecting' | 'asset-hub-syncing' | 'asset-hub-ready' | 'resolving-content';
 
 export type PhaseCallback = (phase: ResolvePhase) => void;
-
-/** Recovers the phase from a status string, for callers that only receive strings across a frame boundary. */
-export function statusToPhase(message: string): ResolvePhase | null {
-  if (message.startsWith('Starting light client')) {
-    return 'light-client-starting';
-  }
-  if (message.startsWith('Adding Paseo relay')) {
-    return 'relay-chain-adding';
-  }
-  if (message.startsWith('Connecting to Asset Hub') || message.includes('Discovering') || message.includes('peers')) {
-    return 'asset-hub-connecting';
-  }
-  if (message.startsWith('Syncing with Asset Hub') || message.startsWith('Syncing #')) {
-    return 'asset-hub-syncing';
-  }
-  if (message.startsWith('Synced to') || message.startsWith('Connected to Asset Hub')) {
-    return 'asset-hub-ready';
-  }
-  if (message.includes('Resolving content')) {
-    return 'resolving-content';
-  }
-  return null;
-}
 
 /** Keeps one block pinned until `read` settles. Resolves `null` without calling `read` when no contract exists. */
 function withPinnedContract<T>(

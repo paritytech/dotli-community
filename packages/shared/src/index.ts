@@ -1,35 +1,44 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+export { toAbortError } from './abort.js';
 export {
   createAsyncTaskPool,
-  DEFAULT_POOL,
   type AsyncTaskParams,
   type AsyncTaskPool,
   type AsyncTaskPoolParams,
 } from './async-task-pool.js';
-export {
-  formatAppVersion,
-  getActiveAppManifest,
-  getActiveRootManifest,
-  setActiveAppManifest,
-  setActiveRootManifest,
-} from './active-manifest.js';
-export {
-  CHAT_AVAILABILITY_EVENT,
-  chatCapabilityFor,
-  primeChatCapability,
-  setChatCapability,
-  type ChatAvailabilityDetail,
-} from './chat-capability.js';
-export { markContinuation, peekContinuation, takeContinuation, type Continuation } from './continuation.js';
-export { isMobileDevice } from './device.js';
-export { dotNsUrl } from './dotns-url.js';
 export { endpointHost, gatewayUnreachable } from './error-copy.js';
-export { errorName, fullErrorChain, serializeError } from './errors.js';
-export { isExecutableKind } from './executables.js';
+export { errorMessage, errorName, fullErrorChain, named, serializeError, toError } from './errors.js';
+export { deleteIdb, idbRequest, idbTransaction, openIdb } from './idb.js';
+export {
+  deleteAllDatabases,
+  OriginWipeError,
+  wipeOriginStores,
+  type OriginStores,
+  type OriginWipePart,
+} from './origin-wipe.js';
 export { fromHex, toHex } from './hex.js';
-export { isValidDotLabel, validateDotLabel, type DotLabelResult } from './html.js';
 export { bindLogSink, log, type LogLevel } from './log.js';
-export { getMimeType } from './mime.js';
+export { formatRate, formatSize } from './byte-size.js';
+export { createLazyLoad } from './lazy-load.js';
+export { createListenerSet, type ListenerSet, type ListenerSetOptions } from './listener-set.js';
+export { deferred } from './deferred.js';
 export { dur, elapsed } from './perf.js';
+export { noop } from './noop.js';
+export { createPendingReplies, type PendingReplies } from './pending-replies.js';
+export { randomId } from './random-id.js';
+export { createStatusCell, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
+export {
+  createSyncStore,
+  registerStoreStateReset,
+  shallowEqual,
+  StoreListenerError,
+  type ReadableStore,
+  type SyncStore,
+  type SyncStoreOptions,
+} from './sync-store.js';
+export { pageLocalStorage, pageSessionStorage, safeStorage, type SafeStorage } from './safe-storage.js';
+export { realTimers, type Timers } from './timers.js';
+export { sleep } from './sleep.js';
+export { withTimeout } from './with-timeout.js';

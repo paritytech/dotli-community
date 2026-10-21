@@ -276,14 +276,14 @@ function compareRunsMd(label: string, base: RunStats, last: RunStats): string {
 
     lines.push(
       `**Overall:** ${verdictEmoji(verdict)} **${verdict.label}** &nbsp;|&nbsp; ` +
-        `p50: ${fmt(bTotal.p50)} → ${fmt(lTotal.p50)} (${fmtPct(lTotal.p50, bTotal.p50)}) &nbsp;|&nbsp; ` +
-        `p95: ${fmt(bTotal.p95)} → ${fmt(lTotal.p95)} (${fmtPct(lTotal.p95, bTotal.p95)}) &nbsp;|&nbsp; ` +
+        `p50: ${fmt(bTotal.p50)} to ${fmt(lTotal.p50)} (${fmtPct(lTotal.p50, bTotal.p50)}) &nbsp;|&nbsp; ` +
+        `p95: ${fmt(bTotal.p95)} to ${fmt(lTotal.p95)} (${fmtPct(lTotal.p95, bTotal.p95)}) &nbsp;|&nbsp; ` +
         `Mann-Whitney: z=${mw.z.toFixed(2)} ${mw.significant ? '✅ significant' : 'not significant'}`,
     );
 
     if (bTotal.cv > 0.3 || lTotal.cv > 0.3) {
       lines.push('');
-      lines.push(`> ⚠️ High variance (CV > 0.3) — results may not be reliable.`);
+      lines.push(`> ⚠️ High variance (CV > 0.3). Results may not be reliable.`);
     }
     lines.push('');
   }
@@ -377,13 +377,13 @@ function compareRuns(label: string, base: RunStats, last: RunStats, verbose: boo
 
     console.log(
       `  ${B}${label}${R}  ${verdict.color}${verdict.icon} ${verdict.label}${R}  |  ` +
-        `p50: ${fmt(bTotal.p50)} → ${p50Color}${fmt(lTotal.p50)}${R} (${p50Color}${fmtPct(lTotal.p50, bTotal.p50)}${R})  |  ` +
-        `p95: ${fmt(bTotal.p95)} → ${p95Color}${fmt(lTotal.p95)}${R} (${p95Color}${fmtPct(lTotal.p95, bTotal.p95)}${R})  |  ` +
+        `p50: ${fmt(bTotal.p50)} to ${p50Color}${fmt(lTotal.p50)}${R} (${p50Color}${fmtPct(lTotal.p50, bTotal.p50)}${R})  |  ` +
+        `p95: ${fmt(bTotal.p95)} to ${p95Color}${fmt(lTotal.p95)}${R} (${p95Color}${fmtPct(lTotal.p95, bTotal.p95)}${R})  |  ` +
         `Mann-Whitney: z=${mw.z.toFixed(2)} ${mw.significant ? `${G}significant${R}` : `${D}not significant${R}`}`,
     );
 
     if (bTotal.cv > 0.3 || lTotal.cv > 0.3) {
-      console.log(`  ${Y}Warning: CV > 0.3 — results may not be reliable.${R}`);
+      console.log(`  ${Y}Warning: CV > 0.3. Results may not be reliable.${R}`);
     }
   } else {
     console.log(`  ${B}${label}${R}  ${D}(no end-to-end data to compare)${R}`);

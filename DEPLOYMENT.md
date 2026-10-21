@@ -8,9 +8,9 @@ command works for the first boot and for later top-ups.
 ### Remote server
 
 - Ubuntu 24.04+ (Noble).
-- The SSH user must have **passwordless `sudo`** — the provisioning steps run `sudo` non-interactively over SSH (no
-  TTY), so a password prompt makes them fail. Either grant the user `NOPASSWD` sudo (e.g. a drop-in in
-  `/etc/sudoers.d/`), or connect as `root` directly (`REMOTE=root@<ip>`).
+- The SSH user must have **passwordless `sudo`**. The provisioning steps run `sudo` non-interactively over SSH (no TTY),
+  so a password prompt makes them fail. Either grant the user `NOPASSWD` sudo (e.g. a drop-in in `/etc/sudoers.d/`), or
+  connect as `root` directly (`REMOTE=root@<ip>`).
 - Reachable over SSH from your machine without a password (key-based auth).
 - Public IP with ports `22`, `80`, and `443` open (the firewall step opens these via `ufw`).
 
@@ -18,7 +18,7 @@ command works for the first boot and for later top-ups.
 
 - The zone for the env's base domain (e.g. `paseo.li`) managed in Cloudflare.
 - `A` / `AAAA` records pointing to the box for the apex.
-- A Cloudflare API token scoped to **Zone → DNS → Edit** on that zone.
+- A Cloudflare API token with the **Zone / DNS / Edit** permission on that zone.
 
 **Important:** The token needs to exist for all the time this is hosted as it will be required to renew the
 certificates.
@@ -55,17 +55,19 @@ deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_
 
 `Makefile:81` chains these targets in order:
 
-1. `provision-prereqs` — apt-installs nginx (with brotli modules), certbot, the Cloudflare DNS plugin, rsync, ufw, curl;
-   removes the default nginx site.
-2. `provision-firewall` — allows `OpenSSH` and `Nginx Full`, then enables `ufw`. SSH is whitelisted before enable so you
+1. `provision-prereqs`: apt-installs nginx (with brotli modules), certbot, the Cloudflare DNS plugin, rsync, ufw and
+   curl, and removes the default nginx site.
+2. `provision-firewall`: allows `OpenSSH` and `Nginx Full`, then enables `ufw`. SSH is whitelisted before enable so you
    don't lock yourself out.
-3. `provision-cloudflare-creds` — writes `/etc/letsencrypt/cloudflare.ini` (`0600`, `root:root`) from the token you pass
+3. `provision-cloudflare-creds`: writes `/etc/letsencrypt/cloudflare.ini` (`0600`, `root:root`) from the token you pass
    in.
-4. `provision-cert` — issues a Let's Encrypt cert via DNS-01 covering the apex, `*.<base>`, and `*.app.<base>`.
+4. `provision-cert`: issues a Let's Encrypt cert via DNS-01 covering the apex, `*.<base>`, and `*.app.<base>`.
    `--keep-until-expiring --expand` makes re-runs cheap.
-5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
-6. `deploy` — runs `npm run build` on your machine `dist/` outputs into the env's web root.
-7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
+5. `provision-renewal`: enables `certbot.timer` for auto-renewal.
+6. `deploy`: reinstalls the pinned dependencies with `npm ci`, which also drops a local TrUAPI link, runs
+   `npm run build:prod` on your machine, forced so Turbo cannot reuse a dist cached from a linked build, and rsyncs the
+   `dist/` outputs into the env's web root.
+7. `deploy-nginx`: renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
    into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
 
 ## Run it
@@ -88,6 +90,8 @@ On success the last line is `Provisioning complete for ENV=<env>.` and the site 
   the environment and it runs the same target against that environment's box, behind that environment's protection
   rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
   and `paseoli.dev` from `main`.
+- To renew a certificate by hand, `make renew-cert ENV=<env>`, or run the **Renew certificate** workflow the same way.
+  certbot renews only when the cert is within 30 days of expiry, and nginx reloads so it serves the new one.
 
 ## Checking what is deployed
 

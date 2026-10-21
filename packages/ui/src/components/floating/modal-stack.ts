@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Shown modal layers and the inertness they put on the page. Apart from ModalLayer so anchored surfaces can
-// ask whether one is shown without loading it.
+// Shown modal layers and the inertness they put on the page.
 
 /** In opening order. The page answers to the last. */
 const shownLayers: HTMLElement[] = [];
@@ -11,11 +10,6 @@ const madeInert = new Set<HTMLElement>();
 
 export function topLayer(): HTMLElement | undefined {
   return shownLayers.at(-1);
-}
-
-/** An anchored surface must not cover a shown modal layer. */
-export function modalLayerShown(): boolean {
-  return shownLayers.length > 0;
 }
 
 /**

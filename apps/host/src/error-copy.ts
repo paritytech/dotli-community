@@ -16,11 +16,13 @@ export const HOST_ERRORS = {
   BITSWAP_NO_PEERS: 'No connected peers have the app files requested right now.',
   ARCHIVE_TRUNCATED: 'The download stopped before all the app files arrived.',
   ARCHIVE_NO_INDEX: 'This app was published without a start page.',
-  MODULE_FETCH_FAILED: "Couldn't load app resources — reload to retry.",
+  MODULE_FETCH_FAILED: "Couldn't load app resources. Reload to retry.",
   CHAIN_SPEC_REJECTED: "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
   MANIFEST_UNSUPPORTED_VERSION: "This app is published in a format dot.li doesn't support yet.",
   MANIFEST_INVALID: "This app's manifest is invalid, so dot.li can't tell how to open it.",
+  SANDBOX_SILENT: "The app's frame didn't start in this browser.",
+  PROTOCOL_UPDATED: 'dot.li was updated since this page loaded. Reload to load the new version.',
 } as const;
 
 export const FAILOVER_BTN_LABELS = {

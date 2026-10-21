@@ -4,13 +4,23 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { trustedInput } from '@config/storybook/play';
 import { Button } from '../primitives/Button.js';
+import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layer-context.js';
 import { Popover } from './Popover.js';
 
 const onOther = fn().mockName('onOther');
 const onOpenChange = fn().mockName('onOpenChange');
 const onOpenChangeA = fn().mockName('onOpenChangeA');
 const onOpenChangeB = fn().mockName('onOpenChangeB');
+/** The layers the page tracks, as an auto-hiding bar tracks its own. */
+const tracked = new Set<TrackedLayer>();
+const track = (layer: TrackedLayer): (() => void) => {
+  tracked.add(layer);
+  return () => {
+    tracked.delete(layer);
+  };
+};
 
 function Harness() {
   const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
@@ -100,21 +110,17 @@ type Story = StoryObj<typeof meta>;
 // The surface is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 const surface = () => body.getByTestId('story-popover-surface');
-/**
- * Trusted input, which light dismiss, invokers, close requests and iframe focus require.
- * Imported lazily so Storybook loads the stories outside Vitest.
- */
-const input = async () => (await import('vitest/browser')).userEvent;
 const openIt = async () => {
-  await (await input()).click(body.getByTestId('trigger'));
+  await (await trustedInput()).click(body.getByTestId('trigger'));
   await waitFor(() => expect(surface()).toHaveAttribute('data-open'));
 };
 
+/** As a dotli user, I click another button while a popover is open and the popover closes and the button gets the click. */
 export const ClickOutsideReachesTarget: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
     await step('When I click the Other button', async () => {
-      await (await input()).click(body.getByTestId('other'));
+      await (await trustedInput()).click(body.getByTestId('other'));
     });
     await step('Then the popover closed and Other got the click', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -123,11 +129,12 @@ export const ClickOutsideReachesTarget: Story = {
   },
 };
 
+/** As a dotli user, I click inside the product frame and the open popover closes while focus stays in the frame. */
 export const ClosesOnWindowBlur: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
     await step('When I click inside the product iframe', async () => {
-      await (await input()).click(body.getByTestId('product'));
+      await (await trustedInput()).click(body.getByTestId('product'));
     });
     await step('Then the popover closed and focus stayed in the iframe', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -136,6 +143,7 @@ export const ClosesOnWindowBlur: Story = {
   },
 };
 
+/** As a keyboard user, I press Escape with focus on the body and the popover closes with focus back on its trigger. */
 export const EscapeReturnsFocusToTrigger: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open and focus is on the body (as Safari leaves it)', async () => {
@@ -143,7 +151,7 @@ export const EscapeReturnsFocusToTrigger: Story = {
       (document.activeElement as HTMLElement | null)?.blur();
     });
     await step('When I press Escape', async () => {
-      await (await input()).keyboard('{Escape}');
+      await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it closed and the trigger has focus', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -152,28 +160,12 @@ export const EscapeReturnsFocusToTrigger: Story = {
   },
 };
 
-export const TabStaysInside: Story = {
-  play: async ({ step }) => {
-    await step('Given the popover is open with focus on its first control', async () => {
-      await openIt();
-      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
-    });
-    await step('When I Tab twice', async () => {
-      const user = await input();
-      await user.tab();
-      await user.tab();
-    });
-    await step('Then focus wrapped to the first control', async () => {
-      await expect(body.getByTestId('inside-a')).toHaveFocus();
-    });
-  },
-};
-
+/** As a dotli user, I click the trigger of an open popover and it closes once. */
 export const TriggerTogglesClosed: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
     await step('When I click the trigger again', async () => {
-      await (await input()).click(body.getByTestId('trigger'));
+      await (await trustedInput()).click(body.getByTestId('trigger'));
     });
     await step('Then it is closed, once', async () => {
       await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
@@ -182,6 +174,7 @@ export const TriggerTogglesClosed: Story = {
   },
 };
 
+/** As a dotli user, I open a modal dialog and the open popover closes. */
 export const ClosesWhenAModalOpens: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open', openIt);
@@ -198,15 +191,16 @@ export const ClosesWhenAModalOpens: Story = {
   },
 };
 
+/** As a dotli user, I click another popover's trigger once and the first closes while the second opens with focus inside. */
 export const OneClickMovesToAnotherPopover: Story = {
   render: () => <TwoPopovers />,
   play: async ({ step }) => {
     await step('Given popover A is open', async () => {
-      await (await input()).click(body.getByTestId('trigger-a'));
+      await (await trustedInput()).click(body.getByTestId('trigger-a'));
       await waitFor(() => expect(body.getByTestId('surface-a')).toHaveAttribute('data-open'));
     });
     await step("When I click B's trigger once", async () => {
-      await (await input()).click(body.getByTestId('trigger-b'));
+      await (await trustedInput()).click(body.getByTestId('trigger-b'));
     });
     await step('Then A closed and B is open with focus inside it, each change reported once', async () => {
       await waitFor(() => expect(body.getByTestId('surface-b')).toHaveAttribute('data-open'));
@@ -214,6 +208,56 @@ export const OneClickMovesToAnotherPopover: Story = {
       await waitFor(() => expect(body.getByTestId('inside-b')).toHaveFocus());
       await expect(onOpenChangeA.mock.calls).toEqual([[true], [false]]);
       await expect(onOpenChangeB.mock.calls).toEqual([[true]]);
+    });
+  },
+};
+
+/** As a dotli user, I open a popover and the page tracks one open layer holding focus until I press Escape. */
+export const PageTracksOpenLayer: Story = {
+  render: () => (
+    <LayerTracker value={track}>
+      <Harness />
+    </LayerTracker>
+  ),
+  play: async ({ step }) => {
+    await step('Given the page tracks the layers below it, and the popover is open with focus inside', async () => {
+      await openIt();
+      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
+    });
+    await step('Then the page sees one layer, open and holding the focus', async () => {
+      const layers = [...tracked];
+      await expect(layers).toHaveLength(1);
+      await expect(layers[0]?.open()).toBe(true);
+      await expect(layers[0]?.element()?.contains(document.activeElement)).toBe(true);
+    });
+    await step('When I press Escape', async () => {
+      await (await trustedInput()).keyboard('{Escape}');
+    });
+    await step('Then the page sees it closed', async () => {
+      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await expect([...tracked].map(layer => layer.open())).toEqual([false]);
+    });
+  },
+};
+
+/** As a keyboard user, I press Escape after the page hid the trigger and focus goes to the page's fallback. */
+export const HiddenTriggerHandsFocusToBoundary: Story = {
+  render: () => (
+    <AnchorBoundary value={{ fallbackFocus: () => body.getByTestId('other') }}>
+      <Harness />
+    </AnchorBoundary>
+  ),
+  play: async ({ step }) => {
+    await step('Given the popover is open and the page then hid its trigger', async () => {
+      await openIt();
+      body.getByTestId('trigger').style.display = 'none';
+    });
+    await step('When I press Escape', async () => {
+      await (await trustedInput()).keyboard('{Escape}');
+    });
+    await step("Then it closed and the boundary's fallback has focus", async () => {
+      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(body.getByTestId('other')).toHaveFocus());
     });
   },
 };

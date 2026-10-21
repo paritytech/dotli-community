@@ -1,11 +1,20 @@
 name: Release artifacts
 
-# Attaches a runnable tarball to the release and pushes the image to GHCR. `workflow_dispatch` backfills an existing
-# tag.
+# Attaches a runnable tarball to the release and pushes the image to GHCR. The deploy calls it once the release is
+# published, and `workflow_dispatch` backfills an existing tag.
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Published release tag to build and attach artifacts to'
+        required: true
+        type: string
+      latest:
+        description: 'Move the image `latest` tag to this release'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
@@ -18,7 +27,7 @@ permissions:
   packages: write # push to ghcr.io
 
 concurrency:
-  group: release-artifacts-${{ inputs.tag || github.event.release.tag_name }}
+  group: release-artifacts-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
@@ -37,26 +46,51 @@ jobs:
     steps:
       - id: tag
         env:
-          INPUT_TAG: ${{ inputs.tag }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          TAG: ${{ inputs.tag }}
+          # Only the release flow moves `latest`. A manual backfill of an older tag must not repoint it.
+          LATEST: ${{ inputs.latest == true }}
         run: |
           set -euo pipefail
-          TAG="${INPUT_TAG:-$RELEASE_TAG}"
           test -n "$TAG" || { echo "No tag to build"; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          # `latest` only moves for a real, non-prerelease publish. A manual
-          # backfill of an older tag must not repoint it.
-          if [ -n "$RELEASE_TAG" ] && [ "$IS_PRERELEASE" != "true" ]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+
+  # The PR checks' own scripts, as the deploy gate runs them. The builds below do not type-check.
+  quality-gate:
+    name: Quality Gate
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      # Tags cut before the knip script existed still backfill.
+      - name: Unused files, exports and dependencies
+        run: npm run --if-present knip
+
+      - name: Unit tests
+        run: npm test
 
   tarball:
     name: Bundle tarball
-    needs: resolve
+    needs: [resolve, quality-gate]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -68,11 +102,11 @@ jobs:
         uses: ./.github/actions/setup-node
 
       # build:prod, because only it writes the .br/.gz siblings the server negotiates. Without
-      # VITE_RUNTIME_NETWORK_CONFIG the app silently ignores $DOTLI_NETWORK and points at the public chain.
+      # VITE_RUNTIME_NETWORK_CONFIG the app silently ignores $DOTLI_NETWORK and points at the public chain. The commit
+      # comes from the tag checkout, since a backfill's github.sha is the dispatching branch.
       - name: Build
         env:
           VITE_RUNTIME_NETWORK_CONFIG: 'true'
-          VITE_COMMIT_SHA: ${{ github.sha }}
         run: npm run build:prod
 
       - name: Assemble tarball
@@ -93,10 +127,10 @@ jobs:
           # Fail rather than publish a bundle whose runtime config is inert.
           for app in host app protocol; do
             grep -q 'dotli-network.js' "$OUT/dist/$app/index.html" \
-              || { echo "::error::$app/index.html has no runtime-config script — built without VITE_RUNTIME_NETWORK_CONFIG"; exit 1; }
+              || { echo "::error::$app/index.html has no runtime-config script (built without VITE_RUNTIME_NETWORK_CONFIG)"; exit 1; }
           done
           test -n "$(find "$OUT/dist/host/assets" -name '*.br' -print -quit)" \
-            || { echo "::error::no precompressed assets — built without build:prod"; exit 1; }
+            || { echo "::error::no precompressed assets (built without build:prod)"; exit 1; }
 
           tar czf "$OUT.tar.gz" "$OUT"
           sha256sum "$OUT.tar.gz" > "$OUT.tar.gz.sha256"
@@ -141,7 +175,7 @@ jobs:
 
   image:
     name: Image (${{ matrix.arch }})
-    needs: resolve
+    needs: [resolve, quality-gate]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -170,9 +204,13 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           ARCH: ${{ matrix.arch }}
+        # The image has no .git, so the version and commit come in as build arguments.
         run: |
           set -euo pipefail
-          docker build -t "$IMAGE:$VERSION-$ARCH" .
+          docker build \
+            --build-arg RELEASE_VERSION="$VERSION" \
+            --build-arg RELEASE_COMMIT="$(git rev-parse HEAD)" \
+            -t "$IMAGE:$VERSION-$ARCH" .
           docker push "$IMAGE:$VERSION-$ARCH"
 
   manifest:

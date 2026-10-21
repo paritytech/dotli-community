@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { DEBUG } from '@dotli/config';
-import { dotNsUrl } from '@dotli/shared';
+import { dotNsUrl } from '@dotli/resolver';
 
 export function parsePreviewTargetUrl(location: Pick<Location, 'pathname' | 'search'>): string | null {
   if (location.pathname !== '/__preview') {

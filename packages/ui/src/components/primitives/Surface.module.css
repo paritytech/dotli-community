@@ -1,13 +1,13 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* No padding or glass: each consumer sets its padding and the frame draws the glass. */
+/* No glass: the frame draws it. A panel asks for its padding with `padded`, and any other consumer sets its own. */
 
 :where(.surface) {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-2);
   width: var(--w-pop-md);
   max-width: 100%;
   margin: 0;
@@ -24,11 +24,17 @@
 .surface[data-sheet] {
   width: 100%;
 }
+.surface[data-padded] {
+  padding: var(--sp-3);
+}
+.surface[data-padded][data-sheet] {
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}
 .head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--sp-2);
   min-width: 0;
   padding: var(--sp-hair) var(--sp-1) 0;
 }
@@ -43,25 +49,28 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px var(--sp-1) 0;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-1) 0;
   border-top: 1px solid var(--chrome-line);
 }
 .hint {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
-.hint > svg {
+.hint-icon {
   flex: none;
   width: 14px;
   height: 14px;
 }
 
 @media (max-width: 560px) {
+  .surface[data-padded] {
+    padding: var(--sp-4);
+  }
   :where(.surface) {
     gap: var(--sp-3);
   }
@@ -75,7 +84,7 @@
   .hint {
     gap: var(--sp-2);
   }
-  .hint > svg {
+  .hint-icon {
     width: 16px;
     height: 16px;
   }

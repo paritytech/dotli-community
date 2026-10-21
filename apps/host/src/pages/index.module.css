@@ -1,6 +1,12 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The product frame's overscroll chains into the shell, where a pull refreshes the whole page and a bounce drags
+   the bar. The viewport takes the value from the root element, and some engines from the body. */
+.page {
+  overscroll-behavior: none;
+}
+
 .app {
   display: flex;
   align-items: center;

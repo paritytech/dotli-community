@@ -1,0 +1,62 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-1) 0;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.label {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.name {
+  overflow: hidden;
+  color: var(--chrome-text);
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Sized to its text, not stretched across the column. */
+.local {
+  align-self: flex-start;
+  margin-top: var(--sp-1);
+}
+/* A shortened account is code, not a name. */
+.name[data-address] {
+  font-family: var(--font-mono);
+}
+.divider {
+  height: 1px;
+  margin: 0 var(--sp-1);
+  border: 0;
+  background: var(--chrome-line);
+}
+.icon {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 560px) {
+  .identity {
+    gap: var(--sp-3);
+  }
+  .name {
+    font-size: var(--fs-title-lg);
+  }
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
+}

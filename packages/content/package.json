@@ -16,18 +16,17 @@
   },
   "devDependencies": {
     "@config/eslint": "*",
-    "@config/typescript": "*"
+    "@config/typescript": "*",
+    "@config/vite": "*"
   },
   "dependencies": {
     "@dotli/config": "*",
     "@dotli/metrics": "*",
-    "@dotli/protocol": "*",
     "@dotli/shared": "*",
     "@ipld/car": "^5.4.7",
     "@ipld/dag-pb": "^4.2.0",
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
-    "@polkadot-api/json-rpc-provider": "^0.2.0",
     "ipfs-unixfs": "^13.1.2",
     "multiformats": "^14.0.5"
   }

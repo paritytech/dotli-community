@@ -6,16 +6,17 @@
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
-import { log } from '@dotli/shared';
-import { createBootFlowId, reportBootFailure, startHost } from './startup.js';
+import { log, randomId } from '@dotli/shared';
+import { reportBootFailure, startHost, startPage } from './startup.js';
 
 async function main(): Promise<void> {
+  startPage();
   // No nested dot.li.
   if (window.self !== window.top) {
     return;
   }
 
-  await startHost(createBootFlowId());
+  await startHost(randomId());
   log.event('Route: landing page', { flow: 'boot' });
 }
 

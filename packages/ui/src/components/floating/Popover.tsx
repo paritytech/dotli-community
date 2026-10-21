@@ -1,40 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, createEffect, lazy, useContext, type Accessor } from 'solid-js';
+import { createContext, createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import {
-  createAnchored,
-  createSurfaceLoad,
-  createTriggerWiring,
-  SurfaceSlot,
-  type Anchored,
-  type SurfaceChunk,
-} from './anchored.js';
+import { createAnchored, createContentPreload, createTriggerWiring, SurfaceSlot, type Anchored } from './anchored.js';
 import type { CloseReason } from './close-reason.js';
 import type { Placement } from './FloatingLayer.js';
-
-/** Off the first visit's path. */
-const Surface = lazy(() => import('./PopoverSurface.js'), { export: 'PopoverSurface' });
-
-let surfaceLoaded = false;
-
-/**
- * Loads the surface ahead of the idle preload. A More row's popover must render synchronously in the sheet
- * hand-off, and tests read a surface in the tick that opens it.
- */
-export function preloadPopoverSurface(): Promise<unknown> {
-  const loading = Surface.preload();
-  loading.then(
-    () => {
-      surfaceLoaded = true;
-    },
-    () => undefined,
-  );
-  return loading;
-}
-
-const chunk: SurfaceChunk = { load: preloadPopoverSurface, loaded: () => surfaceLoaded };
+import { PopoverSurface } from './PopoverSurface.js';
 
 export interface PopoverApi {
   id: string;
@@ -78,7 +50,7 @@ export interface PopoverProps {
 /**
  * A non-modal panel opened from a button: anchored on wide screens, a bottom sheet on a phone.
  * A press in the product's iframe closes it (seen as the window blurring), and a press outside still reaches what
- * it pressed. An opening before the lazy surface loads is open at once and the surface shows when it arrives.
+ * it pressed.
  */
 export function Popover(props: PopoverProps): JSX.Element {
   const anchored = createAnchored(props, RETURN_FOCUS_ON);
@@ -88,7 +60,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     },
   });
   createTriggerWiring(state, () => props.trigger, 'dialog');
-  createSurfaceLoad(state, chunk, () => props.preload);
+  createContentPreload(() => props.preload);
 
   createEffect(
     () => props.open,
@@ -102,9 +74,9 @@ export function Popover(props: PopoverProps): JSX.Element {
   return (
     <PopoverContext value={state}>
       <SurfaceSlot state={state}>
-        <Surface state={state} class={props.class} placement={props.placement} testId={props.testId}>
+        <PopoverSurface state={state} class={props.class} placement={props.placement} testId={props.testId}>
           {props.children}
-        </Surface>
+        </PopoverSurface>
       </SurfaceSlot>
     </PopoverContext>
   );

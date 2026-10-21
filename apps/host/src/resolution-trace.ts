@@ -4,11 +4,12 @@
 // Collects the protocol iframe's and the sandbox's reports into one Sentry trace per page load. Built live, since a
 // load that never finishes is the one worth looking at.
 
-import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
-import type { ChainPhase } from '@dotli/ui';
+import type { ChainDetail, ChainPeer, ChainSyncEvent, ChainSyncKind } from '@dotli/chains';
+import type { ChainRole } from '@dotli/config';
 import { m, type SpanHandle, type SpanValue } from '@dotli/metrics';
-import { peekContinuation } from '@dotli/shared';
-import { getLoadingState } from '@dotli/ui';
+import { peekContinuation, type Continuation } from './continuation.js';
+import { getLoadingState } from './state/loading.js';
+import type { ChainPhase } from './state/network-monitor.js';
 import type { Attempt } from './journey.js';
 
 /**
@@ -36,7 +37,7 @@ type Phase = 'connecting' | 'syncing' | 'ready';
  * Shared with the loading screen so the two never classify a chain differently. Milestones that name no phase are
  * absent, so a lone peer count never moves the chain.
  */
-export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
+const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
   connecting: 'connecting',
   warpSyncProgress: 'syncing',
   warpSyncFinished: 'ready',
@@ -117,19 +118,10 @@ function newChainState(): ChainState {
   };
 }
 
-export interface ChainSyncFacts {
-  chain: ChainKey;
-  syncKind: ChainSyncKind;
-  peers?: number;
-  reason?: string;
-  at?: number;
-  target?: number;
-}
-
 export interface ResolutionTrace {
-  chainSync: (event: ChainSyncFacts) => void;
+  chainSync: (event: ChainSyncEvent) => void;
   /** A telemetry-only fact about one chain. */
-  chainDetail: (event: { chain: ChainKey; dbCache?: CacheResult; peers?: ChainPeer[] }) => void;
+  chainDetail: (event: ChainDetail) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;
@@ -155,8 +147,29 @@ export interface ResolutionTraceOptions {
   startedAt: number;
 }
 
-/** Safe when metrics are stripped: every span handle is inert. */
-export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTrace {
+/** What the trace reads from the page it runs in. */
+export interface TracedPage {
+  /** Fires `pagehide` when the visitor leaves. */
+  lifecycle: EventTarget;
+  isVisible: () => boolean;
+  /** The loading bar's percent, as the visitor sees it. */
+  readProgress: () => number;
+  /** The reason the app gave for its own reload, if it gave one. */
+  peekContinuation: () => Continuation | null;
+}
+
+/** From the loading store, not the bar's markup, so a load whose loading island never mounted still reports it. */
+function browserPage(): TracedPage {
+  return {
+    lifecycle: window,
+    isVisible: () => document.visibilityState === 'visible',
+    readProgress: () => getLoadingState().progress,
+    peekContinuation,
+  };
+}
+
+/** Safe when metrics are off: every span handle is inert. */
+export function startResolutionTrace(opts: ResolutionTraceOptions, page: TracedPage = browserPage()): ResolutionTrace {
   // Monotonic deltas from one wall-clock start, so a system clock that steps mid-load cannot reorder the tree.
   const perfStart = opts.startedAt;
   const epochStart = Date.now() - (performance.now() - perfStart);
@@ -179,13 +192,13 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
     },
   });
 
-  const chains = new Map<ChainKey, ChainState>();
-  const chainOf = (key: ChainKey): ChainState => {
+  const chains = new Map<ChainRole, ChainState>();
+  const chainOf = (key: ChainRole): ChainState => {
     let state = chains.get(key);
     if (state === undefined) {
       state = newChainState();
       // Opens when the chain is first heard from, or Bulletin, created only for content, would look idle, not absent.
-      state.span = sampled ? root.child(`chain.${key}`, { startTime: at() }) : null;
+      state.span = sampled ? root.child(`chain.${chainTelemetryName(key)}`, { startTime: at() }) : null;
       chains.set(key, state);
     }
     return state;
@@ -194,7 +207,7 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   // Taken while the loading screen was still being driven.
   let lastBarPercent: number | null = null;
   const sampleBar = (): void => {
-    const seen = readBarPercent();
+    const seen = page.readProgress();
     if (seen > 0) {
       lastBarPercent = seen;
     }
@@ -216,14 +229,15 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
   let contentSpan: SpanHandle | null = null;
   let finished = false;
 
-  const enterPhase = (key: ChainKey, state: ChainState, phase: Phase): void => {
+  const enterPhase = (key: ChainRole, state: ChainState, phase: Phase): void => {
     if (state.phase === phase) {
       return;
     }
     state.phaseSpan?.end(at());
     state.phase = phase;
     // Named in full, since `child` does not inherit the parent's name and every chain would report `dotli.ready`.
-    state.phaseSpan = state.span === null ? null : state.span.child(`chain.${key}.${phase}`, { startTime: at() });
+    state.phaseSpan =
+      state.span === null ? null : state.span.child(`chain.${chainTelemetryName(key)}.${phase}`, { startTime: at() });
   };
 
   const trace: ResolutionTrace = {
@@ -232,12 +246,12 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
         return;
       }
       const state = chainOf(event.chain);
-      const phase = PHASE_BY_MILESTONE[event.syncKind];
+      const phase = PHASE_BY_MILESTONE[event.kind];
       // A stall interrupts a phase rather than being one, so it is an attribute, not a span.
       if (phase !== undefined && phase !== 'stalled') {
         enterPhase(event.chain, state, phase);
       }
-      switch (event.syncKind) {
+      switch (event.kind) {
         case 'peers':
           if (typeof event.peers === 'number') {
             state.peersMax = Math.max(state.peersMax, event.peers);
@@ -371,8 +385,8 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
         bytes_total: bytesTotal,
         avg_bytes_per_second: totalMs > 0 ? (bytesTotal / totalMs) * 1000 : 0,
         peak_bytes_per_second: peakBytesPerSecond,
-        bar_at_render: lastBarPercent ?? readBarPercent(),
-        tab_visible: document.visibilityState === 'visible',
+        bar_at_render: lastBarPercent ?? page.readProgress(),
+        tab_visible: page.isVisible(),
         ...(cid !== null ? { cid } : {}),
         ...(cidCacheResult !== null ? { cid_cache: cidCacheResult } : {}),
         ...(nameResolvedMs !== null ? { name_resolution_ms: nameResolvedMs } : {}),
@@ -391,25 +405,21 @@ export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTr
 
   // Otherwise a tab closed mid-resolution never sends its root span. A browser reload, a typed URL and a closed tab
   // all read "unload" here, and the next attempt's `entry` tells a reload apart.
-  window.addEventListener('pagehide', (event: PageTransitionEvent) => {
+  page.lifecycle.addEventListener('pagehide', event => {
     if (finished) {
       return;
     }
-    root.setAttributes({ exit: event.persisted ? 'bfcache' : (peekContinuation() ?? 'unload') });
+    const { persisted } = event as PageTransitionEvent;
+    root.setAttributes({ exit: persisted ? 'bfcache' : (page.peekContinuation() ?? 'unload') });
     trace.finish('abandoned');
   });
 
   return trace;
 }
 
-/** From the loading store, not the bar's markup, so a load whose loading island never mounted still reports it. */
-function readBarPercent(): number {
-  return getLoadingState().progress;
-}
-
-function chainAttributes(key: ChainKey, state: ChainState): Record<string, SpanValue> {
+function chainAttributes(key: ChainRole, state: ChainState): Record<string, SpanValue> {
   const attrs: Record<string, SpanValue> = {
-    chain: key,
+    chain: chainTelemetryName(key),
     peers_max: state.peersMax,
     stall_count: state.stallCount,
   };
@@ -455,10 +465,16 @@ function chainAttributes(key: ChainKey, state: ChainState): Record<string, SpanV
   return attrs;
 }
 
+/** The names dashboards were built on. The code calls Asset Hub `assethub`. */
+export function chainTelemetryName(role: ChainRole): string {
+  return role === 'assethub' ? 'asset-hub' : role;
+}
+
 /** Flattened for the root, so an unsampled load still has them. */
-function chainSummary(chains: ReadonlyMap<ChainKey, ChainState>): Record<string, SpanValue> {
+function chainSummary(chains: ReadonlyMap<ChainRole, ChainState>): Record<string, SpanValue> {
   const out: Record<string, SpanValue> = {};
-  for (const [key, state] of chains) {
+  for (const [role, state] of chains) {
+    const key = chainTelemetryName(role);
     if (state.readyMs !== null) {
       out[`chain.${key}.ready_ms`] = state.readyMs;
     }

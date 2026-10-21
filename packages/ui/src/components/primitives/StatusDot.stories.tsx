@@ -3,6 +3,7 @@
 
 import { For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
+import { expect } from 'storybook/test';
 import { StatusDot } from './StatusDot.js';
 
 const TONES = ['ok', 'warn', 'err', 'info', 'idle'] as const;
@@ -21,6 +22,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see a status dot in every tone and tell the tones apart. */
 export const Tones: Story = {
   render: args => (
     <div style={{ display: 'flex', gap: '16px' }}>
@@ -30,5 +32,19 @@ export const Tones: Story = {
     </div>
   ),
 };
+/** As a dotli user, I see the small status dot. */
 export const Small: Story = { args: { size: 'sm' } };
+/** As a dotli user, I see a pulsing warn dot named Syncing while something is in progress. */
 export const Pulse: Story = { args: { tone: 'warn', pulse: true, label: 'Syncing' } };
+
+// With no label it only repeats the text beside it.
+/** As a screen reader user, I skip a status dot that has no label, since the text beside it says the same. */
+export const Decorative: Story = {
+  render: () => <StatusDot tone="warn" testId="dot" />,
+  play: async ({ canvas, step }) => {
+    await step('Then assistive technology skips the dot', async () => {
+      await expect(canvas.getByTestId('dot')).toHaveAttribute('aria-hidden', 'true');
+      await expect(canvas.queryByRole('img')).toBeNull();
+    });
+  },
+};

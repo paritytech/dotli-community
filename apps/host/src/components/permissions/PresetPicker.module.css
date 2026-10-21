@@ -1,0 +1,52 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-1_5);
+  padding: 0 var(--sp-1) var(--sp-hair);
+}
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+}
+.name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 18px;
+}
+.title {
+  color: var(--chrome-text);
+  font: var(--fw-semibold) var(--fs-title) / var(--lh-tight) var(--font-sans);
+}
+/* The row's own selector outranks the Spinner's default size and margin. */
+.name > .spinner {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  border-width: 1.5px;
+}
+.line {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font: 12px / 1.4 var(--font-sans);
+}
+@media (max-width: 560px) {
+  .picker {
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+  }
+  .readout {
+    gap: var(--sp-1);
+  }
+  .title {
+    font-size: var(--fs-title-lg);
+  }
+  .line {
+    font-size: 13px;
+  }
+}

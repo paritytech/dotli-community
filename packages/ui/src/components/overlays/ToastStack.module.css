@@ -13,7 +13,6 @@
   margin: 0;
   padding: 0;
 }
-/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack {
     left: var(--sp-4);
@@ -27,12 +26,15 @@
   margin: 0;
   padding: 0;
 }
+.cards[data-expandable] {
+  cursor: pointer;
+}
 /* The padding keeps the cards' shadows inside the scroll box, the margin
    keeps the cards where they were. */
 .stack[data-expanded] .cards {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1_5);
   max-height: 60dvh;
   margin: calc(-1 * var(--sp-3));
   padding: var(--sp-3);
@@ -63,10 +65,14 @@
   transition: color var(--dur-fast);
 }
 /* The shared 16 px close icon drawn smaller, its stroke thickened so it reads. */
-.close-all svg {
+.close-all-icon {
   width: 10px;
   height: 10px;
   stroke-width: 2.5;
+}
+/* Its own `display` would beat the browser's rule for `hidden`. */
+.close-all[hidden] {
+  display: none;
 }
 .close-all:hover {
   color: var(--chrome-text);
@@ -75,7 +81,6 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-/* PHONE_QUERY in phone-viewport.ts. */
 @media (max-width: 560px) {
   .stack[data-expanded] .cards {
     gap: var(--sp-2);
@@ -86,7 +91,7 @@
     width: var(--sp-6);
     height: var(--sp-6);
   }
-  .close-all svg {
+  .close-all-icon {
     width: 12px;
     height: 12px;
   }

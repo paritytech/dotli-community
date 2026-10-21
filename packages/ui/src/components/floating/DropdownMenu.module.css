@@ -7,7 +7,7 @@
   flex-direction: column;
   gap: 0;
   min-width: var(--w-pop-sm);
-  padding: 6px;
+  padding: var(--sp-1_5);
 }
 .menu[data-open] {
   display: flex;
@@ -21,11 +21,11 @@
 :where(.row) {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   box-sizing: border-box;
   min-height: 36px;
   margin: 0;
-  padding: 0 10px;
+  padding: 0 var(--sp-2);
   border: none;
   border-radius: 10px;
   background: transparent;

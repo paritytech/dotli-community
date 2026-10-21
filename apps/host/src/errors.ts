@@ -1,13 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
-import { getActiveServicesConfig, getBackend, BACKEND_LABELS } from '@dotli/config';
+import { ProtocolFatalError, ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
+import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } from '@dotli/config';
 
-import { endpointHost, gatewayUnreachable } from '@dotli/shared';
+import { endpointHost, errorMessage, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
 import { ManifestRejectedError } from './manifest-gate.js';
+import { SandboxSilentError } from './sandbox-watch.js';
 
 // Annotated, so renaming the resolver's error fails to compile here. Only the name survives postMessage.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
@@ -21,26 +22,6 @@ export {
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
 } from './error-copy.js';
-
-/** Names only who vouches for the app, since that is what the visitor has to weigh. */
-export function trustedProviderWarning(domain: string, providers: readonly string[]): (string | { strong: string })[] {
-  const named = joinHosts(providers);
-  return [
-    { strong: domain },
-    ` will load through ${named} instead of being verified by your browser. You will trust ${
-      providers.length > 1 ? 'them' : named
-    } to serve you the real app.`,
-  ];
-}
-
-function joinHosts(hosts: readonly string[]): string {
-  const last = hosts.at(-1);
-  if (last === undefined) {
-    return 'a trusted provider';
-  }
-  const rest = hosts.slice(0, -1);
-  return rest.length === 0 ? last : `${rest.join(', ')} and ${last}`;
-}
 
 /** The first entry, since the gateway backend dials the list in order. */
 function assethubHost(): string | undefined {
@@ -62,6 +43,7 @@ export type Recovery = 'switch-backend' | 'reload' | 'none';
 export type ErrorKind =
   | 'protocol-fatal'
   | 'protocol-init-failed'
+  | 'protocol-version-mismatch'
   | 'worker-init-timeout'
   | 'chain-spec-rejected'
   | 'module-fetch-failed'
@@ -79,6 +61,7 @@ export type ErrorKind =
   | 'hub-sync-timeout'
   | 'light-client-timeout'
   | 'rpc-timeout'
+  | 'sandbox-silent'
   | 'unknown';
 
 export interface ErrorDescription {
@@ -119,10 +102,11 @@ const MAINTAINER_TIPS = ['Contacting the app maintainer.'] as const;
 
 /**
  * `isP2p` picks copy that would be wrong in the other mode. Anything a backend switch recovers from is a reachability
- * failure, so it defaults to the connectivity tips unless its branch states its own.
+ * failure, so it defaults to the connectivity tips unless its branch states its own. `readBackend` gives the backend
+ * the page runs, from settings unless the caller passes its own.
  */
-export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
-  const described = classifyError(err, isP2p);
+export function describeError(err: unknown, isP2p: boolean, readBackend: () => Backend = getBackend): ErrorDescription {
+  const described = classifyError(err, isP2p, readBackend);
   return {
     ...described,
     title: described.title ?? ERROR_TITLES.DOMAIN_UNREACHABLE,
@@ -133,13 +117,34 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
 function classifyError(
   err: unknown,
   isP2p: boolean,
+  readBackend: () => Backend,
 ): Omit<ErrorDescription, 'tips' | 'title'> & {
   tips?: readonly string[];
   title?: string;
 } {
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = errorMessage(err);
 
+  // The app's origin never answered, which a blocker or a filtered network causes, not the network the app is on.
+  if (err instanceof SandboxSilentError) {
+    return {
+      kind: 'sandbox-silent',
+      title: ERROR_TITLES.APP_UNUSABLE,
+      message: HOST_ERRORS.SANDBOX_SILENT,
+      recovery: 'reload',
+      tips: ['Allowing dot.li sites in any content or ad blocker.', ...CONNECTIVITY_TIPS],
+    };
+  }
+  // This page and the protocol frame come from different releases. Only a reload brings them back together.
+  if (err instanceof ProtocolVersionMismatchError) {
+    return {
+      kind: 'protocol-version-mismatch',
+      title: ERROR_TITLES.HOST_UNAVAILABLE,
+      message: HOST_ERRORS.PROTOCOL_UPDATED,
+      recovery: 'reload',
+      tips: [],
+    };
+  }
   if (err instanceof ProtocolFatalError) {
     return {
       kind: 'protocol-fatal',
@@ -272,7 +277,7 @@ function classifyError(
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
-      ...(getBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
+      ...(readBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
     };
   }
   if (msg.includes('timed out') || msg.includes('Timed out')) {

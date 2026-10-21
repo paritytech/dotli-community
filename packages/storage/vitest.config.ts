@@ -5,12 +5,14 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'happy-dom',
     globals: false,
+    setupFiles: ['@dotli/metrics/testing/setup'],
+    projects: [{ extends: true, test: { name: 'storage:unit', include: ['src/**/*.spec.ts'], environment: 'node' } }],
   },
   define: {
     'import.meta.env.DEV': 'false',
     'import.meta.env.VITE_APP_DEBUG': '"true"',
+    // On, so a test reads what a cache counts through a bound fake Sentry.
+    'import.meta.env.VITE_METRICS': '"true"',
   },
 });

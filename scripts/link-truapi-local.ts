@@ -1,3 +1,8 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Links a local truapi checkout's JS packages into node_modules in place of the published ones.
+
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,9 +59,9 @@ for (const pkg of packages) {
 
 // Workspace-local installs shadow the root link, so drop them.
 for (const [workspace, name] of [
-  ['packages/ui', 'truapi'],
-  ['packages/ui', 'truapi-host'],
-  ['packages/resolver', 'truapi-provider'],
+  ['apps/host', 'truapi'],
+  ['apps/host', 'truapi-host'],
+  ['packages/chains', 'truapi-provider'],
 ] as const) {
   rmSync(resolve(dotliRoot, workspace, 'node_modules/@parity', name), {
     force: true,
@@ -67,7 +72,7 @@ for (const [workspace, name] of [
 // host-playground's product-sdk-host nests an older @parity/truapi. A second client over the same MessagePort
 // collides on request ids, so point the nested one at this checkout.
 const shouldLinkProduct = process.env['E2E_PRODUCT_REPO'] !== undefined || process.env['E2E_PRODUCT_URL'] !== undefined;
-const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
+const productRoot = resolve(dotliRoot, process.env['E2E_PRODUCT_REPO'] ?? '../host-playground');
 if (shouldLinkProduct && existsSync(resolve(productRoot, 'package.json'))) {
   const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
   const nestedParent = dirname(nestedTruapi);

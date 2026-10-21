@@ -1,3 +1,8 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Undoes the local truapi link and reinstalls the published packages.
+
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -7,8 +12,8 @@ const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageNames = ['truapi', 'truapi-host', 'truapi-provider'];
 const installRoots = [
   resolve(dotliRoot, 'node_modules/@parity'),
-  resolve(dotliRoot, 'packages/ui/node_modules/@parity'),
-  resolve(dotliRoot, 'packages/resolver/node_modules/@parity'),
+  resolve(dotliRoot, 'apps/host/node_modules/@parity'),
+  resolve(dotliRoot, 'packages/chains/node_modules/@parity'),
 ];
 
 for (const root of installRoots) {
@@ -25,7 +30,7 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-const productRoot = resolve(process.env['E2E_PRODUCT_REPO'] ?? resolve(dotliRoot, '../../../host-playground'));
+const productRoot = resolve(dotliRoot, process.env['E2E_PRODUCT_REPO'] ?? '../host-playground');
 const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
 const linkedProductSdkHost = resolve(productRoot, 'node_modules/@parity/product-sdk-host');
 const isSymlink = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;

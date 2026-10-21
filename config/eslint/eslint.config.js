@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from './vite.js';
+import { config, importBans, onlyAllowedScopes } from './vite.js';
 
 export default defineConfig([
   ...config,
@@ -15,4 +15,5 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([onlyAllowedScopes([], 'The lint tooling imports no workspace package.')]),
 ]);

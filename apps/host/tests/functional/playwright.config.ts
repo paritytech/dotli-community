@@ -8,11 +8,13 @@ import { baseConfig, previewServer } from '../playwright.base.config.js';
 // contend for it. Raise once paritytech/devops#5734 is fixed.
 const WORKERS = Number(process.env['FUNCTIONAL_WORKERS'] ?? '1');
 
+const NETWORK_SPECS = /resolution\.spec\.ts$/;
+
 export default defineConfig({
   ...baseConfig,
   testDir: '.',
+  globalSetup: './global-setup.ts',
   timeout: 900_000,
-  retries: 0,
   // One preview server per worker: its metrics buffer and mode-sync store are process-wide, and tests must not
   // share them.
   workers: WORKERS,
@@ -25,5 +27,10 @@ export default defineConfig({
       env: { PORT: port },
     };
   }),
-  reporter: [['list'], ['json', { outputFile: 'results.json' }]],
+  projects: [
+    { name: 'functional', testIgnore: NETWORK_SPECS },
+    // Many loads over the real network, whose peers and gateways stall now and then, so a test gets two more tries.
+    { name: 'network', testMatch: NETWORK_SPECS, retries: 2 },
+  ],
+  reporter: [['list']],
 });

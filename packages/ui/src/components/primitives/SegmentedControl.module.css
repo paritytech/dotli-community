@@ -26,10 +26,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   height: 24px;
   margin: 0;
-  padding: 0 10px;
+  padding: 0 var(--sp-2);
   border: 0;
   border-radius: var(--r-full);
   background: transparent;
@@ -42,6 +42,16 @@
     box-shadow var(--dur-fast);
 }
 .option:hover {
+  color: var(--chrome-text);
+}
+.seg[aria-disabled='true'] > .option {
+  cursor: default;
+  opacity: 0.5;
+}
+.seg[aria-disabled='true'] > .option:hover {
+  color: var(--chrome-text-muted);
+}
+.seg[aria-disabled='true'] > .option[aria-pressed='true'] {
   color: var(--chrome-text);
 }
 .option:focus-visible {
@@ -61,6 +71,35 @@
     gap: var(--sp-2);
     height: var(--h-row-sm);
     padding: 0 var(--sp-3);
+  }
+}
+
+.seg[data-size='lg'] {
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--r-sm);
+}
+.seg[data-size='lg'] > .option {
+  flex-direction: column;
+  height: 60px;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-small);
+}
+.seg[data-size='lg'] > .option > svg {
+  width: 16px;
+  height: 16px;
+}
+@media (max-width: 560px) {
+  .seg[data-size='lg'] {
+    border-radius: var(--r-md);
+  }
+  .seg[data-size='lg'] > .option {
+    height: var(--h-tile);
+    border-radius: var(--r-sm);
+  }
+  .seg[data-size='lg'] > .option > svg {
+    width: 20px;
+    height: 20px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

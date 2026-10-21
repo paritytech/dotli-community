@@ -11,15 +11,15 @@ permissions:
   contents: read
   pull-requests: write
 
+# One group per PR, so a newer push cancels its older run. Each push to main gets its own group and always finishes.
 concurrency:
-  group: tests-${{ github.head_ref || github.ref }}
+  group: tests-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   unit:
     name: Unit
     runs-on: ubuntu-latest
-    if: ${{ github.event.sender.type != 'Bot' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,13 +28,12 @@ jobs:
         uses: ./.github/actions/setup-node
 
       - name: Run tests
-        run: npx turbo run test
+        run: npm test
 
-  # Stories run as browser tests. Playwright comes from apps/host's pin, which packages/ui matches.
+  # Stories run as browser tests. Playwright comes from apps/host's pin, which @config/storybook matches.
   stories:
     name: Stories
     runs-on: ubuntu-latest
-    if: ${{ github.event.sender.type != 'Bot' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,18 +42,39 @@ jobs:
         uses: ./.github/actions/setup-playwright
 
       - name: Run stories as tests
-        working-directory: packages/ui
         run: npm run test:stories
 
-      - name: Build Storybook
-        working-directory: packages/ui
-        run: npm run build-storybook
+  # One build for the suites below, as deployed: metrics on, so the functional suite can read the envelopes the
+  # preview server collects.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      # The networks, metrics on, and a dummy Sentry DSN, never dialled, as `tunnel: "/t"` keeps envelopes same-origin.
+      - name: Build
+        run: npm run build:test
+
+      - name: Upload the builds
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: apps/*/dist
+          # The host's .well-known files are dotfiles, which the action skips by default.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
   functional:
     name: Functional
     runs-on: ubuntu-latest
-    needs: unit
-    if: ${{ github.event.sender.type != 'Bot' }}
+    needs: [unit, build]
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,103 +82,57 @@ jobs:
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
 
-      - name: Build
-        env:
-          # Required, or the host throws on boot and every test times out.
-          VITE_NETWORKS: paseo-next-v2,previewnet
-          # As deployed. network-transport.spec.ts skips itself without it.
-          VITE_METRICS: 'true'
-          # Sentry no-ops without a DSN. Never dialled, as `tunnel: "/t"` keeps envelopes same-origin.
-          VITE_SENTRY_DSN: http://publickey@127.0.0.1:5173/1
-        run: npx turbo run build
+      # The artifact's root is apps/, the common folder of its paths.
+      - name: Download the builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: apps
 
       - name: Run functional tests
         working-directory: apps/host
-        env:
-          VITE_METRICS: 'true'
-        run:
-          npx playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts
-          tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts
-          tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts
-          tests/functional/host-settings.spec.ts || true
-
-      - name: Apply functional threshold
-        working-directory: apps/host
-        run: |
-          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
-          if [ "$TOTAL" -lt 12 ]; then
-            echo "::error::expected at least 12 tests, got $TOTAL."
-            exit 1
-          fi
-          LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          SMOKE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "ui-smoke.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          SETTINGS_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          # A skipped spec counts as ok, and network-transport.spec.ts skips itself without VITE_METRICS.
-          TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
-          echo "loading.spec.ts failures: $LOADING_FAILED"
-          echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
-          echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
-          echo "ui-smoke.spec.ts failures: $SMOKE_FAILED"
-          echo "host-settings.spec.ts failures: $SETTINGS_FAILED"
-          if [ "$LOADING_FAILED" -gt 0 ]; then
-            echo "::error::loading.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$RESOLUTION_FAILED" -gt 2 ]; then
-            echo "::error::resolution.spec.ts: $RESOLUTION_FAILED failures (max 2 tolerated)"
-            exit 1
-          fi
-          if [ "$TRANSPORT_FAILED" -gt 0 ]; then
-            echo "::error::network-transport.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$SMOKE_FAILED" -gt 0 ]; then
-            echo "::error::ui-smoke.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$SETTINGS_FAILED" -gt 0 ]; then
-            echo "::error::host-settings.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
-            echo "::error::network-transport.spec.ts skipped $TRANSPORT_SKIPPED test(s); VITE_METRICS is not reaching the run step"
-            exit 1
-          fi
+        run: npm run test:functional
 
   # host-playground product tests, with pairing and signing handled headlessly by the truapi-host CLI.
   e2e-product:
     name: E2E
     runs-on: ubuntu-latest
-    needs: unit
+    needs: [unit, build]
     # Over Playwright's 30 min globalTimeout, so Playwright cuts a stuck run off with diagnostics.
     timeout-minutes: 35
-    if: ${{ github.event.sender.type != 'Bot' }}
     env:
       # Must match the host's `defaultNetwork()`.
       SIGNING_HOST_NETWORK: paseo-next-v2
       # The CLI self-updates by default, which would make CI runs nondeterministic.
       TRUAPI_HOST_NO_UPDATE: '1'
     steps:
+      # The truapi-host installer runs in this job, so the token is not left in .git/config for it.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
 
-      # Pin with TRUAPI_HOST_VERSION=x.y.z if a release breaks the suite.
+      # The installer at a fixed commit, so the script a run executes cannot change under it. Asked for no version,
+      # it installs the CLI's latest stable release.
       - name: Install truapi-host CLI
+        env:
+          INSTALLER_URL: https://raw.githubusercontent.com/paritytech/host-rust-core/743f0bafab7467c3d37ca182b15af683e6564bc7/scripts/truapi-host-installer.sh
         run: |
-          curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+          set -euo pipefail
+          curl -fsSL --proto '=https' -o "$RUNNER_TEMP/truapi-host-installer.sh" "$INSTALLER_URL"
+          bash "$RUNNER_TEMP/truapi-host-installer.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/truapi-host" --version
 
-      - name: Build
-        env:
-          # Required, or the host throws on boot and every test times out.
-          VITE_NETWORKS: paseo-next-v2,previewnet
-        run: npx turbo run build
+      # The artifact's root is apps/, the common folder of its paths.
+      - name: Download the builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: apps
 
       # Exit code 99 means pairing and signing infrastructure is down, not dot.li, so it soft-passes.
       - name: Run E2E
@@ -169,7 +143,7 @@ jobs:
           npx playwright test --config=tests/e2e/playwright.config.ts
           code=$?
           if [ "$code" -eq 99 ]; then
-            echo "::warning::Signing infrastructure unavailable — E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
+            echo "::warning::Signing infrastructure unavailable. E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
             echo "signing_unavailable=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -177,7 +151,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-product-results
           path: apps/host/tests/e2e/test-results/
@@ -189,7 +163,7 @@ jobs:
         run: |
           R=tests/e2e/test-results/results.json
           if [ ! -f "$R" ]; then
-            echo "list=- (no results.json — suite likely crashed before any tests ran)" >> "$GITHUB_OUTPUT"
+            echo "list=- (no results.json, suite likely crashed before any tests ran)" >> "$GITHUB_OUTPUT"
             echo "summary=suite did not produce results" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -212,13 +186,13 @@ jobs:
         with:
           header: e2e-product
           message: |
-            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}` — ${{ steps.failed.outputs.summary }}.
+            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}`: ${{ steps.failed.outputs.summary }}.
 
             Failed tests:
             ${{ steps.failed.outputs.list }}
 
             Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            Artifacts: `e2e-product-results` (uploaded above) — open the failed test's `trace.zip` with `npx playwright show-trace`.
+            Artifacts: `e2e-product-results` (uploaded above). Open the failed test's `trace.zip` with `npx playwright show-trace`.
 
       - name: Clear stale failure note on PR (suite is green)
         if: success() && github.event_name == 'pull_request'
@@ -234,7 +208,7 @@ jobs:
         with:
           header: e2e-product-signing-unavailable
           message: |
-            ⚠️ **E2E Product suite skipped** — pairing/signing infrastructure is unavailable.
+            ⚠️ **E2E Product suite skipped**: pairing/signing infrastructure is unavailable.
 
             The truapi-host CLI could not complete pairing (testnet chains or
             identity backend outage). This is **not a dot.li test failure**.

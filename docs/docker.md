@@ -1,5 +1,5 @@
 ---
-summary: "The prebuilt dotli artifacts — container image and release tarball — each repointed at a forked dev chain per run without rebuilding"
+summary: "The prebuilt dotli artifacts (container image and release tarball), each repointed at a forked dev chain per run without rebuilding"
 read_when:
   - You want to run dotli against a locally forked chain (zombie-bite, chopsticks)
   - You are changing the runtime network config schema or how it reaches the browser
@@ -29,15 +29,17 @@ DOTLI_NETWORK='{"enabled":["previewnet"]}' node serve.mjs   # or: bun serve.mjs
 ```
 
 Then open `http://browse.localhost:5173`. `PORT`, `HOST` and `DIST` are
-configurable — see the README inside the tarball
+configurable. See the README inside the tarball
 (`scripts/tarball-readme.md` in this repo).
 
 `serve.mjs` is bundled from `scripts/serve.ts` at release time, so it runs on
 node >= 22 without TypeScript support or the rest of this repo. It reproduces the nginx serving rules: hostname
 routing, the same security headers, precompressed siblings, immutable asset
-caching and SPA fallback. **Changing the rules in one means changing the other** —
-nothing enforces it, and a mismatch means the tarball behaves differently from a
-deployed site.
+caching and SPA fallback. **Changing the rules in one means changing the other.**
+A spec holds the header values to nginx's snippets and pins which file answers a
+path (the root page, the asset 404 and the shell fallback). Which snippet each
+nginx location includes is not checked, and a mismatch there means the tarball
+behaves differently from a deployed site.
 
 ## Running the container
 
@@ -90,7 +92,7 @@ Only **endpoints** are overridable, per network:
 
 Fixing `genesis` and `dotns` is what keeps this small and safe. An override cannot
 repoint the DotNS registry, so the worst it can do is move you to a different node
-for the *same* chain identity — which the light client verifies against the
+for the *same* chain identity, which the light client verifies against the
 compiled-in genesis anyway. It also means only documents need the config: the
 protocol SharedWorker reads solely `genesis` and `dotns`, so nothing is plumbed to
 it. A zombie-bite fork preserves both, so endpoints are the only axis that has to
@@ -107,7 +109,7 @@ alongside the public ones, the client would pick whichever, and the result works
 intermittently in a way that is very hard to diagnose.
 
 **Mistakes fail loudly**, at container start where possible and at boot
-otherwise — a silently ignored override means running against the public chain
+otherwise. A silently ignored override means running against the public chain
 while believing otherwise.
 
 ## Why `*.localhost` on one port
@@ -119,15 +121,15 @@ mirroring what `scripts/preview-server.ts` does for local previews.
 
 This needs no code changes and no DNS setup: the flat `*.localhost` shape is
 already special-cased in `getProtocolOrigin` (`packages/protocol/src/client.ts`),
-`dotUrl` (`packages/ui/src/ui.ts`) and `getAppOrigin`
-(`packages/ui/src/bridge.ts`), browsers resolve every `*.localhost` name to
+`dotUrl` (`apps/host/src/components/landing/dot-url.ts`) and `appOrigin`
+(`apps/host/src/runtime/product-frame.ts`), browsers resolve every `*.localhost` name to
 loopback, and `http://*.localhost` is a secure context so `crypto.subtle`,
 service workers and SharedWorker all work.
 
 A custom dev domain would *not* work: `deriveBaseDomain` returns `"dot.li"` for
 anything ending in `.localhost`, and `isSandboxOrigin` only recognises the flat
 `.app.localhost` form, so a nested `foo.app.dotli.localhost` breaks. Use the flat
-scheme or a real domain with a wildcard certificate — not a hybrid.
+scheme or a real domain with a wildcard certificate, not a hybrid.
 
 **Do not publish on port 80.** `getProtocolOrigin` falls back to port 5173 when
 `window.location.port` is empty, which it is on the default HTTP port, so the
@@ -136,8 +138,8 @@ the bundle reads the port from the current location.
 
 ## Base domain
 
-dot.li needs four hostnames — an apex, `host.<base>`, `*.<base>` and
-`*.app.<base>` — and normally derives `<base>` from the last two segments of the
+dot.li needs four hostnames (an apex, `host.<base>`, `*.<base>` and
+`*.app.<base>`) and normally derives `<base>` from the last two segments of the
 current hostname. That is right for `dot.li` and `paseo.li` and wrong for anything
 deeper: `dotli.ppn-65iw.pdp-stg-scw.parity.io` would derive `parity.io`, then look
 for its protocol iframe at `host.parity.io` and accept `*.app.parity.io` as sandbox
@@ -153,14 +155,14 @@ Validated at boot: it must be at least two segments **and a suffix of the actual
 hostname**, otherwise a page could declare any base domain and widen the
 cross-origin allowlist to a host it is not served from. Set `DOMAIN` to the same
 value so nginx renders matching `server_name`s and a matching `frame-ancestors`
-list — the entrypoint derives the https origin triple from it, which is what makes
+list. The entrypoint derives the https origin triple from it, which is what makes
 the image usable behind an ingress.
 
 Note this also changes `SITE_ID`, and shared-auth storage is keyed on it, so
 sessions do not carry between base domains.
 
 Paths are not an alternative. Serving under `/dotli/…` would put all three builds
-on one origin, and the subdomain split *is* the sandbox boundary — a dApp
+on one origin, and the subdomain split *is* the sandbox boundary. A dApp
 same-origin with the shell can read its storage and skip every `postMessage` gate.
 The `.dot` label is read from the subdomain, so a path-based URL would render the
 landing page regardless.
@@ -169,8 +171,7 @@ landing page regardless.
 
 Every reader of the network table is synchronous, so the config has to be in place
 before the module bundle runs. A blocking classic `<script src="/dotli-network.js">`
-sets `globalThis.__DOTLI_NETWORK__` ahead of the deferred bundle — the same trick
-all three `index.html` files already use to pre-open IndexedDB. The table is then
+sets `globalThis.__DOTLI_NETWORK__` ahead of the deferred bundle. The table is then
 built once at module init, with no async hydration anywhere.
 
 The file does not exist in the image. `docker/entrypoint.sh` generates it at
@@ -182,8 +183,11 @@ a restart takes effect immediately. Bypass the entrypoint
 apply.
 
 Outside the container the same path is served from `$DOTLI_NETWORK` by the vite
-dev servers (via the plugin) and by `scripts/preview-server.ts`, so runtime config
-is testable without building an image:
+dev servers (via the plugin), by `scripts/preview-server.ts` and by the tarball's
+`serve.mjs`, with the container's headers: same-origin only and no CORS, since the
+config can name private RPC endpoints. Each reads the variable once at start, so a
+value that is not JSON stops the server there. Runtime config is testable without
+building an image:
 
 ```sh
 DOTLI_NETWORK='{"enabled":["previewnet"]}' npm run preview
@@ -209,8 +213,8 @@ independently, so neither alone turns it on:
   `return null`, so the global read is absent rather than merely bypassed.
 
 Inside the image the global **is** live and writable from the page. That is
-acceptable for a local dev container — whoever runs it already controls
-`DOTLI_NETWORK`, and `genesis`/`dotns` are out of reach either way — but treat the
+acceptable for a local dev container. Whoever runs it already controls
+`DOTLI_NETWORK`, and `genesis`/`dotns` are out of reach either way. Still, treat the
 image as local tooling rather than something to host publicly.
 
 ## Known gaps
@@ -223,15 +227,16 @@ under either smoldot backend.
 
 **A smoldot backend against a fork can sync the wrong chain.** A zombie-bite fork
 preserves the upstream genesis hash, and the committed chain specs carry
-production bootnodes — so smoldot may peer with the real network and accept it as
+production bootnodes, so smoldot may peer with the real network and accept it as
 correct while the UI names your fork. Genesis checks cannot catch this. Use
 `rpc-gateway` against a fork, or supply a chain spec with bootnodes scrubbed.
 
 **Mode preferences are not shared across subdomains.** `preview-server.ts`
 implements a `/__dotli-mode/<key>` store to work around `localhost` being on the
-Public Suffix List; nginx has no equivalent. `shared-mode.ts` prefers the
-per-origin seed on localhost and only warns, so each subdomain simply keeps its
-own backend and cache settings.
+Public Suffix List; nginx has no equivalent. On localhost the settings
+resolution (`resolveSettings`, with `preferLocal`) prefers the per-origin choice
+and the shared store only reports a read error, so each subdomain simply keeps
+its own backend and cache settings.
 
 **No brotli.** `dotli-precompressed.conf` uses `brotli_static`, which the
 official nginx image is not built with, so the image overwrites that snippet with
@@ -244,19 +249,20 @@ and a read-only mount makes the entrypoint's write fail.
 
 ## How releases are built
 
-`.github/workflows/release-artifacts.yml` builds both artifacts on
-`release: published`, and accepts a tag via `workflow_dispatch` for releases
-published before it existed (a tag-triggered run cannot backfill one).
+`.github/workflows/release-artifacts.yml` builds both artifacts. The deploy
+calls it once the release is published, and it accepts a tag via `workflow_dispatch` for releases
+published before it existed. The tarball and the image build only
+after the same checks as a PR pass on the tag.
 
 Two build settings are load-bearing, and the workflow asserts both rather than
 trusting them:
 
-- **`VITE_RUNTIME_NETWORK_CONFIG=true`** — without it the config script is not
+- **`VITE_RUNTIME_NETWORK_CONFIG=true`**: without it the config script is not
   injected, and the server serves a config the app silently ignores. Everything
   looks fine while running against the public chain, which is the worst failure
   either artifact could ship. The job greps all three `index.html` files for the
   script tag.
-- **`build:prod`, not `build`** — `compress-dist.ts` only runs there, so without it
+- **`build:prod`, not `build`**: `compress-dist.ts` only runs there, so without it
   no `.br`/`.gz` siblings exist and the precompressed negotiation is dead code.
   The job checks for them.
 
@@ -266,11 +272,15 @@ config.
 
 The image is built on native runners per architecture (`linux/amd64`,
 `linux/arm64`) and joined into one manifest list. There is no macOS container
-platform — Apple Silicon runs `linux/arm64`. `latest` only moves for a real,
-non-prerelease publish, so backfilling an old tag by hand cannot repoint it.
+platform. Apple Silicon runs `linux/arm64`. `latest` only moves for a release the
+deploy publishes, so backfilling an old tag by hand cannot repoint it.
+
+The image has no `.git`, so the workflow passes the tag's version and commit as the `RELEASE_VERSION` and
+`RELEASE_COMMIT` build arguments, and `host_version.json` and the diagnostics report the release. A local
+`docker build` without them reports the package version and `dev`. The tarball reads both from its tag checkout.
 
 ## Related
 
-- `nginx/nginx.docker.conf.template` — container nginx profile; sibling of
+- `nginx/nginx.docker.conf.template`: container nginx profile, sibling of
   `nginx/nginx.conf.template`, the deployed TLS profile. Keep the two in sync.
-- `DEPLOYMENT.md` — the hosted deployments, which do not use any of this.
+- `DEPLOYMENT.md`: the hosted deployments, which do not use any of this.

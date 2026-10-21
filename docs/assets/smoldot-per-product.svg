@@ -8,7 +8,7 @@
     </marker>
   </defs>
 
-  <!-- Participants — 6 lanes, evenly distributed -->
+  <!-- Participants: 6 lanes, evenly distributed -->
   <rect x="15" y="10" width="140" height="50" rx="6" fill="#909090" stroke="#606060" stroke-width="1.5"/>
   <text x="85" y="40" text-anchor="middle" font-weight="bold" fill="#3a3a3a">User</text>
 
@@ -32,7 +32,7 @@
   <text x="885" y="32" text-anchor="middle" font-weight="bold" fill="#3a3a3a">apps/sandbox</text>
   <text x="885" y="50" text-anchor="middle" font-size="10" fill="#606060">&lt;cid&gt;.app.paseo.li (iframe)</text>
 
-  <!-- Lifecycle bands on smoldot lane — transparent, dashed -->
+  <!-- Lifecycle bands on smoldot lane: transparent, dashed -->
   <rect x="505" y="70" width="120" height="100" rx="4" fill="none" stroke="#606060" stroke-width="1" stroke-dasharray="4,3"/>
   <text x="510" y="84" text-anchor="start" font-size="10" font-weight="bold" fill="#909090">COLD</text>
 
@@ -53,17 +53,17 @@
   <line x1="725" y1="60" x2="725" y2="785" stroke="#909090" stroke-width="1" stroke-dasharray="4,3"/>
   <line x1="885" y1="60" x2="885" y2="785" stroke="#909090" stroke-width="1" stroke-dasharray="4,3"/>
 
-  <!-- 1. User → host -->
+  <!-- 1. User to host -->
   <line x1="85" y1="115" x2="239" y2="115" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="162" y="109" text-anchor="middle" fill="#909090">visit example.paseo.li</text>
   <text x="10" y="118" fill="#909090" font-size="10">1</text>
 
-  <!-- 2. host → protocol -->
+  <!-- 2. host to protocol -->
   <line x1="245" y1="148" x2="399" y2="148" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="322" y="142" text-anchor="middle" fill="#909090">open the protocol iframe</text>
   <text x="10" y="151" fill="#909090" font-size="10">2</text>
 
-  <!-- 3. protocol → smoldot: spawn (Cold → Booting) -->
+  <!-- 3. protocol to smoldot: spawn (Cold to Booting) -->
   <line x1="405" y1="220" x2="559" y2="220" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="482" y="214" text-anchor="middle" fill="#909090">spawn the smoldot Web Worker</text>
   <text x="10" y="223" fill="#909090" font-size="10">3</text>
@@ -73,52 +73,52 @@
   <text x="613" y="263" text-anchor="start" fill="#909090">start smoldot · add Paseo and Asset Hub chains</text>
   <text x="10" y="263" fill="#909090" font-size="10">4</text>
 
-  <!-- 5. smoldot → Polkadot: warp-sync -->
+  <!-- 5. smoldot to Polkadot: warp-sync -->
   <line x1="565" y1="300" x2="719" y2="300" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="642" y="294" text-anchor="middle" fill="#909090">warp-sync</text>
   <text x="10" y="303" fill="#909090" font-size="10">5</text>
 
-  <!-- 6. Polkadot → smoldot: chain ready -->
+  <!-- 6. Polkadot to smoldot: chain ready -->
   <line x1="725" y1="335" x2="571" y2="335" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="648" y="330" text-anchor="middle" fill="#909090">Asset Hub finalized block ready</text>
   <text x="10" y="338" fill="#909090" font-size="10">6</text>
 
-  <!-- 7. smoldot self: presync complete (Booting → Warm) -->
+  <!-- 7. smoldot self: presync complete (Booting to Warm) -->
   <path d="M 565 355 H 605 V 369 H 571" fill="none" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="613" y="365" text-anchor="start" fill="#909090">presync complete</text>
   <text x="10" y="365" fill="#909090" font-size="10">7</text>
 
-  <!-- 8. protocol → smoldot: resolve -->
+  <!-- 8. protocol to smoldot: resolve -->
   <line x1="405" y1="425" x2="559" y2="425" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="482" y="419" text-anchor="middle" fill="#909090">resolve "example"</text>
   <text x="10" y="428" fill="#909090" font-size="10">8</text>
 
-  <!-- 9. smoldot → Polkadot: read contenthash -->
+  <!-- 9. smoldot to Polkadot: read contenthash -->
   <line x1="565" y1="460" x2="719" y2="460" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="642" y="454" text-anchor="middle" fill="#909090">read contenthash for "example" from DotNS</text>
   <text x="10" y="463" fill="#909090" font-size="10">9</text>
 
-  <!-- 10. Polkadot → smoldot: DotNS returns CID -->
+  <!-- 10. Polkadot to smoldot: DotNS returns CID -->
   <line x1="725" y1="495" x2="571" y2="495" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="648" y="490" text-anchor="middle" fill="#909090">DotNS returns the CID</text>
   <text x="10" y="498" fill="#909090" font-size="10">10</text>
 
-  <!-- 11. smoldot → host: send CID back -->
+  <!-- 11. smoldot to host: send CID back -->
   <line x1="565" y1="530" x2="251" y2="530" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="408" y="525" text-anchor="middle" fill="#909090">send the CID back to the host</text>
   <text x="10" y="533" fill="#909090" font-size="10">11</text>
 
-  <!-- 12. host → sandbox: open sandbox -->
+  <!-- 12. host to sandbox: open sandbox -->
   <line x1="245" y1="565" x2="879" y2="565" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="562" y="559" text-anchor="middle" fill="#909090">open the sandbox iframe at the CID's subdomain</text>
   <text x="10" y="568" fill="#909090" font-size="10">12</text>
 
-  <!-- 13. sandbox → Polkadot: fetch content -->
+  <!-- 13. sandbox to Polkadot: fetch content -->
   <line x1="885" y1="600" x2="731" y2="600" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="808" y="594" text-anchor="middle" fill="#909090">fetch the app content</text>
   <text x="10" y="603" fill="#909090" font-size="10">13</text>
 
-  <!-- 14. Polkadot → sandbox: content -->
+  <!-- 14. Polkadot to sandbox: content -->
   <line x1="725" y1="635" x2="879" y2="635" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="802" y="630" text-anchor="middle" fill="#909090">HTML / JS / CSS</text>
   <text x="10" y="638" fill="#909090" font-size="10">14</text>
@@ -128,13 +128,13 @@
   <text x="885" y="697" text-anchor="middle" fill="#909090">render the app</text>
   <text x="10" y="673" fill="#909090" font-size="10">15</text>
 
-  <!-- 16. sandbox → User: user sees app -->
+  <!-- 16. sandbox to User: user sees app -->
   <line x1="879" y1="718" x2="91" y2="718" stroke="#909090" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow-return)"/>
   <text x="485" y="713" text-anchor="middle" fill="#909090">user sees app at example.paseo.li</text>
   <text x="10" y="721" fill="#909090" font-size="10">16</text>
 
-  <!-- 17. User → smoldot: close tab (Warm → Cold) -->
+  <!-- 17. User to smoldot: close tab (Warm to Cold) -->
   <line x1="85" y1="765" x2="559" y2="765" stroke="#909090" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <text x="322" y="759" text-anchor="middle" fill="#909090">user closes tab — smoldot terminates</text>
+  <text x="322" y="759" text-anchor="middle" fill="#909090">user closes tab, smoldot terminates</text>
   <text x="10" y="768" fill="#909090" font-size="10">17</text>
 </svg>

@@ -15,7 +15,7 @@
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 @media (max-width: 560px) {
   .stack {

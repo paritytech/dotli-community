@@ -48,7 +48,7 @@ export const IFRAME_FORWARDER = `
         var d = e.data;
         if (!d || d[KEY] !== true) return;
         var payload = {}; payload[KEY] = true;
-        payload.frame = frameTag + " → worker(" + String(url).split("/").pop() + ")";
+        payload.frame = frameTag + ": worker(" + String(url).split("/").pop() + ")";
         payload.level = d.level; payload.text = d.text;
         if (!isTop) { window.parent.postMessage(payload, "*"); }
         else { origs.log("[FRAMELOG][" + payload.frame + "][" + payload.level + "]", payload.text); }

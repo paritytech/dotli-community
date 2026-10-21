@@ -4,11 +4,9 @@
 import { fromHex } from '@dotli/shared';
 import { CID } from 'multiformats/cid';
 import { create } from 'multiformats/hashes/digest';
-
-const BLAKE2B_256_MULTIHASH_CODE = 0xb220;
-const RAW_CID_CODEC = 0x55;
+import { BLAKE2B_256, RAW } from './codecs.js';
 
 export function hashToCid(hashHex: string): CID {
-  const digest = create(BLAKE2B_256_MULTIHASH_CODE, fromHex(hashHex));
-  return CID.createV1(RAW_CID_CODEC, digest);
+  const digest = create(BLAKE2B_256, fromHex(hashHex));
+  return CID.createV1(RAW, digest);
 }

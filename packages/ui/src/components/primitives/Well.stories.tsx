@@ -3,10 +3,11 @@
 
 import { createSignal, For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn } from 'storybook/test';
+import { expect, fn, within } from 'storybook/test';
 import { Field } from './Field.js';
 import { Switch } from './Switch.js';
-import { Callout, InfoIcon, KeyValue, Row, Well } from './Well.js';
+import { InfoIcon } from '../icons/InfoIcon.js';
+import { Callout, Row, Well } from './Well.js';
 
 const meta = {
   title: 'Primitives/Well',
@@ -14,12 +15,13 @@ const meta = {
   component: Well,
   // Per story, since one node in the args would move between every well that shows it.
   args: { children: <></> },
-  argTypes: { layout: { control: 'inline-radio', options: ['plain', 'list', 'controls', 'kv', 'flush'] } },
+  argTypes: { layout: { control: 'inline-radio', options: ['plain', 'list', 'controls', 'flush'] } },
 } satisfies Meta<typeof Well>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** As a dotli user, I see plain content in a well. */
 export const Plain: Story = {
   render: args => (
     <Well {...args}>
@@ -28,6 +30,7 @@ export const Plain: Story = {
   ),
 };
 
+/** As a dotli user, I read labelled fields stacked in a list well. */
 export const List: Story = {
   args: { layout: 'list' },
   render: args => (
@@ -40,47 +43,25 @@ export const List: Story = {
 
 const onCacheChange = fn<(enabled: boolean) => void>().mockName('onCacheChange');
 
+/** As a dotli user, I read each row label beside its control in a controls well. */
 export const Controls: Story = {
   args: { layout: 'controls' },
   render: args => (
     <Well {...args}>
       <For each={['dotNS cache', 'Archive cache', 'Worker cache']}>
         {label => (
-          <Row label={label}>
+          <Row label={label} testId={`row-${label}`}>
             <Switch label={label} checked={label !== 'Worker cache'} onChange={onCacheChange} />
           </Row>
         )}
       </For>
     </Well>
   ),
-};
-
-// The row only reports the press, so the owner copies and announces it.
-export const KeyValues: Story = {
-  render: () => {
-    const [status, setStatus] = createSignal('');
-    return (
-      <Well layout="kv">
-        <KeyValue k="Transport" v="Light client per tab" />
-        <KeyValue k="Version" v="0.6.0" />
-        <KeyValue
-          k="Commit"
-          v="4a879e54"
-          copyable
-          status={status()}
-          testId="kv-commit"
-          onClick={() => setStatus('Copied')}
-        />
-      </Well>
-    );
-  },
-  play: async ({ canvas, userEvent, step }) => {
-    await step('When I copy the commit with the keyboard', async () => {
-      canvas.getByRole('button', { name: 'Copy Commit 4a879e54' }).focus();
-      await userEvent.keyboard('{Enter}');
-    });
-    await step('Then the row announces it', async () => {
-      await expect(canvas.getByRole('status')).toHaveTextContent('Copied');
+  play: async ({ canvas, step }) => {
+    await step('Then I read each row label beside its control', async () => {
+      const row = canvas.getByTestId('row-Archive cache');
+      await expect(row).toHaveTextContent('Archive cache');
+      await expect(within(row).getByRole('switch', { name: 'Archive cache' })).toBeVisible();
     });
   },
 };
@@ -92,6 +73,7 @@ const PACKAGES = [
 ] as const;
 
 // Flush content brings its own padding, which the shell's stylesheet gives it and this story inlines.
+/** As a dotli user, I open and close a flush well section from its header button. */
 export const Flush: Story = {
   args: { layout: 'flush' },
   render: args => {
@@ -125,16 +107,24 @@ export const Flush: Story = {
           hidden={!open()}
           style={{ padding: '0 12px 10px', 'border-top': '1px solid var(--chrome-line)' }}
         >
-          <For each={PACKAGES}>{([name, version]) => <KeyValue k={name} v={version} dense />}</For>
+          <For each={PACKAGES}>
+            {([name, version]) => (
+              <div style={{ display: 'flex', 'justify-content': 'space-between' }}>
+                <span>{name}</span>
+                <code>{version}</code>
+              </div>
+            )}
+          </For>
         </div>
       </Well>
     );
   },
 };
 
+/** As a dotli user, I read a callout with an icon about what trusted providers see. */
 export const Callouts: Story = {
   render: () => (
-    <Callout icon={<InfoIcon />}>
+    <Callout icon={InfoIcon} testId="callout">
       Trusted providers see which chains you read. Light clients verify everything locally.
     </Callout>
   ),

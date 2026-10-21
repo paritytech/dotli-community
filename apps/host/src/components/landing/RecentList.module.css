@@ -1,0 +1,136 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The gap above is padding, so the reveal grows it with the list. */
+.recent {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--w-landing);
+  margin: 0;
+  padding: var(--sp-10) 0 0;
+  text-align: left;
+  animation: reveal var(--dur-morph) var(--ease-out);
+}
+
+/* max-height takes a length, since a percentage of the page's auto height does not animate. */
+@keyframes reveal {
+  from {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+  to {
+    max-height: 640px;
+    overflow: hidden;
+    opacity: 1;
+  }
+}
+
+.list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+}
+
+/* Holds the link's stretched hit area. */
+.item {
+  position: relative;
+}
+
+.link {
+  color: var(--chrome-text);
+  text-decoration: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* The whole row opens the site, the remove button sits above this. */
+.link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.link:focus-visible {
+  outline: none;
+}
+
+.link:focus-visible::after {
+  border-radius: var(--r-sm);
+  outline: var(--chrome-focus-ring);
+  outline-offset: -2px;
+}
+
+.label {
+  font-weight: var(--fw-medium);
+}
+
+.tld {
+  font-weight: var(--fw-regular);
+  color: var(--chrome-text-muted);
+}
+
+.remove {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--chrome-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast),
+    background var(--dur-fast),
+    color var(--dur-fast);
+}
+
+.remove-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.remove:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+
+.item:hover .remove,
+.item:focus-within .remove,
+.remove[data-revealed] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.remove:hover {
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+}
+
+@media (max-width: 560px) {
+  .remove {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+  }
+
+  .remove-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recent {
+    animation: none;
+  }
+  .remove {
+    transition: none;
+  }
+}

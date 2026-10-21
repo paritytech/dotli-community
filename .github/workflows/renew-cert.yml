@@ -1,0 +1,74 @@
+name: Renew certificate
+
+# Gated by the environment's protection rules and deployment branch policy. Renews the environment's Let's Encrypt
+# certificate on its box and reloads nginx, for when the certbot timer failed or renewed without a reload.
+
+run-name: Renew certificate for ${{ inputs.environment }} from ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to renew the certificate for'
+        required: true
+        type: choice
+        options:
+          - paseoli.dev
+          - paseo.fyi
+          - testnet.li
+          - paseo.li
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renew-cert-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    name: Renew certificate for ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # GitHub environments are named by domain, the Makefile keys them by tag.
+      - name: Resolve Makefile ENV
+        id: env
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          case "$ENVIRONMENT" in
+            paseo.li) TAG=paseo ;;
+            paseoli.dev) TAG=dev-paseo ;;
+            paseo.fyi) TAG=fyi-paseo ;;
+            testnet.li) TAG=dev-test ;;
+            *) echo "::error::No Makefile ENV for $ENVIRONMENT"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - run: ssh-keyscan "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Renew certificate
+        run: make renew-cert ENV="$ENV_TAG" REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
+        env:
+          ENV_TAG: ${{ steps.env.outputs.tag }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      # What nginx serves, which is what the renewal is for.
+      - name: Check served certificate
+        env:
+          DOMAIN: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          echo | openssl s_client -servername "$DOMAIN" -connect "$DOMAIN:443" 2>/dev/null | openssl x509 -noout -subject -enddate

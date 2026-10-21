@@ -6,15 +6,19 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./app": "./src/app.ts",
     "./astro-pwa": "./src/astro-pwa.ts",
     "./build-info": "./src/build-info-plugin.ts",
-    "./build-options": "./src/build-options.ts",
     "./css-modules": "./src/css-modules.ts",
+    "./dependency-versions": "./src/dependency-versions.ts",
+    "./inline-script": "./src/inline-script.ts",
     "./mode-sync": "./src/mode-sync.ts",
     "./runtime-network-config": "./src/runtime-network-config-plugin.ts",
-    "./sentry-release": "./src/sentry-release.ts",
+    "./service-worker": "./src/service-worker.ts",
+    "./serving": "./src/serving.ts",
     "./social-meta": "./src/social-meta-plugin.ts",
     "./spa-fallback": "./src/spa-fallback.ts",
+    "./test-defines": "./src/test-defines.ts",
     "./truapi-signing-worker": "./src/truapi-signing-worker.ts",
     "./package.json": "./package.json"
   },
@@ -23,10 +27,14 @@
     "lint": "eslint .",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@sentry/vite-plugin": "^11.8.0",
+    "vite-plugin-pwa": "^2.0.0",
+    "vite-plugin-wasm": "^3.6.0"
+  },
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "astro": "^7.3.6",
-    "vite-plugin-pwa": "^2.0.0"
+    "astro": "^7.4.1"
   }
 }

@@ -7,13 +7,10 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { equals as bytesEqual } from 'multiformats/bytes';
 import { CID } from 'multiformats/cid';
-import { log } from '@dotli/shared';
+import { log, named } from '@dotli/shared';
 import type { BlockSource } from './archive.js';
-import { CONTENT_ERRORS, named } from './errors.js';
-
-// IPFS defaults to sha2-256. The Bulletin chain and preimages use blake2b-256.
-const SHA2_256 = 0x12;
-const BLAKE2B_256 = 0xb220;
+import { BLAKE2B_256, SHA2_256 } from './codecs.js';
+import { CONTENT_ERRORS } from './errors.js';
 
 function recomputeDigest(multihashCode: number, bytes: Uint8Array): Uint8Array {
   switch (multihashCode) {
@@ -36,7 +33,7 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
   const actual = recomputeDigest(cid.multihash.code, bytes);
   if (!bytesEqual(actual, expected)) {
     throw named(
-      new Error(`Content hash mismatch for ${cid.toString()} — refusing tampered content`),
+      new Error(`Content hash mismatch for ${cid.toString()}, refusing tampered content`),
       CONTENT_ERRORS.VERIFICATION,
     );
   }
@@ -60,7 +57,7 @@ export function verifyingBlockSource(source: BlockSource): BlockSource {
   };
 }
 
-/** Verifies only the root, for a transport that already verifies every block (smoldot bitswap). */
+/** Verifies only the root, for a source whose every block the host's relay already checked. */
 export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): BlockSource {
   return async (cid: CID): Promise<Uint8Array> => {
     const bytes = await source(cid);

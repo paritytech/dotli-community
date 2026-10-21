@@ -3,7 +3,8 @@
 
 // Kept out of index.ts, which must stay pure re-exports for rolldown to drop unused ones from a chunk.
 
-import type * as FetchNamespace from './fetch.js';
+import type * as VerifyNamespace from './verify.js';
 
-export type FetchModule = typeof FetchNamespace;
-export const loadFetch = (): Promise<FetchModule> => import('./fetch.js');
+/** On first use, so the host's entry stays free of the hashing code. */
+export type VerifyModule = typeof VerifyNamespace;
+export const loadVerify = (): Promise<VerifyModule> => import('./verify.js');

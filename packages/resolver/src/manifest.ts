@@ -19,8 +19,8 @@ import {
   type RootManifest,
 } from './manifest-types.js';
 
-export const ROOT_MANIFEST_KEY = 'manifest';
-export const EXECUTABLE_MANIFEST_KEY = 'executable';
+const ROOT_MANIFEST_KEY = 'manifest';
+const EXECUTABLE_MANIFEST_KEY = 'executable';
 
 /** `unsupported` when the network has no text records, so loading falls back to the contenthash alone. */
 export async function readRootManifest(

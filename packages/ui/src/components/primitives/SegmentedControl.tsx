@@ -21,6 +21,10 @@ export interface SegmentedControlProps<V extends string> {
   onChange: (value: V) => void;
   /** Full width of its container, the options sharing it equally. */
   block?: boolean;
+  /** `lg` stacks each option's icon over its label in a taller tile. */
+  size?: 'md' | 'lg';
+  /** Shown but not pickable. Each option keeps focus, so a popover the control sits in stays open. */
+  disabled?: boolean;
   class?: string | undefined;
   testId?: string;
 }
@@ -79,6 +83,8 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       aria-label={props.label}
       class={[s['seg'], props.class]}
       data-block={props.block === true ? '' : undefined}
+      data-size={props.size ?? 'md'}
+      aria-disabled={props.disabled === true ? 'true' : undefined}
       data-testid={props.testId}
       onKeyDown={onKeyDown}
       onFocusIn={onFocusIn}
@@ -91,8 +97,9 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
             class={s['option']}
             aria-pressed={option.value === props.value ? 'true' : 'false'}
             tabindex={index() === tabStop() ? 0 : -1}
+            aria-disabled={props.disabled === true ? 'true' : undefined}
             onClick={() => {
-              if (option.value !== props.value) {
+              if (props.disabled !== true && option.value !== props.value) {
                 props.onChange(option.value);
               }
             }}

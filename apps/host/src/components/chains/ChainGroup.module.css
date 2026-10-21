@@ -1,0 +1,169 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.group {
+  padding: 0 var(--sp-1);
+}
+/* The surface's gap plus 4 between chains. */
+.group + .group {
+  margin-top: var(--sp-1);
+}
+.group-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1_5);
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+}
+.cell {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+}
+/* A chain nobody uses keeps its row and last bars, faded, so the known chains never jump around. */
+.group-label[data-state='unused'],
+.cell[data-state='unused'] {
+  opacity: 0.5;
+}
+.cell[data-unavailable],
+.waiting {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  white-space: nowrap;
+}
+.waiting {
+  flex: none;
+  align-self: center;
+  margin-right: var(--sp-1);
+}
+.bars {
+  position: relative;
+  /* The pending trail sizes its slots from the strip's width. */
+  container-type: inline-size;
+  display: flex;
+  /* 48 slots share the width, the newest at the right edge. */
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--sp-hair);
+  box-sizing: border-box;
+  /* A flex item's default `min-width: auto` would let its content defeat the clipping. */
+  min-width: 0;
+  height: var(--sp-3);
+  overflow: hidden;
+}
+/* Set for one frame after a block lands (slideStrip), so the row glides left instead of jumping a step. */
+.bars[data-sliding] {
+  transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border-radius: var(--r-hair);
+  transform-origin: bottom center;
+}
+/* A slot with no sample yet. */
+.stub {
+  flex: 1;
+  min-width: 0;
+  height: 3px;
+  border-radius: var(--r-hair);
+  background: var(--chrome-fill-strong);
+}
+/* Before a first bar the status text leads the strip. The slots keep the size they have in a full strip and the
+   oldest ones go under the text's edge, so they don't shrink as the countdown's width changes. */
+.trail {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--sp-hair);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.trail > .stub,
+.trail > .bar {
+  flex: none;
+  width: calc((100cqw - (var(--slots) - 1) * var(--sp-hair)) / var(--slots));
+}
+.bar[data-new] {
+  animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+.bar[data-health='onTime'] {
+  background: var(--chrome-ok);
+}
+.bar[data-health='late'] {
+  height: 8px;
+  background: var(--chrome-warn);
+}
+.bar[data-health='veryLate'] {
+  height: 5px;
+  background: var(--chrome-err);
+}
+/* Inline height is the elapsed share of the block time once a first head anchors the estimate. */
+.pending {
+  height: 20%;
+  background: var(--chrome-idle);
+  opacity: 0.75;
+}
+.pending[data-pending='searching'] {
+  height: 45%;
+}
+.pending[data-pending='due'] {
+  height: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pending {
+    transition: height 0.25s linear;
+  }
+  .pending[data-pending='searching'],
+  .pending[data-pending='due'] {
+    animation: pending-pulse var(--loop) ease-in-out infinite;
+  }
+}
+@keyframes pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bars[data-sliding] {
+    transition: none;
+  }
+  .bar[data-new] {
+    animation: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .group-label {
+    gap: var(--sp-2);
+  }
+  .bars {
+    height: var(--sp-4);
+  }
+  .stub {
+    height: 4px;
+  }
+  .bar[data-health='late'] {
+    height: 10px;
+  }
+  .bar[data-health='veryLate'] {
+    height: 6px;
+  }
+}

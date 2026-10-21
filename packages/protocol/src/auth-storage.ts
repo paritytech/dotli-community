@@ -2,38 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
-import type { ProtocolRequestMethod } from './messages.js';
+import type { ProtocolSchema } from './schema.js';
 
-export type SharedAuthRequestMethod = 'authStorageRead' | 'authStorageWrite' | 'authStorageClear';
+type StorageMethod = keyof ProtocolSchema['sections']['storage'];
 
-export type SharedModeRequestMethod = 'modeStorageRead' | 'modeStorageWrite' | 'modeStorageClear';
+export type SharedModeRequestMethod = Extract<StorageMethod, 'modeRead' | 'modeWrite' | 'modeClear'>;
 
 export const SHARED_CORE_SESSION_KEY = 'session';
 
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>(['authStorageRead', 'authStorageWrite', 'authStorageClear']);
-const SHARED_MODE_METHODS = new Set<ProtocolRequestMethod>(['modeStorageRead', 'modeStorageWrite', 'modeStorageClear']);
-
-export function isSharedAuthRequestMethod(method: ProtocolRequestMethod): method is SharedAuthRequestMethod {
-  return SHARED_AUTH_METHODS.has(method);
-}
-
-export function isSharedModeRequestMethod(method: ProtocolRequestMethod): method is SharedModeRequestMethod {
-  return SHARED_MODE_METHODS.has(method);
-}
-
-export type SharedWalletRequestMethod =
-  'localWalletRead' | 'localWalletSave' | 'localWalletIdentity' | 'localWalletForget';
-
-const SHARED_WALLET_METHODS = new Set<ProtocolRequestMethod>([
-  'localWalletRead',
-  'localWalletSave',
-  'localWalletIdentity',
-  'localWalletForget',
+const SHARED_MODE_METHODS: ReadonlySet<string> = new Set<SharedModeRequestMethod>([
+  'modeRead',
+  'modeWrite',
+  'modeClear',
 ]);
 
-export function isSharedWalletRequestMethod(method: ProtocolRequestMethod): method is SharedWalletRequestMethod {
-  return SHARED_WALLET_METHODS.has(method);
+/** Whether `method` is a request of the shared mode store, among the storage section's methods. */
+export function isSharedModeRequestMethod(method: string): method is SharedModeRequestMethod {
+  return SHARED_MODE_METHODS.has(method);
 }
 
 /**

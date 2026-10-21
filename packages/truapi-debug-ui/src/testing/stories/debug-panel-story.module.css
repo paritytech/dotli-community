@@ -1,0 +1,16 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.page {
+  margin: 0;
+  background: var(--td-bg);
+  color: var(--td-fg);
+  color-scheme: dark;
+  font-family: var(--td-font);
+}
+
+/* Replaces Storybook's padded layout so every story, also in docs blocks, sits on the page. */
+.root {
+  box-sizing: border-box;
+  padding: 16px;
+}

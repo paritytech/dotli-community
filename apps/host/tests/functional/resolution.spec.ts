@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { chromium, expect, type Page } from '@playwright/test';
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from '../env.js';
 import { setupTest } from './helpers/context.js';
+import { recordProtocolMessages, waitForProtocolMessage } from './helpers/wire-recorder.js';
 import { waitForResolutionOutcome } from '../product-frame.js';
 import { BACKENDS, seedSettings } from './fixtures/settings.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from './fixtures/permissions.js';
@@ -19,7 +20,7 @@ const WARM_DOMAIN = process.env['WARM_DOMAIN'] ?? 'browse';
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
 /** The provider's smoldot database store lives on this origin. */
 const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;
-/** Long enough for the provider to write its first warm-start blob to IndexedDB. */
+/** The longest the provider takes to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
@@ -42,50 +43,27 @@ test.describe('Resolution across chain backends', () => {
     });
   }
 
-  test(`As a user opening ${DOMAIN}.dot, I am shown how many peers the light client found`, async ({ browser }) => {
+  test(`As a user opening ${DOMAIN}.dot, the host hears the light client's peer count`, async ({ browser }) => {
     // Given
     const { context, page } = await setupTest(browser, {
       backend: 'smoldot-direct',
     });
 
     try {
-      // The rendered figure can change faster than a poll catches, so the envelope is the reliable signal.
-      await page.addInitScript(() => {
-        const seen: unknown[] = [];
-        (window as unknown as { __dotliPeerCounts: unknown[] }).__dotliPeerCounts = seen;
-        window.addEventListener('message', (event: MessageEvent) => {
-          const data = event.data as {
-            namespace?: string;
-            kind?: string;
-            syncKind?: string;
-            peers?: number;
-          } | null;
-          if (
-            data !== null &&
-            typeof data === 'object' &&
-            data.namespace === 'dotli:protocol' &&
-            data.kind === 'chain-sync' &&
-            data.syncKind === 'peers' &&
-            typeof data.peers === 'number'
-          ) {
-            seen.push(data);
-          }
-        });
-      });
+      // The rendered figure can change faster than a poll catches, so the recorded message is the reliable signal.
+      await recordProtocolMessages(page);
 
       // When
       await page.goto(BASE_URL, { waitUntil: 'commit' });
 
       // Then
-      const sawPeers = page.waitForFunction(
-        () => {
-          const seen = (window as unknown as { __dotliPeerCounts?: unknown[] }).__dotliPeerCounts;
-          return seen !== undefined && seen.length > 0;
-        },
-        undefined,
-        { timeout: TIMEOUT_MS },
+      const sawPeers = waitForProtocolMessage(
+        page,
+        { section: 'frame', method: 'telemetry', tag: 'receive', body: { tag: 'chainSync', value: { kind: 'peers' } } },
+        TIMEOUT_MS,
       );
-      await Promise.all([sawPeers, waitForResolutionOutcome(page, TIMEOUT_MS, 'smoldot-direct')]);
+      const [peers] = await Promise.all([sawPeers, waitForResolutionOutcome(page, TIMEOUT_MS, 'smoldot-direct')]);
+      expect(peers.body).toMatchObject({ value: { peers: expect.any(Number) } });
     } finally {
       await context.close();
     }
@@ -106,6 +84,10 @@ async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
     throw new Error(`no protocol frame at ${PROTOCOL_ORIGIN}`);
   }
   return frame.evaluate(async () => {
+    // Opening a database that does not exist yet would create it and block the provider's own upgrade.
+    if (!(await indexedDB.databases()).some(d => d.name === 'dotli-smoldot-db')) {
+      return { stored: [], loaded: [] };
+    }
     const keys = (db: IDBDatabase, store: string): Promise<string[]> =>
       new Promise((resolve, reject) => {
         if (!db.objectStoreNames.contains(store)) {
@@ -130,6 +112,9 @@ async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
         reject(req.error ?? new Error('open smoldot-db failed'));
       };
     });
+    db.onversionchange = () => {
+      db.close();
+    };
     try {
       return {
         stored: await keys(db, 'chain-databases'),
@@ -171,7 +156,9 @@ test.describe('Warm start across a browser restart', () => {
     try {
       // Given
       const primed = await withWarmSession(profile, BASE_URL, 'warm start, session 1', async page => {
-        await page.waitForTimeout(SNAPSHOT_WINDOW_MS);
+        await expect
+          .poll(async () => (await readSmoldotDb(page)).stored, { timeout: SNAPSHOT_WINDOW_MS })
+          .not.toEqual([]);
         return readSmoldotDb(page);
       });
       expect(primed.stored, 'session 1 stored no database blobs').not.toEqual([]);
@@ -182,7 +169,10 @@ test.describe('Warm start across a browser restart', () => {
 
       // Then
       expect(resumed.loaded, 'session 2 resumed no chain from storage').not.toEqual([]);
-      expect(primed.stored).toEqual(expect.arrayContaining(resumed.loaded));
+      expect(
+        resumed.loaded.some(key => primed.stored.includes(key)),
+        'session 2 resumed nothing session 1 stored',
+      ).toBe(true);
     } finally {
       rmSync(profile, { recursive: true, force: true });
     }

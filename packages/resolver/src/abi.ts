@@ -4,16 +4,9 @@
 // Solidity storage slot math, for reading contract storage directly instead of calling the contract.
 
 import { keccak_256 } from '@noble/hashes/sha3.js';
-import { bytesToHex, concatBytes, hexToBytes as nobleHexToBytes } from '@noble/hashes/utils.js';
+import { concatBytes } from '@noble/hashes/utils.js';
 import { decode as decodeContentHash, getCodec } from '@ensdomains/content-hash';
-
-export function toHex(bytes: Uint8Array): `0x${string}` {
-  return `0x${bytesToHex(bytes)}`;
-}
-
-function hexToBytes(hex: `0x${string}`): Uint8Array {
-  return nobleHexToBytes(hex.slice(2));
-}
+import { fromHex, toHex } from '@dotli/shared';
 
 /** ENS-style namehash. */
 export function namehash(name: string): `0x${string}` {
@@ -41,12 +34,12 @@ export function computeMappingSlot(key: `0x${string}`, slotNumber: number): `0x$
     n >>>= 8;
   }
 
-  return toHex(new Uint8Array(keccak_256(concatBytes(hexToBytes(key), slotBytes))));
+  return toHex(new Uint8Array(keccak_256(concatBytes(fromHex(key), slotBytes))));
 }
 
 /** `bytes` longer than 31 start at `keccak256(baseSlot)` and span consecutive slots. */
 export function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
-  return toHex(new Uint8Array(keccak_256(hexToBytes(baseSlot))));
+  return toHex(new Uint8Array(keccak_256(fromHex(baseSlot))));
 }
 
 /** For `mapping(bytes32 => mapping(string => T))`. Solidity hashes a string key as raw UTF-8, unpadded. */
@@ -57,7 +50,7 @@ export function computeNestedStringMappingSlot(
 ): `0x${string}` {
   const midSlot = computeMappingSlot(outerKey, outerSlot);
   const innerBytes = new TextEncoder().encode(innerKey);
-  return toHex(new Uint8Array(keccak_256(concatBytes(innerBytes, hexToBytes(midSlot)))));
+  return toHex(new Uint8Array(keccak_256(concatBytes(innerBytes, fromHex(midSlot)))));
 }
 
 /** Adds to the slot as a big-endian uint256. */
@@ -65,7 +58,7 @@ export function addToSlot(slot: `0x${string}`, offset: number): `0x${string}` {
   if (offset === 0) {
     return slot;
   }
-  const bytes = hexToBytes(slot);
+  const bytes = fromHex(slot);
   let carry = offset;
   for (let i = 31; i >= 0 && carry > 0; i--) {
     const byte = bytes[i];
@@ -89,7 +82,7 @@ export function wordToBigInt(data: Uint8Array): bigint {
 
 /** The address is right-aligned in the word. */
 export function extractAddress(data: Uint8Array): string {
-  return `0x${bytesToHex(data.slice(12))}`;
+  return toHex(data.slice(12));
 }
 
 /**

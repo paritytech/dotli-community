@@ -24,7 +24,7 @@
   --danger: var(--chrome-err-text);
   --neutral-solid: #8c8f98;
 
-  /* Global because chat/custom-styles.ts writes them into a product's custom chat message inline styles. */
+  /* Global because an app writes them into a product's custom chat message inline styles. */
   --chat-fg-primary: #f4f4f5;
   --chat-fg-secondary: #a9abb3;
   --chat-fg-tertiary: #83868e;
@@ -110,6 +110,8 @@
   --chrome-danger-fill: color-mix(in srgb, var(--chrome-err) var(--chrome-tint), transparent);
   --chrome-danger-fill-strong: color-mix(in srgb, var(--chrome-err) var(--chrome-tint-strong), transparent);
   --chrome-danger-ring: color-mix(in srgb, var(--chrome-err) 45%, transparent);
+  --chrome-warn-fill: color-mix(in srgb, var(--chrome-warn) 12%, transparent);
+  --chrome-warn-ring: color-mix(in srgb, var(--chrome-warn) 30%, transparent);
   --chrome-danger-text: #ffdad7; /* Lc 75 on --chrome-danger-fill-strong */
 
   --chrome-shadow-pop:
@@ -189,6 +191,7 @@
 
   --sp-hair: 2px;
   --sp-1: 4px;
+  --sp-1_5: 6px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
@@ -206,7 +209,7 @@
   --r-xl: 28px;
   --r-full: 999px;
 
-  --h-chip: 20px;
+  --h-chip: 18px;
   --h-row-xs: 24px;
   --h-row-sm: 32px;
   --h-control-sm: 36px;

@@ -1,0 +1,38 @@
+{
+  "name": "@dotli/truapi-debug-ui",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.6.0",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.shipped.json && tsc --noEmit -p tests",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@config/eslint": "*",
+    "@config/typescript": "*",
+    "@config/vite": "*",
+    "@solidjs/vite-plugin": "3.0.0-next.50",
+    "storybook": "^10.6.2",
+    "storybook-solidjs-vite": "^10.7.2"
+  },
+  "dependencies": {
+    "@dotli/config": "*",
+    "@dotli/content": "*",
+    "@dotli/metrics": "*",
+    "@dotli/shared": "*",
+    "@dotli/truapi-debug": "*",
+    "@dotli/ui": "*",
+    "@solidjs/web": "2.0.0-rc.15",
+    "solid-js": "2.0.0-rc.15"
+  }
+}

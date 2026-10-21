@@ -1,0 +1,364 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { memoryStorage } from '@dotli/shared/testing';
+import { SITE_ID } from '@dotli/config';
+import { bindCaptureSink } from '@dotli/metrics';
+import { protocolSchema } from '@dotli/protocol';
+import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
+import { memoryIdb } from '@dotli/storage/testing';
+import { err, hostFailure, ok, unsupported } from '@dotli/transport';
+import {
+  createSharedStoreHandler,
+  serveLocalWallet,
+  type SharedAuthChannel,
+  type SharedStoreDeps,
+} from './shared-store-handler.js';
+import { closeHostLinks, linkHost, record, type HostLink } from './testing/host-link.js';
+
+afterEach(closeHostLinks);
+
+const { authChanges, authClear, authRead, authWrite, modeClear, modeRead, modeWrite } = protocolSchema.sections.storage;
+
+const captures = { exception: vi.fn(), expected: vi.fn() };
+bindCaptureSink(captures);
+
+interface FakeChannel {
+  channel: SharedAuthChannel;
+  posted: unknown[];
+  /** A message another tab's iframe broadcast, which may be anything. */
+  deliver: (data: unknown) => void;
+}
+
+function fakeChannel(post: () => void = () => undefined): FakeChannel {
+  const listeners = new Set<(event: { readonly data: unknown }) => void>();
+  const posted: unknown[] = [];
+  const channel: SharedAuthChannel = {
+    postMessage: message => {
+      post();
+      posted.push(message);
+    },
+    addEventListener: (_type, listener) => {
+      listeners.add(listener);
+    },
+    removeEventListener: (_type, listener) => {
+      listeners.delete(listener);
+    },
+  };
+  return {
+    channel,
+    posted,
+    deliver: data => {
+      for (const listener of listeners) {
+        listener({ data });
+      }
+    },
+  };
+}
+
+function setup(overrides: Partial<SharedStoreDeps> = {}): {
+  link: ReturnType<typeof linkHost>;
+  storage: Storage;
+  channel: FakeChannel;
+  store: ReturnType<typeof createSharedStoreHandler>;
+} {
+  const storage = memoryStorage();
+  const channel = fakeChannel();
+  const link = linkHost();
+  const store = createSharedStoreHandler(link.serving, {
+    storage: () => storage,
+    channel: channel.channel,
+    ...overrides,
+  });
+  return { link, storage, channel, store };
+}
+
+describe('the shared auth store', () => {
+  it('As a host page, I write a shared auth key and read it back', async () => {
+    // Given
+    const { link } = setup();
+    await link.host.request(authWrite, { siteId: SITE_ID, key: 'session', value: 'abc' });
+
+    // When
+    const read = await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    expect(read).toEqual(ok('abc'));
+  });
+
+  it('As a host page, I read a key nobody wrote as null', async () => {
+    // Given
+    const { link } = setup();
+
+    // When
+    const read = await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    expect(read).toEqual(ok(null));
+  });
+
+  it("As a host page in another tab, I hear this tab's auth writes and clears", async () => {
+    // Given
+    const { link, channel } = setup();
+
+    // When
+    await link.host.request(authWrite, { siteId: SITE_ID, key: 'session', value: 'abc' });
+    await link.host.request(authClear, { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    expect(channel.posted).toEqual([
+      { siteId: SITE_ID, key: 'session', value: 'abc' },
+      { siteId: SITE_ID, key: 'session', value: null },
+    ]);
+  });
+
+  it("As the host, I hear a sibling tab's auth change through my subscription", async () => {
+    // Given
+    const { link, channel } = setup();
+    const changes = record(link.host, authChanges, undefined);
+    await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+
+    // When another tab writes, then clears, and a stranger posts junk on the channel
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    channel.deliver({ siteId: 'evil.li', key: 'session', value: 'junk' });
+    channel.deliver('junk');
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: null });
+    await changes.until(2);
+
+    // Then
+    expect(changes.events).toEqual([
+      { siteId: SITE_ID, key: 'session', value: 'xyz' },
+      { siteId: SITE_ID, key: 'session', value: null },
+    ]);
+  });
+
+  it("As the host, once I unsubscribe I no longer hear sibling tabs' changes", async () => {
+    // Given
+    const { link, channel } = setup();
+    const changes = record(link.host, authChanges, undefined);
+    await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+
+    // When
+    changes.unsubscribe();
+    await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    const later = record(link.host, authChanges, undefined);
+    await link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'abc' });
+    await later.until(1);
+
+    // Then
+    expect(changes.events).toEqual([]);
+    expect(later.events).toEqual([{ siteId: SITE_ID, key: 'session', value: 'abc' }]);
+  });
+
+  it('As a dotli operator, a failed broadcast is reported and the write is still answered', async () => {
+    // Given
+    const failure = new DOMException('could not be cloned', 'DataCloneError');
+    const { link } = setup({
+      channel: fakeChannel(() => {
+        throw failure;
+      }).channel,
+    });
+    captures.exception.mockClear();
+
+    // When
+    const written = link.host.request(authWrite, { siteId: SITE_ID, key: 'session', value: 'abc' });
+
+    // Then
+    await expect(written).resolves.toEqual(ok());
+    expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'storage', step: 'shared_auth_broadcast' });
+  });
+
+  it('As a dotli integrator, a key outside the allowed characters is refused', async () => {
+    // Given
+    const { link } = setup();
+
+    // When
+    const write = link.host.request(authWrite, { siteId: SITE_ID, key: 'no spaces', value: 'x' });
+
+    // Then
+    await expect(write).resolves.toEqual(err(hostFailure('Error: Invalid shared auth key: no spaces')));
+  });
+
+  it('As a page on another root domain, I am refused the shared session', async () => {
+    // Given
+    const { link } = setup();
+
+    // When
+    const read = link.host.request(authRead, { siteId: 'evil.li', key: 'session' });
+
+    // Then
+    await expect(read).resolves.toEqual(err(hostFailure('Error: Invalid siteId: evil.li')));
+  });
+
+  it('As a dotli user, storage blocked by the browser is answered per request and the handler still starts', async () => {
+    // Given storage that throws on access
+    const blocked = new DOMException('storage is blocked', 'SecurityError');
+    const { link } = setup({
+      storage: () => {
+        throw blocked;
+      },
+    });
+
+    // When
+    const read = link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    await expect(read).resolves.toEqual(err(hostFailure('SecurityError: storage is blocked')));
+  });
+
+  it('As a dotli integrator, a stopped store serves nothing and hears no sibling tab', async () => {
+    // Given
+    const { link, channel, store } = setup();
+
+    // When
+    store.stop();
+    channel.deliver({ siteId: SITE_ID, key: 'session', value: 'xyz' });
+    const read = link.host.request(authRead, { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    await expect(read).resolves.toEqual(err(unsupported()));
+  });
+});
+
+describe('the shared mode store', () => {
+  it('As a host page, I keep the protocol mode apart from the session and no other tab is told', async () => {
+    // Given
+    const { link, storage, channel } = setup();
+
+    // When
+    await link.host.request(modeWrite, { siteId: SITE_ID, key: 'session', value: 'direct' });
+    const read = await link.host.request(modeRead, { siteId: SITE_ID, key: 'session' });
+
+    // Then
+    expect(read).toEqual(ok('direct'));
+    expect(storage.length).toBe(1);
+    expect(storage.key(0)).toBe(`DOTLI_MODE_${SITE_ID}_session`);
+    expect(channel.posted).toEqual([]);
+  });
+
+  it('As a host page, I clear the protocol mode', async () => {
+    // Given
+    const { link, storage } = setup();
+    storage.setItem(`DOTLI_MODE_${SITE_ID}_mode`, 'rpc');
+
+    // When
+    await link.host.request(modeClear, { siteId: SITE_ID, key: 'mode' });
+
+    // Then
+    expect(storage.length).toBe(0);
+  });
+});
+
+const { wallet } = protocolSchema.sections;
+
+const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
+const IDENTITY = { identityAccountId: `0x${'22'.repeat(32)}`, liteUsername: 'bob.7' };
+
+// Each test gets a fresh database, so no test sees another's wallet.
+let store: LocalWalletStore;
+
+beforeEach(() => {
+  store = createLocalWalletStore(memoryIdb());
+});
+
+function served(walletStore: LocalWalletStore = store): HostLink {
+  const link = linkHost();
+  serveLocalWallet(link.serving, walletStore);
+  return link;
+}
+
+describe('the local wallet', () => {
+  it('As a host page with no local wallet, I read none', async () => {
+    // Given: no record
+    const { host } = served();
+
+    // When
+    const result = await host.request(wallet.read, { siteId: SITE_ID });
+
+    // Then
+    expect(result).toEqual(ok({ tag: 'none', value: undefined }));
+  });
+
+  it('As a host page, I read back the entropy another app saved', async () => {
+    // Given
+    const { host } = served();
+    await host.request(wallet.save, { siteId: SITE_ID, entropy: ENTROPY });
+
+    // When
+    const result = await host.request(wallet.read, { siteId: SITE_ID });
+
+    // Then
+    expect(result).toEqual(ok({ tag: 'ok', value: { entropy: ENTROPY, identity: null } }));
+  });
+
+  it('As a host page, I cache the identity and read it back with the entropy', async () => {
+    // Given
+    const { host } = served();
+    await store.saveLocalWallet(ENTROPY);
+
+    // When
+    await host.request(wallet.identity, { siteId: SITE_ID, identity: IDENTITY });
+
+    // Then
+    expect(await store.loadLocalWallet()).toEqual({ entropy: ENTROPY, identity: IDENTITY });
+    expect(await host.request(wallet.read, { siteId: SITE_ID })).toEqual(
+      ok({ tag: 'ok', value: { entropy: ENTROPY, identity: IDENTITY } }),
+    );
+  });
+
+  it('As a host page switching back to Polkadot App, I forget the wallet for every app', async () => {
+    // Given
+    const { host } = served();
+    await store.saveLocalWallet(ENTROPY);
+
+    // When
+    await host.request(wallet.forget, { siteId: SITE_ID });
+
+    // Then
+    expect(await store.loadLocalWallet()).toBeNull();
+  });
+
+  it('As a page on another root domain, I am refused the wallet', async () => {
+    // Given
+    const { host } = served();
+    await store.saveLocalWallet(ENTROPY);
+
+    // When
+    const read = host.request(wallet.read, { siteId: 'evil.li' });
+
+    // Then
+    await expect(read).resolves.toEqual(err(hostFailure('Error: Invalid siteId: evil.li')));
+  });
+
+  it('As a host page, I cannot save bytes that are not BIP-39 entropy', async () => {
+    // Given
+    const { host } = served();
+
+    // When
+    const save = host.request(wallet.save, { siteId: SITE_ID, entropy: new Uint8Array(5) });
+
+    // Then
+    await expect(save).resolves.toEqual(err(hostFailure('Error: Invalid local wallet entropy')));
+    expect(await store.loadLocalWallet()).toBeNull();
+  });
+
+  it('As a host page, I read an undecryptable wallet as unreadable and it is gone afterwards', async () => {
+    // Given
+    await store.saveLocalWallet(ENTROPY);
+    const unreadable: LocalWalletStore = {
+      ...store,
+      loadLocalWallet: () => Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'))),
+    };
+    const { host } = served(unreadable);
+
+    // When
+    const result = await host.request(wallet.read, { siteId: SITE_ID });
+
+    // Then
+    expect(result).toEqual(ok({ tag: 'unreadable', value: undefined }));
+    expect(await store.loadLocalWallet()).toBeNull();
+  });
+});

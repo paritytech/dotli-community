@@ -1,4 +1,4 @@
 {
   "extends": ["@config/typescript/base.json", "@config/typescript/solid.json"],
-  "include": ["src", "vite.config.ts", "tests", "vitest.config.ts", "eslint.config.js"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts", "eslint.config.js"]
 }

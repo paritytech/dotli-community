@@ -1,4 +1,4 @@
-# dot.li — prebuilt bundle
+# dot.li prebuilt bundle
 
 A built dot.li, servable locally with no Docker and no build step. Ships the three builds plus a small server that
 reproduces the production serving rules (hostname routing, security headers, precompressed assets).
@@ -36,7 +36,7 @@ DOTLI_NETWORK='{
 ```
 
 `enabled` limits which networks the Settings selector offers; the first is the default. Overridable fields are `label`,
-`rpcs` and `ipfsGateways` only — `genesis` and contract addresses are fixed at build time, because they are the trust
+`rpcs` and `ipfsGateways` only. The `genesis` and contract addresses are fixed at build time, because they are the trust
 root for name resolution. A forked chain that preserves upstream genesis (zombie-bite and similar) needs no more than
 the endpoints above.
 
@@ -44,21 +44,21 @@ Anything unrecognised is rejected at startup rather than ignored, so a typo fail
 on the public chain.
 
 **Overridden RPCs only apply under the Trusted Providers backend.** The light client backends sync from chain specs and
-ignore `rpcs` entirely — so a container pointed at a dead endpoint can still look healthy. Switch in Settings, or open
+ignore `rpcs` entirely, so a container pointed at a dead endpoint can still look healthy. Switch in Settings, or open
 with `?chainBackend=rpc-gateway`.
 
 ## Options
 
-| Variable        | Default     | Notes                                                                                                                              |
-| --------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`          | `5173`      | Any port except 80 — the shell derives the protocol iframe's origin from `window.location.port`, which browsers leave empty on 80. |
-| `HOST`          | `127.0.0.1` | Loopback, since the bundle is only usable over `*.localhost`. Set `0.0.0.0` only behind your own proxy.                            |
-| `DIST`          | `./dist`    | Directory holding `host/`, `app/` and `protocol/`.                                                                                 |
-| `DOTLI_NETWORK` | unset       | Runtime network config, as above.                                                                                                  |
+| Variable        | Default     | Notes                                                                                                                             |
+| --------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`          | `5173`      | Any port except 80. The shell derives the protocol iframe's origin from `window.location.port`, which browsers leave empty on 80. |
+| `HOST`          | `127.0.0.1` | Loopback, since the bundle is only usable over `*.localhost`. Set `0.0.0.0` only behind your own proxy.                           |
+| `DIST`          | `./dist`    | Directory holding `host/`, `app/` and `protocol/`.                                                                                |
+| `DOTLI_NETWORK` | unset       | Runtime network config, as above.                                                                                                 |
 
 ## Running it on a remote machine
 
-The bundle needs `*.localhost` — browsers resolve those to loopback and treat them as a secure context, which service
+The bundle needs `*.localhost`. Browsers resolve those to loopback and treat them as a secure context, which service
 workers and SharedWorker require. So run the server on the remote host and reach it through a tunnel:
 
 ```sh

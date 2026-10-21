@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@config/eslint/vite';
+import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -15,4 +15,19 @@ export default defineConfig([
       },
     },
   },
+  ...importBans([
+    onlyAllowedScopes(
+      [
+        '@dotli/chains',
+        '@dotli/config',
+        '@dotli/metrics',
+        '@dotli/resolver',
+        '@dotli/shared',
+        '@dotli/transport',
+        '@config/eslint',
+        '@config/vite',
+      ],
+      "protocol is the page's side of the protocol frame, below the apps.",
+    ),
+  ]),
 ]);

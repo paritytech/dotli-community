@@ -2,19 +2,21 @@
 
 ### How to Test
 
-- **Unit and functional tests** live next to the file they test, named after it (e.g. `permissions.test.ts` alongside
-  `permissions.ts`).
-- **Functional tests** live under `apps/host/tests/functional/` (resolution, loading, performance specs driven
-  in-process against the preview server).
-- **E2E tests** live under `apps/host/tests/e2e/` (`truapi.spec.ts` exercises the full truapi surface against a real
-  `host-playground.dot` build).
+- **Where tests live** is set out in [AGENTS.md](AGENTS.md), under Tests. A unit test sits beside its module as
+  `src/foo.spec.ts` and runs under Node, with no DOM. A component is tested by a play function in its Storybook story.
+  Functional tests live in the package's `tests/` folder as `*.test.ts` and run under happy-dom. The Playwright suites
+  live under `apps/host/tests/functional/` (driven in-process against the preview server) and `apps/host/tests/e2e/`
+  (`truapi.spec.ts` exercises the full truapi surface against a real `host-playground.dot` build).
+- **Wait on signals, never sleep.** A test waits for the page to reach a state, as the example below waits for the
+  product's frame, never for a stretch of time.
 - **Tests are user stories.** Name each test as a user story: `As a <role>, I <action> and <outcome>` for behaviour, or
   `As a <role>, <observable property>` for invariants.
 - **Structure with Given / When / Then.** Every multi-step test body uses `// Given`, `// When`, `// Then` comments to
   separate setup, action, and assertions.
 - **Test selectors, not styles.** Tests find elements by `data-testid`, ARIA role or id, never by CSS class, because
   module class names are hashed. Reusable components take an optional `testId` prop that becomes `data-testid` on their
-  root. In ui tests, use `byTestId(id, root)` from `tests/support.ts`. In Playwright, use `page.getByTestId(id)`.
+  root. In functional tests, use `byTestId(id, root)` from `@dotli/ui/testing`. In Playwright, use
+  `page.getByTestId(id)`.
 - **Don't check CSS in tests.** Don't write tests that check CSS (stylesheets, computed styles or class names). Check
   styling visually.
 
@@ -32,7 +34,7 @@ test('As a user using per-product smoldot, the host must only spawn one instance
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(5_000);
+  await findAppFrame(page, 10_000);
 
   // Then
   const hostShellOrigin = `http://${DOMAIN}.localhost:${PORT}`;
@@ -45,16 +47,16 @@ test('As a user using per-product smoldot, the host must only spawn one instance
 
 ### Package boundaries
 
-Each workspace package exposes one entry, `src/index.ts`, listed as `"."` in its `exports`. Other packages import only
-from there (`import { log } from "@dotli/shared"`). Every other module under `src/` is private to its package.
+What a package owns and exposes is in its `README.md`, and what it may import is in its `eslint.config.js`. A package
+exposes the entries its `package.json` lists under `exports`: most only `src/index.ts`, some also a `./testing` entry
+for other packages' tests. Never import another package's internal modules.
 
 - Inside a package, import relative paths with the `.js` extension (`./state/topbar.js`), as NodeNext resolution
-  requires. ESLint rejects a `.ts` extension.
-- A module other packages load on demand is not re-exported directly. It gets a loader in `src/lazy.ts` (`loadBridge()`,
-  typed `BridgeModule`), which `index.ts` re-exports, so it stays a separate chunk.
-- Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. The shared
-  build plugins are `@config/vite`, one subpath per plugin (`@config/vite/build-info`, …), so a consumer loads only the
-  one it imports. CSS is exported as `./styles.css`.
+  requires. ESLint rejects a `.ts` extension, except in files Node loads directly.
+- A module loaded on demand gets a loader in `src/lazy.ts` (`loadBridge()`, typed `BridgeModule`), so it stays a
+  separate chunk.
+- Build-time code that Node runs (the Vite plugins) lives in `@config/vite`, one subpath per plugin
+  (`@config/vite/build-info`, …), so a consumer loads only the one it imports. CSS is exported as `./styles.css`.
 - Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.
 
 ### Styling
@@ -64,7 +66,7 @@ Each component's styles live in a CSS module beside it (`Foo.module.css` next to
 access (`s['signingModal']`). Bracket access is required by `noPropertyAccessFromIndexSignature` in tsconfig.
 
 - A module styles only the elements its component renders. To react to page-level state, use the attribute on `<html>`
-  or `<body>` through `:global(...)`, for example `:global([data-theme-pref='light']) .icon`. Never target another
+  or `<body>` through `:global(...)`, for example `:global([data-dock='right']) .sections`. Never target another
   component's classes.
 - Colors come from the tokens in `packages/ui/src/global.css` (`var(--text-muted)`, `var(--surface)`, ...). Modules
   contain no `[data-theme]` selectors, because the tokens switch with the theme.

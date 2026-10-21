@@ -3,17 +3,21 @@
 
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
+import { inlineScript } from '@config/vite/inline-script';
+import { TEST_DEFINES } from '@config/vite/test-defines';
 
 export default defineConfig({
-  plugins: [solid()],
+  // The checker injector inlines its head script, bundled as the build does.
+  plugins: [inlineScript(), solid()],
   test: {
-    include: ['tests/**/*.test.{ts,tsx}'],
-    environment: 'happy-dom',
     globals: false,
+    name: 'sandbox:unit',
+    include: ['src/**/*.spec.{ts,tsx}'],
+    environment: 'node',
   },
   define: {
+    ...TEST_DEFINES,
     'import.meta.env.DEV': 'false',
     'import.meta.env.VITE_APP_DEBUG': '"true"',
-    'import.meta.env.VITE_NETWORKS': '"paseo-next-v2,previewnet"',
   },
 });

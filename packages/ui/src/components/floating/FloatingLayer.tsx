@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, onCleanup, Show, untrack } from 'solid-js';
+import { createEffect, onCleanup, Show, untrack, useContext } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
-import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { containTab } from '../focus.js';
 import { anchorName } from './anchor-name.js';
 import type { CloseReason } from './close-reason.js';
+import { LayerTracker } from './layer-context.js';
 import { createPresence } from './presence.js';
 import s from './FloatingLayer.module.css';
 
@@ -15,7 +15,7 @@ export type Placement = 'topbar-end' | 'trigger-start';
 export type LayerCloseReason = Exclude<CloseReason, 'sheet' | 'released'>;
 
 /** Matches the surface's exit, `--dur`. */
-export const EXIT_MS = 220;
+const EXIT_MS = 220;
 
 export interface FloatingLayerProps {
   id: string;
@@ -55,7 +55,10 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
   /** Set by the listener that saw the next close's cause. */
   let reason: LayerCloseReason = 'programmatic';
 
-  onCleanup(registerTopbarSurface({ element: () => surface, open: () => untrack(() => props.open) }));
+  const track = useContext(LayerTracker);
+  if (track !== null) {
+    onCleanup(track({ element: () => surface, open: () => untrack(() => props.open) }));
+  }
 
   createEffect(
     () => props.open,
