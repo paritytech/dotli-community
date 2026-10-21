@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -20,12 +20,14 @@ function createManager(
   return createChainPool({ createTransport: genesisHash => createProvider(genesisHash), destroyDelay: Infinity });
 }
 
-function createProviderHarness(): {
+interface ProviderHarness {
   provider: JsonRpcProvider;
   sent: JsonRpcRequest[];
-  disconnect: ReturnType<typeof vi.fn>;
+  disconnect: Mock<() => void>;
   emit: (message: JsonRpcMessage) => void;
-} {
+}
+
+function createProviderHarness(): ProviderHarness {
   const sent: JsonRpcRequest[] = [];
   const disconnect = vi.fn();
   let onMessage: ((message: JsonRpcMessage) => void) | null = null;
@@ -1956,7 +1958,11 @@ describe('upstream follow stop', () => {
    * chainHead client does. It gives up after 20 stops, so a broker that keeps
    * answering the re-follow with another stop ends instead of hanging.
    */
-  function refollowingSession(broker: ChainBroker): { messages: Event[]; stops: () => number } {
+  function refollowingSession(broker: ChainBroker): {
+    messages: Event[];
+    stops: () => number;
+    send: (message: JsonRpcRequest) => void;
+  } {
     const messages: Event[] = [];
     let stops = 0;
     let nextId = 2;
@@ -1975,7 +1981,36 @@ describe('upstream follow stop', () => {
       () => undefined,
     );
     connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
-    return { messages, stops: () => stops };
+    return {
+      messages,
+      stops: () => stops,
+      send: message => {
+        connection.send(message);
+      },
+    };
+  }
+
+  function requiredRequestId(request: JsonRpcRequest | undefined, method: string): string {
+    if (typeof request?.id !== 'string') {
+      throw new Error(`Expected ${method} request`);
+    }
+    return request.id;
+  }
+
+  function stringResult(messages: readonly Event[], id: unknown): string {
+    const result = messages.find(message => message.id === id)?.result;
+    if (typeof result !== 'string') {
+      throw new Error(`Expected string result for request ${String(id)}`);
+    }
+    return result;
+  }
+
+  function emitFollowEvent(harness: ProviderHarness, upstreamToken: string, result: Record<string, unknown>): void {
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: upstreamToken, result },
+    });
   }
 
   it('As a dApp user, I re-follow when the node stops my follow and it is followed afresh once, not looped on the dead one', () => {
@@ -1983,8 +2018,8 @@ describe('upstream follow stop', () => {
     const harness = createProviderHarness();
     const broker = new ChainBroker(harness.provider);
     const session = refollowingSession(broker);
-    const first = harness.sent[0] as { id: string };
-    harness.emit({ jsonrpc: '2.0', id: first.id, result: 'up-1' });
+    const first = requiredRequestId(harness.sent[0], 'chainHead_v1_follow');
+    harness.emit({ jsonrpc: '2.0', id: first, result: 'up-1' });
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
@@ -2009,17 +2044,21 @@ describe('upstream follow stop', () => {
     const harness = createProviderHarness();
     const broker = new ChainBroker(harness.provider);
     const session = refollowingSession(broker);
-    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
-    const oldToken = (session.messages[0] as { result: string }).result;
+    harness.emit({
+      jsonrpc: '2.0',
+      id: requiredRequestId(harness.sent[0], 'chainHead_v1_follow'),
+      result: 'up-1',
+    });
+    const oldToken = stringResult(session.messages, 1);
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
       params: { subscription: 'up-1', result: { event: 'stop' } },
     });
-    const refollow = harness.sent.filter(m => m.method === 'chainHead_v1_follow')[1] as { id: string };
+    const refollow = harness.sent.filter(message => message.method === 'chainHead_v1_follow')[1];
 
     // When
-    harness.emit({ jsonrpc: '2.0', id: refollow.id, result: 'up-2' });
+    harness.emit({ jsonrpc: '2.0', id: requiredRequestId(refollow, 'chainHead_v1_follow'), result: 'up-2' });
     harness.emit({
       jsonrpc: '2.0',
       method: 'chainHead_v1_followEvent',
@@ -2027,11 +2066,101 @@ describe('upstream follow stop', () => {
     });
 
     // Then
-    const ack = session.messages.find(m => m.id === 2) as { result: string } | undefined;
-    expect(ack?.result).toEqual(expect.any(String));
-    expect(ack?.result).not.toBe(oldToken);
-    const best = session.messages.filter(m => m.params?.result?.event === 'bestBlockChanged');
-    expect(best.map(m => m.params?.subscription)).toEqual([ack?.result]);
+    const nextToken = stringResult(session.messages, 2);
+    expect(nextToken).not.toBe(oldToken);
+    const best = session.messages.filter(message => message.params?.result?.event === 'bestBlockChanged');
+    expect(best.map(message => message.params?.subscription)).toEqual([nextToken]);
+  });
+
+  it('As a dApp user, a block the broker cannot unpin stops my follow instead of staying pinned unseen', () => {
+    // Given a follower that releases a finalized block nobody else holds
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const session = refollowingSession(broker);
+    harness.emit({
+      jsonrpc: '2.0',
+      id: requiredRequestId(harness.sent[0], 'chainHead_v1_follow'),
+      result: 'up-1',
+    });
+    const token = stringResult(session.messages, 1);
+    emitFollowEvent(harness, 'up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    emitFollowEvent(harness, 'up-1', { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    emitFollowEvent(harness, 'up-1', {
+      event: 'finalized',
+      finalizedBlockHashes: ['0xb1'],
+      prunedBlockHashes: [],
+    });
+    session.send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'chainHead_v1_unpin',
+      params: [token, ['0xf0']],
+    });
+    const release = harness.sent.find(message => message.method === 'chainHead_v1_unpin');
+
+    // When the node refuses the release
+    harness.emit({
+      jsonrpc: '2.0',
+      id: requiredRequestId(release, 'chainHead_v1_unpin'),
+      error: { code: -32801, message: 'Invalid block hash' },
+    });
+
+    // Then the old follow is ended upstream and the client follows afresh
+    const unfollows = harness.sent.filter(message => message.method === 'chainHead_v1_unfollow');
+    expect(unfollows).toHaveLength(1);
+    expect(unfollows[0]).toMatchObject({ params: ['up-1'] });
+    expect(session.stops()).toBe(1);
+    expect(harness.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(2);
+  });
+
+  it('As a dApp user, a late unpin refusal from an ended follow leaves my replacement follow alive', () => {
+    // Given an unpin in flight when the node ends its follow, followed by a replacement that reuses the upstream token
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider);
+    const session = refollowingSession(broker);
+    harness.emit({
+      jsonrpc: '2.0',
+      id: requiredRequestId(harness.sent[0], 'chainHead_v1_follow'),
+      result: 'up-1',
+    });
+    const token = stringResult(session.messages, 1);
+    emitFollowEvent(harness, 'up-1', { event: 'initialized', finalizedBlockHashes: ['0xf0'] });
+    emitFollowEvent(harness, 'up-1', { event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    emitFollowEvent(harness, 'up-1', {
+      event: 'finalized',
+      finalizedBlockHashes: ['0xb1'],
+      prunedBlockHashes: [],
+    });
+    session.send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'chainHead_v1_unpin',
+      params: [token, ['0xf0']],
+    });
+    const oldRelease = harness.sent.find(message => message.method === 'chainHead_v1_unpin');
+    emitFollowEvent(harness, 'up-1', { event: 'stop' });
+    const replacement = harness.sent.filter(message => message.method === 'chainHead_v1_follow')[1];
+    harness.emit({
+      jsonrpc: '2.0',
+      id: requiredRequestId(replacement, 'chainHead_v1_follow'),
+      result: 'up-1',
+    });
+    emitFollowEvent(harness, 'up-1', { event: 'initialized', finalizedBlockHashes: ['0xb1'] });
+
+    // When the old release is refused and the replacement emits another event
+    harness.emit({
+      jsonrpc: '2.0',
+      id: requiredRequestId(oldRelease, 'chainHead_v1_unpin'),
+      error: { code: -32801, message: 'Invalid block hash' },
+    });
+    const best = { event: 'bestBlockChanged', bestBlockHash: '0xb2' };
+    emitFollowEvent(harness, 'up-1', best);
+
+    // Then the replacement remains the only active follow
+    expect(harness.sent.filter(message => message.method === 'chainHead_v1_unfollow')).toEqual([]);
+    expect(session.stops()).toBe(1);
+    expect(harness.sent.filter(message => message.method === 'chainHead_v1_follow')).toHaveLength(2);
+    expect(session.messages.at(-1)?.params?.result).toEqual(best);
   });
 });
 

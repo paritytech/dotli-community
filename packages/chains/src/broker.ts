@@ -64,9 +64,10 @@ type RequestOwner =
   | { kind: 'orphan'; method: string; upstreamToken?: string | undefined }
   /**
    * A release the broker sent itself for `upstreamToken`. Nobody waits on its answer, and until it comes the node may
-   * still send events it queued for that subscription.
+   * still send events it queued for that subscription. An unpin retains the follow generation it belongs to, so a
+   * late refusal cannot stop a replacement that reused the same upstream token.
    */
-  | { kind: 'release'; method: string; upstreamToken: string };
+  | { kind: 'release'; method: string; upstreamToken: string; follow: SharedFollow | undefined };
 
 function methodOf(owner: RequestOwner): string {
   return owner.kind === 'follow' ? 'chainHead_v1_follow' : owner.method;
@@ -286,7 +287,12 @@ export class ChainBroker {
   /** A release the broker sends itself, for something no session holds anymore. */
   private sendRelease(method: string, upstreamToken: string, ...rest: unknown[]): void {
     this.sendTracked(
-      { kind: 'release', method, upstreamToken },
+      {
+        kind: 'release',
+        method,
+        upstreamToken,
+        follow: method === 'chainHead_v1_unpin' ? this.upstreamFollowTokens.get(upstreamToken) : undefined,
+      },
       { jsonrpc: '2.0', method, params: [upstreamToken, ...rest] },
     );
   }
@@ -642,7 +648,7 @@ export class ChainBroker {
     } else if (owner.kind === 'orphan') {
       this.answerOrphan(owner.method, response);
     } else if (owner.kind === 'release') {
-      this.answerRelease(owner.method, response);
+      this.answerRelease(owner, response);
     } else {
       this.answerSession(owner, response);
     }
@@ -754,11 +760,25 @@ export class ChainBroker {
     this.sendRelease(releaseMethod, upstreamToken);
   }
 
-  /** Nobody waits on a release, so the node refusing one is all there is to tell. */
-  private answerRelease(method: string, response: JsonRpcResponse): void {
-    if ('error' in response) {
-      this.warn('release_refused', `upstream refused ${method}: ${JSON.stringify(response.error)}`);
+  /** Handles a broker-owned release response. A refused unpin ends only the follow generation that sent it. */
+  private answerRelease(owner: Extract<RequestOwner, { kind: 'release' }>, response: JsonRpcResponse): void {
+    if (!('error' in response)) {
+      return;
     }
+    this.warn('release_refused', `upstream refused ${owner.method}: ${JSON.stringify(response.error)}`);
+    if (
+      owner.method !== 'chainHead_v1_unpin' ||
+      owner.follow === undefined ||
+      this.upstreamFollowTokens.get(owner.upstreamToken) !== owner.follow
+    ) {
+      return;
+    }
+    this.sendRelease('chainHead_v1_unfollow', owner.upstreamToken);
+    this.stopSharedFollow(owner.follow, owner.upstreamToken, {
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: owner.upstreamToken, result: { event: 'stop' } },
+    });
   }
 
   /**
@@ -1073,13 +1093,13 @@ export class ChainBroker {
    */
   private stopSharedFollow(sharedFollow: SharedFollow, upstreamToken: string, message: SubscriptionMessage): void {
     brokerLog(
-      `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
+      `Shared follow ended; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
     );
     this.dropSharedFollow(sharedFollow);
     const recipients: { session: Session; localToken: string }[] = [];
     for (const localToken of sharedFollow.localTokens) {
       const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
-      // The shared follow is gone, so nothing goes upstream for a follow the node already ended.
+      // The shared follow is gone. The node ended it already, or the broker has sent its unfollow.
       this.releaseLocalFollowToken(localToken);
       if (session?.connected === true) {
         recipients.push({ session, localToken });
