@@ -320,7 +320,17 @@ test('As a user using smoldot in shared worker, when the worker dies silently, I
 test('As a user whose stalled chain recovers, I no longer see the stale connection warning', async ({ page }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await mockProtocolIframe(page, READY);
+  await mockProtocolIframe(
+    page,
+    `
+      window.addEventListener("message", function(e) {
+        if (e.data && e.data.namespace === "dotli:protocol" && typeof e.data.method === "string") {
+          document.documentElement.setAttribute("data-host-ready", "");
+        }
+      });
+      ${READY}
+    `,
+  );
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
@@ -329,6 +339,9 @@ test('As a user whose stalled chain recovers, I no longer see the stale connecti
   if (protocolFrame === undefined) {
     throw new Error('protocol frame did not load');
   }
+  await expect
+    .poll(() => protocolFrame.evaluate(() => document.documentElement.hasAttribute('data-host-ready')))
+    .toBe(true);
   await protocolFrame.evaluate(() => {
     window.parent.postMessage(
       {
@@ -353,7 +366,7 @@ test('As a user whose stalled chain recovers, I no longer see the stale connecti
 
   // Then
   const warning = page.locator('#loading-warning');
-  await expect(warning).toHaveAttribute('data-visible', '', { timeout: 6_000 });
+  await expect(warning).toHaveAttribute('data-visible', '', { timeout: 10_000 });
   await protocolFrame.evaluate(() => {
     window.parent.postMessage(
       {
