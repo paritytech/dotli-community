@@ -317,6 +317,80 @@ test('As a user using smoldot in shared worker, when the worker dies silently, I
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
 
+test('As a user whose stalled chain recovers, I no longer see the stale connection warning', async ({ page }) => {
+  // Given
+  await setBackend(page, 'smoldot-direct');
+  await mockProtocolIframe(
+    page,
+    `
+      window.addEventListener("message", function(e) {
+        if (e.data && e.data.namespace === "dotli:protocol" && typeof e.data.method === "string") {
+          document.documentElement.setAttribute("data-host-ready", "");
+        }
+      });
+      ${READY}
+    `,
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.frames().length).toBeGreaterThan(1);
+  const protocolFrame = page.frames().find(frame => frame !== page.mainFrame());
+  if (protocolFrame === undefined) {
+    throw new Error('protocol frame did not load');
+  }
+  await expect
+    .poll(() => protocolFrame.evaluate(() => document.documentElement.hasAttribute('data-host-ready')))
+    .toBe(true);
+  await protocolFrame.evaluate(() => {
+    window.parent.postMessage(
+      {
+        namespace: 'dotli:protocol',
+        kind: 'chain-sync',
+        chain: 'asset-hub',
+        syncKind: 'connecting',
+      },
+      '*',
+    );
+    window.parent.postMessage(
+      {
+        namespace: 'dotli:protocol',
+        kind: 'chain-sync',
+        chain: 'asset-hub',
+        syncKind: 'peers',
+        peers: 0,
+      },
+      '*',
+    );
+  });
+
+  // Then
+  const warning = page.locator('#loading-warning');
+  await expect(warning).toHaveAttribute('data-visible', '', { timeout: 10_000 });
+  await protocolFrame.evaluate(() => {
+    window.parent.postMessage(
+      {
+        namespace: 'dotli:protocol',
+        kind: 'chain-sync',
+        chain: 'asset-hub',
+        syncKind: 'peers',
+        peers: 1,
+      },
+      '*',
+    );
+    window.parent.postMessage(
+      {
+        namespace: 'dotli:protocol',
+        kind: 'chain-sync',
+        chain: 'asset-hub',
+        syncKind: 'recovered',
+      },
+      '*',
+    );
+  });
+  await expect(warning).not.toHaveAttribute('data-visible', '', { timeout: 1_000 });
+});
+
 test('As a user using smoldot directly, when the sync times out (>45s) I see the appropriate error and can switch backend', async ({
   page,
 }) => {
