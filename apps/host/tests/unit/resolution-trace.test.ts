@@ -17,8 +17,18 @@ interface RecordedSpan {
   endTime?: number | undefined;
 }
 
-function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
+interface RecordedBreadcrumb {
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+function fakeSentry(): {
+  spans: RecordedSpan[];
+  breadcrumbs: RecordedBreadcrumb[];
+  sentry: unknown;
+} {
   const spans: RecordedSpan[] = [];
+  const breadcrumbs: RecordedBreadcrumb[] = [];
   const sentry = {
     startInactiveSpan(opts: {
       name: string;
@@ -53,12 +63,15 @@ function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
     },
     metrics: { count() {}, distribution() {}, gauge() {} },
     setTag() {},
-    addBreadcrumb() {},
+    addBreadcrumb(breadcrumb: RecordedBreadcrumb) {
+      breadcrumbs.push(breadcrumb);
+    },
   };
-  return { spans, sentry };
+  return { spans, breadcrumbs, sentry };
 }
 
 let spans: RecordedSpan[];
+let breadcrumbs: RecordedBreadcrumb[];
 
 function span(name: string): RecordedSpan | undefined {
   return spans.find(s => s.name === `dotli.${name}`);
@@ -76,6 +89,7 @@ function names(): string[] {
 beforeEach(() => {
   const fake = fakeSentry();
   spans = fake.spans;
+  breadcrumbs = fake.breadcrumbs;
   m.bind(fake.sentry as Parameters<typeof m.bind>[0]);
 });
 
@@ -344,6 +358,47 @@ describe('A resolution reports how it ended', () => {
 
     // Then
     expect(span('resolution')?.attributes).toMatchObject({ warning_shown: true });
+  });
+
+  it('As a maintainer, I can correlate a visible stall warning with chain state', () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+    trace.chainSync({
+      chain: 'asset-hub',
+      syncKind: 'peers',
+      peers: 0,
+    });
+
+    // When
+    trace.loadingWarning({
+      kind: 'progress',
+      message: 'Still working. No data is arriving.',
+      barPercent: 42,
+      bytesPerSecond: 0,
+    });
+    trace.loadingWarningCleared(51);
+    trace.finish('rendered');
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({
+      loading_warning_count: 1,
+      loading_warning_kinds: 'progress',
+    });
+    const shown = breadcrumbs.find(breadcrumb => breadcrumb.message === 'loading warning shown');
+    expect(shown?.data).toMatchObject({
+      kind: 'progress',
+      bar_percent: 42,
+      bytes_per_second: 0,
+      chains: [
+        {
+          chain: 'asset-hub',
+          phase: null,
+          peers_max: 0,
+        },
+      ],
+    });
+    const cleared = breadcrumbs.find(breadcrumb => breadcrumb.message === 'loading warning cleared');
+    expect(cleared?.data).toMatchObject({ bar_percent: 51 });
   });
 });
 

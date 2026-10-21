@@ -4,6 +4,7 @@ import {
   initPhases,
   nudgePhaseProgress,
   onProgressStall,
+  onProgressResume,
   stopProgressWatch,
   type LoadingPhase,
 } from '../src/loading-controller.js';
@@ -41,6 +42,7 @@ describe('The loading bar reports when it stops moving', () => {
   afterEach(() => {
     stopProgressWatch();
     onProgressStall(() => {});
+    onProgressResume(() => {});
     vi.useRealTimers();
   });
 
@@ -97,6 +99,25 @@ describe('The loading bar reports when it stops moving', () => {
     // Then
     expect(stalls.length).toBe(2);
     expect(stalls[1]).toBeGreaterThan(nth(stalls, 0));
+  });
+
+  it('As a user whose parked load moves again, the warning can be cleared', () => {
+    // Given
+    const resumes: number[] = [];
+    initPhases(PHASES);
+    onProgressStall(() => {});
+    onProgressResume(pct => {
+      resumes.push(pct);
+    });
+    advancePhase(1);
+    vi.advanceTimersByTime(STALL_MS + 100);
+
+    // When
+    nudgePhaseProgress(0.5, 'content');
+
+    // Then
+    expect(resumes).toHaveLength(1);
+    expect(nth(resumes, 0)).toBeGreaterThan(10);
   });
 
   it('As a user whose load finished, I am never warned about a full bar', () => {
