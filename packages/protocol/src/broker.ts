@@ -103,7 +103,7 @@ interface BrokerConnection {
 const TOKEN_METHODS = new Map<string, string>([
   ['transaction_v1_broadcast', 'transaction_v1_stop'],
   ['transactionWatch_v1_submitAndWatch', 'transactionWatch_v1_unwatch'],
-  // The TrUAPI core watches its allowance registrations through the legacy author API.
+  // Legacy watch the local wallet's core still uses to register allowances.
   ['author_submitAndWatchExtrinsic', 'author_unwatchExtrinsic'],
   ['statement_subscribeStatement', 'statement_unsubscribeStatement'],
 ]);
@@ -170,7 +170,7 @@ function cloneWithRewrittenFirstParam(request: JsonRpcRequest, rewrittenToken: s
 }
 
 function releaseResultFor(method: string): unknown {
-  return method === 'statement_unsubscribeStatement' ? true : null;
+  return method === 'statement_unsubscribeStatement' || method === 'author_unwatchExtrinsic' ? true : null;
 }
 
 export interface ChainBrokerManager {

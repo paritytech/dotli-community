@@ -92,6 +92,11 @@ export class WasmPairingHostRuntime {
      */
     activateStoredSession(): Promise<void>;
     /**
+     * Resolve the current Calling slot as a SCALE-encoded
+     * `PermissionAuthorizationRequest`, without prompting or opening Media.
+     */
+    callingPermissionAuthorizationRequest(product_id: string): Promise<Uint8Array>;
+    /**
      * Cancel an in-flight pairing flow.
      */
     cancelPairing(): void;
@@ -202,6 +207,10 @@ export class WasmPairingHostRuntime {
      */
     receivingValidateActivation(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
     /**
+     * Re-read a product's stored authorization after another core changes it.
+     */
+    refreshPermissionAuthorization(product_id: string, payload: Uint8Array): Promise<void>;
+    /**
      * Release one reference. The last one reports `"Stop"`, after which the
      * host may stop the worker; releasing with none held is a no-op.
      */
@@ -227,6 +236,11 @@ export class WasmPairingHostRuntime {
 export class WasmProductRuntime {
     free(): void;
     [Symbol.dispose](): void;
+    /**
+     * Resolve this connection's current Calling slot as a SCALE-encoded
+     * `PermissionAuthorizationRequest`, without prompting or opening Media.
+     */
+    callingPermissionAuthorizationRequest(): Promise<Uint8Array>;
     /**
      * Core-owned logout/disconnect. Best-effort notifies the SSO peer when
      * the session has channel material, then clears in-memory and persisted
@@ -290,6 +304,10 @@ export class WasmProductRuntime {
      */
     receiveFrame(frame: Uint8Array): Promise<void>;
     /**
+     * Re-read stored authorization without prompting, OS queries or writes.
+     */
+    refreshPermissionAuthorization(payload: Uint8Array): Promise<void>;
+    /**
      * Start the host-initiated render subscription for one body. `request` is
      * a SCALE-encoded `ProductRendererRenderRequest`. `onUpdate` receives each
      * replacement tree as a SCALE-encoded `RendererNode`. Exactly one terminal
@@ -300,10 +318,14 @@ export class WasmProductRuntime {
     render(request: Uint8Array, on_update: Function, on_complete: Function, on_error: Function): WasmRendererSubscription;
     /**
      * Update a stored permission authorization status. Passing
-     * `"NotDetermined"` clears the stored value so the next product request
+     * `"NotDetermined"` resets the decision so the next product request
      * prompts again.
      */
     setPermissionAuthorizationStatus(payload: Uint8Array, status: string): Promise<void>;
+    /**
+     * Trusted connection identity; bind host adapters before dispatching frames.
+     */
+    readonly runtimeId: bigint;
 }
 
 /**
@@ -412,6 +434,7 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_acquireWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_activateExternalSession: (a: number, b: number, c: number) => number;
     readonly wasmpairinghostruntime_activateStoredSession: (a: number) => number;
+    readonly wasmpairinghostruntime_callingPermissionAuthorizationRequest: (a: number, b: number, c: number) => number;
     readonly wasmpairinghostruntime_cancelPairing: (a: number) => void;
     readonly wasmpairinghostruntime_clearProductState: (a: number, b: number, c: number) => number;
     readonly wasmpairinghostruntime_deviceEncryptionKey: (a: number) => number;
@@ -436,10 +459,12 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_receivingRevoke: (a: number, b: number, c: number) => number;
     readonly wasmpairinghostruntime_receivingSynchronized: (a: number, b: number, c: number, d: bigint) => number;
     readonly wasmpairinghostruntime_receivingValidateActivation: (a: number, b: number, c: number, d: bigint, e: number, f: number) => number;
+    readonly wasmpairinghostruntime_refreshPermissionAuthorization: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmpairinghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_resetSessionState: (a: number) => number;
     readonly wasmpairinghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+    readonly wasmproductruntime_callingPermissionAuthorizationRequest: (a: number) => number;
     readonly wasmproductruntime_disconnectSession: (a: number) => number;
     readonly wasmproductruntime_dispose: (a: number, b: number) => void;
     readonly wasmproductruntime_new: (a: number, b: number, c: number) => void;
@@ -449,17 +474,19 @@ export interface InitOutput {
     readonly wasmproductruntime_publishChatAction: (a: number, b: number, c: number, d: number) => void;
     readonly wasmproductruntime_publishRendererAction: (a: number, b: number, c: number, d: number) => void;
     readonly wasmproductruntime_receiveFrame: (a: number, b: number, c: number) => number;
+    readonly wasmproductruntime_refreshPermissionAuthorization: (a: number, b: number, c: number) => number;
     readonly wasmproductruntime_render: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly wasmproductruntime_runtimeId: (a: number) => bigint;
     readonly wasmproductruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmrenderersubscription_cancel: (a: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_7429: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_7487: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_3104: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_3095: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_3099: (a: number, b: number) => number;
-    readonly __wasm_bindgen_func_elem_7310: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_3101: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_8438: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_8495: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_3502: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_3493: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_3497: (a: number, b: number) => number;
+    readonly __wasm_bindgen_func_elem_8308: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_3499: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

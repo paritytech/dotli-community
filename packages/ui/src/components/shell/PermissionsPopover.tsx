@@ -5,6 +5,8 @@ import { createEffect, createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { hasAnyGrant } from '../../permissions.js';
 import { productStore } from '../../state/product.js';
+import { authStore, getAuthState } from '../../state/auth.js';
+import type { DotliAuthState } from '../../host-callbacks/AuthState.js';
 import { Popover } from '../floating/Popover.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
@@ -34,8 +36,15 @@ function LockIcon(): JSX.Element {
 
 export function PermissionsPopover(): JSX.Element {
   const product = useStore(productStore);
+  const auth = useStore(authStore);
   const changes = createPermissionChanges();
-  const [hasGrants, setHasGrants] = createSignal(false);
+  const [grantRead, setGrantRead] = createSignal<{ auth: DotliAuthState; label: string; granted: boolean } | null>(
+    null,
+  );
+  const hasGrants = (): boolean => {
+    const read = grantRead();
+    return read !== null && read.auth === auth() && read.label === label() && read.granted;
+  };
   const label = (): string | null => {
     const current = product();
     return current.status === 'loaded' ? current.label : null;
@@ -44,16 +53,16 @@ export function PermissionsPopover(): JSX.Element {
   // A read lands only while current, as cleanup runs before each re-run. The fresh key object makes a
   // change re-run the effect even for the same label.
   createEffect(
-    () => ({ label: label(), change: changes() }),
-    ({ label: current }) => {
+    () => ({ label: label(), auth: auth(), change: changes() }),
+    ({ label: current, auth: currentAuth }) => {
       if (current === null) {
-        setHasGrants(false);
+        setGrantRead(null);
         return;
       }
       let live = true;
       const land = (granted: boolean): void => {
-        if (live) {
-          setHasGrants(granted);
+        if (live && getAuthState() === currentAuth) {
+          setGrantRead({ auth: currentAuth, label: current, granted });
         }
       };
       hasAnyGrant(current).then(land, () => {

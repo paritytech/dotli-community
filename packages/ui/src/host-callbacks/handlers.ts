@@ -81,7 +81,10 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     coreStorage: createSessionStoreAdapters({ local }),
     auth: {
       authStateChanged: state => {
-        setNotificationAccount(label, state.tag === 'Connected' ? state.value.identityAccountId : undefined);
+        setNotificationAccount(
+          label,
+          state.tag === 'Connected' ? (state.value.identityAccountId ?? state.value.publicKey) : undefined,
+        );
         presentAuth(state);
       },
     },

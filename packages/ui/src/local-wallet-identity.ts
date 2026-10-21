@@ -74,6 +74,23 @@ async function readFromPeople(identityAccountId: string): Promise<string | null>
 
 let readLiteUsername: ReadLiteUsername = readFromPeople;
 
+/** The lite username People holds for `identityAccountId` right now, null when it holds none. */
+export function readNetworkLiteUsername(identityAccountId: string): Promise<string | null> {
+  return readLiteUsername(identityAccountId);
+}
+
+/** A name People confirmed after a claim: cached for the next boot, and given to the running cores now. */
+export async function adoptLiteUsername(entropy: Uint8Array, identityAccountId: string, name: string): Promise<void> {
+  try {
+    await updateSharedLocalWalletIdentity(SITE_ID, { identityAccountId, liteUsername: name });
+  } catch (error) {
+    // The name still holds for this page, and the next boot reads it from People again.
+    reportLocalWalletFailure(error, 'identity-save');
+  }
+  const { activateLocalUsername } = await loadBridge();
+  await activateLocalUsername(entropy, name);
+}
+
 async function readChange(wallet: LocalWalletBoot): Promise<string | null | undefined> {
   const identityAccountId = await connectedIdentityAccount();
   let name: string | null;

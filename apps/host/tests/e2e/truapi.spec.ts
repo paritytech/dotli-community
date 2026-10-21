@@ -14,7 +14,7 @@ const productAccount: HostDialogDecision = { title: 'Product Account', button: '
 const preimageDecisions: readonly HostDialogDecision[] = [
   lastingPermission,
   resourceAllocation,
-  { title: 'Submit Preimage', button: 'Allow' },
+  { title: 'Submit Preimage', button: 'Allow once' },
 ];
 
 test.describe('dot.li > host-playground.dot', () => {
@@ -377,6 +377,8 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
+      // Upload consent is separate from signing permission; approve this
+      // operation without granting a persistent automatic-upload budget.
       const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', preimageDecisions, {
         timeoutMs: 60_000,
       });

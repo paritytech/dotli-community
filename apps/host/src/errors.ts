@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
+import { LOCAL_WALLET_OWNER_BUSY_ERROR, ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
 import { getActiveServicesConfig, getBackend, BACKEND_LABELS } from '@dotli/config';
 
 import { endpointHost, gatewayUnreachable } from '@dotli/shared';
@@ -79,6 +79,7 @@ export type ErrorKind =
   | 'hub-sync-timeout'
   | 'light-client-timeout'
   | 'rpc-timeout'
+  | 'wallet-in-other-tab'
   | 'unknown';
 
 export interface ErrorDescription {
@@ -140,6 +141,16 @@ function classifyError(
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
   const msg = err instanceof Error ? err.message : String(err);
 
+  // The tab signing with the test wallet did not hand it over. A reload asks again; no network advice applies.
+  if (err instanceof Error && err.name === LOCAL_WALLET_OWNER_BUSY_ERROR) {
+    return {
+      kind: 'wallet-in-other-tab',
+      title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
+      message: HOST_ERRORS.WALLET_IN_OTHER_TAB,
+      recovery: 'reload',
+      tips: [],
+    };
+  }
   if (err instanceof ProtocolFatalError) {
     return {
       kind: 'protocol-fatal',

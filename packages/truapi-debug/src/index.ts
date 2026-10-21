@@ -53,4 +53,15 @@ export {
 export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData } from './row-format.js';
 export { summariseSystemEvent } from './system-summary.js';
 export { buildTimeline, type TimelineLane } from './timeline.js';
+export {
+  formatAuthorization,
+  formatChainTime,
+  formatInteger,
+  formatTokenBalance,
+  type AllowanceObservation,
+  type AllowanceResult,
+  type BulletinQuota,
+  type PgasBalanceSnapshot,
+  type WalletAllowanceSnapshot,
+} from './wallet-allowances.js';
 export { loadDotliDebugBus } from './lazy.js';

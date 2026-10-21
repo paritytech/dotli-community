@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_DISMISS_MS, showNotification } from '../src/notification.js';
 import { toastsStore } from '../src/state/toasts.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { settle } from './helpers/solid.js';
 import { byId, byTestId } from './support.js';
 
 function setVisibility(state: 'visible' | 'hidden'): void {
@@ -27,6 +28,27 @@ afterEach(() => {
 });
 
 describe('showNotification', () => {
+  it('As a dotli user, a toast with no destination stays non-interactive, so a click on it expands the stack', async () => {
+    // When
+    showNotification({ label: 'Plain', text: 'No destination' });
+    await overlaysReady();
+
+    // Then
+    const root = byId('overlay-root');
+    expect(toastsStore.get().items[0]?.onActivate).toBeUndefined();
+    expect(byTestId('notif-body', root).tagName).toBe('SPAN');
+    expect(byTestId('notif-body', root).textContent).toBe('No destination');
+
+    // When
+    showNotification({ label: 'Second', text: 'Another destination-less toast' });
+    await overlaysReady();
+    byTestId('notif-body', root).click();
+    await settle();
+
+    // Then
+    expect(byTestId('notif-stack', root).hasAttribute('data-expanded')).toBe(true);
+  });
+
   it('As a dotli integrator, a notification keeps the tone it is given, info by default', () => {
     // When
     showNotification({ label: 'Plain', text: 'Body' });
@@ -87,18 +109,21 @@ describe('showNotification', () => {
       // Given
       vi.useFakeTimers();
       const created: { title: string; body: string | undefined }[] = [];
+      const notifications: FakeNotification[] = [];
       class FakeNotification {
         static permission = 'granted';
         static requestPermission = vi.fn();
         onclick: (() => void) | null = null;
         constructor(title: string, options?: { body?: string }) {
           created.push({ title, body: options?.body });
+          notifications.push(this);
         }
         close(): void {}
       }
       vi.stubGlobal('Notification', FakeNotification);
       setVisibility(visibility);
       vi.spyOn(document, 'hasFocus').mockReturnValue(focused);
+      const focusHost = vi.spyOn(window, 'focus').mockImplementation(() => {});
 
       try {
         // When
@@ -115,6 +140,10 @@ describe('showNotification', () => {
           { label: 'Quiet', text: 'No system one' },
         ]);
         expect(created).toEqual(system ? [{ title: 'Ping', body: 'Message' }] : []);
+        if (system) {
+          notifications[0]?.onclick?.();
+          expect(focusHost).toHaveBeenCalledOnce();
+        }
       } finally {
         vi.clearAllTimers();
         vi.useRealTimers();
