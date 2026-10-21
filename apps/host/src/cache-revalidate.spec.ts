@@ -7,6 +7,7 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { CachedManifests } from '@dotli/storage';
 import type { ShowNotification } from '@dotli/ui';
 import { revalidateCachedCopy, type CacheRevalidationDeps } from './cache-revalidate.js';
+import type { ProductManifests } from './manifest-gate.js';
 import { createNameSource, type NameSource } from './name-source.js';
 
 type Notice = Parameters<ShowNotification>[0];
@@ -64,6 +65,24 @@ function setup(
   };
 }
 
+/** Revalidates a redeployed copy whose new manifests arrive only when the test hands them over. */
+async function offeredWhileReading(
+  rig: ReturnType<typeof setup>,
+): Promise<{ finish: (manifests: ProductManifests) => Promise<void> }> {
+  const manifests = Promise.withResolvers<ProductManifests>();
+  rig.deps.names = { ...rig.deps.names, readManifests: () => manifests.promise };
+  const revalidated = revalidateCachedCopy('doom', 'bafy-served', true, rig.deps);
+  await vi.waitFor(() => {
+    expect(rig.notices.map(notice => notice.label)).toEqual(['New version available']);
+  });
+  return {
+    finish: async read => {
+      manifests.resolve(read);
+      await revalidated;
+    },
+  };
+}
+
 describe('revalidateCachedCopy', () => {
   const captured: CaptureContext[] = [];
   let unbind: () => void;
@@ -107,7 +126,42 @@ describe('revalidateCachedCopy', () => {
     // Then
     expect(written).toEqual([{ label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null } }]);
     expect(notices.map(notice => notice.label)).toEqual(['New version available']);
-    expect(reload).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('As a visitor who presses Reload while the new version is still being cached, the reload waits for it', async () => {
+    // Given the visitor was offered the new version before its manifests arrived
+    const rig = setup({ doom: 'bafy-latest' });
+    const reading = await offeredWhileReading(rig);
+
+    // When
+    rig.notices[0]?.action?.onClick();
+
+    // Then
+    expect(rig.reload).not.toHaveBeenCalled();
+
+    // When
+    await reading.finish({ root: { kind: 'empty' }, app: { kind: 'empty' } });
+
+    // Then
+    expect(rig.written).toEqual([{ label: 'doom', cid: 'bafy-latest', manifests: { root: null, app: null } }]);
+    expect(rig.reload).toHaveBeenCalledOnce();
+  });
+
+  it('As a visitor who pressed Reload onto a redeploy this host refuses, I am reloaded once onto the screen that says why', async () => {
+    // Given
+    const rig = setup({ doom: 'bafy-latest' });
+    const reading = await offeredWhileReading(rig);
+    rig.notices[0]?.action?.onClick();
+
+    // When the app manifest turns out unreadable
+    await reading.finish({ root: { kind: 'empty' }, app: { kind: 'invalid', errors: ['unreadable'], raw: '{}' } });
+
+    // Then
+    expect(rig.evicted).toEqual(['doom']);
+    expect(rig.reload).toHaveBeenCalledOnce();
   });
 
   it('As a visitor on a cached app published under its app subname, I am left alone while the base name points elsewhere', async () => {
