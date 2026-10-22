@@ -22,6 +22,8 @@ trustless, small on boot and fast on repeat visits.
 - **Manifest**: the product's executable manifest (`worker.<label>.<tld>`). Declares features such as `includes.chat`.
 - **Debug panel**: the TrUAPI inspector.
 
+Workflow thresholds (trivial, blast radius, peer file) live in `docs/code/glossary.md`.
+
 ## Architecture
 
 - Split the system into layers. Each owns one responsibility that a reader can name from its module.
