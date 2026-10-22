@@ -18,7 +18,7 @@
     "@config/eslint": "*",
     "@config/typescript": "*",
     "@config/vite": "*",
-    "@vitest/browser-playwright": "^5.0.3",
+    "@vitest/browser-playwright": "^5.0.5",
     "fake-indexeddb": "^6.2.5",
     "playwright": "^1.63.0",
     "vite-plugin-wasm": "^3.6.0"
