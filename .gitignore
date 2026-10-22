@@ -86,6 +86,8 @@ GEMINI.md
 
 # Agent planning docs
 docs/superpowers/
+docs/_plans/
+docs/_reviews/
 
 # Storybook
 storybook-static
