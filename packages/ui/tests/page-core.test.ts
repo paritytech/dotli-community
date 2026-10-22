@@ -208,7 +208,7 @@ describe('page core wallet mode', () => {
     );
 
     const state: AuthState = { tag: 'Disconnected' };
-    callbacks.auth.authStateChanged(state);
+    callbacks.auth.authStateChanged?.(state);
     expect(media.authChanged).toHaveBeenCalledExactlyOnceWith(state);
     const request = { tag: 'Device', value: 'Camera' } as const;
     const key: CoreStorageKey = {
@@ -228,7 +228,7 @@ describe('page core wallet mode', () => {
     connection.close();
     expect(mocks.unregisterRefresh).toHaveBeenCalledTimes(1);
     expect(mocks.provider.dispose).toHaveBeenCalledTimes(1);
-    callbacks.auth.authStateChanged(state);
+    callbacks.auth.authStateChanged?.(state);
     expect(media.authChanged).toHaveBeenCalledTimes(1);
     lease.release();
   });

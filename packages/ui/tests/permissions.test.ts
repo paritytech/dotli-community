@@ -628,12 +628,20 @@ describe('three-way permission prompts', () => {
     }
   });
 
-  for (const permission of ['ChainSubmit', 'PreimageSubmit', 'StatementSubmit', 'Notifications', 'Camera'] as const) {
+  for (const permission of [
+    'BalanceAccess',
+    'ChainSubmit',
+    'PreimageSubmit',
+    'StatementSubmit',
+    'Notifications',
+    'Camera',
+    'Motion',
+  ] as const) {
     for (const decision of ['AllowAlways', 'Deny'] as const) {
       it(`As a product, ${permission} returns ${decision} without invalidating the active core prompt`, async () => {
         const callbacks = createPromptPermission('myapp');
         const response =
-          permission === 'Notifications' || permission === 'Camera'
+          permission === 'Notifications' || permission === 'Camera' || permission === 'Motion'
             ? callbacks.devicePermission(PRODUCT, permission)
             : callbacks.remotePermission(PRODUCT, { permission: { tag: permission } });
 

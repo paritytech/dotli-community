@@ -40,7 +40,8 @@ export class WasmNotificationReceiver {
      */
     receivingIngest(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, actual_channel: string, actual_topics: string[], frame: Uint8Array): Promise<Uint8Array>;
     /**
-     * Authenticate a SCALE statement including source metadata; returns SCALE `Vec<ReceivingEvent>`.
+     * Authenticate a SCALE statement including source metadata; returns SCALE
+     * `Vec<ReceivingEvent>`.
      */
     receivingIngestStatement(product_id: string, revision: bigint, watch_id: string, actual_genesis: string, statement: Uint8Array): Promise<Uint8Array>;
     /**
@@ -52,7 +53,8 @@ export class WasmNotificationReceiver {
      */
     receivingPending(): Promise<Uint8Array>;
     /**
-     * Revalidate and reserve display after foreground grace; returns SCALE `Option<ReceivingEvent>`.
+     * Revalidate and reserve display after foreground grace; returns SCALE
+     * `Option<ReceivingEvent>`.
      */
     receivingPrepareDisplay(product_id: string, revision: bigint, event_id: string): Promise<Uint8Array>;
     /**
@@ -732,13 +734,13 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setSubmitPreimagesLocally: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_11904: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_11962: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_5333: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_5324: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_5328: (a: number, b: number) => number;
-    readonly __wasm_bindgen_func_elem_5330: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_11774: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_11946: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_12004: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_5354: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_5345: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_5349: (a: number, b: number) => number;
+    readonly __wasm_bindgen_func_elem_5351: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_11817: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

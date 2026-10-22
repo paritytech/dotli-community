@@ -33,7 +33,9 @@ export const PERMISSION_DESCRIPTIONS: Record<PromptPermissionName | 'Calling', s
   NFC: 'Read and write nearby NFC tags',
   Clipboard: 'Read text and data from your clipboard',
   Biometrics: 'Authenticate with a platform passkey or biometric prompt',
+  Motion: 'Access device motion and orientation sensors',
   ChatAuthority: "Bind this app's device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
+  BalanceAccess: 'See your payment balance and insufficient-funds payment refusals',
   IdentityDisclosure: 'Share your primary DotNS identity with this app',
   ProfileDisclosure:
     "Share this app's profile with app audiences or selected contacts, including personal sharing across recipients' apps",

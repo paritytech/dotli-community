@@ -2,4 +2,3 @@ export { ConnectionResetError, MESSAGE_TYPE_CANCEL, MESSAGE_TYPE_INTERRUPT, MESS
 export { RequestTimeoutError, createTransport } from "./client.js";
 export * as scale from "./scale.js";
 export * from "./generated/index.js";
-export * from "./development.js";

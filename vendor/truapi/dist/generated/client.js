@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "fc7b1e7173832168";
+export const TRUAPI_WIRE_SCHEMA_HASH = "a72c149bbae24af5";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -938,6 +938,49 @@ export class ExpandedCardClient {
         });
     }
 }
+/**
+ * Move value into or out of the user's balance and watch it to completion.
+ *
+ * The host draws the whole flow. The core decides `Delivered` and `Released`
+ * itself, from the funds that moved, never from the host's or a provider's
+ * word.
+ */
+export class FundingClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Open the funding modality for a direction and, optionally, an amount,
+     * under a caller-chosen `id` the session is then watched by. Returns once
+     * the user starts the session.
+     */
+    request(request, options) {
+        return this.#transport.request({
+            ids: W.FUNDING_REQUEST,
+            payload: T.VersionedHostFundingRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostFundingResponse, S.CallError(T.VersionedHostFundingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Watch one of the caller's funding sessions to completion.
+     *
+     * Emits the current stage, later stages, then exactly one terminal item.
+     */
+    statusSubscribe({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.FUNDING_STATUS_SUBSCRIBE,
+            payload: T.VersionedHostFundingStatusSubscribeRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostFundingStatusSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostFundingStatusSubscribeError)),
+        });
+    }
+}
 /** Reminders for a product's next game. */
 export class GameClient {
     #transport;
@@ -1460,7 +1503,10 @@ export class PaymentClient {
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentBalanceSubscribeError)),
         });
     }
-    /** Request a payment from the user. */
+    /**
+     * Request a payment from the user, followed by `id` through
+     * `statusSubscribe`. Returns once the host has accepted it.
+     */
     request(request, options) {
         return this.#transport.request({
             ids: W.PAYMENT_REQUEST,
@@ -1472,7 +1518,10 @@ export class PaymentClient {
             },
         });
     }
-    /** Subscribe to payment lifecycle updates for a specific payment. */
+    /**
+     * Subscribe to payment lifecycle updates for a specific payment. Emits
+     * the current status first, so a caller that reloads re-attaches.
+     */
     statusSubscribe({ request }) {
         return createObservable({
             transport: this.#transport,
@@ -1482,7 +1531,10 @@ export class PaymentClient {
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentStatusSubscribeError)),
         });
     }
-    /** Top up the user's payment balance. */
+    /**
+     * Top up the user's payment balance, followed by `id` through
+     * `topUpStatusSubscribe`.
+     */
     topUp(request, options) {
         return this.#transport.request({
             ids: W.PAYMENT_TOP_UP,
@@ -1492,6 +1544,20 @@ export class PaymentClient {
                 const result = S.Result(T.VersionedHostPaymentTopUpResponse, S.CallError(T.VersionedHostPaymentTopUpError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
+        });
+    }
+    /**
+     * Follow one top-up to its end.
+     *
+     * Emits the current status first, so a caller that reloads re-attaches.
+     */
+    topUpStatusSubscribe({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.PAYMENT_TOP_UP_STATUS_SUBSCRIBE,
+            payload: T.VersionedHostPaymentTopUpStatusSubscribeRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostPaymentTopUpStatusSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentTopUpStatusSubscribeError)),
         });
     }
 }
@@ -2115,7 +2181,7 @@ export class SystemClient {
      * An `http` or `https` URL outside the ecosystem needs a
      * `RemotePermission::Remote` grant for the target host, and prompts for one
      * on first use. dotNS names, `localhost`, and the app-handoff schemes
-     * (`mailto:`, `tel:`, `polkadot:`, `dot:`) consume no grant. The grant is
+     * (`mailto:`, `tel:`, `polkadot:`, `polkadotapp:`) consume no grant. The grant is
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
@@ -2230,6 +2296,7 @@ export function createClient(transport) {
         entropy: new EntropyClient(transport),
         jamPeerTransport: new JamPeerTransportClient(transport),
         expandedCard: new ExpandedCardClient(transport),
+        funding: new FundingClient(transport),
         game: new GameClient(transport),
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),

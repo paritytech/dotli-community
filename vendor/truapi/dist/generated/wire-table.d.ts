@@ -323,6 +323,11 @@ export declare const PAYMENT_STATUS_SUBSCRIBE: {
     readonly method: 3;
     readonly kind: "subscription";
 };
+export declare const PAYMENT_TOP_UP_STATUS_SUBSCRIBE: {
+    readonly trait: 9;
+    readonly method: 4;
+    readonly kind: "subscription";
+};
 export declare const PERMISSIONS_REQUEST_DEVICE_PERMISSION: {
     readonly trait: 10;
     readonly method: 0;
@@ -487,6 +492,16 @@ export declare const GAME_CANCEL_NEXT_GAME: {
     readonly trait: 21;
     readonly method: 1;
     readonly kind: "request";
+};
+export declare const FUNDING_REQUEST: {
+    readonly trait: 22;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const FUNDING_STATUS_SUBSCRIBE: {
+    readonly trait: 22;
+    readonly method: 1;
+    readonly kind: "subscription";
 };
 export declare const EXPANDED_CARD_SET_FACE_SHOWN: {
     readonly trait: 23;

@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "fc7b1e7173832168";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "a72c149bbae24af5";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -291,6 +291,31 @@ export declare class ExpandedCardClient {
      */
     setFaceShown(request: T.HostExpandedCardSetFaceShownRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostExpandedCardSetFaceShownError>>;
 }
+/**
+ * Move value into or out of the user's balance and watch it to completion.
+ *
+ * The host draws the whole flow. The core decides `Delivered` and `Released`
+ * itself, from the funds that moved, never from the host's or a provider's
+ * word.
+ */
+export declare class FundingClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Open the funding modality for a direction and, optionally, an amount,
+     * under a caller-chosen `id` the session is then watched by. Returns once
+     * the user starts the session.
+     */
+    request(request: T.HostFundingRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostFundingError>>;
+    /**
+     * Watch one of the caller's funding sessions to completion.
+     *
+     * Emits the current stage, later stages, then exactly one terminal item.
+     */
+    statusSubscribe({ request }: {
+        request: T.HostFundingStatusSubscribeRequest;
+    }): ObservableLike<T.HostFundingStatusSubscribeItem, S.CallErrorValue<T.VersionedHostFundingStatusSubscribeError>>;
+}
 /** Reminders for a product's next game. */
 export declare class GameClient {
     #private;
@@ -513,14 +538,31 @@ export declare class PaymentClient {
     balanceSubscribe({ request }: {
         request: T.HostPaymentBalanceSubscribeRequest;
     }): ObservableLike<T.HostPaymentBalanceSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentBalanceSubscribeError>>;
-    /** Request a payment from the user. */
-    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
-    /** Subscribe to payment lifecycle updates for a specific payment. */
+    /**
+     * Request a payment from the user, followed by `id` through
+     * `statusSubscribe`. Returns once the host has accepted it.
+     */
+    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentError>>;
+    /**
+     * Subscribe to payment lifecycle updates for a specific payment. Emits
+     * the current status first, so a caller that reloads re-attaches.
+     */
     statusSubscribe({ request }: {
         request: T.HostPaymentStatusSubscribeRequest;
     }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
-    /** Top up the user's payment balance. */
+    /**
+     * Top up the user's payment balance, followed by `id` through
+     * `topUpStatusSubscribe`.
+     */
     topUp(request: T.HostPaymentTopUpRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
+    /**
+     * Follow one top-up to its end.
+     *
+     * Emits the current status first, so a caller that reloads re-attaches.
+     */
+    topUpStatusSubscribe({ request }: {
+        request: T.HostPaymentTopUpStatusSubscribeRequest;
+    }): ObservableLike<T.HostPaymentTopUpStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentTopUpStatusSubscribeError>>;
 }
 /** Permission request methods. */
 export declare class PermissionsClient {
@@ -825,7 +867,7 @@ export declare class SystemClient {
      * An `http` or `https` URL outside the ecosystem needs a
      * `RemotePermission::Remote` grant for the target host, and prompts for one
      * on first use. dotNS names, `localhost`, and the app-handoff schemes
-     * (`mailto:`, `tel:`, `polkadot:`, `dot:`) consume no grant. The grant is
+     * (`mailto:`, `tel:`, `polkadot:`, `polkadotapp:`) consume no grant. The grant is
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
@@ -875,6 +917,7 @@ export interface TrUApiClient {
     readonly entropy: EntropyClient;
     readonly jamPeerTransport: JamPeerTransportClient;
     readonly expandedCard: ExpandedCardClient;
+    readonly funding: FundingClient;
     readonly game: GameClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;

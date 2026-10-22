@@ -28,6 +28,7 @@ function gatedRemotePermissionName(tag: Exclude<RemotePermission['tag'], 'JamPee
     case 'ChainSubmit':
     case 'PreimageSubmit':
     case 'StatementSubmit':
+    case 'BalanceAccess':
       return tag;
     case 'Remote':
     case 'WebRtc':

@@ -669,6 +669,13 @@ export const ButtonVariant: Codec<ButtonVariant>;
  */
 export type Bytes32 = HexString;
 export const Bytes32: Codec<Bytes32>;
+/**
+ * A 64-byte value, such as an sr25519 secret key, passed as plain bytes on
+ * FFI surfaces. Named only because \`uniffi::custom_type!\` takes an ident, not
+ * an array type.
+ */
+export type Bytes64 = HexString;
+export const Bytes64: Codec<Bytes64>;
 /** Role of a chain within the host's configured environment. */
 export type ChainIdentifier = "Relay" | "AssetHub" | "People" | "Bulletin";
 export const ChainIdentifier: Codec<ChainIdentifier>;
@@ -1042,6 +1049,84 @@ export interface EffectProps {
     effect: Effect;
 }
 export const EffectProps: Codec<EffectProps>;
+/**
+ * Which way value crosses the boundary between the user's Polkadot balance
+ * and everything outside it.
+ */
+export type FundingDirection = "In" | "Out";
+export const FundingDirection: Codec<FundingDirection>;
+/**
+ * Why a session ended without success.
+ *
+ * Carries an outcome, never a rule, so a client renders these without holding
+ * any part of the operator's compliance logic.
+ */
+export type FundingFailure = 
+/** Not offered in the user's market. */
+{
+    tag: "RegionUnavailable";
+    value?: undefined;
+}
+/** The user must complete verification first. */
+ | {
+    tag: "VerificationRequired";
+    value?: undefined;
+}
+/** Verification was attempted and refused. */
+ | {
+    tag: "VerificationRefused";
+    value?: undefined;
+}
+/** Below the route's minimum. */
+ | {
+    tag: "BelowMinimum";
+    value?: undefined;
+}
+/** Above the route's maximum. */
+ | {
+    tag: "AboveMaximum";
+    value?: undefined;
+}
+/** The user's balance does not cover an outbound session. */
+ | {
+    tag: "InsufficientBalance";
+    value?: undefined;
+}
+/** The session's window closed before it completed. */
+ | {
+    tag: "Expired";
+    value?: undefined;
+}
+/** Funds arrived in the wrong asset or on the wrong chain. */
+ | {
+    tag: "WrongAssetOrChain";
+    value?: undefined;
+}
+/** The provider stopped responding. */
+ | {
+    tag: "ProviderTimeout";
+    value?: undefined;
+}
+/**
+ * The user abandoned the flow, or declined to authorize an outbound
+ * release.
+ */
+ | {
+    tag: "Cancelled";
+    value?: undefined;
+}
+/**
+ * Outcome not covered above. Clients render the message and treat the
+ * code as opaque.
+ */
+ | {
+    tag: "Other";
+    value: {
+        code: string;
+        message: string;
+    };
+};
+export const FundingFailure: Codec<FundingFailure>;
 /**
  * Generic error payload carrying a human-readable reason string. Used by many
  * methods as a catch-all error type.
@@ -1846,6 +1931,54 @@ export type VersionedHostFeatureSupportedResponse =
     value: HostFeatureSupportedResponse;
 };
 export const VersionedHostFeatureSupportedResponse: Codec<VersionedHostFeatureSupportedResponse>;
+/** Versioned envelope for [\`HostFundingError\`]. */
+export type VersionedHostFundingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingError;
+};
+export const VersionedHostFundingError: Codec<VersionedHostFundingError>;
+/** Versioned envelope for [\`HostFundingRequest\`]. */
+export type VersionedHostFundingRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingRequest;
+};
+export const VersionedHostFundingRequest: Codec<VersionedHostFundingRequest>;
+/** Versioned envelope for [\`HostFundingResponse\`]. */
+export type VersionedHostFundingResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostFundingResponse: Codec<VersionedHostFundingResponse>;
+/** Versioned envelope for [\`HostFundingStatusSubscribeError\`]. */
+export type VersionedHostFundingStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeError;
+};
+export const VersionedHostFundingStatusSubscribeError: Codec<VersionedHostFundingStatusSubscribeError>;
+/** Versioned envelope for [\`HostFundingStatusSubscribeItem\`]. */
+export type VersionedHostFundingStatusSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeItem;
+};
+export const VersionedHostFundingStatusSubscribeItem: Codec<VersionedHostFundingStatusSubscribeItem>;
+/** Versioned envelope for [\`HostFundingStatusSubscribeRequest\`]. */
+export type VersionedHostFundingStatusSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeRequest;
+};
+export const VersionedHostFundingStatusSubscribeRequest: Codec<VersionedHostFundingStatusSubscribeRequest>;
 /** Versioned envelope for [\`HostGetLegacyAccountsError\`]. */
 export type VersionedHostGetLegacyAccountsError = 
 /** Version 1 payload. */
@@ -3116,10 +3249,10 @@ export type VersionedHostPaymentRequest =
 export const VersionedHostPaymentRequest: Codec<VersionedHostPaymentRequest>;
 /** Versioned envelope for [\`HostPaymentResponse\`]. */
 export type VersionedHostPaymentResponse = 
-/** Version 1 payload. */
+/** Version 1 (no payload). */
 {
     tag: "V1";
-    value: HostPaymentResponse;
+    value?: undefined;
 };
 export const VersionedHostPaymentResponse: Codec<VersionedHostPaymentResponse>;
 /** Versioned envelope for [\`HostPaymentStatusSubscribeError\`]. */
@@ -3170,6 +3303,30 @@ export type VersionedHostPaymentTopUpResponse =
     value?: undefined;
 };
 export const VersionedHostPaymentTopUpResponse: Codec<VersionedHostPaymentTopUpResponse>;
+/** Versioned envelope for [\`HostPaymentTopUpStatusSubscribeError\`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeError;
+};
+export const VersionedHostPaymentTopUpStatusSubscribeError: Codec<VersionedHostPaymentTopUpStatusSubscribeError>;
+/** Versioned envelope for [\`HostPaymentTopUpStatusSubscribeItem\`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeItem;
+};
+export const VersionedHostPaymentTopUpStatusSubscribeItem: Codec<VersionedHostPaymentTopUpStatusSubscribeItem>;
+/** Versioned envelope for [\`HostPaymentTopUpStatusSubscribeRequest\`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeRequest;
+};
+export const VersionedHostPaymentTopUpStatusSubscribeRequest: Codec<VersionedHostPaymentTopUpStatusSubscribeRequest>;
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export const HostPlatform: Codec<HostPlatform>;
@@ -5124,9 +5281,9 @@ export const VersionedRemoteChainTransactionStopResponse: Codec<VersionedRemoteC
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * \`ChainSubmit\`, \`PreimageSubmit\`, \`StatementSubmit\` and \`JamPeers\` are also
- * triggered implicitly by the corresponding business calls when not yet
- * granted (\`JamPeerTransport::dial\` for \`JamPeers\`).
+ * \`ChainSubmit\`, \`PreimageSubmit\`, \`StatementSubmit\`, \`JamPeers\` and
+ * \`BalanceAccess\` are also triggered implicitly by the corresponding business
+ * calls when not yet granted (\`JamPeerTransport::dial\` for \`JamPeers\`).
  */
 export type RemotePermission = 
 /**
@@ -5195,6 +5352,15 @@ export type RemotePermission =
  */
  | {
     tag: "Calling";
+    value?: undefined;
+}
+/**
+ * Seeing the user's payment balance through \`payment.balanceSubscribe\`,
+ * and learning that a payment request was refused for the balance rather
+ * than by the user.
+ */
+ | {
+    tag: "BalanceAccess";
     value?: undefined;
 };
 export const RemotePermission: Codec<RemotePermission>;
@@ -6506,7 +6672,7 @@ export const HostDeriveEntropyResponse: Codec<HostDeriveEntropyResponse>;
  * grant that is merely undetermined does not change the answer, because the OS
  * resolves its own gate when the capability is used.
  */
-export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics";
+export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics" | "Motion";
 export const HostDevicePermissionRequest: Codec<HostDevicePermissionRequest>;
 /** Outcome of a device-permission request. */
 export interface HostDevicePermissionResponse {
@@ -6556,6 +6722,118 @@ export interface HostFeatureSupportedResponse {
     supported: boolean;
 }
 export const HostFeatureSupportedResponse: Codec<HostFeatureSupportedResponse>;
+/** Error from [\`crate::api::Funding::request\`]. */
+export type HostFundingError = 
+/** User is not logged in. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The user dismissed the funding screen without starting a session. */
+ | {
+    tag: "Rejected";
+    value?: undefined;
+}
+/** The amount sought is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+}
+/** This product already has a session with this id. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
+};
+export const HostFundingError: Codec<HostFundingError>;
+/** Request to open the funding modality. */
+export interface HostFundingRequest {
+    /**
+     * Caller-chosen id the session is watched by, so a product that reloads
+     * while the overlay is up can still watch it. Reusing one is refused
+     * with \`AlreadyExists\`.
+     */
+    id: HexString;
+    /** Which way value moves; the host opens on the matching screen. */
+    direction: FundingDirection;
+    /**
+     * Amount sought, in the user's payment balance units. \`None\` lets the
+     * user choose.
+     */
+    amount?: bigint;
+}
+export const HostFundingRequest: Codec<HostFundingRequest>;
+/** Error from [\`crate::api::Funding::status_subscribe\`]. */
+export type HostFundingStatusSubscribeError = 
+/**
+ * The caller has no session with this id. An ended session stays
+ * watchable for good, compacted once newer ones push it out, and
+ * watching it yields its terminal item.
+ */
+{
+    tag: "NotFound";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostFundingStatusSubscribeError: Codec<HostFundingStatusSubscribeError>;
+/**
+ * Progress of a funding session, ending in exactly one terminal item.
+ *
+ * \`Delivered\` means the funds reached the user's balance. \`Released\` means
+ * they left it under the user's authorization, and says nothing about the
+ * off-chain leg: no host can verify that cash reached a bank.
+ */
+export type HostFundingStatusSubscribeItem = 
+/** In flight. The host draws its steps; a product only waits for the end. */
+{
+    tag: "InProgress";
+    value: {
+        expiresAt?: bigint;
+    };
+}
+/** Inbound terminal success. Funds credited to the user's balance. */
+ | {
+    tag: "Delivered";
+    value: {
+        credited: bigint;
+    };
+}
+/**
+ * Outbound terminal success. Funds left the user's balance under the
+ * user's authorization.
+ */
+ | {
+    tag: "Released";
+    value: {
+        debited: bigint;
+    };
+}
+/** Terminal failure. */
+ | {
+    tag: "Failed";
+    value: {
+        reason: FundingFailure;
+    };
+};
+export const HostFundingStatusSubscribeItem: Codec<HostFundingStatusSubscribeItem>;
+/** Request to watch a funding session. */
+export interface HostFundingStatusSubscribeRequest {
+    /** The id the session was requested with. */
+    id: HexString;
+}
+export const HostFundingStatusSubscribeRequest: Codec<HostFundingStatusSubscribeRequest>;
 /** Response containing all legacy (user-imported) accounts owned by the user. */
 export interface HostGetLegacyAccountsResponse {
     /** Legacy accounts. */
@@ -7193,6 +7471,16 @@ export type HostPaymentError =
     value: {
         reason: string;
     };
+}
+/** The amount is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
+}
+/** A payment with this id already exists. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
 };
 export const HostPaymentError: Codec<HostPaymentError>;
 /** Request to initiate a payment to another account. */
@@ -7203,20 +7491,13 @@ export interface HostPaymentRequest {
     amount: bigint;
     /** Destination account. */
     destination: HexString;
+    /**
+     * Caller-chosen id the payment's status is followed by. Reusing one is
+     * refused with \`AlreadyExists\`, which makes a retried call safe.
+     */
+    id: HexString;
 }
 export const HostPaymentRequest: Codec<HostPaymentRequest>;
-/**
- * Receipt returned after a successful payment request.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface HostPaymentResponse {
-    /** The assigned payment identifier. */
-    id: string;
-}
-export const HostPaymentResponse: Codec<HostPaymentResponse>;
 /**
  * Error from [\`crate::api::Payment::status_subscribe\`].
  *
@@ -7241,8 +7522,8 @@ export const HostPaymentStatusSubscribeError: Codec<HostPaymentStatusSubscribeEr
 /**
  * Payment lifecycle status pushed to subscribers.
  *
- * Once a terminal state (\`Completed\` or \`Failed\`) is reached, the host
- * delivers it and may close the subscription.
+ * \`Completed\`, \`Failed\` and \`ClaimedPartially\` are terminal, and stay
+ * readable after the payment ends.
  *
  * See [RFC 0006].
  *
@@ -7254,7 +7535,7 @@ export type HostPaymentStatusSubscribeItem =
     tag: "Processing";
     value?: undefined;
 }
-/** Payment has been settled successfully. */
+/** The full amount reached the destination. */
  | {
     tag: "Completed";
     value?: undefined;
@@ -7265,12 +7546,19 @@ export type HostPaymentStatusSubscribeItem =
     value: {
         reason: string;
     };
+}
+/** Less than the requested amount reached the destination. */
+ | {
+    tag: "ClaimedPartially";
+    value: {
+        actualClaimed: bigint;
+    };
 };
 export const HostPaymentStatusSubscribeItem: Codec<HostPaymentStatusSubscribeItem>;
 /** Request to subscribe to a payment status. */
 export interface HostPaymentStatusSubscribeRequest {
-    /** Payment identifier to watch. */
-    paymentId: string;
+    /** Id the payment was requested with. */
+    id: HexString;
 }
 export const HostPaymentStatusSubscribeRequest: Codec<HostPaymentStatusSubscribeRequest>;
 /**
@@ -7281,22 +7569,20 @@ export const HostPaymentStatusSubscribeRequest: Codec<HostPaymentStatusSubscribe
  * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
  */
 export type HostPaymentTopUpError = 
-/** The source account does not hold sufficient funds. */
+/** The source key is malformed, or the source was not found. */
 {
-    tag: "InsufficientFunds";
-    value?: undefined;
-}
-/** The source account was not found or is invalid. */
- | {
     tag: "InvalidSource";
     value?: undefined;
 }
-/** Some coins were claimed but the total fell short of the requested amount. */
+/** Another top-up from the same source is still running. */
  | {
-    tag: "PartialPayment";
-    value: {
-        credited: bigint;
-    };
+    tag: "SourceBusy";
+    value?: undefined;
+}
+/** The amount is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
 }
 /** Catch-all. */
  | {
@@ -7304,6 +7590,11 @@ export type HostPaymentTopUpError =
     value: {
         reason: string;
     };
+}
+/** A top-up with this id already exists. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
 };
 export const HostPaymentTopUpError: Codec<HostPaymentTopUpError>;
 /** Request to top up the product payment balance. */
@@ -7314,8 +7605,72 @@ export interface HostPaymentTopUpRequest {
     amount: bigint;
     /** Funding source for the top-up. */
     source: PaymentTopUpSource;
+    /**
+     * Caller-chosen id the top-up's status is followed by. Reusing one is
+     * refused with \`AlreadyExists\`, which makes a retried call safe.
+     */
+    id: HexString;
 }
 export const HostPaymentTopUpRequest: Codec<HostPaymentTopUpRequest>;
+/** Error from [\`crate::api::Payment::top_up_status_subscribe\`]. */
+export type HostPaymentTopUpStatusSubscribeError = 
+/** No top-up with this id for the calling product. */
+{
+    tag: "TopUpNotFound";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostPaymentTopUpStatusSubscribeError: Codec<HostPaymentTopUpStatusSubscribeError>;
+/**
+ * Progress of a top-up. \`Claimed { finalized: true }\`, \`ClaimedPartially\` and
+ * \`NotClaimed\` are terminal, and stay readable after the top-up ends.
+ */
+export type HostPaymentTopUpStatusSubscribeItem = 
+/** Waiting for the source's funds to be seen. */
+{
+    tag: "Detecting";
+    value?: undefined;
+}
+/** Claiming the funds into the balance. */
+ | {
+    tag: "Claiming";
+    value?: undefined;
+}
+/** The full amount was claimed. */
+ | {
+    tag: "Claimed";
+    value: {
+        finalized: boolean;
+    };
+}
+/**
+ * Less than the requested amount was claimed, such as when an amount
+ * below the smallest coin denomination remains.
+ */
+ | {
+    tag: "ClaimedPartially";
+    value: {
+        actualClaimed: bigint;
+    };
+}
+/** Nothing was claimed. */
+ | {
+    tag: "NotClaimed";
+    value?: undefined;
+};
+export const HostPaymentTopUpStatusSubscribeItem: Codec<HostPaymentTopUpStatusSubscribeItem>;
+/** Request to follow one top-up. */
+export interface HostPaymentTopUpStatusSubscribeRequest {
+    /** Id the top-up was started with. */
+    id: HexString;
+}
+export const HostPaymentTopUpStatusSubscribeRequest: Codec<HostPaymentTopUpStatusSubscribeRequest>;
 /** The calling product's cards: the whole set on subscribe and after every change. */
 export interface HostPocketListSubscribeItem {
     /** Cards currently in Pocket for the calling product. */
@@ -8655,6 +9010,7 @@ export import BoxProps = T.BoxProps;
 export import ButtonProps = T.ButtonProps;
 export import ButtonVariant = T.ButtonVariant;
 export import Bytes32 = T.Bytes32;
+export import Bytes64 = T.Bytes64;
 export import ChainIdentifier = T.ChainIdentifier;
 export import ChatAction = T.ChatAction;
 export import ChatActionLayout = T.ChatActionLayout;
@@ -8691,6 +9047,8 @@ export import DerivationIndex = T.DerivationIndex;
 export import Dimensions = T.Dimensions;
 export import Effect = T.Effect;
 export import EffectProps = T.EffectProps;
+export import FundingDirection = T.FundingDirection;
+export import FundingFailure = T.FundingFailure;
 export import GenericError = T.GenericError;
 export import HorizontalAlignment = T.HorizontalAlignment;
 export import VersionedHostAccountConnectionStatusSubscribeError = T.VersionedHostAccountConnectionStatusSubscribeError;
@@ -8792,6 +9150,12 @@ export import VersionedHostExpandedCardSetFaceShownResponse = T.VersionedHostExp
 export import VersionedHostFeatureSupportedError = T.VersionedHostFeatureSupportedError;
 export import VersionedHostFeatureSupportedRequest = T.VersionedHostFeatureSupportedRequest;
 export import VersionedHostFeatureSupportedResponse = T.VersionedHostFeatureSupportedResponse;
+export import VersionedHostFundingError = T.VersionedHostFundingError;
+export import VersionedHostFundingRequest = T.VersionedHostFundingRequest;
+export import VersionedHostFundingResponse = T.VersionedHostFundingResponse;
+export import VersionedHostFundingStatusSubscribeError = T.VersionedHostFundingStatusSubscribeError;
+export import VersionedHostFundingStatusSubscribeItem = T.VersionedHostFundingStatusSubscribeItem;
+export import VersionedHostFundingStatusSubscribeRequest = T.VersionedHostFundingStatusSubscribeRequest;
 export import VersionedHostGetLegacyAccountsError = T.VersionedHostGetLegacyAccountsError;
 export import VersionedHostGetLegacyAccountsRequest = T.VersionedHostGetLegacyAccountsRequest;
 export import VersionedHostGetLegacyAccountsResponse = T.VersionedHostGetLegacyAccountsResponse;
@@ -8935,6 +9299,9 @@ export import VersionedHostPaymentStatusSubscribeRequest = T.VersionedHostPaymen
 export import VersionedHostPaymentTopUpError = T.VersionedHostPaymentTopUpError;
 export import VersionedHostPaymentTopUpRequest = T.VersionedHostPaymentTopUpRequest;
 export import VersionedHostPaymentTopUpResponse = T.VersionedHostPaymentTopUpResponse;
+export import VersionedHostPaymentTopUpStatusSubscribeError = T.VersionedHostPaymentTopUpStatusSubscribeError;
+export import VersionedHostPaymentTopUpStatusSubscribeItem = T.VersionedHostPaymentTopUpStatusSubscribeItem;
+export import VersionedHostPaymentTopUpStatusSubscribeRequest = T.VersionedHostPaymentTopUpStatusSubscribeRequest;
 export import HostPlatform = T.HostPlatform;
 export import VersionedHostPocketListSubscribeError = T.VersionedHostPocketListSubscribeError;
 export import VersionedHostPocketListSubscribeItem = T.VersionedHostPocketListSubscribeItem;
@@ -9239,6 +9606,11 @@ export import HostExpandedCardSetFaceShownError = T.HostExpandedCardSetFaceShown
 export import HostExpandedCardSetFaceShownRequest = T.HostExpandedCardSetFaceShownRequest;
 export import HostFeatureSupportedRequest = T.HostFeatureSupportedRequest;
 export import HostFeatureSupportedResponse = T.HostFeatureSupportedResponse;
+export import HostFundingError = T.HostFundingError;
+export import HostFundingRequest = T.HostFundingRequest;
+export import HostFundingStatusSubscribeError = T.HostFundingStatusSubscribeError;
+export import HostFundingStatusSubscribeItem = T.HostFundingStatusSubscribeItem;
+export import HostFundingStatusSubscribeRequest = T.HostFundingStatusSubscribeRequest;
 export import HostGetLegacyAccountsResponse = T.HostGetLegacyAccountsResponse;
 export import HostGetProductContextResponse = T.HostGetProductContextResponse;
 export import HostGetUserIdError = T.HostGetUserIdError;
@@ -9297,12 +9669,14 @@ export import HostPaymentBalanceSubscribeItem = T.HostPaymentBalanceSubscribeIte
 export import HostPaymentBalanceSubscribeRequest = T.HostPaymentBalanceSubscribeRequest;
 export import HostPaymentError = T.HostPaymentError;
 export import HostPaymentRequest = T.HostPaymentRequest;
-export import HostPaymentResponse = T.HostPaymentResponse;
 export import HostPaymentStatusSubscribeError = T.HostPaymentStatusSubscribeError;
 export import HostPaymentStatusSubscribeItem = T.HostPaymentStatusSubscribeItem;
 export import HostPaymentStatusSubscribeRequest = T.HostPaymentStatusSubscribeRequest;
 export import HostPaymentTopUpError = T.HostPaymentTopUpError;
 export import HostPaymentTopUpRequest = T.HostPaymentTopUpRequest;
+export import HostPaymentTopUpStatusSubscribeError = T.HostPaymentTopUpStatusSubscribeError;
+export import HostPaymentTopUpStatusSubscribeItem = T.HostPaymentTopUpStatusSubscribeItem;
+export import HostPaymentTopUpStatusSubscribeRequest = T.HostPaymentTopUpStatusSubscribeRequest;
 export import HostPocketListSubscribeItem = T.HostPocketListSubscribeItem;
 export import HostPocketRemoveCardError = T.HostPocketRemoveCardError;
 export import HostPocketRemoveCardRequest = T.HostPocketRemoveCardRequest;
@@ -9852,7 +10226,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "fc7b1e7173832168";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "a72c149bbae24af5";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -10135,6 +10509,31 @@ export declare class ExpandedCardClient {
      */
     setFaceShown(request: T.HostExpandedCardSetFaceShownRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostExpandedCardSetFaceShownError>>;
 }
+/**
+ * Move value into or out of the user's balance and watch it to completion.
+ *
+ * The host draws the whole flow. The core decides \`Delivered\` and \`Released\`
+ * itself, from the funds that moved, never from the host's or a provider's
+ * word.
+ */
+export declare class FundingClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Open the funding modality for a direction and, optionally, an amount,
+     * under a caller-chosen \`id\` the session is then watched by. Returns once
+     * the user starts the session.
+     */
+    request(request: T.HostFundingRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostFundingError>>;
+    /**
+     * Watch one of the caller's funding sessions to completion.
+     *
+     * Emits the current stage, later stages, then exactly one terminal item.
+     */
+    statusSubscribe({ request }: {
+        request: T.HostFundingStatusSubscribeRequest;
+    }): ObservableLike<T.HostFundingStatusSubscribeItem, S.CallErrorValue<T.VersionedHostFundingStatusSubscribeError>>;
+}
 /** Reminders for a product's next game. */
 export declare class GameClient {
     #private;
@@ -10357,14 +10756,31 @@ export declare class PaymentClient {
     balanceSubscribe({ request }: {
         request: T.HostPaymentBalanceSubscribeRequest;
     }): ObservableLike<T.HostPaymentBalanceSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentBalanceSubscribeError>>;
-    /** Request a payment from the user. */
-    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
-    /** Subscribe to payment lifecycle updates for a specific payment. */
+    /**
+     * Request a payment from the user, followed by \`id\` through
+     * \`statusSubscribe\`. Returns once the host has accepted it.
+     */
+    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentError>>;
+    /**
+     * Subscribe to payment lifecycle updates for a specific payment. Emits
+     * the current status first, so a caller that reloads re-attaches.
+     */
     statusSubscribe({ request }: {
         request: T.HostPaymentStatusSubscribeRequest;
     }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
-    /** Top up the user's payment balance. */
+    /**
+     * Top up the user's payment balance, followed by \`id\` through
+     * \`topUpStatusSubscribe\`.
+     */
     topUp(request: T.HostPaymentTopUpRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
+    /**
+     * Follow one top-up to its end.
+     *
+     * Emits the current status first, so a caller that reloads re-attaches.
+     */
+    topUpStatusSubscribe({ request }: {
+        request: T.HostPaymentTopUpStatusSubscribeRequest;
+    }): ObservableLike<T.HostPaymentTopUpStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentTopUpStatusSubscribeError>>;
 }
 /** Permission request methods. */
 export declare class PermissionsClient {
@@ -10669,7 +11085,7 @@ export declare class SystemClient {
      * An \`http\` or \`https\` URL outside the ecosystem needs a
      * \`RemotePermission::Remote\` grant for the target host, and prompts for one
      * on first use. dotNS names, \`localhost\`, and the app-handoff schemes
-     * (\`mailto:\`, \`tel:\`, \`polkadot:\`, \`dot:\`) consume no grant. The grant is
+     * (\`mailto:\`, \`tel:\`, \`polkadot:\`, \`polkadotapp:\`) consume no grant. The grant is
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
@@ -10719,6 +11135,7 @@ export interface TrUApiClient {
     readonly entropy: EntropyClient;
     readonly jamPeerTransport: JamPeerTransportClient;
     readonly expandedCard: ExpandedCardClient;
+    readonly funding: FundingClient;
     readonly game: GameClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
@@ -10742,18 +11159,4 @@ export type Client = TrUApiClient;
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
 export declare function createClient(transport: TrUApiTransport): TrUApiClient;
-
-
-// development.d.ts
-/** Same as \`HostAccountCreateProofRequest\`, with the 32-byte context given raw. */
-export interface DevelopmentCreateProofRequest extends Omit<HostAccountCreateProofRequest, "context"> {
-    /** The exact 32 bytes the proof is bound to, as \`0x\`-prefixed hex. */
-    context: HexString;
-}
-/**
- * \`account.createAccountProof\` with a verbatim 32-byte proof context instead of
- * a product-namespaced one.
- *
- */
-export declare function development_createAccountProof(client: Pick<TrUApiClient, "account">, request: DevelopmentCreateProofRequest): ResultAsync<HostAccountCreateProofResponse, CallErrorValue<VersionedHostAccountCreateProofError>>;
 `;

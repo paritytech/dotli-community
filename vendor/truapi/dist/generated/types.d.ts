@@ -133,6 +133,13 @@ export declare const ButtonVariant: S.Codec<ButtonVariant>;
  */
 export type Bytes32 = HexString;
 export declare const Bytes32: S.Codec<Bytes32>;
+/**
+ * A 64-byte value, such as an sr25519 secret key, passed as plain bytes on
+ * FFI surfaces. Named only because `uniffi::custom_type!` takes an ident, not
+ * an array type.
+ */
+export type Bytes64 = HexString;
+export declare const Bytes64: S.Codec<Bytes64>;
 /** Role of a chain within the host's configured environment. */
 export type ChainIdentifier = "Relay" | "AssetHub" | "People" | "Bulletin";
 export declare const ChainIdentifier: S.Codec<ChainIdentifier>;
@@ -506,6 +513,84 @@ export interface EffectProps {
     effect: Effect;
 }
 export declare const EffectProps: S.Codec<EffectProps>;
+/**
+ * Which way value crosses the boundary between the user's Polkadot balance
+ * and everything outside it.
+ */
+export type FundingDirection = "In" | "Out";
+export declare const FundingDirection: S.Codec<FundingDirection>;
+/**
+ * Why a session ended without success.
+ *
+ * Carries an outcome, never a rule, so a client renders these without holding
+ * any part of the operator's compliance logic.
+ */
+export type FundingFailure = 
+/** Not offered in the user's market. */
+{
+    tag: "RegionUnavailable";
+    value?: undefined;
+}
+/** The user must complete verification first. */
+ | {
+    tag: "VerificationRequired";
+    value?: undefined;
+}
+/** Verification was attempted and refused. */
+ | {
+    tag: "VerificationRefused";
+    value?: undefined;
+}
+/** Below the route's minimum. */
+ | {
+    tag: "BelowMinimum";
+    value?: undefined;
+}
+/** Above the route's maximum. */
+ | {
+    tag: "AboveMaximum";
+    value?: undefined;
+}
+/** The user's balance does not cover an outbound session. */
+ | {
+    tag: "InsufficientBalance";
+    value?: undefined;
+}
+/** The session's window closed before it completed. */
+ | {
+    tag: "Expired";
+    value?: undefined;
+}
+/** Funds arrived in the wrong asset or on the wrong chain. */
+ | {
+    tag: "WrongAssetOrChain";
+    value?: undefined;
+}
+/** The provider stopped responding. */
+ | {
+    tag: "ProviderTimeout";
+    value?: undefined;
+}
+/**
+ * The user abandoned the flow, or declined to authorize an outbound
+ * release.
+ */
+ | {
+    tag: "Cancelled";
+    value?: undefined;
+}
+/**
+ * Outcome not covered above. Clients render the message and treat the
+ * code as opaque.
+ */
+ | {
+    tag: "Other";
+    value: {
+        code: string;
+        message: string;
+    };
+};
+export declare const FundingFailure: S.Codec<FundingFailure>;
 /**
  * Generic error payload carrying a human-readable reason string. Used by many
  * methods as a catch-all error type.
@@ -1310,6 +1395,54 @@ export type VersionedHostFeatureSupportedResponse =
     value: HostFeatureSupportedResponse;
 };
 export declare const VersionedHostFeatureSupportedResponse: S.Codec<VersionedHostFeatureSupportedResponse>;
+/** Versioned envelope for [`HostFundingError`]. */
+export type VersionedHostFundingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingError;
+};
+export declare const VersionedHostFundingError: S.Codec<VersionedHostFundingError>;
+/** Versioned envelope for [`HostFundingRequest`]. */
+export type VersionedHostFundingRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingRequest;
+};
+export declare const VersionedHostFundingRequest: S.Codec<VersionedHostFundingRequest>;
+/** Versioned envelope for [`HostFundingResponse`]. */
+export type VersionedHostFundingResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostFundingResponse: S.Codec<VersionedHostFundingResponse>;
+/** Versioned envelope for [`HostFundingStatusSubscribeError`]. */
+export type VersionedHostFundingStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeError;
+};
+export declare const VersionedHostFundingStatusSubscribeError: S.Codec<VersionedHostFundingStatusSubscribeError>;
+/** Versioned envelope for [`HostFundingStatusSubscribeItem`]. */
+export type VersionedHostFundingStatusSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeItem;
+};
+export declare const VersionedHostFundingStatusSubscribeItem: S.Codec<VersionedHostFundingStatusSubscribeItem>;
+/** Versioned envelope for [`HostFundingStatusSubscribeRequest`]. */
+export type VersionedHostFundingStatusSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeRequest;
+};
+export declare const VersionedHostFundingStatusSubscribeRequest: S.Codec<VersionedHostFundingStatusSubscribeRequest>;
 /** Versioned envelope for [`HostGetLegacyAccountsError`]. */
 export type VersionedHostGetLegacyAccountsError = 
 /** Version 1 payload. */
@@ -2580,10 +2713,10 @@ export type VersionedHostPaymentRequest =
 export declare const VersionedHostPaymentRequest: S.Codec<VersionedHostPaymentRequest>;
 /** Versioned envelope for [`HostPaymentResponse`]. */
 export type VersionedHostPaymentResponse = 
-/** Version 1 payload. */
+/** Version 1 (no payload). */
 {
     tag: "V1";
-    value: HostPaymentResponse;
+    value?: undefined;
 };
 export declare const VersionedHostPaymentResponse: S.Codec<VersionedHostPaymentResponse>;
 /** Versioned envelope for [`HostPaymentStatusSubscribeError`]. */
@@ -2634,6 +2767,30 @@ export type VersionedHostPaymentTopUpResponse =
     value?: undefined;
 };
 export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopUpResponse>;
+/** Versioned envelope for [`HostPaymentTopUpStatusSubscribeError`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeError;
+};
+export declare const VersionedHostPaymentTopUpStatusSubscribeError: S.Codec<VersionedHostPaymentTopUpStatusSubscribeError>;
+/** Versioned envelope for [`HostPaymentTopUpStatusSubscribeItem`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeItem;
+};
+export declare const VersionedHostPaymentTopUpStatusSubscribeItem: S.Codec<VersionedHostPaymentTopUpStatusSubscribeItem>;
+/** Versioned envelope for [`HostPaymentTopUpStatusSubscribeRequest`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeRequest;
+};
+export declare const VersionedHostPaymentTopUpStatusSubscribeRequest: S.Codec<VersionedHostPaymentTopUpStatusSubscribeRequest>;
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
@@ -4588,9 +4745,9 @@ export declare const VersionedRemoteChainTransactionStopResponse: S.Codec<Versio
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * `ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also
- * triggered implicitly by the corresponding business calls when not yet
- * granted (`JamPeerTransport::dial` for `JamPeers`).
+ * `ChainSubmit`, `PreimageSubmit`, `StatementSubmit`, `JamPeers` and
+ * `BalanceAccess` are also triggered implicitly by the corresponding business
+ * calls when not yet granted (`JamPeerTransport::dial` for `JamPeers`).
  */
 export type RemotePermission = 
 /**
@@ -4659,6 +4816,15 @@ export type RemotePermission =
  */
  | {
     tag: "Calling";
+    value?: undefined;
+}
+/**
+ * Seeing the user's payment balance through `payment.balanceSubscribe`,
+ * and learning that a payment request was refused for the balance rather
+ * than by the user.
+ */
+ | {
+    tag: "BalanceAccess";
     value?: undefined;
 };
 export declare const RemotePermission: S.Codec<RemotePermission>;
@@ -5970,7 +6136,7 @@ export declare const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyRespons
  * grant that is merely undetermined does not change the answer, because the OS
  * resolves its own gate when the capability is used.
  */
-export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics";
+export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics" | "Motion";
 export declare const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest>;
 /** Outcome of a device-permission request. */
 export interface HostDevicePermissionResponse {
@@ -6020,6 +6186,118 @@ export interface HostFeatureSupportedResponse {
     supported: boolean;
 }
 export declare const HostFeatureSupportedResponse: S.Codec<HostFeatureSupportedResponse>;
+/** Error from [`crate::api::Funding::request`]. */
+export type HostFundingError = 
+/** User is not logged in. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The user dismissed the funding screen without starting a session. */
+ | {
+    tag: "Rejected";
+    value?: undefined;
+}
+/** The amount sought is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+}
+/** This product already has a session with this id. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
+};
+export declare const HostFundingError: S.Codec<HostFundingError>;
+/** Request to open the funding modality. */
+export interface HostFundingRequest {
+    /**
+     * Caller-chosen id the session is watched by, so a product that reloads
+     * while the overlay is up can still watch it. Reusing one is refused
+     * with `AlreadyExists`.
+     */
+    id: HexString;
+    /** Which way value moves; the host opens on the matching screen. */
+    direction: FundingDirection;
+    /**
+     * Amount sought, in the user's payment balance units. `None` lets the
+     * user choose.
+     */
+    amount?: bigint;
+}
+export declare const HostFundingRequest: S.Codec<HostFundingRequest>;
+/** Error from [`crate::api::Funding::status_subscribe`]. */
+export type HostFundingStatusSubscribeError = 
+/**
+ * The caller has no session with this id. An ended session stays
+ * watchable for good, compacted once newer ones push it out, and
+ * watching it yields its terminal item.
+ */
+{
+    tag: "NotFound";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostFundingStatusSubscribeError: S.Codec<HostFundingStatusSubscribeError>;
+/**
+ * Progress of a funding session, ending in exactly one terminal item.
+ *
+ * `Delivered` means the funds reached the user's balance. `Released` means
+ * they left it under the user's authorization, and says nothing about the
+ * off-chain leg: no host can verify that cash reached a bank.
+ */
+export type HostFundingStatusSubscribeItem = 
+/** In flight. The host draws its steps; a product only waits for the end. */
+{
+    tag: "InProgress";
+    value: {
+        expiresAt?: bigint;
+    };
+}
+/** Inbound terminal success. Funds credited to the user's balance. */
+ | {
+    tag: "Delivered";
+    value: {
+        credited: bigint;
+    };
+}
+/**
+ * Outbound terminal success. Funds left the user's balance under the
+ * user's authorization.
+ */
+ | {
+    tag: "Released";
+    value: {
+        debited: bigint;
+    };
+}
+/** Terminal failure. */
+ | {
+    tag: "Failed";
+    value: {
+        reason: FundingFailure;
+    };
+};
+export declare const HostFundingStatusSubscribeItem: S.Codec<HostFundingStatusSubscribeItem>;
+/** Request to watch a funding session. */
+export interface HostFundingStatusSubscribeRequest {
+    /** The id the session was requested with. */
+    id: HexString;
+}
+export declare const HostFundingStatusSubscribeRequest: S.Codec<HostFundingStatusSubscribeRequest>;
 /** Response containing all legacy (user-imported) accounts owned by the user. */
 export interface HostGetLegacyAccountsResponse {
     /** Legacy accounts. */
@@ -6657,6 +6935,16 @@ export type HostPaymentError =
     value: {
         reason: string;
     };
+}
+/** The amount is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
+}
+/** A payment with this id already exists. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
 };
 export declare const HostPaymentError: S.Codec<HostPaymentError>;
 /** Request to initiate a payment to another account. */
@@ -6667,20 +6955,13 @@ export interface HostPaymentRequest {
     amount: bigint;
     /** Destination account. */
     destination: HexString;
+    /**
+     * Caller-chosen id the payment's status is followed by. Reusing one is
+     * refused with `AlreadyExists`, which makes a retried call safe.
+     */
+    id: HexString;
 }
 export declare const HostPaymentRequest: S.Codec<HostPaymentRequest>;
-/**
- * Receipt returned after a successful payment request.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface HostPaymentResponse {
-    /** The assigned payment identifier. */
-    id: string;
-}
-export declare const HostPaymentResponse: S.Codec<HostPaymentResponse>;
 /**
  * Error from [`crate::api::Payment::status_subscribe`].
  *
@@ -6705,8 +6986,8 @@ export declare const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusS
 /**
  * Payment lifecycle status pushed to subscribers.
  *
- * Once a terminal state (`Completed` or `Failed`) is reached, the host
- * delivers it and may close the subscription.
+ * `Completed`, `Failed` and `ClaimedPartially` are terminal, and stay
+ * readable after the payment ends.
  *
  * See [RFC 0006].
  *
@@ -6718,7 +6999,7 @@ export type HostPaymentStatusSubscribeItem =
     tag: "Processing";
     value?: undefined;
 }
-/** Payment has been settled successfully. */
+/** The full amount reached the destination. */
  | {
     tag: "Completed";
     value?: undefined;
@@ -6729,12 +7010,19 @@ export type HostPaymentStatusSubscribeItem =
     value: {
         reason: string;
     };
+}
+/** Less than the requested amount reached the destination. */
+ | {
+    tag: "ClaimedPartially";
+    value: {
+        actualClaimed: bigint;
+    };
 };
 export declare const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem>;
 /** Request to subscribe to a payment status. */
 export interface HostPaymentStatusSubscribeRequest {
-    /** Payment identifier to watch. */
-    paymentId: string;
+    /** Id the payment was requested with. */
+    id: HexString;
 }
 export declare const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscribeRequest>;
 /**
@@ -6745,22 +7033,20 @@ export declare const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatu
  * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
  */
 export type HostPaymentTopUpError = 
-/** The source account does not hold sufficient funds. */
+/** The source key is malformed, or the source was not found. */
 {
-    tag: "InsufficientFunds";
-    value?: undefined;
-}
-/** The source account was not found or is invalid. */
- | {
     tag: "InvalidSource";
     value?: undefined;
 }
-/** Some coins were claimed but the total fell short of the requested amount. */
+/** Another top-up from the same source is still running. */
  | {
-    tag: "PartialPayment";
-    value: {
-        credited: bigint;
-    };
+    tag: "SourceBusy";
+    value?: undefined;
+}
+/** The amount is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
 }
 /** Catch-all. */
  | {
@@ -6768,6 +7054,11 @@ export type HostPaymentTopUpError =
     value: {
         reason: string;
     };
+}
+/** A top-up with this id already exists. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
 };
 export declare const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError>;
 /** Request to top up the product payment balance. */
@@ -6778,8 +7069,72 @@ export interface HostPaymentTopUpRequest {
     amount: bigint;
     /** Funding source for the top-up. */
     source: PaymentTopUpSource;
+    /**
+     * Caller-chosen id the top-up's status is followed by. Reusing one is
+     * refused with `AlreadyExists`, which makes a retried call safe.
+     */
+    id: HexString;
 }
 export declare const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest>;
+/** Error from [`crate::api::Payment::top_up_status_subscribe`]. */
+export type HostPaymentTopUpStatusSubscribeError = 
+/** No top-up with this id for the calling product. */
+{
+    tag: "TopUpNotFound";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostPaymentTopUpStatusSubscribeError: S.Codec<HostPaymentTopUpStatusSubscribeError>;
+/**
+ * Progress of a top-up. `Claimed { finalized: true }`, `ClaimedPartially` and
+ * `NotClaimed` are terminal, and stay readable after the top-up ends.
+ */
+export type HostPaymentTopUpStatusSubscribeItem = 
+/** Waiting for the source's funds to be seen. */
+{
+    tag: "Detecting";
+    value?: undefined;
+}
+/** Claiming the funds into the balance. */
+ | {
+    tag: "Claiming";
+    value?: undefined;
+}
+/** The full amount was claimed. */
+ | {
+    tag: "Claimed";
+    value: {
+        finalized: boolean;
+    };
+}
+/**
+ * Less than the requested amount was claimed, such as when an amount
+ * below the smallest coin denomination remains.
+ */
+ | {
+    tag: "ClaimedPartially";
+    value: {
+        actualClaimed: bigint;
+    };
+}
+/** Nothing was claimed. */
+ | {
+    tag: "NotClaimed";
+    value?: undefined;
+};
+export declare const HostPaymentTopUpStatusSubscribeItem: S.Codec<HostPaymentTopUpStatusSubscribeItem>;
+/** Request to follow one top-up. */
+export interface HostPaymentTopUpStatusSubscribeRequest {
+    /** Id the top-up was started with. */
+    id: HexString;
+}
+export declare const HostPaymentTopUpStatusSubscribeRequest: S.Codec<HostPaymentTopUpStatusSubscribeRequest>;
 /** The calling product's cards: the whole set on subscribe and after every change. */
 export interface HostPocketListSubscribeItem {
     /** Cards currently in Pocket for the calling product. */

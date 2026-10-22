@@ -334,6 +334,11 @@ export const PAYMENT_STATUS_SUBSCRIBE = {
     method: 3,
     kind: "subscription",
 };
+export const PAYMENT_TOP_UP_STATUS_SUBSCRIBE = {
+    trait: 9,
+    method: 4,
+    kind: "subscription",
+};
 export const PERMISSIONS_REQUEST_DEVICE_PERMISSION = {
     trait: 10,
     method: 0,
@@ -498,6 +503,16 @@ export const GAME_CANCEL_NEXT_GAME = {
     trait: 21,
     method: 1,
     kind: "request",
+};
+export const FUNDING_REQUEST = {
+    trait: 22,
+    method: 0,
+    kind: "request",
+};
+export const FUNDING_STATUS_SUBSCRIBE = {
+    trait: 22,
+    method: 1,
+    kind: "subscription",
 };
 export const EXPANDED_CARD_SET_FACE_SHOWN = {
     trait: 23,

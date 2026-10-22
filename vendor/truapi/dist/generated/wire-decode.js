@@ -290,6 +290,12 @@ export const WIRE_DECODE_TABLE = {
         2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostPaymentStatusSubscribeError)).dec(payload),
         3: () => undefined,
     },
+    [W.PAYMENT_TOP_UP_STATUS_SUBSCRIBE.trait * 256 + W.PAYMENT_TOP_UP_STATUS_SUBSCRIBE.method]: {
+        0: (payload) => T.VersionedHostPaymentTopUpStatusSubscribeRequest.dec(payload),
+        1: (payload) => T.VersionedHostPaymentTopUpStatusSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostPaymentTopUpStatusSubscribeError)).dec(payload),
+        3: () => undefined,
+    },
     [W.PERMISSIONS_REQUEST_DEVICE_PERMISSION.trait * 256 + W.PERMISSIONS_REQUEST_DEVICE_PERMISSION.method]: {
         0: (payload) => T.VersionedHostDevicePermissionRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostDevicePermissionResponse, S.CallError(T.VersionedHostDevicePermissionError)).dec(payload),
@@ -435,6 +441,16 @@ export const WIRE_DECODE_TABLE = {
     [W.GAME_CANCEL_NEXT_GAME.trait * 256 + W.GAME_CANCEL_NEXT_GAME.method]: {
         0: (payload) => T.VersionedHostCancelNextGameRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostCancelNextGameResponse, S.CallError(T.VersionedHostCancelNextGameError)).dec(payload),
+    },
+    [W.FUNDING_REQUEST.trait * 256 + W.FUNDING_REQUEST.method]: {
+        0: (payload) => T.VersionedHostFundingRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostFundingResponse, S.CallError(T.VersionedHostFundingError)).dec(payload),
+    },
+    [W.FUNDING_STATUS_SUBSCRIBE.trait * 256 + W.FUNDING_STATUS_SUBSCRIBE.method]: {
+        0: (payload) => T.VersionedHostFundingStatusSubscribeRequest.dec(payload),
+        1: (payload) => T.VersionedHostFundingStatusSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostFundingStatusSubscribeError)).dec(payload),
+        3: () => undefined,
     },
     [W.EXPANDED_CARD_SET_FACE_SHOWN.trait * 256 + W.EXPANDED_CARD_SET_FACE_SHOWN.method]: {
         0: (payload) => T.VersionedHostExpandedCardSetFaceShownRequest.dec(payload),

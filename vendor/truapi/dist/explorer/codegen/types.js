@@ -361,6 +361,13 @@ export const types = [
         description: "A 32-byte value, passed as plain bytes on FFI surfaces. Version-neutral:\nthe FFI conversion below applies to `[u8; 32]` fields in every protocol\nversion.",
     },
     {
+        id: "bytes-64",
+        name: "Bytes64",
+        category: "shared",
+        definition: "export type Bytes64 = HexString;",
+        description: "A 64-byte value, such as an sr25519 secret key, passed as plain bytes on\nFFI surfaces. Named only because `uniffi::custom_type!` takes an ident, not\nan array type.",
+    },
+    {
         id: "chain-identifier",
         name: "ChainIdentifier",
         category: "chain",
@@ -1310,6 +1317,89 @@ export const types = [
                 name: "effect",
                 type: "Effect",
                 description: "The effect applied to the children.",
+            },
+        ],
+    },
+    {
+        id: "funding-direction",
+        name: "FundingDirection",
+        category: "funding",
+        definition: 'export type FundingDirection = "In" | "Out";',
+        description: "Which way value crosses the boundary between the user's Polkadot balance\nand everything outside it.",
+        variants: [
+            {
+                name: "In",
+                type: '{ tag: "In"; value?: undefined }',
+                description: "Value moves in, credited to the user's balance.",
+            },
+            {
+                name: "Out",
+                type: '{ tag: "Out"; value?: undefined }',
+                description: "Value moves out of the user's balance under the user's authorization;\nthe off-chain leg is the provider's obligation.",
+            },
+        ],
+    },
+    {
+        id: "funding-failure",
+        name: "FundingFailure",
+        category: "funding",
+        definition: 'export type FundingFailure =\n  | { tag: "RegionUnavailable"; value?: undefined }\n  | { tag: "VerificationRequired"; value?: undefined }\n  | { tag: "VerificationRefused"; value?: undefined }\n  | { tag: "BelowMinimum"; value?: undefined }\n  | { tag: "AboveMaximum"; value?: undefined }\n  | { tag: "InsufficientBalance"; value?: undefined }\n  | { tag: "Expired"; value?: undefined }\n  | { tag: "WrongAssetOrChain"; value?: undefined }\n  | { tag: "ProviderTimeout"; value?: undefined }\n  | { tag: "Cancelled"; value?: undefined }\n  | { tag: "Other"; value: { code: string; message: string } }\n;',
+        description: "Why a session ended without success.\n\nCarries an outcome, never a rule, so a client renders these without holding\nany part of the operator's compliance logic.",
+        variants: [
+            {
+                name: "RegionUnavailable",
+                type: '{ tag: "RegionUnavailable"; value?: undefined }',
+                description: "Not offered in the user's market.",
+            },
+            {
+                name: "VerificationRequired",
+                type: '{ tag: "VerificationRequired"; value?: undefined }',
+                description: "The user must complete verification first.",
+            },
+            {
+                name: "VerificationRefused",
+                type: '{ tag: "VerificationRefused"; value?: undefined }',
+                description: "Verification was attempted and refused.",
+            },
+            {
+                name: "BelowMinimum",
+                type: '{ tag: "BelowMinimum"; value?: undefined }',
+                description: "Below the route's minimum.",
+            },
+            {
+                name: "AboveMaximum",
+                type: '{ tag: "AboveMaximum"; value?: undefined }',
+                description: "Above the route's maximum.",
+            },
+            {
+                name: "InsufficientBalance",
+                type: '{ tag: "InsufficientBalance"; value?: undefined }',
+                description: "The user's balance does not cover an outbound session.",
+            },
+            {
+                name: "Expired",
+                type: '{ tag: "Expired"; value?: undefined }',
+                description: "The session's window closed before it completed.",
+            },
+            {
+                name: "WrongAssetOrChain",
+                type: '{ tag: "WrongAssetOrChain"; value?: undefined }',
+                description: "Funds arrived in the wrong asset or on the wrong chain.",
+            },
+            {
+                name: "ProviderTimeout",
+                type: '{ tag: "ProviderTimeout"; value?: undefined }',
+                description: "The provider stopped responding.",
+            },
+            {
+                name: "Cancelled",
+                type: '{ tag: "Cancelled"; value?: undefined }',
+                description: "The user abandoned the flow, or declined to authorize an outbound\nrelease.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: { code: string; message: string } }',
+                description: "Outcome not covered above. Clients render the message and treat the\ncode as opaque.",
             },
         ],
     },
@@ -2532,7 +2622,7 @@ export const types = [
         id: "host-device-permission-request",
         name: "HostDevicePermissionRequest",
         category: "permissions",
-        definition: 'export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics";',
+        definition: 'export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics" | "Motion";',
         description: "Device-capability permission requested from the host (RFC 0002).\n\nLasting grants and denials survive app restarts. A host may also offer a\none-use grant, held in memory until a permission-gated operation consumes it.\n\nThat decision is about this product. The OS grant behind it belongs to the\nhost application and can move independently, so a host that can read OS\nstate has the capability resolve only while both allow it: a stored grant\nwhose OS grant was revoked answers `granted: false` without a prompt. An OS\ngrant that is merely undetermined does not change the answer, because the OS\nresolves its own gate when the capability is used.",
         variants: [
             {
@@ -2579,6 +2669,11 @@ export const types = [
                 name: "Biometrics",
                 type: '{ tag: "Biometrics"; value?: undefined }',
                 description: "Biometric authentication.",
+            },
+            {
+                name: "Motion",
+                type: '{ tag: "Motion"; value?: undefined }',
+                description: "Device motion and orientation sensor access.",
             },
         ],
     },
@@ -2659,6 +2754,126 @@ export const types = [
                 name: "supported",
                 type: "boolean",
                 description: "Whether the feature is supported.",
+            },
+        ],
+    },
+    {
+        id: "host-funding-error",
+        name: "HostFundingError",
+        category: "funding",
+        definition: 'export type HostFundingError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "InvalidAmount"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n  | { tag: "AlreadyExists"; value?: undefined }\n;',
+        description: "Error from [`crate::api::Funding::request`].",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "User is not logged in.",
+            },
+            {
+                name: "Rejected",
+                type: '{ tag: "Rejected"; value?: undefined }',
+                description: "The user dismissed the funding screen without starting a session.",
+            },
+            {
+                name: "InvalidAmount",
+                type: '{ tag: "InvalidAmount"; value?: undefined }',
+                description: "The amount sought is zero.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+            {
+                name: "AlreadyExists",
+                type: '{ tag: "AlreadyExists"; value?: undefined }',
+                description: "This product already has a session with this id.",
+            },
+        ],
+    },
+    {
+        id: "host-funding-request",
+        name: "HostFundingRequest",
+        category: "funding",
+        definition: "export interface HostFundingRequest {\n  id: HexString;\n  direction: FundingDirection;\n  amount?: bigint;\n}",
+        description: "Request to open the funding modality.",
+        fields: [
+            {
+                name: "id",
+                type: "HexString",
+                description: "Caller-chosen id the session is watched by, so a product that reloads\nwhile the overlay is up can still watch it. Reusing one is refused\nwith `AlreadyExists`.",
+            },
+            {
+                name: "direction",
+                type: "FundingDirection",
+                description: "Which way value moves; the host opens on the matching screen.",
+            },
+            {
+                name: "amount",
+                type: "bigint | undefined",
+                description: "Amount sought, in the user's payment balance units. `None` lets the\nuser choose.",
+            },
+        ],
+    },
+    {
+        id: "host-funding-status-subscribe-error",
+        name: "HostFundingStatusSubscribeError",
+        category: "funding",
+        definition: 'export type HostFundingStatusSubscribeError =\n  | { tag: "NotFound"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Error from [`crate::api::Funding::status_subscribe`].",
+        variants: [
+            {
+                name: "NotFound",
+                type: '{ tag: "NotFound"; value?: undefined }',
+                description: "The caller has no session with this id. An ended session stays\nwatchable for good, compacted once newer ones push it out, and\nwatching it yields its terminal item.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-funding-status-subscribe-item",
+        name: "HostFundingStatusSubscribeItem",
+        category: "funding",
+        definition: 'export type HostFundingStatusSubscribeItem =\n  | { tag: "InProgress"; value: { expiresAt?: bigint } }\n  | { tag: "Delivered"; value: { credited: bigint } }\n  | { tag: "Released"; value: { debited: bigint } }\n  | { tag: "Failed"; value: { reason: FundingFailure } }\n;',
+        description: "Progress of a funding session, ending in exactly one terminal item.\n\n`Delivered` means the funds reached the user's balance. `Released` means\nthey left it under the user's authorization, and says nothing about the\noff-chain leg: no host can verify that cash reached a bank.",
+        variants: [
+            {
+                name: "InProgress",
+                type: '{ tag: "InProgress"; value: { expiresAt?: bigint } }',
+                description: "In flight. The host draws its steps; a product only waits for the end.",
+            },
+            {
+                name: "Delivered",
+                type: '{ tag: "Delivered"; value: { credited: bigint } }',
+                description: "Inbound terminal success. Funds credited to the user's balance.",
+            },
+            {
+                name: "Released",
+                type: '{ tag: "Released"; value: { debited: bigint } }',
+                description: "Outbound terminal success. Funds left the user's balance under the\nuser's authorization.",
+            },
+            {
+                name: "Failed",
+                type: '{ tag: "Failed"; value: { reason: FundingFailure } }',
+                description: "Terminal failure.",
+            },
+        ],
+    },
+    {
+        id: "host-funding-status-subscribe-request",
+        name: "HostFundingStatusSubscribeRequest",
+        category: "funding",
+        definition: "export interface HostFundingStatusSubscribeRequest {\n  id: HexString;\n}",
+        description: "Request to watch a funding session.",
+        fields: [
+            {
+                name: "id",
+                type: "HexString",
+                description: "The id the session was requested with.",
             },
         ],
     },
@@ -4631,7 +4846,7 @@ export const types = [
         id: "host-payment-error",
         name: "HostPaymentError",
         category: "payment",
-        definition: 'export type HostPaymentError =\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "InsufficientBalance"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostPaymentError =\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "InsufficientBalance"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n  | { tag: "InvalidAmount"; value?: undefined }\n  | { tag: "AlreadyExists"; value?: undefined }\n;',
         description: "Error from [`crate::api::Payment::request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         variants: [
             {
@@ -4649,13 +4864,23 @@ export const types = [
                 type: '{ tag: "Unknown"; value: { reason: string } }',
                 description: "Catch-all.",
             },
+            {
+                name: "InvalidAmount",
+                type: '{ tag: "InvalidAmount"; value?: undefined }',
+                description: "The amount is zero.",
+            },
+            {
+                name: "AlreadyExists",
+                type: '{ tag: "AlreadyExists"; value?: undefined }',
+                description: "A payment with this id already exists.",
+            },
         ],
     },
     {
         id: "host-payment-request",
         name: "HostPaymentRequest",
         category: "payment",
-        definition: "export interface HostPaymentRequest {\n  from?: number;\n  amount: bigint;\n  destination: HexString;\n}",
+        definition: "export interface HostPaymentRequest {\n  from?: number;\n  amount: bigint;\n  destination: HexString;\n  id: HexString;\n}",
         description: "Request to initiate a payment to another account.",
         fields: [
             {
@@ -4673,19 +4898,10 @@ export const types = [
                 type: "HexString",
                 description: "Destination account.",
             },
-        ],
-    },
-    {
-        id: "host-payment-response",
-        name: "HostPaymentResponse",
-        category: "payment",
-        definition: "export interface HostPaymentResponse {\n  id: string;\n}",
-        description: "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        fields: [
             {
                 name: "id",
-                type: "string",
-                description: "The assigned payment identifier.",
+                type: "HexString",
+                description: "Caller-chosen id the payment's status is followed by. Reusing one is\nrefused with `AlreadyExists`, which makes a retried call safe.",
             },
         ],
     },
@@ -4712,8 +4928,8 @@ export const types = [
         id: "host-payment-status-subscribe-item",
         name: "HostPaymentStatusSubscribeItem",
         category: "payment",
-        definition: 'export type HostPaymentStatusSubscribeItem =\n  | { tag: "Processing"; value?: undefined }\n  | { tag: "Completed"; value?: undefined }\n  | { tag: "Failed"; value: { reason: string } }\n;',
-        description: "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition: 'export type HostPaymentStatusSubscribeItem =\n  | { tag: "Processing"; value?: undefined }\n  | { tag: "Completed"; value?: undefined }\n  | { tag: "Failed"; value: { reason: string } }\n  | { tag: "ClaimedPartially"; value: { actualClaimed: bigint } }\n;',
+        description: "Payment lifecycle status pushed to subscribers.\n\n`Completed`, `Failed` and `ClaimedPartially` are terminal, and stay\nreadable after the payment ends.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         variants: [
             {
                 name: "Processing",
@@ -4723,12 +4939,17 @@ export const types = [
             {
                 name: "Completed",
                 type: '{ tag: "Completed"; value?: undefined }',
-                description: "Payment has been settled successfully.",
+                description: "The full amount reached the destination.",
             },
             {
                 name: "Failed",
                 type: '{ tag: "Failed"; value: { reason: string } }',
                 description: "Payment has failed.",
+            },
+            {
+                name: "ClaimedPartially",
+                type: '{ tag: "ClaimedPartially"; value: { actualClaimed: bigint } }',
+                description: "Less than the requested amount reached the destination.",
             },
         ],
     },
@@ -4736,13 +4957,13 @@ export const types = [
         id: "host-payment-status-subscribe-request",
         name: "HostPaymentStatusSubscribeRequest",
         category: "payment",
-        definition: "export interface HostPaymentStatusSubscribeRequest {\n  paymentId: string;\n}",
+        definition: "export interface HostPaymentStatusSubscribeRequest {\n  id: HexString;\n}",
         description: "Request to subscribe to a payment status.",
         fields: [
             {
-                name: "payment_id",
-                type: "string",
-                description: "Payment identifier to watch.",
+                name: "id",
+                type: "HexString",
+                description: "Id the payment was requested with.",
             },
         ],
     },
@@ -4750,28 +4971,33 @@ export const types = [
         id: "host-payment-top-up-error",
         name: "HostPaymentTopUpError",
         category: "payment",
-        definition: 'export type HostPaymentTopUpError =\n  | { tag: "InsufficientFunds"; value?: undefined }\n  | { tag: "InvalidSource"; value?: undefined }\n  | { tag: "PartialPayment"; value: { credited: bigint } }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostPaymentTopUpError =\n  | { tag: "InvalidSource"; value?: undefined }\n  | { tag: "SourceBusy"; value?: undefined }\n  | { tag: "InvalidAmount"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n  | { tag: "AlreadyExists"; value?: undefined }\n;',
         description: "Error from [`crate::api::Payment::top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         variants: [
             {
-                name: "InsufficientFunds",
-                type: '{ tag: "InsufficientFunds"; value?: undefined }',
-                description: "The source account does not hold sufficient funds.",
-            },
-            {
                 name: "InvalidSource",
                 type: '{ tag: "InvalidSource"; value?: undefined }',
-                description: "The source account was not found or is invalid.",
+                description: "The source key is malformed, or the source was not found.",
             },
             {
-                name: "PartialPayment",
-                type: '{ tag: "PartialPayment"; value: { credited: bigint } }',
-                description: "Some coins were claimed but the total fell short of the requested amount.",
+                name: "SourceBusy",
+                type: '{ tag: "SourceBusy"; value?: undefined }',
+                description: "Another top-up from the same source is still running.",
+            },
+            {
+                name: "InvalidAmount",
+                type: '{ tag: "InvalidAmount"; value?: undefined }',
+                description: "The amount is zero.",
             },
             {
                 name: "Unknown",
                 type: '{ tag: "Unknown"; value: { reason: string } }',
                 description: "Catch-all.",
+            },
+            {
+                name: "AlreadyExists",
+                type: '{ tag: "AlreadyExists"; value?: undefined }',
+                description: "A top-up with this id already exists.",
             },
         ],
     },
@@ -4779,7 +5005,7 @@ export const types = [
         id: "host-payment-top-up-request",
         name: "HostPaymentTopUpRequest",
         category: "payment",
-        definition: "export interface HostPaymentTopUpRequest {\n  into?: number;\n  amount: bigint;\n  source: PaymentTopUpSource;\n}",
+        definition: "export interface HostPaymentTopUpRequest {\n  into?: number;\n  amount: bigint;\n  source: PaymentTopUpSource;\n  id: HexString;\n}",
         description: "Request to top up the product payment balance.",
         fields: [
             {
@@ -4796,6 +5022,78 @@ export const types = [
                 name: "source",
                 type: "PaymentTopUpSource",
                 description: "Funding source for the top-up.",
+            },
+            {
+                name: "id",
+                type: "HexString",
+                description: "Caller-chosen id the top-up's status is followed by. Reusing one is\nrefused with `AlreadyExists`, which makes a retried call safe.",
+            },
+        ],
+    },
+    {
+        id: "host-payment-top-up-status-subscribe-error",
+        name: "HostPaymentTopUpStatusSubscribeError",
+        category: "payment",
+        definition: 'export type HostPaymentTopUpStatusSubscribeError =\n  | { tag: "TopUpNotFound"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Error from [`crate::api::Payment::top_up_status_subscribe`].",
+        variants: [
+            {
+                name: "TopUpNotFound",
+                type: '{ tag: "TopUpNotFound"; value?: undefined }',
+                description: "No top-up with this id for the calling product.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-payment-top-up-status-subscribe-item",
+        name: "HostPaymentTopUpStatusSubscribeItem",
+        category: "payment",
+        definition: 'export type HostPaymentTopUpStatusSubscribeItem =\n  | { tag: "Detecting"; value?: undefined }\n  | { tag: "Claiming"; value?: undefined }\n  | { tag: "Claimed"; value: { finalized: boolean } }\n  | { tag: "ClaimedPartially"; value: { actualClaimed: bigint } }\n  | { tag: "NotClaimed"; value?: undefined }\n;',
+        description: "Progress of a top-up. `Claimed { finalized: true }`, `ClaimedPartially` and\n`NotClaimed` are terminal, and stay readable after the top-up ends.",
+        variants: [
+            {
+                name: "Detecting",
+                type: '{ tag: "Detecting"; value?: undefined }',
+                description: "Waiting for the source's funds to be seen.",
+            },
+            {
+                name: "Claiming",
+                type: '{ tag: "Claiming"; value?: undefined }',
+                description: "Claiming the funds into the balance.",
+            },
+            {
+                name: "Claimed",
+                type: '{ tag: "Claimed"; value: { finalized: boolean } }',
+                description: "The full amount was claimed.",
+            },
+            {
+                name: "ClaimedPartially",
+                type: '{ tag: "ClaimedPartially"; value: { actualClaimed: bigint } }',
+                description: "Less than the requested amount was claimed, such as when an amount\nbelow the smallest coin denomination remains.",
+            },
+            {
+                name: "NotClaimed",
+                type: '{ tag: "NotClaimed"; value?: undefined }',
+                description: "Nothing was claimed.",
+            },
+        ],
+    },
+    {
+        id: "host-payment-top-up-status-subscribe-request",
+        name: "HostPaymentTopUpStatusSubscribeRequest",
+        category: "payment",
+        definition: "export interface HostPaymentTopUpStatusSubscribeRequest {\n  id: HexString;\n}",
+        description: "Request to follow one top-up.",
+        fields: [
+            {
+                name: "id",
+                type: "HexString",
+                description: "Id the top-up was started with.",
             },
         ],
     },
@@ -8248,8 +8546,8 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n;',
-        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also\ntriggered implicitly by the corresponding business calls when not yet\ngranted (`JamPeerTransport::dial` for `JamPeers`).",
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n  | { tag: "BalanceAccess"; value?: undefined }\n;',
+        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit`, `JamPeers` and\n`BalanceAccess` are also triggered implicitly by the corresponding business\ncalls when not yet granted (`JamPeerTransport::dial` for `JamPeers`).",
         variants: [
             {
                 name: "Remote",
@@ -8285,6 +8583,11 @@ export const types = [
                 name: "Calling",
                 type: '{ tag: "Calling"; value?: undefined }',
                 description: "Host-owned Media calling, scoped to authenticated product/account/network.\n\nDistinct from browser-realm WebRtc. Receive-only sessions still require\nthis grant; microphone and camera additionally require device grants.\nScreen selection is exclusively a trusted host picker, not a permission\nto enumerate or name capture sources. Revocation ends affected sessions.",
+            },
+            {
+                name: "BalanceAccess",
+                type: '{ tag: "BalanceAccess"; value?: undefined }',
+                description: "Seeing the user's payment balance through `payment.balanceSubscribe`,\nand learning that a payment request was refused for the balance rather\nthan by the user.",
             },
         ],
     },
