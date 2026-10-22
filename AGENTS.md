@@ -94,12 +94,12 @@ UI:
   it.
 - `gap`, `padding` and `margin` use the `--sp-*` tokens, inside `calc()` and local spacing properties too. Between two
   tokens, a phone override takes the larger, otherwise round down. Geometry (sizes tied to another element, negative
-  overlaps, 1px, positions) stays px. The debug panel keeps its own tokens.
-- Never change a token, colour or spacing value unasked, not even to fix contrast. Report it instead.
+  overlaps, 1px, positions) stays px. The debug panel keeps its own tokens. Equal values in one component stay equal.
+- Never change a token, color or spacing value unasked, not even to fix contrast. Report it instead.
 - Common components (sheets, modals, buttons, cards) keep their standard look. No new variants, props, paddings or sizes
   to match one screen. Where a design differs, the standard component wins.
 - To match a design, set plain values that are close enough. No `calc()` ratio math and no new components or asset
-  variants.
+  variants. Propose no follow-on changes elsewhere.
 - Never put an icon or logo in a decorative tile, tinted square or ring. It stands bare on the surface. Only a
   functional frame, such as a QR code's quiet zone, is allowed.
 

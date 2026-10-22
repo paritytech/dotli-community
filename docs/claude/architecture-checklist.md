@@ -23,6 +23,12 @@ rule, flag it and propose a row.
   a real system boundary.
 - **blocking** (AGENTS.md § Architecture): Host or transport code that dedupes the statements a resubscribed statement
   subscription brings back.
+- **blocking** (AGENTS.md § Project): Code that trusts a server's or gateway's answer without proof, which puts a server
+  in the trust path.
+- **blocking** (AGENTS.md § Architecture): A call across layers that is not safe to repeat or overlap, or does the work
+  more than once.
+- **blocking** (AGENTS.md § Architecture): A layer that waits to be asked before recovering from its own failures, or
+  does not report its status to the layer above.
 - **major** (AGENTS.md § Architecture, Tools:): A hand-rolled queue, in-flight flag, retry timer or concurrency limit
   instead of `createAsyncTaskPool` from `@dotli/shared`.
 - **major** (AGENTS.md § Code style, General:): A build plugin, startup trick, lint allow-list, lazy split or extra
@@ -45,6 +51,7 @@ rule, flag it and propose a row.
 - **major** (AGENTS.md § Code style, Comments and docs:): A change to a package's responsibility, design, public API or
   entry points with no `README.md` update in the same commit.
 - **major** (AGENTS.md § Code style, Packages:): A `package.json` without `sideEffects`.
+- **major** (AGENTS.md § Code style, Packages:): A relative import without the `.js` extension.
 
 ## Lazy loading
 

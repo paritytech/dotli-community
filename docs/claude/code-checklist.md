@@ -11,8 +11,8 @@ Severity only orders the work. Every finding is fixed in this branch.
 This checklist lists only rules ESLint does not enforce. `config/eslint/vite.js` catches `console`, an empty `catch`, an
 `Error` built by concatenating `err.message`, exported `_FAILURE`, `_TIMEOUT` and `_RETRY` constants, `.ts` import
 paths, type imports, the strict type and promise rules, test-only imports in shipped code, and DOM tooling and globals
-in unit specs. The typecheck catches relative imports without an extension and dot access to CSS module classes. Don't
-re-raise them. The reviewer is the layer above the linter: semantics, data flow and naming.
+in unit specs. The typecheck catches dot access to CSS module classes. Don't re-raise them. The reviewer is the layer
+above the linter: semantics, data flow and naming.
 
 ## Errors and logging
 
@@ -43,8 +43,8 @@ re-raise them. The reviewer is the layer above the linter: semantics, data flow 
 - **major** (AGENTS.md § Code style, UI:): App state moved off `createSyncStore` to Solid signals or stores.
 - **major** (AGENTS.md § Code style, UI:): An icon that is not a Solid component with an `<svg>` drawn in
   `currentColor`, such as markup in a string, a path-data constant, `innerHTML` or DOM calls.
-- **major** (AGENTS.md § Code style, UI:): A colour not taken from the tokens in `packages/ui/src/global.css`, or a
-  light theme, light palette or theme toggle for dotli chrome.
+- **major** (AGENTS.md § Code style, UI:): A color not taken from the tokens in `packages/ui/src/global.css`, or a light
+  theme, light palette or theme toggle for dotli chrome.
 - **major** (AGENTS.md § Code style, UI:): A module that styles elements it does not own, or reads page state other than
   through `:global([data-…])`.
 - **major** (AGENTS.md § Code style, UI:): State that logic or tests read kept in a class instead of a `data-*`
@@ -55,7 +55,7 @@ re-raise them. The reviewer is the layer above the linter: semantics, data flow 
   `data-*` attribute on the target.
 - **major** (AGENTS.md § Code style, UI:): `gap`, `padding` or `margin` in px where a `--sp-*` token applies, including
   inside `calc()` and local spacing properties.
-- **major** (AGENTS.md § Code style, UI:): A token, colour or spacing value changed without the task asking for it,
+- **major** (AGENTS.md § Code style, UI:): A token, color or spacing value changed without the task asking for it,
   including to fix contrast.
 - **major** (AGENTS.md § Code style, UI:): A new variant, prop, padding or size on a common component to match one
   screen.
