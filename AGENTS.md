@@ -43,22 +43,7 @@ Tools:
 
 ## Packages
 
-What a package owns and exposes is in its `README.md`. What it may import is in its `eslint.config.js`. The host is the
-top layer and may import every package, so its config lists none.
-
-- A view, screen or flow used by one app lives in that app. The host's domain building blocks (account, chat,
-  permission, settings and chain views, and their icons) sit in its `src/components/<domain>/` beside the flows that
-  compose them.
-- Primitives, icons, the brand marks, the tokens, and the screens and overlays both apps show live in `@dotli/ui`. Its
-  entries are the index, `./icons`, `./brand`, `./styles.css` and `./testing`.
-- A component that owns an interaction with the product (a subscription, an action and its error copy) is a flow. A
-  building block takes props, reads no store and reports the user's intent through a callback.
-- Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
-  the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`. The startup size budgets in CI guard what a page
-  loads first, not import rules.
-- The host's side of TrUAPI and the session lives in the host app, in `src/runtime/`.
-- The debug panel is its own lazily loaded package with its own UI kit. It reads the host through its port and the debug
-  bus.
+Where code and files go, what each package owns and what it may import are in `docs/code/placement.md`.
 
 ## Code style
 
@@ -70,9 +55,7 @@ General:
 
 Packages:
 
-- Each package exposes only `src/index.ts`. Never import another package's internal modules.
 - Relative imports use `.js` extensions. `.ts` only in files Node loads directly.
-- On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk.
 - Declare `sideEffects` in every `package.json`.
 
 TypeScript:
@@ -86,7 +69,6 @@ UI:
 
 - Astro for static markup. Solid islands only for interactive controls, one module per island.
 - Keep the sync stores (`createSyncStore`) for app state. Don't swap them for Solid stores.
-- Styles in a CSS module beside the component.
 - Colors only from tokens in `packages/ui/src/global.css`. dotli chrome is dark only.
 - Every icon is a Solid component with an `<svg>` inside, drawn in `currentColor`, with a `size` prop when it needs
   resizing. Never markup in a string or built from DOM calls.
@@ -105,18 +87,11 @@ Comments and docs:
 
 Tests:
 
-- A unit test sits beside its module: `src/foo.ts` gets `src/foo.spec.ts`. It runs under Node.
+- A unit test runs under Node.
 - A unit test needs no DOM mocking (no happy-dom, no `document` or `window`, no DOM polyfills, no testing-library). It
   tests business logic. A test that needs a DOM tests an integration layer, so give the logic a seam.
 - A component is tested by a play function in its Storybook story, which runs in a real browser.
-- Functional tests may mock the DOM. They live in `<pkg>/tests/` as `*.test.ts` and run under happy-dom.
-- Test-only modules live in `src`: `<name>.fake.ts` beside the module it fakes, shared fixtures in `src/testing/`. Never
-  export them from `src/index.ts`. Another package reaches them through a `./testing` package entry.
-- A shared fixture that reads the page is named `<name>.dom.ts`. Only functional tests and stories use it.
-- There is one Storybook, at the repo root. It runs every story in every app and package. Story fixtures and frames live
-  in the package's `src/testing/stories/` and are never exported. Stories may also import `./testing` entries.
-- Helpers every package's tests use live once: in `@dotli/shared/testing`, the page wait `untilDom` included, and page
-  queries in `@dotli/ui/testing`.
+- Functional tests may mock the DOM and run under happy-dom.
 - Name tests as user stories: `As a <role>, I <action> and <outcome>`.
 - Separate bodies with `// Given`, `// When`, `// Then`.
 - Select by `data-testid` or ARIA role. Never by class.
