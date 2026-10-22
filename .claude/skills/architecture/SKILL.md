@@ -44,6 +44,8 @@ flowchart TD
     Surface["STOP: remaining findings go to the owner<br/>with your read on each"]
     CapDecide{"Owner decides:<br/>fix, accept or rethink the plan?"}
     PlanFix["Revise the plan<br/>(superpowers:writing-plans)"]
+    CapFix["Revise the plan<br/>(superpowers:writing-plans),<br/>no fifth pass"]
+    PlanApprove{"Owner approves the plan?"}
     Implement["Step 6: superpowers:subagent-driven-development<br/>on the current branch"]
     DevGate{"Discovery invalidates the plan?"}
     Amend["HARD STOP: 2 or 3 options,<br/>amend the plan<br/>(superpowers:writing-plans)"]
@@ -81,11 +83,14 @@ flowchart TD
     CapGate -- no --> PlanFix
     CapGate -- "yes, cap" --> Surface
     Surface --> CapDecide
-    CapDecide -- fix --> PlanFix
+    CapDecide -- fix --> CapFix
+    CapFix --> PlanApprove
     CapDecide -- accept --> Implement
     CapDecide -- rethink --> Plan
     PlanFix --> PlanReview
-    PlanGate -- no --> Implement
+    PlanGate -- no --> PlanApprove
+    PlanApprove -- "no, revise" --> Plan
+    PlanApprove -- yes --> Implement
     Implement --> DevGate
     DevGate -- "yes, hard stop" --> Amend
     DevGate -- no --> PreSweep
@@ -106,13 +111,13 @@ flowchart TD
 
 This is the full lifecycle from a single freeform prompt. On a non-trivial change you never reach implementation until
 `superpowers:brainstorming` has presented a design, the owner approved it, `superpowers:writing-plans` produced the plan
-in `docs/_plans/`, and a fresh-context review pass came back clean (retry on findings, hard cap four passes).
-Implementation is delegated to `superpowers:subagent-driven-development`. Review is the project `reviewer` skill. The
-`Amend` node is shared by two loops: a plan-invalidating discovery during step 6 and a blocking or major review finding
-in step 8 are the same move. Stop, present options, amend the plan, re-approve, review the plan again, implement again.
-Every plan change, initial or amendment, passes the same approval gate, so the loop is not autonomous. The generic
-process (clarify, design, plan, execute) is delegated to superpowers. This skill adds the dotli frame and the review and
-fix gates.
+in `docs/_plans/`, a fresh-context review pass came back clean (retry on findings, hard cap four passes), and the owner
+approved the plan. Implementation is delegated to `superpowers:subagent-driven-development`. Review is the project
+`reviewer` skill. The `Amend` node is shared by two loops: a plan-invalidating discovery during step 6 and a blocking or
+major finding from the step 7 review, fixed in step 8, are the same move. Stop, present options, amend the plan,
+re-approve, review the plan again, implement again. Every plan change, initial or amendment, passes the same approval
+gate, so the loop is not autonomous. The generic process (clarify, design, plan, execute) is delegated to superpowers.
+This skill adds the dotli frame and the review and fix gates.
 
 ## The steps
 
@@ -139,10 +144,10 @@ fix gates.
 5. **Plan.** `superpowers:writing-plans` writes `docs/_plans/<topic>-plan.md` in RFC 2119 wording (MUST, SHOULD, MAY),
    then `document-review` refines it. Then sequential fresh-context plan review passes check it against the real repo on
    seven criteria (see "Reviewing the plan from an empty session"). The gate clears on one clean pass. At four passes
-   the remaining findings go to the owner. The plan also MUST copy design values (copy, px, tokens) verbatim, split its
-   files by responsibility, walk the failure paths of each layer it touches, and pass the `## Architecture` gate of
-   `AGENTS.md` (see "The Architecture gate").
-6. **Implement.** Only after the design is approved, the plan exists and the plan review cleared.
+   the remaining findings go to the owner. After a clean pass the owner approves the plan before step 6. The plan also
+   MUST copy design values (copy, px, tokens) verbatim, split its files by responsibility, walk the failure paths of
+   each layer it touches, and pass the `## Architecture` gate of `AGENTS.md` (see "The Architecture gate").
+6. **Implement.** Only after the design is approved, the plan review cleared and the owner approved the plan.
    `superpowers:subagent-driven-development` runs on the current branch, in the main checkout. Tasks that touch disjoint
    files run in parallel, overriding that skill's default, and commits are made one at a time. A discovery that
    invalidates the plan is a hard stop: 2 or 3 amendment options, owner approval, plan review again, then resume. The
@@ -294,6 +299,9 @@ The loop:
 4. **Hard cap: four passes.** If pass 4 still returns findings, stop reviewing. Give the outstanding findings to the
    owner with your read on each and let them decide (fix, accept, or rethink the plan). Reviewers always find something,
    and the cap stops the gate from becoming an endless polish loop.
+   - **Fix.** The plan is revised through `superpowers:writing-plans` and goes to the owner for plan approval, then to
+     implementation. There is no fifth pass.
+   - **Rethink.** The rethought plan starts a new pass count.
 
 The last pass must come back clean. A plan still collecting findings on its final review has not been reviewed, only
 edited. The one exception is the cap. Up to that point the loop is not owner-gated (unlike design approval).
