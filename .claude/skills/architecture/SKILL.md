@@ -45,6 +45,7 @@ flowchart TD
     CapDecide{"Owner decides:<br/>fix, accept or rethink the plan?"}
     PlanFix["Revise the plan<br/>(superpowers:writing-plans)"]
     CapFix["Revise the plan<br/>(superpowers:writing-plans),<br/>no fifth pass"]
+    AmendedGate{"An amendment the owner<br/>approved at ReApprove?"}
     PlanApprove{"Owner approves the plan?"}
     Implement["Step 6: superpowers:subagent-driven-development<br/>on the current branch"]
     DevGate{"Discovery invalidates the plan?"}
@@ -84,11 +85,13 @@ flowchart TD
     CapGate -- "yes, cap" --> Surface
     Surface --> CapDecide
     CapDecide -- fix --> CapFix
-    CapFix --> PlanApprove
+    CapFix --> AmendedGate
     CapDecide -- accept --> Implement
     CapDecide -- rethink --> Plan
     PlanFix --> PlanReview
-    PlanGate -- no --> PlanApprove
+    PlanGate -- no --> AmendedGate
+    AmendedGate -- yes --> Implement
+    AmendedGate -- no --> PlanApprove
     PlanApprove -- "no, revise" --> Plan
     PlanApprove -- yes --> Implement
     Implement --> DevGate
@@ -144,9 +147,10 @@ This skill adds the dotli frame and the review and fix gates.
 5. **Plan.** `superpowers:writing-plans` writes `docs/_plans/<topic>-plan.md` in RFC 2119 wording (MUST, SHOULD, MAY),
    then `document-review` refines it. Then sequential fresh-context plan review passes check it against the real repo on
    seven criteria (see "Reviewing the plan from an empty session"). The gate clears on one clean pass. At four passes
-   the remaining findings go to the owner. After a clean pass the owner approves the plan before step 6. The plan also
-   MUST copy design values (copy, px, tokens) verbatim, split its files by responsibility, walk the failure paths of
-   each layer it touches, and pass the `## Architecture` gate of `AGENTS.md` (see "The Architecture gate").
+   the remaining findings go to the owner. After a clean pass the owner approves a first or rethought plan before
+   step 6. The plan also MUST copy design values (copy, px, tokens) verbatim, split its files by responsibility, walk
+   the failure paths of each layer it touches, and pass the `## Architecture` gate of `AGENTS.md` (see "The Architecture
+   gate").
 6. **Implement.** Only after the design is approved, the plan review cleared and the owner approved the plan.
    `superpowers:subagent-driven-development` runs on the current branch, in the main checkout. Tasks that touch disjoint
    files run in parallel, overriding that skill's default, and commits are made one at a time. A discovery that
@@ -300,7 +304,8 @@ The loop:
    owner with your read on each and let them decide (fix, accept, or rethink the plan). Reviewers always find something,
    and the cap stops the gate from becoming an endless polish loop.
    - **Fix.** The plan is revised through `superpowers:writing-plans` and goes to the owner for plan approval, then to
-     implementation. There is no fifth pass.
+     implementation. An amended plan skips that approval, since it was approved once at the re-approval gate. There is
+     no fifth pass.
    - **Rethink.** The rethought plan starts a new pass count.
 
 The last pass must come back clean. A plan still collecting findings on its final review has not been reviewed, only
@@ -341,7 +346,8 @@ typing. On trigger:
 3. On the owner's choice, **amend `docs/_plans/<topic>-plan.md`** through `superpowers:writing-plans`. Keep it the same
    plan document.
 4. **Re-approval gate.** An amendment is a plan change and passes the same approval gate as the first plan. Present the
-   amended plan and wait for approval.
+   amended plan and wait for approval. This is its only approval. After its clean review pass it goes straight to
+   implementation.
 5. **Review the plan again** before resuming, over the whole plan if the amendment changed scope, placement or approach,
    over the changed sections if it only corrected details.
 6. **Resume** `superpowers:subagent-driven-development` from the affected task.
