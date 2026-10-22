@@ -100,7 +100,7 @@ one place, anti-corruption layer.
 - Can you enumerate the bounded contexts (resolving, fetching, chain connections, the protocol frame, storage), or is
   there one shared module that knows about everything?
 - Where are invariants enforced, in one place or re-checked ad hoc inside handlers? "A block is trusted only after its
-  CID check" belongs in one place.
+  CID check" needs one verifier per block source, not a re-check inside each handler.
 - At the boundary with external systems (gateways, peers, the light client, product code in the sandbox), is there an
   ACL, or do raw external shapes crawl all the way into components?
 
@@ -114,7 +114,8 @@ one place, anti-corruption layer.
 **Fitness functions:**
 
 - A package may not import the UI package or the host. This is an import-boundary rule in its `eslint.config.js`.
-- External data may be trusted only after the one place that checks it, for example the CID check in `@dotli/content`.
+- External data may be trusted only after the verifier for its source, for example the CID check in `@dotli/content` for
+  gateway blocks and the host's block relay for Bitswap blocks.
 - A living glossary plus a check on banned synonyms.
 
 ---

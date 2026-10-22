@@ -71,7 +71,9 @@ something to propose.
 | A new threshold definition                            | `docs/code/glossary.md`                                                                                           | none                                                                           |
 | Workflow or agent behaviour                           | `.claude/skills/architecture/SKILL.md`                                                                            | none                                                                           |
 
-A checklist row exists only when a diff can show a violation. A rule that ESLint already enforces gets no row.
+The mirror column is the default. Some rules sit in both checklists, so the checklist whose section fits the diff
+surface decides, or the row goes in both where both apply. A checklist row exists only when a diff can show a violation.
+A rule that ESLint already enforces gets no row.
 
 ## Why mirror into a checklist
 

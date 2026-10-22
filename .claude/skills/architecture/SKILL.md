@@ -17,8 +17,7 @@ wrong package and how files nobody asked for get invented.
 **Letter and spirit:** entering this skill and then deciding freehand anyway is a violation. Run the steps.
 
 **Trivial or non-trivial** (docs/code/glossary.md § Change size): a trivial edit skips this skill. Everything else is
-non-trivial and runs the full flow below. CI workflows, nginx, deploy, dependency bumps and releases never trigger it.
-If you are unsure, it is non-trivial.
+non-trivial and runs the full flow below. If you are unsure, it is non-trivial.
 
 ## Orchestration order
 
@@ -49,6 +48,7 @@ flowchart TD
     Amend["HARD STOP: 2 or 3 options,<br/>amend the plan<br/>(superpowers:writing-plans)"]
     ReApprove{"Owner approves the amendment?"}
     Sweep["Fix the collected minor findings<br/>in one sweep"]
+    DocsOnly{"Docs or comments only?"}
     Review["Step 7: reviewer skill<br/>writes docs/_reviews"]
     IssuesGate{"Blocking or major findings?"}
     MinorGate{"Minor findings?"}
@@ -87,7 +87,9 @@ flowchart TD
     Amend --> ReApprove
     ReApprove -- "no, revise" --> Amend
     ReApprove -- yes --> PlanReview
-    Sweep --> Review
+    Sweep --> DocsOnly
+    DocsOnly -- yes --> Extract
+    DocsOnly -- no --> Review
     Review --> IssuesGate
     IssuesGate -- yes --> Amend
     IssuesGate -- no --> MinorGate
@@ -296,8 +298,8 @@ corrected path, an added test) gets a pass over the changed sections. Either way
 ## Implementing and handling plan deviations
 
 Once the plan is approved, implement it through `superpowers:subagent-driven-development` on the current branch, in the
-main checkout, never in a copy of the repo. The owner may choose a worktree for a given run. Tasks that touch disjoint
-files run in parallel.
+main checkout, never in a copy of the repo. The owner may choose a worktree for a given run. State any setup choice that
+changes where the owner sees the work in one line before starting. Tasks that touch disjoint files run in parallel.
 
 Every implementer and per-task reviewer brief states the Architecture gate outright (see "The Architecture gate") and
 carries the dotli context from "Design and plan": placement is fixed, the vocabulary holds, tests follow their owner
@@ -345,8 +347,8 @@ to the owner as a list. Severity only orders the work. The order:
    sweep the same way.
 4. A fix that changes only docs or comments gets no re-review.
 
-The lifecycle ends at a review with no findings, followed by step 9. Finishing the branch (merge or PR) stays a separate
-step the owner starts.
+The lifecycle ends at a review with no findings, or after a sweep that changed only docs or comments, followed by
+step 9. Finishing the branch (merge or PR) stays a separate step the owner starts.
 
 ## Closing the loop
 
