@@ -46,10 +46,10 @@ makes blast radius measurable, so guessing it is a choice.
 
 The probe places the change in one cell. Each cell has a mandated move.
 
-|                            | **Radius matches the frame**                                         | **Radius contradicts the frame**                                                                               |
-| -------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Removes or keeps braid** | Proceed. This is the normal case.                                    | Worth doing, but it is a **project, not a task**: STOP. Report the measured count, propose stages, user picks. |
-| **Adds braid**             | **The trap.** STOP. Name the braid, present the decomplected option. | STOP. Not a judgment call to make alone.                                                                       |
+|                            | **Radius matches the frame**                                         | **Radius contradicts the frame**                                                                                |
+| -------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Removes or keeps braid** | Proceed. This is the normal case.                                    | Worth doing, but it is a **project, not a task**: STOP. Report the measured count, propose stages, owner picks. |
+| **Adds braid**             | **The trap.** STOP. Name the braid, present the decomplected option. | STOP. Not a judgment call to make alone.                                                                        |
 
 **"Radius contradicts the frame"** is deliberately relative, not a file count. The frame (step 1 of the `architecture`
 skill) states the change in **one layer's vocabulary**. If the measured radius spans three layers, or reaches public
@@ -61,7 +61,7 @@ is short, the review passes, the tests are green, and the cost lands on someone 
 that never self-corrects.
 
 **A stop is not a refusal.** It is a report: here is the measured radius, here is what is braided with what, here are
-the options and their costs. The user decides. The framework only refuses to let that decision be made silently by an
+the options and their costs. The owner decides. The framework only refuses to let that decision be made silently by an
 agent that framed the task in one sentence and started typing.
 
 ## Worked example

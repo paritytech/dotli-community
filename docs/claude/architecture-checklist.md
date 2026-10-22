@@ -46,7 +46,8 @@ rule, flag it and propose a row.
 
 ## Package surfaces
 
-- **major** (docs/code/placement.md § Inside a package): A package that exposes a module other than its `src/index.ts`.
+- **major** (docs/code/placement.md § Inside a package): A package that exposes a module other than its `src/index.ts`
+  or the entries `docs/code/placement.md` names.
 - **major** (docs/code/placement.md § Inside a package): An import of another package's internal module.
 - **major** (AGENTS.md § Code style, Comments and docs:): A change to a package's responsibility, design, public API or
   entry points with no `README.md` update in the same commit.

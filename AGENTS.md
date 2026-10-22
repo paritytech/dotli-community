@@ -50,7 +50,8 @@ Tools:
 
 ## Packages
 
-Where code and files go, what each package owns and what it may import are in `docs/code/placement.md`.
+What each package owns and what it may import are in each package's `README.md` and `eslint.config.js`, summarised with
+the placement rules in `docs/code/placement.md`.
 
 ## Code style
 

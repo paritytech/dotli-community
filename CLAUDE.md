@@ -8,7 +8,7 @@ Start every non-trivial change (`docs/code/glossary.md`) with the `architecture`
 - `document-review`: refines a design or plan in `docs/_plans/` before the next step.
 - `reviewer`: audits a branch or PR against the `docs/claude/` checklists.
 
-Owner corrections become repo rules, never agent memory (docs/code/rule-extraction.md § When to run).
+Code and workflow corrections become repo rules, never agent memory (docs/code/rule-extraction.md § When to run).
 
 ## Code navigation
 

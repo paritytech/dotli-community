@@ -8,8 +8,6 @@ from regressing.
 You do not read this top to bottom every time. Read sections 1 to 4 (the model, the concepts, the inputs, the procedure)
 once to understand it. Then use sections 5 and later as the working checklist.
 
----
-
 ## 1. The idea in one paragraph
 
 A complex client fails for two related reasons: **coupling that nobody decided on** (changing one thing breaks five) and
@@ -18,8 +16,6 @@ locates where boundaries are missing, makes the trade-offs behind the current de
 converts each problem into an automated check so the conclusion stays true after you have moved on. Everything below is
 an instance of that loop: _find a boundary that should exist, decide the least-worst way to introduce it, lock it in
 with a check._
-
----
 
 ## 2. Three concepts this document keeps using
 
@@ -43,8 +39,6 @@ evolvability later). A _fitness function_ is an automated check that fails when 
 is violated. It is the mechanism that keeps a boundary or rule enforced over time instead of relying on memory and
 discipline.
 
----
-
 ## 3. Before you start: inputs to gather
 
 The review is only applicable if you have the project in front of you in these forms:
@@ -59,8 +53,6 @@ The review is only applicable if you have the project in front of you in these f
 - **The current structure and ownership.** Apps, packages, `config/*` packages, and who (if anyone) owns each area.
 
 If you cannot produce the first two maps, build them first. The rest of the review leans on them.
-
----
 
 ## 4. How to run the review
 
@@ -77,8 +69,6 @@ If you cannot produce the first two maps, build them first. The rest of the revi
 5. **Check boundaries and ownership (dimension 10).** This is a whole-project pass, not per package.
 6. **Prioritize and write up** (section 12). The output is a short document of findings, not an annotated tour of the
    codebase.
-
----
 
 ## 5. Dimension: model and the UI to logic boundary
 
@@ -117,8 +107,6 @@ one place, anti-corruption layer.
 - External data may be trusted only after the verifier for its source, for example the CID check in `@dotli/content` for
   gateway blocks and the host's block relay for Bitswap blocks.
 - A living glossary plus a check on banned synonyms.
-
----
 
 ## 6. Dimension: coupling and modularity
 
@@ -161,8 +149,6 @@ order. It is useful for naming _why_ two places are coupled and how painful the 
 - A coupling budget: alert when a package's efferent coupling crosses a threshold.
 - Dead-export detection, to shrink the coupling surface.
 
----
-
 ## 7. Dimension: state and data
 
 **What this is.** A client is a small distributed data system: remote data, local data, and views derived from both, all
@@ -195,8 +181,6 @@ database and the content cache make this especially live.
 - Contract tests on the mapping from external data to the internal shape.
 - Startup size budgets on the first page load, which CI already guards.
 
----
-
 ## 8. Dimension: architectural characteristics and trade-offs
 
 **What this is.** Every architecture optimizes for some qualities at the expense of others. The failure mode is not
@@ -223,8 +207,6 @@ repeat visits**. A server in the trust path breaks the first quality and so outr
 
 - A decision record in the repo for changes that cross a boundary.
 - A qualities checklist in the PR description for architecturally significant changes.
-
----
 
 ## 9. Dimension: evolvability and fitness functions
 
@@ -254,8 +236,6 @@ incremental change, fitness functions and appropriate coupling.
 - Architectural agreements that are entirely verbal.
 - Complexity and coupling growing with nothing measuring it.
 
----
-
 ## 10. Dimension: cognitive load and boundaries
 
 **What this is.** Code structure and team structure shape each other (Conway's Law). The practical metric is cognitive
@@ -280,8 +260,6 @@ actually work, every change spills across them. This is a whole-project pass.
 - Explicit ownership by package. A package with no clear owner signals a blurred boundary.
 - A "how many layers does the average PR touch" metric. Rising means worsening boundaries.
 
----
-
 ## 11. Recording a finding
 
 Capture each finding in this shape:
@@ -291,7 +269,7 @@ Dimension:        [5 to 10]
 Principle:        [which idea, e.g. anti-corruption layer]
 Observation:      [what you actually saw in the code or architecture]
 Trade-off:        [what we gain or lose now, and by changing it]
-Severity:         [blocker / high / medium / low]
+Severity:         [blocking / major / minor]
 Recommendation:   [a least-worst, incremental step]
 Fitness function: [the check that locks it in]
 ```
@@ -309,7 +287,7 @@ Trade-off:        Now: less code, quick to wire up. Later: a second block source
                   component that touched it, and any miss puts an untrusted
                   gateway in the trust path. We are trading the first quality
                   (trustless) for present speed.
-Severity:         Blocker. The trust path is the top-ranked quality.
+Severity:         Blocking. The trust path is the top-ranked quality.
 Recommendation:   Route every gateway block through the one place that checks it
                   against its CID. Migrate one component first to validate the
                   shape.
@@ -319,8 +297,6 @@ Fitness function: Import rule: components may import only the verified-file
 
 The example shows the point of the template. The _trade-off_ line is what turns a complaint into a decision, and the
 _fitness function_ line is what keeps the decision from quietly reverting.
-
----
 
 ## 12. Prioritization
 
@@ -332,8 +308,6 @@ Do not fix everything. Aim at the intersection of two axes:
 Packages that are both heavily coupled and frequently changed carry the most leverage, because that is where coupling
 taxes velocity every day. Stable, rarely touched areas with poor coupling can be deliberately left alone, recorded as an
 accepted trade-off rather than silently ignored.
-
----
 
 ## Appendix. Sources: what each book contributes
 

@@ -121,7 +121,6 @@ flowchart TD
 - The host's domain building blocks (account, chat, permission, settings and chain views, and their icons) sit in
   `apps/host/src/components/<domain>/` beside the flows that compose them.
 - The host's side of TrUAPI and the session lives in `apps/host/src/runtime/`.
-- The startup size budgets in CI guard what a page loads first, not import rules.
 
 ## Inside a package
 
@@ -159,7 +158,8 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
   bus.
 - Shared Vite plugins live in `config/vite/src/` as `@config/vite`.
 - Import a component where it is used and let the bundler split chunks. What a visit may never open (a panel's content,
-  the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`.
+  the debug panel) loads through `lazy()` or a loader in `src/lazy.ts`. The startup size budgets in CI guard what a page
+  loads first, not import rules.
 
 ## No home found
 

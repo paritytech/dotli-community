@@ -4,7 +4,7 @@ A correction the owner makes in one session ends with that session, so the next 
 extraction turns a durable correction into a durable rule. The rule is written into its owner doc and mirrored into a
 reviewer checklist, so it is enforced from then on.
 
-A correction becomes a repo rule, never agent memory. This holds in a skill run and outside one.
+Code and workflow corrections become repo rules, never agent memory. This holds in a skill run and outside one.
 
 ## When to run
 
@@ -59,7 +59,7 @@ something to propose.
 | A product rule (trust path, what dotli is and is not) | `AGENTS.md` `## Project`                                                                                          | `docs/claude/architecture-checklist.md`                                        |
 | Layer behaviour, calls across layers, recovery        | `AGENTS.md` `## Architecture`                                                                                     | `docs/claude/architecture-checklist.md`                                        |
 | A shared tool choice                                  | `AGENTS.md` `## Architecture`, `Tools:`                                                                           | `docs/claude/architecture-checklist.md`                                        |
-| Import style or package exports                       | `AGENTS.md` `## Code style`, `Packages:`                                                                          | `docs/claude/architecture-checklist.md`                                        |
+| Import style, `sideEffects`                           | `AGENTS.md` `## Code style`, `Packages:`                                                                          | `docs/claude/architecture-checklist.md`                                        |
 | A general code rule                                   | `AGENTS.md` `## Code style`, `General:`                                                                           | `docs/claude/code-checklist.md`                                                |
 | A TypeScript, errors, logging or metrics rule         | `AGENTS.md` `## Code style`, `TypeScript:`                                                                        | `docs/claude/code-checklist.md`                                                |
 | A UI, styles or icons rule                            | `AGENTS.md` `## Code style`, `UI:`                                                                                | `docs/claude/code-checklist.md`                                                |

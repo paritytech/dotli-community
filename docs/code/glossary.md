@@ -15,8 +15,8 @@ and `config/`. CI workflows, nginx, deploy, dependency bumps and releases never 
 
 Worked examples:
 
-- Changing padding in `packages/ui/src/<component>.module.css` with its story is trivial. The CSS module is the one
-  existing file and the story is a peer file.
+- Changing padding in `packages/ui/src/components/overlays/ToastCard.module.css` with its story is trivial. The CSS
+  module is the one existing file and the story is a peer file.
 - Adding a new export to `packages/shared/src/index.ts` is non-trivial. It is new public surface.
 
 **Blast radius**: the set of files and layers that must change for a change to be complete, measured with references and

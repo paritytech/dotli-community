@@ -41,17 +41,19 @@ flowchart TD
     PlanReview["Plan review pass<br/>(fresh context, one at a time)"]
     PlanGate{"Gaps found?"}
     CapGate{"4 passes already run?"}
-    Surface["Remaining findings<br/>go to the owner"]
+    Surface["STOP: remaining findings go to the owner<br/>with your read on each"]
+    CapDecide{"Owner decides:<br/>fix, accept or rethink the plan?"}
     PlanFix["Revise the plan<br/>(superpowers:writing-plans)"]
     Implement["Step 6: superpowers:subagent-driven-development<br/>on the current branch"]
     DevGate{"Discovery invalidates the plan?"}
     Amend["HARD STOP: 2 or 3 options,<br/>amend the plan<br/>(superpowers:writing-plans)"]
     ReApprove{"Owner approves the amendment?"}
-    Sweep["Fix the collected minor findings<br/>in one sweep"]
-    DocsOnly{"Docs or comments only?"}
+    PreSweep["Fix the collected minor findings<br/>in one sweep"]
     Review["Step 7: reviewer skill<br/>writes docs/_reviews"]
     IssuesGate{"Blocking or major findings?"}
     MinorGate{"Minor findings?"}
+    MinorSweep["Fix the step 7 minor findings<br/>in one sweep"]
+    DocsOnly{"Did this sweep of step 7 minor findings<br/>change only docs or comments?"}
     Extract["Step 9: rule extraction<br/>(docs/code/rule-extraction.md)"]
     Done["Done. Finishing the branch<br/>is a separate step the owner starts"]
 
@@ -78,23 +80,27 @@ flowchart TD
     PlanGate -- yes --> CapGate
     CapGate -- no --> PlanFix
     CapGate -- "yes, cap" --> Surface
-    Surface --> Implement
+    Surface --> CapDecide
+    CapDecide -- fix --> PlanFix
+    CapDecide -- accept --> Implement
+    CapDecide -- rethink --> Plan
     PlanFix --> PlanReview
     PlanGate -- no --> Implement
     Implement --> DevGate
     DevGate -- "yes, hard stop" --> Amend
-    DevGate -- no --> Sweep
+    DevGate -- no --> PreSweep
     Amend --> ReApprove
     ReApprove -- "no, revise" --> Amend
     ReApprove -- yes --> PlanReview
-    Sweep --> DocsOnly
-    DocsOnly -- yes --> Extract
-    DocsOnly -- no --> Review
+    PreSweep --> Review
     Review --> IssuesGate
     IssuesGate -- yes --> Amend
     IssuesGate -- no --> MinorGate
-    MinorGate -- yes --> Sweep
+    MinorGate -- yes --> MinorSweep
     MinorGate -- no --> Extract
+    MinorSweep --> DocsOnly
+    DocsOnly -- yes --> Extract
+    DocsOnly -- no --> Review
     Extract --> Done
 ```
 
@@ -138,12 +144,13 @@ fix gates.
    `AGENTS.md` (see "The Architecture gate").
 6. **Implement.** Only after the design is approved, the plan exists and the plan review cleared.
    `superpowers:subagent-driven-development` runs on the current branch, in the main checkout. Tasks that touch disjoint
-   files run in parallel. A discovery that invalidates the plan is a hard stop: 2 or 3 amendment options, owner
-   approval, plan review again, then resume. The briefs carry the gate and the bans in "Implementing and handling plan
-   deviations".
+   files run in parallel, overriding that skill's default, and commits are made one at a time. A discovery that
+   invalidates the plan is a hard stop: 2 or 3 amendment options, owner approval, plan review again, then resume. The
+   briefs carry the gate and the bans in "Implementing and handling plan deviations".
 7. **Review.** When implementation completes, invoke the project `reviewer` skill. It audits the diff against
    `docs/claude/*-checklist.md` and the plan's scope, and writes `docs/_reviews/<topic>-review.md`. It is mandatory and
-   replaces the generic superpowers final review.
+   replaces the generic superpowers final review. It runs at least once on every non-trivial change, and again after
+   each blocking or major fix loop.
 8. **Fix.** Every finding is fixed, minor included. Nothing is parked as a follow-up. The order is in "Reviewing and
    fixing".
 9. **Rule extraction.** When the owner corrected something in a way that generalises, propose a rule one at a time, and
@@ -298,8 +305,10 @@ corrected path, an added test) gets a pass over the changed sections. Either way
 ## Implementing and handling plan deviations
 
 Once the plan is approved, implement it through `superpowers:subagent-driven-development` on the current branch, in the
-main checkout, never in a copy of the repo. The owner may choose a worktree for a given run. State any setup choice that
-changes where the owner sees the work in one line before starting. Tasks that touch disjoint files run in parallel.
+main checkout, never in a copy of the repo. State any setup choice that changes where the owner sees the work in one
+line before starting. Tasks that touch disjoint files run in parallel. This overrides the default of
+`superpowers:subagent-driven-development`, which never dispatches two implementers at once. Commits are made one at a
+time.
 
 Every implementer and per-task reviewer brief states the Architecture gate outright (see "The Architecture gate") and
 carries the dotli context from "Design and plan": placement is fixed, the vocabulary holds, tests follow their owner
@@ -332,7 +341,8 @@ typing. On trigger:
 ## Reviewing and fixing
 
 **Step 7, review (mandatory).** When all plan tasks complete and the minor sweep is done, invoke the project `reviewer`
-skill. It is rule-aware: it cites `docs/claude/*-checklist.md` and diffs the implementation against the plan's
+skill. It runs at least once on every non-trivial change, whatever that sweep touched, and again after each blocking or
+major fix loop. It is rule-aware: it cites `docs/claude/*-checklist.md` and diffs the implementation against the plan's
 `must_not_touch`, `out_of_scope` and scope. That is why it replaces superpowers' generic final review rather than
 running beside it. It writes `docs/_reviews/<topic>-review.md` (the same `<topic>` as the plan) and returns blocking,
 major and minor counts.
@@ -345,10 +355,11 @@ to the owner as a list. Severity only orders the work. The order:
 3. Blocking and major findings from step 7 go through the amend, approve and plan review loop (see "Implementing and
    handling plan deviations"), are implemented, and then step 7 runs again. Minor findings from step 7 are fixed in one
    sweep the same way.
-4. A fix that changes only docs or comments gets no re-review.
+4. A sweep of step 7 minor findings that changes only docs or comments gets no re-review. Any other sweep of step 7
+   minor findings goes back to step 7. The sweep before step 7 always goes on to step 7.
 
-The lifecycle ends at a review with no findings, or after a sweep that changed only docs or comments, followed by
-step 9. Finishing the branch (merge or PR) stays a separate step the owner starts.
+The lifecycle ends at a step 7 review with no findings, or after a sweep of step 7 minor findings that changed only docs
+or comments, followed by step 9. Finishing the branch (merge or PR) stays a separate step the owner starts.
 
 ## Closing the loop
 

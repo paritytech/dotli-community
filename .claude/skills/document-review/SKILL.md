@@ -107,6 +107,6 @@ different questions:
 | Asks                      | is this document clear, honest and free of dead weight?       | would a session with no history execute this against the real repo? |
 | Verifies against the repo | no                                                            | yes, paths, symbols and public surfaces must exist                  |
 | Output                    | edits the document inline                                     | findings, fixed through `superpowers:writing-plans`                 |
-| Loop                      | at most 2 passes, user-gated                                  | until one clean pass, hard cap 4                                    |
+| Loop                      | 2 recommended, user-gated                                     | until one clean pass, hard cap 4                                    |
 
 Do not run this skill as a substitute for a step 5 pass, and do not treat a clean pass here as clearing that gate.
