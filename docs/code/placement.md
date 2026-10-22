@@ -5,9 +5,9 @@ This doc owns where code and files go.
 ## Layer map
 
 dotli has three apps in `apps/`, the packages in `packages/` and the tooling packages in `config/`. What a package owns
-and exposes is in its `README.md`. What it may import is in its `eslint.config.js`, which lists the `@dotli/*` and
-`@config/*` packages it may import and bans the rest. The host is the top layer and may import every package, so its
-config lists none.
+and exposes is in its `README.md`. What it may import is in its `eslint.config.js`, which lists the `@dotli/*`,
+`@config/*` and `@parity/*` packages it may import and bans the rest. The host is the top layer and may import every
+package, so its config lists none.
 
 This section and the next summarise the `eslint.config.js` files and the READMEs. Those files win on any conflict, and a
 change to one updates this doc in the same commit.
@@ -113,7 +113,7 @@ flowchart TD
 | The Astro integration for Solid 2                                                                                              | `config/astro-solid` (`@config/astro-solid`)          |
 | Shared ESLint flat configs and the import-layer helpers                                                                        | `config/eslint` (`@config/eslint`)                    |
 | Tooling for the one Storybook at the repo root                                                                                 | `config/storybook` (`@config/storybook`)              |
-| A shared `tsconfig` base                                                                                                       | `config/typescript` (`@config/typescript`)            |
+| Shared `tsconfig` bases                                                                                                        | `config/typescript` (`@config/typescript`)            |
 | A build plugin or option shared by the host, sandbox and protocol builds, or the tests' CSS-modules naming                     | `config/vite` (`@config/vite`)                        |
 
 ## Inside the host
@@ -124,6 +124,8 @@ flowchart TD
 - The startup size budgets in CI guard what a page loads first, not import rules.
 
 ## Inside a package
+
+These hold in every app and package. The `src/index.ts` entry and the `./testing` entry are for packages alone.
 
 - Each package exposes only `src/index.ts`. Never import another package's internal modules.
 - On-demand modules go through a loader in `src/lazy.ts` to stay a separate chunk.

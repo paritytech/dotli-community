@@ -2,11 +2,12 @@
 
 ### How to Test
 
-- **Where tests live** is set out in [AGENTS.md](AGENTS.md), under Tests. A unit test sits beside its module as
-  `src/foo.spec.ts` and runs under Node, with no DOM. A component is tested by a play function in its Storybook story.
-  Functional tests live in the package's `tests/` folder as `*.test.ts` and run under happy-dom. The Playwright suites
-  live under `apps/host/tests/functional/` (driven in-process against the preview server) and `apps/host/tests/e2e/`
-  (`truapi.spec.ts` exercises the full truapi surface against a real `host-playground.dot` build).
+- **Where tests live** is set out in [docs/code/placement.md](docs/code/placement.md), under Inside a package. A unit
+  test sits beside its module as `src/foo.spec.ts` and runs under Node, with no DOM. A component is tested by a play
+  function in its Storybook story. Functional tests live in the package's `tests/` folder as `*.test.ts` and run under
+  happy-dom. The Playwright suites live under `apps/host/tests/functional/` (driven in-process against the preview
+  server) and `apps/host/tests/e2e/` (`truapi.spec.ts` exercises the full truapi surface against a real
+  `host-playground.dot` build).
 - **Wait on signals, never sleep.** A test waits for the page to reach a state, as the example below waits for the
   product's frame, never for a stretch of time.
 - **Tests are user stories.** Name each test as a user story: `As a <role>, I <action> and <outcome>` for behaviour, or
