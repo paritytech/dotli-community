@@ -111,6 +111,8 @@ Comments and docs:
 - Comments never claim a relation to other code, which can change without touching the comment. When two values must
   stay in sync, share a token, variable or import, or write nothing.
 - Say "imports no Solid", never "Solid-free".
+- Examples in docs and rules are general shapes a reader can map onto their own case ("a component's CSS module", "a
+  multi-step modal"), never a specific file, component or past incident.
 - Every package has a `README.md` in its root: its responsibility, basic design and public API (each `exports` entry),
   or entry points for an app. It explains the package at a high level and names no files and no other packages. Diagrams
   are mermaid, not ASCII. A change to any of these updates the README in the same commit.

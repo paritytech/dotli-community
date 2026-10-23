@@ -72,6 +72,8 @@ above the linter: semantics, data flow and naming.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "On-chain" where "network" or "remote" fits.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A comment that claims a relation to other code.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "Solid-free" instead of "imports no Solid".
+- **minor** (AGENTS.md § Code style, Comments and docs:): An example in a doc or rule that names a specific file,
+  component or past incident instead of a general shape.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A package `README.md` that names files or other packages, or
   draws an ASCII diagram instead of mermaid.
 
