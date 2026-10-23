@@ -201,8 +201,7 @@ decision unmade spreads into everything built from it. Present the refined desig
 default location: write the plan to `docs/_plans/<topic>-plan.md`, not under docs/superpowers/. That is the path
 `reviewer` diffs the implementation against. Then invoke `document-review` on the plan before step 5. This is the
 author-side pass. It cuts vague language and dead weight while you still have the context that produced them. The step 5
-fresh-context gate that follows checks the plan against the real repo. Two passes, two questions, in that order (see the
-comparison table in `document-review`).
+fresh-context gate that follows checks the plan against the real repo. Two passes, two questions, in that order.
 
 **3. Carry this dotli context into both delegated skills.** Superpowers cannot know it, and without it the design is
 generically reasonable and architecturally wrong.
