@@ -21,8 +21,8 @@ rule, flag it and propose a row.
   instead of taking intent from above.
 - **blocking** (AGENTS.md § Architecture): A global event or channel between modules where an import would do, away from
   a real system boundary.
-- **blocking** (AGENTS.md § Architecture): Host or transport code that dedupes the statements a resubscribed statement
-  subscription brings back.
+- **blocking** (AGENTS.md § Architecture): A layer between a replaying source and its consumer that dedupes the replayed
+  items.
 - **blocking** (AGENTS.md § Project): Code that trusts a server's or gateway's answer without proof, which puts a server
   in the trust path.
 - **blocking** (AGENTS.md § Architecture): A call across layers that is not safe to repeat or overlap, or does the work
@@ -31,18 +31,16 @@ rule, flag it and propose a row.
   does not report its status to the layer above.
 - **major** (AGENTS.md § Architecture, Tools:): A hand-rolled queue, in-flight flag, retry timer or concurrency limit
   instead of `createAsyncTaskPool` from `@dotli/shared`.
-- **major** (AGENTS.md § Code style, General:): A build plugin, startup trick, lint allow-list, lazy split or extra
-  package that a plain website would not need, outside iframe messaging, the sandbox and product isolation, and chain
-  connections.
+- **major** (AGENTS.md § Code style, General:): Special build, startup or packaging machinery a plain website would not
+  need, outside the sandbox, product isolation, iframe messaging and chain connections.
 
 ## Placement
 
 - **major** (docs/code/placement.md § Cut rules): Chrome that only lays out one app's page placed in `@dotli/ui`, or a
   domain-free mechanism under it kept in the app.
 - **major** (docs/code/placement.md § Cut rules): A building block that implements a whole flow, such as a multi-step
-  sign-in modal, a settings panel with its own actions or a full chat panel, or a flow placed in `@dotli/ui`.
-- **major** (AGENTS.md § Project): Recovery-phrase sign-in offered anywhere but the debug panel, such as the sign-in
-  page, the landing dialog or a product prompt.
+  modal or a panel with its own actions, or a flow placed in `@dotli/ui`.
+- **major** (AGENTS.md § Project): A debug-only feature, such as recovery-phrase sign-in, offered in user-facing UI.
 
 ## Package surfaces
 

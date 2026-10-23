@@ -31,14 +31,14 @@ above the linter: semantics, data flow and naming.
 - **major** (AGENTS.md § Code style, General:): A race between duplicate resources patched with a flag, a deferral or a
   delay instead of one refcounted owner.
 - **major** (AGENTS.md § Architecture, Tools:): In-flight work deduped with a promise flag or a join-by-key option
-  instead of its own named pool at `poolSize` 1 and an idempotent task.
+  instead of a named pool of size 1 and an idempotent task.
 
 ## UI and styles
 
 - **major** (AGENTS.md § Code style, General:): Hand-written machinery where Astro, Solid 2 or Vite has its own
   mechanism, or parts of an old mechanism kept beside the framework's after a migration.
-- **major** (AGENTS.md § Code style, General:): JavaScript shipped as a string, such as `fn.toString()` in a template, a
-  `set:html` script or an `is:inline` block.
+- **major** (AGENTS.md § Code style, General:): JavaScript shipped as a string, such as a serialised function or an
+  inline script block.
 - **major** (AGENTS.md § Code style, UI:): A Solid island for static markup, or more than one island in a module.
 - **major** (AGENTS.md § Code style, UI:): App state moved off `createSyncStore` to Solid signals or stores.
 - **major** (AGENTS.md § Code style, UI:): An icon that is not a Solid component with an `<svg>` drawn in
@@ -53,15 +53,13 @@ above the linter: semantics, data flow and naming.
   relaxed `noPropertyAccessFromIndexSignature`.
 - **major** (AGENTS.md § Code style, UI:): CSS scoped with an exclusion such as `:not([data-x])` instead of a positive
   `data-*` attribute on the target.
-- **major** (AGENTS.md § Code style, UI:): `gap`, `padding` or `margin` in px where a `--sp-*` token applies, including
-  inside `calc()` and local spacing properties.
+- **major** (AGENTS.md § Code style, UI:): Spacing in px where a `--sp-*` token applies.
 - **major** (AGENTS.md § Code style, UI:): A token, color or spacing value changed without the task asking for it,
   including to fix contrast.
 - **major** (AGENTS.md § Code style, UI:): A new variant, prop, padding or size on a common component to match one
   screen.
-- **major** (AGENTS.md § Code style, UI:): `calc()` ratio math, a new component or a new asset variant to match a
-  design.
-- **major** (AGENTS.md § Code style, UI:): An icon or logo inside a decorative tile, tinted square or ring.
+- **major** (AGENTS.md § Code style, UI:): Ratio math, a new component or a new asset variant to match a design.
+- **major** (AGENTS.md § Code style, UI:): An icon or logo inside a decorative tile or tinted shape.
 
 ## Comments and prose
 
@@ -72,8 +70,7 @@ above the linter: semantics, data flow and naming.
 - **minor** (AGENTS.md § Code style, Comments and docs:): An em-dash, semicolon or Unicode arrow in prose, a decorative
   separator, or a spec citation in a comment.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "On-chain" where "network" or "remote" fits.
-- **minor** (AGENTS.md § Code style, Comments and docs:): A comment that claims a relation to other code, such as "as
-  wide as the form".
+- **minor** (AGENTS.md § Code style, Comments and docs:): A comment that claims a relation to other code.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "Solid-free" instead of "imports no Solid".
 - **minor** (AGENTS.md § Code style, Comments and docs:): A package `README.md` that names files or other packages, or
   draws an ASCII diagram instead of mermaid.
@@ -91,8 +88,7 @@ above the linter: semantics, data flow and naming.
   CSS-modules config.
 - **major** (AGENTS.md § Code style, Tests:): A sleep, `waitForTimeout` or other fixed delay instead of waiting on a
   signal.
-- **major** (AGENTS.md § Code style, Tests:): A committed test that runs a third-party SDK's real setup to check our
-  options.
+- **major** (AGENTS.md § Code style, Tests:): A committed test that exercises a third-party SDK's own setup.
 - **minor** (AGENTS.md § Code style, Tests:): A test not named as a user story, `As a <role>, I <action> and <outcome>`.
 - **minor** (AGENTS.md § Code style, Tests:): A test body without `// Given`, `// When` and `// Then`, or descriptive
   markers cut to bare ones.

@@ -144,16 +144,14 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
 - A view, screen or flow used by one app lives in that app.
 - A component that owns an interaction with the product (a subscription, an action and its error copy) is a flow. A
   building block takes props, reads no store and reports the user's intent through a callback.
-- A building block stays simple: it shows one entity or one control, such as an account, a chain row, a permission row
-  or a message bubble. A whole flow, such as a multi-step sign-in modal, a settings panel with its own actions or a full
-  chat panel, lives in the app that uses it and is composed there from building blocks. It never goes in `@dotli/ui`,
-  which has no domain and no data source.
+- A building block stays simple: it shows one entity or one control, such as an account, a chain or a message. A whole
+  flow, such as a multi-step modal or a panel with its own actions, lives in the app that uses it and is composed there
+  from building blocks. It never goes in `@dotli/ui`, which has no domain and no data source.
 - Primitives, icons, the brand marks, the tokens, and the screens and overlays both apps show live in `@dotli/ui`. Its
   entries are the index, `./icons`, `./brand`, `./styles.css` and `./testing`.
-- Chrome that only lays out one app's page (the topbar's items and their order, the loading screen, the chat dock) stays
-  in that app as Astro markup and the app's own islands. A domain-free mechanism under it goes to `@dotli/ui` even when
-  one app uses it today. Judge each module on its own, strip the app's ids and types from the mechanism and pass them
-  in.
+- Chrome that only lays out one app's page (which items a bar shows and in what order, a loading screen) stays in that
+  app as Astro markup and the app's own islands. A domain-free mechanism under it goes to `@dotli/ui` even when one app
+  uses it today, taking the app's ids and types as parameters.
 - The debug panel is its own lazily loaded package with its own UI kit. It reads the host through its port and the debug
   bus.
 - Shared Vite plugins live in `config/vite/src/` as `@config/vite`.
