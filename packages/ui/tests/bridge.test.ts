@@ -327,7 +327,7 @@ describe('bridge render lifecycle', () => {
       const render = renderAppSubdomain('verified-cid', 'myapp');
       await waitForProviderRequests(1);
       const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
-      callbacks.auth.authStateChanged({
+      callbacks.auth.authStateChanged?.({
         tag: 'Connected',
         value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
       });
@@ -339,12 +339,12 @@ describe('bridge render lifecycle', () => {
       expect((await findNotification('myapp', refreshed.id))?.scope).toEqual(originalScope);
 
       if (transition === 'account change') {
-        callbacks.auth.authStateChanged({
+        callbacks.auth.authStateChanged?.({
           tag: 'Connected',
           value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'33'.repeat(32)}` },
         });
       } else if (transition === 'disconnect') {
-        callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+        callbacks.auth.authStateChanged?.({ tag: 'Disconnected' });
       } else {
         window.dispatchEvent(new Event('dotli:logged-out'));
       }
@@ -361,12 +361,12 @@ describe('bridge render lifecycle', () => {
     const render = renderAppSubdomain('verified-cid', 'myapp');
     await waitForProviderRequests(1);
     const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
-    callbacks.auth.authStateChanged({ tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } });
+    callbacks.auth.authStateChanged?.({ tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } });
     nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
     await render;
     const pushed = await callbacks.notifications.pushNotification({ text: 'Connected' });
     expect(pushed.id).toBeTypeOf('number');
-    callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+    callbacks.auth.authStateChanged?.({ tag: 'Disconnected' });
     await expect(callbacks.notifications.pushNotification({ text: 'Disconnected' })).rejects.toThrow(
       'authenticated account',
     );
@@ -395,7 +395,7 @@ describe('bridge render lifecycle', () => {
       const first = renderAppSubdomain('first-cid', 'first');
       await waitForProviderRequests(1);
       const firstCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
-      firstCallbacks.auth.authStateChanged({
+      firstCallbacks.auth.authStateChanged?.({
         tag: 'Connected',
         value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
       });
@@ -412,7 +412,7 @@ describe('bridge render lifecycle', () => {
       nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
       await second;
       const secondCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 1)[1] as RequiredHostCallbacks;
-      secondCallbacks.auth.authStateChanged({
+      secondCallbacks.auth.authStateChanged?.({
         tag: 'Connected',
         value: {
           publicKey: `0x${'11'.repeat(32)}`,
@@ -516,7 +516,7 @@ describe('bridge render lifecycle', () => {
     const first = renderIframe('https://preview.example/app', label);
     await waitForProviderRequests(1);
     const firstCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
-    firstCallbacks.auth.authStateChanged({
+    firstCallbacks.auth.authStateChanged?.({
       tag: 'Connected',
       value: { publicKey: `0x${'11'.repeat(32)}` },
     });
@@ -1479,19 +1479,19 @@ describe('bridge render lifecycle', () => {
       const product = { productId: connection.productId, executionKind: 'App' as const };
       const contact = { peerIdentity: new Uint8Array(32), username: 'old-session.paseo' };
       try {
-        auth.auth.authStateChanged(connected);
-        await callbacks.profile?.presentContactProfile(product, contact);
+        auth.auth.authStateChanged?.(connected);
+        await callbacks.profile?.presentContactProfile?.(product, contact);
         expect(document.querySelector('[data-testid="profile-drawer"]')?.textContent).toContain('old-session.paseo');
         avatars.clear.mockClear();
         // A same-account status refresh must not discard the current placement.
-        auth.auth.authStateChanged(connected);
+        auth.auth.authStateChanged?.(connected);
         expect(document.querySelector('[data-testid="profile-drawer"]')).not.toBeNull();
         expect(avatars.clear).not.toHaveBeenCalled();
 
         if (change === 'stored session change') {
           storedSessionChanged();
         } else {
-          auth.auth.authStateChanged(
+          auth.auth.authStateChanged?.(
             change === 'sign out'
               ? { tag: 'Disconnected' }
               : { tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } },
@@ -1500,8 +1500,8 @@ describe('bridge render lifecycle', () => {
         expect(document.querySelector('[data-testid="profile-drawer"]')).toBeNull();
         expect(avatars.clear).toHaveBeenCalledTimes(1);
 
-        auth.auth.authStateChanged(connected);
-        await callbacks.profile?.presentContactProfile(product, { ...contact, username: 'new-session.paseo' });
+        auth.auth.authStateChanged?.(connected);
+        await callbacks.profile?.presentContactProfile?.(product, { ...contact, username: 'new-session.paseo' });
         expect(document.querySelector('[data-testid="profile-drawer"]')?.textContent).toContain('new-session.paseo');
       } finally {
         connection.close();

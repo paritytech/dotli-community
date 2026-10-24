@@ -133,6 +133,13 @@ export declare const ButtonVariant: S.Codec<ButtonVariant>;
  */
 export type Bytes32 = HexString;
 export declare const Bytes32: S.Codec<Bytes32>;
+/**
+ * A 64-byte value, such as an sr25519 secret key, passed as plain bytes on
+ * FFI surfaces. Named only because `uniffi::custom_type!` takes an ident, not
+ * an array type.
+ */
+export type Bytes64 = HexString;
+export declare const Bytes64: S.Codec<Bytes64>;
 /** Role of a chain within the host's configured environment. */
 export type ChainIdentifier = "Relay" | "AssetHub" | "People" | "Bulletin";
 export declare const ChainIdentifier: S.Codec<ChainIdentifier>;
@@ -506,6 +513,84 @@ export interface EffectProps {
     effect: Effect;
 }
 export declare const EffectProps: S.Codec<EffectProps>;
+/**
+ * Which way value crosses the boundary between the user's Polkadot balance
+ * and everything outside it.
+ */
+export type FundingDirection = "In" | "Out";
+export declare const FundingDirection: S.Codec<FundingDirection>;
+/**
+ * Why a session ended without success.
+ *
+ * Carries an outcome, never a rule, so a client renders these without holding
+ * any part of the operator's compliance logic.
+ */
+export type FundingFailure = 
+/** Not offered in the user's market. */
+{
+    tag: "RegionUnavailable";
+    value?: undefined;
+}
+/** The user must complete verification first. */
+ | {
+    tag: "VerificationRequired";
+    value?: undefined;
+}
+/** Verification was attempted and refused. */
+ | {
+    tag: "VerificationRefused";
+    value?: undefined;
+}
+/** Below the route's minimum. */
+ | {
+    tag: "BelowMinimum";
+    value?: undefined;
+}
+/** Above the route's maximum. */
+ | {
+    tag: "AboveMaximum";
+    value?: undefined;
+}
+/** The user's balance does not cover an outbound session. */
+ | {
+    tag: "InsufficientBalance";
+    value?: undefined;
+}
+/** The session's window closed before it completed. */
+ | {
+    tag: "Expired";
+    value?: undefined;
+}
+/** Funds arrived in the wrong asset or on the wrong chain. */
+ | {
+    tag: "WrongAssetOrChain";
+    value?: undefined;
+}
+/** The provider stopped responding. */
+ | {
+    tag: "ProviderTimeout";
+    value?: undefined;
+}
+/**
+ * The user abandoned the flow, or declined to authorize an outbound
+ * release.
+ */
+ | {
+    tag: "Cancelled";
+    value?: undefined;
+}
+/**
+ * Outcome not covered above. Clients render the message and treat the
+ * code as opaque.
+ */
+ | {
+    tag: "Other";
+    value: {
+        code: string;
+        message: string;
+    };
+};
+export declare const FundingFailure: S.Codec<FundingFailure>;
 /**
  * Generic error payload carrying a human-readable reason string. Used by many
  * methods as a catch-all error type.
@@ -1310,6 +1395,54 @@ export type VersionedHostFeatureSupportedResponse =
     value: HostFeatureSupportedResponse;
 };
 export declare const VersionedHostFeatureSupportedResponse: S.Codec<VersionedHostFeatureSupportedResponse>;
+/** Versioned envelope for [`HostFundingError`]. */
+export type VersionedHostFundingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingError;
+};
+export declare const VersionedHostFundingError: S.Codec<VersionedHostFundingError>;
+/** Versioned envelope for [`HostFundingRequest`]. */
+export type VersionedHostFundingRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingRequest;
+};
+export declare const VersionedHostFundingRequest: S.Codec<VersionedHostFundingRequest>;
+/** Versioned envelope for [`HostFundingResponse`]. */
+export type VersionedHostFundingResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostFundingResponse: S.Codec<VersionedHostFundingResponse>;
+/** Versioned envelope for [`HostFundingStatusSubscribeError`]. */
+export type VersionedHostFundingStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeError;
+};
+export declare const VersionedHostFundingStatusSubscribeError: S.Codec<VersionedHostFundingStatusSubscribeError>;
+/** Versioned envelope for [`HostFundingStatusSubscribeItem`]. */
+export type VersionedHostFundingStatusSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeItem;
+};
+export declare const VersionedHostFundingStatusSubscribeItem: S.Codec<VersionedHostFundingStatusSubscribeItem>;
+/** Versioned envelope for [`HostFundingStatusSubscribeRequest`]. */
+export type VersionedHostFundingStatusSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostFundingStatusSubscribeRequest;
+};
+export declare const VersionedHostFundingStatusSubscribeRequest: S.Codec<VersionedHostFundingStatusSubscribeRequest>;
 /** Versioned envelope for [`HostGetLegacyAccountsError`]. */
 export type VersionedHostGetLegacyAccountsError = 
 /** Version 1 payload. */
@@ -2405,6 +2538,294 @@ export type VersionedHostNavigateToResponse =
     value?: undefined;
 };
 export declare const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToResponse>;
+/** Versioned envelope for [`HostNftPurseCreateChequeError`]. */
+export type VersionedHostNftPurseCreateChequeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseCreateChequeError;
+};
+export declare const VersionedHostNftPurseCreateChequeError: S.Codec<VersionedHostNftPurseCreateChequeError>;
+/** Versioned envelope for [`HostNftPurseCreateChequeRequest`]. */
+export type VersionedHostNftPurseCreateChequeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreateChequeRequest;
+};
+export declare const VersionedHostNftPurseCreateChequeRequest: S.Codec<VersionedHostNftPurseCreateChequeRequest>;
+/** Versioned envelope for [`HostNftPurseCreateChequeResponse`]. */
+export type VersionedHostNftPurseCreateChequeResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreateChequeResponse;
+};
+export declare const VersionedHostNftPurseCreateChequeResponse: S.Codec<VersionedHostNftPurseCreateChequeResponse>;
+/** Versioned envelope for [`HostNftPurseCreateItemsError`]. */
+export type VersionedHostNftPurseCreateItemsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseCreateItemsError;
+};
+export declare const VersionedHostNftPurseCreateItemsError: S.Codec<VersionedHostNftPurseCreateItemsError>;
+/** Versioned envelope for [`HostNftPurseCreateItemsRequest`]. */
+export type VersionedHostNftPurseCreateItemsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreateItemsRequest;
+};
+export declare const VersionedHostNftPurseCreateItemsRequest: S.Codec<VersionedHostNftPurseCreateItemsRequest>;
+/** Versioned envelope for [`HostNftPurseCreateItemsResponse`]. */
+export type VersionedHostNftPurseCreateItemsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreateItemsResponse;
+};
+export declare const VersionedHostNftPurseCreateItemsResponse: S.Codec<VersionedHostNftPurseCreateItemsResponse>;
+/** Versioned envelope for [`HostNftPurseCreatePurseError`]. */
+export type VersionedHostNftPurseCreatePurseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostNftPurseCreatePurseError: S.Codec<VersionedHostNftPurseCreatePurseError>;
+/** Versioned envelope for [`HostNftPurseCreatePurseRequest`]. */
+export type VersionedHostNftPurseCreatePurseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreatePurseRequest;
+};
+export declare const VersionedHostNftPurseCreatePurseRequest: S.Codec<VersionedHostNftPurseCreatePurseRequest>;
+/** Versioned envelope for [`HostNftPurseCreatePurseResponse`]. */
+export type VersionedHostNftPurseCreatePurseResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreatePurseResponse;
+};
+export declare const VersionedHostNftPurseCreatePurseResponse: S.Codec<VersionedHostNftPurseCreatePurseResponse>;
+/** Versioned envelope for [`HostNftPurseCreateReceiveKeyError`]. */
+export type VersionedHostNftPurseCreateReceiveKeyError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseCreateReceiveKeyError;
+};
+export declare const VersionedHostNftPurseCreateReceiveKeyError: S.Codec<VersionedHostNftPurseCreateReceiveKeyError>;
+/** Versioned envelope for [`HostNftPurseCreateReceiveKeyRequest`]. */
+export type VersionedHostNftPurseCreateReceiveKeyRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreateReceiveKeyRequest;
+};
+export declare const VersionedHostNftPurseCreateReceiveKeyRequest: S.Codec<VersionedHostNftPurseCreateReceiveKeyRequest>;
+/** Versioned envelope for [`HostNftPurseCreateReceiveKeyResponse`]. */
+export type VersionedHostNftPurseCreateReceiveKeyResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseCreateReceiveKeyResponse;
+};
+export declare const VersionedHostNftPurseCreateReceiveKeyResponse: S.Codec<VersionedHostNftPurseCreateReceiveKeyResponse>;
+/** Versioned envelope for [`HostNftPurseDepositError`]. */
+export type VersionedHostNftPurseDepositError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseDepositError;
+};
+export declare const VersionedHostNftPurseDepositError: S.Codec<VersionedHostNftPurseDepositError>;
+/** Versioned envelope for [`HostNftPurseDepositItem`]. */
+export type VersionedHostNftPurseDepositItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseStatus;
+};
+export declare const VersionedHostNftPurseDepositItem: S.Codec<VersionedHostNftPurseDepositItem>;
+/** Versioned envelope for [`HostNftPurseDepositRequest`]. */
+export type VersionedHostNftPurseDepositRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseDepositRequest;
+};
+export declare const VersionedHostNftPurseDepositRequest: S.Codec<VersionedHostNftPurseDepositRequest>;
+/** Versioned envelope for [`HostNftPurseListPursesError`]. */
+export type VersionedHostNftPurseListPursesError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseListPursesError;
+};
+export declare const VersionedHostNftPurseListPursesError: S.Codec<VersionedHostNftPurseListPursesError>;
+/** Versioned envelope for [`HostNftPurseListPursesRequest`]. */
+export type VersionedHostNftPurseListPursesRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseListPursesRequest;
+};
+export declare const VersionedHostNftPurseListPursesRequest: S.Codec<VersionedHostNftPurseListPursesRequest>;
+/** Versioned envelope for [`HostNftPurseListPursesResponse`]. */
+export type VersionedHostNftPurseListPursesResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseListPursesResponse;
+};
+export declare const VersionedHostNftPurseListPursesResponse: S.Codec<VersionedHostNftPurseListPursesResponse>;
+/** Versioned envelope for [`HostNftPurseListenForPaymentError`]. */
+export type VersionedHostNftPurseListenForPaymentError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseListenForPaymentError;
+};
+export declare const VersionedHostNftPurseListenForPaymentError: S.Codec<VersionedHostNftPurseListenForPaymentError>;
+/** Versioned envelope for [`HostNftPurseListenForPaymentItem`]. */
+export type VersionedHostNftPurseListenForPaymentItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseListenForPaymentItem;
+};
+export declare const VersionedHostNftPurseListenForPaymentItem: S.Codec<VersionedHostNftPurseListenForPaymentItem>;
+/** Versioned envelope for [`HostNftPurseListenForPaymentRequest`]. */
+export type VersionedHostNftPurseListenForPaymentRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseListenForPaymentRequest;
+};
+export declare const VersionedHostNftPurseListenForPaymentRequest: S.Codec<VersionedHostNftPurseListenForPaymentRequest>;
+/** Versioned envelope for [`HostNftPurseQueryPurseError`]. */
+export type VersionedHostNftPurseQueryPurseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseQueryPurseError;
+};
+export declare const VersionedHostNftPurseQueryPurseError: S.Codec<VersionedHostNftPurseQueryPurseError>;
+/** Versioned envelope for [`HostNftPurseQueryPurseRequest`]. */
+export type VersionedHostNftPurseQueryPurseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseQueryPurseRequest;
+};
+export declare const VersionedHostNftPurseQueryPurseRequest: S.Codec<VersionedHostNftPurseQueryPurseRequest>;
+/** Versioned envelope for [`HostNftPurseQueryPurseResponse`]. */
+export type VersionedHostNftPurseQueryPurseResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseQueryPurseResponse;
+};
+export declare const VersionedHostNftPurseQueryPurseResponse: S.Codec<VersionedHostNftPurseQueryPurseResponse>;
+/** Versioned envelope for [`HostNftPurseRebalancePurseError`]. */
+export type VersionedHostNftPurseRebalancePurseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseRebalancePurseError;
+};
+export declare const VersionedHostNftPurseRebalancePurseError: S.Codec<VersionedHostNftPurseRebalancePurseError>;
+/** Versioned envelope for [`HostNftPurseRebalancePurseItem`]. */
+export type VersionedHostNftPurseRebalancePurseItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseStatus;
+};
+export declare const VersionedHostNftPurseRebalancePurseItem: S.Codec<VersionedHostNftPurseRebalancePurseItem>;
+/** Versioned envelope for [`HostNftPurseRebalancePurseRequest`]. */
+export type VersionedHostNftPurseRebalancePurseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseRebalancePurseRequest;
+};
+export declare const VersionedHostNftPurseRebalancePurseRequest: S.Codec<VersionedHostNftPurseRebalancePurseRequest>;
+/** Versioned envelope for [`HostNftPurseRefundError`]. */
+export type VersionedHostNftPurseRefundError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseRefundError;
+};
+export declare const VersionedHostNftPurseRefundError: S.Codec<VersionedHostNftPurseRefundError>;
+/** Versioned envelope for [`HostNftPurseRefundItem`]. */
+export type VersionedHostNftPurseRefundItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseStatus;
+};
+export declare const VersionedHostNftPurseRefundItem: S.Codec<VersionedHostNftPurseRefundItem>;
+/** Versioned envelope for [`HostNftPurseRefundRequest`]. */
+export type VersionedHostNftPurseRefundRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseRefundRequest;
+};
+export declare const VersionedHostNftPurseRefundRequest: S.Codec<VersionedHostNftPurseRefundRequest>;
+/** Versioned envelope for [`HostNftPurseRevokeChequeError`]. */
+export type VersionedHostNftPurseRevokeChequeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseRevokeChequeError;
+};
+export declare const VersionedHostNftPurseRevokeChequeError: S.Codec<VersionedHostNftPurseRevokeChequeError>;
+/** Versioned envelope for [`HostNftPurseRevokeChequeRequest`]. */
+export type VersionedHostNftPurseRevokeChequeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseRevokeChequeRequest;
+};
+export declare const VersionedHostNftPurseRevokeChequeRequest: S.Codec<VersionedHostNftPurseRevokeChequeRequest>;
+/** Versioned envelope for [`HostNftPurseRevokeChequeResponse`]. */
+export type VersionedHostNftPurseRevokeChequeResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostNftPurseRevokeChequeResponse: S.Codec<VersionedHostNftPurseRevokeChequeResponse>;
+/** Versioned envelope for [`HostNftPurseTransferItemError`]. */
+export type VersionedHostNftPurseTransferItemError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseTransferItemError;
+};
+export declare const VersionedHostNftPurseTransferItemError: S.Codec<VersionedHostNftPurseTransferItemError>;
+/** Versioned envelope for [`HostNftPurseTransferItemItem`]. */
+export type VersionedHostNftPurseTransferItemItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NftPurseStatus;
+};
+export declare const VersionedHostNftPurseTransferItemItem: S.Codec<VersionedHostNftPurseTransferItemItem>;
+/** Versioned envelope for [`HostNftPurseTransferItemRequest`]. */
+export type VersionedHostNftPurseTransferItemRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNftPurseTransferItemRequest;
+};
+export declare const VersionedHostNftPurseTransferItemRequest: S.Codec<VersionedHostNftPurseTransferItemRequest>;
 /** Versioned envelope for [`HostNotificationAcknowledgeReceiverEventRequest`]. */
 export type VersionedHostNotificationAcknowledgeReceiverEventRequest = 
 /** Version 1 payload. */
@@ -2580,10 +3001,10 @@ export type VersionedHostPaymentRequest =
 export declare const VersionedHostPaymentRequest: S.Codec<VersionedHostPaymentRequest>;
 /** Versioned envelope for [`HostPaymentResponse`]. */
 export type VersionedHostPaymentResponse = 
-/** Version 1 payload. */
+/** Version 1 (no payload). */
 {
     tag: "V1";
-    value: HostPaymentResponse;
+    value?: undefined;
 };
 export declare const VersionedHostPaymentResponse: S.Codec<VersionedHostPaymentResponse>;
 /** Versioned envelope for [`HostPaymentStatusSubscribeError`]. */
@@ -2634,6 +3055,30 @@ export type VersionedHostPaymentTopUpResponse =
     value?: undefined;
 };
 export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopUpResponse>;
+/** Versioned envelope for [`HostPaymentTopUpStatusSubscribeError`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeError;
+};
+export declare const VersionedHostPaymentTopUpStatusSubscribeError: S.Codec<VersionedHostPaymentTopUpStatusSubscribeError>;
+/** Versioned envelope for [`HostPaymentTopUpStatusSubscribeItem`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeItem;
+};
+export declare const VersionedHostPaymentTopUpStatusSubscribeItem: S.Codec<VersionedHostPaymentTopUpStatusSubscribeItem>;
+/** Versioned envelope for [`HostPaymentTopUpStatusSubscribeRequest`]. */
+export type VersionedHostPaymentTopUpStatusSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPaymentTopUpStatusSubscribeRequest;
+};
+export declare const VersionedHostPaymentTopUpStatusSubscribeRequest: S.Codec<VersionedHostPaymentTopUpStatusSubscribeRequest>;
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
@@ -3895,6 +4340,375 @@ export type Modifier =
     value: BlendingMode;
 };
 export declare const Modifier: S.Codec<Modifier>;
+/** Items handed off to a recipient. */
+export interface NftPurseCheque {
+    /** Cheque format version, `0`. */
+    version: number;
+    /** Cheque id. */
+    id: NftPurseChequeId;
+    /** Who can decrypt it. */
+    recipient: NftPurseChequeRecipient;
+    /** Keys of the handed-off items. */
+    items: Array<NftPurseItemKey>;
+    /** Item secrets, encrypted to the recipient. */
+    encryptedSecrets: HexString;
+}
+export declare const NftPurseCheque: S.Codec<NftPurseCheque>;
+/** Where a cheque's items go. */
+export type NftPurseChequeDestination = 
+/**
+ * A one-time receive key from `create_receive_key`. It identifies the
+ * transfer, and the host derives the cheque id from it.
+ */
+{
+    tag: "Ephemeral";
+    value: NftPurseReceiveKey;
+}
+/** A long-lived receiver that expects cheques encrypted to `encryption_key`. */
+ | {
+    tag: "Static";
+    value: {
+        encryptionKey: X25519PublicKey;
+        chequeId: NftPurseChequeId;
+    };
+};
+export declare const NftPurseChequeDestination: S.Codec<NftPurseChequeDestination>;
+/** Id of a cheque, and the idempotency key of its deposit and refund. */
+export type NftPurseChequeId = HexString;
+export declare const NftPurseChequeId: S.Codec<NftPurseChequeId>;
+/** The part of a destination the recipient needs to find its decryption key. */
+export type NftPurseChequeRecipient = 
+/** The receive key the cheque was made for. */
+{
+    tag: "Ephemeral";
+    value: NftPurseReceiveKey;
+}
+/** The recipient's long-lived key. */
+ | {
+    tag: "Static";
+    value?: undefined;
+};
+export declare const NftPurseChequeRecipient: S.Codec<NftPurseChequeRecipient>;
+/** One item an operation moved. */
+export interface NftPurseClearedItem {
+    /** Source key, from the origin purse or from the cheque. */
+    consumed: NftPurseItemKey;
+    /** Destination key, in the destination purse. */
+    minted: NftPurseItemKey;
+    /** Whether the moving transaction is finalized. */
+    finalized: boolean;
+}
+export declare const NftPurseClearedItem: S.Codec<NftPurseClearedItem>;
+/** Product-visible clearing reference. */
+export interface NftPurseClearingReference {
+    /** Trie root of `leaves`. */
+    root: HexString;
+    /** Source item key and the hash of the transaction that moved it. */
+    leaves: Array<[NftPurseItemKey, HexString]>;
+}
+export declare const NftPurseClearingReference: S.Codec<NftPurseClearingReference>;
+/** Why a cheque was not created. */
+export type NftPurseCreateChequeError = 
+/** The user did not confirm draining the source purse. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** `from` does not exist. */
+ | {
+    tag: "PurseNotFound";
+    value?: undefined;
+}
+/** Some item is not in `from`. */
+ | {
+    tag: "ItemNotFound";
+    value?: undefined;
+}
+/** Some item is in use. */
+ | {
+    tag: "ItemUnavailable";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseCreateChequeError: S.Codec<NftPurseCreateChequeError>;
+/** Why item keys were not created. */
+export type NftPurseCreateItemsError = 
+/** The user did not grant access to the purse's owner. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** `count` is outside `1..=1000`. */
+ | {
+    tag: "CountOutOfRange";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseCreateItemsError: S.Codec<NftPurseCreateItemsError>;
+/** Why a receive key was not created. */
+export type NftPurseCreateReceiveKeyError = 
+/** `into` does not exist. */
+{
+    tag: "PurseNotFound";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseCreateReceiveKeyError: S.Codec<NftPurseCreateReceiveKeyError>;
+/** Why a cheque could not be deposited. */
+export type NftPurseDepositError = 
+/** `to` does not exist. */
+{
+    tag: "PurseNotFound";
+    value?: undefined;
+}
+/** The cheque holds no items. */
+ | {
+    tag: "EmptyCheque";
+    value?: undefined;
+}
+/** The secrets do not decode, or do not match the items. */
+ | {
+    tag: "CorruptedCheque";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseDepositError: S.Codec<NftPurseDepositError>;
+/**
+ * Id of an NFT purse. Ids are allocated in order from 0. The main purse,
+ * which every user has and Root owns, is `u32::MAX`.
+ */
+export type NftPurseId = number;
+export declare const NftPurseId: S.Codec<NftPurseId>;
+/** One page of the spendable items of a purse. */
+export interface NftPurseInfoPage {
+    /** Whether a later page holds more items. */
+    hasNext: boolean;
+    /** Keys of items present on chain and not in use. */
+    items: Array<NftPurseItemKey>;
+}
+export declare const NftPurseInfoPage: S.Codec<NftPurseInfoPage>;
+/** Public key of one item in a purse. The host holds its secret. */
+export type NftPurseItemKey = HexString;
+export declare const NftPurseItemKey: S.Codec<NftPurseItemKey>;
+/** Why purses could not be listed. */
+export type NftPurseListPursesError = 
+/** The user did not grant access to the owner's purses. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseListPursesError: S.Codec<NftPurseListPursesError>;
+/** Why the host could not listen for a payment. */
+export type NftPurseListenForPaymentError = 
+/** The receive key is unknown. */
+{
+    tag: "ReceiveKeyNotFound";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseListenForPaymentError: S.Codec<NftPurseListenForPaymentError>;
+/** Who owns an NFT purse. */
+export type NftPurseOwner = 
+/** The product with this id created the purse. */
+{
+    tag: "Product";
+    value: string;
+}
+/**
+ * No product owns the purse: the main purse, and purses recovered
+ * without metadata.
+ */
+ | {
+    tag: "Root";
+    value?: undefined;
+};
+export declare const NftPurseOwner: S.Codec<NftPurseOwner>;
+/** Channel a receiver listens on for a cheque. */
+export type NftPursePaymentTransmissionChannel = 
+/** The statement-store topic the cheque is published under. */
+{
+    tag: "Standard";
+    value: {
+        sssTopic: StatementTopic;
+    };
+};
+export declare const NftPursePaymentTransmissionChannel: S.Codec<NftPursePaymentTransmissionChannel>;
+/** A purse as `list_purses` reports it. */
+export interface NftPursePurse {
+    /** Purse id. */
+    id: NftPurseId;
+    /**
+     * Name given at creation, or chosen by the host after a recovery that
+     * lost it.
+     */
+    name: string;
+}
+export declare const NftPursePurse: S.Codec<NftPursePurse>;
+/** Why a purse could not be read. */
+export type NftPurseQueryPurseError = 
+/** The user did not grant access to the purse's owner. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** `page_size` is outside `1..=100`. */
+ | {
+    tag: "PageSizeOutOfBounds";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseQueryPurseError: S.Codec<NftPurseQueryPurseError>;
+/** Why items could not be moved between purses. */
+export type NftPurseRebalancePurseError = 
+/** The user did not confirm draining the source purse. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** `from` or `to` does not exist. */
+ | {
+    tag: "PurseNotFound";
+    value?: undefined;
+}
+/** Some key is not in `from`. */
+ | {
+    tag: "ItemNotFound";
+    value?: undefined;
+}
+/** Some key is in use. */
+ | {
+    tag: "ItemUnavailable";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseRebalancePurseError: S.Codec<NftPurseRebalancePurseError>;
+/** One-time key a receiver hands to the sender to start a payment. */
+export type NftPurseReceiveKey = HexString;
+export declare const NftPurseReceiveKey: S.Codec<NftPurseReceiveKey>;
+/** Why a cheque could not be refunded. */
+export type NftPurseRefundError = 
+/** Another product deposited the cheque, or the user did not confirm. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** The cheque is unknown. */
+ | {
+    tag: "ChequeNotFound";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseRefundError: S.Codec<NftPurseRefundError>;
+/** Why a cheque was not revoked. */
+export type NftPurseRevokeChequeError = 
+/** Another product created the cheque. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** The cheque is unknown. */
+ | {
+    tag: "ChequeNotFound";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseRevokeChequeError: S.Codec<NftPurseRevokeChequeError>;
+/** Progress of an operation that moves items. */
+export type NftPurseStatus = 
+/** Neither an optimistic success nor a terminal failure is observed yet. */
+{
+    tag: "InProgress";
+    value?: undefined;
+}
+/** At least one item is not yet cleared in a finalized block. */
+ | {
+    tag: "Clearing";
+    value: {
+        cleared: Array<NftPurseClearedItem>;
+    };
+}
+/** Terminal: every item is cleared in a finalized block. */
+ | {
+    tag: "Cleared";
+    value: {
+        cleared: Array<NftPurseClearedItem>;
+        reference: NftPurseClearingReference;
+    };
+}
+/** Terminal: every transaction settled and some of them failed. */
+ | {
+    tag: "Incomplete";
+    value: {
+        cleared: Array<NftPurseClearedItem>;
+        failed: Array<NftPurseItemKey>;
+        reference: NftPurseClearingReference;
+    };
+};
+export declare const NftPurseStatus: S.Codec<NftPurseStatus>;
+/** Why an item could not be transferred. */
+export type NftPurseTransferItemError = 
+/** The user did not confirm draining the item's purse. */
+{
+    tag: "Denied";
+    value?: undefined;
+}
+/** The item is in no known purse. */
+ | {
+    tag: "ItemNotFound";
+    value?: undefined;
+}
+/** The item is in use. */
+ | {
+    tag: "ItemUnavailable";
+    value?: undefined;
+}
+/** Any other failure. */
+ | {
+    tag: "Other";
+    value: GenericError;
+};
+export declare const NftPurseTransferItemError: S.Codec<NftPurseTransferItemError>;
 /**
  * A host-admitted notification activation for the authenticated product,
  * account and environment bound to this runtime.
@@ -4588,9 +5402,9 @@ export declare const VersionedRemoteChainTransactionStopResponse: S.Codec<Versio
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * `ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also
- * triggered implicitly by the corresponding business calls when not yet
- * granted (`JamPeerTransport::dial` for `JamPeers`).
+ * `ChainSubmit`, `PreimageSubmit`, `StatementSubmit`, `JamPeers` and
+ * `BalanceAccess` are also triggered implicitly by the corresponding business
+ * calls when not yet granted (`JamPeerTransport::dial` for `JamPeers`).
  */
 export type RemotePermission = 
 /**
@@ -4660,6 +5474,26 @@ export type RemotePermission =
  | {
     tag: "Calling";
     value?: undefined;
+}
+/**
+ * Seeing the user's payment balance through `payment.balanceSubscribe`,
+ * and learning that a payment request was refused for the balance rather
+ * than by the user.
+ */
+ | {
+    tag: "BalanceAccess";
+    value?: undefined;
+}
+/**
+ * Reading the NFT purses of an owner other than the caller: listing them,
+ * querying their items and creating item keys in them. A grant covers
+ * that owner only.
+ */
+ | {
+    tag: "NftPurseRead";
+    value: {
+        owner: NftPurseOwner;
+    };
 };
 export declare const RemotePermission: S.Codec<RemotePermission>;
 /** Versioned envelope for [`RemotePermissionError`]. */
@@ -5144,6 +5978,9 @@ export type StatementProof =
     };
 };
 export declare const StatementProof: S.Codec<StatementProof>;
+/** Topic a statement-store statement is published under. */
+export type StatementTopic = HexString;
+export declare const StatementTopic: S.Codec<StatementTopic>;
 /** A single key query within a chain-head storage request. */
 export interface StorageQueryItem {
     /** Storage key to query. */
@@ -5970,7 +6807,7 @@ export declare const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyRespons
  * grant that is merely undetermined does not change the answer, because the OS
  * resolves its own gate when the capability is used.
  */
-export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics";
+export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics" | "Motion";
 export declare const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest>;
 /** Outcome of a device-permission request. */
 export interface HostDevicePermissionResponse {
@@ -6020,6 +6857,118 @@ export interface HostFeatureSupportedResponse {
     supported: boolean;
 }
 export declare const HostFeatureSupportedResponse: S.Codec<HostFeatureSupportedResponse>;
+/** Error from [`crate::api::Funding::request`]. */
+export type HostFundingError = 
+/** User is not logged in. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The user dismissed the funding screen without starting a session. */
+ | {
+    tag: "Rejected";
+    value?: undefined;
+}
+/** The amount sought is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+}
+/** This product already has a session with this id. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
+};
+export declare const HostFundingError: S.Codec<HostFundingError>;
+/** Request to open the funding modality. */
+export interface HostFundingRequest {
+    /**
+     * Caller-chosen id the session is watched by, so a product that reloads
+     * while the overlay is up can still watch it. Reusing one is refused
+     * with `AlreadyExists`.
+     */
+    id: HexString;
+    /** Which way value moves; the host opens on the matching screen. */
+    direction: FundingDirection;
+    /**
+     * Amount sought, in the user's payment balance units. `None` lets the
+     * user choose.
+     */
+    amount?: bigint;
+}
+export declare const HostFundingRequest: S.Codec<HostFundingRequest>;
+/** Error from [`crate::api::Funding::status_subscribe`]. */
+export type HostFundingStatusSubscribeError = 
+/**
+ * The caller has no session with this id. An ended session stays
+ * watchable for good, compacted once newer ones push it out, and
+ * watching it yields its terminal item.
+ */
+{
+    tag: "NotFound";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostFundingStatusSubscribeError: S.Codec<HostFundingStatusSubscribeError>;
+/**
+ * Progress of a funding session, ending in exactly one terminal item.
+ *
+ * `Delivered` means the funds reached the user's balance. `Released` means
+ * they left it under the user's authorization, and says nothing about the
+ * off-chain leg: no host can verify that cash reached a bank.
+ */
+export type HostFundingStatusSubscribeItem = 
+/** In flight. The host draws its steps; a product only waits for the end. */
+{
+    tag: "InProgress";
+    value: {
+        expiresAt?: bigint;
+    };
+}
+/** Inbound terminal success. Funds credited to the user's balance. */
+ | {
+    tag: "Delivered";
+    value: {
+        credited: bigint;
+    };
+}
+/**
+ * Outbound terminal success. Funds left the user's balance under the
+ * user's authorization.
+ */
+ | {
+    tag: "Released";
+    value: {
+        debited: bigint;
+    };
+}
+/** Terminal failure. */
+ | {
+    tag: "Failed";
+    value: {
+        reason: FundingFailure;
+    };
+};
+export declare const HostFundingStatusSubscribeItem: S.Codec<HostFundingStatusSubscribeItem>;
+/** Request to watch a funding session. */
+export interface HostFundingStatusSubscribeRequest {
+    /** The id the session was requested with. */
+    id: HexString;
+}
+export declare const HostFundingStatusSubscribeRequest: S.Codec<HostFundingStatusSubscribeRequest>;
 /** Response containing all legacy (user-imported) accounts owned by the user. */
 export interface HostGetLegacyAccountsResponse {
     /** Legacy accounts. */
@@ -6516,6 +7465,145 @@ export interface HostNavigateToRequest {
     url: string;
 }
 export declare const HostNavigateToRequest: S.Codec<HostNavigateToRequest>;
+/** Request to hand items off in a cheque. */
+export interface HostNftPurseCreateChequeRequest {
+    /** Source purse. */
+    from: NftPurseId;
+    /** Recipient. */
+    to: NftPurseChequeDestination;
+    /** Items to hand off. */
+    items: Array<NftPurseItemKey>;
+}
+export declare const HostNftPurseCreateChequeRequest: S.Codec<HostNftPurseCreateChequeRequest>;
+/** Created cheque. */
+export interface HostNftPurseCreateChequeResponse {
+    /** The cheque, for the product to deliver. */
+    cheque: NftPurseCheque;
+}
+export declare const HostNftPurseCreateChequeResponse: S.Codec<HostNftPurseCreateChequeResponse>;
+/** Request to create new item keys in a purse. */
+export interface HostNftPurseCreateItemsRequest {
+    /** Purse that receives the keys. */
+    purse: NftPurseId;
+    /** Number of keys, in `1..=1000`. */
+    count: number;
+}
+export declare const HostNftPurseCreateItemsRequest: S.Codec<HostNftPurseCreateItemsRequest>;
+/** Created item keys. */
+export interface HostNftPurseCreateItemsResponse {
+    /** Exactly `count` new keys. */
+    items: Array<NftPurseItemKey>;
+}
+export declare const HostNftPurseCreateItemsResponse: S.Codec<HostNftPurseCreateItemsResponse>;
+/** Request to create a purse owned by the caller. */
+export interface HostNftPurseCreatePurseRequest {
+    /** Purse name, at most [`NFT_PURSE_MAX_NAME_BYTES`] bytes. */
+    name: string;
+}
+export declare const HostNftPurseCreatePurseRequest: S.Codec<HostNftPurseCreatePurseRequest>;
+/** Created purse. */
+export interface HostNftPurseCreatePurseResponse {
+    /** Id of the new purse. */
+    purse: NftPurseId;
+}
+export declare const HostNftPurseCreatePurseResponse: S.Codec<HostNftPurseCreatePurseResponse>;
+/** Request for a one-time receive key. */
+export interface HostNftPurseCreateReceiveKeyRequest {
+    /** Purse the received items go into. */
+    into: NftPurseId;
+}
+export declare const HostNftPurseCreateReceiveKeyRequest: S.Codec<HostNftPurseCreateReceiveKeyRequest>;
+/** Created receive key. */
+export interface HostNftPurseCreateReceiveKeyResponse {
+    /** The receive key. */
+    key: NftPurseReceiveKey;
+}
+export declare const HostNftPurseCreateReceiveKeyResponse: S.Codec<HostNftPurseCreateReceiveKeyResponse>;
+/** Request to deposit a received cheque. */
+export interface HostNftPurseDepositRequest {
+    /** The received cheque. Its id is the idempotency key. */
+    cheque: NftPurseCheque;
+    /** Purse the items go into. */
+    to: NftPurseId;
+}
+export declare const HostNftPurseDepositRequest: S.Codec<HostNftPurseDepositRequest>;
+/** Request to list an owner's purses. */
+export interface HostNftPurseListPursesRequest {
+    /** Whose purses. */
+    owner: NftPurseOwner;
+}
+export declare const HostNftPurseListPursesRequest: S.Codec<HostNftPurseListPursesRequest>;
+/** An owner's purses, by id. */
+export interface HostNftPurseListPursesResponse {
+    /** The purses, empty when the owner has none. */
+    purses: Array<NftPursePurse>;
+}
+export declare const HostNftPurseListPursesResponse: S.Codec<HostNftPurseListPursesResponse>;
+/** Stream item of `listen_for_payment`. */
+export type HostNftPurseListenForPaymentItem = 
+/** The channel the host listens on, emitted first. */
+{
+    tag: "Channel";
+    value: NftPursePaymentTransmissionChannel;
+}
+/** The cheque, once it arrives. */
+ | {
+    tag: "Cheque";
+    value: NftPurseCheque;
+};
+export declare const HostNftPurseListenForPaymentItem: S.Codec<HostNftPurseListenForPaymentItem>;
+/** Request to wait for a cheque sent to a receive key. */
+export interface HostNftPurseListenForPaymentRequest {
+    /** Receive key from `create_receive_key`. */
+    key: NftPurseReceiveKey;
+}
+export declare const HostNftPurseListenForPaymentRequest: S.Codec<HostNftPurseListenForPaymentRequest>;
+/** Request for one page of a purse's spendable items. */
+export interface HostNftPurseQueryPurseRequest {
+    /** Purse to read. */
+    purse: NftPurseId;
+    /** Zero-based page index. */
+    page: number;
+    /** Items per page, in `1..=100`. */
+    pageSize: number;
+}
+export declare const HostNftPurseQueryPurseRequest: S.Codec<HostNftPurseQueryPurseRequest>;
+/** One page of a purse. */
+export interface HostNftPurseQueryPurseResponse {
+    /** The page. */
+    page: NftPurseInfoPage;
+}
+export declare const HostNftPurseQueryPurseResponse: S.Codec<HostNftPurseQueryPurseResponse>;
+/** Request to move items between purses. */
+export interface HostNftPurseRebalancePurseRequest {
+    /** Source purse. */
+    from: NftPurseId;
+    /** Destination purse. */
+    to: NftPurseId;
+    /** Items to move. With `to`, the unordered set is the idempotency key. */
+    keys: Array<NftPurseItemKey>;
+}
+export declare const HostNftPurseRebalancePurseRequest: S.Codec<HostNftPurseRebalancePurseRequest>;
+/** Request to return a deposited cheque's items to their original keys. */
+export interface HostNftPurseRefundRequest {
+    /** The deposited cheque. It is the idempotency key. */
+    chequeId: NftPurseChequeId;
+}
+export declare const HostNftPurseRefundRequest: S.Codec<HostNftPurseRefundRequest>;
+/** Request to release the items of an undelivered cheque. */
+export interface HostNftPurseRevokeChequeRequest {
+    /** Cheque to revoke. */
+    chequeId: NftPurseChequeId;
+}
+export declare const HostNftPurseRevokeChequeRequest: S.Codec<HostNftPurseRevokeChequeRequest>;
+/** Request to move one item to a key outside the purses. */
+export interface HostNftPurseTransferItemRequest {
+    /** Item to move. With `destination`, the idempotency key. */
+    item: NftPurseItemKey;
+    /** Key that receives it. */
+    destination: NftPurseItemKey;
+}
+export declare const HostNftPurseTransferItemRequest: S.Codec<HostNftPurseTransferItemRequest>;
 /** Acknowledge a durable event after application handling. */
 export interface HostNotificationAcknowledgeReceiverEventRequest {
     /** Durable event sequence. */
@@ -6657,6 +7745,16 @@ export type HostPaymentError =
     value: {
         reason: string;
     };
+}
+/** The amount is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
+}
+/** A payment with this id already exists. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
 };
 export declare const HostPaymentError: S.Codec<HostPaymentError>;
 /** Request to initiate a payment to another account. */
@@ -6667,20 +7765,13 @@ export interface HostPaymentRequest {
     amount: bigint;
     /** Destination account. */
     destination: HexString;
+    /**
+     * Caller-chosen id the payment's status is followed by. Reusing one is
+     * refused with `AlreadyExists`, which makes a retried call safe.
+     */
+    id: HexString;
 }
 export declare const HostPaymentRequest: S.Codec<HostPaymentRequest>;
-/**
- * Receipt returned after a successful payment request.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface HostPaymentResponse {
-    /** The assigned payment identifier. */
-    id: string;
-}
-export declare const HostPaymentResponse: S.Codec<HostPaymentResponse>;
 /**
  * Error from [`crate::api::Payment::status_subscribe`].
  *
@@ -6705,8 +7796,8 @@ export declare const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusS
 /**
  * Payment lifecycle status pushed to subscribers.
  *
- * Once a terminal state (`Completed` or `Failed`) is reached, the host
- * delivers it and may close the subscription.
+ * `Completed`, `Failed` and `ClaimedPartially` are terminal, and stay
+ * readable after the payment ends.
  *
  * See [RFC 0006].
  *
@@ -6718,7 +7809,7 @@ export type HostPaymentStatusSubscribeItem =
     tag: "Processing";
     value?: undefined;
 }
-/** Payment has been settled successfully. */
+/** The full amount reached the destination. */
  | {
     tag: "Completed";
     value?: undefined;
@@ -6729,12 +7820,19 @@ export type HostPaymentStatusSubscribeItem =
     value: {
         reason: string;
     };
+}
+/** Less than the requested amount reached the destination. */
+ | {
+    tag: "ClaimedPartially";
+    value: {
+        actualClaimed: bigint;
+    };
 };
 export declare const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem>;
 /** Request to subscribe to a payment status. */
 export interface HostPaymentStatusSubscribeRequest {
-    /** Payment identifier to watch. */
-    paymentId: string;
+    /** Id the payment was requested with. */
+    id: HexString;
 }
 export declare const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscribeRequest>;
 /**
@@ -6745,22 +7843,20 @@ export declare const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatu
  * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
  */
 export type HostPaymentTopUpError = 
-/** The source account does not hold sufficient funds. */
+/** The source key is malformed, or the source was not found. */
 {
-    tag: "InsufficientFunds";
-    value?: undefined;
-}
-/** The source account was not found or is invalid. */
- | {
     tag: "InvalidSource";
     value?: undefined;
 }
-/** Some coins were claimed but the total fell short of the requested amount. */
+/** Another top-up from the same source is still running. */
  | {
-    tag: "PartialPayment";
-    value: {
-        credited: bigint;
-    };
+    tag: "SourceBusy";
+    value?: undefined;
+}
+/** The amount is zero. */
+ | {
+    tag: "InvalidAmount";
+    value?: undefined;
 }
 /** Catch-all. */
  | {
@@ -6768,6 +7864,11 @@ export type HostPaymentTopUpError =
     value: {
         reason: string;
     };
+}
+/** A top-up with this id already exists. */
+ | {
+    tag: "AlreadyExists";
+    value?: undefined;
 };
 export declare const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError>;
 /** Request to top up the product payment balance. */
@@ -6778,8 +7879,72 @@ export interface HostPaymentTopUpRequest {
     amount: bigint;
     /** Funding source for the top-up. */
     source: PaymentTopUpSource;
+    /**
+     * Caller-chosen id the top-up's status is followed by. Reusing one is
+     * refused with `AlreadyExists`, which makes a retried call safe.
+     */
+    id: HexString;
 }
 export declare const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest>;
+/** Error from [`crate::api::Payment::top_up_status_subscribe`]. */
+export type HostPaymentTopUpStatusSubscribeError = 
+/** No top-up with this id for the calling product. */
+{
+    tag: "TopUpNotFound";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostPaymentTopUpStatusSubscribeError: S.Codec<HostPaymentTopUpStatusSubscribeError>;
+/**
+ * Progress of a top-up. `Claimed { finalized: true }`, `ClaimedPartially` and
+ * `NotClaimed` are terminal, and stay readable after the top-up ends.
+ */
+export type HostPaymentTopUpStatusSubscribeItem = 
+/** Waiting for the source's funds to be seen. */
+{
+    tag: "Detecting";
+    value?: undefined;
+}
+/** Claiming the funds into the balance. */
+ | {
+    tag: "Claiming";
+    value?: undefined;
+}
+/** The full amount was claimed. */
+ | {
+    tag: "Claimed";
+    value: {
+        finalized: boolean;
+    };
+}
+/**
+ * Less than the requested amount was claimed, such as when an amount
+ * below the smallest coin denomination remains.
+ */
+ | {
+    tag: "ClaimedPartially";
+    value: {
+        actualClaimed: bigint;
+    };
+}
+/** Nothing was claimed. */
+ | {
+    tag: "NotClaimed";
+    value?: undefined;
+};
+export declare const HostPaymentTopUpStatusSubscribeItem: S.Codec<HostPaymentTopUpStatusSubscribeItem>;
+/** Request to follow one top-up. */
+export interface HostPaymentTopUpStatusSubscribeRequest {
+    /** Id the top-up was started with. */
+    id: HexString;
+}
+export declare const HostPaymentTopUpStatusSubscribeRequest: S.Codec<HostPaymentTopUpStatusSubscribeRequest>;
 /** The calling product's cards: the whole set on subscribe and after every change. */
 export interface HostPocketListSubscribeItem {
     /** Cards currently in Pocket for the calling product. */
@@ -8101,3 +9266,6 @@ export interface VrfTranscriptItem {
     value: HexString;
 }
 export declare const VrfTranscriptItem: S.Codec<VrfTranscriptItem>;
+/** X25519 public key for key agreement (RFC 0022). */
+export type X25519PublicKey = HexString;
+export declare const X25519PublicKey: S.Codec<X25519PublicKey>;

@@ -19,6 +19,7 @@ export type DevicePermissionName = HostDevicePermissionRequest;
 export type PermissionName =
   | DevicePermissionName
   | 'AutomaticPreimageSubmit'
+  | 'BalanceAccess'
   | 'ChainSubmit'
   | 'ChatAuthority'
   | 'IdentityDisclosure'
@@ -78,10 +79,12 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'Bluetooth', label: 'Bluetooth', group: 'device' },
   { name: 'NFC', label: 'NFC', group: 'device' },
   { name: 'Clipboard', label: 'Clipboard', group: 'device' },
+  { name: 'Motion', label: 'Motion and orientation', group: 'device' },
   { name: 'Biometrics', label: 'Biometrics', group: 'device' },
   { name: 'ChatAuthority', label: 'Chat identity authority', group: 'app' },
   { name: 'IdentityDisclosure', label: 'Identity disclosure', group: 'app' },
   { name: 'ProfileDisclosure', label: 'Profile disclosure', group: 'app' },
+  { name: 'BalanceAccess', label: 'View payment balance', group: 'app' },
   { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
   { name: 'PreimageSubmit', label: 'Submit preimages', group: 'app' },
   {
@@ -146,7 +149,12 @@ function authorizationRequest(
   permission: PermissionName,
   rootPublicKey: string | null = null,
 ): PermissionAuthorizationRequest {
-  if (permission === 'ChainSubmit' || permission === 'PreimageSubmit' || permission === 'StatementSubmit') {
+  if (
+    permission === 'BalanceAccess' ||
+    permission === 'ChainSubmit' ||
+    permission === 'PreimageSubmit' ||
+    permission === 'StatementSubmit'
+  ) {
     return {
       tag: 'Remote',
       value: { permission: { tag: permission } },

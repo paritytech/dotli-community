@@ -262,7 +262,7 @@ function createCore(product: PageProduct): Core {
         return changed;
       },
     };
-    const presentAuth = coreCallbacks.auth.authStateChanged;
+    const presentAuth = coreCallbacks.auth.authStateChanged?.bind(coreCallbacks.auth);
     // Media fences its operations on every accepted authority change.
     coreCallbacks.auth.authStateChanged = state => {
       const profileSession =
@@ -282,7 +282,7 @@ function createCore(product: PageProduct): Core {
       for (const media of connectionMedia) {
         media.authChanged(state);
       }
-      presentAuth(state);
+      presentAuth?.(state);
     };
     return coreCallbacks;
   };
@@ -308,10 +308,10 @@ function createCore(product: PageProduct): Core {
       const callbacks = callbacksFor(true, localChat.openContacts(blockingModalScope).callbacks);
       callbacks.coreStorage = localChat.coreStorage(callbacks.coreStorage);
       callbacks.nativeChatFiles = localChat.nativeChatFiles;
-      const presentAuth = callbacks.auth.authStateChanged;
+      const presentAuth = callbacks.auth.authStateChanged?.bind(callbacks.auth);
       callbacks.auth.authStateChanged = state => {
         localChat.authStateChanged(state);
-        presentAuth(state);
+        presentAuth?.(state);
       };
       const booted = await bootLocalWalletCore(createWebWorkerPairingHostRuntime, callbacks, hostConfig, wallet, () =>
         cores.has(core),
@@ -375,7 +375,7 @@ function createCore(product: PageProduct): Core {
       callbacks.auth = {
         authStateChanged: state => {
           if (!closed) {
-            shared.auth.authStateChanged(state);
+            shared.auth.authStateChanged?.(state);
           }
         },
       };

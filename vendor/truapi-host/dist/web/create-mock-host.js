@@ -149,8 +149,8 @@ function liveSubscription(first, closers, register) {
  * host cannot execute.
  */
 const NOT_MODELLED_REASONS = {
-    payment: "the protocol declares payments but no host implements them; " +
-        "see docs/rfcs/0006-payments.md",
+    payment: "payments are served only by native and Rust hosts, since the browser " +
+        "host-callback bridge cannot carry the payment platforms yet",
     coinPayment: "the protocol declares coin payments but no host implements them; " +
         "see docs/rfcs/0006-payments.md",
     statements: "the core owns the statement store and submits it over the people chain, " +
@@ -626,24 +626,6 @@ export function createMockHost(config = {}) {
                 const entry = pushedNotifications.find((n) => n.id === id);
                 if (entry)
                     entry.cancelled = true;
-            },
-            async receiverAuthority() {
-                return undefined;
-            },
-            async receiverConsent() {
-                throw new Error("background receiving unsupported");
-            },
-            async receiverChanged() {
-                throw new Error("background receiving unsupported");
-            },
-            async receiverCommand() {
-                return undefined;
-            },
-            async activationEvents() {
-                throw new Error("notification activation is unsupported");
-            },
-            async acknowledgeActivation() {
-                throw new Error("notification activation is unsupported");
             },
         },
         game: {

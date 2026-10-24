@@ -12,7 +12,11 @@ import {
   isEnforceableDevicePermission,
   type PromptPermissionName,
 } from '../permissions.js';
-import { showJamPeersPermissionModal, showPermissionRequestModal } from '../permission-modal.js';
+import {
+  showJamPeersPermissionModal,
+  showNftPurseReadPermissionModal,
+  showPermissionRequestModal,
+} from '../permission-modal.js';
 import { showNotification } from '../notification.js';
 import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
@@ -23,11 +27,14 @@ import { mediaOwnsCapture } from '../media-host.js';
 // Legacy HTML products have no host interception point for independent HTTP/WS/RTC.
 // Protected Media containers separately deny all product-side raw capture.
 // `JamPeers` carries its genesis and has its own prompt.
-function gatedRemotePermissionName(tag: Exclude<RemotePermission['tag'], 'JamPeers'>): PromptPermissionName | null {
+function gatedRemotePermissionName(
+  tag: Exclude<RemotePermission['tag'], 'JamPeers' | 'NftPurseRead'>,
+): PromptPermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
     case 'StatementSubmit':
+    case 'BalanceAccess':
       return tag;
     case 'Remote':
     case 'WebRtc':
@@ -66,6 +73,14 @@ export function createPromptPermission(
         }),
       );
     }
+    if (permission.tag === 'NftPurseRead') {
+      return modalScope.enqueue(signal =>
+        decideNftPurseReadPermission(label, permission.value.owner, {
+          limiter,
+          signal,
+        }),
+      );
+    }
     // Calling consent is operation-scoped through the host Media backend.
     if (permission.tag === 'Calling') {
       return 'Deny';
@@ -94,6 +109,29 @@ async function decideJamPeersPermission(
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
   const decision = await showJamPeersPermissionModal(label, genesis, signal);
+  throwIfAborted(signal);
+  switch (decision) {
+    case 'dismissed':
+      throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
+    case 'denied':
+      return 'Deny';
+    case 'granted':
+      return 'AllowAlways';
+    case 'granted-once':
+      return 'AllowOnce';
+  }
+}
+
+async function decideNftPurseReadPermission(
+  label: string,
+  owner: Extract<RemotePermission, { tag: 'NftPurseRead' }>['value']['owner'],
+  options: { limiter: { allow: () => boolean }; signal: AbortSignal },
+): Promise<PermissionDecision> {
+  const { limiter, signal } = options;
+  if (!limiter.allow()) {
+    throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
+  }
+  const decision = await showNftPurseReadPermissionModal(label, owner, signal);
   throwIfAborted(signal);
   switch (decision) {
     case 'dismissed':

@@ -1,6 +1,7 @@
 import type { Page, FrameLocator } from "@playwright/test";
 import { type ChainStatus, type ChatMessageRecord, type MockHostConfig, type NotificationLogEntry, type PermissionLogEntry, type PermissionPolicy, type PermissionPolicyAlias, type SigningLogEntry, type StatementEntry } from "../web/create-mock-host.js";
 import type { HostScan } from "../generated/host-callbacks.js";
+import type { HostPaymentStatusSubscribeItem } from "@parity/truapi";
 import type { StatementInput } from "../web/loopback-statements.js";
 export type { StatementEntry } from "../web/create-mock-host.js";
 export type { StatementInput } from "../web/loopback-statements.js";
@@ -286,7 +287,10 @@ export interface TestHost {
      * against that surface is still valid here.
      */
     dispose(): Promise<void>;
-    /** Set the spendable balance. Always throws; payments are unimplemented. */
+    /**
+     * Set the spendable balance. Always throws: this host cannot serve
+     * payments, and answers every payment call `Unsupported`.
+     */
     setPaymentBalance(amount: bigint): Promise<never>;
     /** Payment operations the product performed. Always throws; see above. */
     getPaymentLog(): Promise<never>;
@@ -294,8 +298,12 @@ export interface TestHost {
     clearPaymentLog(): Promise<never>;
     /** How top-ups resolve. Always throws; see above. */
     setPaymentTopUpBehavior(behavior: unknown): Promise<never>;
-    /** Force a payment's status. Always throws; see above. */
-    simulatePaymentStatus(paymentId: string, status: {
+    /**
+     * Force the status of the payment with this 32-byte id. Always throws; see
+     * above. The string id and loose status are `@parity/host-api-test-sdk`'s
+     * shapes, still accepted so a suite written against it type-checks.
+     */
+    simulatePaymentStatus(id: Uint8Array | string, status: HostPaymentStatusSubscribeItem | {
         tag: string;
         value?: string;
     }): Promise<never>;
