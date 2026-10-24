@@ -2,31 +2,31 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "integrate/media-stack-0.26-rebase",
-  "upstreamRevision": "69335b76086d5cf61a8f95e35dc6d27100285b3d",
+  "upstreamRevision": "fa0b87815e1866815a2b27973ca46bce95c2d227",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.26.0",
-      "sourceArchiveSha256": "49d31a98d255c7f17baedb0fd61cfc0baa2b220e5e1dbdeefe1072a685697898",
-      "clientSha256": "ce01bc3314e6ec36b8e87751ae5603b5dbfccec2d4398e96a44219f086a9da2c"
+      "sourceArchiveSha256": "8c23bf78cd361e2cb626922b1e939768dc80c1accb6d43680d6925d94c42754c",
+      "clientSha256": "7f457e51c2da4596f3670b707eed7e80606de17cbe71e0dbdbbdb773e372271a"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.26.0",
-      "sourceArchiveSha256": "9f0187ba65f821673c1948b53399ffbdf465ce401320f8f4ae938386cb190300",
+      "sourceArchiveSha256": "f3cd80f7b4752d74b29ec7d35971dd7ab0a842605b6cf6509ef494317a4ad742",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "c0a24e4d4b8c424e7094c097dfb1d0e7a26dd191b5bd208d5748fbc1a2bde619",
+          "sha256": "1bbbb3a994ba8538432880bf4adb1349a90566f5af9fddf342cd68dbfd388706",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "f27ce183e5a6cdd4b1b54ab9326dbf05c3b6935af441d05ce6d9208b8d9744c2",
+          "sha256": "531448dae23caae4fabd03aeda40ea8a8828ad1ff73cf1edc8facc38948e856e",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "69335b76086d5cf61a8f95e35dc6d27100285b3d",
+  "wasmUpstreamRevision": "fa0b87815e1866815a2b27973ca46bce95c2d227",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1626"
 }

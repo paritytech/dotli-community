@@ -524,6 +524,66 @@ export const SCANNER_SCAN = {
     method: 0,
     kind: "request",
 };
+export const NFT_PURSE_CREATE_PURSE = {
+    trait: 26,
+    method: 0,
+    kind: "request",
+};
+export const NFT_PURSE_CREATE_ITEMS = {
+    trait: 26,
+    method: 1,
+    kind: "request",
+};
+export const NFT_PURSE_QUERY_PURSE = {
+    trait: 26,
+    method: 2,
+    kind: "request",
+};
+export const NFT_PURSE_LIST_PURSES = {
+    trait: 26,
+    method: 3,
+    kind: "request",
+};
+export const NFT_PURSE_REBALANCE_PURSE = {
+    trait: 26,
+    method: 4,
+    kind: "subscription",
+};
+export const NFT_PURSE_CREATE_RECEIVE_KEY = {
+    trait: 26,
+    method: 5,
+    kind: "request",
+};
+export const NFT_PURSE_LISTEN_FOR_PAYMENT = {
+    trait: 26,
+    method: 6,
+    kind: "subscription",
+};
+export const NFT_PURSE_CREATE_CHEQUE = {
+    trait: 26,
+    method: 7,
+    kind: "request",
+};
+export const NFT_PURSE_REVOKE_CHEQUE = {
+    trait: 26,
+    method: 8,
+    kind: "request",
+};
+export const NFT_PURSE_DEPOSIT = {
+    trait: 26,
+    method: 9,
+    kind: "subscription",
+};
+export const NFT_PURSE_REFUND = {
+    trait: 26,
+    method: 10,
+    kind: "subscription",
+};
+export const NFT_PURSE_TRANSFER_ITEM = {
+    trait: 26,
+    method: 11,
+    kind: "subscription",
+};
 export const PROFILE_PRESENT = {
     trait: 69,
     method: 0,

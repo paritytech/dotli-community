@@ -4604,6 +4604,322 @@ export const types = [
         ],
     },
     {
+        id: "host-nft-purse-create-cheque-request",
+        name: "HostNftPurseCreateChequeRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreateChequeRequest {\n  from: NftPurseId;\n  to: NftPurseChequeDestination;\n  items: Array<NftPurseItemKey>;\n}",
+        description: "Request to hand items off in a cheque.",
+        fields: [
+            {
+                name: "from",
+                type: "NftPurseId",
+                description: "Source purse.",
+            },
+            {
+                name: "to",
+                type: "NftPurseChequeDestination",
+                description: "Recipient.",
+            },
+            {
+                name: "items",
+                type: "Array<NftPurseItemKey>",
+                description: "Items to hand off.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-cheque-response",
+        name: "HostNftPurseCreateChequeResponse",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreateChequeResponse {\n  cheque: NftPurseCheque;\n}",
+        description: "Created cheque.",
+        fields: [
+            {
+                name: "cheque",
+                type: "NftPurseCheque",
+                description: "The cheque, for the product to deliver.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-items-request",
+        name: "HostNftPurseCreateItemsRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreateItemsRequest {\n  purse: NftPurseId;\n  count: number;\n}",
+        description: "Request to create new item keys in a purse.",
+        fields: [
+            {
+                name: "purse",
+                type: "NftPurseId",
+                description: "Purse that receives the keys.",
+            },
+            {
+                name: "count",
+                type: "number",
+                description: "Number of keys, in `1..=1000`.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-items-response",
+        name: "HostNftPurseCreateItemsResponse",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreateItemsResponse {\n  items: Array<NftPurseItemKey>;\n}",
+        description: "Created item keys.",
+        fields: [
+            {
+                name: "items",
+                type: "Array<NftPurseItemKey>",
+                description: "Exactly `count` new keys.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-purse-request",
+        name: "HostNftPurseCreatePurseRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreatePurseRequest {\n  name: string;\n}",
+        description: "Request to create a purse owned by the caller.",
+        fields: [
+            {
+                name: "name",
+                type: "string",
+                description: "Purse name, at most [`NFT_PURSE_MAX_NAME_BYTES`] bytes.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-purse-response",
+        name: "HostNftPurseCreatePurseResponse",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreatePurseResponse {\n  purse: NftPurseId;\n}",
+        description: "Created purse.",
+        fields: [
+            {
+                name: "purse",
+                type: "NftPurseId",
+                description: "Id of the new purse.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-receive-key-request",
+        name: "HostNftPurseCreateReceiveKeyRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreateReceiveKeyRequest {\n  into: NftPurseId;\n}",
+        description: "Request for a one-time receive key.",
+        fields: [
+            {
+                name: "into",
+                type: "NftPurseId",
+                description: "Purse the received items go into.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-create-receive-key-response",
+        name: "HostNftPurseCreateReceiveKeyResponse",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseCreateReceiveKeyResponse {\n  key: NftPurseReceiveKey;\n}",
+        description: "Created receive key.",
+        fields: [
+            {
+                name: "key",
+                type: "NftPurseReceiveKey",
+                description: "The receive key.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-deposit-request",
+        name: "HostNftPurseDepositRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseDepositRequest {\n  cheque: NftPurseCheque;\n  to: NftPurseId;\n}",
+        description: "Request to deposit a received cheque.",
+        fields: [
+            {
+                name: "cheque",
+                type: "NftPurseCheque",
+                description: "The received cheque. Its id is the idempotency key.",
+            },
+            {
+                name: "to",
+                type: "NftPurseId",
+                description: "Purse the items go into.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-list-purses-request",
+        name: "HostNftPurseListPursesRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseListPursesRequest {\n  owner: NftPurseOwner;\n}",
+        description: "Request to list an owner's purses.",
+        fields: [
+            {
+                name: "owner",
+                type: "NftPurseOwner",
+                description: "Whose purses.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-list-purses-response",
+        name: "HostNftPurseListPursesResponse",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseListPursesResponse {\n  purses: Array<NftPursePurse>;\n}",
+        description: "An owner's purses, by id.",
+        fields: [
+            {
+                name: "purses",
+                type: "Array<NftPursePurse>",
+                description: "The purses, empty when the owner has none.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-listen-for-payment-item",
+        name: "HostNftPurseListenForPaymentItem",
+        category: "nft_purse",
+        definition: 'export type HostNftPurseListenForPaymentItem =\n  | { tag: "Channel"; value: NftPursePaymentTransmissionChannel }\n  | { tag: "Cheque"; value: NftPurseCheque }\n;',
+        description: "Stream item of `listen_for_payment`.",
+        variants: [
+            {
+                name: "Channel",
+                type: '{ tag: "Channel"; value: NftPursePaymentTransmissionChannel }',
+                description: "The channel the host listens on, emitted first.",
+            },
+            {
+                name: "Cheque",
+                type: '{ tag: "Cheque"; value: NftPurseCheque }',
+                description: "The cheque, once it arrives.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-listen-for-payment-request",
+        name: "HostNftPurseListenForPaymentRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseListenForPaymentRequest {\n  key: NftPurseReceiveKey;\n}",
+        description: "Request to wait for a cheque sent to a receive key.",
+        fields: [
+            {
+                name: "key",
+                type: "NftPurseReceiveKey",
+                description: "Receive key from `create_receive_key`.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-query-purse-request",
+        name: "HostNftPurseQueryPurseRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseQueryPurseRequest {\n  purse: NftPurseId;\n  page: number;\n  pageSize: number;\n}",
+        description: "Request for one page of a purse's spendable items.",
+        fields: [
+            {
+                name: "purse",
+                type: "NftPurseId",
+                description: "Purse to read.",
+            },
+            {
+                name: "page",
+                type: "number",
+                description: "Zero-based page index.",
+            },
+            {
+                name: "page_size",
+                type: "number",
+                description: "Items per page, in `1..=100`.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-query-purse-response",
+        name: "HostNftPurseQueryPurseResponse",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseQueryPurseResponse {\n  page: NftPurseInfoPage;\n}",
+        description: "One page of a purse.",
+        fields: [
+            {
+                name: "page",
+                type: "NftPurseInfoPage",
+                description: "The page.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-rebalance-purse-request",
+        name: "HostNftPurseRebalancePurseRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseRebalancePurseRequest {\n  from: NftPurseId;\n  to: NftPurseId;\n  keys: Array<NftPurseItemKey>;\n}",
+        description: "Request to move items between purses.",
+        fields: [
+            {
+                name: "from",
+                type: "NftPurseId",
+                description: "Source purse.",
+            },
+            {
+                name: "to",
+                type: "NftPurseId",
+                description: "Destination purse.",
+            },
+            {
+                name: "keys",
+                type: "Array<NftPurseItemKey>",
+                description: "Items to move. With `to`, the unordered set is the idempotency key.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-refund-request",
+        name: "HostNftPurseRefundRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseRefundRequest {\n  chequeId: NftPurseChequeId;\n}",
+        description: "Request to return a deposited cheque's items to their original keys.",
+        fields: [
+            {
+                name: "cheque_id",
+                type: "NftPurseChequeId",
+                description: "The deposited cheque. It is the idempotency key.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-revoke-cheque-request",
+        name: "HostNftPurseRevokeChequeRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseRevokeChequeRequest {\n  chequeId: NftPurseChequeId;\n}",
+        description: "Request to release the items of an undelivered cheque.",
+        fields: [
+            {
+                name: "cheque_id",
+                type: "NftPurseChequeId",
+                description: "Cheque to revoke.",
+            },
+        ],
+    },
+    {
+        id: "host-nft-purse-transfer-item-request",
+        name: "HostNftPurseTransferItemRequest",
+        category: "nft_purse",
+        definition: "export interface HostNftPurseTransferItemRequest {\n  item: NftPurseItemKey;\n  destination: NftPurseItemKey;\n}",
+        description: "Request to move one item to a key outside the purses.",
+        fields: [
+            {
+                name: "item",
+                type: "NftPurseItemKey",
+                description: "Item to move. With `destination`, the idempotency key.",
+            },
+            {
+                name: "destination",
+                type: "NftPurseItemKey",
+                description: "Key that receives it.",
+            },
+        ],
+    },
+    {
         id: "host-notification-acknowledge-receiver-event-request",
         name: "HostNotificationAcknowledgeReceiverEventRequest",
         category: "notifications",
@@ -7534,6 +7850,528 @@ export const types = [
         ],
     },
     {
+        id: "nft-purse-cheque",
+        name: "NftPurseCheque",
+        category: "nft_purse",
+        definition: "export interface NftPurseCheque {\n  version: number;\n  id: NftPurseChequeId;\n  recipient: NftPurseChequeRecipient;\n  items: Array<NftPurseItemKey>;\n  encryptedSecrets: HexString;\n}",
+        description: "Items handed off to a recipient.",
+        fields: [
+            {
+                name: "version",
+                type: "number",
+                description: "Cheque format version, `0`.",
+            },
+            {
+                name: "id",
+                type: "NftPurseChequeId",
+                description: "Cheque id.",
+            },
+            {
+                name: "recipient",
+                type: "NftPurseChequeRecipient",
+                description: "Who can decrypt it.",
+            },
+            {
+                name: "items",
+                type: "Array<NftPurseItemKey>",
+                description: "Keys of the handed-off items.",
+            },
+            {
+                name: "encrypted_secrets",
+                type: "HexString",
+                description: "Item secrets, encrypted to the recipient.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-cheque-destination",
+        name: "NftPurseChequeDestination",
+        category: "nft_purse",
+        definition: 'export type NftPurseChequeDestination =\n  | { tag: "Ephemeral"; value: NftPurseReceiveKey }\n  | { tag: "Static"; value: { encryptionKey: X25519PublicKey; chequeId: NftPurseChequeId } }\n;',
+        description: "Where a cheque's items go.",
+        variants: [
+            {
+                name: "Ephemeral",
+                type: '{ tag: "Ephemeral"; value: NftPurseReceiveKey }',
+                description: "A one-time receive key from `create_receive_key`. It identifies the\ntransfer, and the host derives the cheque id from it.",
+            },
+            {
+                name: "Static",
+                type: '{ tag: "Static"; value: { encryptionKey: X25519PublicKey; chequeId: NftPurseChequeId } }',
+                description: "A long-lived receiver that expects cheques encrypted to `encryption_key`.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-cheque-id",
+        name: "NftPurseChequeId",
+        category: "nft_purse",
+        definition: "export type NftPurseChequeId = HexString;",
+        description: "Id of a cheque, and the idempotency key of its deposit and refund.",
+    },
+    {
+        id: "nft-purse-cheque-recipient",
+        name: "NftPurseChequeRecipient",
+        category: "nft_purse",
+        definition: 'export type NftPurseChequeRecipient =\n  | { tag: "Ephemeral"; value: NftPurseReceiveKey }\n  | { tag: "Static"; value?: undefined }\n;',
+        description: "The part of a destination the recipient needs to find its decryption key.",
+        variants: [
+            {
+                name: "Ephemeral",
+                type: '{ tag: "Ephemeral"; value: NftPurseReceiveKey }',
+                description: "The receive key the cheque was made for.",
+            },
+            {
+                name: "Static",
+                type: '{ tag: "Static"; value?: undefined }',
+                description: "The recipient's long-lived key.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-cleared-item",
+        name: "NftPurseClearedItem",
+        category: "nft_purse",
+        definition: "export interface NftPurseClearedItem {\n  consumed: NftPurseItemKey;\n  minted: NftPurseItemKey;\n  finalized: boolean;\n}",
+        description: "One item an operation moved.",
+        fields: [
+            {
+                name: "consumed",
+                type: "NftPurseItemKey",
+                description: "Source key, from the origin purse or from the cheque.",
+            },
+            {
+                name: "minted",
+                type: "NftPurseItemKey",
+                description: "Destination key, in the destination purse.",
+            },
+            {
+                name: "finalized",
+                type: "boolean",
+                description: "Whether the moving transaction is finalized.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-clearing-reference",
+        name: "NftPurseClearingReference",
+        category: "nft_purse",
+        definition: "export interface NftPurseClearingReference {\n  root: HexString;\n  leaves: Array<[NftPurseItemKey, HexString]>;\n}",
+        description: "Product-visible clearing reference.",
+        fields: [
+            {
+                name: "root",
+                type: "HexString",
+                description: "Trie root of `leaves`.",
+            },
+            {
+                name: "leaves",
+                type: "Array<[NftPurseItemKey, HexString]>",
+                description: "Source item key and the hash of the transaction that moved it.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-create-cheque-error",
+        name: "NftPurseCreateChequeError",
+        category: "nft_purse",
+        definition: 'export type NftPurseCreateChequeError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "PurseNotFound"; value?: undefined }\n  | { tag: "ItemNotFound"; value?: undefined }\n  | { tag: "ItemUnavailable"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why a cheque was not created.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "The user did not confirm draining the source purse.",
+            },
+            {
+                name: "PurseNotFound",
+                type: '{ tag: "PurseNotFound"; value?: undefined }',
+                description: "`from` does not exist.",
+            },
+            {
+                name: "ItemNotFound",
+                type: '{ tag: "ItemNotFound"; value?: undefined }',
+                description: "Some item is not in `from`.",
+            },
+            {
+                name: "ItemUnavailable",
+                type: '{ tag: "ItemUnavailable"; value?: undefined }',
+                description: "Some item is in use.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-create-items-error",
+        name: "NftPurseCreateItemsError",
+        category: "nft_purse",
+        definition: 'export type NftPurseCreateItemsError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "CountOutOfRange"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why item keys were not created.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "The user did not grant access to the purse's owner.",
+            },
+            {
+                name: "CountOutOfRange",
+                type: '{ tag: "CountOutOfRange"; value?: undefined }',
+                description: "`count` is outside `1..=1000`.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-create-receive-key-error",
+        name: "NftPurseCreateReceiveKeyError",
+        category: "nft_purse",
+        definition: 'export type NftPurseCreateReceiveKeyError =\n  | { tag: "PurseNotFound"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why a receive key was not created.",
+        variants: [
+            {
+                name: "PurseNotFound",
+                type: '{ tag: "PurseNotFound"; value?: undefined }',
+                description: "`into` does not exist.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-deposit-error",
+        name: "NftPurseDepositError",
+        category: "nft_purse",
+        definition: 'export type NftPurseDepositError =\n  | { tag: "PurseNotFound"; value?: undefined }\n  | { tag: "EmptyCheque"; value?: undefined }\n  | { tag: "CorruptedCheque"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why a cheque could not be deposited.",
+        variants: [
+            {
+                name: "PurseNotFound",
+                type: '{ tag: "PurseNotFound"; value?: undefined }',
+                description: "`to` does not exist.",
+            },
+            {
+                name: "EmptyCheque",
+                type: '{ tag: "EmptyCheque"; value?: undefined }',
+                description: "The cheque holds no items.",
+            },
+            {
+                name: "CorruptedCheque",
+                type: '{ tag: "CorruptedCheque"; value?: undefined }',
+                description: "The secrets do not decode, or do not match the items.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-id",
+        name: "NftPurseId",
+        category: "nft_purse",
+        definition: "export type NftPurseId = number;",
+        description: "Id of an NFT purse. Ids are allocated in order from 0. The main purse,\nwhich every user has and Root owns, is `u32::MAX`.",
+    },
+    {
+        id: "nft-purse-info-page",
+        name: "NftPurseInfoPage",
+        category: "nft_purse",
+        definition: "export interface NftPurseInfoPage {\n  hasNext: boolean;\n  items: Array<NftPurseItemKey>;\n}",
+        description: "One page of the spendable items of a purse.",
+        fields: [
+            {
+                name: "has_next",
+                type: "boolean",
+                description: "Whether a later page holds more items.",
+            },
+            {
+                name: "items",
+                type: "Array<NftPurseItemKey>",
+                description: "Keys of items present on chain and not in use.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-item-key",
+        name: "NftPurseItemKey",
+        category: "nft_purse",
+        definition: "export type NftPurseItemKey = HexString;",
+        description: "Public key of one item in a purse. The host holds its secret.",
+    },
+    {
+        id: "nft-purse-list-purses-error",
+        name: "NftPurseListPursesError",
+        category: "nft_purse",
+        definition: 'export type NftPurseListPursesError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why purses could not be listed.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "The user did not grant access to the owner's purses.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-listen-for-payment-error",
+        name: "NftPurseListenForPaymentError",
+        category: "nft_purse",
+        definition: 'export type NftPurseListenForPaymentError =\n  | { tag: "ReceiveKeyNotFound"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why the host could not listen for a payment.",
+        variants: [
+            {
+                name: "ReceiveKeyNotFound",
+                type: '{ tag: "ReceiveKeyNotFound"; value?: undefined }',
+                description: "The receive key is unknown.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-owner",
+        name: "NftPurseOwner",
+        category: "nft_purse",
+        definition: 'export type NftPurseOwner =\n  | { tag: "Product"; value: string }\n  | { tag: "Root"; value?: undefined }\n;',
+        description: "Who owns an NFT purse.",
+        variants: [
+            {
+                name: "Product",
+                type: '{ tag: "Product"; value: string }',
+                description: "The product with this id created the purse.",
+            },
+            {
+                name: "Root",
+                type: '{ tag: "Root"; value?: undefined }',
+                description: "No product owns the purse: the main purse, and purses recovered\nwithout metadata.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-payment-transmission-channel",
+        name: "NftPursePaymentTransmissionChannel",
+        category: "nft_purse",
+        definition: 'export type NftPursePaymentTransmissionChannel =\n  | { tag: "Standard"; value: { sssTopic: StatementTopic } }\n;',
+        description: "Channel a receiver listens on for a cheque.",
+        variants: [
+            {
+                name: "Standard",
+                type: '{ tag: "Standard"; value: { sssTopic: StatementTopic } }',
+                description: "The statement-store topic the cheque is published under.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-purse",
+        name: "NftPursePurse",
+        category: "nft_purse",
+        definition: "export interface NftPursePurse {\n  id: NftPurseId;\n  name: string;\n}",
+        description: "A purse as `list_purses` reports it.",
+        fields: [
+            {
+                name: "id",
+                type: "NftPurseId",
+                description: "Purse id.",
+            },
+            {
+                name: "name",
+                type: "string",
+                description: "Name given at creation, or chosen by the host after a recovery that\nlost it.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-query-purse-error",
+        name: "NftPurseQueryPurseError",
+        category: "nft_purse",
+        definition: 'export type NftPurseQueryPurseError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "PageSizeOutOfBounds"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why a purse could not be read.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "The user did not grant access to the purse's owner.",
+            },
+            {
+                name: "PageSizeOutOfBounds",
+                type: '{ tag: "PageSizeOutOfBounds"; value?: undefined }',
+                description: "`page_size` is outside `1..=100`.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-rebalance-purse-error",
+        name: "NftPurseRebalancePurseError",
+        category: "nft_purse",
+        definition: 'export type NftPurseRebalancePurseError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "PurseNotFound"; value?: undefined }\n  | { tag: "ItemNotFound"; value?: undefined }\n  | { tag: "ItemUnavailable"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why items could not be moved between purses.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "The user did not confirm draining the source purse.",
+            },
+            {
+                name: "PurseNotFound",
+                type: '{ tag: "PurseNotFound"; value?: undefined }',
+                description: "`from` or `to` does not exist.",
+            },
+            {
+                name: "ItemNotFound",
+                type: '{ tag: "ItemNotFound"; value?: undefined }',
+                description: "Some key is not in `from`.",
+            },
+            {
+                name: "ItemUnavailable",
+                type: '{ tag: "ItemUnavailable"; value?: undefined }',
+                description: "Some key is in use.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-receive-key",
+        name: "NftPurseReceiveKey",
+        category: "nft_purse",
+        definition: "export type NftPurseReceiveKey = HexString;",
+        description: "One-time key a receiver hands to the sender to start a payment.",
+    },
+    {
+        id: "nft-purse-refund-error",
+        name: "NftPurseRefundError",
+        category: "nft_purse",
+        definition: 'export type NftPurseRefundError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "ChequeNotFound"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why a cheque could not be refunded.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "Another product deposited the cheque, or the user did not confirm.",
+            },
+            {
+                name: "ChequeNotFound",
+                type: '{ tag: "ChequeNotFound"; value?: undefined }',
+                description: "The cheque is unknown.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-revoke-cheque-error",
+        name: "NftPurseRevokeChequeError",
+        category: "nft_purse",
+        definition: 'export type NftPurseRevokeChequeError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "ChequeNotFound"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why a cheque was not revoked.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "Another product created the cheque.",
+            },
+            {
+                name: "ChequeNotFound",
+                type: '{ tag: "ChequeNotFound"; value?: undefined }',
+                description: "The cheque is unknown.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-status",
+        name: "NftPurseStatus",
+        category: "nft_purse",
+        definition: 'export type NftPurseStatus =\n  | { tag: "InProgress"; value?: undefined }\n  | { tag: "Clearing"; value: { cleared: Array<NftPurseClearedItem> } }\n  | { tag: "Cleared"; value: { cleared: Array<NftPurseClearedItem>; reference: NftPurseClearingReference } }\n  | { tag: "Incomplete"; value: { cleared: Array<NftPurseClearedItem>; failed: Array<NftPurseItemKey>; reference: NftPurseClearingReference } }\n;',
+        description: "Progress of an operation that moves items.",
+        variants: [
+            {
+                name: "InProgress",
+                type: '{ tag: "InProgress"; value?: undefined }',
+                description: "Neither an optimistic success nor a terminal failure is observed yet.",
+            },
+            {
+                name: "Clearing",
+                type: '{ tag: "Clearing"; value: { cleared: Array<NftPurseClearedItem> } }',
+                description: "At least one item is not yet cleared in a finalized block.",
+            },
+            {
+                name: "Cleared",
+                type: '{ tag: "Cleared"; value: { cleared: Array<NftPurseClearedItem>; reference: NftPurseClearingReference } }',
+                description: "Terminal: every item is cleared in a finalized block.",
+            },
+            {
+                name: "Incomplete",
+                type: '{ tag: "Incomplete"; value: { cleared: Array<NftPurseClearedItem>; failed: Array<NftPurseItemKey>; reference: NftPurseClearingReference } }',
+                description: "Terminal: every transaction settled and some of them failed.",
+            },
+        ],
+    },
+    {
+        id: "nft-purse-transfer-item-error",
+        name: "NftPurseTransferItemError",
+        category: "nft_purse",
+        definition: 'export type NftPurseTransferItemError =\n  | { tag: "Denied"; value?: undefined }\n  | { tag: "ItemNotFound"; value?: undefined }\n  | { tag: "ItemUnavailable"; value?: undefined }\n  | { tag: "Other"; value: GenericError }\n;',
+        description: "Why an item could not be transferred.",
+        variants: [
+            {
+                name: "Denied",
+                type: '{ tag: "Denied"; value?: undefined }',
+                description: "The user did not confirm draining the item's purse.",
+            },
+            {
+                name: "ItemNotFound",
+                type: '{ tag: "ItemNotFound"; value?: undefined }',
+                description: "The item is in no known purse.",
+            },
+            {
+                name: "ItemUnavailable",
+                type: '{ tag: "ItemUnavailable"; value?: undefined }',
+                description: "The item is in use.",
+            },
+            {
+                name: "Other",
+                type: '{ tag: "Other"; value: GenericError }',
+                description: "Any other failure.",
+            },
+        ],
+    },
+    {
         id: "notification-activation",
         name: "NotificationActivation",
         category: "notifications",
@@ -8546,7 +9384,7 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n  | { tag: "BalanceAccess"; value?: undefined }\n;',
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n  | { tag: "Calling"; value?: undefined }\n  | { tag: "BalanceAccess"; value?: undefined }\n  | { tag: "NftPurseRead"; value: { owner: NftPurseOwner } }\n;',
         description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit`, `JamPeers` and\n`BalanceAccess` are also triggered implicitly by the corresponding business\ncalls when not yet granted (`JamPeerTransport::dial` for `JamPeers`).",
         variants: [
             {
@@ -8588,6 +9426,11 @@ export const types = [
                 name: "BalanceAccess",
                 type: '{ tag: "BalanceAccess"; value?: undefined }',
                 description: "Seeing the user's payment balance through `payment.balanceSubscribe`,\nand learning that a payment request was refused for the balance rather\nthan by the user.",
+            },
+            {
+                name: "NftPurseRead",
+                type: '{ tag: "NftPurseRead"; value: { owner: NftPurseOwner } }',
+                description: "Reading the NFT purses of an owner other than the caller: listing them,\nquerying their items and creating item keys in them. A grant covers\nthat owner only.",
             },
         ],
     },
@@ -9153,6 +9996,13 @@ export const types = [
                 description: "On-chain event proof.",
             },
         ],
+    },
+    {
+        id: "statement-topic",
+        name: "StatementTopic",
+        category: "common",
+        definition: "export type StatementTopic = HexString;",
+        description: "Topic a statement-store statement is published under.",
     },
     {
         id: "storage-query-item",
@@ -9730,5 +10580,12 @@ export const types = [
                 description: "Merlin `append_message` value.",
             },
         ],
+    },
+    {
+        id: "x-25519-public-key",
+        name: "X25519PublicKey",
+        category: "common",
+        definition: "export type X25519PublicKey = HexString;",
+        description: "X25519 public key for key agreement (RFC 0022).",
     },
 ];

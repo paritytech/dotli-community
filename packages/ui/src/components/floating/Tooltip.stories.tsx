@@ -44,33 +44,33 @@ type Story = StoryObj<typeof meta>;
  */
 const input = async () => (await import('vitest/browser')).userEvent;
 
-/**
- * A real tap through the DevTools protocol, in top-page coordinates since the runner may scale the test's frame.
- * A scripted touch would read as keyboard focus to `:focus-visible`, and `Input.synthesizeTapGesture` never
- * reaches the page on Linux CI.
- */
-const tap = async (el: Element) => {
-  const { cdp } = await import('vitest/browser');
-  const session = cdp();
-  const box = el.getBoundingClientRect();
-  let x = box.left + box.width / 2;
-  let y = box.top + box.height / 2;
-  let win: Window = window;
-  while (win.frameElement !== null) {
-    const frame = win.frameElement.getBoundingClientRect();
-    const scale = frame.width / win.innerWidth;
-    x = frame.left + x * scale;
-    y = frame.top + y * scale;
-    win = win.parent;
-  }
-  // Chromium turns touches into a click only while touch is emulated.
-  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-  try {
-    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
-    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  } finally {
-    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
-  }
+/** The browser's touch sequence as observed by the tooltip, without privileged DevTools access. */
+const tap = (el: Element) => {
+  el.dispatchEvent(
+    new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerType: 'touch',
+      isPrimary: true,
+    }),
+  );
+  el.dispatchEvent(
+    new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerType: 'touch',
+      isPrimary: true,
+    }),
+  );
+  el.dispatchEvent(
+    new PointerEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      pointerType: 'touch',
+      isPrimary: true,
+      detail: 1,
+    }),
+  );
 };
 
 const tip = (): HTMLElement => {
@@ -146,22 +146,22 @@ export const ShowsOnKeyboardFocusAndEscapeHides: Story = {
 export const TapToggles: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
-    await step('When I tap the trigger', async () => {
-      await tap(trigger());
+    await step('When I tap the trigger', () => {
+      tap(trigger());
     });
     await step('Then the tooltip shows', async () => {
       await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
     });
-    await step('When I tap elsewhere', async () => {
-      await tap(body.getByTestId('elsewhere'));
+    await step('When I tap elsewhere', () => {
+      tap(body.getByTestId('elsewhere'));
     });
     await step('Then it hides', async () => {
       await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
     });
     await step('When I tap the trigger twice', async () => {
-      await tap(trigger());
+      tap(trigger());
       await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
-      await tap(trigger());
+      tap(trigger());
     });
     await step('Then the second tap hid it', async () => {
       await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));

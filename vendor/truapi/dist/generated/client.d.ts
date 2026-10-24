@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "a72c149bbae24af5";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "4d759be92c9a692a";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -477,6 +477,62 @@ export declare class MediaClient {
      */
     cancelOperation(request: T.HostMediaCancelOperationRequest, options?: CallOptions): ResultAsync<T.MediaOperationSnapshot, S.CallErrorValue<T.VersionedHostMediaCancelOperationError>>;
 }
+/**
+ * Purses of NFT items, each item held by its own host-derived key.
+ *
+ * A product uses the purses it created without any check. Reading a purse
+ * owned by Root or another product needs the `NftPurseRead` permission for
+ * that owner; draining one asks the user to confirm each call. Long-running
+ * operations are subscriptions whose items are the RFC status updates.
+ */
+export declare class NftPurseClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Create a purse owned by the calling product.
+     *
+     * The name is at most 64 bytes of UTF-8. A longer name fails with a
+     * generic error carrying its length.
+     */
+    createPurse(request: T.HostNftPurseCreatePurseRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreatePurseResponse, S.CallErrorValue<T.VersionedHostNftPurseCreatePurseError>>;
+    /** Create new item keys in a purse. */
+    createItems(request: T.HostNftPurseCreateItemsRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreateItemsResponse, S.CallErrorValue<T.VersionedHostNftPurseCreateItemsError>>;
+    /** Read one page of the items in a purse that are on chain and not in use. */
+    queryPurse(request: T.HostNftPurseQueryPurseRequest, options?: CallOptions): ResultAsync<T.HostNftPurseQueryPurseResponse, S.CallErrorValue<T.VersionedHostNftPurseQueryPurseError>>;
+    /**
+     * List the purses of an owner, by id.
+     *
+     * The caller's own purses need no permission. Root's purses, or another
+     * product's, need the `NftPurseRead` permission for that owner.
+     */
+    listPurses(request: T.HostNftPurseListPursesRequest, options?: CallOptions): ResultAsync<T.HostNftPurseListPursesResponse, S.CallErrorValue<T.VersionedHostNftPurseListPursesError>>;
+    /** Move items from one purse to another. */
+    rebalancePurse({ request }: {
+        request: T.HostNftPurseRebalancePurseRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseRebalancePurseError>>;
+    /** Create a one-time receive key for a payment into a purse. */
+    createReceiveKey(request: T.HostNftPurseCreateReceiveKeyRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreateReceiveKeyResponse, S.CallErrorValue<T.VersionedHostNftPurseCreateReceiveKeyError>>;
+    /** Listen for the cheque sent to a receive key. */
+    listenForPayment({ request }: {
+        request: T.HostNftPurseListenForPaymentRequest;
+    }): ObservableLike<T.HostNftPurseListenForPaymentItem, S.CallErrorValue<T.VersionedHostNftPurseListenForPaymentError>>;
+    /** Hand items off in a cheque that the product delivers. */
+    createCheque(request: T.HostNftPurseCreateChequeRequest, options?: CallOptions): ResultAsync<T.HostNftPurseCreateChequeResponse, S.CallErrorValue<T.VersionedHostNftPurseCreateChequeError>>;
+    /** Release the items of a cheque the recipient never received. */
+    revokeCheque(request: T.HostNftPurseRevokeChequeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNftPurseRevokeChequeError>>;
+    /** Deposit a received cheque into a purse. */
+    deposit({ request }: {
+        request: T.HostNftPurseDepositRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseDepositError>>;
+    /** Return the items of a deposited cheque to their original keys. */
+    refund({ request }: {
+        request: T.HostNftPurseRefundRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseRefundError>>;
+    /** Move one item to a key outside the purses. */
+    transferItem({ request }: {
+        request: T.HostNftPurseTransferItemRequest;
+    }): ObservableLike<T.NftPurseStatus, S.CallErrorValue<T.VersionedHostNftPurseTransferItemError>>;
+}
 /** Local notification scheduling and consent-scoped background receiving. */
 export declare class NotificationsClient {
     #private;
@@ -922,6 +978,7 @@ export interface TrUApiClient {
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
     readonly media: MediaClient;
+    readonly nftPurse: NftPurseClient;
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;

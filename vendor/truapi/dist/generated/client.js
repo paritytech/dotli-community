@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "a72c149bbae24af5";
+export const TRUAPI_WIRE_SCHEMA_HASH = "4d759be92c9a692a";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -1332,6 +1332,164 @@ export class MediaClient {
         });
     }
 }
+/**
+ * Purses of NFT items, each item held by its own host-derived key.
+ *
+ * A product uses the purses it created without any check. Reading a purse
+ * owned by Root or another product needs the `NftPurseRead` permission for
+ * that owner; draining one asks the user to confirm each call. Long-running
+ * operations are subscriptions whose items are the RFC status updates.
+ */
+export class NftPurseClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Create a purse owned by the calling product.
+     *
+     * The name is at most 64 bytes of UTF-8. A longer name fails with a
+     * generic error carrying its length.
+     */
+    createPurse(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_PURSE,
+            payload: T.VersionedHostNftPurseCreatePurseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreatePurseResponse, S.CallError(T.VersionedHostNftPurseCreatePurseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Create new item keys in a purse. */
+    createItems(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_ITEMS,
+            payload: T.VersionedHostNftPurseCreateItemsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreateItemsResponse, S.CallError(T.VersionedHostNftPurseCreateItemsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Read one page of the items in a purse that are on chain and not in use. */
+    queryPurse(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_QUERY_PURSE,
+            payload: T.VersionedHostNftPurseQueryPurseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseQueryPurseResponse, S.CallError(T.VersionedHostNftPurseQueryPurseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * List the purses of an owner, by id.
+     *
+     * The caller's own purses need no permission. Root's purses, or another
+     * product's, need the `NftPurseRead` permission for that owner.
+     */
+    listPurses(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_LIST_PURSES,
+            payload: T.VersionedHostNftPurseListPursesRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseListPursesResponse, S.CallError(T.VersionedHostNftPurseListPursesError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Move items from one purse to another. */
+    rebalancePurse({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_REBALANCE_PURSE,
+            payload: T.VersionedHostNftPurseRebalancePurseRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseRebalancePurseItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseRebalancePurseError)),
+        });
+    }
+    /** Create a one-time receive key for a payment into a purse. */
+    createReceiveKey(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_RECEIVE_KEY,
+            payload: T.VersionedHostNftPurseCreateReceiveKeyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreateReceiveKeyResponse, S.CallError(T.VersionedHostNftPurseCreateReceiveKeyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Listen for the cheque sent to a receive key. */
+    listenForPayment({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_LISTEN_FOR_PAYMENT,
+            payload: T.VersionedHostNftPurseListenForPaymentRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseListenForPaymentItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseListenForPaymentError)),
+        });
+    }
+    /** Hand items off in a cheque that the product delivers. */
+    createCheque(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_CREATE_CHEQUE,
+            payload: T.VersionedHostNftPurseCreateChequeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseCreateChequeResponse, S.CallError(T.VersionedHostNftPurseCreateChequeError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Release the items of a cheque the recipient never received. */
+    revokeCheque(request, options) {
+        return this.#transport.request({
+            ids: W.NFT_PURSE_REVOKE_CHEQUE,
+            payload: T.VersionedHostNftPurseRevokeChequeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNftPurseRevokeChequeResponse, S.CallError(T.VersionedHostNftPurseRevokeChequeError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Deposit a received cheque into a purse. */
+    deposit({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_DEPOSIT,
+            payload: T.VersionedHostNftPurseDepositRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseDepositItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseDepositError)),
+        });
+    }
+    /** Return the items of a deposited cheque to their original keys. */
+    refund({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_REFUND,
+            payload: T.VersionedHostNftPurseRefundRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseRefundItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseRefundError)),
+        });
+    }
+    /** Move one item to a key outside the purses. */
+    transferItem({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.NFT_PURSE_TRANSFER_ITEM,
+            payload: T.VersionedHostNftPurseTransferItemRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostNftPurseTransferItemItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostNftPurseTransferItemError)),
+        });
+    }
+}
 /** Local notification scheduling and consent-scoped background receiving. */
 export class NotificationsClient {
     #transport;
@@ -2301,6 +2459,7 @@ export function createClient(transport) {
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),
         media: new MediaClient(transport),
+        nftPurse: new NftPurseClient(transport),
         notifications: new NotificationsClient(transport),
         payment: new PaymentClient(transport),
         permissions: new PermissionsClient(transport),
