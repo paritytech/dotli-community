@@ -290,6 +290,12 @@ export const WIRE_DECODE_TABLE = {
         2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostPaymentStatusSubscribeError)).dec(payload),
         3: () => undefined,
     },
+    [W.PAYMENT_TOP_UP_STATUS_SUBSCRIBE.trait * 256 + W.PAYMENT_TOP_UP_STATUS_SUBSCRIBE.method]: {
+        0: (payload) => T.VersionedHostPaymentTopUpStatusSubscribeRequest.dec(payload),
+        1: (payload) => T.VersionedHostPaymentTopUpStatusSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostPaymentTopUpStatusSubscribeError)).dec(payload),
+        3: () => undefined,
+    },
     [W.PERMISSIONS_REQUEST_DEVICE_PERMISSION.trait * 256 + W.PERMISSIONS_REQUEST_DEVICE_PERMISSION.method]: {
         0: (payload) => T.VersionedHostDevicePermissionRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostDevicePermissionResponse, S.CallError(T.VersionedHostDevicePermissionError)).dec(payload),
@@ -436,6 +442,16 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostCancelNextGameRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostCancelNextGameResponse, S.CallError(T.VersionedHostCancelNextGameError)).dec(payload),
     },
+    [W.FUNDING_REQUEST.trait * 256 + W.FUNDING_REQUEST.method]: {
+        0: (payload) => T.VersionedHostFundingRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostFundingResponse, S.CallError(T.VersionedHostFundingError)).dec(payload),
+    },
+    [W.FUNDING_STATUS_SUBSCRIBE.trait * 256 + W.FUNDING_STATUS_SUBSCRIBE.method]: {
+        0: (payload) => T.VersionedHostFundingStatusSubscribeRequest.dec(payload),
+        1: (payload) => T.VersionedHostFundingStatusSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostFundingStatusSubscribeError)).dec(payload),
+        3: () => undefined,
+    },
     [W.EXPANDED_CARD_SET_FACE_SHOWN.trait * 256 + W.EXPANDED_CARD_SET_FACE_SHOWN.method]: {
         0: (payload) => T.VersionedHostExpandedCardSetFaceShownRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostExpandedCardSetFaceShownResponse, S.CallError(T.VersionedHostExpandedCardSetFaceShownError)).dec(payload),
@@ -443,6 +459,64 @@ export const WIRE_DECODE_TABLE = {
     [W.SCANNER_SCAN.trait * 256 + W.SCANNER_SCAN.method]: {
         0: (payload) => T.VersionedHostScannerScanRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostScannerScanResponse, S.CallError(T.VersionedHostScannerScanError)).dec(payload),
+    },
+    [W.NFT_PURSE_CREATE_PURSE.trait * 256 + W.NFT_PURSE_CREATE_PURSE.method]: {
+        0: (payload) => T.VersionedHostNftPurseCreatePurseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseCreatePurseResponse, S.CallError(T.VersionedHostNftPurseCreatePurseError)).dec(payload),
+    },
+    [W.NFT_PURSE_CREATE_ITEMS.trait * 256 + W.NFT_PURSE_CREATE_ITEMS.method]: {
+        0: (payload) => T.VersionedHostNftPurseCreateItemsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseCreateItemsResponse, S.CallError(T.VersionedHostNftPurseCreateItemsError)).dec(payload),
+    },
+    [W.NFT_PURSE_QUERY_PURSE.trait * 256 + W.NFT_PURSE_QUERY_PURSE.method]: {
+        0: (payload) => T.VersionedHostNftPurseQueryPurseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseQueryPurseResponse, S.CallError(T.VersionedHostNftPurseQueryPurseError)).dec(payload),
+    },
+    [W.NFT_PURSE_LIST_PURSES.trait * 256 + W.NFT_PURSE_LIST_PURSES.method]: {
+        0: (payload) => T.VersionedHostNftPurseListPursesRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseListPursesResponse, S.CallError(T.VersionedHostNftPurseListPursesError)).dec(payload),
+    },
+    [W.NFT_PURSE_REBALANCE_PURSE.trait * 256 + W.NFT_PURSE_REBALANCE_PURSE.method]: {
+        0: (payload) => T.VersionedHostNftPurseRebalancePurseRequest.dec(payload),
+        1: (payload) => T.VersionedHostNftPurseRebalancePurseItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostNftPurseRebalancePurseError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.NFT_PURSE_CREATE_RECEIVE_KEY.trait * 256 + W.NFT_PURSE_CREATE_RECEIVE_KEY.method]: {
+        0: (payload) => T.VersionedHostNftPurseCreateReceiveKeyRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseCreateReceiveKeyResponse, S.CallError(T.VersionedHostNftPurseCreateReceiveKeyError)).dec(payload),
+    },
+    [W.NFT_PURSE_LISTEN_FOR_PAYMENT.trait * 256 + W.NFT_PURSE_LISTEN_FOR_PAYMENT.method]: {
+        0: (payload) => T.VersionedHostNftPurseListenForPaymentRequest.dec(payload),
+        1: (payload) => T.VersionedHostNftPurseListenForPaymentItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostNftPurseListenForPaymentError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.NFT_PURSE_CREATE_CHEQUE.trait * 256 + W.NFT_PURSE_CREATE_CHEQUE.method]: {
+        0: (payload) => T.VersionedHostNftPurseCreateChequeRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseCreateChequeResponse, S.CallError(T.VersionedHostNftPurseCreateChequeError)).dec(payload),
+    },
+    [W.NFT_PURSE_REVOKE_CHEQUE.trait * 256 + W.NFT_PURSE_REVOKE_CHEQUE.method]: {
+        0: (payload) => T.VersionedHostNftPurseRevokeChequeRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNftPurseRevokeChequeResponse, S.CallError(T.VersionedHostNftPurseRevokeChequeError)).dec(payload),
+    },
+    [W.NFT_PURSE_DEPOSIT.trait * 256 + W.NFT_PURSE_DEPOSIT.method]: {
+        0: (payload) => T.VersionedHostNftPurseDepositRequest.dec(payload),
+        1: (payload) => T.VersionedHostNftPurseDepositItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostNftPurseDepositError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.NFT_PURSE_REFUND.trait * 256 + W.NFT_PURSE_REFUND.method]: {
+        0: (payload) => T.VersionedHostNftPurseRefundRequest.dec(payload),
+        1: (payload) => T.VersionedHostNftPurseRefundItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostNftPurseRefundError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.NFT_PURSE_TRANSFER_ITEM.trait * 256 + W.NFT_PURSE_TRANSFER_ITEM.method]: {
+        0: (payload) => T.VersionedHostNftPurseTransferItemRequest.dec(payload),
+        1: (payload) => T.VersionedHostNftPurseTransferItemItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostNftPurseTransferItemError)).dec(payload),
+        3: () => undefined,
     },
     [W.PROFILE_PRESENT.trait * 256 + W.PROFILE_PRESENT.method]: {
         0: (payload) => T.VersionedHostProfilePresentRequest.dec(payload),

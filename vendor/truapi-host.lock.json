@@ -1,32 +1,32 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "integrate/media-statement-renewal-fix",
-  "upstreamRevision": "45ad51f1a3969bd6763b99722d4dbd3910e3c950",
+  "upstreamBranch": "integrate/media-stack-0.26-rebase",
+  "upstreamRevision": "574d85a4cee44a3c0d8cd9877fb5a361a4de4d43",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
-      "version": "0.25.0",
-      "sourceArchiveSha256": "1e7efaf4779cb4b442896777b10b401522cbc5b2921c0934a5d821be276ab1b4",
-      "clientSha256": "d11ad51a0184e6a7d5c06ed1ae82ddfa444c444186273ee487ff3f144e6804f9"
+      "version": "0.26.0",
+      "sourceArchiveSha256": "8c23bf78cd361e2cb626922b1e939768dc80c1accb6d43680d6925d94c42754c",
+      "clientSha256": "7f457e51c2da4596f3670b707eed7e80606de17cbe71e0dbdbbdb773e372271a"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
-      "version": "0.25.0",
-      "sourceArchiveSha256": "1106c05062f0383f3d99345ae460dd8ad3635051a0d15bb047db689ce6a06fc3",
+      "version": "0.26.0",
+      "sourceArchiveSha256": "3305190e533c9fbbe9f1aa099719918743d74b90bf09697e50351a963de43b83",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasm": {
         "web": {
-          "sha256": "c0d85c6ccb75970cfcbbb6a96c6bca150cb917ea6c0a080d584fc5c6def2dbe6",
+          "sha256": "1bbbb3a994ba8538432880bf4adb1349a90566f5af9fddf342cd68dbfd388706",
           "features": ["runtime"]
         },
         "testing": {
-          "sha256": "48b54457289df69f591ba679a8a6aad3d7fa1ab8a910c50e1c3e870e97e232c5",
+          "sha256": "531448dae23caae4fabd03aeda40ea8a8828ad1ff73cf1edc8facc38948e856e",
           "features": ["wasm-signing-host", "test-host"]
         }
       }
     }
   },
-  "wasmUpstreamRevision": "45ad51f1a3969bd6763b99722d4dbd3910e3c950",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1625"
+  "wasmUpstreamRevision": "574d85a4cee44a3c0d8cd9877fb5a361a4de4d43",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1626"
 }

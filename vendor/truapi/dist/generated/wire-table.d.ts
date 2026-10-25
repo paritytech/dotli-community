@@ -323,6 +323,11 @@ export declare const PAYMENT_STATUS_SUBSCRIBE: {
     readonly method: 3;
     readonly kind: "subscription";
 };
+export declare const PAYMENT_TOP_UP_STATUS_SUBSCRIBE: {
+    readonly trait: 9;
+    readonly method: 4;
+    readonly kind: "subscription";
+};
 export declare const PERMISSIONS_REQUEST_DEVICE_PERMISSION: {
     readonly trait: 10;
     readonly method: 0;
@@ -488,6 +493,16 @@ export declare const GAME_CANCEL_NEXT_GAME: {
     readonly method: 1;
     readonly kind: "request";
 };
+export declare const FUNDING_REQUEST: {
+    readonly trait: 22;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const FUNDING_STATUS_SUBSCRIBE: {
+    readonly trait: 22;
+    readonly method: 1;
+    readonly kind: "subscription";
+};
 export declare const EXPANDED_CARD_SET_FACE_SHOWN: {
     readonly trait: 23;
     readonly method: 0;
@@ -497,6 +512,66 @@ export declare const SCANNER_SCAN: {
     readonly trait: 25;
     readonly method: 0;
     readonly kind: "request";
+};
+export declare const NFT_PURSE_CREATE_PURSE: {
+    readonly trait: 26;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_CREATE_ITEMS: {
+    readonly trait: 26;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_QUERY_PURSE: {
+    readonly trait: 26;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_LIST_PURSES: {
+    readonly trait: 26;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_REBALANCE_PURSE: {
+    readonly trait: 26;
+    readonly method: 4;
+    readonly kind: "subscription";
+};
+export declare const NFT_PURSE_CREATE_RECEIVE_KEY: {
+    readonly trait: 26;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_LISTEN_FOR_PAYMENT: {
+    readonly trait: 26;
+    readonly method: 6;
+    readonly kind: "subscription";
+};
+export declare const NFT_PURSE_CREATE_CHEQUE: {
+    readonly trait: 26;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_REVOKE_CHEQUE: {
+    readonly trait: 26;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const NFT_PURSE_DEPOSIT: {
+    readonly trait: 26;
+    readonly method: 9;
+    readonly kind: "subscription";
+};
+export declare const NFT_PURSE_REFUND: {
+    readonly trait: 26;
+    readonly method: 10;
+    readonly kind: "subscription";
+};
+export declare const NFT_PURSE_TRANSFER_ITEM: {
+    readonly trait: 26;
+    readonly method: 11;
+    readonly kind: "subscription";
 };
 export declare const PROFILE_PRESENT: {
     readonly trait: 69;

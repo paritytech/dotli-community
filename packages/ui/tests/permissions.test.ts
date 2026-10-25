@@ -558,6 +558,26 @@ describe('three-way permission prompts', () => {
     await expect(dismissed).rejects.toThrow('User dismissed permission dialog');
   });
 
+  it("As a dotli user, I see which product's NFT purses an app wants to inspect", async () => {
+    // Given
+    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
+      permission: {
+        tag: 'NftPurseRead',
+        value: { owner: { tag: 'Product', value: 'gallery.paseo' } },
+      },
+    });
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('gallery.paseo');
+    });
+
+    // When
+    await clickPromptButton('Allow once');
+
+    // Then
+    await expect(response).resolves.toBe('AllowOnce');
+    expect(myappWrites).toBe(0);
+  });
+
   it('As a dotli user, always allowing transactions returns the durable decision to the core', async () => {
     // Given
     const events: unknown[] = [];
@@ -628,12 +648,20 @@ describe('three-way permission prompts', () => {
     }
   });
 
-  for (const permission of ['ChainSubmit', 'PreimageSubmit', 'StatementSubmit', 'Notifications', 'Camera'] as const) {
+  for (const permission of [
+    'BalanceAccess',
+    'ChainSubmit',
+    'PreimageSubmit',
+    'StatementSubmit',
+    'Notifications',
+    'Camera',
+    'Motion',
+  ] as const) {
     for (const decision of ['AllowAlways', 'Deny'] as const) {
       it(`As a product, ${permission} returns ${decision} without invalidating the active core prompt`, async () => {
         const callbacks = createPromptPermission('myapp');
         const response =
-          permission === 'Notifications' || permission === 'Camera'
+          permission === 'Notifications' || permission === 'Camera' || permission === 'Motion'
             ? callbacks.devicePermission(PRODUCT, permission)
             : callbacks.remotePermission(PRODUCT, { permission: { tag: permission } });
 

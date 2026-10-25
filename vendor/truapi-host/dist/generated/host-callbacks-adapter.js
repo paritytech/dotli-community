@@ -24,10 +24,18 @@ export function createWasmRawCallbacks(callbacks) {
     const pocket = callbacks.pocket;
     const profile = profileHostAdapter(callbacks.profile);
     const scanner = callbacks.scanner;
-    const hop = callbacks.hop ?? unavailableHopProvider;
+    const auth = callbacks.auth;
+    const locale = callbacks.locale;
+    const notifications = callbacks.notifications;
+    const userConfirmation = callbacks.userConfirmation;
+    const hop = { ...unavailableHopProvider, ...callbacks.hop };
     const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
     return {
-        authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
+        ...(typeof auth.authStateChanged === "function"
+            ? {
+                authStateChanged: async (state) => await auth.authStateChanged(AuthState.dec(state)),
+            }
+            : {}),
         chainConnect: chainConnectAdapter(callbacks.chain),
         ...(chat
             ? {
@@ -64,15 +72,27 @@ export function createWasmRawCallbacks(callbacks) {
                 cancelGameReminder: async (product) => await game.cancelGameReminder(ProductContext.dec(product)),
             }
             : {}),
-        allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
-        hopConnect: hopConnectAdapter(hop),
+        ...(typeof hop.allowedHopEndpoints === "function"
+            ? {
+                allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
+            }
+            : {}),
+        ...(typeof hop.connectHop === "function"
+            ? {
+                hopConnect: hopConnectAdapter(hop),
+            }
+            : {}),
         ...(identityBackend
             ? {
                 identityUsernameCandidates: async (username, peopleChainGenesisHash) => identityUsernameCandidatesResultCodec.enc(await identityBackend.identityUsernameCandidates(username, peopleChainGenesisHash)),
             }
             : {}),
         subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(HostLocaleSubscribeItem.enc(item)), sendError),
-        localizeTimestamps: async (request) => HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(HostLocaleLocalizeTimestampsRequest.dec(request))),
+        ...(typeof locale.localizeTimestamps === "function"
+            ? {
+                localizeTimestamps: async (request) => HostLocaleLocalizeTimestampsResponse.enc(await locale.localizeTimestamps(HostLocaleLocalizeTimestampsRequest.dec(request))),
+            }
+            : {}),
         ...(typeof media?.mediaBackendCapabilities === "function" && typeof media?.mediaBackendEvents === "function" && typeof media?.mediaBackendCommand === "function"
             ? {
                 mediaBackendCapabilities: async (product) => MediaBackendCapabilities.enc(await media.mediaBackendCapabilities(ProductContext.dec(product))),
@@ -89,13 +109,41 @@ export function createWasmRawCallbacks(callbacks) {
         cancelChatFileExport: async (exportId) => await nativeChatFiles.cancelChatFileExport(exportId),
         navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
         pushNotification: async (notification) => HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(HostPushNotificationRequest.dec(notification))),
-        cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
-        receiverAuthority: async (productId) => { const value = await callbacks.notifications.receiverAuthority(productId); return value == null ? undefined : ReceivingAuthority.enc(value); },
-        receiverConsent: async (authority, watches) => await callbacks.notifications.receiverConsent(ReceivingAuthority.dec(authority), S.Vector(ReceivingWatch).dec(watches)),
-        receiverChanged: async () => await callbacks.notifications.receiverChanged(),
-        receiverCommand: async (productId, action, payload) => await callbacks.notifications.receiverCommand(productId, action, payload),
-        activationEvents: async () => NotificationActivations.enc(await callbacks.notifications.activationEvents()),
-        acknowledgeActivation: async (request) => await callbacks.notifications.acknowledgeActivation(NotificationActivationAcknowledgeRequest.dec(request)),
+        ...(typeof notifications.cancelNotification === "function"
+            ? {
+                cancelNotification: async (id) => await notifications.cancelNotification(id),
+            }
+            : {}),
+        ...(typeof notifications.receiverAuthority === "function"
+            ? {
+                receiverAuthority: async (productId) => { const value = await notifications.receiverAuthority(productId); return value == null ? undefined : ReceivingAuthority.enc(value); },
+            }
+            : {}),
+        ...(typeof notifications.receiverConsent === "function"
+            ? {
+                receiverConsent: async (authority, watches) => await notifications.receiverConsent(ReceivingAuthority.dec(authority), S.Vector(ReceivingWatch).dec(watches)),
+            }
+            : {}),
+        ...(typeof notifications.receiverChanged === "function"
+            ? {
+                receiverChanged: async () => await notifications.receiverChanged(),
+            }
+            : {}),
+        ...(typeof notifications.receiverCommand === "function"
+            ? {
+                receiverCommand: async (productId, action, payload) => await notifications.receiverCommand(productId, action, payload),
+            }
+            : {}),
+        ...(typeof notifications.activationEvents === "function"
+            ? {
+                activationEvents: async () => NotificationActivations.enc(await notifications.activationEvents()),
+            }
+            : {}),
+        ...(typeof notifications.acknowledgeActivation === "function"
+            ? {
+                acknowledgeActivation: async (request) => await notifications.acknowledgeActivation(NotificationActivationAcknowledgeRequest.dec(request)),
+            }
+            : {}),
         ...(permissionStatus
             ? {
                 devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(HostDevicePermissionRequest.dec(request))),
@@ -129,7 +177,11 @@ export function createWasmRawCallbacks(callbacks) {
             }
             : {}),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),
-        confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
+        ...(typeof userConfirmation.confirmPermission === "function"
+            ? {
+                confirmPermission: async (review) => PermissionDecision.enc(await userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
+            }
+            : {}),
         confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
     };
 }
