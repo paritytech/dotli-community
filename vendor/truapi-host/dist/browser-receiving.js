@@ -20,7 +20,7 @@ export function createBrowserReceivingClient(options) {
                 else
                     resolve(result);
             }
-            channel.port1.onmessage = event => {
+            channel.port1.onmessage = (event) => {
                 const reply = event.data;
                 if (!reply || typeof reply.ok !== "boolean") {
                     finish(new Error("invalid receiving worker reply"));
@@ -30,7 +30,9 @@ export function createBrowserReceivingClient(options) {
             };
             channel.port1.onmessageerror = () => finish(new Error("receiving worker message failed"));
             try {
-                worker.postMessage({ type: "truapi:receiving", operation, value }, [channel.port2]);
+                worker.postMessage({ type: "truapi:receiving", operation, value }, [
+                    channel.port2,
+                ]);
             }
             catch (error) {
                 finish(error instanceof Error ? error : new Error(String(error)));
@@ -38,16 +40,26 @@ export function createBrowserReceivingClient(options) {
         });
     }
     const onMessage = (message) => {
-        if (closed || message.source !== registration.active || message.data?.type !== "truapi:receiving-host" || !message.ports[0])
+        if (closed ||
+            message.source !== registration.active ||
+            message.data?.type !== "truapi:receiving-host" ||
+            !message.ports[0])
             return;
         const port = message.ports[0];
         const { operation, authority, watches, event } = message.data;
-        void Promise.resolve().then(() => operation === "consent" ? options.consent(authority, watches)
-            : operation === "activate" ? options.activate(authority, event) : false)
-            .then(value => port.postMessage(value === true), () => port.postMessage(false)).finally(() => port.close());
+        void Promise.resolve()
+            .then(() => operation === "consent"
+            ? options.consent(authority, watches)
+            : operation === "activate"
+                ? options.activate(authority, event)
+                : false)
+            .then((value) => port.postMessage(value === true), () => port.postMessage(false))
+            .finally(() => port.close());
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
-    const onOnline = () => { void request("refresh").catch(() => { }); };
+    const onOnline = () => {
+        void request("refresh").catch(() => { });
+    };
     window.addEventListener("online", onOnline);
     return {
         getAuthority: (productId) => request("getAuthority", productId),
@@ -67,7 +79,10 @@ export function createBrowserReceivingClient(options) {
                 }
                 catch (error) {
                     // A missing lease guarantees the command never reached core. Never retry an ambiguous timeout.
-                    if (!(error instanceof Error) || error.message !== "receiving execution unavailable; bind again after worker restart" || !executions.has(id))
+                    if (!(error instanceof Error) ||
+                        error.message !==
+                            "receiving execution unavailable; bind again after worker restart" ||
+                        !executions.has(id))
                         throw error;
                     executions.delete(id);
                     id = await request("bind", snapshot);
@@ -83,7 +98,10 @@ export function createBrowserReceivingClient(options) {
             }
             return {
                 command: (action, payload) => execute("command", { action, payload }),
-                ready: async () => { await execute("ready", {}); ready = true; },
+                ready: async () => {
+                    await execute("ready", {});
+                    ready = true;
+                },
                 close: () => {
                     disposed = true;
                     if (!executions.delete(id))
@@ -104,16 +122,22 @@ export function createBrowserReceivingClient(options) {
                 throw new Error("notification permission denied");
             }
             const base64 = vapidPublicKey.replace(/-/g, "+").replace(/_/g, "/");
-            const key = Uint8Array.from(atob(base64 + "=".repeat((4 - base64.length % 4) % 4)), value => value.charCodeAt(0));
+            const key = Uint8Array.from(atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4)), (value) => value.charCodeAt(0));
             if (key.length !== 65 || key[0] !== 4)
                 throw new Error("invalid WebPush VAPID public key");
             const existing = await registration.pushManager.getSubscription();
             const existingKey = existing?.options.applicationServerKey;
-            if (existing && (!existingKey || new Uint8Array(existingKey).some((byte, index) => byte !== key[index]) || existingKey.byteLength !== key.length)) {
+            if (existing &&
+                (!existingKey ||
+                    new Uint8Array(existingKey).some((byte, index) => byte !== key[index]) ||
+                    existingKey.byteLength !== key.length)) {
                 await existing.unsubscribe();
             }
             try {
-                await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+                await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: key,
+                });
             }
             finally {
                 await request("refresh");

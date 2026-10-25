@@ -585,8 +585,11 @@ export function createMockHost(config = {}) {
                     throw new Error(faults.storageError);
                 const slot = coreKey(key);
                 const current = storage.get(slot);
-                if (current === undefined ? expected !== undefined : (expected === undefined || current.length !== expected.length ||
-                    current.some((byte, index) => byte !== expected[index]))) {
+                if (current === undefined
+                    ? expected !== undefined
+                    : expected === undefined ||
+                        current.length !== expected.length ||
+                        current.some((byte, index) => byte !== expected[index])) {
                     return false;
                 }
                 // No await between the byte comparison, commit and notification.
