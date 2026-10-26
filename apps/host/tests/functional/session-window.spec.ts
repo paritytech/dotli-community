@@ -518,6 +518,7 @@ test.describe('Signing a site in', () => {
     // Then the window closed and the site got a result that holds the username only
     expect(window.isClosed()).toBe(true);
     await expect(siteReply(site)).toHaveAttribute('data-type', 'dotli:s:result');
+    await expect(siteReply(site)).toHaveAttribute('data-result', /./);
     const result = (await siteReply(site).getAttribute('data-result')) ?? '';
     expect(Object.keys(JSON.parse(result) as Record<string, unknown>)).toEqual(['username']);
   });

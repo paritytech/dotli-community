@@ -124,8 +124,7 @@ describe('site account', () => {
     // When the account is read
     const error: unknown = await signer.account(ACCOUNT).catch((caught: unknown) => caught);
 
-    // Then it fails at the account step
+    // Then it fails as a site sign-in call
     expect(error).toBeInstanceOf(SiteSignError);
-    expect(error).toMatchObject({ step: 'account' });
   });
 });

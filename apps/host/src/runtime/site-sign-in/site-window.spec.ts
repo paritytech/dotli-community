@@ -203,8 +203,8 @@ const SIGNER: SiteSigner = {
 
 /**
  * A site's transaction window over the window's parts, a chain that builds it and a signer that reads the site account,
- * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload. With `grantRead`, the request
- * carries an old token whose read waits for it.
+ * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
+ * With `grantRead`, the request carries an old token whose read waits for it.
  */
 function transactionHarness(call: string | null, { grantRead }: { grantRead?: Promise<void> } = {}) {
   const parts = windowParts();

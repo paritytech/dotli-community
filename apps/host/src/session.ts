@@ -18,6 +18,7 @@ import { defaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Netwo
 import { m, spans as S } from '@dotli/metrics';
 import { deferred, listen, log, pageLocalStorage, pageSessionStorage, randomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
+import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
 import {
   parseWindowRequest,
@@ -207,17 +208,19 @@ function newSiteToken(): string {
 
 /**
  * What a site's round in the window runs on, for the vetted origin `round` carries, whatever its route. `close` closes
- * the window once the round is done, and does nothing where the round's answer itself ends the page.
+ * the window once the round is done, and does nothing where the round's answer itself ends the page. `account` is the
+ * product account the window's core serves as, or `null` for dot.li's own.
  */
 function siteWindowDeps(
   responder: Responder<unknown>,
   round: Extract<SignInRound<BridgeModule>, { party: 'third' | 'third-sign' }>,
+  account: ProductAccountId | null,
   close: () => void,
 ): Omit<SiteWindowDeps, 'request'> {
   const { booted: bridgeModule } = round;
   // Before the round starts, so the first core the window boots runs as the right product: the named account's for a
   // transaction, and dot.li's own for a sign-in, which names no account.
-  bridgeModule.serveSite(round.party === 'third-sign' ? round.request.account : null);
+  bridgeModule.serveSite(account);
   return {
     origin: round.origin,
     responder,
@@ -242,7 +245,7 @@ function openSiteFlow(
   close: () => void,
 ): () => void {
   const { site, screen } = openSiteSignIn({
-    ...siteWindowDeps(responder, round, close),
+    ...siteWindowDeps(responder, round, null, close),
     request: round.request,
   });
   setSiteIntents(site);
@@ -260,7 +263,7 @@ async function openSiteTransactionFlow(
 ): Promise<void> {
   const { booted: bridgeModule } = round;
   const opened = await openSiteTransaction({
-    ...siteWindowDeps(responder, round, closeWindow),
+    ...siteWindowDeps(responder, round, round.request.account, closeWindow),
     request: round.request,
     chain: bridgeModule.siteChain,
     txSigner: bridgeModule.siteTxSigner,

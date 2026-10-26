@@ -769,7 +769,10 @@ export const SiteConsent: Story = {
   },
 };
 
-/** As a user a site of a group asks to sign in, I see its full origin and the registrable domain the sign-in covers. */
+/**
+ * As a user a site of a group asks to sign in, I see the Sign in with Polkadot header, its full origin and the
+ * registrable domain the sign-in covers.
+ */
 export const SiteConsentGroup: Story = {
   tags: ['!autodocs'],
   args: { screen: { view: 'consent', origin: SITE_ORIGIN, group: 'site.example' } },
@@ -779,6 +782,7 @@ export const SiteConsentGroup: Story = {
       async () => {
         await expect(windowView()).toHaveAttribute('data-view', 'consent');
         await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sign in with Polkadot');
+        await expect(byTestId('session-window-site')).toHaveTextContent(SITE_ORIGIN);
         await expect(byTestId('session-window-group')).toHaveTextContent(
           'and every site of site.example that shares this sign-in',
         );

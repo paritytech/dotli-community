@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A third-party site that opens a session window as a site does: its request in the window URL's fragment, a hello for
-// each ready the window says, and the window's last reply marked on its output by its type and reason, and by its result
-// for a result. It speaks the wire protocol itself, as a site does, with nothing of dot.li's own pages. `?route=sign`
-// asks for a transaction on the network's Asset Hub with the call and an account in the request, and any other route
-// signs in with neither.
+// each ready the window says, and the window's last reply marked on its output by its type and reason, and by its
+// result for a result. It speaks the wire protocol itself, as a site does, with nothing of dot.li's own pages.
+// `?route=sign` asks for a transaction on the network's Asset Hub with the call and an account in the request, and any
+// other route signs in with neither.
 
 import { isValidNetwork, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config/networks';
 import { PROTOCOL_VERSION, requestUrl } from '../../../src/runtime/session-handoff/session-protocol.js';

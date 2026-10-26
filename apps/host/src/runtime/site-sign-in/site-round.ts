@@ -5,7 +5,7 @@
 // names a grant of this origin, or of the site's group, has the reused window flow sign in or resume a sign-in, runs the
 // route's action for the main account, keeps the grant and answers the site once. The main account comes from the
 // window core's own report, never the saved copy, and the window flow tells the round only that a sign-in is stored.
-// The round hands the account to the action and never sends it, so nothing of the session itself, nor of a local
+// The round hands the main account to the action and never sends it, so nothing of the session itself, nor of a local
 // wallet, reaches the site.
 
 import { m, reportExpected, type MetricOutcome } from '@dotli/metrics';

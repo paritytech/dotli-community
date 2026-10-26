@@ -77,8 +77,8 @@ interface HarnessOptions {
 
 /**
  * A site's sign-in over fakes: a responder that records what it posts and ends its round on its first terminal call, an
- * in-memory grants store, the main account the window's core reports, and a window flow
- * the test says stored a sign-in through.
+ * in-memory grants store, the main account the window's core reports, and a window flow the test says stored a sign-in
+ * through.
  */
 async function harness(options: HarnessOptions = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });

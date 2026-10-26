@@ -10,27 +10,21 @@ import type { Result, ResultAsync } from 'neverthrow';
 import { fromHex } from '@dotli/shared';
 import { withCoreCalls, type CoreCallsDeps, type SiteCallError } from './core-calls.js';
 
-type SiteSignStep = 'account';
-
 /** The user rejected the request on the phone, or it was withdrawn. */
 export class SiteSignRejectedError extends Error {
   override name = 'SiteSignRejectedError';
-  readonly step: SiteSignStep;
 
-  constructor(step: SiteSignStep, error: SiteCallError) {
-    super(`The site's ${step} request was rejected`, { cause: error });
-    this.step = step;
+  constructor(error: SiteCallError) {
+    super("The site's account request was rejected", { cause: error });
   }
 }
 
 /** A site sign-in call that failed for any reason but a rejection. Its cause is the TrUAPI error. */
 export class SiteSignError extends Error {
   override name = 'SiteSignError';
-  readonly step: SiteSignStep;
 
-  constructor(step: SiteSignStep, error: unknown) {
-    super(`The site's ${step} request failed`, { cause: error });
-    this.step = step;
+  constructor(error: unknown) {
+    super("The site's account request failed", { cause: error });
   }
 }
 
@@ -54,10 +48,10 @@ function accountKey(publicKey: string): Uint8Array {
   try {
     key = fromHex(publicKey);
   } catch (error) {
-    throw new SiteSignError('account', error);
+    throw new SiteSignError(error);
   }
   if (key.length !== PUBLIC_KEY_BYTES) {
-    throw new SiteSignError('account', new Error(`The account key has ${String(key.length)} bytes`));
+    throw new SiteSignError(new Error(`The account key has ${String(key.length)} bytes`));
   }
   return key;
 }
@@ -70,19 +64,19 @@ function domainTag(error: SiteCallError): string | null {
  * Runs one call once. A rejection ends it with {@link SiteSignRejectedError}, and any other failure with
  * {@link SiteSignError}.
  */
-async function siteCall<T>(step: SiteSignStep, call: () => ResultAsync<T, SiteCallError>): Promise<T> {
+async function siteCall<T>(call: () => ResultAsync<T, SiteCallError>): Promise<T> {
   let result: Result<T, SiteCallError>;
   try {
     result = await call();
   } catch (error) {
-    throw new SiteSignError(step, error);
+    throw new SiteSignError(error);
   }
   if (result.isOk()) {
     return result.value;
   }
   throw result.error.tag === 'Cancelled' || domainTag(result.error) === 'Rejected'
-    ? new SiteSignRejectedError(step, result.error)
-    : new SiteSignError(step, result.error);
+    ? new SiteSignRejectedError(result.error)
+    : new SiteSignError(result.error);
 }
 
 /** What one call of the signer runs over: the account the site names and the core's clients. */
@@ -93,7 +87,7 @@ interface SiteCalls {
 
 /** Reads the named account's public key. */
 async function readAccount(calls: SiteCalls): Promise<Uint8Array> {
-  const read = await siteCall('account', () => calls.accounts.getAccount({ productAccountId: calls.account }));
+  const read = await siteCall(() => calls.accounts.getAccount({ productAccountId: calls.account }));
   return accountKey(read.account.publicKey);
 }
 

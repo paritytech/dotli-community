@@ -694,7 +694,7 @@ describe('site transaction', () => {
 
   it('As a user whose site account could not be read, I see the failure counted for the account', async () => {
     // Given a signer whose account read fails
-    const h = await harness({ accountFailures: [new SiteSignError('account', { tag: 'Denied' })] });
+    const h = await harness({ accountFailures: [new SiteSignError({ tag: 'Denied' })] });
 
     // When the round runs for the main account
     await consentAndStore(h);

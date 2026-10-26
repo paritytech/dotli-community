@@ -101,10 +101,10 @@ group when it declares one. Only scoped grants pass between them.
 - The window reads a site's origin from the browser: the `event.origin` of the site's hello, or in redirect mode the
   origin of a listed return URL. Never from a request field or `document.referrer`.
 - A site is an `https:` origin whose host is not the provider's host or under it, on any port, or, for
-  development, an origin whose host is exactly `localhost`, over `http:` or `https:` on any port, other than the window's
-  own origin. A subdomain of `localhost` is a site only over `https:`. Pages of the provider's own domain are dot.li's own and are not
-  sites. Any other origin, such as one on plain `http:` or a product's origin under the provider's domain, is refused
-  with `origin_not_allowed`.
+  development, an origin whose host is exactly `localhost`, over `http:` or `https:` on any port, other than the
+  window's own origin. A subdomain of `localhost` is a site only over `https:`. Pages of the provider's own domain are
+  dot.li's own and are not sites. Any other origin, such as one on plain `http:` or a product's origin under the
+  provider's domain, is refused with `origin_not_allowed`.
 - By default a grant belongs to the exact origin, such as `https://app.my-site.com`. With the registrable domain as
   key, `uploads.my-site.com` would get the grant of `app.my-site.com`. A site opts into sharing by declaring a group.
 
@@ -140,9 +140,9 @@ A site gets no user id beyond the username and the site token.
 
 dot.li and each site share a site token that names the site's grant. It adds to origin keying and never replaces it.
 
-- **Issue.** The window issues a token when a round ends in a new grant that it could keep, on `/s/auth` or `/s/sign`: 32 random bytes in
-  unpadded base64url. The token travels as `site_token` on the round's `dotli:s:result`, and only there. A result with
-  no `site_token` leaves the site's token as it was.
+- **Issue.** The window issues a token when a round ends in a new grant that it could keep, on `/s/auth` or
+  `/s/sign`: 32 random bytes in unpadded base64url. The token travels as `site_token` on the round's `dotli:s:result`,
+  and only there. A result with no `site_token` leaves the site's token as it was.
 - **Reuse.** Every later request carries the token in `site_token`. The window skips the consent view when the token
   names a grant of the requesting origin, or of the request's group (below), made while the same dot.li account was
   signed in. A token that is unknown, revoked, of another origin or of another dot.li account gets the same answer as
@@ -613,8 +613,8 @@ sequenceDiagram
 ```
 
 Before the review the window reads the named account from the Polkadot App, which MAY ask the user to share it. A
-rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the transaction ends it with
-`transaction_invalid`.
+rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the transaction
+ends it with `transaction_invalid`.
 
 ### Sign-out
 

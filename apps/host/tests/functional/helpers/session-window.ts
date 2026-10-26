@@ -103,8 +103,8 @@ export function openerOutcome(page: Page): Locator {
 /**
  * Serves the site fixture page at the root of `origin`, a third-party https origin unless the test picks another, and
  * returns its URL, which names the window's origin and the `route` it opens. `account: 'none'` makes the page leave the
- * account out of a transaction request. The page opens the window from its button as a site does and marks the window's last
- * reply on its output.
+ * account out of a transaction request. The page opens the window from its button as a site does and marks the window's
+ * last reply on its output.
  */
 export async function serveSiteOpener(
   page: Page,
