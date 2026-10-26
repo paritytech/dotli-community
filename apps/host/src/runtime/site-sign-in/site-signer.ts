@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Reads the key of the product account a site names and signs a site's assertion with that account, each over one
- * connection to the page core.
+ * Reads the key of the product account a site names, over one connection to the page core.
  */
 
-import { AccountClient, SigningClient, type ProductAccountId } from '@parity/truapi';
+import { AccountClient, type ProductAccountId } from '@parity/truapi';
 import type { Result, ResultAsync } from 'neverthrow';
 import { fromHex } from '@dotli/shared';
-import { SITE_ASSERTION_LIFETIME_MS } from './site-assertion.js';
 import { withCoreCalls, type CoreCallsDeps, type SiteCallError } from './core-calls.js';
 
-type SiteSignStep = 'account' | 'sign';
+type SiteSignStep = 'account';
 
 /** The user rejected the request on the phone, or it was withdrawn. */
 export class SiteSignRejectedError extends Error {
@@ -38,20 +36,14 @@ export class SiteSignError extends Error {
 
 export interface SiteSigner {
   /**
-   * Reads the public key of `account`, then signs `text` of that key with it. Rejects with
-   * {@link SiteSignRejectedError} on a rejection, {@link SiteSignError} on a failed call or a key that is not 32 bytes,
-   * and with the core's own error when no connection could be made.
-   */
-  sign(
-    account: ProductAccountId,
-    text: (publicKey: Uint8Array) => string,
-  ): Promise<{ publicKey: Uint8Array; signature: string }>;
-  /**
    * The public key of `account`. Rejects with {@link SiteSignRejectedError} on a rejection, {@link SiteSignError} on a
    * failed call or a key that is not 32 bytes, and with the core's own error when no connection could be made.
    */
   account(account: ProductAccountId): Promise<Uint8Array>;
 }
+
+/** Bounds how long the account read may wait on the phone. */
+const PHONE_WAIT_MS = 5 * 60 * 1000;
 
 /** An sr25519 public key's length. */
 const PUBLIC_KEY_BYTES = 32;
@@ -97,7 +89,6 @@ async function siteCall<T>(step: SiteSignStep, call: () => ResultAsync<T, SiteCa
 interface SiteCalls {
   account: ProductAccountId;
   accounts: AccountClient;
-  signing: SigningClient;
 }
 
 /** Reads the named account's public key. */
@@ -109,23 +100,9 @@ async function readAccount(calls: SiteCalls): Promise<Uint8Array> {
 export function createSiteSigner(deps: CoreCallsDeps): SiteSigner {
   /** Runs `use` over one connection to the core for `account`, which it closes after. */
   const withCalls = <T>(account: ProductAccountId, use: (calls: SiteCalls) => Promise<T>): Promise<T> =>
-    // Each request, an account read or a signature, may wait on the phone as long as a site assertion stays valid.
-    withCoreCalls(deps, SITE_ASSERTION_LIFETIME_MS, ({ transport }) =>
-      use({ account, accounts: new AccountClient(transport), signing: new SigningClient(transport) }),
-    );
+    withCoreCalls(deps, PHONE_WAIT_MS, ({ transport }) => use({ account, accounts: new AccountClient(transport) }));
 
   return {
-    sign: (account, text) =>
-      withCalls(account, async calls => {
-        const publicKey = await readAccount(calls);
-        const { signature } = await siteCall('sign', () =>
-          calls.signing.signRaw({
-            account: calls.account,
-            payload: { tag: 'Payload', value: { payload: text(publicKey) } },
-          }),
-        );
-        return { publicKey, signature };
-      }),
     account: account => withCalls(account, readAccount),
   };
 }

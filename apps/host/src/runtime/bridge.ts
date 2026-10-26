@@ -142,7 +142,7 @@ export const mainAccount: MainAccountSource = createMainAccountSource({
   coreReport: sessionState.coreReport,
 });
 
-/** Signs a site's assertion on the page's own core, for the session window. */
+/** Reads the key of the account a site names on the page's own core, for the session window. */
 export const siteSigner = createSiteSigner({ acquire: () => bridge.core.acquire() });
 
 /** Signs a site's transaction as the account the site names on the page's own core, for the session window. */

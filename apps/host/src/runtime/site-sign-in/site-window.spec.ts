@@ -196,9 +196,8 @@ function fakeChain() {
   return { chain, decoded };
 }
 
-/** A signer that reads the site account at once, and signs no sign-in. */
+/** A signer that reads the site account at once. */
 const SIGNER: SiteSigner = {
-  sign: () => Promise.reject(new Error('The transaction window signed a sign-in')),
   account: () => Promise.resolve(SITE_KEY),
 };
 

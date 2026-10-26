@@ -54,8 +54,6 @@ export interface FixedServicesConfig {
   readonly bulletin: FixedChainService;
   readonly people: FixedChainService;
   readonly dotns: DotnsContracts;
-  /** The SS58 address prefix of the network's accounts. */
-  readonly ss58Prefix: number;
 }
 
 export interface ServicesConfig extends FixedServicesConfig {
@@ -104,7 +102,6 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
       TLD: 'paseo',
     },
-    ss58Prefix: 0,
   },
   [NetworkName.PREVIEWNET]: {
     label: 'Previewnet',
@@ -136,7 +133,6 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
       TLD: 'testnet',
     },
-    ss58Prefix: 42,
   },
 };
 

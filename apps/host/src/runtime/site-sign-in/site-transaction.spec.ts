@@ -26,7 +26,6 @@ import { createResponder, type Responder, type ResponderState } from '../session
 import { createFakePageEvents } from '../../testing/page-events.js';
 import type { MainAccount } from './main-account.js';
 import { displayAccount } from './site-account.js';
-import { encodeSs58 } from './site-assertion.js';
 import type { DisplayCall } from './site-call.js';
 import { SiteChainError, type SiteChain, type SiteDecodedCall } from './site-chain.js';
 import type { SiteRound, SiteScreen } from './site-round.js';
@@ -732,14 +731,7 @@ describe('site transaction', () => {
     const sent = opener.posted.map(({ message }) =>
       JSON.stringify(message, (_key, value: unknown) => (value instanceof Uint8Array ? toHex(value) : value)),
     );
-    const secrets = [
-      MAIN_BLOB,
-      'a'.repeat(64),
-      encodeSs58(fromHex(MAIN_KEY), NETWORK.ss58Prefix),
-      hex.encode(WALLET_ENTROPY),
-      WALLET_ACCOUNT,
-      OWNER,
-    ];
+    const secrets = [MAIN_BLOB, 'a'.repeat(64), hex.encode(WALLET_ENTROPY), WALLET_ACCOUNT, OWNER];
     expect(sent.filter(message => message.includes('dotli:s:result'))).toHaveLength(1);
     expect(sent.join('\n')).toContain(SIGNED_TX.toLowerCase());
     for (const message of sent) {

@@ -43,7 +43,7 @@ export class SiteRoundRefusal extends Error {
 }
 
 /** The step of a round that failed, a closed set so the metric's `reason` tag stays bounded. */
-export type SiteStep = 'main_account' | 'account' | 'sign' | 'chain' | 'build' | 'grant' | 'action';
+export type SiteStep = 'main_account' | 'account' | 'chain' | 'build' | 'grant' | 'action';
 
 /** A step of the round that failed, shown with Try again when `retry` holds. */
 export class SiteRoundFailure extends Error {
