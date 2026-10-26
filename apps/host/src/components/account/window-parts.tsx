@@ -6,7 +6,7 @@
 
 import { For, merge, omit, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Button, Callout, Row, Stack, Well } from '@dotli/ui';
+import { Button, Callout, Row, SectionLabel, Stack, Well } from '@dotli/ui';
 import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
 import type { DisplayAccount } from '../../runtime/site-sign-in/site-account.js';
 import type { DisplayCall } from '../../runtime/site-sign-in/site-call.js';
@@ -306,18 +306,18 @@ function siteCancel(props: WindowPartsProps): SignInAction {
 }
 
 /**
- * A site asks to sign in: its full origin heads the view, then the registrable domain its group covers when it has one,
- * then what it gets.
+ * A site asks to sign in: the Sign in with Polkadot header, then the site's full origin and the registrable domain its
+ * group covers when it has one, then what the site gets, then Continue and Cancel.
  */
 function consentParts(origin: string, group: string | null, props: WindowPartsProps): SignInParts {
   const parts = StatusScreen({
-    title: origin,
+    title: 'Sign in with Polkadot',
     body: (
       <>
+        <div data-testid="session-window-site">{origin}</div>
         {group === null ? null : (
-          <div data-testid="session-window-group">for every site of {group} that shares this sign-in</div>
+          <div data-testid="session-window-group">and every site of {group} that shares this sign-in</div>
         )}
-        <div>wants you to sign in with Polkadot</div>
       </>
     ),
     actions: [
@@ -346,17 +346,20 @@ function consentParts(origin: string, group: string | null, props: WindowPartsPr
     content: (
       <>
         {parts.content}
-        <div role="list" data-testid="session-window-site-gets">
-          <Stack>
-            <For each={siteGets()}>
-              {line => (
-                <div role="listitem">
-                  <Callout icon={CheckIcon}>{line}</Callout>
-                </div>
-              )}
-            </For>
-          </Stack>
-        </div>
+        <Stack>
+          <SectionLabel as="h2" text="This site gets" />
+          <div role="list" data-testid="session-window-site-gets">
+            <Stack>
+              <For each={siteGets()}>
+                {line => (
+                  <div role="listitem">
+                    <Callout icon={CheckIcon}>{line}</Callout>
+                  </div>
+                )}
+              </For>
+            </Stack>
+          </div>
+        </Stack>
       </>
     ),
   };
@@ -369,7 +372,7 @@ type SiteRoute = Extract<WindowStep, { view: 'site-failed' }>['route'];
 function siteSigningParts(origin: string, route: SiteRoute, props: WindowPartsProps): SignInParts {
   return StatusScreen({
     mark: 'spinner',
-    title: route === 'auth' ? 'Approve the sign-in in Polkadot App' : 'Preparing the transaction',
+    title: route === 'auth' ? 'Signing in' : 'Preparing the transaction',
     body: origin,
     actions: [siteCancel(props)],
     testId: 'session-window-status',

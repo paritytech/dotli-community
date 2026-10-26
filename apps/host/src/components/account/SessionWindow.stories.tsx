@@ -729,23 +729,24 @@ const siteGets = (): string[] =>
     .getAllByRole('listitem')
     .map(item => item.textContent.trim());
 
-/** As a user a site asks to sign in, I see its full origin and what it gets, and answer it. */
+/** As a user a site asks to sign in, I see the header, its full origin, what it gets and the buttons, and answer it. */
 export const SiteConsent: Story = {
   tags: ['!autodocs'],
   args: { screen: { view: 'consent', origin: SITE_ORIGIN, group: null } },
   play: async ({ canvas, userEvent, step }) => {
-    await step(
-      'Then the card heads with the full origin, says what the site wants and lists what it gets',
-      async () => {
-        await expect(windowView()).toHaveAttribute('data-view', 'consent');
-        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
-        await expect(byTestId('session-window-title')).toHaveTextContent(SITE_ORIGIN);
-        await expect(byTestId('session-window-consent')).toHaveTextContent('wants you to sign in with Polkadot');
-        await expect(byTestId('session-window-site-gets')).toHaveAttribute('role', 'list');
-        await expect(siteGets()).toEqual(SITE_GETS);
-        await expect(canvas.queryByTestId('session-window-group')).toBeNull();
-      },
-    );
+    await step('Then the card heads with Sign in with Polkadot, names the site and lists what it gets', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'consent');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sign in with Polkadot');
+      await expect(byTestId('session-window-title')).toHaveTextContent('Sign in with Polkadot');
+      await expect(byTestId('session-window-site')).toHaveTextContent(SITE_ORIGIN);
+      await expectBefore(byTestId('session-window-title'), byTestId('session-window-site'));
+      await expect(canvas.getByRole('heading', { level: 2 })).toHaveTextContent('This site gets');
+      await expectBefore(byTestId('session-window-site'), byTestId('session-window-site-gets'));
+      await expect(byTestId('session-window-site-gets')).toHaveAttribute('role', 'list');
+      await expect(siteGets()).toEqual(SITE_GETS);
+      await expect(canvas.queryByTestId('session-window-group')).toBeNull();
+      await expect(canvas.queryByText(/wants you to sign in/)).toBeNull();
+    });
     await step('Then Continue leads and Cancel follows, in the card', async () => {
       await expect(buttonNames()).toEqual(['Continue', 'Cancel']);
       await expect(card()).toContainElement(canvas.getByRole('button', { name: 'Cancel' }));
@@ -774,15 +775,15 @@ export const SiteConsentGroup: Story = {
   args: { screen: { view: 'consent', origin: SITE_ORIGIN, group: 'site.example' } },
   play: async ({ canvas, userEvent, step }) => {
     await step(
-      'Then the card heads with the full origin, and says under it which sites share the sign-in',
+      'Then the card names the site, and under it which sites share the sign-in, before what it gets',
       async () => {
         await expect(windowView()).toHaveAttribute('data-view', 'consent');
-        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sign in with Polkadot');
         await expect(byTestId('session-window-group')).toHaveTextContent(
-          'for every site of site.example that shares this sign-in',
+          'and every site of site.example that shares this sign-in',
         );
-        await expectBefore(byTestId('session-window-title'), byTestId('session-window-group'));
-        await expect(byTestId('session-window-consent')).toHaveTextContent('wants you to sign in with Polkadot');
+        await expectBefore(byTestId('session-window-site'), byTestId('session-window-group'));
+        await expectBefore(byTestId('session-window-group'), byTestId('session-window-site-gets'));
         await expect(siteGets()).toEqual(SITE_GETS);
         await expect(buttonNames()).toEqual(['Continue', 'Cancel']);
       },
@@ -804,7 +805,7 @@ export const SiteSigning: Story = {
   play: async ({ canvas, userEvent, step }) => {
     await step('Then the window asks me to approve, names the origin and offers Cancel alone', async () => {
       await expect(windowView()).toHaveAttribute('data-view', 'site-signing');
-      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Approve the sign-in in Polkadot App');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Signing in');
       await expect(byTestId('session-window-spinner')).toBeVisible();
       await expect(status()).toHaveTextContent(SITE_ORIGIN);
       await expect(buttonNames()).toEqual(['Cancel']);
