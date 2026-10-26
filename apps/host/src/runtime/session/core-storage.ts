@@ -40,7 +40,7 @@ const KEY_DB_STORE = 'keys';
 const CORE_SECRET_KEY_ID = 'allowance-keys';
 
 /** This site's part of the shared auth store, which every subdomain reaches through the protocol frame. */
-export interface SharedSessionStore {
+export type SharedSessionStore = {
   read(key: string): Promise<string | null>;
   /** Resolves whether the value changed. An equal value is neither written nor told to other tabs. */
   write(key: string, value: string): Promise<boolean>;
@@ -52,13 +52,13 @@ export interface SharedSessionStore {
   getStatus(): SharedStoreStatus;
   /** Called on each change only. */
   subscribeStatus(listener: (status: SharedStoreStatus) => void): () => void;
-}
+};
 
 /** A read of the saved session, or why the store could not answer it. */
 export type SessionRead = { status: 'ok'; blob: string | null } | { status: 'failed'; error: unknown };
 
 /** The saved session as session state reads it. */
-export interface StoredSession {
+export type StoredSession = {
   /** The saved session, or why the store could not answer it. Never rejects, and reports a failed read itself. */
   readSession(): Promise<SessionRead>;
   /** Hears whether each session read failed, a core's or session state's own. */
@@ -73,17 +73,17 @@ export interface StoredSession {
   onStoredSessionChanged(listener: () => void): () => void;
   /** Hears each core's write of its session that failed, with the failure. */
   onSessionWriteFailed(listener: (error: unknown) => void): () => void;
-}
+};
 
-export interface CoreStorageOptions {
+export type CoreStorageOptions = {
   /**
    * The core keeps its session in memory, so its `AuthSession` slot is a no-op and nothing it does reaches the stored
    * session or the signed-in flag. For a core that must never write either.
    */
   sessionInMemory?: boolean | undefined;
-}
+};
 
-export interface HostCoreStorage extends StoredSession {
+export type HostCoreStorage = {
   /** The slots one core reads and writes. Its clear drops only the session it last read or wrote. */
   adapters(options?: CoreStorageOptions): CoreStorage;
   /**
@@ -98,9 +98,9 @@ export interface HostCoreStorage extends StoredSession {
    * refuses the session.
    */
   installSession(blob: string, uiState: string | null): Promise<void>;
-}
+} & StoredSession;
 
-export interface CoreStorageDeps {
+export type CoreStorageDeps = {
   shared: SharedSessionStore;
   /** What every core's session write and clear go through, which moves the signed-in flag as the page's role says. */
   flag: SignInFlag;
@@ -108,7 +108,7 @@ export interface CoreStorageDeps {
   local?: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   /** Where the at-rest key is kept. */
   keyDb?: () => IDBFactory;
-}
+};
 
 export function createCoreStorage({
   shared,

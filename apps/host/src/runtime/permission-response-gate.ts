@@ -7,19 +7,19 @@
 import { decodeWireMessage, MESSAGE_TYPE_RESPONSE } from '@parity/truapi';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 
-export interface PermissionResponseGate {
+export type PermissionResponseGate = {
   /** Runs `run` once the next device permission answer has been forwarded to the product, or the wait is over. */
   afterResponse: (run: () => void) => void;
   /** For the pipe, after it forwarded a core frame to the product. */
   forwarded: (message: Uint8Array) => void;
-}
+};
 
-export interface PermissionResponseGateOptions {
+export type PermissionResponseGateOptions = {
   /** The frame's lifetime. Once it aborts, nothing held back runs. */
   signal: AbortSignal;
   /** How long a run waits for an answer that may never come, as a lost one would keep the old policy in force. */
   timeoutMs: number;
-}
+};
 
 export function createPermissionResponseGate({
   signal,

@@ -3,11 +3,11 @@
 
 // A page event in memory for specs that stage a return to the page.
 
-export interface FakePageEvents {
+export type FakePageEvents = {
   subscribe: (listener: () => void) => () => void;
   fire: () => void;
   readonly size: number;
-}
+};
 
 /** A page event in memory, such as a return to the page: `fire` calls every listener, and `size` counts them. */
 export function createFakePageEvents(): FakePageEvents {

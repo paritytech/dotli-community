@@ -10,14 +10,14 @@ import s from './PresetPicker.module.css';
 
 const STOPS = PRESETS.map(preset => ({ label: preset.label, testId: `permissions-preset-stop-${preset.id}` }));
 
-export interface PresetPickerProps {
+export type PresetPickerProps = {
   /** The statuses the panel shows, in menu order. */
   statuses: readonly PermissionStatus[];
   /** A change made in the panel is pending. */
   pending: boolean;
   /** A preset was committed, the one shown included. */
   onPick: (preset: Preset) => void;
-}
+};
 
 /** The shown preset's name, its Modified badge, a pending spinner and its line, above the preset slider. */
 export function PresetPicker(props: PresetPickerProps): JSX.Element {

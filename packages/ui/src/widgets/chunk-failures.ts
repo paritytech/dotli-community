@@ -7,11 +7,11 @@
 import { reportExpected, spans as S } from '@dotli/metrics';
 import type { ShowNotification } from './notification.js';
 
-export interface ChunkFailureDeps {
+export type ChunkFailureDeps = {
   target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
   /** The page's one reload offer. */
   offerReload: () => void;
-}
+};
 
 /**
  * The page's one reload offer, for any part of it that failed to load, most likely because a new version was

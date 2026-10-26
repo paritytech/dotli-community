@@ -27,7 +27,7 @@ export type LeaseProvider = (
 ) => JsonRpcConnection;
 
 /** One chain as the pool holds it, for an observer that must not hold it too. */
-export interface ChainActivity {
+export type ChainActivity = {
   /** Lowercase. */
   readonly genesisHash: string;
   /**
@@ -38,21 +38,21 @@ export interface ChainActivity {
   readonly status: ConnectionStatus;
   /** A follow is established, the watchers' own included. */
   readonly following: boolean;
-}
+};
 
-export interface ChainPoolWatcher {
+export type ChainPoolWatcher = {
   onActivity(activity: ChainActivity): void;
   onBestBlock(genesisHash: string, blockNumber: number): void;
-}
+};
 
-export interface ChainPoolOptions {
+export type ChainPoolOptions = {
   /** Build a chain's transport, or `null` when this context cannot reach it. */
   createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
   /** How long a chain outlives its last lease, in ms. `Infinity` keeps it. */
   destroyDelay?: number;
-}
+};
 
-export interface ChainPool extends ChainBrokerManager {
+export type ChainPool = {
   connectRemote(
     genesisHash: string,
     connectionId: string,
@@ -68,9 +68,9 @@ export interface ChainPool extends ChainBrokerManager {
    * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept.
    */
   watch(watcher: ChainPoolWatcher): () => void;
-}
+} & Omit<ChainBrokerManager, 'connectRemote' | 'getLocalProvider'>;
 
-interface Entry {
+type Entry = {
   readonly key: string;
   readonly transport: JsonRpcProvider;
   readonly guard: WatchGuard;
@@ -80,7 +80,7 @@ interface Entry {
   live: boolean;
   following: boolean;
   watchFollow: { disconnect: () => void } | null;
-}
+};
 
 const DEFAULT_DESTROY_DELAY_MS = 60_000;
 

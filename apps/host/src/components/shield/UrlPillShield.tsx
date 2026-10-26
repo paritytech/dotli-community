@@ -6,10 +6,10 @@ import type { JSX } from '@solidjs/web';
 import type { ShieldState } from '../../state/url-pill.js';
 import { VerificationShield } from './VerificationShield.js';
 
-export interface UrlPillShieldProps {
+export type UrlPillShieldProps = {
   /** Undefined for any pill but a product's, null until the host knows how the product loaded. */
   shield: Accessor<ShieldState | null | undefined>;
-}
+};
 
 /** The verification shield while the URL pill is a `.dot` product's. The rest of the pill is page markup. */
 export function UrlPillShield(props: UrlPillShieldProps): JSX.Element {

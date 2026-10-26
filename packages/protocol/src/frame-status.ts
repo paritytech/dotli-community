@@ -15,7 +15,7 @@ export type FrameStatusSink = Sink<undefined, FrameStatusEnd>;
 
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: FrameStatusEnd };
 
-export interface FrameStatus {
+export type FrameStatus = {
   /** The frame serves every method from now on. Does nothing once ready or ended. */
   ready(): void;
   /** The frame will never serve, or has stopped for good. Only the first end is heard. */
@@ -23,7 +23,7 @@ export interface FrameStatus {
   /** Ends the status with `end` as it is, for a relay that passes on another frame's end. Only the first end is heard. */
   interrupt(end: FrameStatusEnd): void;
   handler: ProtocolHandler<typeof protocolSchema.sections.frame.status>;
-}
+};
 
 export function createFrameStatus(): FrameStatus {
   let state: State = { name: 'booting' };

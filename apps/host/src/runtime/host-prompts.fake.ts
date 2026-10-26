@@ -15,13 +15,13 @@ export type FakePrompt =
   | { kind: 'preimage'; label: string; size: number }
   | { kind: 'review'; dialog: ModalView<string> };
 
-interface Pending {
+type Pending = {
   /** The ask as it is now, or undefined once it is gone. A review reads its dialog from the store, which a handoff swaps. */
   prompt: () => FakePrompt | undefined;
   settle: (answer: string | boolean) => void;
-}
+};
 
-export interface FakePrompts {
+export type FakePrompts = {
   prompts: HostPrompts;
   /** Every notice shown, in order. */
   notices: NotificationParams[];
@@ -47,7 +47,7 @@ export interface FakePrompts {
   chooseReviewButton: (label: string) => void;
   /** A backdrop click or Escape: settles a review or permission prompt that allows it, and leaves a preimage one up. */
   dismiss: () => void;
-}
+};
 
 export function createFakePrompts(): FakePrompts {
   const queue: Pending[] = [];

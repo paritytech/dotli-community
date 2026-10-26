@@ -6,7 +6,7 @@ import type { StatusTone } from '../../page/status-tone.js';
 import s from './IconButton.module.css';
 
 // Explicit props, not a rest spread: splitting the rest off pulls Solid's `omit` into the boot bundle.
-export interface IconButtonProps {
+export type IconButtonProps = {
   ref?: (el: HTMLButtonElement) => void;
   onClick?: (ev: MouseEvent) => void;
   id?: string;
@@ -26,7 +26,7 @@ export interface IconButtonProps {
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;
-}
+};
 
 export function IconButton(props: IconButtonProps): JSX.Element {
   return (

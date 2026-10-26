@@ -52,18 +52,18 @@ import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
 const { frame, resolve, chain } = protocolSchema.sections;
 
 /** A tab's port, as much of it as the worker uses. A `MessagePort` is one. */
-export interface WorkerPort extends PortLike {
+export type WorkerPort = {
   addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
   addEventListener(type: 'close', listener: () => void): void;
   removeEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
   removeEventListener(type: 'close', listener: () => void): void;
-}
+} & PortLike;
 
 /** The worker global, narrowed to what the worker uses. */
-export interface WorkerScope {
+export type WorkerScope = {
   addEventListener: (type: 'connect', listener: (event: { readonly ports: readonly WorkerPort[] }) => void) => void;
   close: () => void;
-}
+};
 
 /** The resolver and the sync reporting, passed as functions so a test can drive fakes. */
 export type WorkerResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
@@ -72,7 +72,7 @@ export type WorkerResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
 /** The network a worker serves, or why it cannot serve one. */
 export type WorkerNetwork = ResultPayload<Network, string>;
 
-export interface ProtocolWorkerDeps {
+export type ProtocolWorkerDeps = {
   scope: WorkerScope;
   /** Set as this context's network by the entry, before anything reads it. */
   network: WorkerNetwork;
@@ -87,9 +87,9 @@ export interface ProtocolWorkerDeps {
   netBytes?: { read: () => number; ticker?: Ticker | undefined } | undefined;
   /** Sends buffered telemetry before the worker closes. Never rejects. */
   flush: () => Promise<void>;
-}
+};
 
-interface PortSession {
+type PortSession = {
   port: WorkerPort;
   transport: ProtocolTransport;
   /** Opened by the tab's first chain call. */
@@ -102,7 +102,7 @@ interface PortSession {
   statuses: Set<FrameStatusSink>;
   /** Stops hearing the port close. */
   unwatch: () => void;
-}
+};
 
 /**
  * A closed tab's port neither throws nor tells the worker, so the worker beats each port on this interval, the iframe

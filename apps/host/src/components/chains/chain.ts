@@ -4,18 +4,18 @@
 /** A block's arrival against the chain's block time, which colours its bar. */
 export type BarHealth = 'onTime' | 'late' | 'veryLate';
 
-export interface ChainBar {
+export type ChainBar = {
   readonly number: number;
   readonly health: BarHealth;
   /** Since the previous block arrived. */
   readonly gapMs: number;
-}
+};
 
 /** How a chain counts toward the network's verdict. */
 export type ChainUse = 'unused' | 'pending' | 'live';
 
 /** One chain as its group shows it: its name, use, peers and recent blocks. */
-export interface ChainSummary {
+export type ChainSummary = {
   readonly label: string;
   readonly state: ChainUse;
   readonly blockTimeMs: number;
@@ -27,4 +27,4 @@ export interface ChainSummary {
   readonly phase: string | null;
   /** Null where the backend never reports peers. */
   readonly peers: number | null;
-}
+};

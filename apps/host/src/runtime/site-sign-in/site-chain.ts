@@ -39,12 +39,12 @@ export class SiteChainError extends Error {
  * A call decoded on Asset Hub: what the review shows, and the transaction of that same call. papi builds it from the
  * decoded call, so a runtime the shown call no longer fits refuses it rather than signing another call.
  */
-export interface SiteDecodedCall {
+export type SiteDecodedCall = {
   display: DisplayCall;
   transaction: { create(creator: TxCreator): Promise<Uint8Array> };
-}
+};
 
-export interface SiteChainSession {
+export type SiteChainSession = {
   /** Decodes a call for the review. Rejects with `SiteChainError`. */
   decode(call: Uint8Array): Promise<SiteDecodedCall>;
   /**
@@ -56,17 +56,17 @@ export interface SiteChainSession {
   create(call: SiteDecodedCall, creator: TxCreator, publicKey: Uint8Array): Promise<Uint8Array>;
   /** Ends the session's chain client. */
   close(): void;
-}
+};
 
-export interface SiteChain {
+export type SiteChain = {
   /**
    * Opens a session on the Asset Hub of `genesis`, the genesis the site asked for. Rejects with `SiteChainError`:
    * `mismatch` when the window's network has another Asset Hub, `unreachable` when the chain is not reachable.
    */
   open(genesis: string): Promise<SiteChainSession>;
-}
+};
 
-export interface SiteChainDeps {
+export type SiteChainDeps = {
   /** The genesis of the window's network's Asset Hub. */
   genesis: () => string;
   /** The provider of the Asset Hub of `genesis`, or `null` when the backend cannot reach it. */
@@ -76,7 +76,7 @@ export interface SiteChainDeps {
   loadFillers: () => Promise<Pick<typeof TxFillers, 'withNonce' | 'withCommonExtensions'>>;
   /** The signal that bounds one decode. */
   deadline?: () => AbortSignal;
-}
+};
 
 function isInvalidCallData(error: unknown): boolean {
   return error instanceof Error && error.message === INVALID_CALL_DATA;

@@ -6,7 +6,7 @@
 import { createSyncStore, type ReadableStore, type SyncStore } from '@dotli/shared';
 import type { DebugPanelHost, DiagnosticsRow, DockInset, HostAuth, HostProduct, HostWalletMode } from './host.js';
 
-export interface FakeDebugPanelHost {
+export type FakeDebugPanelHost = {
   host: DebugPanelHost;
   product: SyncStore<HostProduct>;
   auth: SyncStore<HostAuth>;
@@ -18,7 +18,7 @@ export interface FakeDebugPanelHost {
   dockReports: readonly DockInset[];
   /** How often the panel asked to leave debug mode. */
   leaveRequests: () => number;
-}
+};
 
 const ROWS: DiagnosticsRow[] = [
   ['Site', 'app.dot.li', true],

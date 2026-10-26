@@ -7,10 +7,10 @@ import { reportListener } from '@dotli/metrics';
 export type DragTarget = Pick<HTMLElement, 'setPointerCapture' | 'addEventListener' | 'removeEventListener'>;
 
 /** Holds the page's text selection off while anything holds it. */
-export interface SelectionLock {
+export type SelectionLock = {
   /** Locks until the returned release, which is safe to call twice. */
   hold: () => () => void;
-}
+};
 
 /** A lock over `apply`, locked by the first hold and unlocked by the last release. */
 export function createSelectionLock(apply: (locked: boolean) => void): SelectionLock {
@@ -42,10 +42,10 @@ const bodySelection = createSelectionLock(locked => {
 });
 
 /** What a drag calls back. `end` runs once, and `released` is true only for a pointerup, the one end to commit. */
-export interface DragHandlers {
+export type DragHandlers = {
   move: (event: PointerEvent) => void;
   end?: (released: boolean) => void;
-}
+};
 
 /**
  * Follow one captured pointer drag until pointerup or pointercancel, which no pointerup follows.
@@ -97,12 +97,12 @@ export function startDrag(
 }
 
 /** The drags one component runs. Its cleanup calls `stopAll`, so no hold outlives it. */
-export interface Drags {
+export type Drags = {
   /** Starts a drag that ends on its own pointer's release, or is cancelled by `stopAll`. */
   start: (target: DragTarget, down: Pick<PointerEvent, 'pointerId'>, handlers: DragHandlers) => void;
   /** Cancels every drag still going. Safe to call twice. */
   stopAll: () => void;
-}
+};
 
 const reportDragEnd = reportListener('ui', 'drag.end');
 

@@ -19,7 +19,7 @@ export type ReadPermissions =
   | { status: 'read'; label: string; statuses: readonly PermissionStatus[] };
 
 /** The page's product and permissions, and the intents that change them. */
-export interface PermissionsBinding {
+export type PermissionsBinding = {
   /** In menu order. */
   permissions: readonly MenuPermission[];
   product: ReadableStore<ShownProduct>;
@@ -28,7 +28,7 @@ export interface PermissionsBinding {
   pending: ReadableStore<PendingPermissions>;
   refresh: () => Promise<void>;
   change: (label: string, targets: PermissionTargets) => Promise<ChangeOutcome>;
-}
+};
 
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
 export function usePermissionsPanel(binding: PermissionsBinding): PermissionsItemProps {

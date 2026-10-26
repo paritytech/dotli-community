@@ -9,7 +9,7 @@ import type { StoredEvent } from './event-store.js';
 import type { FilterState } from './filters.js';
 import { isUint8ArrayLike } from './format.js';
 
-export interface ExportMeta {
+export type ExportMeta = {
   exportedAt: string;
   url: string;
   userAgent: string;
@@ -18,7 +18,7 @@ export interface ExportMeta {
   totalEvents: number;
   exportedEvents: number;
   filters: FilterState;
-}
+};
 
 function makeExportReplacer(): (this: unknown, k: string, v: unknown) => unknown {
   const seen = new WeakSet();

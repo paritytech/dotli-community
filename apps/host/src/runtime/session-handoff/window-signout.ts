@@ -17,7 +17,7 @@ import { log } from '@dotli/shared';
 import type { Reconciled } from '../session/restore-rule.js';
 import { reportWalletFailure } from '../wallet-failure.js';
 
-export interface WindowSignOutDeps {
+export type WindowSignOutDeps = {
   /** Whether the page told the phone itself, as the window's request says. */
   notified: boolean;
   /**
@@ -45,7 +45,7 @@ export interface WindowSignOutDeps {
   close: () => void;
   /** Says the user is signed out, with Close, in place of closing, once the window told the phone. */
   showSignedOut: () => void;
-}
+};
 
 /**
  * How the window's sign-out ended, a closed set so the metric's `outcome` tag stays bounded. `kept` is a flag still set
@@ -83,10 +83,10 @@ async function forgetGrants(deps: WindowSignOutDeps): Promise<void> {
 }
 
 /** How the window's sign-out ended, and whether it told the phone, whose message may still be on its way. */
-interface Ended {
+type Ended = {
   outcome: WindowSignOutOutcome;
   told: boolean;
-}
+};
 
 async function signOut(deps: WindowSignOutDeps): Promise<Ended> {
   const restored = await deps.restore();

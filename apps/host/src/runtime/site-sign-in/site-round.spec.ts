@@ -54,9 +54,9 @@ const SUFFIXES = parsePublicSuffixList('com\nio\ngithub.io\nli\nbg\n0.bg\n');
 const GROUPS: SiteGroups = { registrable: hostname => Promise.resolve(SUFFIXES.registrable(hostname)) };
 
 /** What the fake action answers the site. */
-interface FakeResult {
+type FakeResult = {
   done: string;
-}
+};
 
 const RESULT: FakeResult = { done: 'the action ran' };
 
@@ -85,13 +85,13 @@ type Post =
 type RunInput = Parameters<SiteAction<FakeResult>['run']>[0];
 
 /** One run of the action, which the test may finish itself. */
-interface ActionRun {
+type ActionRun = {
   input: RunInput;
   /** Ends the run with its result, or with `error`. */
   finish: (error?: Error) => void;
-}
+};
 
-interface HarnessOptions {
+type HarnessOptions = {
   /** The site's origin, {@link ORIGIN} by default. */
   origin?: string;
   /** The window's own origin, {@link SELF} by default. */
@@ -120,7 +120,7 @@ interface HarnessOptions {
   windowFlowFails?: boolean;
   /** Whether reading a grant fails. */
   readFails?: boolean;
-}
+};
 
 /**
  * A site's round over fakes: a responder that records what it posts, ends its round on its first terminal call and

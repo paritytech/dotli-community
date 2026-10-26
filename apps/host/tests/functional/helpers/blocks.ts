@@ -6,11 +6,11 @@ import * as raw from 'multiformats/codecs/raw';
 import { sha256 } from 'multiformats/hashes/sha2';
 
 /** One raw block, which the sandbox renders as a single page. */
-export interface RawBlock {
+export type RawBlock = {
   cid: string;
   /** The bytes as hex without a prefix, as the fake protocol frame answers them. */
   hex: string;
-}
+};
 
 /** A raw block whose CID the host and the sandbox verify, as they would content from the network. */
 export async function rawBlock(content: string | Uint8Array): Promise<RawBlock> {

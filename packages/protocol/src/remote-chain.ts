@@ -38,14 +38,14 @@ export function isRemoteChainSupported(genesisHash: string): boolean {
   return supported.has(genesisHash.toLowerCase());
 }
 
-interface RemoteChainConnection {
+type RemoteChainConnection = {
   onMessage: (message: JsonRpcMessage) => void;
   /** Told once when the chain behind this connection halts. */
   onHalt: ((reason: RemoteChainHalt) => void) | null;
   /** What the consumer sent before the frame accepted the connection, in order. */
   pendingMessages: JsonRpcRequest[];
   connected: boolean;
-}
+};
 
 /** `null` for a notification, which has no `id` to answer. */
 function buildJsonRpcError(

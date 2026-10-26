@@ -11,11 +11,11 @@ import { openModal, showNotification, type ModalHandoff, type ModalOutcome, type
 import { permissionRequestDialog } from './components/permissions/permission-dialog.js';
 import { preimageSubmitDialog } from './components/permissions/preimage-dialog.js';
 
-export interface HostPromptsDeps {
+export type HostPromptsDeps = {
   /** Where the dialogs queue. The page's overlays by default. */
   present?: typeof openModal | undefined;
   notify?: HostPrompts['notify'] | undefined;
-}
+};
 
 /** The host's tests find any of its prompts by this id. */
 const HOST_PROMPT_TEST_ID = 'host-prompt';

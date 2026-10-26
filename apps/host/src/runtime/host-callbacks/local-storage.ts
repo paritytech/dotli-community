@@ -18,12 +18,12 @@ function notifyChanged(key: string): void {
   listeners.emit(key);
 }
 
-export interface ProductStorageDeps {
+export type ProductStorageDeps = {
   /** Reached on every call, as the page's localStorage throws where the browser blocks it. */
   storage: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   /** Where other tabs' `storage` events arrive. */
   events: () => EventTarget;
-}
+};
 
 const pageStorage: ProductStorageDeps = { storage: () => localStorage, events: () => window };
 

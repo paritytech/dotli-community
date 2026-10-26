@@ -16,7 +16,7 @@ const UI_STATE = '{"connected":true}';
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 const NEW_ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => 100 + i);
 
-interface HarnessOptions {
+type HarnessOptions = {
   flag?: Presence;
   notified?: boolean;
   session?: string | null;
@@ -28,7 +28,7 @@ interface HarnessOptions {
   duringDrop?: () => void;
   /** Whether the round's first vetting is dot.li's own page, which it is by default. */
   firstParty?: Promise<boolean>;
-}
+};
 
 /** A sign-out window over fakes: the flag, the main store, the restore rule over both and the window's own core. */
 function harness(options: HarnessOptions = {}) {

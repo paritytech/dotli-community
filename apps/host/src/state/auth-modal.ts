@@ -41,12 +41,12 @@ export type AuthModalView =
  * `open` is true only while the modal holds the blocking-modal lease. `productLabel` has the TLD
  * applied, and is null for host-global login.
  */
-export interface AuthModalState {
+export type AuthModalState = {
   open: boolean;
   productLabel: string | null;
   reason: string | null;
   view: AuthModalView;
-}
+};
 
 const INITIAL: AuthModalState = {
   open: false,

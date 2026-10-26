@@ -14,7 +14,7 @@ const BY_ROOM = 'byRoom';
 /** What a room shows below its messages. Matches TrUAPI `ChatRoomFooter`. */
 export type ChatRoomFooter = 'TextInput' | 'Empty';
 
-export interface ChatRoomRecord {
+export type ChatRoomRecord = {
   productId: string;
   roomId: string;
   name: string;
@@ -23,20 +23,20 @@ export interface ChatRoomRecord {
   createdAt: number;
   /** Unset until the product sets one, and an unset room shows the text input. */
   footer?: ChatRoomFooter;
-}
+};
 
-export interface ChatBotRecord {
+export type ChatBotRecord = {
   productId: string;
   botId: string;
   name: string;
   /** URL or base64 image, as supplied by the product. */
   icon: string;
   createdAt: number;
-}
+};
 
 export type ChatMessageAuthor = 'product' | 'user';
 
-export interface ChatMessageRecord {
+export type ChatMessageRecord = {
   seq: number;
   productId: string;
   roomId: string;
@@ -45,7 +45,7 @@ export interface ChatMessageRecord {
   /** Decoded TrUAPI `ChatMessageContent`, kept codec-agnostic so readers must tolerate unknown tags. */
   content: unknown;
   timestamp: number;
-}
+};
 
 export type NewChatMessage = Omit<ChatMessageRecord, 'seq'>;
 

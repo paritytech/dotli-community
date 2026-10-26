@@ -12,14 +12,14 @@ import { matches } from './model/filters.js';
 import { rowSelection } from './model/row-format.js';
 import { createKeyedSignals } from './keyed-signals.js';
 
-export interface PanelWork {
+export type PanelWork = {
   matches: typeof matches;
   formatPending: typeof formatPending;
   rowSelection: typeof rowSelection;
   buildTimeline: typeof buildTimeline;
   buildResolution: typeof buildResolution;
   createKeyedSignals: typeof createKeyedSignals;
-}
+};
 
 export const panelWork: PanelWork = {
   matches,

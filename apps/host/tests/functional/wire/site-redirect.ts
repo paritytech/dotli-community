@@ -15,19 +15,19 @@ const X25519 = { name: 'X25519' } as const;
 const KEPT_KEY = 'site-redirect:round';
 const RETURN_PATH = '/back';
 
-interface KeptRound {
+type KeptRound = {
   round: string;
   /** The round's private key, PKCS #8 in unpadded base64url. */
   privateKey: string;
-}
+};
 
-interface Envelope {
+type Envelope = {
   v: number;
   round: string;
   epk: string;
   iv: string;
   ct: string;
-}
+};
 
 const button = document.querySelector<HTMLButtonElement>('[data-testid="opener-sign-in"]');
 const output = document.querySelector<HTMLOutputElement>('[data-testid="site-reply"]');

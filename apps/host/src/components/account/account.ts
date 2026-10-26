@@ -8,7 +8,7 @@ import type { TruapiSessionUiState } from '../../runtime/session/session-state.j
 export type AccountSession = Omit<TruapiSessionUiState, 'connected'>;
 
 /** The signed-in account as the account views read it. */
-export interface Account {
+export type Account = {
   /** True from `Connected` until `Disconnected`. */
   loggedIn: Accessor<boolean>;
   /**
@@ -28,4 +28,4 @@ export interface Account {
   local: Accessor<boolean>;
   /** True while signed out here and a sign-in made elsewhere on the site waits to be continued. */
   elsewhere: Accessor<boolean>;
-}
+};

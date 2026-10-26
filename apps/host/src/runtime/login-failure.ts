@@ -9,22 +9,22 @@ import type { DotliAuthState } from './session/auth-state.js';
 
 export type LoginFailureKind = Extract<DotliAuthState, { tag: 'LoginFailed' }>['kind'];
 
-export interface FriendlyAuthError {
+export type FriendlyAuthError = {
   title: string;
   subtitle: string;
   detail?: string | undefined;
   retryable?: boolean | undefined;
   pending?: boolean | undefined;
-}
+};
 
-interface AuthErrorRule {
+type AuthErrorRule = {
   match: RegExp;
   title: string;
   subtitle: string;
   retryable?: boolean;
   pending?: boolean;
   hideDetail?: boolean;
-}
+};
 
 // First match wins, so specific rules sit above the broad buckets.
 const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [

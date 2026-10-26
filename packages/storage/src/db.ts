@@ -69,11 +69,11 @@ export function createDbConnection(open: () => Promise<IDBDatabase>): () => Prom
 const getDb = createDbConnection(() => openIdb(indexedDB, DB_NAME, DB_VERSION, upgradeDotliDb));
 
 /** The IndexedDB a store reads and writes: its connection, and key ranges of the same implementation. */
-export interface DotliIdb {
+export type DotliIdb = {
   connect: () => Promise<IDBDatabase>;
   /** Read at use, as a context without IndexedDB, such as the build, still loads the stores. */
   keyRange: () => typeof IDBKeyRange;
-}
+};
 
 /** The page's own IndexedDB. */
 export const pageIdb: DotliIdb = { connect: getDb, keyRange: () => IDBKeyRange };

@@ -14,11 +14,11 @@ import type { Plugin } from 'vite';
 /** The three builds, each on its own origin. */
 export type Site = 'host' | 'app' | 'protocol';
 
-export interface Route {
+export type Route = {
   site: Site;
   /** The bare host, whose root is the landing page. */
   bare: boolean;
-}
+};
 
 /** The protocol app's path, which reaches the protocol build on the bare host. */
 export const PROTOCOL_PREFIX = '/p';
@@ -143,11 +143,11 @@ export function fileHeaders(pathname: string): Record<string, string> {
 const NO_FALLBACK: ReadonlySet<string> = new Set([...SERVICE_WORKERS, '/host_version.json']);
 
 /** A file a local server sends. */
-export interface ResolvedFile {
+export type ResolvedFile = {
   file: string;
   /** The path its caching headers follow. */
   pathname: string;
-}
+};
 
 function isFileOnDisk(path: string): boolean {
   try {
@@ -226,7 +226,7 @@ export const MIME_TYPES: Readonly<Record<string, string>> = {
 };
 
 /** The routes and headers of a local server, which answers under its local roots. */
-export interface LocalServing {
+export type LocalServing = {
   /**
    * The build a local hostname and path reach. The protocol app answers under its prefix on the bare host, and at
    * `host.` under a local root. Any host but a local root's subdomain is the bare host.
@@ -248,7 +248,7 @@ export interface LocalServing {
   readonly isolationHeaders: () => Plugin;
   /** A dev server's proxy to the protocol app hands over only what this table routes to the protocol build. */
   readonly protocolProxyBypass: (req: Pick<IncomingMessage, 'url' | 'headers'>) => string | undefined;
-}
+};
 
 /** The routes and headers of a local server that answers under `roots`. */
 export function createLocalServing(roots: readonly string[]): LocalServing {

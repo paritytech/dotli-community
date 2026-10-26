@@ -5,11 +5,11 @@
 
 import { getActiveTldSuffix } from '@dotli/config';
 
-export interface DotNsUrl {
+export type DotNsUrl = {
   identifier: string;
   /** No leading slash. Carries the query and hash. */
   pathname: string;
-}
+};
 
 /** Case-folded, since a `polkadot://` host and a raw identifier keep the case they were typed in. */
 function isDotDomain(domain: string): boolean {
@@ -59,11 +59,11 @@ function parseDotNsDomain(url: string): DotNsUrl | null {
   };
 }
 
-export interface LocalhostUrl {
+export type LocalhostUrl = {
   host: string;
   /** No leading slash. Carries the query and hash. */
   pathname: string;
-}
+};
 
 function parseLocalhostUrl(url: string): LocalhostUrl | null {
   const normalized = url.trim();

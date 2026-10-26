@@ -8,7 +8,7 @@ import { createBitswapBridge, hostOriginRule, type BitswapBridge } from './bitsw
 
 const HOST = 'https://doom.dot.li';
 
-interface Harness {
+type Harness = {
   bridge: BitswapBridge;
   /** What the bridge posted to its parent, in order. */
   posted: unknown[];
@@ -17,7 +17,7 @@ interface Harness {
   receive: (data: unknown, source: unknown, origin?: string) => void;
   /** The sandbox's page going away, for good or into the back/forward cache. */
   pagehide: (persisted: boolean) => void;
-}
+};
 
 /** The sandbox's window and its host parent, as fakes the test drives. `refuseAborts` makes posting an abort throw. */
 function harness({ refuseAborts = false }: { refuseAborts?: boolean } = {}): Harness {

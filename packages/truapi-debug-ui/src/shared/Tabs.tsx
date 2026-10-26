@@ -6,10 +6,10 @@ import type { JSX } from '@solidjs/web';
 import { rovingTarget } from './roving.js';
 import s from './Tabs.module.css';
 
-export interface TabOption<T extends string> {
+export type TabOption<T extends string> = {
   value: T;
   label: string;
-}
+};
 
 /** The id of the tab for `value` in the strip whose ids start with `idPrefix`, which its panel names as its label. */
 export function tabId(idPrefix: string, value: string): string {

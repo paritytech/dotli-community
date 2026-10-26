@@ -7,12 +7,12 @@ import type { IconProps } from '../icons/icon-props.js';
 import type { StatusTone } from '../../page/status-tone.js';
 
 /** A status a collapsed item raises on More: the badge's tone, and words for More's accessible name. */
-export interface ActionAlert {
+export type ActionAlert = {
   readonly tone: StatusTone;
   readonly label: string;
-}
+};
 
-export interface ActionEntry {
+export type ActionEntry = {
   /** A stable key, also the menu row's `data-item`. */
   readonly name: string;
   readonly label: string;
@@ -30,16 +30,16 @@ export interface ActionEntry {
   readonly activate: (ev: MouseEvent) => void;
   /** The element the group measures and collapses. */
   readonly element: () => HTMLElement | undefined;
-}
+};
 
-export interface ActionBar {
+export type ActionBar = {
   /** Add an item in bar order until the caller is disposed. Returns whether the group has moved it into More. */
   register: (entry: ActionEntry) => Accessor<boolean>;
   /** Measure `el` again whenever its size changes, until it is disposed. */
   observe: (el: HTMLElement) => void;
   /** The More button, which takes focus for a collapsed item. */
   moreButton: () => HTMLElement | undefined;
-}
+};
 
 /** Null outside an action group, where an item is always inline. */
 export const ActionsContext = createContext<ActionBar | null>(null);

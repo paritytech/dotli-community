@@ -5,12 +5,12 @@
 
 import { createContext } from 'solid-js';
 
-export interface PanelEffects {
+export type PanelEffects = {
   /** Rejects when the browser refuses, or when the origin has no clipboard. */
   writeClipboard: (text: string) => Promise<void>;
   /** Saves `json` as a file named `filename`. */
   download: (filename: string, json: string) => void;
-}
+};
 
 export const pageEffects: PanelEffects = {
   writeClipboard: text => {

@@ -11,22 +11,22 @@ import { ChevronDownIcon } from '@dotli/ui/icons';
 import { appendViolation, clampPanelHeight, violationFrom } from './violations.js';
 import s from './ViolationPanel.module.css';
 
-interface Violation {
+type Violation = {
   id: number;
   time: string;
   api: string;
   details: string;
-}
+};
 
 const COLLAPSED_HEIGHT = 32;
 const HEADER_AND_HANDLE = 32 + 5;
 
-export interface ViolationPanelProps {
+export type ViolationPanelProps = {
   /** The product's frame, whose violations the panel lists. */
   iframe: HTMLIFrameElement;
   /** The px the panel covers at the page's bottom, for the page to keep the product clear of. 0 as it goes. */
   onReserve: (bottom: number) => void;
-}
+};
 
 export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
   // One array trimmed in place, since copying it per violation makes a looping product quadratic.

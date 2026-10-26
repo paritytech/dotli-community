@@ -44,7 +44,7 @@ function until(met: () => boolean): Promise<void> {
 }
 
 /** A truapi-provider connection whose response stream the test drives. */
-interface FakeConnection {
+type FakeConnection = {
   send: (raw: string) => void;
   close: () => void;
   nextResponse: () => Promise<string | undefined>;
@@ -54,7 +54,7 @@ interface FakeConnection {
   end: () => void;
   /** Fail the next read, as a broken response stream would. */
   break: (error: Error) => void;
-}
+};
 
 function createConnection(): FakeConnection {
   const queued: (string | undefined | Error)[] = [];
@@ -103,12 +103,12 @@ function createConnection(): FakeConnection {
 }
 
 /** A started engine whose chains connect as `connect` says, with the store the light client handed it. */
-interface FakeEngine {
+type FakeEngine = {
   start: Mock<(options: StartEngineOptions) => Promise<LightClientEngine>>;
   connections: FakeConnection[];
   connect: (genesisHash: string) => Promise<FakeConnection>;
   options: StartEngineOptions | null;
-}
+};
 
 function fakeEngine(): FakeEngine {
   const fake: FakeEngine = {
@@ -132,11 +132,11 @@ function fakeEngine(): FakeEngine {
   return fake;
 }
 
-interface LogLine {
+type LogLine = {
   level: LogLevel;
   message: string;
   args: unknown[] | undefined;
-}
+};
 
 function recordLogs(): LogLine[] {
   const lines: LogLine[] = [];
@@ -149,14 +149,14 @@ function recordLogs(): LogLine[] {
   return lines;
 }
 
-interface MockHooks {
+type MockHooks = {
   onStatus: Mock<ChainTransportHooks['onStatus']>;
   onHalt: Mock<ChainTransportHooks['onHalt']>;
   /** Resolves once `status` is the last status reported. */
   reported: (status: Parameters<ChainTransportHooks['onStatus']>[0]) => Promise<void>;
   /** Resolves once the chain halted `count` times. */
   halted: (count?: number) => Promise<void>;
-}
+};
 
 function hooks(): MockHooks {
   const onStatus = vi.fn<ChainTransportHooks['onStatus']>(changed);

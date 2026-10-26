@@ -6,7 +6,7 @@ import s from './InlineActionButton.module.css';
 
 export type InlineActionButtonVariant = 'primary' | 'secondary' | 'text';
 
-export interface InlineActionButtonProps {
+export type InlineActionButtonProps = {
   variant: InlineActionButtonVariant;
   /** Pulses while the app works on the action. A loading button is disabled. */
   loading?: boolean;
@@ -17,7 +17,7 @@ export interface InlineActionButtonProps {
   testId?: string;
   onClick: () => void;
   children: JSX.Element;
-}
+};
 
 /** The action button of a chat bubble and of a product's custom body, drawn in the chat's colours. */
 export function InlineActionButton(props: InlineActionButtonProps): JSX.Element {

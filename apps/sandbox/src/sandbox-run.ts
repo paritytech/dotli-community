@@ -16,14 +16,14 @@ type ContractStep = 'contract_top_level' | 'contract_origin' | 'contract_params'
 /** Named alike in Sentry and in the host's `failedStep`. */
 export type SandboxStep = LoadStep | ContractStep | 'retry_limit';
 
-export interface SandboxPage {
+export type SandboxPage = {
   /** The page's URL, which carries the host's contract. */
   href: string;
   /** Whether the page runs in a frame, as the host renders it. */
   framed: boolean;
-}
+};
 
-export interface SandboxRunDeps {
+export type SandboxRunDeps = {
   /** Applies the contract's settings to the page, once, before the first load. */
   configure: (params: SandboxParams) => void;
   /** One load of the product. A rejection is reported and shown as a failed `init`. */
@@ -43,7 +43,7 @@ export interface SandboxRunDeps {
   /** How long the host has to render the frame again. */
   recoverTimeoutMs: number;
   maxAttempts?: number;
-}
+};
 
 const MAX_ATTEMPTS = 5;
 

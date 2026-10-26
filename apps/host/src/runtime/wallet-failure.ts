@@ -10,7 +10,7 @@ import { log } from '@dotli/shared';
 /** A tag value from a closed set: a plain `string` does not type, so a tag never takes free text. */
 type ClosedSet<Reason extends string> = string extends Reason ? never : Reason;
 
-export interface WalletFailure<Reason extends string> {
+export type WalletFailure<Reason extends string> = {
   /** What failed, for the log line. */
   what: string;
   /** Groups the issue. */
@@ -19,7 +19,7 @@ export interface WalletFailure<Reason extends string> {
   reason: ClosedSet<Reason>;
   /** Counted with the reason, unless the caller counts how its flow ended itself. */
   metric?: string;
-}
+};
 
 export function reportWalletFailure<Reason extends string>(
   error: unknown,

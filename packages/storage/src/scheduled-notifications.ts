@@ -17,7 +17,7 @@ const RECORD_STORE = 'scheduled_notifications';
 const COUNTER_STORE = 'notification_counters';
 const BY_PRODUCT_ID = 'byProductId';
 
-export interface ScheduledNotificationRecord {
+export type ScheduledNotificationRecord = {
   hostId: number;
   perProductId: number;
   productId: string;
@@ -25,22 +25,22 @@ export interface ScheduledNotificationRecord {
   text: string;
   deeplink: string | null;
   scheduledAt: number;
-}
+};
 
-export interface ScheduleRequest {
+export type ScheduleRequest = {
   productId: string;
   title: string;
   text: string;
   deeplink: string | null;
   scheduledAt: number;
-}
+};
 
 export type ScheduleResult = { ok: true; id: number } | { ok: false; error: 'ScheduleLimitReached' };
 
-interface CounterEntry {
+type CounterEntry = {
   productId: string;
   next: number;
-}
+};
 
 /** The scheduled notification queue over `idb`, the page's own by default. */
 export function createScheduledNotifications(idb: DotliIdb = pageIdb) {

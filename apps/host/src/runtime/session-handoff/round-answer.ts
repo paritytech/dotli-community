@@ -15,18 +15,18 @@ import type { Responder, ResponderState } from './responder.js';
 import { dispatchRound, type Round } from './round-dispatch.js';
 import type { RefusalReason, SessionRequest, SessionRoute } from './session-protocol.js';
 
-export interface RoundAnswerDeps<R> {
+export type RoundAnswerDeps<R> = {
   responder: Pick<Responder<R>, 'state' | 'subscribe' | 'refuse'>;
   request: SessionRequest;
   /** The networks this deployment runs. */
   enabled: readonly Network[];
-}
+};
 
 /** The origin and party of the responder's first vetting, which stay the round's. */
-interface Vetted {
+type Vetted = {
   origin: string;
   party: 'first' | 'third';
-}
+};
 
 /** Resolves with the responder's first vetting, or null once it can have none: no opener, or one it refused. */
 function firstVetting(responder: Pick<Responder<unknown>, 'state' | 'subscribe'>): Promise<Vetted | null> {
@@ -116,7 +116,7 @@ export async function answerSignIn<B>(
 }
 
 /** How the sign-out window answers its round. */
-export interface SignOutAnswer {
+export type SignOutAnswer = {
   /**
    * True once the first vetting found dot.li's own page with a round the window answers, and false once it found a
    * site or a round it refuses, or the window can have no vetting. Never rejects.
@@ -124,7 +124,7 @@ export interface SignOutAnswer {
   firstParty: Promise<boolean>;
   /** Settles once the round got its answer, or has nobody to answer. */
   answered: Promise<void>;
-}
+};
 
 /**
  * Answers the sign-out window's round: a round the first vetting's dispatch refuses gets its refusal at once and never

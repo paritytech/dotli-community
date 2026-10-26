@@ -5,14 +5,14 @@ import { OriginWipeError, wipeOriginStores, type OriginStores } from '@dotli/sha
 import { m, recordExpected, spans as S } from '@dotli/metrics';
 
 /** The stores a product may leave in the sandbox origin. A store this browser lacks is `null`. */
-export interface SandboxOrigin extends OriginStores {
+export type SandboxOrigin = {
   /** Read on use, since a browser that blocks storage throws on the read. */
   localStorage: () => Pick<Storage, 'clear'>;
   sessionStorage: () => Pick<Storage, 'clear'>;
   document: Pick<Document, 'cookie'>;
   /** The page's path, since a product may have set a cookie on it. */
   pathname: string;
-}
+} & OriginStores;
 
 /**
  * Best-effort, since a page cannot reach `HttpOnly` cookies. The reset is opt-in, so a partial wipe is not fatal, and

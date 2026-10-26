@@ -94,7 +94,7 @@ function payloadOf(call: Uint8Array): Parameters<TxCreator>[0] {
   };
 }
 
-interface ChainScript {
+type ChainScript = {
   /** Failures `open` answers with, one per call, before it opens. */
   openFailures?: Error[];
   /** The failure every decode answers with. */
@@ -105,7 +105,7 @@ interface ChainScript {
   buildFailures?: Error[];
   /** What each build waits on while it fills the extensions, before it asks the creator. */
   filling?: () => Promise<void>;
-}
+};
 
 /**
  * Asset Hub that decodes any call and builds its transaction with the creator it is given, unless its script says
@@ -220,7 +220,7 @@ type Post =
   | { type: 'dotli:s:refused'; reason: string }
   | { type: 'dotli:s:cancelled' };
 
-interface HarnessOptions extends ChainScript {
+type HarnessOptions = {
   siteToken?: string | null;
   groupToken?: string | null;
   grants?: SiteGrant[];
@@ -228,7 +228,7 @@ interface HarnessOptions extends ChainScript {
   accountFailures?: Error[];
   /** What every new grant token throws, in place of a token. */
   tokenFailure?: Error;
-}
+} & ChainScript;
 
 /** A responder that records what it posts and ends its round on its first terminal call. */
 function recordingResponder() {

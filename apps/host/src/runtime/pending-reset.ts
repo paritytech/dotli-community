@@ -10,7 +10,7 @@ export type PendingResetTarget = 'protocol' | 'sandbox';
 
 export type ResetStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-export interface PendingResets {
+export type PendingResets = {
   /** Asks the origins to purge on the next boot. Throws when the request cannot be stored, so the reset reports it. */
   schedule(targets: readonly PendingResetTarget[]): void;
   /**
@@ -18,7 +18,7 @@ export interface PendingResets {
    * be read answers false, as no request could have been stored.
    */
   take(target: PendingResetTarget): boolean;
-}
+};
 
 export function createPendingResets(storage: () => ResetStorage, onReadFailure: (err: unknown) => void): PendingResets {
   const keyOf = (target: PendingResetTarget): string => `dotli:pending-reset:${target}`;

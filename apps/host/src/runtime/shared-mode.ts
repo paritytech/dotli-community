@@ -10,11 +10,11 @@ import { getProtocolOrigin, protocolClient } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 
-export interface SharedChannel {
+export type SharedChannel = {
   read: (key: string) => Promise<string | null>;
   write: (key: string, value: string) => Promise<void>;
   clear: (key: string) => Promise<void>;
-}
+};
 
 function devHttpChannel(): SharedChannel {
   const baseUrl = `${getProtocolOrigin()}/__dotli-mode/`;

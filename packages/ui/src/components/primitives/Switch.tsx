@@ -4,7 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import s from './Switch.module.css';
 
-export interface SwitchProps {
+export type SwitchProps = {
   checked: boolean;
   /** Called with the value the user asked for. The switch shows `checked` until its owner updates it. */
   onChange: (checked: boolean) => void;
@@ -12,7 +12,7 @@ export interface SwitchProps {
   label: string;
   class?: string | undefined;
   testId?: string;
-}
+};
 
 export function Switch(props: SwitchProps): JSX.Element {
   return (

@@ -8,7 +8,7 @@ import { reportExpected, spans as S } from '@dotli/metrics';
 import { createLazyLoad, type ReadableStore } from '@dotli/shared';
 import type { PageUiModule } from './lazy.js';
 
-export interface SandboxUiDeps {
+export type SandboxUiDeps = {
   load: () => Promise<PageUiModule>;
   /** Toasts queue here before the UI is up, and show once it mounts. */
   toasts: ReadableStore<{ readonly items: readonly unknown[] }>;
@@ -16,9 +16,9 @@ export interface SandboxUiDeps {
   showFallback: (text: string) => void;
   /** Takes that screen away once a later load brings the UI up. Safe when it is not shown. */
   hideFallback: () => void;
-}
+};
 
-export interface SandboxUi {
+export type SandboxUi = {
   /** The UI with its overlays mounted. One load at a time, and a failed load is not kept, so the next call loads again. */
   ready: () => Promise<PageUiModule>;
   showError: (title: string, message: string, retry?: () => void) => void;
@@ -28,7 +28,7 @@ export interface SandboxUi {
    * still in flight does not mount.
    */
   close: () => void;
-}
+};
 
 export function createSandboxUi({ load, toasts, showFallback, hideFallback }: SandboxUiDeps): SandboxUi {
   let closed = false;

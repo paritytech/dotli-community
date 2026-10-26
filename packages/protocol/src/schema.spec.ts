@@ -46,17 +46,17 @@ const { frame, resolve, storage, wallet, chain } = protocolSchema.sections;
 type Sections = ProtocolSchema['sections'];
 
 /** What a call heard: how many calls it made, and the check of what they heard and sent. */
-interface Heard {
+type Heard = {
   calls: number;
   check(recorded: RecordedWireMessage[]): void;
-}
+};
 
 /** One method with its samples: served by the accepter, then called by the opener once per sample. */
-interface Case {
+type Case = {
   method: AnyMethod;
   serve(server: ProtocolTransport, hellos: ProtocolHello[]): void;
   call(caller: ProtocolTransport): Promise<Heard>;
-}
+};
 
 // Typed against the schema, so a method without a case fails to compile.
 type Cases = { [T in keyof Sections]: { [M in keyof Sections[T]]: Case } };

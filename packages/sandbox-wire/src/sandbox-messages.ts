@@ -6,49 +6,49 @@
 // never rename or retype one. Any frame or extension can post to a window, so each side parses what it receives.
 
 /** Progress text for the host's loading screen, or the end of the sandbox's use of it. */
-export interface LoadingStatusMessage {
+export type LoadingStatusMessage = {
   type: 'dotli:loading-status';
   message?: string;
   /** Without an `outcome` it only clears the screen for a prompt the sandbox shows before its content loads. */
   done?: true;
   outcome?: 'loaded' | 'failed';
   failedStep?: string;
-}
+};
 
 /** The debug panel's own event union lives in `@dotli/truapi-debug`, which this package does not import. */
-export interface SandboxDebugEvent {
+export type SandboxDebugEvent = {
   layer: 'sandbox';
   event: string;
   flowId: string;
   timestamp: number;
   payload: Record<string, unknown>;
-}
+};
 
-export interface SandboxDebugEventMessage {
+export type SandboxDebugEventMessage = {
   type: 'dotli:debug-event';
   event: SandboxDebugEvent;
-}
+};
 
 /** A reloaded sandbox lost its contract params, so it asks the host to render it again. */
-export interface SandboxRecoverMessage {
+export type SandboxRecoverMessage = {
   type: 'dotli:sandbox-recover';
-}
+};
 
-export interface BitswapGetMessage {
+export type BitswapGetMessage = {
   type: 'dotli:bitswap-get';
   id: string;
   cid: string;
   /** The sandbox document's own id, which its abort repeats. Missing from a sandbox released before it. */
   frame?: string;
-}
+};
 
 /** The sandbox frame is going away, so the host stops these fetches. */
-export interface BitswapAbortMessage {
+export type BitswapAbortMessage = {
   type: 'dotli:bitswap-abort';
   ids: string[];
   /** As on the gets. The host reads an abort sent on `pagehide` once its frame is gone, so it has no source. */
   frame?: string;
-}
+};
 
 export type BitswapResultMessage =
   | {
@@ -77,12 +77,12 @@ export type HostToSandboxMessage = BitswapResultMessage;
  * A checker build's report that the product reached a browser API it should reach through the host. The product's page
  * posts it from the sandbox origin, never through `postToHost`, so the host reads it with its own parser.
  */
-export interface ApiViolationMessage {
+export type ApiViolationMessage = {
   type: 'DOTLI_API_VIOLATION';
   api: string;
   details?: Record<string, unknown>;
   timestamp?: number;
-}
+};
 
 function asRecord(data: unknown): Record<string, unknown> | null {
   return typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : null;

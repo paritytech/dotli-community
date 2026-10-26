@@ -10,13 +10,13 @@ import type { ReadableStore } from './sync-store.js';
 
 export type StatusCellOptions<T> = ListenerSetOptions<T>;
 
-export interface StatusCell<T> {
+export type StatusCell<T> = {
   get: () => T;
   /** Does nothing when `next` is the status already. */
   set: (next: T) => void;
   /** Called on each change only, in order. A listener subscribed twice is two subscriptions. */
   subscribe: (listener: (value: T) => void) => () => void;
-}
+};
 
 export function createStatusCell<T>(initial: T, options: StatusCellOptions<T>): StatusCell<T> {
   let value = initial;

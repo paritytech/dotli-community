@@ -9,16 +9,16 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { measureEagerPath } from './eager-path-size.ts';
 
-export interface Size {
+export type Size = {
   raw: number;
   br: number;
   gz: number;
-}
+};
 
-export interface NamedSize extends Size {
+export type NamedSize = {
   /** How many files share the name once their hashes are stripped. */
   count: number;
-}
+} & Size;
 
 export type Baseline = Record<string, Size>;
 
@@ -68,12 +68,12 @@ function total(sizes: Iterable<Size>): Size {
   return sum;
 }
 
-export interface Comparison {
+export type Comparison = {
   files: { name: string; size: NamedSize; base: Size | null }[];
   total: Size;
   /** Main's whole build, files this build no longer has included, so an added, removed or renamed file shows. */
   baseTotal: Size | null;
-}
+};
 
 export function compare(current: Map<string, NamedSize>, baseline: Baseline | null): Comparison {
   const files = [...current].map(([name, size]) => ({ name, size, base: baseline?.[name] ?? null }));

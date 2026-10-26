@@ -17,14 +17,14 @@ const PENDING_TICK_MS = 250;
 
 const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
-export interface ChainsContentProps {
+export type ChainsContentProps = {
   network: Accessor<NetworkView>;
   health: Accessor<NetworkHealth>;
   /** Until then the footer shows the product's download. */
   productLoaded: Accessor<boolean>;
   /** Undefined until the page has read its settings. */
   backend: Accessor<Backend | undefined>;
-}
+};
 
 /** The network popover's body, its own chunk. */
 export function ChainsContent(props: ChainsContentProps): JSX.Element {

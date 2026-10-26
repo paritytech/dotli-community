@@ -14,7 +14,7 @@ import { loadAccountContent } from '../../lazy.js';
 
 const AccountPanel = lazy(loadAccountContent, { export: 'AccountContent' });
 
-export interface AuthButtonProps {
+export type AuthButtonProps = {
   account: Account;
   /** Whether the auth modal is open, which the button announces while a click starts a sign-in. */
   modalOpen: Accessor<boolean>;
@@ -32,7 +32,7 @@ export interface AuthButtonProps {
   sitesUrl?: string | undefined;
   /** Gets the button once it is on the page. */
   buttonRef?: ((button: HTMLButtonElement) => void) | undefined;
-}
+};
 
 /** A signed-in account by where its keys live, in this browser or in Polkadot App. */
 function accountKind(account: Account): string {

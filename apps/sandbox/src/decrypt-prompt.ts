@@ -4,7 +4,7 @@
 import type { ArchiveFiles } from '@dotli/content';
 import { errorMessage, log } from '@dotli/shared';
 
-export interface DecryptDeps {
+export type DecryptDeps = {
   /** Asks the visitor for the password, showing why the attempt before failed. */
   prompt: (options?: { error?: string }) => Promise<string>;
   /** The host's loading screen would cover the prompt. */
@@ -12,7 +12,7 @@ export interface DecryptDeps {
   isEncrypted: (data: Uint8Array) => boolean;
   decryptContent: (data: Uint8Array, password: string) => Promise<Uint8Array>;
   parseIpfsResponse: (data: Uint8Array) => Promise<ArchiveFiles>;
-}
+};
 
 /** Opens encrypted content with the visitor's password. Resolves `null` when the data is not encrypted. */
 export function createDecryptIfNeeded(

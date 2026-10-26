@@ -13,19 +13,19 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { findAppFrame } from '../product-frame.js';
 
-interface PerfMark {
+type PerfMark = {
   name: string;
   startTime: number;
-}
+};
 
-interface PhaseResult {
+type PhaseResult = {
   phase: string;
   start: number;
   end: number;
   duration: number;
-}
+};
 
-export interface PhaseStats {
+export type PhaseStats = {
   p50: number;
   p95: number;
   p99: number;
@@ -36,9 +36,9 @@ export interface PhaseStats {
   max: number;
   values: number[];
   discarded: number; // iterations removed as outliers (> 2x best time)
-}
+};
 
-export interface RunStats {
+export type RunStats = {
   timestamp: string;
   type: 'cold' | 'warm' | 'lukewarm';
   iterations: number;
@@ -51,13 +51,13 @@ export interface RunStats {
     requestCount: PhaseStats;
     totalBytes: PhaseStats;
   };
-}
+};
 
-export interface SavedResults {
+export type SavedResults = {
   cold: RunStats;
   warm: RunStats | null;
   lukewarm: RunStats | null;
-}
+};
 
 const RESULTS_DIR = path.join(import.meta.dirname, 'results');
 const BASE_FILE = path.join(RESULTS_DIR, 'base.json');
@@ -268,13 +268,13 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
-interface SingleRun {
+type SingleRun = {
   phases: PhaseResult[];
   domContentLoaded: number;
   jsHeapUsed: number;
   requestCount: number;
   totalBytes: number;
-}
+};
 
 function aggregateRuns(type: RunStats['type'], runs: SingleRun[]): RunStats {
   const phaseNames = new Set<string>();

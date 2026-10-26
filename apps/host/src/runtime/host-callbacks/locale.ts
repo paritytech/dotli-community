@@ -6,11 +6,11 @@ import type { HostLocaleSubscribeItem } from '@parity/truapi';
 import { createResultStream } from './result-stream.js';
 
 // dotli has no language setting, so the browser preference is the only signal a product can localize against.
-export interface LocaleDeps {
+export type LocaleDeps = {
   language: () => string;
   /** Where `languagechange` arrives. */
   events: () => EventTarget;
-}
+};
 
 const pageLocale: LocaleDeps = { language: () => navigator.language, events: () => window };
 

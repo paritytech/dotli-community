@@ -8,7 +8,7 @@ import type { ProductFrameStatus, ProductFrameView, TitledProduct } from './prod
 
 export type ScreenName = 'page' | 'loading';
 
-export interface FakeProductFrameView {
+export type FakeProductFrameView = {
   view: ProductFrameView;
   /** Every frame handed to the layout, in order. */
   attached: HTMLIFrameElement[];
@@ -20,7 +20,7 @@ export interface FakeProductFrameView {
   mountsCleared: () => number;
   /** Puts up a screen whose dispose runs the first time the frame clears it. */
   showScreen: (name: ScreenName, dispose: () => void) => void;
-}
+};
 
 export function fakeProductFrameView(): FakeProductFrameView {
   const attached: HTMLIFrameElement[] = [];

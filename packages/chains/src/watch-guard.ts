@@ -15,12 +15,12 @@ const WATCH_EVENT = 'transactionWatch_v1_watchEvent';
 /** The watch events after which the node ends the watch on its own. */
 export const TERMINAL_WATCH_EVENTS: ReadonlySet<string> = new Set(['finalized', 'error', 'invalid', 'dropped']);
 
-export interface WatchGuard {
+export type WatchGuard = {
   /** The transport, with the watches it carries tracked. */
   provider: JsonRpcProvider;
   /** `disconnected` ends every tracked watch. */
   onStatus: (status: ConnectionStatus) => void;
-}
+};
 
 export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
   // Submit request ids not answered yet, and the watches their answers named.

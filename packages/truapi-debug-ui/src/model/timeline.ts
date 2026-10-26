@@ -17,7 +17,7 @@ import {
   type SegmentEntry,
 } from './timeline-layout.js';
 
-export interface TimelineRail {
+export type TimelineRail = {
   key: EventSeq;
   seq: EventSeq;
   x: number;
@@ -26,18 +26,18 @@ export interface TimelineRail {
   color: string;
   pending: boolean;
   tooltip: string;
-}
+};
 
-export interface TimelineTick {
+export type TimelineTick = {
   key: EventSeq;
   seq: EventSeq;
   cx: number;
   cy: number;
   color: string;
   tooltip: string;
-}
+};
 
-export interface TimelineBox {
+export type TimelineBox = {
   key: EventSeq;
   seq: EventSeq;
   /** Selecting any of them selects the box. */
@@ -51,9 +51,9 @@ export interface TimelineBox {
   tooltip: string;
   connector: { x1: number; x2: number; y: number } | null;
   pendingEdge: { x1: number; x2: number; y: number } | null;
-}
+};
 
-export interface TimelineLane {
+export type TimelineLane = {
   key: string;
   header: string;
   color: string;
@@ -64,7 +64,7 @@ export interface TimelineLane {
   rails: TimelineRail[];
   ticks: TimelineTick[];
   boxes: TimelineBox[];
-}
+};
 
 /** Every lane shares one Y axis, so the same height across lanes is the same moment. */
 export function buildTimeline(events: readonly StoredEvent[]): TimelineLane[] {

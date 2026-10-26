@@ -38,13 +38,13 @@ const PAIRED: LoginOutcome = { kind: 'paired', account: PAIRED_ACCOUNT };
 
 const SELF = 'https://dot.li';
 
-interface Stored {
+type Stored = {
   session?: string;
   uiState?: string;
   wallet?: { entropy: Uint8Array; identity: LocalWalletIdentity | null };
-}
+};
 
-interface HarnessOptions {
+type HarnessOptions = {
   /** The request's intent, `signin` by default. */
   intent?: SignInIntent;
   /** Whether the opener is vetted before the flow starts. Without it the window still waits for its hello. */
@@ -59,7 +59,7 @@ interface HarnessOptions {
   forward?: boolean;
   /** How the views name the vetted page, by its host as for dot.li's own page by default. */
   pageLabel?: WindowFlowDeps['pageLabel'];
-}
+};
 
 /**
  * A window flow over fakes: the opener, the flag, the window's auth state and core, and the main store, with the

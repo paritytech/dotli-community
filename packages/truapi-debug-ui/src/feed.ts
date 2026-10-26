@@ -6,12 +6,12 @@ import { createResolutionRecorder, type ResolutionRecorder } from './model/resol
 import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
 
 /** What the panel shows, fed from the bus. */
-export interface PanelFeed {
+export type PanelFeed = {
   store: EventStore;
   resolution: ResolutionRecorder;
   /** Stops feeding. The store and recorder keep what they have. */
   unsubscribe: () => void;
-}
+};
 
 function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBusEvent, { kind: 'truapi' }> {
   return 'kind' in ev;

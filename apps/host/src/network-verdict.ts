@@ -9,12 +9,12 @@ import type { ChainClock } from './state/network-monitor.js';
 /** The tones of a status dot the network health takes. */
 export type NetworkHealth = 'ok' | 'idle' | 'warn' | 'err' | 'quiet';
 
-export interface LiveVerdict {
+export type LiveVerdict = {
   text: string;
   tone: Exclude<NetworkHealth, 'err'>;
   /** The chains behind a warning, by label. */
   slow?: readonly string[];
-}
+};
 
 /** A live chain is overdue past this many block times without a block. */
 const OVERDUE_BLOCK_TIMES = 3;

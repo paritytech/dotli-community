@@ -69,12 +69,12 @@ test.describe('Resolution across chain backends', () => {
   });
 });
 
-interface SmoldotDbState {
+type SmoldotDbState = {
   /** Genesis hash of every chain with a stored database blob. */
   stored: string[];
   /** Genesis hash of every chain the provider resumed from storage. */
   loaded: string[];
-}
+};
 
 /** The protocol iframe is the test's only view of warm start, since the default backend writes from a SharedWorker. */
 async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {

@@ -34,9 +34,9 @@ function callError(reason: unknown): Error {
 export type CallOutcome = 'ok' | 'error' | 'timeout';
 
 /** Measures one call from when it is handed to the transport, and settles once. */
-interface CallTrail {
+type CallTrail = {
   settled(outcome: CallOutcome, error?: Error): void;
-}
+};
 
 /** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
 function startCallTrail(policy: MethodPolicy, now: () => number): CallTrail {
@@ -71,7 +71,7 @@ function startCallTrail(policy: MethodPolicy, now: () => number): CallTrail {
 /** What requests need of the frame. */
 export type RpcFrame = Pick<ProtocolFrame, 'whenReady' | 'transport'>;
 
-export interface FrameRpc {
+export type FrameRpc = {
   /**
    * Sends once the frame can answer: listening for the shared store, ready for everything else. A shared store
    * request's budget runs from the call, so it also bounds the wait for a frame that never loads. Any other budget runs
@@ -91,18 +91,18 @@ export interface FrameRpc {
     run: (transport: ProtocolTransport, signal: AbortSignal) => Promise<V>,
     options?: { signal?: AbortSignal | undefined },
   ): Promise<V>;
-}
+};
 
 /**
  * A call's budget. Once it runs out, `signal` aborts with the timeout error, which `bounded` rejects with. It also
  * aborts with the caller's `signal`.
  */
-interface Budget {
+type Budget = {
   signal: AbortSignal;
   bounded: <V>(work: Promise<V>) => Promise<V>;
   /** Whether `reason` is the timeout this budget raised. */
   timedOut: (reason: unknown) => boolean;
-}
+};
 
 function startBudget({ name, budgetMs }: MethodPolicy, timers: Timers, signal: AbortSignal | undefined): Budget {
   const giveUp = new AbortController();

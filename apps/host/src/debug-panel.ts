@@ -7,13 +7,13 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 import type { DebugPanelHost, TruapiDebugMountModule } from '@dotli/truapi-debug-ui';
 
-export interface DebugPanelDeps {
+export type DebugPanelDeps = {
   load: () => Promise<Pick<TruapiDebugMountModule, 'setupTruapiDebugPanel'>>;
   /** Loads beside the panel, so nothing the panel reads joins the boot chunk. */
   host: () => Promise<DebugPanelHost>;
   /** Set when debug mode is on by default, so the panel does not cover content unasked. */
   startCollapsed: boolean;
-}
+};
 
 /** Loads and mounts the debug panel. Never rejects: a failure is reported here, and the page goes on without it. */
 export async function startDebugPanel({ load, host, startCollapsed }: DebugPanelDeps): Promise<void> {

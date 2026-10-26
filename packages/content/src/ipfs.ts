@@ -7,12 +7,12 @@ import { concatBytes } from '@noble/hashes/utils.js';
 
 import { CONTENT_ERRORS } from './errors.js';
 
-export interface GatewayLimits {
+export type GatewayLimits = {
   /** How long the gateway may send nothing, before its headers or between two parts of its body. */
   stallMs: number;
   /** The most bytes one response may carry, since it is held whole in memory. */
   maxBytes: number;
-}
+};
 
 /** A stalled gateway must end in a failure the visitor can retry, not a load that waits forever. */
 const GATEWAY_LIMITS: GatewayLimits = { stallMs: 30_000, maxBytes: 256 * 1024 * 1024 };
@@ -25,14 +25,14 @@ export function defaultGateway(): string {
   return gateway;
 }
 
-interface GatewayRequest {
+type GatewayRequest = {
   url: string;
   accept: string;
   cid: string;
   gateway: string;
   /** How a non-ok status is described. */
   failure: string;
-}
+};
 
 /** The response body, read part by part so a stall or an oversized body ends the read. */
 async function gatewayGet(

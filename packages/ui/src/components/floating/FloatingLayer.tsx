@@ -17,7 +17,7 @@ export type LayerCloseReason = Exclude<CloseReason, 'sheet' | 'released'>;
 /** Matches the surface's exit, `--dur`. */
 const EXIT_MS = 220;
 
-export interface FloatingLayerProps {
+export type FloatingLayerProps = {
   id: string;
   kind: 'auto' | 'manual';
   open: boolean;
@@ -40,7 +40,7 @@ export interface FloatingLayerProps {
   ref?: (el: HTMLDivElement) => void;
   /** Rendered from an opening until its exit transition has played. */
   children: JSX.Element;
-}
+};
 
 /**
  * The anchored base of Popover, DropdownMenu and Tooltip, portalled to the body because the bar's backdrop filter

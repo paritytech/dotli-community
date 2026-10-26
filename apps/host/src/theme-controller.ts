@@ -8,20 +8,20 @@ import { setTheme, type ThemePref } from './runtime/state/theme.js';
 export const THEME_KEY = 'dotli-theme';
 
 /** The page parts the theme reads and writes. */
-export interface ThemeControllerDeps {
+export type ThemeControllerDeps = {
   /** This origin's localStorage, which never throws. */
   storage: Pick<SafeStorage, 'getItem' | 'setItem'>;
   /** Whether the OS prefers a light scheme, and its changes. */
   colorScheme: () => Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'>;
   /** Carries `data-theme` and `data-theme-pref`, the page state the functional tests read. */
   root: () => Pick<Element, 'setAttribute'>;
-}
+};
 
-export interface ThemeController {
+export type ThemeController = {
   /** Applies the stored choice and follows the OS while it is System, until the returned stop. */
   startTheme: () => () => void;
   selectThemePref: (pref: ThemePref) => void;
-}
+};
 
 export function createThemeController({ storage, colorScheme, root }: ThemeControllerDeps): ThemeController {
   function getStoredThemePref(): ThemePref {

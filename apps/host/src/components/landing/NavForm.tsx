@@ -23,14 +23,14 @@ const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], s
   reserved: "Names can't start with sn--",
 };
 
-export interface NavFormProps {
+export type NavFormProps = {
   /**
    * The TLD names resolve under, with its leading dot. Null until the browser knows the visitor's network, and the
    * form stays disabled until then, as the build renders it and a submit before hydration would reload with the
    * name lost.
    */
   suffix: Accessor<string | null>;
-}
+};
 
 /**
  * The landing page's name form.

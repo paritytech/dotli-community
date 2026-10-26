@@ -11,12 +11,12 @@ const PUB = new Uint8Array(32).fill(5);
 const ROUND = 'r1';
 const SEALED = `${RETURN_TO}#dotli-s=sealed`;
 
-interface SealCall {
+type SealCall = {
   returnTo: string;
   pub: Uint8Array;
   round: string;
   message: unknown;
-}
+};
 
 /**
  * A redirect responder whose seal answers with `sealed`, and which records each seal, the forgetting of the kept

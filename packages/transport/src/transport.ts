@@ -51,7 +51,7 @@ import {
 } from './wire.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
-export interface SubscriptionListeners<V, I> {
+export type SubscriptionListeners<V, I> = {
   receive(value: V): void;
   /** The peer's own end, the method's own interrupt reason as it is. */
   interrupt(reason: I): void;
@@ -59,21 +59,21 @@ export interface SubscriptionListeners<V, I> {
   fail(failure: Failure): void;
   /** The end raised on this side with an error: the transport closed, a failed post among the ways it does. */
   close(error: Error): void;
-}
+};
 
 /** What a handler knows about the peer that called it. */
-export interface CallContext<H> {
+export type CallContext<H> = {
   /** The peer's handshake hello. */
   hello: H;
-}
+};
 
 /** What a subscription handler sends on. Both do nothing once the subscription has ended. */
-export interface Sink<V, I> {
+export type Sink<V, I> = {
   /** Sends a value. One the wire cannot carry ends the subscription with `HostFailure`. */
   send(value: V): void;
   /** Ends the subscription with `reason`, the method's own interrupt type, which the subscriber hears as it is. */
   interrupt(reason: I): void;
-}
+};
 
 /** Serves one request method. It answers with a `Result`, and a throw or rejection answers `HostFailure`. */
 export type RequestHandler<P, R, E, H> = (
@@ -88,7 +88,7 @@ export type RequestHandler<P, R, E, H> = (
  */
 export type SubscriptionHandler<S, V, I, H> = (start: S, context: CallContext<H>, sink: Sink<V, I>) => () => void;
 
-export interface TransportOptions<H> {
+export type TransportOptions<H> = {
   /** Which side opens the handshake. The other accepts it. */
   handshake: 'offer' | 'respond';
   /** This side's handshake value, encoded once. One its codec refuses throws at creation. */
@@ -103,20 +103,20 @@ export interface TransportOptions<H> {
   timers?: Timers | undefined;
   /** Hears what the transport cannot handle itself. With none, each issue is logged as an error. */
   onIssue?: ((issue: TransportIssue) => void) | undefined;
-}
+};
 
-export interface RequestOptions {
+export type RequestOptions = {
   /** Gives up on the call: it resolves `Cancelled` and a late answer is ignored. The peer is not told. */
   signal?: AbortSignal;
-}
+};
 
-export interface SubscribeOptions {
+export type SubscribeOptions = {
   /** Gives up on the subscription: the peer is told to stop and `fail` hears `Cancelled`, once. */
   signal?: AbortSignal;
-}
+};
 
 /** Calls and serves the methods of one schema, whose hello is `H`. A method is passed as the schema holds it. */
-export interface Transport<H> {
+export type Transport<H> = {
   /**
    * Starts the handshake on the opener, for a side that starts it before its first call. Does nothing on the accepter,
    * which waits for the opener.
@@ -184,54 +184,54 @@ export interface Transport<H> {
    * every pending and later request rejects with `reason`, and the provider is disposed.
    */
   dispose(reason: Error): void;
-}
+};
 
 type Phase<H> = { name: 'connecting' } | { name: 'connected'; peerHello: H } | { name: 'closed'; error: Error };
 
 /** A call that went out, as the peer's messages reach it. */
-interface OutCall {
+type OutCall = {
   address: Address;
   hear(message: Uint8Array): void;
   fail(error: Failure): void;
   close(error: Error): void;
-}
+};
 
 /** A method's handler, as the peer's calls reach it. */
 type Served<H> = (id: number, message: Uint8Array, context: CallContext<H>) => void;
 
 /** A subscription the peer opened, as its stop reaches it. */
-interface Running {
+type Running = {
   address: Address;
   hear(message: Uint8Array): void;
   /** Ends it with nothing sent, and runs its stop function. */
   drop(): void;
-}
+};
 
 /** What a call opened for a forwarder hears from the peer it went to. */
-interface Heard {
+type Heard = {
   /** A message on the call, as its bytes. */
   message(bytes: Uint8Array): void;
   /** The failure the peer answered the call with, which ends it. */
   fail(error: Failure): void;
   /** The transport closed with `error`, which ends the call. */
   close(error: Error): void;
-}
+};
 
 /** A call opened for a forwarder. */
-interface Forwarded {
+type Forwarded = {
   /** Posts a further message on the call once it went out, and nothing while it waits for the handshake. */
   send(bytes: Uint8Array): void;
   /** Ends the call with nothing posted, so a late message on it is dropped and one still waiting never goes out. */
   forget(): void;
-}
+};
 
 /** What a forwarder reaches of the transport it forwards to. */
-interface Upstream {
+type Upstream = {
   /** Where the upstream's schema places `method`. Throws for a method it lacks. */
   addressOf(method: AnyMethod): Address;
   /** Opens a call of the method at `address` that carries `message` as it is. */
   open(address: Address, message: Uint8Array, heard: Heard): Forwarded;
-}
+};
 
 // Each transport this library built, so `forward` reaches another's calls with no public raw frame API.
 const upstreams = new WeakMap<Transport<unknown>, Upstream>();

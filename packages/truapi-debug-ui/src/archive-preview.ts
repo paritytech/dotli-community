@@ -6,10 +6,10 @@
 import { isEncrypted, type ArchiveFiles } from '@dotli/content';
 import { formatSize } from '@dotli/shared';
 
-export interface ArchiveFile {
+export type ArchiveFile = {
   path: string;
   bytes: Uint8Array;
-}
+};
 
 export type ArchiveRead =
   | { status: 'loading' }

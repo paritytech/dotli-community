@@ -4,11 +4,11 @@
 // What the sign-in window does to its own page, such as closing it or going back.
 
 /** The parts of a window its page closes with. */
-export interface ClosablePage {
+export type ClosablePage = {
   close(): void;
   readonly closed: boolean;
   history: { back(): void };
-}
+};
 
 /**
  * Closes `page`, which the opener finds closed when its page gets focus or turns visible. A tab a site navigated to the

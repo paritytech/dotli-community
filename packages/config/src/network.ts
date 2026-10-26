@@ -12,51 +12,51 @@ export type NetworkName = (typeof NetworkName)[keyof typeof NetworkName];
 
 export type Network = NetworkName;
 
-export interface DotnsStorageSlots {
+export type DotnsStorageSlots = {
   readonly REGISTRY_RECORDS: number;
   readonly CONTENTHASH: number;
   readonly TEXT_RECORDS?: number;
-}
+};
 
-export interface DotnsContracts {
+export type DotnsContracts = {
   readonly DOTNS_REGISTRY: `0x${string}`;
   readonly DOTNS_CONTENT_RESOLVER: `0x${string}`;
   readonly STORAGE_SLOTS: DotnsStorageSlots;
   /** Bare TLD label this network registers names under, e.g. `dot` or `paseo`. */
   readonly TLD: string;
-}
+};
 
 /** The part of a chain entry a runtime override cannot change. */
-export interface FixedChainService {
+export type FixedChainService = {
   readonly genesis: string;
   /**
    * Expected block interval. Measured, because no runtime constant yields it for a parachain: `Aura.SlotDuration` is
    * the async-backing slot, and `BLOCK_PROCESSING_VELOCITY` is absent from metadata.
    */
   readonly blockTimeMs: number;
-}
+};
 
-export interface ChainService extends FixedChainService {
+export type ChainService = {
   readonly rpcs: readonly string[];
-}
+} & FixedChainService;
 
-export interface BulletinService extends ChainService {
+export type BulletinService = {
   readonly ipfsGateways: readonly string[];
-}
+} & ChainService;
 
 /**
  * The part of a network entry a runtime override cannot change. The protocol SharedWorker has no document, so it never
  * sees the runtime config and reads only this, which keeps it in agreement with the documents.
  */
-export interface FixedServicesConfig {
+export type FixedServicesConfig = {
   readonly relay: FixedChainService;
   readonly assethub: FixedChainService;
   readonly bulletin: FixedChainService;
   readonly people: FixedChainService;
   readonly dotns: DotnsContracts;
-}
+};
 
-export interface ServicesConfig extends FixedServicesConfig {
+export type ServicesConfig = {
   readonly label: string;
   readonly description: string;
   readonly relay: ChainService;
@@ -64,7 +64,7 @@ export interface ServicesConfig extends FixedServicesConfig {
   readonly bulletin: BulletinService;
   readonly people: ChainService;
   readonly dotns: DotnsContracts;
-}
+} & FixedServicesConfig;
 
 const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PASEO]: {
@@ -145,14 +145,14 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  * The smoldot backends sync from chain specs and ignore `rpcs`. Anything unrecognised throws, because a silently
  * ignored override means running against the public chain.
  */
-export interface RuntimeNetworkConfig {
+export type RuntimeNetworkConfig = {
   /** Networks offered in the selector. Overrides `VITE_NETWORKS` when present. */
   readonly enabled?: readonly string[];
   /** Per-network endpoint overrides, merged over the built-in entry. */
   readonly networks?: Record<string, unknown>;
   /** Consumed by `BASE_DOMAIN` in ./config, declared here because it travels in the same document. */
   readonly baseDomain?: string;
-}
+};
 
 const RUNTIME_GLOBAL_KEY = '__DOTLI_NETWORK__';
 
@@ -410,14 +410,14 @@ export const CHAIN_ROLE_LABELS: Record<ChainRole, string> = {
   people: 'Identity',
 };
 
-export interface ActiveChainRole {
+export type ActiveChainRole = {
   readonly role: ChainRole;
   readonly label: string;
   readonly genesis: string;
   readonly blockTimeMs: number;
   /** False when the active network has no endpoint for this chain. */
   readonly hasEndpoint: boolean;
-}
+};
 
 /** Every chain of the active network, in the order a visitor should read them. */
 export function getActiveChainRoles(): ActiveChainRole[] {

@@ -385,7 +385,7 @@ export type BridgeEvent =
     };
 
 /** A chain backend switch after a resolution error. */
-export interface FailoverEvent {
+export type FailoverEvent = {
   layer: 'failover';
   event: 'chain_backend';
   flowId: string;
@@ -395,7 +395,7 @@ export interface FailoverEvent {
     to: string;
     reason: string;
   };
-}
+};
 
 /**
  * Emitted only by smoldot, so a gateway load has none.
@@ -448,10 +448,10 @@ export type ChainEvent =
     };
 
 /** A TrUAPI frame as the bus carries it, before the panel's store gives it a sequence number. */
-export interface TruapiDebugMessageEvent {
+export type TruapiDebugMessageEvent = {
   kind: 'truapi';
   direction: 'incoming' | 'outgoing';
   productId?: string;
   requestId: string;
   payload: { tag: string; value: unknown };
-}
+};

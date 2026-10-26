@@ -54,14 +54,14 @@ export type PhoneAsk = 'sign' | 'approve';
 type ResponseCodec = Codec<Result<unknown, CallErrorValue<unknown>>>;
 
 /** One phone-bound method: its wire ids, its codecs and what the phone is asked to do. */
-interface PhoneMethodEntry {
+type PhoneMethodEntry = {
   ids: MethodIds;
   /** The method's `Versioned...Request` codec. */
   request: Codec<unknown>;
   /** The method's response, as the generated wire decode table pairs it. */
   response: ResponseCodec;
   ask: PhoneAsk;
-}
+};
 
 /**
  * The response codec must be the generated client's exact composition, as a bare codec would decode real response

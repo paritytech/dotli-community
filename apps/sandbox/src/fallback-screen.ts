@@ -11,9 +11,9 @@ import s from './fallback-screen.module.css';
 const contentLog = log.child({ flow: 'content' });
 
 /** The part of `Document` the screen needs. */
-export interface FallbackPage {
+export type FallbackPage = {
   getElementById: (id: string) => HTMLElement | null;
-}
+};
 
 /**
  * Shows `text` with a Reload button. Calling it again replaces the text and keeps one Reload handler. A page without

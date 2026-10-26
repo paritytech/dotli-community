@@ -8,7 +8,7 @@ import { ActionItem, ActionsContext, Chip, IconButton, focusLostOrInside, focusT
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import s from './ChatButton.module.css';
 
-export interface ChatButtonProps {
+export type ChatButtonProps = {
   /** Chat is available to this session in this product. */
   visible: Accessor<boolean>;
   /** The docked chat panel is open. */
@@ -20,7 +20,7 @@ export interface ChatButtonProps {
   panel: () => HTMLElement | undefined;
   /** Where focus goes back to while the button is not on show, such as the More button of a bar it collapsed into. */
   fallbackFocus?: (() => HTMLElement | undefined) | undefined;
-}
+};
 
 /**
  * The topbar's button for the docked chat panel.

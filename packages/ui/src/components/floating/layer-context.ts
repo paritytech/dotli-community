@@ -6,11 +6,11 @@
 import { createContext } from 'solid-js';
 
 /** A floating layer as a tracker sees it. */
-export interface TrackedLayer {
+export type TrackedLayer = {
   element: () => HTMLElement | undefined;
   /** Open as last set (not as last rendered). */
   open: () => boolean;
-}
+};
 
 /** Tracks a layer until the returned function runs. */
 export type TrackLayer = (layer: TrackedLayer) => () => void;
@@ -18,10 +18,10 @@ export type TrackLayer = (layer: TrackedLayer) => () => void;
 /** Tracks every floating layer rendered below it, from its creation until its disposal. Untracked without one. */
 export const LayerTracker = createContext<TrackLayer | null>(null);
 
-export interface AnchorBoundary {
+export type AnchorBoundary = {
   /** Takes focus back for a trigger that cannot take it, such as one the region has hidden. */
   fallbackFocus: () => HTMLElement | undefined;
-}
+};
 
 /** Without one, focus goes back to the trigger only. */
 export const AnchorBoundary = createContext<AnchorBoundary | null>(null);

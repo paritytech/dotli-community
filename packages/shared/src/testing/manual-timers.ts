@@ -4,7 +4,7 @@
 import type { Timers } from '../timers.js';
 
 /** Timers a spec moves by hand, so a wait is a step the test takes rather than time it spends. */
-export interface ManualTimers extends Timers {
+export type ManualTimers = {
   /** Moves the clock `ms` on, firing each timer as it falls due, in order, and letting the work it starts settle. */
   advance: (ms: number) => Promise<void>;
   /**
@@ -14,12 +14,12 @@ export interface ManualTimers extends Timers {
   freeze: (ms: number) => void;
   /** How many timers are scheduled and have neither fired nor been cleared. */
   pending: () => number;
-}
+} & Timers;
 
-interface Scheduled {
+type Scheduled = {
   at: number;
   callback: () => void;
-}
+};
 
 /** One turn of the real event loop, so every promise the last step started settles before the next step. */
 function settle(): Promise<void> {

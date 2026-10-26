@@ -17,11 +17,11 @@ const CONNECTED: DotliAuthState = {
 };
 
 /** One lease the fake core handed out, which the test takes down. */
-interface FakeLease {
+type FakeLease = {
   released: number;
   /** The core under this lease goes down, as the page core tells its holders. */
   goDown: () => void;
-}
+};
 
 /**
  * A main-account source over a core whose leases the test counts and takes down, and a core report the test sets.

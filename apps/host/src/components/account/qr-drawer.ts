@@ -7,7 +7,7 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 import type { QrDrawOptions } from './qr-code.js';
 
-export interface QrShowing<Canvas> {
+export type QrShowing<Canvas> = {
   /** Draws `payload` onto `canvas`. Once `signal` aborts the code is off show. */
   drawQr: (canvas: Canvas, payload: string, options: QrDrawOptions, signal: AbortSignal) => Promise<void>;
   /** The canvas this showing draws on, made once. */
@@ -16,7 +16,7 @@ export interface QrShowing<Canvas> {
   size: () => number;
   /** A drawing finished while its code was still on show. */
   onDrawn: (drawn: { payload: string; canvas: Canvas }) => void;
-}
+};
 
 /**
  * Shows `payload` as a QR code, drawn once, until the returned stop takes it off show. A late answer, success or

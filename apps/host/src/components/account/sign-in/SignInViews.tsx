@@ -20,7 +20,7 @@ import s from './SignInViews.module.css';
  * What a screen gives the layout that places it. The buttons come alone, without a stack, and the layout sets them in
  * its own stack or row, in its own order.
  */
-export interface SignInParts {
+export type SignInParts = {
   /** What the view is, for a layout that heads the view itself. */
   title: string;
   content: JSX.Element;
@@ -31,7 +31,7 @@ export interface SignInParts {
   /** The view's own Cancel or Close. Without one, the layout gives the view its own way out, or none. */
   dismiss?: JSX.Element;
   note?: JSX.Element;
-}
+};
 
 /** The colour a status icon is drawn in. `strong` is the text's own, for a step that is neither good nor bad. */
 export type SignInTone = 'ok' | 'err' | 'warn' | 'idle' | 'strong';
@@ -40,7 +40,7 @@ export type SignInTone = 'ok' | 'err' | 'warn' | 'idle' | 'strong';
 export type StatusMark = { icon: Component<IconProps>; tone: SignInTone } | 'spinner';
 
 /** A button in a screen's stack. */
-export interface SignInAction {
+export type SignInAction = {
   label: string;
   onPress: () => void;
   /** The one main action. */
@@ -55,7 +55,7 @@ export interface SignInAction {
   disabled?: boolean | undefined;
   id?: string | undefined;
   testId?: string | undefined;
-}
+};
 
 /**
  * The heading a screen takes: `1` when the screen heads its page with its own title, or `layout` when the layout
@@ -175,7 +175,7 @@ function Steps(): JSX.Element {
   );
 }
 
-export interface PairingScreenProps {
+export type PairingScreenProps = {
   /** The pairing deeplink, null while it is being made. Read as it changes, so the code comes in on this screen. */
   payload: string | null;
   /** The page the sign-in is for, null for a sign-in of its own. */
@@ -189,7 +189,7 @@ export interface PairingScreenProps {
   holdFocus?: (() => void) | undefined;
   /** Without one, the `qrcode` chunk draws the code. */
   drawQr?: DrawQr | undefined;
-}
+};
 
 /**
  * The code to scan, or on a phone the deeplink with the code one press away. Whether it is a phone is read once, so
@@ -285,12 +285,12 @@ export function PairingScreen(props: PairingScreenProps): SignInParts {
   };
 }
 
-export interface ApprovingScreenProps {
+export type ApprovingScreenProps = {
   /** What closes once the user approves, as the layout knows it: the window, or the dialog. */
   closesCopy: string;
   onCancel: () => void;
   level?: HeadingLevel | undefined;
-}
+};
 
 /** The code was scanned and the phone asks the user to approve. */
 export function ApprovingScreen(props: ApprovingScreenProps): SignInParts {
@@ -325,7 +325,7 @@ export function ApprovingScreen(props: ApprovingScreenProps): SignInParts {
   };
 }
 
-export interface StatusScreenProps {
+export type StatusScreenProps = {
   /** Without one, the title leads. */
   mark?: StatusMark | undefined;
   title: string;
@@ -340,7 +340,7 @@ export interface StatusScreenProps {
   titleTestId?: string | undefined;
   spinnerTestId?: string | undefined;
   detailTestId?: string | undefined;
-}
+};
 
 /** Where a sign-in stands: under way, done, failed or asking for a press. */
 export function StatusScreen(props: StatusScreenProps): SignInParts {
@@ -375,7 +375,7 @@ export function StatusScreen(props: StatusScreenProps): SignInParts {
   };
 }
 
-export interface ContinueScreenProps {
+export type ContinueScreenProps = {
   offer: ContinueOffer;
   /** The page the sign-in is for, null for a sign-in of its own. */
   host: string | null;
@@ -383,7 +383,7 @@ export interface ContinueScreenProps {
   failure?: string | null | undefined;
   onContinue: () => void;
   onUseAnotherAccount: () => void;
-}
+};
 
 /** An account is already signed in: go on with it, or sign in with another one. */
 export function ContinueScreen(props: ContinueScreenProps): SignInParts {

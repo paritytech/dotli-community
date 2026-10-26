@@ -10,7 +10,7 @@ import type { DotliDebugEvent, TruapiDebugMessageEvent } from './dotli-debug-typ
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
-export interface DotliDebugBus {
+export type DotliDebugBus = {
   /** Call as soon as the panel is known to mount, before any emit site runs. */
   enableBuffering(): void;
   emit(event: DotliDebugBusEvent): void;
@@ -19,7 +19,7 @@ export interface DotliDebugBus {
   /** For host code that reacts to an event without being a panel. Sees nothing while the bus is off. */
   watch(callback: (event: DotliDebugBusEvent) => void): () => void;
   on(callback: (event: DotliDebugBusEvent) => void): () => void;
-}
+};
 
 // Boot events fire while the lazily loaded panel is still loading. They are held until the first
 // subscriber attaches, replayed to it once, and then buffering stops for the session.

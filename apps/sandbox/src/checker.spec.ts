@@ -4,10 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import { installSandboxChecker, type CheckedPage } from './checker.js';
 
-interface Violation {
+type Violation = {
   api: string;
   details: Record<string, unknown> | undefined;
-}
+};
 
 class FakeDocument {
   cookies = '';

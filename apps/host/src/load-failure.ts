@@ -17,24 +17,24 @@ import {
   type ErrorDescription,
 } from './errors.js';
 
-export interface LoadFailure {
+export type LoadFailure = {
   /** The verdict the failure was reported under. */
   error: ErrorDescription;
   cause: unknown;
   label: string;
   backend: Backend;
-}
+};
 
 /**
  * Which failure the previous attempt's recovery screen showed. A failure that survives a reload can offer a stronger
  * remedy.
  */
-export interface ErrorSightings {
+export type ErrorSightings = {
   seen: (kind: string) => boolean;
   remember: (kind: string) => void;
-}
+};
 
-export interface LoadFailureDeps {
+export type LoadFailureDeps = {
   /** Who the visitor trusts instead when they leave the light client, read when the warning shows. */
   trustedProviderHosts: () => string[];
   showErrorPage: ShowErrorPage;
@@ -47,7 +47,7 @@ export interface LoadFailureDeps {
   resetProtocolOnReload: () => void;
   sightings: ErrorSightings;
   emit: (event: DotliDebugEvent) => void;
-}
+};
 
 /** Shows the failure's screen. Its buttons may move between screens, and none of them reports the failure again. */
 export function presentLoadFailure(failure: LoadFailure, deps: LoadFailureDeps): void {

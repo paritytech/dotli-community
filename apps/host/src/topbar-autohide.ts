@@ -16,7 +16,7 @@ export const HIDE_DELAY_MS = 2000;
 /** Advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
 
-export interface TopbarAutoHideDeps {
+export type TopbarAutoHideDeps = {
   /** Touch devices have no hover to bring the bar back. */
   isMobile: () => boolean;
   isPhone: () => boolean;
@@ -28,10 +28,10 @@ export interface TopbarAutoHideDeps {
   };
   /** Reached as the auto-hide starts and acts, so making one reads no browser global. */
   page: () => TopbarAutoHidePage;
-}
+};
 
 /** The page's focus and the events that move it. */
-export interface TopbarAutoHidePage {
+export type TopbarAutoHidePage = {
   /** Fires focusin, focusout and keydown. */
   document: EventTarget;
   /** Fires blur, which is all a press or Tab into the cross-origin frame shows. */
@@ -39,7 +39,7 @@ export interface TopbarAutoHidePage {
   activeElement: () => HTMLElement | null;
   /** Moves focus to the bar's first control. */
   focusFirst: (bar: HTMLElement) => void;
-}
+};
 
 /** The browser's document and window. */
 export function browserTopbarPage(): TopbarAutoHidePage {
@@ -53,7 +53,7 @@ export function browserTopbarPage(): TopbarAutoHidePage {
   };
 }
 
-export interface TopbarAutoHide {
+export type TopbarAutoHide = {
   /** Listens for focus, keys, blur, the viewport and a failed product until the returned stop, which shows the bar. */
   start: () => () => void;
   /** Safe to call repeatedly. A no-op on touch devices, which have no hover to bring the bar back. */
@@ -65,7 +65,7 @@ export interface TopbarAutoHide {
   revealAndFocus: () => void;
   registerBar: (el: HTMLElement) => () => void;
   registerRevealButton: (el: HTMLElement) => () => void;
-}
+};
 
 export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
   let hideTimer: ReturnType<typeof setTimeout> | null = null;

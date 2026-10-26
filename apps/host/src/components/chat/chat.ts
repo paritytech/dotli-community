@@ -14,13 +14,13 @@ import type {
 import type { ChatMessageRecord, ChatRoomFooter } from '../../runtime/chat/store.js';
 
 /** Where a custom message's renderer streams its trees. */
-export interface ChatRenderSink {
+export type ChatRenderSink = {
   onUpdate: (node: RendererNode) => void;
   onError?: (error: Error) => void;
-}
+};
 
 /** What a message asks of the product: a custom tree, a tap on an action or a gesture inside a tree. */
-export interface ChatMessageActions {
+export type ChatMessageActions = {
   /** Streams replacement trees into `sink` until disposed. */
   renderCustomMessage: (productId: string, request: ProductRendererRenderRequest, sink: ChatRenderSink) => () => void;
   triggerAction: (
@@ -29,9 +29,9 @@ export interface ChatMessageActions {
     trigger: { messageId: string; actionId: string; payload?: HexString },
   ) => Promise<void>;
   triggerRendererAction: (productId: string, item: HostRendererActionSubscribeItem) => Promise<void>;
-}
+};
 
-export interface ChatRoom {
+export type ChatRoom = {
   roomId: string;
   name: string;
   /** URL or base64 image, as supplied by the product. */
@@ -39,24 +39,24 @@ export interface ChatRoom {
   createdAt: number;
   /** Unset shows the text input. */
   footer?: ChatRoomFooter | undefined;
-}
+};
 
-export interface ChatBot {
+export type ChatBot = {
   botId: string;
   name: string;
   /** URL or base64 image, as supplied by the product. */
   icon: string;
   createdAt: number;
-}
+};
 
-export interface ChatContacts {
+export type ChatContacts = {
   rooms: readonly ChatRoom[];
   bots: readonly ChatBot[];
   lastMessageTimes: ReadonlyMap<string, number>;
-}
+};
 
 /** The product's rooms and the shown room's messages, as the open panel reads them. */
-export interface ChatFeed {
+export type ChatFeed = {
   /** Null until the first room list read lands. */
   contacts: Accessor<ChatContacts | null>;
   /** The last room list read failed. The rooms read before it stay. */
@@ -68,10 +68,10 @@ export interface ChatFeed {
   onChange: (listener: () => void) => () => void;
   /** Reads the room `shown` names, or only the room list while it is null, until the panel closes. */
   follow: (shown: Accessor<string | null>) => void;
-}
+};
 
 /** What the open panel shows of the page's chat state, and what it asks the page to do. */
-export interface ChatConversation {
+export type ChatConversation = {
   loggedIn: Accessor<boolean>;
   /** The product's published name, else its label. The title while no room is open. */
   productName: Accessor<string | null>;
@@ -91,4 +91,4 @@ export interface ChatConversation {
   /** Posts the user's reply to the open room. Rejects when it cannot reach the product, the message kept. */
   send: (roomId: string, text: string) => Promise<void>;
   actions: ChatMessageActions;
-}
+};

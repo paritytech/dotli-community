@@ -3,11 +3,11 @@
 
 // Keyed by `layer:event`. Every emitted system event needs an entry.
 
-interface SystemExplanation {
+type SystemExplanation = {
   title: string;
   /** Line breaks are preserved. Aim for 3 to 6 sentences on the phase, its triggers and what it unblocks. */
   body: string;
-}
+};
 
 const EXPLANATIONS: Record<string, SystemExplanation> = {
   'boot:started': {

@@ -23,17 +23,17 @@ const rethrow = (error: unknown): never => {
   throw error;
 };
 
-interface FakeIframeHost {
+type FakeIframeHost = {
   options: IframeHostOptions;
   iframe: HTMLIFrameElement;
   dispose: ReturnType<typeof vi.fn<() => void>>;
-}
+};
 
-interface Harness extends FakePageCore {
+type Harness = {
   frame: ProductFrame;
   container: HTMLElement;
   hosts: FakeIframeHost[];
-}
+} & FakePageCore;
 
 let channel: StartedSandboxChannel | null = null;
 

@@ -17,24 +17,24 @@ const INITIAL_POLL_DELAY_MS = 1000;
 const preimageCache = new Map<string, Uint8Array>();
 
 /** A block as one content backend returned it. Empty data is a miss. */
-export interface PreimageBlock {
+export type PreimageBlock = {
   data: Uint8Array;
   source: Backend;
-}
+};
 
 export type PreimageFetch = (cid: string, signal: AbortSignal) => Promise<PreimageBlock>;
 
-export interface PreimageDeps {
+export type PreimageDeps = {
   fetchBlock: PreimageFetch;
   /** The loader of the hashing chunk. Defaults to the content package's. */
   loadVerify?: typeof loadVerify;
-}
+};
 
-export interface BlockSources {
+export type BlockSources = {
   backend: () => Backend;
   bitswap: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
   gateway: (cid: string) => Promise<Uint8Array>;
-}
+};
 
 /** Fetches over the backend selected at call time, so a settings change applies to the next attempt. */
 export function createBlockFetch(sources: BlockSources): PreimageFetch {

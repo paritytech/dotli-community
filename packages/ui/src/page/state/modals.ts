@@ -22,27 +22,27 @@ import type { IconProps } from '../../components/icons/icon-props.js';
  */
 export type ModalButtonVariant = 'cancel' | 'danger' | 'secondary' | 'primary';
 
-export interface ModalField {
+export type ModalField = {
   label: string;
   value: string;
   mono?: boolean;
   warning?: boolean;
-}
+};
 
-export interface ModalButton<R extends string> {
+export type ModalButton<R extends string> = {
   label: string;
   variant: ModalButtonVariant;
   result: R;
-}
+};
 
-export interface ModalPasswordInput {
+export type ModalPasswordInput = {
   kind: 'password';
   placeholder: string;
   hint?: string;
   error?: string;
-}
+};
 
-export interface ModalView<R extends string> {
+export type ModalView<R extends string> = {
   title: string;
   /**
    * The dialog's test id, which names every id inside it. The caller's own, so ui names none of a domain's. A view
@@ -66,35 +66,35 @@ export interface ModalView<R extends string> {
    * Default true.
    */
   closable?: boolean;
-}
+};
 
 /** The view an answered dialog shows in its place, until a button, Escape, the scrim or `signal` closes it. */
-export interface ModalHandoff {
+export type ModalHandoff = {
   view: ModalView<string>;
   /** Closes the step from elsewhere. */
   signal: AbortSignal;
   /** Hears once how it closed: a button's result, the view's `dismissResult`, or `aborted`. */
   closed: (result: string) => void;
-}
+};
 
-export interface ModalOutcome<R extends string> {
+export type ModalOutcome<R extends string> = {
   result: R;
   value?: string;
-}
+};
 
-export interface ModalEntry {
+export type ModalEntry = {
   id: number;
   view: ModalView<string>;
-}
+};
 
 // An AbortError reason passes through and a string reason becomes the message, so this text shows only for others.
 const MODAL_ABORTED = 'Blocking modal scope disposed';
 
-interface Pending {
+type Pending = {
   handoff?: ((outcome: ModalOutcome<string>) => ModalHandoff | undefined) | undefined;
   resolve: (outcome: ModalOutcome<string>) => void;
   detach: () => void;
-}
+};
 
 // Registered before the store, so the pending dialogs detach before the store empties.
 registerStoreStateReset(resetModalState);

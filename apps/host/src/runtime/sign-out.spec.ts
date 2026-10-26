@@ -17,13 +17,13 @@ import type { WalletSwitchOutcome } from './wallet-switch.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
 /** The page's copy of the paired session, which the window's restore rule or a visible check may clear meanwhile. */
-interface FakeCopy {
+type FakeCopy = {
   held: string | null;
   /** While set, every read answers it. */
   readFailure: Error | null;
   readSession: ReturnType<typeof vi.fn<() => Promise<SessionRead>>>;
   dropSessionIf: ReturnType<typeof vi.fn<(blob: string) => Promise<boolean>>>;
-}
+};
 
 /** Records each drop in `calls`. */
 function fakeCopy(held: string | null, calls: string[]): FakeCopy {
@@ -50,18 +50,18 @@ function fakeCopy(held: string | null, calls: string[]): FakeCopy {
 type OnCore = <T>(end: () => Promise<T>) => Promise<T>;
 
 /** The main store's local wallet, whose record a save elsewhere replaces with a new version. */
-interface FakeWallet {
+type FakeWallet = {
   version: number | null;
   /** While set, every read rejects with it. */
   readFailure: Error | null;
-}
+};
 
 /** The wallet record another tab saves, a new version of whatever it holds. */
 function saveElsewhere(wallet: FakeWallet): void {
   wallet.version = (wallet.version ?? 0) + 1;
 }
 
-interface Harness {
+type Harness = {
   signOut: PageSignOut;
   copy: FakeCopy;
   /** Each clear the flag keeper ran. */
@@ -83,7 +83,7 @@ interface Harness {
   changes: Changes;
   captures: { exception: ReturnType<typeof vi.fn>; expected: ReturnType<typeof vi.fn> };
   counted: RecordingSentry['counted'];
-}
+};
 
 /** A page's sign-out over fakes, with a fake Sentry and capture sink bound for this test. */
 function harness(

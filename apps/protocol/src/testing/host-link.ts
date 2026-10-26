@@ -16,7 +16,7 @@ import { createTransport, describeIssue, type Subscription, type TransportIssue 
  */
 export type EndOf<I> = SubscriptionEnd<I> | Error;
 
-export interface HostLink {
+export type HostLink = {
   /** The frame's end, where a spec registers the handlers under test. */
   serving: ProtocolTransport;
   /** The host page's end, which opens the handshake. */
@@ -25,7 +25,7 @@ export interface HostLink {
   delivered: readonly Uint8Array[];
   /** Disposes both ends. */
   close: () => void;
-}
+};
 
 /** Each open link, with what either end could not handle itself, in order. */
 const links = new Map<HostLink, TransportIssue[]>();
@@ -84,14 +84,14 @@ export async function roundTrip(link: HostLink): Promise<void> {
   }
 }
 
-export interface Recording<V, I> {
+export type Recording<V, I> = {
   events: V[];
   /** Settles with the end: the frame's interrupt, or the error the transport closed with. */
   ended: Promise<EndOf<I>>;
   /** Resolves once `count` events have arrived. */
   until: (count: number) => Promise<void>;
   unsubscribe: () => void;
-}
+};
 
 /** Subscribes on `transport` and records every value and the end. */
 export function record<S, V, I>(

@@ -34,13 +34,13 @@ afterEach(() => {
   closeHostLinks();
 });
 
-interface TransportRecord {
+type TransportRecord = {
   genesisHash: string;
   hooks: ChainTransportHooks | undefined;
   sent: JsonRpcRequest[];
   emit: (message: JsonRpcMessage) => void;
   disconnect: Mock<() => void>;
-}
+};
 
 function createTransports(): {
   createChainProvider: (genesisHash: string, hooks?: ChainTransportHooks) => JsonRpcProvider | null;
@@ -73,13 +73,13 @@ function createTransports(): {
 }
 
 /** One host page served by one engine scope over the wire. */
-interface Tab {
+type Tab = {
   host: ProtocolTransport;
   scope: EngineScope;
   /** Settles once the chain is connected or the connect ended. */
   connect: (genesisHash: string, connectionId: string) => Promise<ChainRecording>;
   send: (connectionId: string, message: string) => Promise<MethodTypes<typeof chain.send>['response']>;
-}
+};
 
 function openTab(engine: ProtocolEngine): Tab {
   const { serving, host } = linkHost();

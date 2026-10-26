@@ -9,16 +9,16 @@ import type { QrDrawOptions } from './qr-code.js';
 import { presentQr, type QrShowing } from './qr-drawer.js';
 
 /** A canvas as the drawer sees it: only passed back. */
-interface FakeCanvas {
+type FakeCanvas = {
   payload: string;
-}
+};
 
-interface Draw {
+type Draw = {
   canvas: FakeCanvas;
   payload: string;
   options: QrDrawOptions;
   signal: AbortSignal;
-}
+};
 
 let metrics: RecordingSentry;
 const captured: { error: unknown; context: CaptureContext | undefined }[] = [];

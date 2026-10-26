@@ -7,7 +7,7 @@
 import type { ChainDetail, ChainSyncEvent, LightClient, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import type { ProtocolHandler, protocolSchema } from '@dotli/protocol';
 
-export interface TelemetryDeps {
+export type TelemetryDeps = {
   /** Replays each chain's latest state to a new listener, then hears each change. */
   onChainSync: (listener: (event: ChainSyncEvent) => void) => () => void;
   /** Replays each chain's facts to a new listener, then hears each new one. */
@@ -23,7 +23,7 @@ export interface TelemetryDeps {
    * SharedWorker hears the reads made before it as hits, since what it loads comes from chains already warm.
    */
   joinedSynced: () => boolean;
-}
+};
 
 /** The database reads of `lightClient`, as the telemetry hears them. */
 export function lightClientDb(

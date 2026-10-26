@@ -32,7 +32,7 @@ import {
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
 
 /** Where chat data lives. IndexedDB in the page. */
-export interface ChatRepo {
+export type ChatRepo = {
   /** Answers TrUAPI `ChatRoomRegistrationStatus`. A re-creation refreshes the name and icon and keeps the footer. */
   createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'>;
   /** False when the product has no room with this id. */
@@ -46,23 +46,23 @@ export interface ChatRepo {
   latestMessageTimestamps(productId: string): Promise<Map<string, number>>;
   /** In insertion order. */
   listMessages(productId: string, roomId: string): Promise<ChatMessageRecord[]>;
-}
+};
 
 /** Live handles for one product's Worker-kind core connection. */
-export interface ChatConnection {
+export type ChatConnection = {
   publish(action: HostChatActionSubscribeItem): Promise<void>;
   publishRendererAction(item: HostRendererActionSubscribeItem): Promise<void>;
   render(request: ProductRendererRenderRequest, sink: RenderSink): () => void;
-}
+};
 
-export interface ChatConnections {
+export type ChatConnections = {
   /**
    * The newest registration answers. Unregistering one leaves the others, so a render that failed hands chat back to
    * the product still on screen.
    */
   register(productId: string, connection: ChatConnection): () => void;
   get(productId: string): ChatConnection | undefined;
-}
+};
 
 export function createChatConnections(): ChatConnections {
   // A stack per product, as a render registers before the one on screen goes.
@@ -95,21 +95,21 @@ export type ChatChange =
   | { kind: 'message'; productId: string; roomId: string; author: 'product' | 'user' };
 
 /** What the open panel shows. */
-export interface ChatFollow {
+export type ChatFollow = {
   productId: string;
   /** The open conversation, or null for the room list. */
   roomId: string | null;
   /** A reload of the same product reads the room list again, as another tab of it may have written meanwhile. */
   loadId: number;
-}
+};
 
-export interface ChatContacts {
+export type ChatContacts = {
   rooms: readonly ChatRoomRecord[];
   bots: readonly ChatBotRecord[];
   lastMessageTimes: ReadonlyMap<string, number>;
-}
+};
 
-export interface ChatView {
+export type ChatView = {
   productId: string | null;
   /** Null until the product's first room list read lands. */
   contacts: ChatContacts | null;
@@ -119,9 +119,9 @@ export interface ChatView {
   /** Null until the room's first read lands. */
   messages: readonly ChatMessageRecord[] | null;
   messagesFailed: boolean;
-}
+};
 
-export interface ChatStore {
+export type ChatStore = {
   /** The followed product's rooms and the open room's messages, kept current with every write. */
   view: ReadableStore<ChatView>;
   /** Idempotent. Null when the panel closes, which drops reads still in flight. */
@@ -154,12 +154,12 @@ export interface ChatStore {
    */
   renderCustomMessage(productId: string, request: ProductRendererRenderRequest, sink: RenderSink): () => void;
   rooms(productId: string): Promise<ChatRoomRecord[]>;
-}
+};
 
-export interface ChatStoreDeps {
+export type ChatStoreDeps = {
   repo: ChatRepo;
   connections: ChatConnections;
-}
+};
 
 const NOT_CONNECTED = 'Chat is not connected for this product';
 

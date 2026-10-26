@@ -24,10 +24,10 @@ const MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };
 /** Every stand-in item's width, wider than More so a row's room always fits More in its place. */
 const ITEM = 48;
 
-interface Activation {
+type Activation = {
   name: string;
   detail: number;
-}
+};
 
 const activations: Activation[] = [];
 /** The room the bar gives the group, which a play changes and then announces with a resize, as a window would. */

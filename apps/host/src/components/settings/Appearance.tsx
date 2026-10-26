@@ -7,11 +7,11 @@ import { SegmentedControl, type SegmentOption } from '@dotli/ui';
 import { MonitorIcon, MoonIcon, SunIcon } from '@dotli/ui/icons';
 import type { ThemePref } from '../../runtime/state/theme.js';
 
-export interface AppearanceProps {
+export type AppearanceProps = {
   theme: Accessor<ThemePref>;
   /** An option was picked. It applies at once, outside the settings draft. */
   onTheme: (theme: ThemePref) => void;
-}
+};
 
 /** The product's theme as three large segments. `<html data-theme>` belongs to the page, never this component. */
 export function AppearancePicker(props: AppearanceProps): JSX.Element {

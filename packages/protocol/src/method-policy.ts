@@ -19,7 +19,7 @@ const DEFAULT_BUDGET_MS = 30_000;
 /** How long a name resolution may take to answer. */
 const RESOLVE_BUDGET_MS = 90_000;
 
-interface Policy<N extends string> {
+type Policy<N extends string> = {
   /** The method's name in metrics, the trail and errors. */
   name: N;
   /** How long the host waits on it, or null for one bounded by chain sync or the user, not a timer. */
@@ -30,7 +30,7 @@ interface Policy<N extends string> {
   timed: boolean;
   /** The frame answers it once it listens, long before its light client is ready. */
   whenListening: boolean;
-}
+};
 
 function policy<N extends string>(name: N, options: Partial<Omit<Policy<N>, 'name'>> = {}): Policy<N> {
   return { name, budgetMs: DEFAULT_BUDGET_MS, trailed: false, timed: true, whenListening: false, ...options };

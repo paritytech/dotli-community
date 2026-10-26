@@ -19,7 +19,7 @@ import {
 import type { PageMessage } from '../session-handoff/session-protocol.js';
 import type { sealRedirect } from './site-seal.js';
 
-export interface RedirectResponderDeps {
+export type RedirectResponderDeps = {
   /** The vetted origin of the return address. */
   origin: string;
   returnTo: string;
@@ -32,7 +32,7 @@ export interface RedirectResponderDeps {
   navigate: (url: string) => void;
   /** Takes a failure to seal the answer, which leaves the site unanswered, and the site token the answer carried. */
   failed: (error: unknown, siteToken: string | undefined) => void;
-}
+};
 
 /**
  * Where the round's one answer stands: `none` before the round ends, `pending` while it is sealed, `sent` once the
@@ -40,9 +40,9 @@ export interface RedirectResponderDeps {
  */
 export type RedirectDelivery = 'none' | 'pending' | 'sent' | 'failed';
 
-export interface RedirectResponder extends Responder<unknown> {
+export type RedirectResponder = {
   delivery(): RedirectDelivery;
-}
+} & Responder<unknown>;
 
 // Redirect mode sends no payload, so the call never comes.
 const NO_PAYLOAD = new Promise<string>(() => undefined);

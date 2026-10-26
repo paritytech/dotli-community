@@ -9,10 +9,10 @@ import { drawQrCode, type DrawQr } from '../qr-code.js';
 import { presentQr } from '../qr-drawer.js';
 import s from './PairingQr.module.css';
 
-interface DrawnQr {
+type DrawnQr = {
   payload: string;
   canvas: HTMLCanvasElement;
-}
+};
 
 /** The side the code may take, quiet zone included, which the stylesheet owns. */
 function qrSize(box: HTMLElement): number {
@@ -50,7 +50,7 @@ function QrTile(props: { qr: DrawnQr; link: boolean }): JSX.Element {
   );
 }
 
-export interface PairingQrProps {
+export type PairingQrProps = {
   /** The pairing deeplink, null while it is being made. */
   payload: string | null;
   /** Hidden, the code is still drawn, so it shows at once when asked for. */
@@ -59,7 +59,7 @@ export interface PairingQrProps {
   link: boolean;
   /** Without one, the `qrcode` chunk draws the code. */
   drawQr?: DrawQr | undefined;
-}
+};
 
 /** The pairing code on its tile, drawn as soon as its payload is known, with a spinner in its place until then. */
 export function PairingQr(props: PairingQrProps): JSX.Element {

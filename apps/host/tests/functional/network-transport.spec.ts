@@ -22,11 +22,11 @@ const METRICS_URL = `http://127.0.0.1:${PORT}/__dotli-metrics`;
 // Past the end of the run, so each context emits only its startup point and the total counts contexts.
 const HEARTBEAT_MS = 3_600_000;
 
-interface GaugePoint {
+type GaugePoint = {
   name: string;
   value: number;
   mode: string;
-}
+};
 
 async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
   const res = await request.get(METRICS_URL);

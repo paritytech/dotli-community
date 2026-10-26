@@ -12,11 +12,11 @@ import { relativeTime } from './relative-time.js';
 import s from './MessageBubble.module.css';
 
 /** A custom message's product-defined body, which the page renders into the bubble. */
-export interface CustomBody {
+export type CustomBody = {
   messageType: string;
   /** Stored product-defined payload, hex-encoded. */
   payload: HexString;
-}
+};
 
 export function MessageBubble(props: {
   record: ChatMessageRecord;

@@ -15,14 +15,14 @@ import { SANDBOX_ERRORS } from './errors.js';
 const contentLog = log.child({ flow: 'content' });
 
 /** The page's service worker container and the build it expects that worker to run. */
-export interface AppServiceWorker {
+export type AppServiceWorker = {
   /** `null` in a browser without service workers. */
   container: ServiceWorkerContainer | null;
   /** The build this page runs. `undefined` in a build that names none, which skips the freshness check. */
   version: string | undefined;
   /** Tells the visitor a newer version waits for a reload. */
   offerReload: () => void;
-}
+};
 
 /** `null` when the SW does not answer, as an older build does not. */
 function querySwVersion(sw: ServiceWorker): Promise<string | null> {

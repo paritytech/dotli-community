@@ -9,7 +9,7 @@ import type { ApplySettings, SavedSettings } from '../components/settings/settin
 import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
 
 /** The page's settings and theme, and what acts on them. */
-export interface SettingsBinding {
+export type SettingsBinding = {
   /** Null until boot has read them. */
   settings: ReadableStore<SavedSettings | null>;
   theme: ReadableStore<{ pref: ThemePref }>;
@@ -20,7 +20,7 @@ export interface SettingsBinding {
   version: string;
   debugMode: () => boolean;
   openDebugMode: () => void;
-}
+};
 
 /** The settings button's props, for an island's own lifetime. The page's Open settings opens it. */
 export function useSettingsPanel(binding: SettingsBinding): SettingsItemProps {

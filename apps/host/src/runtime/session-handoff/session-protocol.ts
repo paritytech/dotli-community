@@ -73,7 +73,7 @@ export function readRequestParams(hash: string): Record<string, unknown> | null 
  * What a session request is before its party is known: the round to answer, the version and the network as the page
  * sent them, and the raw params, whose party's own fields are parsed once the hello names the party.
  */
-export interface SessionRequest {
+export type SessionRequest = {
   route: SessionRoute;
   round: string;
   /** The request's version, or null when it is not a number. */
@@ -81,7 +81,7 @@ export interface SessionRequest {
   /** The request's network name, or null when it is not a string. */
   net: string | null;
   params: Readonly<Record<string, unknown>>;
-}
+};
 
 /** The request `params` make on `route`, or null when they carry no round to answer. */
 export function readSessionRequest(
@@ -111,44 +111,44 @@ export type RefusalReason =
   /** The wallet does not support or allow the transaction. */
   | 'transaction_invalid';
 
-export interface ReadyMessage {
+export type ReadyMessage = {
   type: 'dotli:s:ready';
   versions: number[];
-}
+};
 
-export interface HelloMessage {
+export type HelloMessage = {
   type: 'dotli:s:hello';
   v: number;
   round: string;
-}
+};
 
 /** A site's call too long for its request URL, sent after the hello. */
-export interface PayloadMessage {
+export type PayloadMessage = {
   type: 'dotli:s:payload';
   round: string;
   call: string;
-}
+};
 
-export interface ResultMessage<R> {
+export type ResultMessage<R> = {
   type: 'dotli:s:result';
   round: string;
   result: R;
   /** The token a site keeps to be known on its next sign-in. */
   site_token?: string;
-}
+};
 
-export interface RefusedMessage {
+export type RefusedMessage = {
   type: 'dotli:s:refused';
   round: string;
   /** A string as an opener reads it, since a window of another release may send a reason this one does not know. */
   reason: string;
-}
+};
 
 /** The user left the round without an answer. */
-export interface CancelledMessage {
+export type CancelledMessage = {
   type: 'dotli:s:cancelled';
   round: string;
-}
+};
 
 /** A message the window sends its opener. */
 export type PageMessage = ReadyMessage | ResultMessage<unknown> | RefusedMessage | CancelledMessage;

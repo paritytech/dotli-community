@@ -20,14 +20,14 @@ import { createSharedStore } from './shared-store.js';
 import { createFrameTelemetry } from './telemetry.js';
 
 /** The page's own facts, so a spec can place the page without a `window`. */
-export interface ProtocolOriginEnv {
+export type ProtocolOriginEnv = {
   /** The local root the page is served under, which a local frame shares, or `null` when deployed. */
   localRoot: string | null;
   dev: boolean;
   /** The page's own scheme with its colon, which a local frame shares. */
   protocol: string;
   port: string;
-}
+};
 
 function pageEnv(): ProtocolOriginEnv {
   const { protocol, port } = window.location;

@@ -11,66 +11,66 @@ export type IconFormat = 'jpeg' | 'png';
 
 export type AppVersion = readonly [number, number, number] | readonly [number, number, number, string];
 
-export interface Icon {
+export type Icon = {
   cid: string;
   format: IconFormat | (string & {});
-}
+};
 
-export interface RootManifest {
+export type RootManifest = {
   $v: 1;
   displayName: string;
   description: string;
   icon: Icon;
   /** Keyed by product id, listing what that product may do to this one. Unknown grants are kept. */
   trustedProducts?: Record<string, readonly string[]> | undefined;
-}
+};
 
-interface CommonExecutableFields {
+type CommonExecutableFields = {
   $v: 1;
   appVersion: AppVersion;
-}
+};
 
-export interface AppManifest extends CommonExecutableFields {
+export type AppManifest = {
   kind: 'app';
-}
+} & CommonExecutableFields;
 
-export interface WidgetDimensions {
+export type WidgetDimensions = {
   height: readonly number[];
   width?: number | undefined;
-}
+};
 
-export interface WidgetManifest extends CommonExecutableFields {
+export type WidgetManifest = {
   kind: 'widget';
   description?: string | undefined;
   dimensions: WidgetDimensions;
-}
+} & CommonExecutableFields;
 
 /** An omitted key means `false`. All off is a background-only worker. */
-export interface WorkerIncludes {
+export type WorkerIncludes = {
   chat?: boolean | undefined;
   pocket?: boolean | undefined;
   input?: boolean | undefined;
-}
+};
 
-export interface WorkerManifest extends CommonExecutableFields {
+export type WorkerManifest = {
   kind: 'worker';
   entrypoint: string;
   includes: WorkerIncludes;
-}
+} & CommonExecutableFields;
 
 export type ExecutableManifest = AppManifest | WidgetManifest | WorkerManifest;
 export type ExecutableKind = ExecutableManifest['kind'];
 
-export interface ValidationOk<T> {
+export type ValidationOk<T> = {
   ok: true;
   value: T;
-}
-export interface ValidationErr {
+};
+export type ValidationErr = {
   ok: false;
   errors: string[];
   /** Set when `$v` is not 1, in which case the fields go unchecked. */
   unsupportedVersion?: unknown;
-}
+};
 export type ValidationResult<T> = ValidationOk<T> | ValidationErr;
 
 const WORKER_SURFACES = ['chat', 'pocket', 'input'] as const;

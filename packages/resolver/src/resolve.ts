@@ -25,19 +25,19 @@ const PEOPLE_CHAIN = 'People Paseo';
 /** Upper bound on the background People-chain warm for legacy-account auth. */
 const PEOPLE_FINALIZED_SYNC_MS = 180_000;
 
-export interface ResolveOptions {
+export type ResolveOptions = {
   onPhase?: PhaseCallback | undefined;
   /** What is left of the caller's deadline, if it set one. */
   syncTimeoutMs?: number;
-}
+};
 
 /** A chain client: its raw reads, and the teardown of its follow and connection. */
-export interface ChainClient {
+export type ChainClient = {
   readonly api: Api;
   destroy: () => void;
-}
+};
 
-export interface DotnsResolverDeps {
+export type DotnsResolverDeps = {
   /** Opens the Asset Hub connection the reads go over, again for each client after a follow stops. */
   assetHub: () => JsonRpcProvider;
   /**
@@ -51,12 +51,12 @@ export interface DotnsResolverDeps {
   source: 'light-client' | 'rpc-gateway';
   /** Opens a client on a connection. Defaults to papi's raw client. */
   open?: (provider: JsonRpcProvider) => ChainClient;
-}
+};
 
 /** Where the Asset Hub client stands. A stopped follow takes it back to `idle`, and the next read builds it again. */
 type DotnsResolverStatus = 'idle' | 'connecting' | 'syncing' | 'ready' | 'failed';
 
-export interface DotnsResolver {
+export type DotnsResolver = {
   resolveDotName: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveOwner: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveExecutableManifest: (
@@ -72,7 +72,7 @@ export interface DotnsResolver {
    * People, so callers must not gate on it.
    */
   waitForPeopleFinalized: () => Promise<void>;
-}
+};
 
 const PHASES: Partial<Record<DotnsResolverStatus, ResolvePhase>> = {
   connecting: 'asset-hub-connecting',

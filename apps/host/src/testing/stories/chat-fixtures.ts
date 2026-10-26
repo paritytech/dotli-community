@@ -18,7 +18,7 @@ import type { ChatButtonProps } from '../../components/chat/ChatButton.js';
 const PRODUCT = 'chatty.dot';
 
 /** The page's chat state, as the views read it. */
-export interface StageState {
+export type StageState = {
   open: boolean;
   width: number;
   topbarHidden: boolean;
@@ -32,7 +32,7 @@ export interface StageState {
   unread: number;
   composerError: string | null;
   focusComposer: boolean;
-}
+};
 
 const INITIAL: StageState = {
   open: false,
@@ -48,15 +48,15 @@ const INITIAL: StageState = {
   focusComposer: false,
 };
 
-interface FeedState {
+type FeedState = {
   contacts: ChatContacts | null;
   contactsFailed: boolean;
   messages: readonly ChatMessageRecord[] | null;
   messagesFailed: boolean;
-}
+};
 
 /** The page's chat state as the host's dock reads it. */
-export interface StageDock {
+export type StageDock = {
   open: Accessor<boolean>;
   width: Accessor<number>;
   topbarHidden: Accessor<boolean>;
@@ -66,18 +66,18 @@ export interface StageDock {
   onResizeEnd: () => void;
   conversation: ChatConversation;
   handOver: (panel: HTMLElement) => () => void;
-}
+};
 
 /** The part of the dock's props the dock hands its panel. */
 export type StagePanel = Pick<StageDock, 'open' | 'width' | 'onClose' | 'onResize' | 'onResizeEnd' | 'conversation'>;
 
 /** A user reply as it reached the product. */
-export interface Published {
+export type Published = {
   roomId: string;
   text: string;
-}
+};
 
-export interface ChatStage {
+export type ChatStage = {
   state: SyncStore<StageState>;
   update(patch: Partial<StageState>): void;
   rooms: ChatRoom[];
@@ -110,7 +110,7 @@ export interface ChatStage {
   button: ChatButtonProps;
   /** The panel element the dock handed over. */
   panelElement: () => HTMLElement | undefined;
-}
+};
 
 /** A fresh chat for one story. */
 export function chatStage(initial: Partial<StageState> = {}): ChatStage {

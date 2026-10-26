@@ -23,13 +23,13 @@ export type CacheResult = 'hit' | 'miss';
 /** `skipped` is a lookup the settings turned off. */
 export type CidCacheResult = CacheResult | 'skipped';
 
-export interface FinishDetails {
+export type FinishDetails = {
   /** For reading, never grouped on. */
   reason?: string;
   /** The stable classification the error page was chosen from. */
   errorKind?: string;
   failedStep?: string;
-}
+};
 
 type Phase = 'connecting' | 'syncing' | 'ready';
 
@@ -84,7 +84,7 @@ function sampleFor(): boolean {
   return Math.random() < sampleRate();
 }
 
-interface ChainState {
+type ChainState = {
   span: SpanHandle | null;
   phaseSpan: SpanHandle | null;
   phase: Phase | null;
@@ -98,7 +98,7 @@ interface ChainState {
   warpTarget: number | null;
   dbCache: CacheResult | null;
   peers: ChainPeer[] | null;
-}
+};
 
 function newChainState(): ChainState {
   return {
@@ -118,7 +118,7 @@ function newChainState(): ChainState {
   };
 }
 
-export interface ResolutionTrace {
+export type ResolutionTrace = {
   chainSync: (event: ChainSyncEvent) => void;
   /** A telemetry-only fact about one chain. */
   chainDetail: (event: ChainDetail) => void;
@@ -136,19 +136,19 @@ export interface ResolutionTrace {
   finish: (outcome: ResolutionOutcome, details?: FinishDetails) => void;
   /** For linking this load's errors to its trace. */
   span: SpanHandle;
-}
+};
 
-export interface ResolutionTraceOptions {
+export type ResolutionTraceOptions = {
   domain: string;
   network: string;
   backend: string;
   attempt: Attempt;
   /** `performance.now()` at page load. The root is backdated here to cover boot work before the label is known. */
   startedAt: number;
-}
+};
 
 /** What the trace reads from the page it runs in. */
-export interface TracedPage {
+export type TracedPage = {
   /** Fires `pagehide` when the visitor leaves. */
   lifecycle: EventTarget;
   isVisible: () => boolean;
@@ -156,7 +156,7 @@ export interface TracedPage {
   readProgress: () => number;
   /** The reason the app gave for its own reload, if it gave one. */
   peekContinuation: () => Continuation | null;
-}
+};
 
 /** From the loading store, not the bar's markup, so a load whose loading island never mounted still reports it. */
 function browserPage(): TracedPage {

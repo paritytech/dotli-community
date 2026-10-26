@@ -26,11 +26,11 @@ const FALLBACK_LABEL = 'Light client shared unavailable';
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 4);
 
-interface ChainBackendState {
+type ChainBackendState = {
   chainBackend: string | null;
   cacheSettings: string | null;
   url: string;
-}
+};
 
 /**
  * Waits for the address bar too, since boot stores the default backend before it applies the link's, so the stored

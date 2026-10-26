@@ -8,24 +8,24 @@
 
 import { captureException } from '@dotli/metrics';
 
-export interface IslandErrorDeps {
+export type IslandErrorDeps = {
   /** Where Astro dispatches `astro:hydration-error`. */
   target?: EventTarget;
   /** The page's one reload offer. */
   offerReload: () => void;
   /** What an island must still do when its code never ran, by its `component-export` name. */
   standIns?: Readonly<Record<string, () => void>>;
-}
+};
 
-interface HydrationErrorDetail {
+type HydrationErrorDetail = {
   error: unknown;
   componentUrl: string | null;
-}
+};
 
 /** The `astro-island` element a failure is dispatched on, as much of it as the report reads. */
-interface Island {
+type Island = {
   getAttribute(name: string): string | null;
-}
+};
 
 function islandOf(ev: Event): Island | null {
   const target = ev.target as Partial<Island> | null;

@@ -4,10 +4,10 @@
 import type { PhoneAsk } from '../../runtime/phone-methods.js';
 
 /** `primary` labels the phone's main button as Polkadot App does, and `lead` sends the user to press it. */
-interface AskCopy {
+type AskCopy = {
   primary: string;
   lead: string;
-}
+};
 
 function askCopy(primary: string, { tap }: { tap: boolean }): AskCopy {
   return { primary, lead: `Open Polkadot App on your phone, then ${tap ? 'tap ' : ''}${primary} or Reject` };

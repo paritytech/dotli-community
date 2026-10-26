@@ -17,12 +17,12 @@ beforeEach(() => {
 
 type Reply = { code: number; data?: string } | { hex: string } | 'silent';
 
-interface Dial {
+type Dial = {
   onMessage: (message: JsonRpcMessage) => void;
   onHalt: (reason: RemoteChainHalt) => void;
   /** The ids sent on this connection, in order. */
   sent: number[];
-}
+};
 
 /**
  * Stands in for the protocol frame's Bulletin connection. Each `bitswap_v1_get` is answered with the next of `replies`,

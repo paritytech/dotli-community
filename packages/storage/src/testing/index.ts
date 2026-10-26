@@ -18,15 +18,15 @@ import {
   WALLET_DB_VERSION,
 } from '../schema.js';
 
-export interface MemoryIdb extends DotliIdb {
+export type MemoryIdb = {
   /** The factory behind `connect`, for a test that opens the database itself. */
   factory: IDBFactory;
-}
+} & DotliIdb;
 
-export interface MemoryIdbOptions {
+export type MemoryIdbOptions = {
   /** Sees each transaction as it opens, before its first request, so a test can watch its commit or make it fail. */
   onTransaction?: (tx: IDBTransaction) => void;
-}
+};
 
 /** A transaction on a closed connection throws as a browser words it, which production takes as expected. */
 function behaveLikeBrowserOnClose(db: IDBDatabase): IDBDatabase {

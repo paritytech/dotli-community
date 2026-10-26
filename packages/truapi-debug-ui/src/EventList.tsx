@@ -36,21 +36,21 @@ const PENDING_TICK_MS = 1000;
 
 const rowId = (seq: EventSeq): string => `td-row-${String(seq)}`;
 
-export interface Selection {
+export type Selection = {
   seq: EventSeq;
   /** Correlation key. Events sharing it are `paired`. */
   key: string | null;
-}
+};
 
 /** Per-key signals, so a selection or clock change re-runs only the rows it touches, not all of them. */
-interface RowContext {
+type RowContext = {
   selectedSeq: KeyedSignals<EventSeq, true>;
   /** By correlation key. */
   selectedKey: KeyedSignals<string, true>;
   /** Ms waited by each call still open, by pending key. */
   waiting: KeyedSignals<string, number>;
   work: Pick<PanelWork, 'formatPending' | 'rowSelection'>;
-}
+};
 
 export function EventList(props: {
   events: readonly StoredEvent[];

@@ -16,7 +16,7 @@ import { createPhoneRequestTracker, type PhoneRequestTracker } from './phone-req
 import { createChanges, type Changes } from '../testing/changes.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 
-interface FakeProvider {
+type FakeProvider = {
   provider: TrUApiProductProvider;
   dispose: ReturnType<typeof vi.fn<() => void>>;
   /** Every frame posted to the core, in order. */
@@ -25,9 +25,9 @@ interface FakeProvider {
   send(message: Uint8Array): void;
   /** The core going down under the connection. */
   goDown(): void;
-}
+};
 
-interface FakeRuntime {
+type FakeRuntime = {
   runtime: WorkerPairingHostRuntime;
   createProvider: ReturnType<typeof vi.fn<WorkerPairingHostRuntime['createProvider']>>;
   cancelPairing: ReturnType<typeof vi.fn<() => void>>;
@@ -35,7 +35,7 @@ interface FakeRuntime {
   resetSessionState: ReturnType<typeof vi.fn<() => Promise<void>>>;
   dispose: ReturnType<typeof vi.fn<() => void>>;
   providers: FakeProvider[];
-}
+};
 
 function fakeProvider(changes: Changes): FakeProvider {
   const listeners = new Set<(error: Error) => void>();
@@ -111,7 +111,7 @@ function fakeRuntime(changes: Changes): FakeRuntime {
 
 type Boot = (request: CoreRuntimeRequest) => Promise<BootedCoreRuntime>;
 
-interface Harness {
+type Harness = {
   core: PageCore;
   /** Every runtime a boot attempt produced, in order. */
   runtimes: FakeRuntime[];
@@ -125,9 +125,9 @@ interface Harness {
   staleChecks: Promise<boolean>[];
   /** Notified at each boot request and outcome, store listener change and call on a fake runtime or connection. */
   changes: Changes;
-}
+};
 
-interface HarnessOptions {
+type HarnessOptions = {
   local?: boolean;
   /** Makes each core's phone request tracker. */
   createPhoneRequests?: () => PhoneRequestTracker;
@@ -138,7 +138,7 @@ interface HarnessOptions {
   destroyDelay?: number;
   /** The timers the destroy delay runs on. The real ones by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
-}
+};
 
 function harness(options: HarnessOptions = {}): Harness {
   const runtimes: FakeRuntime[] = [];

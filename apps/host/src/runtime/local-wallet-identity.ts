@@ -14,21 +14,21 @@ import { siteWallet } from './session/site-wallet.js';
 import { reportLocalWalletFailure, type LocalWalletFailureReason } from './wallet-failure.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
 
-export interface LiteUsernameRefreshDeps {
+export type LiteUsernameRefreshDeps = {
   /** The name People holds for the account, null when it has none. */
   readLiteUsername: (identityAccountId: string) => Promise<string | null>;
   /** Caches the identity in the shared wallet record for the next boot. */
   saveIdentity: (identity: LocalWalletIdentity) => Promise<void>;
   reportFailure: (error: unknown, reason: LocalWalletFailureReason) => void;
-}
+};
 
-export interface LiteUsernameRefresh {
+export type LiteUsernameRefresh = {
   /**
    * Undefined when there is nothing to re-activate, otherwise the new name, null when the account has none.
    * `identityAccountId` is the account the calling core reported for its session.
    */
   refresh(wallet: LocalWalletBoot, identityAccountId: Promise<string>): Promise<string | null | undefined>;
-}
+};
 
 export function createLiteUsernameRefresh(deps: LiteUsernameRefreshDeps): LiteUsernameRefresh {
   // One read at a time, so every core on the page takes the first read's answer.

@@ -15,14 +15,14 @@ export const BACKEND_LABELS: Record<Backend, string> = {
   'rpc-gateway': 'Trusted providers',
 };
 
-export interface CacheSettings {
+export type CacheSettings = {
   /** Skip CID cache reads and always resolve from the network. */
   skipCidCache: boolean;
   /** Neither read nor write the host block cache. */
   skipArchiveCache: boolean;
   /** Purge the protocol iframe's IndexedDB caches before init, so every cold start boots from scratch. */
   skipWorkerCache: boolean;
-}
+};
 
 export const BACKEND_KEY = 'dotli:chain-backend';
 export const CACHE_KEY = 'dotli:cache-settings';

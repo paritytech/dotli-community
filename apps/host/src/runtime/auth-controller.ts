@@ -25,7 +25,7 @@ import { loginFailureView, type LoginFailureKind } from './login-failure.js';
 
 export type { CloseAuthModalOptions, InPagePhrase };
 
-export interface AuthControllerDeps {
+export type AuthControllerDeps = {
   coordinator: BlockingModalCoordinator;
   /** The bridge chunk's commands. Awaited per intent, so an intent issued before the chunk loads still runs. */
   commands: () => Promise<AuthCommands>;
@@ -39,9 +39,9 @@ export interface AuthControllerDeps {
   inPagePhrase: () => Promise<InPagePhrase>;
   /** Whether the page shows signed out while a sign-in made elsewhere waits, which a sign-in then resumes. */
   elsewhere: () => boolean;
-}
+};
 
-export interface AuthController {
+export type AuthController = {
   /**
    * Opens the sign-in window and waits for it, asking it to resume a sign-in made elsewhere when one waits, or with no
    * window opens the modal and asks the core to log in. Does
@@ -81,7 +81,7 @@ export interface AuthController {
   disableAuthModal(): void;
   /** Stops following the auth state and closes the modal without cancelling a login. */
   dispose(): void;
-}
+};
 
 type CommandStep = 'login' | 'logout' | 'cancel_login';
 

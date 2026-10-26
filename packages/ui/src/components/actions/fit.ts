@@ -13,11 +13,11 @@ export function layoutParent(el: Element): HTMLElement | null {
   return parent;
 }
 
-export interface FitItem {
+export type FitItem = {
   width: number;
   /** The lowest moves into More first. */
   priority: number;
-}
+};
 
 /**
  * Which visible `items`, in bar order, collapse into More so the rest fit in `available`, More included once

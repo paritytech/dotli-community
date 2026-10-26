@@ -13,7 +13,7 @@ import { siteWallet } from './session/site-wallet.js';
 /** `reloading` once the switch is stored for every app, `failed` after the failure was reported. */
 export type WalletSwitchOutcome = 'reloading' | 'failed';
 
-export interface WalletSwitch {
+export type WalletSwitch = {
   /** Uses this wallet in every app on the domain. */
   useLocalWallet(entropy: Uint8Array): Promise<WalletSwitchOutcome>;
   /**
@@ -21,12 +21,12 @@ export interface WalletSwitch {
    * caller passes the forget, so it can forget only the record it read.
    */
   usePolkadotApp(forget: () => Promise<void>): Promise<WalletSwitchOutcome>;
-}
+};
 
-export interface WalletSwitchDeps {
+export type WalletSwitchDeps = {
   save: (entropy: Uint8Array) => Promise<void>;
   reload: () => void;
-}
+};
 
 export function createWalletSwitch({ save, reload }: WalletSwitchDeps): WalletSwitch {
   return {

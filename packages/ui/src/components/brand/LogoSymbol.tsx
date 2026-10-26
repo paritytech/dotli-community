@@ -8,12 +8,12 @@ import type { JSX } from '@solidjs/web';
 const WIDTH = 57.24;
 const HEIGHT = 64.23;
 
-export interface LogoSymbolProps {
+export type LogoSymbolProps = {
   class?: JSX.ClassValue;
   testId?: string | undefined;
   /** In pixels. The width follows the symbol's proportions. */
   height?: number | undefined;
-}
+};
 
 /** The Polkadot symbol in the current text color. Decorative, so hidden from assistive technology. */
 export function LogoSymbol(props: LogoSymbolProps): JSX.Element {

@@ -127,11 +127,11 @@ export function issueLog() {
 }
 
 /** What a test may set on the transport of `rawRig`. */
-interface WatchedSide {
+type WatchedSide = {
   /** Replaces the issue log, which then stays empty. */
   onIssue?: (issue: TransportIssue) => void;
   timeoutMs?: number | null;
-}
+};
 
 /** An opener on the left and an accepter on the right, over one in-memory channel. */
 export function rig() {

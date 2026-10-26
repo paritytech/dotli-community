@@ -26,7 +26,7 @@ import { CoreRedialError } from './page-core.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
 
-interface Harness extends FakePageCore {
+type Harness = {
   commands: CoreCommands;
   auth: SyncStore<DotliAuthState>;
   session: { reportLoginFailure: ReturnType<typeof vi.fn> };
@@ -35,7 +35,7 @@ interface Harness extends FakePageCore {
   captures: { exception: ReturnType<typeof vi.fn>; expected: ReturnType<typeof vi.fn> };
   counted: RecordingSentry['counted'];
   requestCoreLogin: typeof requestCoreLogin;
-}
+} & FakePageCore;
 
 /** Commands over a fake page core, with a fake Sentry and capture sink bound for this test. */
 function harness(

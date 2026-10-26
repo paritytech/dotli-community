@@ -14,7 +14,7 @@ import { createPageCore, LANDING_PRODUCT, type PageCore, type PageProduct } from
 import { createPhoneRequestTracker } from './phone-requests.js';
 import { createProductFrame, type ProductFrame, type ProductFrameDeps } from './product-frame.js';
 
-export interface BridgeDeps {
+export type BridgeDeps = {
   bootRuntime: BootCoreRuntime;
   /** Returns the unsubscribe. */
   onStoredSessionChanged: (listener: () => void) => () => void;
@@ -29,9 +29,9 @@ export interface BridgeDeps {
   /** Starts telling the network panel who holds each host chain and its best blocks, without holding any. */
   watchChains: () => void;
   session: Pick<SessionState, 'coresGone'>;
-}
+};
 
-export interface Bridge {
+export type Bridge = {
   /**
    * Builds the page core on the page's blocking-modal queue and starts reporting the host chains' activity. A repeated
    * call keeps the first core.
@@ -57,7 +57,7 @@ export interface Bridge {
    * `initBridge`.
    */
   endSession: (blob: Uint8Array) => Promise<void>;
-}
+};
 
 export function createBridge(deps: BridgeDeps): Bridge {
   let initialised: { core: PageCore; modals: BlockingModalCoordinator } | null = null;

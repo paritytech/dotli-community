@@ -19,11 +19,11 @@ export function inlineScriptFile(id: string): string | null {
   return new URLSearchParams(query).has(QUERY) ? file : null;
 }
 
-export interface ClassicScript {
+export type ClassicScript = {
   code: string;
   /** Every module the script holds, so a change to any of them rebuilds it. */
   modules: string[];
-}
+};
 
 /** The one chunk a script bundle must come to. Anything else could not run from a single inline tag. */
 export function classicScriptOf(

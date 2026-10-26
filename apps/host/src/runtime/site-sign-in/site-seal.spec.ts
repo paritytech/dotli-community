@@ -14,13 +14,13 @@ const siteKeys = async () => {
   return { privateKey: pair.privateKey, publicKey };
 };
 
-interface Envelope {
+type Envelope = {
   v: number;
   round: string;
   epk: string;
   iv: string;
   ct: string;
-}
+};
 
 // WebCrypto takes bytes only over a plain ArrayBuffer, which a copy and TextEncoder give.
 const bytes = (value: string) => Uint8Array.from(base64urlnopad.decode(value));

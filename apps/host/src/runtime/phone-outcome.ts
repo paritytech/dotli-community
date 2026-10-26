@@ -18,10 +18,10 @@ export type PhoneOutcome =
   | { kind: 'undecodable' }
   | { kind: 'gone' };
 
-interface Tagged {
+type Tagged = {
   tag: string;
   value?: unknown;
-}
+};
 
 function isTagged(value: unknown): value is Tagged {
   return typeof value === 'object' && value !== null && typeof (value as Tagged).tag === 'string';

@@ -31,7 +31,7 @@ import { THEME_KEY } from './theme-controller.js';
 const OTHER_LAYERS_DATABASES: readonly string[] = [WALLET_DB_NAME, SITE_GRANTS_DB_NAME, SMOLDOT_DB_NAME];
 
 /** Each step reports its own failures and resolves, so a rejection here is a fault `applyAndReset` reports. */
-export interface SettingsActionsDeps {
+export type SettingsActionsDeps = {
   /** Resolves false when the clear failed. It has reported that itself. */
   clearCidCache: () => Promise<boolean>;
   clearBlockCache: () => Promise<boolean>;
@@ -44,22 +44,22 @@ export interface SettingsActionsDeps {
   save: (settings: Settings) => void;
   /** The page URL, which carries the settings into the reload. */
   url: SettingsUrl;
-}
+};
 
-export interface SettingsUrl {
+export type SettingsUrl = {
   read: () => Pick<Location, 'pathname' | 'search' | 'hash'>;
   /** Swaps the URL in place, without a navigation or a history entry. */
   replace: (url: string) => void;
-}
+};
 
-export interface ApplyOptions {
+export type ApplyOptions = {
   /** Clears every cache, whatever the settings say. */
   forceFullWipe?: boolean;
   /** Why the page reloads, for the next boot's telemetry. `settings_change` unless given. */
   reason?: Continuation;
-}
+};
 
-export interface SettingsActions {
+export type SettingsActions = {
   /**
    * Deletes only caches the user just turned off. The persisted `skipWorkerCache` flag makes the protocol
    * iframe purge itself on its next boot. Settings persist before the deletes so the reload boots with them. Never
@@ -67,7 +67,7 @@ export interface SettingsActions {
    * `reason`.
    */
   applyAndReset: (next: Settings, prior: Settings, options?: ApplyOptions) => Promise<void>;
-}
+};
 
 type ApplyStep = 'wipe' | 'cid_cache' | 'block_cache' | 'pending_reset';
 
@@ -175,11 +175,11 @@ const FRAME_KEY_PREFIXES: readonly string[] = [SHARED_AUTH_KEY_PREFIX, SHARED_MO
 export type WipeFailure = OriginWipePart;
 
 /** What a wipe empties: the origin's browser stores and both web storages. */
-export interface WipeParts {
+export type WipeParts = {
   stores: OriginStores;
   local: ListableStorage;
   session: SafeStorage;
-}
+};
 
 /** Read on use, since the page loads this module before it knows it will wipe. */
 function browserWipeParts(): WipeParts {

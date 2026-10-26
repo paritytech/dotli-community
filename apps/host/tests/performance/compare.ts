@@ -8,7 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-interface PhaseStats {
+type PhaseStats = {
   p50: number;
   p95: number;
   p99: number;
@@ -19,9 +19,9 @@ interface PhaseStats {
   max: number;
   values: number[];
   discarded?: number;
-}
+};
 
-interface RunStats {
+type RunStats = {
   timestamp: string;
   type: 'cold' | 'warm' | 'lukewarm';
   iterations: number;
@@ -34,13 +34,13 @@ interface RunStats {
     requestCount: PhaseStats;
     totalBytes: PhaseStats;
   };
-}
+};
 
-interface SavedResults {
+type SavedResults = {
   cold: RunStats;
   warm?: RunStats | null;
   lukewarm?: RunStats | null;
-}
+};
 
 const RESULTS_DIR = path.join(import.meta.dirname, 'results');
 const BASE_FILE = path.join(RESULTS_DIR, 'base.json');
@@ -172,11 +172,11 @@ const ORDERED_PHASES = [
   '  Archive parse',
 ];
 
-interface Verdict {
+type Verdict = {
   label: string;
   color: string;
   icon: string;
-}
+};
 
 function getVerdict(bStat: PhaseStats, lStat: PhaseStats): Verdict {
   const mw = mannWhitneyU(bStat.values, lStat.values);

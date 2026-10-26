@@ -53,12 +53,12 @@ function sharedStoreStatusOf(status: ProtocolStatus, settledOnce: boolean): Shar
   return settledOnce ? 'unavailable' : 'connecting';
 }
 
-export interface SharedStoreDeps {
+export type SharedStoreDeps = {
   frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'transport'>;
   rpc: FrameRpc;
   /** What a reopen of the auth change feed waits on. */
   timers?: Timers;
-}
+};
 
 export function createSharedStore({ frame, rpc, timers = realTimers }: SharedStoreDeps) {
   const sharedAuthListeners = createListenerSet<SharedAuthChange>({

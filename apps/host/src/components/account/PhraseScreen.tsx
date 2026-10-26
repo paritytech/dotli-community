@@ -11,7 +11,7 @@ const INVALID_PHRASE = 'Not a valid recovery phrase';
 const SAVE_FAILED = 'The wallet could not be saved. Try again.';
 const TITLE = 'Sign in with a recovery phrase';
 
-export interface PhraseScreenProps {
+export type PhraseScreenProps = {
   isValid: (phrase: string) => boolean;
   /** Rejects when the wallet could not be saved, which the caller already reported. */
   onImport: (phrase: string) => Promise<void>;
@@ -20,7 +20,7 @@ export interface PhraseScreenProps {
   /** Prefixes the test id of the form and of each of its parts. */
   testId: string;
   level?: HeadingLevel | undefined;
-}
+};
 
 /** Takes a phrase and signs in with it, here and in every app on the domain. */
 export function PhraseScreen(props: PhraseScreenProps): SignInParts {

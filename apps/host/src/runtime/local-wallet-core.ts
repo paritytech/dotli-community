@@ -45,7 +45,7 @@ export function watchIdentityAccount(callbacks: WebWorkerHostCallbacks): {
   };
 }
 
-export interface LocalWalletCoreDeps {
+export type LocalWalletCoreDeps = {
   loadSigningWorker: () => Promise<{ default: new () => Worker }>;
   /** Settles with the name the network holds when it differs from the cached one, else with `undefined`. */
   refreshLiteUsername: (
@@ -54,7 +54,7 @@ export interface LocalWalletCoreDeps {
   ) => Promise<string | null | undefined>;
   /** Reports the one failure nobody awaits, the re-activation after a name change. */
   reportFailure: (error: unknown, reason: LocalWalletFailureReason) => void;
-}
+};
 
 export type BootLocalWalletCore = (
   create: CreateRuntime,

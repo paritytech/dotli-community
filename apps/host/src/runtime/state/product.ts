@@ -5,12 +5,12 @@ import { createSyncStore, type ReadableStore } from '@dotli/shared';
 import type { ManifestFacts } from '../manifest-facts.js';
 
 /** What the page knows of the loaded product beside its label. */
-export interface ProductDetails extends ManifestFacts {
+export type ProductDetails = {
   /** Only for a dotNS product, not a local or preview URL. */
   cid?: string;
   /** Whether it declares chat, which picked its connection's execution kind. */
   chat?: boolean;
-}
+} & ManifestFacts;
 
 /** `loadId` moves on every load, so a reload of the product already on show still notifies subscribers. */
 export type ProductState =

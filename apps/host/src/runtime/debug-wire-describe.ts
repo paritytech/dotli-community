@@ -17,9 +17,9 @@ import {
 } from '@parity/truapi';
 import { CallError, Result, type Codec } from '@parity/truapi/scale';
 
-interface WireCodec {
+type WireCodec = {
   dec: (bytes: Uint8Array) => unknown;
-}
+};
 
 /**
  * Must match the generated client's composition exactly, because a bare codec does not throw on real
@@ -33,10 +33,10 @@ function responseCodec<T, E>(ok: Codec<T>, err: Codec<E>): WireCodec {
  * Wire-table keys and codec stems use different word orders, so this link is the one hand-written fact.
  * The drift-guard test checks everything derived from it against the installed `@parity/truapi`.
  */
-interface ChainLinkage {
+type ChainLinkage = {
   wireTableKey: keyof typeof WIRE_TABLE;
   stem: string;
-}
+};
 
 const CHAIN_LINKAGE: readonly ChainLinkage[] = [
   { wireTableKey: 'CHAIN_FOLLOW_HEAD_SUBSCRIBE', stem: 'HeadFollow' },
@@ -75,17 +75,17 @@ function resolveCodec(exportName: string): Codec<unknown> | undefined {
   return undefined;
 }
 
-interface ChainEntry {
+type ChainEntry = {
   tag: string;
   /** Tag-only when null, either on purpose or after a codegen-drift miss. */
   codec: WireCodec | null;
-}
+};
 
-export interface WireFrameId {
+export type WireFrameId = {
   traitId: number;
   methodId: number;
   messageType: number;
-}
+};
 
 export function wireFrameKey(frame: WireFrameId): number {
   return (frame.traitId << 16) | (frame.methodId << 8) | frame.messageType;
@@ -189,10 +189,10 @@ let walletCodecs: Map<number, WireCodec> | null = null;
 // the host's wire table falls back to raw bytes, an accepted skew.
 const REDACTED_PREFIXES = ['signing', 'session', 'entropy', 'local_storage'];
 
-interface GenericEntry {
+type GenericEntry = {
   name: string;
   redacted: boolean;
-}
+};
 
 function buildGenericNames(): Map<number, GenericEntry> {
   const names = new Map<number, GenericEntry>();
@@ -215,10 +215,10 @@ function buildGenericNames(): Map<number, GenericEntry> {
 let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
 
-export interface DescribeOptions {
+export type DescribeOptions = {
   /** Local mode only, where the panel stands in for the phone's request screen. */
   decodeWalletFrames?: boolean;
-}
+};
 
 export function describeWireFrame(
   frame: WireFrameId,

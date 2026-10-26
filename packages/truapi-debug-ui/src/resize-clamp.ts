@@ -16,11 +16,11 @@ const MIN_RIGHT_WIDTH_PX = 280;
 const MAX_VIEWPORT_SHARE = 0.8;
 
 /** A divider's pane size and the bounds it keeps to, in px. */
-export interface DividerSize {
+export type DividerSize = {
   now: number;
   min: number;
   max: number;
-}
+};
 
 /** How far one arrow press moves a divider, and with Shift held. */
 const KEY_STEP_PX = 16;

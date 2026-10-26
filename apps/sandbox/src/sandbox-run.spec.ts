@@ -23,14 +23,14 @@ function sandboxUrl(overrides: Record<string, string> = {}, host = 'myapp.app.lo
   return `https://${host}/?${search.toString()}`;
 }
 
-interface Failure {
+type Failure = {
   step: SandboxStep;
   title: string;
   message: string;
   retry: (() => Promise<void>) | undefined;
-}
+};
 
-interface Harness {
+type Harness = {
   deps: SandboxRunDeps;
   loads: LoadInput[];
   failures: Failure[];
@@ -38,7 +38,7 @@ interface Harness {
   events: string[];
   /** Presses the retry of the latest failure. Resolves once the load it asked for has settled. */
   retry: () => Promise<void>;
-}
+};
 
 /** A sandbox whose every load ends with the next of `outcomes`, then with the last one. */
 function harness(outcomes: LoadOutcome[]): Harness {

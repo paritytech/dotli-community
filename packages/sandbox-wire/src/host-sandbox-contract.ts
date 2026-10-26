@@ -17,14 +17,14 @@ const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
 const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
-export interface SandboxParams {
+export type SandboxParams = {
   cid: string;
   backend: Backend;
   network: Network;
   fullReset: boolean;
   /** Telemetry only, so never required: no sandbox should fail to boot over a trace id. */
   resolutionId: string | null;
-}
+};
 
 export type SandboxParamsResult =
   { ok: true; params: SandboxParams } | { ok: false; reason: string; recoverable?: boolean };

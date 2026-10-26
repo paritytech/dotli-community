@@ -8,9 +8,9 @@ import { AlertTriangleIcon } from '@dotli/ui/icons';
 import type { LoadingState } from '../../state/loading.js';
 import s from './LoadingScreen.module.css';
 
-export interface LoadingScreenProps {
+export type LoadingScreenProps = {
   state: Accessor<LoadingState>;
-}
+};
 
 /** The screen the host page paints first, showing the load's progress, its lines and a stall warning. */
 export function LoadingScreen(props: LoadingScreenProps): JSX.Element {

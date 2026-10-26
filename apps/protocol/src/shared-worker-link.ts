@@ -51,10 +51,10 @@ import type { FrameBoot } from './frame-boot.js';
 export type WorkerEnd = { kind: 'interrupt'; outcome: FrameStatusEnd } | { kind: 'close'; error: Error };
 
 /** The one `frame.status` subscription to the worker. */
-export interface WorkerStatus {
+export type WorkerStatus = {
   /** Hears its one end. Called at once if it has ended. */
   onEnd(listener: (end: WorkerEnd) => void): void;
-}
+};
 
 /**
  * What a worker's end means for this tab, as an error under the name the worker's failure has. A link that closed on
@@ -69,7 +69,7 @@ export function workerEndError(end: WorkerEnd): Error {
     : failureOf(protocolSchema.sections.frame.status, end.outcome.value);
 }
 
-export interface SharedWorkerLinkDeps {
+export type SharedWorkerLinkDeps = {
   worker: Pick<SharedWorker, 'port' | 'addEventListener'>;
   /** The iframe's page, whose `pagehide` lets go of the worker. */
   window: Pick<EventTarget, 'addEventListener'>;
@@ -79,15 +79,15 @@ export interface SharedWorkerLinkDeps {
   timers?: Timers;
   /** Hears what the link's transport cannot handle itself. Logged by the transport when unset. */
   onIssue?: (issue: TransportIssue) => void;
-}
+};
 
 /** A tab's link to the worker, handed over before the worker is ready so what it reports while it syncs is heard. */
-export interface SharedWorkerLink {
+export type SharedWorkerLink = {
   transport: ProtocolTransport;
   status: WorkerStatus;
   /** Resolves once the worker says it is ready, and rejects with why it never will be. */
   ready: Promise<void>;
-}
+};
 
 /**
  * Subscribes to the worker's status once, and tells each listener its end. `onReady` hears the worker say it is

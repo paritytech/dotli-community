@@ -101,12 +101,12 @@ export function showsSession(role: PageRole): boolean {
  * A page's role, chosen once for the page's life. The singletons built on it read it once, so it is never reset.
  * Choosing the same role again is a no-op.
  */
-export interface PageRoleSlot {
+export type PageRoleSlot = {
   /** Throws for a role other than the one chosen, as two boots on one page are wired wrong. */
   choose(role: PageRole): void;
   /** Throws before the boot chose it, as a module that reads it that early is wired wrong. */
   read(): PageRole;
-}
+};
 
 export function createPageRoleSlot(): PageRoleSlot {
   let chosen: PageRole | null = null;

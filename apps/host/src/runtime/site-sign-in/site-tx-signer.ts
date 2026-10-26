@@ -32,14 +32,14 @@ export class SiteTxError extends Error {
 }
 
 /** Signs a site's transaction as the account the site names, over extensions already filled. */
-export interface SiteTxSigner {
+export type SiteTxSigner = {
   /**
    * A creator that signs as `account` the payload papi hands it with every extension filled. It calls `onAsk` right
    * before it asks the core to sign. It resolves with the signed transaction's hex and rejects with
    * {@link SiteTxError}, at once for a fee estimate.
    */
   creator(account: ProductAccountId, onAsk?: () => void): TxCreator;
-}
+};
 
 /** papi's hex as TrUAPI types it, checked to be hex. */
 function hex(value: string): `0x${string}` {

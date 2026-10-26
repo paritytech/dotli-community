@@ -4,14 +4,14 @@
 import type { JSX } from '@solidjs/web';
 import s from './PetalMark.module.css';
 
-export interface PetalMarkProps {
+export type PetalMarkProps = {
   /** Width and height in pixels. */
   size?: number | undefined;
   class?: JSX.ClassValue;
   /** The petals pulse one after another, as while something loads. */
   pulse?: boolean | undefined;
   testId?: string | undefined;
-}
+};
 
 /**
  * The logo as six separate petals on a 256 px box, in pulse order, filled in the strong text colour. Decorative, so

@@ -10,12 +10,12 @@ import { sessionDisplayName, sessionUsername } from './account-names.js';
 import type { Account } from './account.js';
 import s from './AccountContent.module.css';
 
-export interface AccountContentProps {
+export type AccountContentProps = {
   account: Account;
   onLogout: () => void;
   /** The signed-in sites page. The link shows only with it and a signed-in account. */
   sitesUrl?: string | undefined;
-}
+};
 
 /** The account popover's body, its own chunk. */
 export function AccountContent(props: AccountContentProps): JSX.Element {

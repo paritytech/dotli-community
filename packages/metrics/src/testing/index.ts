@@ -7,15 +7,15 @@
 import { bindCaptureSink, type Flow } from '../capture.js';
 import { m, type SpanValue } from '../metrics.js';
 
-export interface RecordedMetric {
+export type RecordedMetric = {
   /** With the `dotli.` prefix, as Sentry receives it. */
   name: string;
   value: number;
   unit: string | undefined;
   attributes: Record<string, string> | undefined;
-}
+};
 
-export interface RecordingSentry {
+export type RecordingSentry = {
   counts: RecordedMetric[];
   distributions: RecordedMetric[];
   gauges: RecordedMetric[];
@@ -27,9 +27,9 @@ export interface RecordingSentry {
   counted: (name: string) => (Record<string, string> | undefined)[];
   /** Puts back the Sentry bound before this one. */
   restore: () => void;
-}
+};
 
-export interface RecordingOptions {
+export type RecordingOptions = {
   /**
    * Given `restore` to run when the test finishes, such as the runner's `onTestFinished`. Taken as a parameter so this
    * module stays free of any test runner. Without it the recorder stays bound until `restore`.
@@ -37,7 +37,7 @@ export interface RecordingOptions {
   onFinished?: (restore: () => void) => void;
   /** Called after each metric, measurement or tag is recorded, so a test can wait on a report instead of polling. */
   onRecord?: () => void;
-}
+};
 
 /**
  * Bind a Sentry that records every metric, measurement and tag, and the attributes of each span started apart from the
@@ -93,11 +93,11 @@ export function bindRecordingSentry(options: RecordingOptions = {}): RecordingSe
   };
 }
 
-export interface RecordedCapture {
+export type RecordedCapture = {
   flow: Flow;
   step: string;
   tags: Record<string, string> | undefined;
-}
+};
 
 /**
  * Records each captured exception's flow, step and tags, until `onFinished` puts back the sink bound before. Each captured

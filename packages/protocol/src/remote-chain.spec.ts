@@ -36,24 +36,24 @@ let timers: ManualTimers;
 /** Lets queued waits and answers settle. */
 const settle = (ms = 0): Promise<void> => timers.advance(ms);
 
-interface ServedConnect {
+type ServedConnect = {
   payload: Connect['start'];
   sink: Sink<Connect['receive'], SubscriptionEnd<RemoteFailure>>;
   /** The host unsubscribed, which is its disconnect. */
   stopped: boolean;
-}
+};
 
-interface ServedSend {
+type ServedSend = {
   connectionId: string;
   message: string;
   answer: { resolve: (value: undefined) => void; reject: (reason: Error) => void };
-}
+};
 
 /** A frame app's side of chain connections: what it was asked, and the sinks and answers to reply with. */
-interface ChainServer {
+type ChainServer = {
   connects: ServedConnect[];
   sends: ServedSend[];
-}
+};
 
 function serveChains(serving: ProtocolTransport): ChainServer {
   const server: ChainServer = { connects: [], sends: [] };
@@ -373,10 +373,10 @@ function peopleProvider(): RemoteChainProvider {
   return provider;
 }
 
-interface Frame {
+type Frame = {
   status: FrameStatus;
   chains: ChainServer;
-}
+};
 
 /** Serves the client's current protocol iframe and reports it ready. */
 async function bootFrame(): Promise<Frame> {
@@ -384,12 +384,12 @@ async function bootFrame(): Promise<Frame> {
   return { status: await host.bringUp(), chains };
 }
 
-interface Remote {
+type Remote = {
   frame: Frame;
   received: JsonRpcMessage[];
   connection: JsonRpcConnection;
   connect: ServedConnect;
-}
+};
 
 /** Opens another connection against a frame that is already up, and the frame accepts it. */
 async function connectMore(frame: Frame, onHalt?: (reason: RemoteChainHalt) => void): Promise<Remote> {

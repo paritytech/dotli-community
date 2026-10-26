@@ -23,14 +23,14 @@ const OLD = grantOf('token-old', 'https://old.example', 2000);
 const NEWEST = grantOf('token-newest', 'https://newest.example:8443', 4000);
 const MIDDLE = grantOf('token-middle', 'https://middle.example', 3000);
 
-interface HarnessOptions {
+type HarnessOptions = {
   grants?: SiteGrant[];
   /** How many reads of the list fail before one succeeds. */
   listFailures?: number;
   /** A read of the list that has not answered yet, which the test answers. */
   listHeld?: Promise<void>;
   forgetFails?: boolean;
-}
+};
 
 /** A site list over an in-memory grants store, whose list or forget may fail, with its metrics and error lines. */
 async function harness(options: HarnessOptions = {}) {

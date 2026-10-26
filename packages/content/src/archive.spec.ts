@@ -267,7 +267,7 @@ function deepSite(depth: number): { root: CID; blocks: Blocks; paths: string[] }
   return { root: level('', depth).Hash, blocks, paths };
 }
 
-interface HeldSource {
+type HeldSource = {
   source: BlockSource;
   /** Resolves once at least `count` fetches are held. */
   untilHeld: (count: number) => Promise<void>;
@@ -276,7 +276,7 @@ interface HeldSource {
   /** How many of the DAG's blocks are not yet released. */
   unreleased: () => number;
   maxInFlight: () => number;
-}
+};
 
 /** A block source that holds each fetch until released, counting how many are in flight at once. */
 function heldSource(blocks: Blocks): HeldSource {

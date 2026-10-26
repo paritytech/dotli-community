@@ -13,12 +13,12 @@ const APP = 'dotli.dot';
 // The stack is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 
-interface Args {
+type Args = {
   outcome: PhoneOutcome;
   /** The toast's text, or undefined when the outcome shows none. */
   text: string | undefined;
   tone?: NonNullable<NotificationParams['tone']>;
-}
+};
 
 const meta = {
   title: 'Host/Signing/PhoneOutcomeToast',

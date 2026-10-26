@@ -5,9 +5,9 @@
 // The Beta tag at the topbar's scale. Where it sits over the logo is the caller's, through `class`.
 import s from './BetaTag.module.css';
 
-interface Props {
+type Props = {
   class?: string | undefined;
-}
+};
 
 const { class: placement } = Astro.props;
 ---

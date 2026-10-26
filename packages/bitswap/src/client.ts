@@ -38,20 +38,20 @@ const BACKOFF_CAP_MS = 5_000;
 // so a retry meets a larger set. Counted in attempts, not time, which slow -32812 runs would drain.
 const DISCOVERY_RETRIES = 8;
 
-export interface BitswapClientDeps {
+export type BitswapClientDeps = {
   /** The Bulletin chain's provider, read at each dial, or null when the protocol frame does not serve Bulletin. */
   provider: () => RemoteChainProvider | null;
   /** The clock and timers the budget, the per-call timeout and the retry waits run on. */
   timers?: Timers;
-}
+};
 
-export interface BitswapClient {
+export type BitswapClient = {
   /**
    * Fetches one block. Pass `signal` from anything that can be torn down, since a retrying call runs for minutes. A
    * second call for a CID already being fetched waits for that fetch and gets a copy of its bytes.
    */
   get(cid: string, signal?: AbortSignal): Promise<Uint8Array>;
-}
+};
 
 /** A failure worth another attempt once `delayMs` has passed. */
 class RetryLater extends Error {
@@ -64,18 +64,18 @@ class RetryLater extends Error {
 }
 
 /** The retry state of one fetch, kept across the pool's attempts. */
-interface FetchAttempts {
+type FetchAttempts = {
   readonly deadline: number;
   made: number;
   discovery: number;
   transient: number;
-}
+};
 
 /** Callers of one CID and the bytes its fetch left for those still waiting. */
-interface SharedFetch {
+type SharedFetch = {
   holders: number;
   bytes: Uint8Array | null;
-}
+};
 
 function abortError(cid: string, cause?: unknown): Error {
   return named(

@@ -18,7 +18,7 @@ import type { PhoneRequestTracker } from './phone-requests.js';
 import { createTruapiRuntimeConfig } from './runtime-config.js';
 import type { LocalWalletBoot } from './wallet-boot.js';
 
-export interface CoreRuntimeRequest {
+export type CoreRuntimeRequest = {
   product: PageProduct;
   blockingModalScope: BlockingModalScope;
   /** What the core's frames report phone requests to, and its confirmations claim from. */
@@ -35,9 +35,9 @@ export interface CoreRuntimeRequest {
    * a core that must never write either.
    */
   sessionInMemory?: boolean;
-}
+};
 
-export interface BootedCoreRuntime {
+export type BootedCoreRuntime = {
   runtime: WorkerPairingHostRuntime;
   /** A local wallet core holds its session in memory, so it has no pairing and no stored session to follow. */
   local: boolean;
@@ -46,11 +46,11 @@ export interface BootedCoreRuntime {
    * answer turns stale once a later read finds the local wallet.
    */
   stale: () => Promise<boolean>;
-}
+};
 
 export type BootCoreRuntime = (request: CoreRuntimeRequest) => Promise<BootedCoreRuntime>;
 
-export interface CoreRuntimeDeps {
+export type CoreRuntimeDeps = {
   readWallet: () => Promise<LocalWalletBoot | null>;
   loadHostRuntime: () => Promise<{
     createWebWorkerPairingHostRuntime: typeof createWebWorkerPairingHostRuntime;
@@ -58,7 +58,7 @@ export interface CoreRuntimeDeps {
   }>;
   createCallbacks: (options: CreateHostCallbacksOptions) => WebWorkerHostCallbacks;
   loadLocalWalletCore: () => Promise<Pick<LocalWalletCoreModule, 'bootLocalWalletCore'>>;
-}
+};
 
 export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
   return async ({ product, blockingModalScope, phoneRequests, isLive, inService, sessionInMemory = false }) => {

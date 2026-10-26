@@ -13,16 +13,16 @@ const META = 'block_meta';
 const BY_LAST_USED = 'byLastUsed';
 const BOOKKEEPING = 'bookkeeping';
 
-interface BlockEntry {
+type BlockEntry = {
   cid: string;
   bytes: Uint8Array;
-}
+};
 
-interface BlockMeta {
+type BlockMeta = {
   cid: string;
   size: number;
   lastUsed: number;
-}
+};
 
 // Module scope is the page, so each action's fault is captured once per page.
 const reportFailure = createCacheReporter('block_cache', '[dot.li block-cache]');

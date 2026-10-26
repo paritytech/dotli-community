@@ -21,7 +21,7 @@ import { createLocalServing, PROTOCOL_PREFIX, type LocalServing, type Site } fro
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
-export interface DotliApp {
+export type DotliApp = {
   /** The path the app is served under: `/p/` for the protocol app, else from `VITE_APP_URL`. */
   base: string;
   /** For a worker build that lists its own plugins. */
@@ -30,7 +30,7 @@ export interface DotliApp {
   vite: (own: UserConfig) => UserConfig;
   /** The routes and headers of the local roots the app was made for, which its own dev plugins take. */
   serving: LocalServing;
-}
+};
 
 /** Falls back to git HEAD so local builds show a real commit too. Left unset, it reads as "dev". */
 function provideCommitSha(cwd: string): void {

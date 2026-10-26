@@ -15,14 +15,14 @@ import { bindLogSink } from '@dotli/shared';
 import { createChainPool, type ChainActivity, type ChainPool, type ChainPoolWatcher } from './chain-pool.js';
 import { headerHex } from './testing/header-hex.js';
 
-interface TransportRecord {
+type TransportRecord = {
   genesisHash: string;
   hooks: ChainTransportHooks;
   sent: JsonRpcRequest[];
   emit: (message: JsonRpcMessage) => void;
   disconnect: Mock<() => void>;
   opened: number;
-}
+};
 
 /** A pool factory that records every transport it builds, per chain. */
 function createTransports(supported: (genesisHash: string) => boolean = () => true): {

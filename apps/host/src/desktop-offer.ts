@@ -11,13 +11,13 @@ import type { SafeStorage } from '@dotli/shared';
 const DISMISSED_KEY = 'desktop-banner-dismissed';
 const PUBLIC_DOWNLOAD_URL = 'https://polkadot.com/get-started/polkadot-for-desktop';
 
-export interface DesktopOfferDeps {
+export type DesktopOfferDeps = {
   /** This origin's localStorage, which never throws. */
   storage: Pick<SafeStorage, 'getItem' | 'setItem'>;
   notify: ShowNotification;
   /** The public download page when the build names none. */
   downloadUrl?: string | undefined;
-}
+};
 
 /** Offers the desktop app unless the visitor dismissed the offer before. */
 export function offerDesktopApp({ storage, notify, downloadUrl = PUBLIC_DOWNLOAD_URL }: DesktopOfferDeps): void {

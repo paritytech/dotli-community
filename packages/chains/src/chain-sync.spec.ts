@@ -29,14 +29,14 @@ type Lifecycle = ChainLifecycle;
  * Stands in for a truapi-provider connection. `deliver` plays a response through the tap as `./provider`
  * does, and whatever the tap does not claim would have reached polkadot-api.
  */
-interface Pipe {
+type Pipe = {
   tap: ChainSyncTap;
   sent: string[];
   forwarded: string[];
   closed(): boolean;
   push(...states: Lifecycle[]): Promise<void>;
   deliver(raw: string): boolean;
-}
+};
 
 function openPipe(chain: 'relay' | 'assethub', from: ChainSyncReporter = reporter): Pipe | null {
   const sent: string[] = [];
@@ -523,11 +523,11 @@ describe('Chain detail reporting works', () => {
   });
 });
 
-interface ListenerReports {
+type ListenerReports = {
   captured: { step: string; tags: Record<string, string> | undefined }[];
   errors: string[];
   metrics: RecordingSentry;
-}
+};
 
 /** Record the captures, error lines and metrics a throwing listener leaves, until the test ends. */
 function recordListenerReports(): ListenerReports {

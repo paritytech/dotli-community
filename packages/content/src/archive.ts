@@ -236,10 +236,10 @@ export async function parseIpfsResponse(buffer: Uint8Array, expectedRoot?: CID):
   return { 'index.html': buffer };
 }
 
-export interface PackedArchive {
+export type PackedArchive = {
   packed: ArrayBuffer;
   index: { p: string; o: number; l: number }[];
-}
+};
 
 /** One buffer plus an offset index, so the Service Worker receives one transferable instead of one per file. */
 export function packArchive(files: ArchiveFiles): PackedArchive {

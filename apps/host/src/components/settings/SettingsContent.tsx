@@ -33,11 +33,11 @@ import type { ThemePref } from '../../runtime/state/theme.js';
 import type { ApplySettings, SavedSettings } from './settings.js';
 import s from './SettingsContent.module.css';
 
-interface Transport {
+type Transport = {
   value: Backend;
   description: string;
   recommended: boolean;
-}
+};
 
 const TRANSPORTS: readonly Transport[] = [
   { value: 'smoldot-direct', description: 'Verified in your browser, separate for each tab', recommended: true },
@@ -65,7 +65,7 @@ const CACHES: readonly [CacheKey, string][] = [
   ['skipWorkerCache', 'Worker cache'],
 ];
 
-export interface SettingsContentProps {
+export type SettingsContentProps = {
   /** Null until the page has read them. */
   settings: Accessor<SavedSettings | null>;
   /** dotli's version, beside the heading. */
@@ -77,7 +77,7 @@ export interface SettingsContentProps {
   debugMode: Accessor<boolean>;
   /** Reloads the tab with the debug panel. */
   onDebugMode: () => void;
-}
+};
 
 /**
  * One opening's panel, on General each time. Network and cache changes stay a draft across categories until Save and

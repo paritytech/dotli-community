@@ -14,35 +14,35 @@ import { isRecord, stringsOf } from './json-shape.js';
 import { TERMINAL_WATCH_EVENTS } from './watch-guard.js';
 
 /** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
-export interface StringJsonRpcConnection {
+export type StringJsonRpcConnection = {
   send: (message: string) => void;
   disconnect: () => void;
-}
+};
 
 type JsonRpcId = string | number | null;
 
-interface JsonRpcRequest {
+type JsonRpcRequest = {
   jsonrpc?: string;
   id?: JsonRpcId;
   method?: unknown;
   params?: unknown;
-}
+};
 
-interface JsonRpcResponse {
+type JsonRpcResponse = {
   jsonrpc?: string;
   id?: JsonRpcId;
   result?: unknown;
   error?: unknown;
-}
+};
 
-interface SubscriptionMessage {
+type SubscriptionMessage = {
   jsonrpc?: string;
   method?: unknown;
   params?: {
     subscription?: unknown;
     result?: unknown;
   };
-}
+};
 
 /**
  * Who the answer to an upstream request goes to. Each request the broker sends upstream with an id has exactly one
@@ -82,14 +82,14 @@ function previewResponse(response: JsonRpcResponse): string {
   return `result=${JSON.stringify(response.result)}`;
 }
 
-interface OwnedToken {
+type OwnedToken = {
   sessionId: string;
   localToken: string;
   upstreamToken: string;
   releaseMethod: string;
-}
+};
 
-interface SharedFollow {
+type SharedFollow = {
   key: string;
   upstreamToken: string | null;
   localTokens: Set<string>;
@@ -100,7 +100,7 @@ interface SharedFollow {
   }[];
   /** What the follow told its sessions so far, and who still pins each of its blocks. */
   snapshot: FollowSnapshot;
-}
+};
 
 type WireMode = 'string' | 'object';
 
@@ -108,7 +108,7 @@ type WireMode = 'string' | 'object';
 // encoding of every later message. "string" because first-party consumers send JSON strings.
 const DEFAULT_WIRE_MODE: WireMode = 'string';
 
-interface Session {
+type Session = {
   id: string;
   onMessage: (message: unknown) => void;
   ownedTokens: Set<string>;
@@ -116,12 +116,12 @@ interface Session {
   wireMode: WireMode;
   /** Told once when the chain's transport halts for good. */
   onHalt: ((error?: unknown) => void) | null;
-}
+};
 
-interface BrokerConnection {
+type BrokerConnection = {
   send: (message: unknown) => void;
   disconnect: () => void;
-}
+};
 
 const TOKEN_METHODS = new Map<string, string>([
   ['transaction_v1_broadcast', 'transaction_v1_stop'],
@@ -183,7 +183,7 @@ function endsSubscription(method: unknown, event: unknown): boolean {
   return method === 'transactionWatch_v1_watchEvent' && typeof event === 'string' && TERMINAL_WATCH_EVENTS.has(event);
 }
 
-export interface ChainBrokerManager {
+export type ChainBrokerManager = {
   connectRemote(
     genesisHash: string,
     connectionId: string,
@@ -192,7 +192,7 @@ export interface ChainBrokerManager {
   /** `holder` names the lease in debug logs. */
   getLocalProvider(genesisHash: string, holder?: string): JsonRpcProvider | null;
   disconnectAll(): void;
-}
+};
 
 // Routes the resolver's Asset Hub reads through the broker's shared follow. The object wire matches
 // the getSmProvider boundary the resolver expects.

@@ -17,24 +17,24 @@ import type { PanelEffects } from '../../effects.js';
 import { panelWork, type PanelWork } from '../../work.js';
 
 /** How often each of the panel's repeated computations ran. */
-export interface WorkCalls {
+export type WorkCalls = {
   matches: number;
   formatPending: number;
   rowSelection: number;
   buildTimeline: number;
   buildResolution: number;
-}
+};
 
-export interface TruapiInput {
+export type TruapiInput = {
   tag: string;
   requestId: string;
   direction?: 'incoming' | 'outgoing';
   /** `null` emits an event without a product id. */
   productId?: string | null;
   value?: unknown;
-}
+};
 
-export interface DebugPanelStory {
+export type DebugPanelStory = {
   bus: DotliDebugBus;
   /** The host page the panel reads, which a play sets. */
   host: FakeDebugPanelHost;
@@ -49,7 +49,7 @@ export interface DebugPanelStory {
   mount: (options?: { capacity?: number | undefined; startCollapsed?: boolean | undefined }) => () => void;
   truapi: (input: TruapiInput) => void;
   system: (layer: string, event: string, flowId: string, payload?: Record<string, unknown>) => void;
-}
+};
 
 /** Where the story page's content starts, in px, below a bar the page does not draw. */
 export const CONTENT_TOP = 52;
@@ -102,12 +102,12 @@ export function resetCalls(calls: WorkCalls): void {
 }
 
 /** How a story mounts the panel, as its `debugPanel` parameter. */
-export interface DebugPanelParameters {
+export type DebugPanelParameters = {
   /** False leaves the mount to the play, as for one on fake timers. */
   mount?: boolean;
   capacity?: number;
   startCollapsed?: boolean;
-}
+};
 
 /**
  * The stories' `beforeEach`: a buffering bus as the host's entry leaves it, the panel's stored choices cleared, and
@@ -269,13 +269,13 @@ export function seedFilterTraffic(): void {
 }
 
 /** Fake time for a play. */
-export interface FakeClock {
+export type FakeClock = {
   /** Lets one animation frame pass, so a scheduled render runs. */
   frame: () => void;
   advance: (ms: number) => void;
   /** Timers scheduled and not yet run. */
   timerCount: () => number;
-}
+};
 
 /**
  * Runs `play` on vitest's fake timers, from a fixed moment on the 16 ms animation-frame grid, so time-driven rows,
@@ -322,10 +322,10 @@ function pointerEvent(target: Element, type: string, x = 0, y = 0): void {
 }
 
 /** A drag of `handle` in progress. */
-export interface Grab {
+export type Grab = {
   to: (x: number, y: number) => void;
   release: (end?: 'pointerup' | 'pointercancel') => void;
-}
+};
 
 /** Presses the pointer on `handle`, for moves and a release to follow. */
 export function grab(handle: Element): Grab {

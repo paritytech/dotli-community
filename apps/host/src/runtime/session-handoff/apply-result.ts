@@ -9,12 +9,12 @@ import { bytesEqual, log } from '@dotli/shared';
 import type { HostCoreStorage } from '../session/core-storage.js';
 import type { SessionResult } from './messages.js';
 
-export interface ApplyResultDeps {
+export type ApplyResultDeps = {
   installSession: HostCoreStorage['installSession'];
   readWallet: () => Promise<LocalWalletReadResult>;
   saveWallet: (entropy: Uint8Array, identity: LocalWalletIdentity | null) => Promise<void>;
   reload: () => void;
-}
+};
 
 /**
  * Writes the window's result into the page's copy. It answers `applied` once the page's cores hold the session, and

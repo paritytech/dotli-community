@@ -5,14 +5,14 @@
 
 import type { AppVersion } from '@dotli/resolver';
 
-export interface ManifestFacts {
+export type ManifestFacts = {
   /** The root manifest's `displayName`. */
   displayName?: string;
   /** The root manifest's `$v`. */
   manifestVersion?: number;
   /** The app manifest's `appVersion`. */
   appVersion?: AppVersion;
-}
+};
 
 export function formatAppVersion(version: AppVersion): string {
   const base = `${String(version[0])}.${String(version[1])}.${String(version[2])}`;

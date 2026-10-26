@@ -29,14 +29,14 @@ export class SiteAccountReadError extends Error {
 }
 
 /** Reads the key of the product account a site names. It signs nothing. */
-export interface SiteAccountReader {
+export type SiteAccountReader = {
   /**
    * The public key of `account`. Rejects with {@link SiteAccountRejectedError} on a rejection,
    * {@link SiteAccountReadError} on a failed call or a key that is not 32 bytes, and with the core's own error when no
    * connection could be made.
    */
   account(account: ProductAccountId): Promise<Uint8Array>;
-}
+};
 
 /** Bounds how long the account read may wait on the phone. */
 const PHONE_WAIT_MS = 5 * 60 * 1000;
@@ -82,10 +82,10 @@ async function siteCall<T>(call: () => ResultAsync<T, SiteCallError>): Promise<T
 }
 
 /** What one read of the account runs over: the account the site names and the core's clients. */
-interface SiteCalls {
+type SiteCalls = {
   account: ProductAccountId;
   accounts: AccountClient;
-}
+};
 
 /** Reads the named account's public key. */
 async function readAccount(calls: SiteCalls): Promise<Uint8Array> {

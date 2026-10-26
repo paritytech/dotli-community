@@ -5,10 +5,10 @@ import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared
 
 export type ThemePref = 'light' | 'dark' | 'system';
 
-export interface ThemeState {
+export type ThemeState = {
   pref: ThemePref;
   resolved: 'light' | 'dark';
-}
+};
 
 // Dark matches the stylesheet default until startTheme writes the stored or system preference at boot.
 const theme = createSyncStore<ThemeState>('theme', { pref: 'system', resolved: 'dark' }, { equals: shallowEqual });

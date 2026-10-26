@@ -10,14 +10,14 @@ const CID = 'bafyEncrypted';
 const CIPHERTEXT = new Uint8Array([1, 2, 3]);
 const FILES: ArchiveFiles = { 'index.html': new TextEncoder().encode('<html></html>') };
 
-interface Visitor {
+type Visitor = {
   deps: DecryptDeps;
   /** The error each prompt showed, in order. */
   prompts: (string | undefined)[];
   dismissed: () => number;
   /** What the decrypt asked of the page, in order. */
   steps: string[];
-}
+};
 
 /** A visitor who types `passwords` in turn. Only `secret` opens the content, and a corrupt archive fails any password. */
 function visitor(passwords: string[], options: { corrupt?: boolean } = {}): Visitor {

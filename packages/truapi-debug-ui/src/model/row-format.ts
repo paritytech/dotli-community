@@ -61,7 +61,7 @@ export function tagKind(tag: string): TagKind {
   return 'plain';
 }
 
-export interface TruapiRowData {
+export type TruapiRowData = {
   direction: StoredTruapiEvent['direction'];
   productId: string | undefined;
   requestId: string;
@@ -69,7 +69,7 @@ export interface TruapiRowData {
   displayTag: string;
   summary: string;
   pendingKey: string | null;
-}
+};
 
 export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null): TruapiRowData {
   const chain = decodeChainAnnotations(ev.tag, ev.payload);
@@ -86,13 +86,13 @@ export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null):
   };
 }
 
-export interface SystemRowData {
+export type SystemRowData = {
   layer: string;
   source: StoredSystemEvent['source'];
   flowId: string;
   eventText: string;
   summary: string;
-}
+};
 
 export function systemRowData(ev: StoredSystemEvent): SystemRowData {
   return {

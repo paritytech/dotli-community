@@ -10,7 +10,7 @@ import { reportWalletFailure } from '../wallet-failure.js';
 import type { Presence } from './presence.js';
 import type { Reconciled } from './restore-rule.js';
 
-export interface PresenceWatchDeps {
+export type PresenceWatchDeps = {
   /**
    * Calls the listener each time the sign-in may have changed: the flag's own change event, a change of the local
    * wallet in another tab, or the user coming back. Returns the unsubscribe.
@@ -39,7 +39,7 @@ export interface PresenceWatchDeps {
   reportFlag: (presence: Presence) => void;
   /** The timers the waits between tries of a failed sign-out run on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
-}
+};
 
 /** How many times a local sign-out that failed is tried again. */
 const SIGN_OUT_RETRIES = 3;

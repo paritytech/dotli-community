@@ -3,11 +3,11 @@
 
 import type { DotliDebugBusEvent, DotliDebugEvent } from '@dotli/truapi-debug';
 
-export interface MainThreadMonitorBus {
+export type MainThreadMonitorBus = {
   emit: (event: DotliDebugEvent) => void;
   /** Sees the bus's events without taking the panel's boot replay. */
   watch: (callback: (event: DotliDebugBusEvent) => void) => () => void;
-}
+};
 
 /** Event-loop stalls and a heartbeat for the debug panel, until the bridge handshakes or MAX_MONITOR_MS passes. */
 export function startMainThreadMonitor(flowId: string, { emit, watch }: MainThreadMonitorBus): void {

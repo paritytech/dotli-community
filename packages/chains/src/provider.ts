@@ -19,25 +19,25 @@ import type { ChainTransportHooks } from './transport-hooks.js';
 export { enableSyncReporting, onChainDetail, onChainSync } from './chain-sync.js';
 
 /** What the light client uses of a started truapi-provider. */
-export interface LightClientEngine {
+export type LightClientEngine = {
   loadDatabase(genesisHash: string): Promise<boolean>;
   connect(genesisHash: string): Promise<LightClientConnection>;
   lifecycle(genesisHash: string): ChainLifecycleWatch;
-}
+};
 
 export type LightClientConnection = Pick<Connection, 'send' | 'close' | 'nextResponse'>;
 
-export interface StartEngineOptions {
+export type StartEngineOptions = {
   logLevel: string;
   /** Read for each chain's first add, and written as it finalizes. */
   store: SmoldotDb | null;
   /** Lets the debug console change the log level. */
   debug: boolean;
-}
+};
 
 export type StartEngine = (options: StartEngineOptions) => Promise<LightClientEngine>;
 
-export interface LightClientDeps {
+export type LightClientDeps = {
   /** Each chain's stored database, or `null` where IndexedDB is missing and every chain starts cold. */
   db: SmoldotDb | null;
   /** truapi-provider's log level, `off` for none. */
@@ -50,24 +50,24 @@ export interface LightClientDeps {
   debug?: boolean;
   /** Defaults to truapi-provider's wasm. */
   start?: StartEngine;
-}
+};
 
 // Observed at the store, since the crate reads it for the relay it dials internally. "unavailable" keeps an
 // outage apart from cold starts.
 export type SmoldotDbChain = Exclude<ChainRole, 'people'>;
 export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
 
-export interface LightClientStatus {
+export type LightClientStatus = {
   /** Why no chain can be opened, once one could not. It never clears. */
   readonly fatal: string | null;
   /** Each chain's first read of its stored database. */
   readonly db: ReadonlyMap<SmoldotDbChain, SmoldotDbOutcome>;
-}
+};
 
 export type LightClientChange =
   { kind: 'fatal'; message: string } | { kind: 'db'; chain: SmoldotDbChain; outcome: SmoldotDbOutcome };
 
-export interface LightClient {
+export type LightClient = {
   /**
    * Resolves `null` for a genesis the active network does not define. smoldot never reconnects underneath its
    * consumers, so a failure or an unrequested stream end halts the chain.
@@ -77,7 +77,7 @@ export interface LightClient {
   status: () => LightClientStatus;
   /** Hears each change after the call, so a reader that joins late starts from `status()`. */
   subscribe: (listener: (change: LightClientChange) => void) => () => void;
-}
+};
 
 const HEARTBEAT_DEFAULT_MS = 60_000;
 const LOG_LEVEL_KEY = 'dotli:truapi-provider-log';

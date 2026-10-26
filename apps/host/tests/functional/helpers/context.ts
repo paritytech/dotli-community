@@ -7,10 +7,10 @@ import { BROWSER_PERMISSIONS, seedPermissions } from '../fixtures/permissions.js
 import { seedSettings, type SettingsSeed } from '../fixtures/settings.js';
 import { PROTOCOL_SHARED_WORKER, prependToWorker } from './worker-prelude.js';
 
-export interface TestSetup {
+export type TestSetup = {
   context: BrowserContext;
   page: Page;
-}
+};
 
 /** The caller closes the returned context. */
 export async function setupTest(browser: Browser, settings: SettingsSeed): Promise<TestSetup> {

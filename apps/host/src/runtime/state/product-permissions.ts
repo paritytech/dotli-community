@@ -42,7 +42,7 @@ export type ProductPermissionsState =
 /** The panel change not yet settled, whose targets the panel shows over the statuses read. */
 export type PendingPermissions = { label: string; targets: PermissionTargets } | null;
 
-export interface PermissionsChange {
+export type PermissionsChange = {
   label: string;
   /** In menu order, only those whose status changed. */
   permissions: readonly EnforceablePermissionName[];
@@ -50,16 +50,16 @@ export interface PermissionsChange {
   allowChanged: boolean;
   /** The change answers the product's own prompt, whose response has not reached the product yet. */
   fromPrompt: boolean;
-}
+};
 
 /** A lasting answer from the product's prompt. A one-time grant is the core's own and never reaches the store. */
 export type PromptDecision = 'granted' | 'denied';
 
 /** How a panel change settled. */
-export interface ChangeOutcome {
+export type ChangeOutcome = {
   /** In menu order, the permissions whose write still failed after the last attempt. */
   failed: readonly EnforceablePermissionName[];
-}
+};
 
 const NONE: ProductPermissionsState = { status: 'none' };
 
@@ -77,16 +77,16 @@ function permissionStatusIn(statuses: readonly PermissionStatus[], name: Enforce
   return statuses[NAMES.indexOf(name)] ?? 'ask';
 }
 
-export interface ProductPermissionsDeps {
+export type ProductPermissionsDeps = {
   /** The core's permission store, reached through the connections the product frame opens. */
   registry: Pick<PermissionAuthorizations, 'statuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
   product: ReadableStore<ProductState>;
   /** What a retry waits on. The page's own timers by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
-}
+};
 
-export interface ProductPermissions {
+export type ProductPermissions = {
   state: ReadableStore<ProductPermissionsState>;
   /** The panel change not yet settled. */
   pending: ReadableStore<PendingPermissions>;
@@ -114,9 +114,9 @@ export interface ProductPermissions {
    * too.
    */
   start: () => () => void;
-}
+};
 
-interface WriteOptions {
+type WriteOptions = {
   /** A panel change superseded by a newer one: dropped while queued, no more attempts while running. */
   superseded?: AbortSignal;
   /** A prompt torn down. Its change rejects and shows nothing, as its answer never reaches the product. */
@@ -127,14 +127,14 @@ interface WriteOptions {
    */
   always?: boolean;
   fromPrompt: boolean;
-}
+};
 
-interface WriteResult {
+type WriteResult = {
   /** In menu order, the targets whose write still failed after the last attempt. */
   failed: EnforceablePermissionName[];
   /** What the last attempt's failed writes threw. */
   errors: unknown[];
-}
+};
 
 export function createProductPermissions({
   registry,

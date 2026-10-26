@@ -8,12 +8,12 @@ import { errors, expect, type Frame, type Page } from '@playwright/test';
 import { isSandboxUrl, waitForFrame } from './functional/helpers/frames.js';
 import { SANDBOX_CONTRACT_PARAMS } from '@dotli/sandbox-wire/contract-params';
 
-export interface ProductLocation {
+export type ProductLocation = {
   pathname: string;
   search: string;
   hash: string;
   href: string;
-}
+};
 
 /** Does not wait for the frame to finish loading. Null when no sandbox frame navigates within `timeoutMs`. */
 export async function findAppFrame(page: Page, timeoutMs: number): Promise<Frame | null> {

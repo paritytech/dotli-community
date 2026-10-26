@@ -21,12 +21,12 @@ import type { DisplayCall } from './site-call.js';
 import type { SiteGroups } from './site-groups.js';
 
 /** What the round needs of a site's request, whatever its route. */
-export interface SiteRoundRequest {
+export type SiteRoundRequest = {
   round: string;
   siteToken: string | null;
   /** The site's group token, or null for a site of no group. */
   groupToken: string | null;
-}
+};
 
 /**
  * The action refuses the site with `reason`. A refusal with a `cause` is a failure, which the round reports, and one
@@ -107,11 +107,11 @@ export class SiteRoundRejected extends Error {
 }
 
 /** The round's view while it or its action works, named for the route. */
-interface SiteSigningScreen {
+type SiteSigningScreen = {
   view: 'site-signing';
   origin: string;
   route: 'auth' | 'sign';
-}
+};
 
 /**
  * What an action shows while it runs. `site-review` shows the site's call for the user to confirm, and
@@ -135,7 +135,7 @@ export type SiteScreen =
   | SiteActionScreen;
 
 /** What a route does for the main account once the round has the user's grant. */
-export interface SiteAction<R> {
+export type SiteAction<R> = {
   route: 'auth' | 'sign';
   /** The outcome a result counts with. */
   outcome(result: R): MetricOutcome;
@@ -151,9 +151,9 @@ export interface SiteAction<R> {
     confirmed: () => Promise<void>;
     signal: AbortSignal;
   }): Promise<R>;
-}
+};
 
-export interface SiteRoundDeps<R> {
+export type SiteRoundDeps<R> = {
   request: SiteRoundRequest;
   /** The vetted opener's origin, the site the round answers. */
   origin: string;
@@ -180,9 +180,9 @@ export interface SiteRoundDeps<R> {
   action: SiteAction<R>;
   /** The count the round's outcomes go to. */
   metric: string;
-}
+};
 
-export interface SiteRound {
+export type SiteRound = {
   screen: ReadableStore<SiteScreen>;
   /** Goes on from the consent view, once per showing. */
   consent(): Promise<void>;
@@ -194,16 +194,16 @@ export interface SiteRound {
   retry(): Promise<void>;
   /** Tells the site the user left, unless the round already ended, and closes the window. */
   cancel(): void;
-}
+};
 
 /** A grants store call whose failure is reported and counted while the round goes on. */
 type GrantMiss = 'grant_read' | 'grant_forget' | 'grant_touch';
 
 /** A site's group: its registrable domain and its group token. */
-interface SiteGroup {
+type SiteGroup = {
   registrable: string;
   token: string;
-}
+};
 
 export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   const { request, origin, responder, grants, action, metric } = deps;

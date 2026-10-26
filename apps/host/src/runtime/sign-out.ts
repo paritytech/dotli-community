@@ -32,7 +32,7 @@ const NOTHING_TO_FORGET = (): Promise<void> => Promise.resolve();
 /** A page that pairs in place has nothing to tell the phone with in local mode, so telling again answers the same. */
 const UNTOLD_IN_PLACE: LogoutOutcome = { phone: 'untold', tellAgain: () => Promise.resolve(UNTOLD_IN_PLACE) };
 
-export interface PageSignOutDeps {
+export type PageSignOutDeps = {
   walletMode: () => WalletMode;
   /** The page's copy of the paired session. Its reads never reject. */
   copy: Pick<HostCoreStorage, 'readSession' | 'dropSessionIf'>;
@@ -82,9 +82,9 @@ export interface PageSignOutDeps {
    * The core commands' logout: it ends the login round and a pairing under way, then runs `end` in order with logins.
    */
   onCore: <T>(end: () => Promise<T>) => Promise<T>;
-}
+};
 
-export interface PageSignOut {
+export type PageSignOut = {
   /**
    * Signs this page out and has the phone told. A product signs out once the sign-out window opened and the signed-in
    * flag went in the click's turn. A page that pairs in place, the landing page or a preview, opens no window and moves
@@ -101,7 +101,7 @@ export interface PageSignOut {
    * already cleared. Leaving local mode reloads the page. Rejects when the sign-in could not be ended.
    */
   signOutLocally(): Promise<void>;
-}
+};
 
 /** A closed set, so the metric's `reason` tag stays bounded. */
 type SignOutFailureReason = 'end' | 'reset' | 'drop' | 'grants';

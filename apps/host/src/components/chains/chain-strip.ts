@@ -18,11 +18,11 @@ export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
 }
 
 /** The ghost bar before a chain's first bar: what it waits on, how tall it stands (in percent) and what it says. */
-export interface PendingBarView {
+export type PendingBarView = {
   phase: 'searching' | 'counting' | 'due';
   heightPercent?: number;
   text: string;
-}
+};
 
 /**
  * The ghost bar and estimate `sinceLast` ms after the chain's last block, null before any.

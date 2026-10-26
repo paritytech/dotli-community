@@ -22,24 +22,24 @@ function isSignInIntent(value: unknown): value is SignInIntent {
   return value === 'signin' || value === 'phrase' || value === 'resume';
 }
 
-export interface SessionResult {
+export type SessionResult = {
   session: { blob: string; uiState: string | null } | null;
   localWallet: { entropy: Uint8Array; identity: LocalWalletIdentity | null } | null;
-}
+};
 
 /** The part of a `Window` either side talks to. */
-export interface WindowHandle {
+export type WindowHandle = {
   postMessage(message: unknown, targetOrigin: string): void;
   focus(): void;
   close(): void;
   readonly closed: boolean;
-}
+};
 
-export interface MessageEventLike {
+export type MessageEventLike = {
   data: unknown;
   origin: string;
   source: unknown;
-}
+};
 
 /** Hears the page's own `message` events until the returned stop. */
 export function listenToMessages(handler: (event: MessageEventLike) => void): () => void {

@@ -5,18 +5,18 @@
 // access itself, and a full quota throws on a write. Every reader here treats that as nothing stored, and a refused
 // write is lost for this page only, so the failure stops here.
 
-export interface SafeStorage {
+export type SafeStorage = {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
   clear: () => void;
-}
+};
 
 /** Web storage that can also list its keys, for a reader that keeps some of them. */
-export interface ListableStorage extends SafeStorage {
+export type ListableStorage = {
   /** Every stored key, none when storage is blocked. */
   keys: () => string[];
-}
+} & SafeStorage;
 
 /** Reaches `open()` on every call, since reading `localStorage` itself throws where the browser blocks it. */
 export function safeStorage(open: () => Storage): ListableStorage {

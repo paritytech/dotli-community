@@ -15,7 +15,7 @@ import {
 
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
 
-export interface SettingsState {
+export type SettingsState = {
   backend: Backend;
   cache: CacheSettings;
   network: Network;
@@ -23,7 +23,7 @@ export interface SettingsState {
   sharedWorkerAvailable: boolean;
   /** Whether the backend verifies chain data. */
   verified: boolean;
-}
+};
 
 // Null until the host seeds it, so nothing reads localStorage at import time or during build-time rendering.
 const settings = createSyncStore<SettingsState | null>('settings', null);

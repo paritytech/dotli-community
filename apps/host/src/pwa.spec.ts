@@ -8,11 +8,11 @@ import { startPwa, type PwaDeps, type PwaRegistration, type PwaWorkbox, type Pwa
 
 type NotificationAction = NonNullable<Parameters<PwaDeps['showNotification']>[0]['action']>;
 
-interface Registration extends PwaRegistration {
+type Registration = {
   active: object | null;
   installing: PwaWorker | null;
   waiting: object | null;
-}
+} & PwaRegistration;
 
 /** A new release's worker, which moves through `registration` as the browser would move it. */
 function fakeWorker(registration: Registration, state: ServiceWorkerState) {

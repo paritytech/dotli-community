@@ -81,13 +81,13 @@ const IDLE_WORK_TIMEOUT_MS = 2_000;
 const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 /** What every route opens on once the host is up. */
-interface Shell {
+type Shell = {
   /** The debug panel's flow for this page load, and the Sentry trace's id. */
   flowId: string;
   sandboxChannel: SandboxChannel;
   startup: HostStartup;
   productFrame: ProductFrame;
-}
+};
 
 /** Built on the host pool's Asset Hub connection, since the resolver cannot import the pool. */
 async function loadRpcResolver(): Promise<RpcResolver> {

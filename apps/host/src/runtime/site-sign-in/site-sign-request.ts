@@ -13,7 +13,7 @@ import { asRecord, type SessionRequest } from '../session-handoff/session-protoc
 import { parseSiteAccount } from './site-account.js';
 import { isGroupToken, isSiteToken, optionalString, REFUSED_KEYS } from './site-request.js';
 
-export interface SiteSignRequest {
+export type SiteSignRequest = {
   round: string;
   /** The product account the site names. */
   account: ProductAccountId;
@@ -24,7 +24,7 @@ export interface SiteSignRequest {
   chain: string;
   /** The call as `0x` hex, or null when it follows in a payload. */
   call: string | null;
-}
+};
 
 const CALL_MIN_BYTES = 2;
 // Far above any call a site sends, and a bound on what a payload makes the window decode.

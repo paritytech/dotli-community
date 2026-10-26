@@ -3,7 +3,7 @@
 
 import type { SharedChannel } from './shared-mode.js';
 
-export interface MemorySharedChannel extends SharedChannel {
+export type MemorySharedChannel = {
   /** What the cross-subdomain store holds. */
   readonly store: Map<string, string>;
   /** Every write the store was asked for, in order, failed ones included. */
@@ -12,7 +12,7 @@ export interface MemorySharedChannel extends SharedChannel {
   readFails: boolean;
   /** Writes reject and leave the store as it was. */
   writeFails: boolean;
-}
+} & SharedChannel;
 
 /** The cross-subdomain store as a map, which a test can make unreachable. */
 export function memorySharedChannel(entries: Record<string, string> = {}): MemorySharedChannel {

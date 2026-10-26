@@ -68,12 +68,12 @@ describe('startLightClientService', () => {
   });
 });
 
-interface Built {
+type Built = {
   genesisHash: string;
   disconnect: Mock<() => void>;
   /** The transport halts for good. */
   halt: (error: unknown) => void;
-}
+};
 
 function setup(destroyDelay: number, unsupported: readonly string[] = []): { pool: ChainPool; built: Built[] } {
   const built: Built[] = [];

@@ -11,9 +11,9 @@ import {
   type WindowMessage,
 } from './provider.js';
 
-interface FakeWindow extends WindowLike {
+type FakeWindow = {
   posted: { message: unknown; targetOrigin: string; transfer: Transferable[] }[];
-}
+} & WindowLike;
 
 function createFakeWindow(): FakeWindow {
   const posted: FakeWindow['posted'] = [];

@@ -6,19 +6,19 @@
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../icons.js';
 
-export interface ErrorAction {
+export type ErrorAction = {
   label: string;
   onClick: (event: MouseEvent) => void;
   /** Rendered last whatever its array position. Defaults to the first action. */
   primary?: boolean;
   /** Leads the label. */
   icon?: Component<IconProps>;
-}
+};
 
 /** Segments rather than markup, so every piece goes in as text. */
 export type ErrorText = string | readonly (string | { strong: string })[];
 
-export interface ErrorPageContent {
+export type ErrorPageContent = {
   title: string;
   detail?: ErrorText | undefined;
   /** Listed under a "Try" heading. */
@@ -26,15 +26,15 @@ export interface ErrorPageContent {
   /** The first keeps `#error-retry-btn` whichever one is `primary`. */
   actions?: readonly ErrorAction[];
   glyph?: 'warning';
-}
+};
 
 /** An action as the page renders it. */
-export interface ArrangedAction {
+export type ArrangedAction = {
   action: ErrorAction;
   /** By array position, so the first action keeps `error-retry-btn` wherever it renders. */
   id: string;
   primary: boolean;
-}
+};
 
 /**
  * The actions in render order: the primary, the one marked or else the first, goes last, so reading, DOM and tab order

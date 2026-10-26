@@ -4,12 +4,12 @@
 import { bindLogSink, type LogLevel } from '../log.js';
 
 /** One line the shared log wrote. */
-export interface LogLine {
+export type LogLine = {
   level: LogLevel;
   message: string;
   attrs: Record<string, unknown> | undefined;
   args: unknown[] | undefined;
-}
+};
 
 /**
  * Every line the shared log writes, at `level` when one is given, until `onFinished` puts back the sink bound before.

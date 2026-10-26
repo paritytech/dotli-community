@@ -18,7 +18,7 @@ export function isCriticalChain(chain: ChainRole): chain is CriticalChain {
   return (CRITICAL_CHAINS as readonly ChainRole[]).includes(chain);
 }
 
-export interface StallFacts {
+export type StallFacts = {
   chain: CriticalChain;
   /** Null until a sample comes back. */
   peers: number | null;
@@ -26,7 +26,7 @@ export interface StallFacts {
   bytesPerSecond: number | null;
   /** The word smoldot itself uses for why it stalled, on `stalled` only. */
   reason?: string | undefined;
-}
+};
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {
   relay: 'Polkadot',

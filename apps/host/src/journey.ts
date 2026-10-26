@@ -13,26 +13,26 @@ import { takeContinuation, type Continuation } from './continuation.js';
  */
 export type AttemptEntry = Continuation | 'browser_reload' | 'back_forward' | 'navigation';
 
-export interface Attempt {
+export type Attempt = {
   journeyId: string;
   /** 1 for the first attempt of the journey. */
   attemptNumber: number;
   entry: AttemptEntry;
-}
+};
 
-interface StoredJourney {
+type StoredJourney = {
   id: string;
   label: string;
   attempts: number;
-}
+};
 
 /** The page's session storage, navigation timing and reload reason, in place of the browser's own in a spec. */
-export interface JourneyDeps {
+export type JourneyDeps = {
   /** This tab's sessionStorage, which never throws. */
   session: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
   navigationType: () => NavigationTimingType | undefined;
   takeContinuation: () => Continuation | null;
-}
+};
 
 const pageJourney: JourneyDeps = {
   session: pageSessionStorage,

@@ -25,12 +25,12 @@ const { authChanges, authClear, authClearIf, authRead, authWrite, modeClear, mod
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
-interface FakeChannel {
+type FakeChannel = {
   channel: SharedAuthChannel;
   posted: unknown[];
   /** A message another tab's iframe broadcast, which may be anything. */
   deliver: (data: unknown) => void;
-}
+};
 
 function fakeChannel(post: () => void = () => undefined): FakeChannel {
   const listeners = new Set<(event: { readonly data: unknown }) => void>();

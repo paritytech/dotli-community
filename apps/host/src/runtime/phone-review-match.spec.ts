@@ -73,12 +73,12 @@ const signPayloadReview: UserConfirmationReview = {
   },
 };
 
-interface Row {
+type Row = {
   name: string;
   review: UserConfirmationReview;
   matching: PhoneRequest[];
   differing: PhoneRequest;
-}
+};
 
 const rows: Row[] = [
   {

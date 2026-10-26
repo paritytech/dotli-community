@@ -39,12 +39,12 @@ describe('the dotli database connection', () => {
 });
 
 /** A connection whose close and version change the test fires, as the browser would. */
-interface FakeDb {
+type FakeDb = {
   db: IDBDatabase;
   close: Mock<() => void>;
   closed: () => void;
   versionChange: () => void;
-}
+};
 
 function fakeDb(name: string): FakeDb {
   const db = {

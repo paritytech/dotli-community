@@ -3,12 +3,12 @@
 
 import type { RendererContext } from './types.js';
 
-interface Context {
+type Context = {
   readonly id: string;
   c: number;
   /** Style dedupe keys already emitted into an island on this page render. */
   styles: Set<string>;
-}
+};
 
 const contexts = new WeakMap<RendererContext['result'], Context>();
 

@@ -4,6 +4,6 @@
 import type { SSRResult } from 'astro';
 
 /** The `this` Astro binds the server renderer's hooks to. */
-export interface RendererContext {
+export type RendererContext = {
   result: SSRResult;
-}
+};

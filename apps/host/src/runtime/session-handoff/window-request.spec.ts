@@ -26,10 +26,10 @@ const SIGN_IN_R1 = {
   params: { v: 1, net: 'paseo-next-v2', round: 'r1', intent: 'signin' },
 };
 
-interface KeptEntry {
+type KeptEntry = {
   path: string;
   params: { v: number; net: string; round: string; intent: string };
-}
+};
 
 /** The request entry in `backing`. */
 function keptEntry(backing: Storage): KeptEntry {

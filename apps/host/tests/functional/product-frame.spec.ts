@@ -16,12 +16,12 @@ import { CORE_DEATH, CORE_WORKER, killCore, prependToWorker } from './helpers/wo
 
 const HOST_URL = `http://host-playground.localhost:${PORT}/`;
 
-interface ProductHarness {
+type ProductHarness = {
   /** Every sandbox document the product frame loaded, in order. */
   documents: string[];
   /** Every wallet core worker the page started, in order. */
   cores: string[];
-}
+};
 
 /** Serves the product offline, lets the test take its core down, and records what the page loads for it. */
 async function openProduct(page: Page): Promise<ProductHarness> {

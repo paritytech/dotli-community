@@ -5,12 +5,12 @@ import { createComponent } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
 import { RootBoundary } from './root-boundary.js';
 
-export interface MountRootOptions {
+export type MountRootOptions = {
   /** The container goes with the root, for one the caller made for it. */
   removeContainer?: boolean;
   /** Runs once the broken root is disposed. */
   onBroken?: () => void;
-}
+};
 
 /**
  * Renders `view` into `container` inside a root boundary, so a view that throws renders nothing and other roots keep

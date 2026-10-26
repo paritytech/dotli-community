@@ -14,18 +14,18 @@ import type {
 
 type FactTone = 'ok' | 'warn' | 'bad' | 'running' | 'dim';
 
-interface FactValue {
+type FactValue = {
   text: string;
   tone?: FactTone;
   tooltip?: string;
-}
+};
 
 /** One KPI card. `hint` is the only place on screen that disambiguates similar facts. */
-interface Fact {
+type Fact = {
   key: string;
   value: FactValue;
   hint: string;
-}
+};
 
 export function summaryFacts(model: ResolutionModel): Fact[] {
   const s = model.summary;
@@ -148,10 +148,10 @@ function cacheValue(result: CacheResult): FactValue {
 
 const AXIS_TICKS = 5;
 
-interface AxisTick {
+type AxisTick = {
   left: string;
   label: string;
-}
+};
 
 export function axisTicks(span: number): AxisTick[] {
   return Array.from({ length: AXIS_TICKS + 1 }, (_, i) => ({
@@ -162,7 +162,7 @@ export function axisTicks(span: number): AxisTick[] {
 
 const COLOURED_PHASES = new Set(['connecting', 'syncing', 'ready', 'stalled']);
 
-interface BlockView {
+type BlockView = {
   phase: string;
   /** The phase itself, or `unknown` when it has no colour of its own. */
   tone: string;
@@ -170,7 +170,7 @@ interface BlockView {
   width: string;
   open: boolean;
   title: string;
-}
+};
 
 export function blockView(b: ResolutionBlock, open: boolean, span: number): BlockView {
   const end = b.endMs ?? span;

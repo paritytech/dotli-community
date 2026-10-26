@@ -47,7 +47,7 @@ export type ProductFrameStatus = 'idle' | 'connecting' | 'connected' | 'lost' | 
 /** What the frame asks of its iframe host. The page decides where the frame mounts. */
 export type FrameHostOptions = Omit<IframeHostOptions, 'container'>;
 
-export interface ProductFrameDeps {
+export type ProductFrameDeps = {
   core: Pick<PageCore, 'acquire' | 'setProduct'>;
   createIframeHost: (options: FrameHostOptions) => Promise<IframeHost>;
   /** Where a reloaded sandbox asks to be rebuilt. */
@@ -60,18 +60,18 @@ export interface ProductFrameDeps {
   notify: ShowNotification;
   /** The host page around the frame. Without one, the browser's. */
   page?: ProductFramePage | undefined;
-}
+};
 
 /** `iframe` is a local or preview URL, which has no root manifest to name it. */
-export interface TitledProduct {
+export type TitledProduct = {
   mode: 'subdomain' | 'iframe';
   label: string;
   /** The name its root manifest publishes. */
   displayName?: string;
-}
+};
 
 /** What the page shows around the frame. The runtime asks through this seam so its specs run under Node. */
-export interface ProductFrameView {
+export type ProductFrameView = {
   /** The page gives its viewport to this frame and lays it out from now on. */
   attachFrame: (iframe: HTMLIFrameElement) => void;
   /** The tab title for the product on screen. */
@@ -84,14 +84,14 @@ export interface ProductFrameView {
   clearMount: () => void;
   /** Only in sandbox checker builds: loads the panel that watches the frame, as a mount that returns its dispose. */
   loadCheckerPanel?: (() => Promise<(iframe: HTMLIFrameElement) => () => void>) | undefined;
-}
+};
 
 /** What the frame reads and writes of the browser page. */
-export interface ProductFramePage {
+export type ProductFramePage = {
   /** Where the host page is, which the app's origin and deep path follow. */
   location: () => Pick<Location, 'href' | 'protocol' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
   reload: () => void;
-}
+};
 
 const browserPage: ProductFramePage = {
   location: () => window.location,
@@ -100,7 +100,7 @@ const browserPage: ProductFramePage = {
   },
 };
 
-export interface ProductFrame {
+export type ProductFrame = {
   /**
    * Replaces the product on screen once the new one has connected. Resolves when it is on screen or a newer render
    * superseded it, and rejects when it could not be shown.
@@ -112,9 +112,9 @@ export interface ProductFrame {
    * without its core, and a render asked from above starts afresh.
    */
   halt(): void;
-}
+};
 
-interface MountedHost {
+type MountedHost = {
   iframe: HTMLIFrameElement;
   /** Whether the product declares chat, as its connection was opened. */
   chat: boolean;
@@ -126,7 +126,7 @@ interface MountedHost {
    */
   releaseCore: () => void;
   dispose: () => void;
-}
+};
 
 // Spaces the rebuilds a reloaded sandbox asks for and the renders after a core death, so a product that keeps reloading
 // or keeps taking its core down cannot pin the host.

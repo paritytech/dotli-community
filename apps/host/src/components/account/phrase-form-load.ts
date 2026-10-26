@@ -9,12 +9,12 @@ import { reportLazyMiss } from '../../lazy-miss.js';
 /** Where the phrase form's chunk stands on a phrase view: on its way, failed, or loaded. */
 export type PhraseForm = 'loading' | 'failed' | PhraseScreenModule;
 
-export interface PhraseFormLoad {
+export type PhraseFormLoad = {
   /** Where the form's chunk stands, on its way until a phrase view first asks for it. */
   form: Accessor<PhraseForm>;
   /** Loads the form again after a failed load. */
   reload: () => void;
-}
+};
 
 /**
  * Loads the debug-only phrase form the first time `onShow` says a phrase view is on show, and again on each reload

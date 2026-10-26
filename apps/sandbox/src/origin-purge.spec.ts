@@ -6,11 +6,11 @@ import { bindCaptureSink } from '@dotli/metrics';
 
 import { purgeSandboxOriginState, type SandboxOrigin } from './origin-purge.js';
 
-interface Origin {
+type Origin = {
   stores: SandboxOrigin;
   /** What each store had wiped, in order. */
   wiped: string[];
-}
+};
 
 /** A sandbox origin holding a database, a cache, a worker, both storages and a cookie, whose local storage is blocked. */
 function origin(): Origin {

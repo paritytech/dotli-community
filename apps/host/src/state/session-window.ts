@@ -25,20 +25,20 @@ export type WindowView =
   | 'done-no-opener';
 
 /** The names a stored sign-in shows. */
-export interface OfferedAccount {
+export type OfferedAccount = {
   publicKey?: string;
   identityAccountId?: string;
   liteUsername?: string;
   fullUsername?: string;
   primaryUsername?: string;
-}
+};
 
 /** What Continue offers: the local wallet when one is stored, since a page boots on it, else the paired session. */
-export interface ContinueOffer {
+export type ContinueOffer = {
   wallet: 'local' | 'paired';
   /** Null when the store has no names, which a wallet imported in the window leaves. */
   account: OfferedAccount | null;
-}
+};
 
 /**
  * A step the user asked for that failed, shown on the view it left. `sign-out` is Use another account's, and `phone`
@@ -47,13 +47,13 @@ export interface ContinueOffer {
 export type WindowFailure = 'sign-out' | 'phone' | 'step';
 
 /** What every view of a sign-in carries, whichever view is on show. */
-interface SignInFields {
+type SignInFields = {
   /** The page the window signs in for, named above the QR code. */
   pageHost: string | null;
   failure: WindowFailure | null;
   /** How far the pairing under way got, as the window's core reports it. A view other than the pairing's keeps it. */
   pairing: PairingView;
-}
+};
 
 /** A view of a sign-in. Only Continue offers an account, and it always has one to offer. */
 export type SignInScreen =
@@ -100,7 +100,7 @@ export function setWindowScreen(next: WindowScreen): void {
 }
 
 /** What the window's controls ask of its flow. Only the phrase import rejects, and every failure is reported. */
-export interface WindowIntents {
+export type WindowIntents = {
   continueWithStored(): Promise<void>;
   useAnotherAccount(): Promise<void>;
   /** After Use another account could not tell the phone, goes on to sign in another account anyway. */
@@ -115,7 +115,7 @@ export interface WindowIntents {
   retry(): Promise<void>;
   /** Ends a round the user gave up on and closes the window. */
   cancel(): void;
-}
+};
 
 // The window's flow, for the island, which hydrates on its own and so cannot be handed it.
 let pageIntents: WindowIntents | null = null;

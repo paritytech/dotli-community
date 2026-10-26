@@ -10,7 +10,7 @@ type NoticeTone = Exclude<StatusTone, 'quiet'>;
 
 export const NOTIFICATION_DISMISS_MS = 10_000;
 
-export interface NotificationParams {
+export type NotificationParams = {
   text: string;
   label: string;
   deeplink?: string | undefined;
@@ -23,7 +23,7 @@ export interface NotificationParams {
   browserNotification?: boolean;
   onDismiss?: () => void;
   action?: { label: string; onClick: () => void };
-}
+};
 
 function sanitizeText(raw: string): string {
   return raw.trim().slice(0, 200);
@@ -74,7 +74,7 @@ function fireBrowserNotification(
   }
 }
 
-export interface NotifierDeps {
+export type NotifierDeps = {
   present: (input: ToastInput) => void;
   /**
    * Whether the user is looking at the page: the tab showing and its window focused. A window behind other windows
@@ -83,7 +83,7 @@ export interface NotifierDeps {
   attended: () => boolean;
   /** Undefined where the browser has none. */
   system: () => SystemNotifications | undefined;
-}
+};
 
 /**
  * Shows a toast, and a system notification too while the page is not attended. Without the system's permission the

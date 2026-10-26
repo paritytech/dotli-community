@@ -10,11 +10,11 @@ import { deleteIdb } from './idb.js';
 export type OriginWipePart = 'indexeddb' | 'cache_storage' | 'service_worker';
 
 /** The stores of one origin. A store this browser lacks is `null` and has nothing to wipe. */
-export interface OriginStores {
+export type OriginStores = {
   indexedDB: Pick<IDBFactory, 'databases' | 'deleteDatabase'> | null;
   caches: Pick<CacheStorage, 'keys' | 'delete'> | null;
   serviceWorker: Pick<ServiceWorkerContainer, 'getRegistrations'> | null;
-}
+};
 
 /** A wipe that left parts behind, with what each of them threw. */
 export class OriginWipeError extends AggregateError {

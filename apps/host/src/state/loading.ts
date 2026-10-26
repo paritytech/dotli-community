@@ -10,7 +10,7 @@ export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
 export type StepPart = string | { host: string; tld: string };
 
 /** Written only by `loading-controller.ts`. */
-export interface LoadingState {
+export type LoadingState = {
   /** 0 to 100, fractional. The shown number is rounded. */
   progress: number;
   /** The running stage's opening sentence. */
@@ -24,7 +24,7 @@ export interface LoadingState {
   /** The stall warning under the bar. */
   warning: string | null;
   phase: LoadingScreenPhase;
-}
+};
 
 // Matches the host page's build-time render, which paints first.
 const loading = createSyncStore<LoadingState>(

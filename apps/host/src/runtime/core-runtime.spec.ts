@@ -30,7 +30,7 @@ class FakeHostWorker {
 const RUNTIME = {} as WorkerPairingHostRuntime;
 const LOCAL_RUNTIME = {} as WorkerPairingHostRuntime;
 
-interface Harness {
+type Harness = {
   deps: CoreRuntimeDeps;
   create: ReturnType<
     typeof vi.fn<
@@ -43,7 +43,7 @@ interface Harness {
   >;
   callbackOptions: CreateHostCallbacksOptions[];
   bootLocalWalletCore: ReturnType<typeof vi.fn<BootLocalWalletCore>>;
-}
+};
 
 function harness(...reads: (LocalWalletBoot | null)[]): Harness {
   const create = vi.fn(

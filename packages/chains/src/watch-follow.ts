@@ -10,12 +10,12 @@ import { decodeHeaderNumber } from './header-number.js';
 import { isRecord, stringsOf } from './json-shape.js';
 
 /** A broker session as the follow uses it. */
-export interface FollowSession {
+export type FollowSession = {
   send: (message: unknown) => void;
   disconnect: () => void;
-}
+};
 
-export interface WatchFollowOptions {
+export type WatchFollowOptions = {
   /** Prefix of the follow's request ids. Also names it in debug logs. */
   sessionId: string;
   /** Opens the follow's session. Messages may arrive inside `send`, before it returns. */
@@ -25,7 +25,7 @@ export interface WatchFollowOptions {
   onBestBlock: (blockNumber: number) => void;
   /** Whether a follow the chain stopped is started again. False once the chain closed. */
   live: () => boolean;
-}
+};
 
 export function openWatchFollow(options: WatchFollowOptions): { disconnect: () => void } {
   const { sessionId } = options;

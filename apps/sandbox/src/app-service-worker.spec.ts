@@ -28,10 +28,10 @@ function nextPageMessage(): Promise<void> {
 }
 
 /** The origin's storage and network, which outlive a worker across its restarts. */
-interface Origin {
+type Origin = {
   indexedDB: IDBFactory;
   fetch: typeof fetch;
-}
+};
 
 /** A fresh worker over the origin's existing storage. A second call is Chrome restarting a stopped idle worker. */
 function startWorker(origin: Origin, devServer = false): WorkerScope {

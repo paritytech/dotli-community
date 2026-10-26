@@ -10,12 +10,12 @@ import type { StatusTone } from '../status-tone.js';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/icon-props.js';
 
-export interface ToastAction {
+export type ToastAction = {
   label: string;
   onClick: () => void;
-}
+};
 
-export interface ToastInput {
+export type ToastInput = {
   text: string;
   label: string;
   deeplink?: string;
@@ -27,9 +27,9 @@ export interface ToastInput {
   dismissMs: number;
   onDismiss?: () => void;
   action?: ToastAction;
-}
+};
 
-export interface ToastEntry {
+export type ToastEntry = {
   id: number;
   text: string;
   label: string;
@@ -38,29 +38,29 @@ export interface ToastEntry {
   tone: StatusTone;
   action?: ToastAction;
   leaving: boolean;
-}
+};
 
-export interface ToastsState {
+export type ToastsState = {
   /** Newest last. */
   items: readonly ToastEntry[];
   expanded: boolean;
-}
+};
 
-interface Timer {
+type Timer = {
   remaining: number;
   startedAt: number;
   handle: ReturnType<typeof setTimeout> | undefined;
   onDismiss: (() => void) | undefined;
-}
+};
 
 const INITIAL: ToastsState = { items: [], expanded: false };
 const toasts = createSyncStore<ToastsState>('toasts', INITIAL, { equals: shallowEqual });
 export const toastsStore: ReadableStore<ToastsState> = toasts;
 
 /** The page whose visibility pauses the countdowns. */
-export interface ToastPage extends EventTarget {
+export type ToastPage = {
   readonly visibilityState: DocumentVisibilityState;
-}
+} & EventTarget;
 
 const timers = new Map<number, Timer>();
 let nextId = 0;

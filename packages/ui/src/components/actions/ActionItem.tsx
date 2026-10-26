@@ -7,7 +7,7 @@ import type { IconProps } from '../icons/icon-props.js';
 import { ActionsContext, type ActionAlert } from './actions-context.js';
 import s from './ActionItem.module.css';
 
-export interface ActionItemProps {
+export type ActionItemProps = {
   name: string;
   label: string;
   icon: Component<IconProps>;
@@ -24,7 +24,7 @@ export interface ActionItemProps {
   separated?: boolean;
   /** The view the item shows, its button first. */
   children: JSX.Element;
-}
+};
 
 /** Wraps an item's button and tells its group how to show it as a More row. Outside a group it is always inline. */
 export function ActionItem(props: ActionItemProps): JSX.Element {

@@ -19,7 +19,7 @@ import s from './window-wait-parts.module.css';
 export type WindowWaitView = Extract<AuthModalView, { kind: 'window' | 'blocked' | 'refused' | 'prompt' }>;
 
 /** What the views that wait on the sign-in window need from the modal. */
-export interface WindowWaitPartsProps {
+export type WindowWaitPartsProps = {
   /** The page the sign-in is for, null for a sign-in of its own. */
   host: string | null;
   /** Cancel, or Close once nothing is left to wait for. */
@@ -31,7 +31,7 @@ export interface WindowWaitPartsProps {
   level?: HeadingLevel | undefined;
   /** Takes focus before a pressed control is replaced, so it never drops to the page. */
   holdFocus?: (() => void) | undefined;
-}
+};
 
 function windowCopy(view: WindowWaitView, host: string | null): { title: string; body: string } {
   switch (view.kind) {

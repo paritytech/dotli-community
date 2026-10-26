@@ -26,9 +26,9 @@ import { SiteAccountRejectedError, type SiteAccountReader } from './site-account
 import { SiteTxError, type SiteTxSigner } from './site-tx-signer.js';
 
 /** What the site gets for its transaction: the signed transaction, in lowercase `0x` hex. */
-export interface SiteTransactionResult {
+export type SiteTransactionResult = {
   transaction: string;
-}
+};
 
 export type SiteTransactionDeps = Omit<SiteRoundDeps<SiteTransactionResult>, 'action' | 'metric' | 'request'> & {
   request: SiteSignRequest;

@@ -8,7 +8,7 @@ import { createAsyncTaskPool, log } from '@dotli/shared';
 import { ownsFlag, type PageRole } from '../page-role.js';
 import type { SessionPresence } from './presence.js';
 
-export interface SignInFlag {
+export type SignInFlag = {
   /** Runs a write of a sign-in. Rejects when the write rejects. */
   store(write: () => Promise<void> | void): Promise<void>;
   /**
@@ -21,19 +21,19 @@ export interface SignInFlag {
    * renews, so the flag lives as long as the user keeps using dotli. Needs no queue. Reports its own failure.
    */
   renew(): void;
-}
+};
 
 const NOTHING_TO_CLEAR = (): Promise<boolean> => Promise.resolve(false);
 
 /** Whether the page's copy holds a paired session or a local wallet, or `unread` when a read failed. */
 export type StoredSignIn = 'held' | 'none' | 'unread';
 
-export interface SignInFlagDeps {
+export type SignInFlagDeps = {
   /** The signed-in flag. Never rejects, and reports its own failed writes. */
   presence: Pick<SessionPresence, 'set' | 'clear' | 'renew'>;
   /** Records its own failed reads. Never rejects. Each keeper decides what an `unread` copy means for the flag. */
   storedSignIn: () => Promise<StoredSignIn>;
-}
+};
 
 /**
  * The flag keeper of a page that does not own the flag. It renews a flag that is still set, never raises the flag for
@@ -129,9 +129,9 @@ export function ownerSignInFlag(deps: SignInFlagDeps): SignInFlag {
   };
 }
 
-export interface PageSignInFlagDeps extends SignInFlagDeps {
+export type PageSignInFlagDeps = {
   role: () => PageRole;
-}
+} & SignInFlagDeps;
 
 /** The page's flag keeper, picked by the page's role on first use, as the role is chosen after the module loads. */
 export function createPageSignInFlag(deps: PageSignInFlagDeps): SignInFlag {

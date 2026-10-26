@@ -12,7 +12,7 @@ import type { CloseReason } from './close-reason.js';
 import { AnchorBoundary } from './layer-context.js';
 
 /** The open state Popover and DropdownMenu share. */
-export interface Anchored {
+export type Anchored = {
   readonly id: string;
   readonly title: string;
   open: Accessor<boolean>;
@@ -26,7 +26,7 @@ export interface Anchored {
   mounted: Accessor<boolean>;
   /** Unmounts the surface and closes it, so the next opening renders it afresh. */
   fail: () => void;
-}
+};
 
 /** Focus returns to the trigger after a close in `returnFocusOn`, if it was lost or still inside. */
 export function createAnchored(

@@ -32,20 +32,20 @@ import { localSessionUiState, parseUiStateCache, type TruapiSessionUiState } fro
 import type { SessionResult, SignInIntent } from './messages.js';
 import type { Responder, ResponderState } from './responder.js';
 
-export interface WindowFlow extends WindowIntents {
+export type WindowFlow = {
   /** What the window shows, which is always a view of a sign-in. */
   screen: ReadableStore<SignInScreen>;
   /** Resolves once no step is queued or running. */
   settled(): Promise<void>;
-}
+} & WindowIntents;
 
 /** The recovery phrase check the phrase view loads before it shows. */
-export interface PhraseCheck {
+export type PhraseCheck = {
   /** The phrase's entropy, or null for anything that is not a recovery phrase. */
   phraseToEntropy: (phrase: string) => Uint8Array | null;
-}
+};
 
-export interface WindowFlowDeps {
+export type WindowFlowDeps = {
   /** Watched only, so the flow learns where the round stands and never answers the opener itself. */
   responder: Pick<Responder<unknown>, 'state' | 'subscribe'>;
   /** The page's one flag keeper, so the flow's flag writes and the store writes stay in order. */
@@ -70,7 +70,7 @@ export interface WindowFlowDeps {
   /** Takes what the store holds once the flow ended its round with a vetted opener. */
   deliver: (result: SessionResult) => void;
   close: () => void;
-}
+};
 
 /** A closed set, so the metric's `reason` tag stays bounded. */
 type StepName = 'decide' | 'continue' | 'another' | 'phrase' | 'back' | 'pairing' | 'finish';

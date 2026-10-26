@@ -5,14 +5,14 @@ import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './Choice.module.css';
 
-export interface ChoiceRadio {
+export type ChoiceRadio = {
   name: string;
   value: string;
   disabled?: boolean;
   onChoose: () => void;
-}
+};
 
-export interface ChoiceProps {
+export type ChoiceProps = {
   title: string;
   description: string;
   /** Ringed. With `radio`, also the checked radio. */
@@ -25,7 +25,7 @@ export interface ChoiceProps {
   radio?: ChoiceRadio;
   class?: string | undefined;
   testId?: string;
-}
+};
 
 function Body(props: { title: string; description: string; chip?: JSX.Element }): JSX.Element {
   return (

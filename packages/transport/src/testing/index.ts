@@ -65,14 +65,14 @@ export function readFrame<H, T extends Sections>(schema: Schema<H, T>, data: Uin
  * A call's message as a recording keeps it: by its method's names and tag, with its bytes as hex, and as JSON with bytes
  * as hex, so a page can match it.
  */
-export interface RecordedWireMessage {
+export type RecordedWireMessage = {
   id: number;
   section: string;
   method: string;
   tag: string;
   message: string;
   json: string;
-}
+};
 
 /** Bytes and big integers as JSON keeps them. */
 const plain = (_key: string, value: unknown): unknown =>

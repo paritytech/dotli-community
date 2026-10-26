@@ -6,7 +6,7 @@ import { dynamic, type JSX } from '@solidjs/web';
 import type { IconProps } from '../../icons.js';
 import s from './ErrorPage.module.css';
 
-export interface ErrorFrameProps {
+export type ErrorFrameProps = {
   standalone: boolean;
   /** On the centred column, for a screen's own layout of what sits under the title. */
   class?: string | undefined;
@@ -21,7 +21,7 @@ export interface ErrorFrameProps {
    */
   focusTitle?: boolean | undefined;
   children?: JSX.Element;
-}
+};
 
 /** The error page's frame: a centred column under an icon and a title. */
 export function ErrorFrame(props: ErrorFrameProps): JSX.Element {

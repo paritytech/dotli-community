@@ -96,7 +96,7 @@ export function holdForHandOff(settle: (taken: boolean) => void): boolean {
   return true;
 }
 
-export interface SheetFrameProps {
+export type SheetFrameProps = {
   title: string;
   onDismiss: () => void;
   closeLabel?: string;
@@ -122,7 +122,7 @@ export interface SheetFrameProps {
       }
     | undefined;
   children: JSX.Element;
-}
+};
 
 /** The bottom sheet inside a ModalLayer. A drag down that starts on the head swipes it closed. */
 export function SheetFrame(props: SheetFrameProps): JSX.Element {

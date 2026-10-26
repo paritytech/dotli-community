@@ -9,7 +9,7 @@ import { protocolClient, type LocalWalletIdentity, type LocalWalletReadResult } 
 /** A wallet read, or why the frame could not answer it. */
 export type WalletRead = LocalWalletReadResult | { status: 'failed'; error: unknown };
 
-export interface SiteWallet {
+export type SiteWallet = {
   /** Reads the stored wallet, or answers that there is none. */
   read(): Promise<LocalWalletReadResult>;
   /** Stores the wallet's entropy, with the identity derived from it, where a `null` identity stores none yet. */
@@ -20,7 +20,7 @@ export interface SiteWallet {
   forget(): Promise<void>;
   /** Forgets the wallet only while the store still holds `version`. Resolves whether it went. */
   forgetIf(version: Uint8Array): Promise<boolean>;
-}
+};
 
 /** This site's local wallet in the shared store. Each call reaches the protocol frame when made. */
 export const siteWallet: SiteWallet = {

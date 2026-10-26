@@ -15,7 +15,7 @@ import { PanelWorkContext, panelWork, type PanelWork } from './work.js';
 const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
 
-export interface SetupOptions {
+export type SetupOptions = {
   /** What the panel reads of the host page and asks of it. */
   host: DebugPanelHost;
   /** Retained events before the oldest are evicted. */
@@ -30,7 +30,7 @@ export interface SetupOptions {
   effects?: PanelEffects;
   /** Without one, the page's bus. */
   bus?: Pick<DotliDebugBus, 'on'>;
-}
+};
 
 /**
  * Install the debug panel, returning a dispose that also gives the product iframe its full size back.

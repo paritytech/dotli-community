@@ -20,7 +20,7 @@ export type LocalWalletBoot = Extract<LocalWalletReadResult, { status: 'ok' }>;
 const UNREADABLE = 'Local wallet could not be decrypted and was forgotten';
 const UNAVAILABLE = 'Local wallet could not be read, so this page uses Polkadot App';
 
-export interface WalletBootDeps {
+export type WalletBootDeps = {
   /** The restore rule over the page's copy, counted under `reader`. Never rejects. */
   reconcile: (reader: PresenceReader) => Promise<Reconciled>;
   /** Where the page's wallet mode goes once the restore settles it. */
@@ -32,14 +32,14 @@ export interface WalletBootDeps {
    * is a miss to count or the role's design.
    */
   role: PageRole;
-}
+};
 
 /** What the restore rule left, with the wallet the page boots on: none on a page that only pairs. */
-export interface Restored extends Reconciled {
+export type Restored = {
   local: LocalWalletBoot | null;
-}
+} & Reconciled;
 
-export interface WalletBoot {
+export type WalletBoot = {
   /**
    * What the restore rule left of the stored sign-in. Kept for the page once the frame answered both the session and
    * the wallet read, so the rule runs before boot picks a wallet mode and before any core or session state reads the
@@ -58,7 +58,7 @@ export interface WalletBoot {
    * reported again. Called before anything boots a core, as a core already booted keeps the mode it read.
    */
   serveSites(): void;
-}
+};
 
 export function createWalletBoot(deps: WalletBootDeps): WalletBoot {
   const { report, role } = deps;

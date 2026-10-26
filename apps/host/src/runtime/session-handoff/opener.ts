@@ -31,7 +31,7 @@ export type SignInOutcome =
 /** Why the page ended its own round: the user's Cancel, or the page became signed in by another route. */
 export type PageCancelReason = 'page' | 'signed_in';
 
-export interface SessionHandoff {
+export type SessionHandoff = {
   /**
    * Opens the window synchronously, in place of a sign-in window this page still has open. While the sign-out window is
    * open, it brings that window to the front and answers cancelled, since the sign-out has yet to read or tell the
@@ -53,9 +53,9 @@ export interface SessionHandoff {
   focus(): void;
   /** Ends the open round and closes its window, counted under `reason`. */
   cancel(reason: PageCancelReason): void;
-}
+};
 
-export interface HandoffDeps {
+export type HandoffDeps = {
   open: (url: string, name: string) => WindowHandle | null;
   listen: (handler: (event: MessageEventLike) => void) => () => void;
   /** Focus and visibility events of the opener's own page. */
@@ -67,7 +67,7 @@ export interface HandoffDeps {
    * The signed-in flag, which a sign-out through the window drops. Never rejects, and reports its own failed writes.
    */
   presence: Pick<SessionPresence, 'clear'>;
-}
+};
 
 // One name, so a second open reuses the window instead of stacking another.
 const WINDOW_NAME = 'dotli-session';

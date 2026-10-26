@@ -9,7 +9,7 @@ import { hideLayer, showLayer, topLayer } from './modal-stack.js';
 import { handOffSheetOnPress } from './SheetFrame.js';
 import s from './ModalLayer.module.css';
 
-export interface ModalLayerProps {
+export type ModalLayerProps = {
   open: boolean;
   /** On Escape or a press on the scrim. */
   onDismiss: () => void;
@@ -29,7 +29,7 @@ export interface ModalLayerProps {
   ref?: (el: HTMLDivElement) => void;
   class?: string | undefined;
   children: JSX.Element;
-}
+};
 
 const restoreTargets = new WeakMap<Element, HTMLElement | null>();
 

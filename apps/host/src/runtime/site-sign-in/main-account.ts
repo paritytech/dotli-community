@@ -20,12 +20,12 @@ import type { DotliAuthState } from '../session/auth-state.js';
 import type { TruapiSessionUiState } from '../session/ui-state.js';
 
 /** The main account an action runs for. The round never sends any of it. */
-export interface MainAccount {
+export type MainAccount = {
   /** Hex of the hash of the main account's public key, whose grants these are. */
   owner: string;
   /** Null for an account with no username to show a site. */
   username: { name: string; kind: 'lite' | 'full' } | null;
-}
+};
 
 /** A key the core reports as `0x` hex of whole bytes. */
 const HEX_KEY = /^0x(?:[0-9a-fA-F]{2})+$/;
@@ -63,21 +63,21 @@ export class MainAccountError extends Error {
 /** The two lease calls the source makes. */
 type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 
-export interface MainAccountSourceDeps {
+export type MainAccountSourceDeps = {
   /** Takes a lease on the page's core, booting it when none runs. Rejects when the core cannot boot. */
   acquire: () => Promise<HeldLease>;
   /** What the page's core itself reported last, null while no core reported. */
   coreReport: ReadableStore<DotliAuthState | null>;
-}
+};
 
-export interface MainAccountSource {
+export type MainAccountSource = {
   /**
    * The main account once the core reports a session, on a core lease the source holds from the first read. Rejects
    * with a {@link MainAccountError}: `signed_out` once the core reports no session or a failed login, `unavailable`
    * for a core that cannot boot, a session without a readable key, or `signal` aborting first.
    */
   read(signal: AbortSignal): Promise<MainAccount>;
-}
+};
 
 export function createMainAccountSource(deps: MainAccountSourceDeps): MainAccountSource {
   // One lease at a time, so overlapping reads share the one the first read takes.
