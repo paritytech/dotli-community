@@ -105,7 +105,7 @@ export interface FrameDocument<E extends FrameElement> {
 }
 
 /** Where the build serves the frame on its origin. */
-const PROTOCOL_PATH = '/__protocol/';
+const PROTOCOL_PATH = '/p/';
 
 export interface ProtocolFrameDeps<E extends FrameElement> {
   /** The protocol frame's origin. Messages from any other origin are ignored. */

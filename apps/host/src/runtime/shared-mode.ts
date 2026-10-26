@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Mode preferences shared across every `*.<BASE_DOMAIN>` subdomain, through the localStorage of the protocol frame at
-// `<BASE_DOMAIN>/__protocol/`. On a local root they live in the local server's HTTP store instead, beside the signed-in
+// `<BASE_DOMAIN>/p/`. On a local root they live in the local server's HTTP store instead, beside the signed-in
 // flag, which a cookie cannot carry there since Chromium rejects `Domain=localhost`.
 
 import { SITE_ID, isLocalhost, BACKEND_KEY, CACHE_KEY, type SharedSettings } from '@dotli/config';

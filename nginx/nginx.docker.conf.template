@@ -1,6 +1,6 @@
 # Docker profile, rendered by docker/entrypoint.sh with envsubst. Keep in sync with nginx.conf.template by hand.
 # Differs only in plain HTTP on one port, no rate limiting, no Sentry tunnel, and serving the runtime network config.
-#   ${DOMAIN}         host build, and the protocol build under /__protocol/
+#   ${DOMAIN}         host build, and the protocol build under /p/
 #   host.${DOMAIN}    protocol build, kept for one release for shells cached by the previous one
 #   *.${DOMAIN}       host build
 #   *.app.${DOMAIN}   app build

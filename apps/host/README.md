@@ -70,9 +70,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - A page that shows signed out while the flag says a sign-in exists offers to continue it. Session state works that out
   from the flag and the copy, and the account button and a product's login prompt then open the sign-in window to
   resume, which sends what the main store holds without offering Continue.
-- The protocol frame lives at `/__protocol/` on the root domain, so it shares that origin with the landing page, the
-  sign-in window and products opened by path. A settings wipe there clears the host's own keys and databases and keeps
-  the frame's, its stores and its databases, which the frame owns.
+- The protocol frame lives at `/p/` on the root domain, so it shares that origin with the landing page, the sign-in
+  window and products opened by path. A settings wipe there clears the host's own keys and databases and keeps the
+  frame's, its stores and its databases, which the frame owns.
 - The page builds one route to the core's permission store and one permissions store over it. The product frame and the
   permission prompts get both, the menu reads the store and the diagnostics read the route. A product's newest
   connection answers. A stored answer returns at once, and only a question waits its turn behind other dialogs.

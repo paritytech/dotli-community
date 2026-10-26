@@ -169,7 +169,7 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
 /** Survive a reset, since losing the theme would be a visible change nobody requested. */
 const PRESERVED_KEYS: readonly string[] = [THEME_KEY];
 
-/** The frame at `/__protocol/` shares this origin, so its session and settings are not the landing page's to wipe. */
+/** The frame at `/p/` shares this origin, so its session and settings are not the landing page's to wipe. */
 const FRAME_KEY_PREFIXES: readonly string[] = [SHARED_AUTH_KEY_PREFIX, SHARED_MODE_KEY_PREFIX];
 
 export type WipeFailure = OriginWipePart;

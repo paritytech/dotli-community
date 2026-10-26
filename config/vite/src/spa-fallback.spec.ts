@@ -91,16 +91,28 @@ describe('fallbackFor', () => {
     expect(action).toEqual({ kind: 'not-found' });
   });
 
-  it('As a page, I load the protocol frame at /__protocol/ and the fallback leaves it to the proxy', () => {
+  it('As a page, I load the protocol frame at /p/ and the fallback leaves it to the proxy', () => {
     // Given a server for both local roots and a page load of the protocol frame on the bare host
     const { routeFor } = createLocalServing(ROOTS);
-    const req = pageLoad('/__protocol/', 'localhost');
+    const req = pageLoad('/p/', 'localhost');
 
     // When the fallback decides
     const action = fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor);
 
     // Then it passes the request on
     expect(action).toEqual({ kind: 'pass' });
+  });
+
+  it('As a product page, I load /p/x on my host and the fallback gives me the shell', () => {
+    // Given a server for both local roots and a page load of /p/x on a product host
+    const { routeFor } = createLocalServing(ROOTS);
+    const req = pageLoad('/p/x', 'browse.localhost');
+
+    // When the fallback decides
+    const action = fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor);
+
+    // Then it rewrites to the shell
+    expect(action).toEqual({ kind: 'rewrite', url: '/' });
   });
 
   it('As a user, I open /s/auth, /s/signout, /s/manage and /s/sign on the bare host and get the session window with my query kept', () => {

@@ -1,7 +1,7 @@
 # `@dotli/protocol`
 
-The host page's client for the hidden protocol frame, the page at `/__protocol/` on the root domain that runs the light
-client and the shared store. It turns postMessage traffic into promises, streams and remote chain connections.
+The host page's client for the hidden protocol frame, the page at `/p/` on the root domain that runs the light client
+and the shared store. It turns postMessage traffic into promises, streams and remote chain connections.
 
 ## Responsibility
 
@@ -43,9 +43,9 @@ flowchart TB
   call is timed, and whether the frame answers it once it listens, before its light client is ready.
 - The frame's origin is the root domain's, or on a local root (`localhost`, or `local.host` in a development build) the
   page's own scheme on that root, with the host's dev port in a development build and otherwise the page's own port. The
-  frame module adds its own `/__protocol/` path to that origin, and the transport stays locked to the origin. The frame
-  shares that origin with the host's pages on the root domain, so the provider tells the frame from those pages by its
-  window, not by its origin.
+  frame module adds its own `/p/` path to that origin, and the transport stays locked to the origin. The frame shares
+  that origin with the host's pages on the root domain, so the provider tells the frame from those pages by its window,
+  not by its origin.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
   and owns one provider and one transport per iframe. The window provider admits only bytes from that iframe's window at
   the frame's origin. It rebuilds itself when lost, after a backoff that grows while rebuilds keep failing, and a

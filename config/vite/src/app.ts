@@ -22,7 +22,7 @@ import { createLocalServing, PROTOCOL_PREFIX, type LocalServing, type Site } fro
 const wasm = wasmPlugin as unknown as () => Plugin;
 
 export interface DotliApp {
-  /** The path the app is served under: `/__protocol/` for the protocol app, else from `VITE_APP_URL`. */
+  /** The path the app is served under: `/p/` for the protocol app, else from `VITE_APP_URL`. */
   base: string;
   /** For a worker build that lists its own plugins. */
   wasm: () => Plugin;

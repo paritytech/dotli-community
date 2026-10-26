@@ -45,11 +45,11 @@ export function fallbackFor(
   }
   const [path = '/', query] = (req.url ?? '/').split('?');
   const withQuery = (page: string): string => (query === undefined ? page : `${page}?${query}`);
+  const route = routeFor(req.hostname, path);
   // The dev server hands the protocol frame to the protocol app's dev server.
-  if (isProtocolPath(path)) {
+  if (isProtocolPath(path) && route.site === 'protocol') {
     return { kind: 'pass' };
   }
-  const route = routeFor(req.hostname, path);
   if (path === '/') {
     return route.bare ? { kind: 'rewrite', url: withQuery(pages.landing) } : { kind: 'pass' };
   }

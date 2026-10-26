@@ -203,8 +203,8 @@ HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 ```
 
 `npm run dev` starts one dev server per origin: the shell on 4001, the sandbox (`*.app.localhost`) on 4002 and the
-protocol iframe on 4003, which the shell's dev server proxies at `/__protocol/`. Use `npm run preview` for anything that
-depends on the production build, such as the shell's offline service worker.
+protocol iframe on 4003, which the shell's dev server proxies at `/p/`. Use `npm run preview` for anything that depends
+on the production build, such as the shell's offline service worker.
 
 The dev servers serve https with a locally trusted certificate from [mkcert](https://github.com/FiloSottile/mkcert),
 which the first `npm run dev` downloads and installs into the system trust store, asking for your password once. It

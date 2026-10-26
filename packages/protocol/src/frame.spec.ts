@@ -90,7 +90,7 @@ describe('protocol frame location', () => {
     void frame.transport().catch(() => undefined);
 
     // Then the iframe loads the protocol path with the mode and network
-    expect(dom.iframe().src).toBe('https://dot.li/__protocol/?mode=direct&network=paseo-next-v2');
+    expect(dom.iframe().src).toBe('https://dot.li/p/?mode=direct&network=paseo-next-v2');
   });
 });
 

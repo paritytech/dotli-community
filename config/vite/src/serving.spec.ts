@@ -83,26 +83,48 @@ describe('routeFor', () => {
     expect(route.site).toBe('app');
   });
 
-  it('As a page on localhost, I load /__protocol/assets/x.js and get the protocol build', () => {
+  it('As a page on localhost, I load /p/assets/x.js and get the protocol build', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
 
     // When a protocol asset is routed on localhost
-    const route = serving.routeFor('localhost', '/__protocol/assets/x.js');
+    const route = serving.routeFor('localhost', '/p/assets/x.js');
 
     // Then the protocol build serves it
     expect(route).toEqual({ site: 'protocol', bare: false });
   });
 
-  it('As a product page, I load /__protocol/ on my host and get the protocol build', () => {
+  it("As a product page, I load /p/ on my host and get the host build, since the path is the product's own", () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
 
     // When the protocol path is routed on a product host
-    const route = serving.routeFor('browse.localhost', '/__protocol/');
+    const route = serving.routeFor('browse.localhost', '/p/');
 
-    // Then the protocol build serves it
-    expect(route.site).toBe('protocol');
+    // Then the host build serves it
+    expect(route).toEqual({ site: 'host', bare: false });
+  });
+
+  it('As a visitor, I open /p without a trailing slash on localhost and get the host build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the protocol path without its trailing slash is routed on localhost
+    const route = serving.routeFor('localhost', '/p');
+
+    // Then the bare host build serves it
+    expect(route).toEqual({ site: 'host', bare: true });
+  });
+
+  it("As a product page, I load /p/x on my sandbox origin and get the app build, since the path is the product's own", () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a path under the protocol prefix is routed on a sandbox host
+    const route = serving.routeFor('x.app.localhost', '/p/x');
+
+    // Then the app build serves it
+    expect(route).toEqual({ site: 'app', bare: false });
   });
 
   it("As a user, I open the session windows on localhost and get the host build's session window", () => {
@@ -208,10 +230,10 @@ describe('pathInBuild', () => {
   it('As a page on localhost, I load a protocol file and it is looked up without the prefix its base adds', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
-    const route = serving.routeFor('localhost', '/__protocol/assets/x.js');
+    const route = serving.routeFor('localhost', '/p/assets/x.js');
 
     // When the protocol paths are looked up
-    const paths = [pathInBuild(route, '/__protocol/assets/x.js'), pathInBuild(route, '/__protocol/')];
+    const paths = [pathInBuild(route, '/p/assets/x.js'), pathInBuild(route, '/p/')];
 
     // Then the prefix is gone
     expect(paths).toEqual(['/assets/x.js', '/']);
@@ -246,10 +268,10 @@ describe('headerPolicy', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
     const sandbox = serving.routeFor('myapp.app.localhost', '/');
-    const protocol = serving.routeFor('localhost', '/__protocol/assets/a.js');
+    const protocol = serving.routeFor('localhost', '/p/assets/a.js');
 
     // When
-    const policies = [headerPolicy(sandbox, '/'), headerPolicy(protocol, '/__protocol/assets/a.js')];
+    const policies = [headerPolicy(sandbox, '/'), headerPolicy(protocol, '/p/assets/a.js')];
 
     // Then
     expect(policies).toEqual(['isolated', 'isolated']);
@@ -715,5 +737,40 @@ describe('devHeaders', () => {
       'https://local.host:*',
       'https://*.local.host:*',
     ]);
+  });
+});
+
+describe('protocolProxyBypass', () => {
+  it('As a page on localhost, I load /p/?mode=direct and the dev proxy hands it to the protocol app', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the proxy asks whether to skip the request
+    const bypass = serving.protocolProxyBypass({ url: '/p/?mode=direct', headers: { host: 'localhost:4001' } });
+
+    // Then it does not skip it
+    expect(bypass).toBeUndefined();
+  });
+
+  it('As an old shell on host.localhost, I load /p/x and the dev proxy hands it to the protocol app', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the proxy asks whether to skip the request
+    const bypass = serving.protocolProxyBypass({ url: '/p/x', headers: { host: 'host.localhost:4001' } });
+
+    // Then it does not skip it
+    expect(bypass).toBeUndefined();
+  });
+
+  it('As a product page, I load /p/x?y=1 on my host and the dev proxy leaves it to my host', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the proxy asks whether to skip the request
+    const bypass = serving.protocolProxyBypass({ url: '/p/x?y=1', headers: { host: 'browse.localhost:4001' } });
+
+    // Then the request goes on unchanged
+    expect(bypass).toBe('/p/x?y=1');
   });
 });

@@ -1,7 +1,7 @@
 # `@dotli/protocol-app`
 
 The hidden protocol iframe that holds the light client and answers the host's requests. It is the one place that talks
-to the network on the host's behalf. Every page loads it from `/__protocol/` on the root domain. See the root
+to the network on the host's behalf. Every page loads it from `/p/` on the root domain. See the root
 [README](../../README.md) for the product as a whole.
 
 ## Responsibility
@@ -17,9 +17,9 @@ to the network on the host's behalf. Every page loads it from `/__protocol/` on 
 
 ## Design
 
-- The build's base is `/__protocol/`, so its assets, its SharedWorker and its version file sit under that path on the
-  root domain, beside the host's pages. It shares their origin, so it cleans up only its own data: a cache purge deletes
-  the chain databases by name, and the local wallet has a database of its own apart from the host's caches. The host's
+- The build's base is `/p/`, so its assets, its SharedWorker and its version file sit under that path on the root
+  domain, beside the host's pages. It shares their origin, so it cleans up only its own data: a cache purge deletes the
+  chain databases by name, and the local wallet has a database of its own apart from the host's caches. The host's
   settings wipe leaves the frame's keys and databases alone in turn.
 - The `?mode=` query picks smoldot in a cross-tab SharedWorker, smoldot in the iframe, or trusted WSS RPC for gateway
   mode. Each chain mode loads its chains on demand, so the shared-worker mode, which only relays, loads none. The byte
@@ -124,6 +124,6 @@ flowchart LR
 
 ## Entry points
 
-- The iframe page at `/__protocol/`. Dev server on port 4003, which the host's dev server proxies at `/__protocol/`.
+- The iframe page at `/p/`. Dev server on port 4003, which the host's dev server proxies at `/p/` on the bare host.
 - The SharedWorker.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test`.

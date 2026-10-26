@@ -7,6 +7,7 @@
 // What depends on the local roots is built once from the roots a server is given, so its routes and headers agree.
 
 import { statSync } from 'node:fs';
+import type { IncomingMessage } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -19,8 +20,8 @@ export interface Route {
   bare: boolean;
 }
 
-/** The protocol app's path, which reaches the protocol build on every origin. */
-export const PROTOCOL_PREFIX = '/__protocol';
+/** The protocol app's path, which reaches the protocol build on the bare host. */
+export const PROTOCOL_PREFIX = '/p';
 
 /** The hostname a request names. HTTP/2, which the https dev servers speak, carries it as `:authority`, not `Host`. */
 export function requestHostname(headers: Readonly<Record<string, string | string[] | undefined>>): string {
@@ -28,7 +29,7 @@ export function requestHostname(headers: Readonly<Record<string, string | string
   return (typeof authority === 'string' ? authority : '').split(':')[0] ?? '';
 }
 
-/** Whether `pathname` is under the protocol app's prefix, which reaches the protocol build on any host. */
+/** A path under the prefix is the protocol app's only on the bare host, since on a product host it is the product's own. */
 export function isProtocolPath(pathname: string): boolean {
   return pathname.startsWith(`${PROTOCOL_PREFIX}/`);
 }
@@ -227,8 +228,8 @@ export const MIME_TYPES: Readonly<Record<string, string>> = {
 /** The routes and headers of a local server, which answers under its local roots. */
 export interface LocalServing {
   /**
-   * The build a local hostname and path reach. The protocol app answers under its prefix on any host, and at `host.`
-   * under a local root. Any host but a local root's subdomain is the bare host.
+   * The build a local hostname and path reach. The protocol app answers under its prefix on the bare host, and at
+   * `host.` under a local root. Any host but a local root's subdomain is the bare host.
    */
   readonly routeFor: (hostname: string, pathname: string) => Route;
   /** Every local root and its subdomains, on any port and scheme, which an isolated page lets frame it. */
@@ -245,6 +246,8 @@ export interface LocalServing {
   readonly devHeaders: (hostname: string, pathname: string) => Record<string, string>;
   /** The dev servers' headers from `devHeaders`. */
   readonly isolationHeaders: () => Plugin;
+  /** A dev server's proxy to the protocol app hands over only what this table routes to the protocol build. */
+  readonly protocolProxyBypass: (req: Pick<IncomingMessage, 'url' | 'headers'>) => string | undefined;
 }
 
 /** The routes and headers of a local server that answers under `roots`. */
@@ -255,11 +258,12 @@ export function createLocalServing(roots: readonly string[]): LocalServing {
     .join(' ');
 
   const routeFor = (hostname: string, pathname: string): Route => {
-    if (isProtocolPath(pathname)) {
-      return { site: 'protocol', bare: false };
-    }
     const name = hostname.toLowerCase();
     const root = roots.find(local => name.endsWith(`.${local}`));
+    // On a product or sandbox host the path is the product's own.
+    if (root === undefined && isProtocolPath(pathname)) {
+      return { site: 'protocol', bare: false };
+    }
     // Kept for one release so a shell cached by an older release still finds its frame.
     if (root !== undefined && name === `host.${root}`) {
       return { site: 'protocol', bare: false };
@@ -280,6 +284,12 @@ export function createLocalServing(roots: readonly string[]): LocalServing {
     return policy === 'unframed' ? { ...UNFRAMED } : {};
   };
 
+  const protocolProxyBypass = (req: Pick<IncomingMessage, 'url' | 'headers'>): string | undefined => {
+    const url = req.url ?? '/';
+    const route = routeFor(requestHostname(req.headers), url.split('?')[0] ?? '/');
+    return route.site === 'protocol' ? undefined : url;
+  };
+
   return {
     routeFor,
     frameAncestors,
@@ -291,6 +301,7 @@ export function createLocalServing(roots: readonly string[]): LocalServing {
       ...LOCAL_SERVER_HEADERS,
     }),
     devHeaders,
+    protocolProxyBypass,
     isolationHeaders: () => ({
       name: 'dotli-isolation-headers',
       configureServer(server) {

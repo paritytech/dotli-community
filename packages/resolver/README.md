@@ -30,6 +30,8 @@ every caller checks a name against.
 - A name is one label or a subname of several. The labels of a subname below its registered label have no minimum
   length. A wildcard certificate covers one label, so a subname's sandbox label is `sn--` and a hash of the name. No
   label may start with `sn--`, so a registered label never takes a subname's origin.
+- A change to the naming rules is checked against the dotNS contracts (paritytech/dotns) before it is designed. The
+  rules never refuse a name those contracts can register.
 - The resolver is heavy, so it loads through a lazy loader. The entry is pure re-exports, so the bundler drops what a
   caller does not take.
 

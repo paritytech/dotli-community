@@ -9,13 +9,13 @@ import { PORT } from '../../env.js';
 /** The root origin every page's protocol frame and sign-in window load from. */
 export const ROOT_ORIGIN = `http://localhost:${PORT}`;
 
-/** Whether `url` is the protocol frame, which every page loads from the root origin's `/__protocol/`. */
+/** Whether `url` is the protocol frame, which every page loads from the root origin's `/p/`. */
 export function isProtocolFrameUrl(url: string): boolean {
   if (!URL.canParse(url)) {
     return false;
   }
   const parsed = new URL(url);
-  return parsed.origin === ROOT_ORIGIN && parsed.pathname.startsWith('/__protocol/');
+  return parsed.origin === ROOT_ORIGIN && parsed.pathname.startsWith('/p/');
 }
 
 /** Whether `url` is a product sandbox, which is served from its label's app subdomain. */

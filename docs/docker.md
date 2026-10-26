@@ -117,7 +117,7 @@ while believing otherwise.
 
 dotli needs three hostnames: an apex, `*.app.<domain>` for sandboxes, and
 `*.<domain>` for the shell. The apex also serves the protocol iframe under
-`/__protocol/` and the session window at `/s/auth`, `/s/signout`, `/s/manage`
+`/p/` and the session window at `/s/auth`, `/s/signout`, `/s/manage`
 and `/s/sign`. The container serves them as `localhost`, `*.app.localhost` and
 `*.localhost`. `host.localhost` still answers with the protocol build for one
 more release, so a shell cached by the previous release finds its frame.
@@ -145,7 +145,7 @@ dot.li needs three hostnames (an apex, `*.<base>` and `*.app.<base>`) and normal
 derives `<base>` from the last two segments of the current hostname. That is right
 for `dot.li` and `paseo.li` and wrong for anything deeper:
 `dotli.ppn-65iw.pdp-stg-scw.parity.io` would derive `parity.io`, then look for its
-protocol iframe at `parity.io/__protocol/` and accept `*.app.parity.io` as sandbox
+protocol iframe at `parity.io/p/` and accept `*.app.parity.io` as sandbox
 origins.
 
 Such hosts must state it:

@@ -16,7 +16,7 @@ const SUBNAME_SANDBOX_PREFIX = 'sn--';
 /** The longest label a DNS name can carry. */
 const MAX_LABEL_LENGTH = 63;
 
-/** The shortest label registered under the TLD. */
+/** No name under the TLD is a single character, while 2-character nodes exist, such as a device name's two-digit node. */
 const MIN_REGISTERED_LABEL_LENGTH = 2;
 
 /** The longest name a DNS hostname can carry. */
@@ -73,7 +73,7 @@ function validateLabelShape(label: string): DotLabelResult {
   return { ok: true };
 }
 
-/** Validates a label registered under the TLD, which has a minimum length that a subname's labels do not. */
+/** Validates a label registered under the TLD. */
 export function validateDotLabel(label: string): DotLabelResult {
   if (label.length > 0 && label.length < MIN_REGISTERED_LABEL_LENGTH) {
     return { ok: false, reason: 'too-short' };
@@ -86,22 +86,22 @@ export function isValidDotLabel(label: string): boolean {
 }
 
 /**
- * A dotNS name: one label, or a subname whose labels are each valid, such as `pr16.my-app`. The last label is the
- * registered one.
+ * A dotNS name: one label, or a subname whose labels each have a label's shape, such as `pr16.my-app`. Only the last,
+ * registered label must also meet the length minimum.
  */
 export function validateDotName(name: string): DotLabelResult {
   if (name.length > MAX_NAME_LENGTH) {
     return { ok: false, reason: 'too-long' };
   }
   const labels = name.split('.');
-  const registered = labels.pop() ?? '';
-  for (const label of labels) {
-    const result = validateLabelShape(label);
+  const last = labels.length - 1;
+  for (const [index, label] of labels.entries()) {
+    const result = index === last ? validateDotLabel(label) : validateLabelShape(label);
     if (!result.ok) {
       return result;
     }
   }
-  return validateDotLabel(registered);
+  return { ok: true };
 }
 
 export function isValidDotName(name: string): boolean {

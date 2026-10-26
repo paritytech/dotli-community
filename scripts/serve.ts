@@ -133,7 +133,7 @@ server.listen(PORT, HOST, () => {
   const config = process.env['DOTLI_NETWORK']?.trim();
   console.log(`dot.li serving ${DIST} on http://localhost:${String(port)} (bound ${HOST})`);
   console.log(`  shell     http://browse.localhost:${String(port)}`);
-  console.log(`  protocol  http://localhost:${String(port)}/__protocol/`);
+  console.log(`  protocol  http://localhost:${String(port)}/p/`);
   console.log(
     `  network   ${config === undefined || config === '' ? 'built-in (set DOTLI_NETWORK to override)' : config}`,
   );

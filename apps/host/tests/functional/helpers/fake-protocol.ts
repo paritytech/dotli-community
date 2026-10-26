@@ -10,7 +10,7 @@ import { isProtocolFrameUrl } from './frames.js';
 import { FAKE_PROTOCOL_BUNDLE_PATH } from './wire-bundles.js';
 
 // Under the frame's own path, so the root origin's pages never load it.
-const FAKE_SCRIPT_PATH = '/__protocol/__dotli-e2e/fake-protocol-frame.js';
+const FAKE_SCRIPT_PATH = '/p/__dotli-e2e/fake-protocol-frame.js';
 
 /** HTML attribute text for `value`, which may hold any character. */
 const attribute = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');

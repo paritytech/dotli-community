@@ -106,13 +106,13 @@ curl -fsS https://paseo.li/host_version.json
 (`config/vite/src/build-info-plugin.ts`) and served `no-cache` (`nginx/snippets/dotli-host-version.conf`). The three
 builds are rsynced separately, so check each origin to cover all of them:
 
-| URL                                           | Build    |
-| --------------------------------------------- | -------- |
-| `https://<base>/host_version.json`            | host     |
-| `https://<base>/__protocol/host_version.json` | protocol |
-| `https://x.app.<base>/host_version.json`      | app      |
+| URL                                      | Build    |
+| ---------------------------------------- | -------- |
+| `https://<base>/host_version.json`       | host     |
+| `https://<base>/p/host_version.json`     | protocol |
+| `https://x.app.<base>/host_version.json` | app      |
 
-The protocol build is served under `/__protocol/` on `<base>`, from the same folder as before, so the rsync layout is
-unchanged. `host.<base>` serves that folder too for one more release, so a shell that a service worker cached from the
-previous release still finds its frame. After that release remove its server block (and `host` becomes an ordinary
-product label).
+The protocol build is served under `/p/` on `<base>`, from the same folder as before, so the rsync layout is unchanged.
+`host.<base>` serves that folder too for one more release, so a shell that a service worker cached from the previous
+release still finds its frame. After that release remove its server block (and `host` becomes an ordinary product
+label).

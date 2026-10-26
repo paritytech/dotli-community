@@ -155,7 +155,7 @@ deploy-nginx: _require-env
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
 # Protocol first: a new shell waits for the iframe's `listening` signal, which an older iframe never sends. The protocol
-# folder is served under /__protocol/ on the root domain and at the root of host.<base>, so the layout is unchanged.
+# folder is served under /p/ on the root domain and at the root of host.<base>, so the layout is unchanged.
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/protocol/dist/ $(1):$(2)/protocol/
 rsync -avz --delete --filter='P /assets/' apps/sandbox/dist/  $(1):$(2)/app/

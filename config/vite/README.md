@@ -51,8 +51,8 @@ config and serving entries, and an app runtime takes the signing worker entry.
   `$DOTLI_NETWORK`, for the release and test servers, and the plugin that injects and serves it on opt-in.
 - `./serving`: the route, file and header table of the release, test and dev servers. `createLocalServing(roots)` builds
   what depends on the local roots once (the route of a host, the frame ancestors, the security, response and dev
-  headers, and the dev servers' isolation plugin). What reads no roots, such as the file a path resolves to and the
-  headers of a policy for a given frame ancestors value, is a plain export.
+  headers, the dev servers' isolation plugin and the bypass of the dev proxy to the protocol app). What reads no roots,
+  such as the file a path resolves to and the headers of a policy for a given frame ancestors value, is a plain export.
 - `./dependency-versions`: the installed version of each direct workspace dependency in a scope, for the diagnostics
   panel.
 - `./build-info`: writes the build version file and reads the release version.

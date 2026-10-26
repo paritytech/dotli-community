@@ -10,6 +10,7 @@ import { dotliApp } from '@config/vite/app';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { readReleaseVersion } from '@config/vite/build-info';
 import { dependencyVersions } from '@config/vite/dependency-versions';
+import { PROTOCOL_PREFIX } from '@config/vite/serving';
 import { spaFallback } from '@config/vite/spa-fallback';
 import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 
@@ -23,6 +24,9 @@ const dependencies = dependencyVersions(resolve(import.meta.dirname, '../..'), [
 ]);
 const versionOf = (name: string): string => dependencies.find(dep => dep.name === name)?.version ?? 'unknown';
 const scoped = (prefix: string) => dependencies.filter(dep => dep.name.startsWith(prefix));
+
+// The protocol dev server speaks https with the local certificate, which Node does not trust.
+const protocolDevServer = { target: `https://localhost:${DEV_PROTOCOL_PORT}`, secure: false };
 
 export default defineConfig({
   // Apart from the preview server's port, so a preview build's precaching service worker never serves this origin.
@@ -110,14 +114,12 @@ export default defineConfig({
     ssr: { noExternal: [/^@dotli\//] },
     server: {
       // The protocol frame and the dev settings store share the host's origin, so the dev server hands them to the
-      // protocol dev server.
-      // The protocol dev server speaks https with the local certificate, which Node does not trust.
-      proxy: Object.fromEntries(
-        ['/__protocol/', '/__dotli-mode/'].map(path => [
-          path,
-          { target: `https://localhost:${DEV_PROTOCOL_PORT}`, secure: false },
-        ]),
-      ),
+      // protocol dev server. The protocol path goes there except on a product or sandbox host, where the path is the
+      // product's own.
+      proxy: {
+        [`${PROTOCOL_PREFIX}/`]: { ...protocolDevServer, bypass: app.serving.protocolProxyBypass },
+        '/__dotli-mode/': protocolDevServer,
+      },
       headers: {
         'Service-Worker-Allowed': '/',
         'Access-Control-Allow-Origin': '*',

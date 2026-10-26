@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The shared store in the protocol frame on `<BASE_DOMAIN>/__protocol/`: auth, mode preferences and the local wallet,
+// The shared store in the protocol frame on `<BASE_DOMAIN>/p/`: auth, mode preferences and the local wallet,
 // one for every subdomain where the browser lets an embedded frame reach it, and one per top-level origin in Safari.
 
 import type { SiteId } from '@dotli/config';

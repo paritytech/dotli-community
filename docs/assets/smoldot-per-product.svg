@@ -18,7 +18,7 @@
 
   <rect x="335" y="10" width="140" height="50" rx="6" fill="#e8e8e8" stroke="#606060" stroke-width="1.5"/>
   <text x="405" y="32" text-anchor="middle" font-weight="bold" fill="#3a3a3a">apps/protocol</text>
-  <text x="405" y="50" text-anchor="middle" font-size="10" fill="#606060">paseo.li/__protocol (iframe)</text>
+  <text x="405" y="50" text-anchor="middle" font-size="10" fill="#606060">paseo.li/p/ (iframe)</text>
 
   <rect x="495" y="10" width="140" height="50" rx="6" fill="#909090" stroke="#606060" stroke-width="1.5"/>
   <text x="565" y="32" text-anchor="middle" font-weight="bold" fill="#3a3a3a">smoldot</text>
