@@ -124,6 +124,6 @@ flowchart LR
 
 ## Entry points
 
-- The iframe page at `/__protocol/`. Dev server on port 4323, which the host's dev server proxies at `/__protocol/`.
+- The iframe page at `/__protocol/`. Dev server on port 4003, which the host's dev server proxies at `/__protocol/`.
 - The SharedWorker.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test`.

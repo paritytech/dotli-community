@@ -14,7 +14,7 @@ export default defineConfig(
     plugins: [modeSync()],
     server: {
       // Must match DEV_PROTOCOL_PORT in @dotli/config.
-      port: 4323,
+      port: 4003,
     },
   }),
 );

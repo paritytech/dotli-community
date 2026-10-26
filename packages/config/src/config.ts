@@ -78,7 +78,7 @@ export const DEV_HOST_PORT = '4001';
 /** The sandbox's dev server port. */
 export const DEV_SANDBOX_PORT = '4002';
 /** The protocol frame's dev server port. */
-export const DEV_PROTOCOL_PORT = '4323';
+export const DEV_PROTOCOL_PORT = '4003';
 
 /**
  * Whether `origin` is a sandbox origin, so only the embedded sandbox and not an arbitrary frame drives host services.
