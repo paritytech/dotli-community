@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// A site's sign-in, the action a site's round runs on the auth route. It signs the site's assertion with the account
-// made for that site, and tells the site the main account's username and nothing else of it.
+// A site's sign-in, the action a site's round runs on the auth route. It signs the site's assertion with the product
+// account the site names, and tells the site the main account's username and nothing else of it.
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
@@ -46,7 +46,7 @@ function normalSignature(signature: string): string {
   return toHex(bytes);
 }
 
-/** Signs the site's assertion for the main account's username, with the site account the grant keeps or a new one. */
+/** Signs the site's assertion for the main account's username, with the product account the site names. */
 export function siteSignInAction(deps: {
   origin: string;
   request: SiteRequest;
@@ -59,7 +59,7 @@ export function siteSignInAction(deps: {
   return {
     route: 'auth',
     outcome: () => 'granted',
-    async run({ main, index, knownKey }) {
+    async run({ main, account }) {
       const { username } = main;
       if (username === null) {
         throw new SiteRoundRefusal('no_username');
@@ -67,26 +67,22 @@ export function siteSignInAction(deps: {
       const built: { address: string; message: string }[] = [];
       let signed: { publicKey: Uint8Array; signature: string };
       try {
-        signed = await signer.sign(
-          index,
-          publicKey => {
-            const address = encodeSs58(publicKey, network.ss58Prefix);
-            // Read as the text is built, after any account read on the phone, so the assertion lives its full time.
-            const message = formatSiteAssertion({
-              origin,
-              address,
-              statement: request.statement,
-              relayGenesis: network.relay.genesis,
-              nonce: request.nonce,
-              issuedAt: deps.now(),
-              username,
-              group: request.groupToken,
-            });
-            built.push({ address, message });
-            return message;
-          },
-          knownKey,
-        );
+        signed = await signer.sign(account, publicKey => {
+          const address = encodeSs58(publicKey, network.ss58Prefix);
+          // Read as the text is built, after the account read on the phone, so the assertion lives its full time.
+          const message = formatSiteAssertion({
+            origin,
+            address,
+            statement: request.statement,
+            relayGenesis: network.relay.genesis,
+            nonce: request.nonce,
+            issuedAt: deps.now(),
+            username,
+            group: request.groupToken,
+          });
+          built.push({ address, message });
+          return message;
+        });
       } catch (error) {
         if (error instanceof SiteSignRejectedError) {
           throw new SiteRoundRejected(error);
@@ -103,14 +99,13 @@ export function siteSignInAction(deps: {
         throw new SiteRoundFailure('sign', true, 'The signer signed no assertion');
       }
       const signature = normalSignature(signed.signature);
-      const result = siteSignInResult({
+      return siteSignInResult({
         username,
         address: assertion.address,
         publicKey: signed.publicKey,
         message: assertion.message,
         signature,
       });
-      return { result, publicKey: signed.publicKey };
     },
   };
 }

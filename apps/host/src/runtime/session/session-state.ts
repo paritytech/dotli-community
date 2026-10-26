@@ -5,7 +5,7 @@
 // and whether a sign-in made elsewhere waits for the page.
 
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
-import { createAsyncTaskPool } from '@dotli/shared';
+import { createAsyncTaskPool, createSyncStore, type ReadableStore } from '@dotli/shared';
 import { offersResume, pageRole } from '../page-role.js';
 import { getAuthState, setAuthState } from '../state/auth.js';
 import { getWalletMode } from '../state/wallet-mode.js';
@@ -63,6 +63,11 @@ export interface PairingPresentation {
 }
 
 export interface SessionState {
+  /**
+   * The state the page's core itself reported last, as the page shows it. Null before any core reported and again once
+   * the page's last core went. The saved copy never writes it, so a reader of it never takes the copy for the core.
+   */
+  coreReport: ReadableStore<DotliAuthState | null>;
   /**
    * Shows the session the load's restore left, reads the saved copy again whenever it changes, such as by a sign-in
    * from the window or the shared store coming back, and shows `Unreachable` while the shared store is down. The copy
@@ -210,9 +215,18 @@ export function createSessionState(deps: SessionStateDeps): SessionState {
     }
   };
 
+  const coreReport = createSyncStore<DotliAuthState | null>('sessionCoreReport', null);
+
+  /** Shows what the core reported, and keeps it as the core's own report. */
+  const reportCore = (next: DotliAuthState): void => {
+    coreReport.set(next);
+    auth.set(next);
+  };
+
   let stop: (() => void) | null = null;
 
   return {
+    coreReport,
     start() {
       if (stop !== null) {
         return stop;
@@ -248,13 +262,14 @@ export function createSessionState(deps: SessionStateDeps): SessionState {
     },
     coresGone() {
       speaker = 'copy';
+      coreReport.set(null);
       void refresh();
     },
     reportCoreAuthState(state, pairing) {
       speaker = 'core';
       switch (state.tag) {
         case 'Pairing': {
-          auth.set({
+          reportCore({
             tag: 'Pairing',
             deeplink: state.value.deeplink,
             label: pairing.label,
@@ -264,7 +279,7 @@ export function createSessionState(deps: SessionStateDeps): SessionState {
           break;
         }
         case 'Authenticating': {
-          auth.set({ tag: 'Authenticating' });
+          reportCore({ tag: 'Authenticating' });
           break;
         }
         case 'Connected': {
@@ -272,23 +287,23 @@ export function createSessionState(deps: SessionStateDeps): SessionState {
           if (!isLocalWallet()) {
             void writeUiCache(session);
           }
-          auth.set({ tag: 'Connected', session });
+          reportCore({ tag: 'Connected', session });
           break;
         }
         case 'Disconnected': {
           if (!isLocalWallet()) {
             // The core reads an unreadable store as no session, which is not a logout, so the cached account stays.
             if (lastReadFailed) {
-              auth.set({ tag: 'Unreachable' });
+              reportCore({ tag: 'Unreachable' });
               break;
             }
             void writeUiCache({ connected: false });
           }
-          auth.set({ tag: 'Disconnected' });
+          reportCore({ tag: 'Disconnected' });
           break;
         }
         case 'LoginFailed': {
-          auth.set({ tag: 'LoginFailed', kind: state.value.kind, reason: state.value.reason });
+          reportCore({ tag: 'LoginFailed', kind: state.value.kind, reason: state.value.reason });
           break;
         }
       }

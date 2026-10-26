@@ -547,7 +547,7 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
             throw error;
           }
           try {
-            // A window never runs a local wallet core, which is what reads the identity, so it saves none.
+            // Only a local wallet core reads the identity, and a window that takes a phrase pairs, so it saves none.
             await signIns.store(() => wallet.save(entropy, null));
           } catch (error) {
             const failure = new Error('The recovery phrase wallet could not be saved', { cause: error });

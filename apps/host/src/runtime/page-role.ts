@@ -79,7 +79,10 @@ export function offersResume(role: PageRole): boolean {
   return signInSurface(role) === 'window';
 }
 
-/** The windows boot only pairing cores and read a stored wallet as data, so nothing switches wallet mode or reloads. */
+/**
+ * Whether the role defaults to booting only pairing cores and reading a stored wallet as data, so nothing switches
+ * wallet mode or reloads.
+ */
 export function pairsOnly(role: PageRole): boolean {
   return role === 'signin-window' || role === 'signout-window';
 }

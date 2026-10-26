@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
@@ -18,54 +19,48 @@ import {
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
 import { memorySiteGrantsIdb } from '@dotli/storage/testing';
-import type { SessionResult } from '../session-handoff/messages.js';
 import type { ResponderState } from '../session-handoff/responder.js';
-import type { DotliAuthState } from '../session/auth-state.js';
+import type { MainAccount } from './main-account.js';
 import { encodeSs58, formatSiteAssertion } from './site-assertion.js';
 import type { SiteRequest } from './site-request.js';
 import type { SiteSignInResult } from './site-result.js';
 import { SiteRoundRefusal, SiteRoundRejected, type SiteRound, type SiteScreen } from './site-round.js';
 import { createSiteSignIn, siteSignInAction, type SiteSignInDeps } from './site-sign-in.js';
-import {
-  groupDerivationIndex,
-  siteDerivationIndex,
-  SiteSignError,
-  SiteSignRejectedError,
-  type SiteSigner,
-} from './site-signer.js';
+import { SiteSignError, SiteSignRejectedError, type SiteSigner } from './site-signer.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
 import type { SiteGroups } from './site-groups.js';
 
 const ORIGIN = 'https://my-site.com';
 const NET = NetworkName.PASEO;
 const NETWORK = NETWORK_NAME_TO_SERVICES_CONFIG[NET];
+const ACCOUNT: ProductAccountId = {
+  dotNsIdentifier: `myapp.${NETWORK.dotns.TLD}`,
+  derivationIndex: { tag: 'Index', value: 0 },
+};
 const NOW = Date.parse('2026-10-23T15:00:00.000Z');
 const NONCE = '8f2c1a9e0b7d4e6f';
 const STATEMENT = 'Optional statement from the site.';
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
 const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
-const MAIN_UI_STATE = JSON.stringify({
-  connected: true,
-  publicKey: MAIN_KEY,
-  liteUsername: 'alice.01',
-  fullUsername: 'alice.dot',
-});
-const MAIN_BLOB = 'MAIN-SESSION-BLOB';
 
 const SITE_KEY = new Uint8Array(32).fill(0x22);
-const KNOWN_KEY = new Uint8Array(32).fill(0x33);
 const SIGNATURE = `0x${'11'.repeat(64)}`;
 
 const TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(1));
 const NEW_TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(2));
 
-/** What the window flow hands over for a main store that holds a paired session. */
-const PAIRED: SessionResult = { session: { blob: MAIN_BLOB, uiState: MAIN_UI_STATE }, localWallet: null };
+/** The main account the window's core reports. */
+const MAIN: MainAccount = { owner: OWNER, username: { name: 'alice.dot', kind: 'full' } };
 
-const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true, publicKey: MAIN_KEY } };
-
-const REQUEST: SiteRequest = { round: 'r1', nonce: NONCE, statement: STATEMENT, siteToken: null, groupToken: null };
+const REQUEST: SiteRequest = {
+  round: 'r1',
+  nonce: NONCE,
+  account: ACCOUNT,
+  statement: STATEMENT,
+  siteToken: null,
+  groupToken: null,
+};
 
 /** The registrable domains of a few rules of the Public Suffix List, as the window's loaded list gives them. */
 const SUFFIXES = parsePublicSuffixList('com\nli\n');
@@ -75,7 +70,6 @@ function grantOf(fields: Partial<SiteGrant> = {}): SiteGrant {
   return {
     token: TOKEN,
     origin: ORIGIN,
-    publicKey: toHex(KNOWN_KEY),
     owner: OWNER,
     firstUsedAt: NOW - 1000,
     lastUsedAt: NOW - 1000,
@@ -92,6 +86,8 @@ type Post =
 interface HarnessOptions {
   /** The site's origin, {@link ORIGIN} by default. */
   origin?: string;
+  /** The account the site names, {@link ACCOUNT} by default. */
+  account?: ProductAccountId;
   siteToken?: string | null;
   groupToken?: string | null;
   /** A grants store another round shares, in place of a new one. */
@@ -102,22 +98,26 @@ interface HarnessOptions {
   signFailures?: Error[];
   /** The signature the signer answers with. */
   signature?: string;
+  /** The public key the signer reads for any account, {@link SITE_KEY} by default. */
+  publicKey?: Uint8Array;
   /** Whether saving a grant fails. */
   saveFails?: boolean;
+  /** The main account the window's core reports, {@link MAIN} by default. */
+  main?: MainAccount;
 }
 
 /** A signer that signs at once, recording each text it signed, after it answers with each failure it was given. */
-function fakeSigner(options: Pick<HarnessOptions, 'signFailures' | 'signature'>, auth: () => DotliAuthState['tag']) {
+function fakeSigner(options: Pick<HarnessOptions, 'signFailures' | 'signature' | 'publicKey'>) {
   const signFailures = [...(options.signFailures ?? [])];
-  const signs: { index: string; knownPublicKey: Uint8Array | null; text: string; auth: DotliAuthState['tag'] }[] = [];
+  const signs: { account: ProductAccountId; text: string }[] = [];
   const signer: SiteSigner = {
-    sign: (index, text, knownPublicKey) => {
+    sign: (account, text) => {
       const failure = signFailures.shift();
       if (failure !== undefined) {
         return Promise.reject(failure);
       }
-      const publicKey = knownPublicKey ?? SITE_KEY;
-      signs.push({ index, knownPublicKey, text: text(publicKey), auth: auth() });
+      const publicKey = options.publicKey ?? SITE_KEY;
+      signs.push({ account, text: text(publicKey) });
       return Promise.resolve({ publicKey, signature: options.signature ?? SIGNATURE });
     },
     account: () => Promise.reject(new Error('The sign-in read the account apart from its signature')),
@@ -127,7 +127,8 @@ function fakeSigner(options: Pick<HarnessOptions, 'signFailures' | 'signature'>,
 
 /**
  * A site's sign-in over fakes: a responder that records what it posts and ends its round on its first terminal call, an
- * in-memory grants store, a signer that signs at once, and a window flow the test delivers through.
+ * in-memory grants store, a signer that signs at once, the main account the window's core reports, and a window flow
+ * the test says stored a sign-in through.
  */
 async function harness(options: HarnessOptions = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -179,12 +180,16 @@ async function harness(options: HarnessOptions = {}) {
       await stored.save(grant);
     },
   };
-  const auth = createSyncStore<DotliAuthState>('testSiteAuth', CONNECTED);
-  const { signer, signs } = fakeSigner(options, () => auth.get().tag);
-  const windowFlows: { deliver: (result: SessionResult) => void; close: () => void }[] = [];
+  const { signer, signs } = fakeSigner(options);
+  const windowFlows: { stored: () => void; close: () => void }[] = [];
   const closed = deferred<undefined>();
   const flow = createSiteSignIn({
-    request: { ...REQUEST, siteToken: options.siteToken ?? null, groupToken: options.groupToken ?? null },
+    request: {
+      ...REQUEST,
+      account: options.account ?? ACCOUNT,
+      siteToken: options.siteToken ?? null,
+      groupToken: options.groupToken ?? null,
+    },
     origin,
     self: 'https://dot.li',
     net: NET,
@@ -192,10 +197,9 @@ async function harness(options: HarnessOptions = {}) {
     grants,
     groups: GROUPS,
     signer,
-    auth,
-    readUiCache: () => Promise.resolve(MAIN_UI_STATE),
-    startWindowFlow: (deliver, close) => {
-      windowFlows.push({ deliver, close });
+    mainAccount: () => Promise.resolve(options.main ?? MAIN),
+    startWindowFlow: (stored, close) => {
+      windowFlows.push({ stored, close });
     },
     now: () => NOW,
     randomToken: () => NEW_TOKEN,
@@ -216,7 +220,7 @@ async function harness(options: HarnessOptions = {}) {
     metrics,
     errors,
     closed: closed.promise,
-    /** The window flow the site flow started, which the test delivers through. */
+    /** The window flow the site flow started, which the test says stored a sign-in through. */
     windowFlow: () => must(windowFlows[0], 'a started window flow'),
     /** Resolves once the screen shows `view`. */
     until: (view: SiteScreen['view']) => untilView(flow.screen, view),
@@ -235,11 +239,11 @@ function resultOf(posts: Post[]): Extract<Post, { type: 'dotli:s:result' }> {
   return post;
 }
 
-/** Consents on the consent view and hands over the paired main session. */
-async function consentAndDeliver(flow: SiteRound, h: Awaited<ReturnType<typeof harness>>, result = PAIRED) {
+/** Consents on the consent view, and the window flow says a sign-in is stored. */
+async function consentAndStore(flow: SiteRound, h: Awaited<ReturnType<typeof harness>>) {
   await h.until('consent');
   await flow.consent();
-  h.windowFlow().deliver(result);
+  h.windowFlow().stored();
 }
 
 describe('site sign-in', () => {
@@ -247,8 +251,8 @@ describe('site sign-in', () => {
     // Given a site the main store keeps no grant for
     const h = await harness();
 
-    // When the user consents and the window flow hands over the paired session
-    await consentAndDeliver(h.flow, h);
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site gets the assertion of its request's fields, signed by its own account, and a new token it keeps
@@ -273,48 +277,60 @@ describe('site sign-in', () => {
       },
     });
     expect(post.site_token).toBe(NEW_TOKEN);
-    expect(h.signs).toEqual([
-      {
-        index: siteDerivationIndex(ORIGIN),
-        knownPublicKey: null,
-        text: post.result.assertion.message,
-        auth: 'Connected',
-      },
-    ]);
+    expect(h.signs).toEqual([{ account: ACCOUNT, text: post.result.assertion.message }]);
     expect(await h.stored.list()).toEqual([
-      { token: NEW_TOKEN, origin: ORIGIN, publicKey: toHex(SITE_KEY), owner: OWNER, firstUsedAt: NOW, lastUsedAt: NOW },
+      { token: NEW_TOKEN, origin: ORIGIN, owner: OWNER, firstUsedAt: NOW, lastUsedAt: NOW },
     ]);
     expect(h.views).toEqual(['site-signing', 'consent', 'window', 'site-signing']);
     expect(h.flow.screen.get()).toEqual({ view: 'site-signing', origin: ORIGIN, route: 'auth' });
     expect(h.metrics.counted('session_pages.site_sign_in')).toEqual([{ outcome: 'granted', reason: 'new' }]);
   });
 
+  it("As a site, my sign-in proof is signed by the account I named and its address is that account's", async () => {
+    // Given a site that names an account by a raw index, whose key the signer reads
+    const account: ProductAccountId = {
+      dotNsIdentifier: `myapp.${NETWORK.dotns.TLD}`,
+      derivationIndex: { tag: 'Raw', value: `0x${'7'.repeat(64)}` },
+    };
+    const accountKey = new Uint8Array(32).fill(0x44);
+    const h = await harness({ account, publicKey: accountKey });
+
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
+    await h.closed;
+
+    // Then the signer signed with that account, and the site got that account's key and address
+    const { result } = resultOf(h.posts);
+    expect(h.signs.map(sign => sign.account)).toEqual([account]);
+    expect(result.address).toBe(encodeSs58(accountKey, NETWORK.ss58Prefix));
+    expect(result.public_key).toBe(toHex(accountKey));
+  });
+
   it('As a user signing in to a site I signed in to before, I skip consent and the site keeps its token', async () => {
     // Given a grant for this site and this main account
     const h = await harness({ siteToken: TOKEN, grants: [grantOf()] });
 
-    // When the window flow hands over the paired session
+    // When the window flow says a sign-in is stored
     await h.until('window');
-    h.windowFlow().deliver(PAIRED);
+    h.windowFlow().stored();
     await h.closed;
 
-    // Then no consent showed, the stored key signed, the site got no new token and the grant's last use moved on
+    // Then no consent showed, the named account signed, the site got no new token and the grant's last use moved on
     expect(h.views).not.toContain('consent');
-    expect(h.signs.map(sign => sign.knownPublicKey)).toEqual([KNOWN_KEY]);
+    expect(h.signs.map(sign => sign.account)).toEqual([ACCOUNT]);
     const post = resultOf(h.posts);
     expect(post.site_token).toBeUndefined();
-    expect(post.result.public_key).toBe(toHex(KNOWN_KEY));
+    expect(post.result.public_key).toBe(toHex(SITE_KEY));
     expect(await h.stored.list()).toEqual([grantOf({ lastUsedAt: NOW })]);
     expect(h.metrics.counted('session_pages.site_sign_in')).toEqual([{ outcome: 'granted', reason: 'known' }]);
   });
 
   it('As a user with no username, I refuse the site with no_username', async () => {
-    // Given a main account whose usernames are empty
-    const h = await harness();
-    const uiState = JSON.stringify({ connected: true, publicKey: MAIN_KEY, liteUsername: '', fullUsername: '' });
+    // Given a main account with no username
+    const h = await harness({ main: { owner: OWNER, username: null } });
 
-    // When the window flow hands it over
-    await consentAndDeliver(h.flow, h, { session: { blob: MAIN_BLOB, uiState }, localWallet: null });
+    // When the round reads it
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site is refused for the username and nothing was signed
@@ -324,16 +340,10 @@ describe('site sign-in', () => {
 
   it('As a user with only a lite username, I sign in to the site with it', async () => {
     // Given a main account with only a lite username
-    const h = await harness();
-    const uiState = JSON.stringify({
-      connected: true,
-      publicKey: MAIN_KEY,
-      liteUsername: 'alice.01',
-      fullUsername: '',
-    });
+    const h = await harness({ main: { owner: OWNER, username: { name: 'alice.01', kind: 'lite' } } });
 
-    // When the window flow hands it over
-    await consentAndDeliver(h.flow, h, { session: { blob: MAIN_BLOB, uiState }, localWallet: null });
+    // When the round reads it
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site gets the lite username
@@ -349,7 +359,7 @@ describe('site sign-in', () => {
     });
 
     // When the round reaches the signature
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site hears the round was cancelled and nothing was kept
@@ -361,7 +371,7 @@ describe('site sign-in', () => {
   it('As a user whose signature failed, I retry and the site gets its result', async () => {
     // Given a signer that fails once
     const h = await harness({ signFailures: [new SiteSignError('sign', { tag: 'Denied' })] });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
     const failed = { posts: [...h.posts], errors: h.errors.length };
 
@@ -383,7 +393,7 @@ describe('site sign-in', () => {
     const h = await harness({ signFailures: [new SiteSignError('account', { tag: 'Denied' })] });
 
     // When the round reaches the signature
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
 
     // Then the failure names the account and nothing was sent
@@ -396,7 +406,7 @@ describe('site sign-in', () => {
     const h = await harness({ signature: `0x${'AB'.repeat(64)}` });
 
     // When the round runs
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the result carries the lowercase signature
@@ -408,7 +418,7 @@ describe('site sign-in', () => {
     const h = await harness({ signature: `0x${'11'.repeat(63)}` });
 
     // When the round runs
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
 
     // Then nothing was sent or kept
@@ -422,7 +432,7 @@ describe('site sign-in', () => {
     const h = await harness({ saveFails: true });
 
     // When the round runs
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site got its result with no token, nothing was kept, and the failed save was reported and counted
@@ -443,7 +453,7 @@ describe('site sign-in', () => {
     const h = await harness({ signFailures: [new Error('The core refused the connection')] });
 
     // When the round reaches the signature
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
 
     // Then the failure names the signature and offers Try again
@@ -455,16 +465,15 @@ describe('site sign-in', () => {
 describe('site sign-in action', () => {
   it('As a site, I am refused with no_username for a main account without a username, before anything is signed', async () => {
     // Given the sign-in action and a main account with no username
-    const { signer, signs } = fakeSigner({}, () => 'Connected');
+    const { signer, signs } = fakeSigner({});
     const action = siteSignInAction({ origin: ORIGIN, request: REQUEST, net: NET, signer, now: () => NOW });
     const controller = new AbortController();
 
     // When the action runs for it
     const refusal: unknown = await action
       .run({
-        main: { owner: OWNER, username: null, publicKey: fromHex(MAIN_KEY) },
-        index: siteDerivationIndex(ORIGIN),
-        knownKey: null,
+        main: { owner: OWNER, username: null },
+        account: ACCOUNT,
         show: () => undefined,
         confirmed: () => Promise.resolve(),
         signal: controller.signal,
@@ -483,16 +492,15 @@ describe('site sign-in action', () => {
       tag: 'Domain',
       value: { tag: 'V1', value: { tag: 'Rejected' } },
     });
-    const { signer } = fakeSigner({ signFailures: [rejection] }, () => 'Connected');
+    const { signer } = fakeSigner({ signFailures: [rejection] });
     const action = siteSignInAction({ origin: ORIGIN, request: REQUEST, net: NET, signer, now: () => NOW });
     const controller = new AbortController();
 
     // When the action runs for the main account
     const rejected: unknown = await action
       .run({
-        main: { owner: OWNER, username: { name: 'alice.dot', kind: 'full' }, publicKey: fromHex(MAIN_KEY) },
-        index: siteDerivationIndex(ORIGIN),
-        knownKey: null,
+        main: MAIN,
+        account: ACCOUNT,
         show: () => undefined,
         confirmed: () => Promise.resolve(),
         signal: controller.signal,
@@ -510,7 +518,7 @@ describe('site sign-in of a group', () => {
     // Given a sign-in of one origin of the group the user consented to, whose token the other origin keeps
     const store = createSiteGrantStore(memorySiteGrantsIdb());
     const first = await harness({ store, groupToken: 'my group' });
-    await consentAndDeliver(first.flow, first);
+    await consentAndStore(first.flow, first);
     await first.closed;
     const firstPost = resultOf(first.posts);
     const second = await harness({
@@ -522,15 +530,13 @@ describe('site sign-in of a group', () => {
 
     // When the other origin signs in with that token
     await second.until('window');
-    second.windowFlow().deliver(PAIRED);
+    second.windowFlow().stored();
     await second.closed;
 
-    // Then both signed at the group's index and got the same address, the second with the key the first made, each in
-    // an assertion of its own origin with the group line, with one consent and the counts of a group
+    // Then both signed with the account the site named and got the same address, each in an assertion of its own origin
+    // with the group line, with one consent and the counts of a group
     const secondPost = resultOf(second.posts);
-    const index = groupDerivationIndex('my-site.com', 'my group');
-    expect([...first.signs, ...second.signs].map(sign => sign.index)).toEqual([index, index]);
-    expect([...first.signs, ...second.signs].map(sign => sign.knownPublicKey)).toEqual([null, SITE_KEY]);
+    expect([...first.signs, ...second.signs].map(sign => sign.account)).toEqual([ACCOUNT, ACCOUNT]);
     expect(secondPost.result.address).toBe(firstPost.result.address);
     expect(firstPost.result.assertion.message).toContain('URI: https://my-site.com\n');
     expect(secondPost.result.assertion.message).toContain('URI: https://shop.my-site.com\n');

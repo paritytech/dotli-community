@@ -31,13 +31,13 @@ user signed in to and scheduled notifications.
 - The local wallet stores root entropy encrypted under a key this origin can use but not export. A load also gives the
   record's version, its IV, which every save draws fresh and an identity update keeps. A forget that names a version
   reads and deletes in one transaction, so a wallet saved since, even from the same phrase, stays.
-- A site grant is what a session window keeps of a site the user signed in to, by its token: origin, per-site public
-  key, an owner hash and first and last use. Saving one token twice keeps one grant, and a touch of an unknown token
-  does nothing. A group grant also names its registrable domain, group token and the origins that used it. Saving a
-  group keeps one grant per group and owner, and a touch from a new origin joins it. Each reads and writes in one
-  transaction, so two saves started together keep one grant and a forget is never undone. A group lookup reads all of
-  the user's few grants, so groups need no index. The grants have their own database, so a wipe of the origin the
-  windows share with the landing page keeps them.
+- A site grant is what a session window keeps of a site the user signed in to, by its token: origin, an owner hash and
+  first and last use. Saving one token twice keeps one grant, and a touch of an unknown token does nothing. A group
+  grant also names its registrable domain, group token and the origins that used it. Saving a group keeps one grant per
+  group and owner, and a touch from a new origin joins it. Each reads and writes in one transaction, so two saves
+  started together keep one grant and a forget is never undone. A group lookup reads all of the user's few grants, so
+  groups need no index. The grants have their own database, so a wipe of the origin the windows share with the landing
+  page keeps them.
 - Chat and scheduled notifications are small record stores. Chat lives on the product origin.
 
 ## Public API

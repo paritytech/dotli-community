@@ -56,16 +56,22 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
         return { view: screen.view, form: phraseForm.form() };
       }
       if (screen.view === 'consent') {
-        return { view: screen.view, origin: screen.origin, statement: screen.statement, group: screen.group };
+        return {
+          view: screen.view,
+          origin: screen.origin,
+          statement: screen.statement,
+          group: screen.group,
+          account: screen.account,
+        };
       }
       if (screen.view === 'site-signing') {
         return { view: screen.view, origin: screen.origin, route: screen.route };
       }
       if (screen.view === 'site-review') {
-        return { view: screen.view, origin: screen.origin, call: screen.call };
+        return { view: screen.view, origin: screen.origin, call: screen.call, account: screen.account };
       }
-      if (screen.view === 'site-submitting') {
-        return { view: screen.view, origin: screen.origin, sent: screen.sent };
+      if (screen.view === 'site-approving') {
+        return { view: screen.view, origin: screen.origin };
       }
       if (screen.view === 'site-failed') {
         return { view: screen.view, origin: screen.origin, route: screen.route, retry: screen.retry };

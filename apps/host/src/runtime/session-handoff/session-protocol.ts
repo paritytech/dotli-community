@@ -108,12 +108,9 @@ export type RefusalReason =
   | 'unsupported_version'
   | 'unknown_network'
   | 'declined'
-  | 'unsupported_wallet'
   | 'no_username'
-  /** The chain refused the transaction before any block, or the phone does not support the request. */
-  | 'transaction_invalid'
-  /** The chain may have the transaction, but the window cannot say how it went. */
-  | 'transaction_unknown';
+  /** The wallet does not support or allow the transaction. */
+  | 'transaction_invalid';
 
 export interface ReadyMessage {
   type: 'dotli:s:ready';

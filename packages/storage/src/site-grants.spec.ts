@@ -17,7 +17,6 @@ function grantOf(token: string, lastUsedAt: number, overrides: Partial<SiteGrant
   return {
     token,
     origin: 'https://site.example',
-    publicKey: `0x${'ab'.repeat(32)}`,
     owner: `0x${'cd'.repeat(32)}`,
     firstUsedAt: 1000,
     lastUsedAt,

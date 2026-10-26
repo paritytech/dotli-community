@@ -7,12 +7,16 @@
  */
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
+import type { ProductAccountId } from '@parity/truapi';
 import { hex } from '@scure/base';
 import { asRecord, type SessionRequest } from '../session-handoff/session-protocol.js';
+import { parseSiteAccount } from './site-account.js';
 import { isGroupToken, isSiteToken, optionalString, REFUSED_KEYS } from './site-request.js';
 
 export interface SiteSignRequest {
   round: string;
+  /** The product account the site names. */
+  account: ProductAccountId;
   siteToken: string | null;
   /** The site's group, whose grant a transaction of any origin of the group uses. */
   groupToken: string | null;
@@ -51,11 +55,12 @@ export function parseSiteSignRequest(request: SessionRequest, net: Network): Sit
   if (typeof chain !== 'string' || chain.toLowerCase() !== hub.toLowerCase()) {
     return null;
   }
+  const account = parseSiteAccount(params['account'], net);
   const call = optionalString(params['call'], value => parseSiteCall(value) !== null);
   const siteToken = optionalString(params['site_token'], isSiteToken);
   const groupToken = optionalString(params['group_token'], isGroupToken);
-  if (call === undefined || siteToken === undefined || groupToken === undefined) {
+  if (account === null || call === undefined || siteToken === undefined || groupToken === undefined) {
     return null;
   }
-  return { round: request.round, siteToken, groupToken, chain: hub, call };
+  return { round: request.round, account, siteToken, groupToken, chain: hub, call };
 }

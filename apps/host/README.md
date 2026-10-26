@@ -92,17 +92,17 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   stored wallet or paired session, pairs on its own core, or takes a recovery phrase when asked for one. A step that
   fails leaves a failure with Try again.
 - For a site, the sign-in window signs in for the vetted origin, never one the request names. It asks the user's consent
-  under the site's full origin unless the site's token names a grant of that origin, then runs the same flow to resume
-  the main session and hands that flow's result to the site's sign-in instead of the opener. The site gets the username,
-  an account made for that site only and its signed assertion, never the main session. A site that declares a group
-  signs in once for every origin of its registrable domain, which the window reads from the Public Suffix List it ships.
-  The consent names that registrable domain beside the origin. A group has one grant, whose token answers any origin of
-  the group, and every origin of it shares one account, made for that registrable domain and group token, and so the
-  same address. The window refuses a group on a public suffix or an address, on its own registrable domain, or when the
-  list does not load. That account, a site's or a group's, is a product account of the window core's product id, so it
-  stays private only while the operator holds the dotNS name `dotli` and never publishes a product under it. The window
-  closes once the site has its result, which a window restored from the back-forward cache sends on the site's next
-  hello.
+  under the site's full origin unless the site's token names a grant of that origin, then runs the same flow to sign in
+  or resume the main session, which tells the site's round only that a sign-in is stored and never answers the opener.
+  The window runs its core under the product id of the account the site names. The round runs on whichever wallet is
+  signed in, the local one included, with no pairing then, and reads the main account only from what that core reports,
+  never from the main store's copy. The site gets the username, the address of the product account it names and its
+  assertion signed with that account, never the main session. The window makes no account for a site or a group. A site
+  that declares a group signs in once for every origin of its registrable domain, which the window reads from the Public
+  Suffix List it ships. The consent names that registrable domain beside the origin. A group shares one grant, whose
+  token answers any origin of the group. The window refuses a group on a public suffix or an address, on its own
+  registrable domain, or when the list does not load. The window closes once the site has its result, which a window
+  restored from the back-forward cache sends on the site's next hello.
 - A site that cannot keep a popup signs in by redirect: its sign-in request names a return address and a temporary key,
   and the window needs no opener. Before it boots, the window checks that this browser can seal to the key, that the
   address is a site's and not dot.li's own or a product's, and that the site's well-known file lists it, read within a
@@ -112,13 +112,12 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   page, so it never closes itself. A seal that fails says so, and forgets a grant whose token the site never got, unless
   it is a group's. Close on any view closes the window, or goes back in history when the browser keeps the tab open, but
   does nothing while the sealed answer is on its way.
-- On `/s/sign`, a site asks the user to sign a transaction on Asset Hub from the main account. The window takes the
-  site's call from the request, else from the first payload the vetted site posts for the round, and shows Connecting
-  until it has one. A call that is not hex of 2 to 1 000 000 bytes, or a request of dot.li's own page, is a bad request.
-  The round asks consent and resumes the main session as a sign-in does, then decodes the call for the review, has the
-  phone build the transaction for the main account once the user confirms, and submits it once. The tab's session
-  storage keeps which rounds it submitted, so a reloaded window refuses such a round as unknown before consent. The site
-  gets the transaction's hash, its block and how it went, never the main account or the signed transaction.
+- On `/s/sign`, a site asks the user to sign a transaction on Asset Hub with the product account it names. The window
+  takes the site's call from the request, else from the first payload the vetted site posts for the round, and shows
+  Connecting until it has one. A call that is not hex of 2 to 1 000 000 bytes, or a request of dot.li's own page, is a
+  bad request. The round asks consent and resumes the main session as a sign-in does, then decodes the call for the
+  review. Once the user confirms, the window fills every extension and the phone signs with the account the site names.
+  The site gets the signed transaction and sends it itself, and never gets the main account.
 - The sign-in window reads a site's registrable domain from a copy of the Public Suffix List it ships, a data file under
   the Mozilla Public License 2.0, read as text and kept with its license header, and refreshed with each release.
 - The site list lists the sites the main store keeps a grant for, the most recently used first, each with Revoke, which

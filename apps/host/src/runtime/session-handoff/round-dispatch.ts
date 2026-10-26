@@ -38,6 +38,6 @@ export function dispatchRound(request: SessionRequest, party: 'first' | 'third',
     const parsed = parseSiteSignRequest(request, net);
     return parsed === null ? { kind: 'refuse', reason: 'bad_request' } : { kind: 'third-sign', request: parsed };
   }
-  const parsed = parseSiteRequest(request);
+  const parsed = parseSiteRequest(request, net);
   return parsed === null ? { kind: 'refuse', reason: 'bad_request' } : { kind: 'third', request: parsed, net };
 }

@@ -8,6 +8,7 @@ import { For, merge, omit, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Button, Callout, Row, SectionLabel, Stack, Well } from '@dotli/ui';
 import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
+import type { DisplayAccount } from '../../runtime/site-sign-in/site-account.js';
 import type { DisplayCall } from '../../runtime/site-sign-in/site-call.js';
 import type { ListedSite, SiteListScreen } from '../../runtime/site-sign-in/site-list.js';
 import type { PairingView } from '../../state/auth-modal.js';
@@ -288,11 +289,13 @@ function phraseParts(form: PhraseForm, props: WindowPartsProps): SignInParts {
 }
 
 /** What a site gets once the user consents. */
-const SITE_GETS = [
-  'Your username',
-  'An address made for this site only',
-  'The right to ask for transactions from your main account, each confirmed again',
-] as const;
+function siteGets(account: DisplayAccount): string[] {
+  return [
+    'Your username',
+    `The address of your ${account.product} account ${account.index}`,
+    'The right to ask you to sign transactions, each confirmed again',
+  ];
+}
 
 /** The way out of a site's round, which tells the site the user left. */
 function siteCancel(props: WindowPartsProps): SignInAction {
@@ -314,20 +317,22 @@ function consentParts(
   origin: string,
   statement: string | null,
   group: string | null,
+  account: DisplayAccount,
   props: WindowPartsProps,
 ): SignInParts {
-  const asks = 'wants you to sign in with Polkadot';
   const parts = StatusScreen({
     title: origin,
-    body:
-      group === null ? (
-        asks
-      ) : (
-        <>
+    body: (
+      <>
+        <div data-testid="session-window-account">
+          Account: {account.product}/{account.index}
+        </div>
+        {group === null ? null : (
           <div data-testid="session-window-group">for every site of {group} that shares this sign-in</div>
-          <div>{asks}</div>
-        </>
-      ),
+        )}
+        <div>wants you to sign in with Polkadot</div>
+      </>
+    ),
     actions: [
       {
         label: 'Continue',
@@ -356,7 +361,7 @@ function consentParts(
         {parts.content}
         <div role="list" data-testid="session-window-site-gets">
           <Stack>
-            <For each={SITE_GETS}>
+            <For each={siteGets(account)}>
               {line => (
                 <div role="listitem">
                   <Callout icon={CheckIcon}>{line}</Callout>
@@ -398,10 +403,15 @@ function siteSigningParts(origin: string, route: SiteRoute, props: WindowPartsPr
  * A site asks for a transaction: its full origin heads the view, then the call by name and each argument with its
  * value on a line of its own, as text and never as markup.
  */
-function siteReviewParts(origin: string, call: DisplayCall, props: WindowPartsProps): SignInParts {
+function siteReviewParts(
+  origin: string,
+  call: DisplayCall,
+  account: DisplayAccount,
+  props: WindowPartsProps,
+): SignInParts {
   const parts = StatusScreen({
     title: origin,
-    body: 'asks you to sign a transaction from your main account',
+    body: `asks you to sign a transaction with your ${account.product} account ${account.index}`,
     actions: [
       {
         label: 'Sign with Polkadot App',
@@ -442,11 +452,11 @@ function siteReviewParts(origin: string, call: DisplayCall, props: WindowPartsPr
   };
 }
 
-/** A site's transaction on its way: the phone builds it, then the chain has it. */
-function siteSubmittingParts(origin: string, sent: boolean, props: WindowPartsProps): SignInParts {
+/** A site's transaction while the phone signs it. */
+function siteApprovingParts(origin: string, props: WindowPartsProps): SignInParts {
   return StatusScreen({
     mark: 'spinner',
-    title: sent ? 'Sending the transaction' : 'Approve the transaction in Polkadot App',
+    title: 'Approve the transaction in Polkadot App',
     body: origin,
     actions: [siteCancel(props)],
     testId: 'session-window-status',
@@ -600,13 +610,13 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
     case 'phrase':
       return phraseParts(step.form, props);
     case 'consent':
-      return consentParts(step.origin, step.statement, step.group, props);
+      return consentParts(step.origin, step.statement, step.group, step.account, props);
     case 'site-signing':
       return siteSigningParts(step.origin, step.route, props);
     case 'site-review':
-      return siteReviewParts(step.origin, step.call, props);
-    case 'site-submitting':
-      return siteSubmittingParts(step.origin, step.sent, props);
+      return siteReviewParts(step.origin, step.call, step.account, props);
+    case 'site-approving':
+      return siteApprovingParts(step.origin, props);
     case 'site-failed':
       return siteFailedParts(step.origin, step.route, step.retry, props);
     case 'sites':

@@ -2,52 +2,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A site's round in the session window, whatever the site asked for. It asks the user's consent unless the site's token
-// names a grant of this origin, or of the site's group, takes the main session from the reused window flow, runs the
-// route's action for the main account, keeps the grant and answers the site once. Of the main session it reads only the
-// cached account, which it hands to the action and never sends, so nothing of the session itself, nor of a local
-// wallet, reaches the site.
+// names a grant of this origin, or of the site's group, has the reused window flow sign in or resume a sign-in, runs the
+// route's action for the main account with the product account the site names, keeps the grant and answers the site
+// once. The main account comes from the window core's own report, never the saved copy, and the window flow tells the
+// round only that a sign-in is stored. The round hands the account to the action and never sends it, so nothing of the
+// session itself, nor of a local wallet, reaches the site.
 
-import { m, type MetricOutcome } from '@dotli/metrics';
-import {
-  blake2b,
-  createAsyncTaskPool,
-  createSyncStore,
-  deferred,
-  fromHex,
-  log,
-  shallowEqual,
-  storeStatus,
-  toHex,
-  untilStatus,
-  type ReadableStore,
-} from '@dotli/shared';
+import type { ProductAccountId } from '@parity/truapi';
+import { m, reportExpected, type MetricOutcome } from '@dotli/metrics';
+import { createAsyncTaskPool, createSyncStore, deferred, log, shallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
-import type { SessionResult } from '../session-handoff/messages.js';
+import { CoreRedialError } from '../page-core.js';
 import type { Responder } from '../session-handoff/responder.js';
 import type { RefusalReason } from '../session-handoff/session-protocol.js';
-import type { DotliAuthState } from '../session/auth-state.js';
-import { parseUiStateCache } from '../session/ui-state.js';
 import { reportWalletFailure } from '../wallet-failure.js';
+import { MainAccountError, type MainAccount } from './main-account.js';
+import { displayAccount, type DisplayAccount } from './site-account.js';
 import type { DisplayCall } from './site-call.js';
 import type { SiteGroups } from './site-groups.js';
-import { groupDerivationIndex, siteDerivationIndex } from './site-signer.js';
 
 /** What the round needs of a site's request, whatever its route. */
 export interface SiteRoundRequest {
   round: string;
+  /** The product account the site names, which every signature of the round uses. */
+  account: ProductAccountId;
   siteToken: string | null;
   statement: string | null;
   /** The site's group token, or null for a site of no group. */
   groupToken: string | null;
-}
-
-/** The main account an action runs for. The round never sends any of it. */
-export interface MainAccount {
-  /** Hex of the hash of the main account's public key, whose grants these are. */
-  owner: string;
-  /** Null for an account with no username to show a site. */
-  username: { name: string; kind: 'lite' | 'full' } | null;
-  publicKey: Uint8Array;
 }
 
 /**
@@ -65,7 +47,7 @@ export class SiteRoundRefusal extends Error {
 }
 
 /** The step of a round that failed, a closed set so the metric's `reason` tag stays bounded. */
-export type SiteStep = 'cache' | 'account' | 'sign' | 'chain' | 'build' | 'submit' | 'grant' | 'action';
+export type SiteStep = 'main_account' | 'account' | 'sign' | 'chain' | 'build' | 'grant' | 'action';
 
 /** A step of the round that failed, shown with Try again when `retry` holds. */
 export class SiteRoundFailure extends Error {
@@ -82,8 +64,32 @@ export class SiteRoundFailure extends Error {
 
 const STEP = 'site_round';
 
-/** Reports a failed step of a site's round and counts it as `error` with the step on `metric`. */
+/** Whether `error` or an error in its chain of causes is a core redial, which the page core already reported. */
+function fromCoreRedial(error: unknown): boolean {
+  let cause: unknown = error;
+  while (cause instanceof Error) {
+    if (cause instanceof CoreRedialError) {
+      return true;
+    }
+    cause = cause.cause;
+  }
+  return false;
+}
+
+/** Whether `failure` is of a main session the core reports gone, which only a new sign-in brings back. */
+function signedOut(failure: SiteRoundFailure): boolean {
+  return failure.cause instanceof MainAccountError && failure.cause.kind === 'signed_out';
+}
+
+/**
+ * Reports a failed step of a site's round and counts it as `error` with the step on `metric`. A failure of a core
+ * redial, which the page core captured, or of a main session that is gone is only counted.
+ */
 export function reportSiteFailure(failure: SiteRoundFailure, metric: string): void {
+  if (fromCoreRedial(failure) || signedOut(failure)) {
+    reportExpected(failure, { flow: 'wallet', step: STEP, metric, reason: failure.step });
+    return;
+  }
   reportWalletFailure(failure, { what: `site round ${failure.step}`, step: STEP, reason: failure.step, metric });
 }
 
@@ -113,12 +119,12 @@ interface SiteSigningScreen {
 
 /**
  * What an action shows while it runs. `site-review` shows the site's call for the user to confirm, and
- * `site-submitting` the transaction on its way, `sent` once the chain has it.
+ * `site-approving` the transaction while the phone signs it.
  */
 export type SiteActionScreen =
   | SiteSigningScreen
-  | { view: 'site-review'; origin: string; call: DisplayCall }
-  | { view: 'site-submitting'; origin: string; sent: boolean };
+  | { view: 'site-review'; origin: string; call: DisplayCall; account: DisplayAccount }
+  | { view: 'site-approving'; origin: string };
 
 /** What the window shows for a site. `window` while the reused window flow shows its own views. */
 export type SiteScreen =
@@ -128,6 +134,8 @@ export type SiteScreen =
       statement: string | null;
       /** The registrable domain of the site's group, or null for a site of no group. */
       group: string | null;
+      /** The product account the site named, which the sign-in is for. */
+      account: DisplayAccount;
     }
   | { view: 'site-failed'; origin: string; route: 'auth' | 'sign'; retry: boolean }
   | { view: 'window' }
@@ -139,26 +147,18 @@ export interface SiteAction<R> {
   /** The outcome a result counts with. */
   outcome(result: R): MetricOutcome;
   /**
-   * The refusal a Cancel answers the site with in place of a cancel, or null for a cancel. Without it, a Cancel is
-   * always a cancel. It lets an action whose effect may already stand, such as a transaction the chain has, keep the
-   * site from taking a Cancel as nothing done.
-   */
-  cancelAs?(): RefusalReason | null;
-  /**
-   * Runs the route for `main` with the site account at derivation `index`, whose key a grant may keep, and resolves
-   * with the site's result and the site account's key. It throws a {@link SiteRoundRefusal}, a
-   * {@link SiteRoundRejected} or a {@link SiteRoundFailure} to end or fail the round. `confirmed` resolves on the
-   * user's confirm on the view shown last, and rejects once another view shows or the round ends. `signal` aborts
-   * once the round ends, so the action stops what it still runs.
+   * Runs the route for `main` with `account`, the product account the site names, and resolves with the site's
+   * result. It rejects with a {@link SiteRoundRefusal}, a {@link SiteRoundRejected} or a {@link SiteRoundFailure} to
+   * end or fail the round. `confirmed` resolves on the user's confirm on the view shown last, and rejects once another
+   * view shows or the round ends. `signal` aborts once the round ends, so the action stops what it still runs.
    */
   run(input: {
     main: MainAccount;
-    index: `0x${string}`;
-    knownKey: Uint8Array | null;
+    account: ProductAccountId;
     show: (screen: SiteActionScreen) => void;
     confirmed: () => Promise<void>;
     signal: AbortSignal;
-  }): Promise<{ result: R; publicKey: Uint8Array }>;
+  }): Promise<R>;
 }
 
 export interface SiteRoundDeps<R> {
@@ -172,14 +172,16 @@ export interface SiteRoundDeps<R> {
   groups: SiteGroups;
   /** The window's own origin, whose registrable domain no site's group may have. */
   self: string;
-  auth: ReadableStore<DotliAuthState>;
-  /** The main store's cached account, read again on a Retry. */
-  readUiCache: () => Promise<string | null>;
   /**
-   * Starts the window flow that hands over the main session through `deliver`. `close` is the round's own, so a window
-   * flow that closes the window cancels a round still open.
+   * The main account the window's core reports, once it reports one. Rejects with a {@link MainAccountError} when the
+   * core cannot boot or its session is gone, or once `signal` aborts.
    */
-  startWindowFlow: (deliver: (result: SessionResult) => void, close: () => void) => void;
+  mainAccount: (signal: AbortSignal) => Promise<MainAccount>;
+  /**
+   * Starts the window flow that signs in or resumes the stored sign-in, and calls `stored` once one is stored. `close`
+   * is the round's own, so a window flow that closes the window cancels a round still open.
+   */
+  startWindowFlow: (stored: () => void, close: () => void) => void;
   now: () => number;
   randomToken: () => string;
   close: () => void;
@@ -211,28 +213,6 @@ interface SiteGroup {
   token: string;
 }
 
-/** The main account in a cached UI state. */
-function mainAccountOf(uiState: string | null): MainAccount {
-  const account = uiState === null ? null : parseUiStateCache(uiState);
-  if (account?.publicKey === undefined) {
-    throw new SiteRoundFailure('cache', true, 'The main account is not in the session cache');
-  }
-  let publicKey: Uint8Array;
-  try {
-    publicKey = fromHex(account.publicKey);
-  } catch (error) {
-    throw new SiteRoundFailure('cache', true, 'The cached main account has no readable public key', error);
-  }
-  const owner = toHex(blake2b(publicKey, 32));
-  if (account.fullUsername !== undefined && account.fullUsername !== '') {
-    return { owner, username: { name: account.fullUsername, kind: 'full' }, publicKey };
-  }
-  if (account.liteUsername !== undefined && account.liteUsername !== '') {
-    return { owner, username: { name: account.liteUsername, kind: 'lite' }, publicKey };
-  }
-  return { owner, username: null, publicKey };
-}
-
 export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   const { request, origin, responder, grants, action, metric } = deps;
   const { route } = action;
@@ -242,9 +222,8 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   const steps = createAsyncTaskPool({ poolSize: 1 });
   // Aborted as the round's last word goes out, so nothing after it posts or changes the main store.
   const ended = new AbortController();
-  // The request's group once judged, and the site account's index, which stays one through the round.
+  // The request's group once judged.
   let group: SiteGroup | null = null;
-  let index = siteDerivationIndex(origin);
   // The grant the site's token names for this origin or its group, until it proves to be another main account's.
   let known: SiteGrant | null = null;
   // The main account once read, which a consent shown after it runs the action for.
@@ -290,30 +269,20 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
     reportWalletFailure(error, { what: `site round ${reason}`, step: STEP, reason, metric });
   };
 
-  /** Refuses the site, unless the round already ended. True when this ended it. */
-  const refuseSite = (reason: RefusalReason): boolean => {
+  /** Refuses the site and closes the window, unless the round already ended. */
+  const refuse = (reason: RefusalReason): void => {
     if (!endRound('refused', reason)) {
-      return false;
+      return;
     }
     log.event('site round refused', { flow: 'wallet', reason });
     responder.refuse(reason);
-    return true;
-  };
-
-  /** Refuses the site and closes the window, unless the round already ended. */
-  const refuse = (reason: RefusalReason): void => {
     // The window closes at once, so it shows the site no view of the refusal.
-    if (refuseSite(reason)) {
-      deps.close();
-    }
+    deps.close();
   };
 
-  /** Tells the site the user left, or what the action says a Cancel now means, and closes the window. */
+  /** Tells the site the user left and closes the window. */
   const cancel = (): void => {
-    const reason = action.cancelAs?.() ?? null;
-    if (reason !== null) {
-      refuseSite(reason);
-    } else if (endRound('cancelled', 'page')) {
+    if (endRound('cancelled', 'page')) {
       responder.cancel();
     }
     deps.close();
@@ -419,7 +388,13 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   };
 
   const showConsent = (): void => {
-    show({ view: 'consent', origin, statement: request.statement, group: group?.registrable ?? null });
+    show({
+      view: 'consent',
+      origin,
+      statement: request.statement,
+      group: group?.registrable ?? null,
+      account: displayAccount(request.account),
+    });
   };
 
   /** Forgets the grant of `token`. A failure is reported and the round goes on. */
@@ -436,11 +411,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
    * whose token the site gets for a new grant, the group's own when the group already has one, or nothing when the
    * grant was known or could not be kept, which is reported and counted while the site still gets its result.
    */
-  const keepGrant = async (
-    grant: SiteGrant | null,
-    main: MainAccount,
-    publicKey: Uint8Array,
-  ): Promise<SiteGrant | undefined> => {
+  const keepGrant = async (grant: SiteGrant | null, main: MainAccount): Promise<SiteGrant | undefined> => {
     const at = deps.now();
     if (grant !== null) {
       try {
@@ -454,7 +425,6 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
     const kept: SiteGrant = {
       token: deps.randomToken(),
       origin,
-      publicKey: toHex(publicKey),
       owner: main.owner,
       firstUsedAt: at,
       lastUsedAt: at,
@@ -485,18 +455,11 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   const runAction = async (main: MainAccount): Promise<void> => {
     show(working);
     const grant = known;
-    const { result, publicKey } = await action.run({
-      main,
-      index,
-      knownKey: grant === null ? null : fromHex(grant.publicKey),
-      show,
-      confirmed,
-      signal: ended.signal,
-    });
+    const result = await action.run({ main, account: request.account, show, confirmed, signal: ended.signal });
     if (ended.signal.aborted) {
       return;
     }
-    const kept = await keepGrant(grant, main, publicKey);
+    const kept = await keepGrant(grant, main);
     if (endRound(action.outcome(result), grantReason(grant))) {
       responder.send(result, kept?.token);
       log.event('site round sent its result', { flow: 'wallet' });
@@ -510,20 +473,25 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
     deps.close();
   };
 
-  /** From a main session the window holds: waits until it is connected, reads its account and runs the action. */
-  const resume = async (readUiState: () => Promise<string | null>): Promise<void> => {
+  // Whether a window flow started that a Try again can go on from. A Try again without one starts the flow, as after
+  // a flow that failed to start or a stored session that is gone, which only a new sign-in brings back.
+  let flowStarted = false;
+
+  /** From a sign-in the window holds: reads the main account the core reports and runs the action. */
+  const resume = async (): Promise<void> => {
     show(working);
-    await untilStatus(storeStatus(deps.auth), state => state.tag === 'Connected');
-    let uiState: string | null;
+    let main: MainAccount;
     try {
-      uiState = await readUiState();
+      main = await deps.mainAccount(ended.signal);
     } catch (error) {
-      throw new SiteRoundFailure('cache', true, 'The session cache could not be read', error);
+      if (error instanceof MainAccountError && error.kind === 'signed_out') {
+        flowStarted = false;
+      }
+      throw new SiteRoundFailure('main_account', true, 'The main account could not be read', error);
     }
     if (ended.signal.aborted) {
       return;
     }
-    const main = mainAccountOf(uiState);
     account = main;
     if (known !== null && known.owner !== main.owner) {
       // Another main account's grant, which this one never uses again.
@@ -536,33 +504,23 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
     await runAction(main);
   };
 
-  const deliver = (result: SessionResult): void => {
+  const stored = (): void => {
     void step(async () => {
-      if (ended.signal.aborted) {
-        return;
+      if (!ended.signal.aborted) {
+        await resume();
       }
-      if (result.session === null) {
-        refuse('unsupported_wallet');
-        return;
-      }
-      const { uiState } = result.session;
-      await resume(() => Promise.resolve(uiState));
     });
   };
 
-  // Whether the window flow started, so a Retry after it failed to start starts it again rather than waiting for a
-  // session nothing will hand over.
-  let flowStarted = false;
   const openMainSession = (): void => {
     show({ view: 'window' });
-    deps.startWindowFlow(deliver, cancel);
+    deps.startWindowFlow(stored, cancel);
     flowStarted = true;
   };
 
   void step(async () => {
     if (request.groupToken !== null) {
       group = await groupOf(request.groupToken);
-      index = groupDerivationIndex(group.registrable, group.token);
     }
     known = await lookUp();
     if (known === null) {
@@ -604,7 +562,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
           return;
         }
         if (flowStarted) {
-          await resume(deps.readUiCache);
+          await resume();
         } else {
           openMainSession();
         }

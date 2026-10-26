@@ -3,13 +3,14 @@
 
 /**
  * A site's transaction on Asset Hub: one chain client per session, which decodes the site's call for the review and
- * submits that decode once, reporting papi's events as the window's own. The chain client loads on first open, so the
- * shell's eager path never carries it.
+ * builds that decode into its signed transaction, filling every extension, and never submits it. The chain client loads
+ * on first open and the extension fillers on first build, so the shell's eager path never carries them.
  */
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type * as TxFillers from '@polkadot-api/signers-common';
 import type * as PolkadotApi from 'polkadot-api';
-import type { TxCreator, TxEvent, TxInBestBlock } from 'polkadot-api';
+import type { TxCreator } from 'polkadot-api';
 import { displayCall, type DisplayCall } from './site-call.js';
 
 /** How long a decode waits for the chain before it counts as unreachable. */
@@ -34,38 +35,25 @@ export class SiteChainError extends Error {
   }
 }
 
-/** What the window hears of a submitted transaction. */
-export type SiteSubmitEvent =
-  | { kind: 'submitted'; txHash: string }
-  | { kind: 'included'; txHash: string; blockHash: string; ok: true }
-  | { kind: 'included'; txHash: string; blockHash: string; ok: false; error: string }
-  | { kind: 'invalid'; error: unknown }
-  | { kind: 'lost'; error: unknown };
-
-/** A transaction's watch, as papi's observable offers it. */
-export interface TxEvents {
-  subscribe(observer: { next(event: TxEvent): void; error(error: unknown): void; complete(): void }): {
-    unsubscribe(): void;
-  };
-}
-
 /**
- * A call decoded on Asset Hub: what the review shows, and the transaction that submits that same call. papi builds it
- * from the decoded call, so a runtime the shown call no longer fits refuses it rather than signing another call.
+ * A call decoded on Asset Hub: what the review shows, and the transaction of that same call. papi builds it from the
+ * decoded call, so a runtime the shown call no longer fits refuses it rather than signing another call.
  */
 export interface SiteDecodedCall {
   display: DisplayCall;
-  transaction: { createSubmitAndWatch(creator: TxCreator): TxEvents };
+  transaction: { create(creator: TxCreator): Promise<Uint8Array> };
 }
 
 export interface SiteChainSession {
   /** Decodes a call for the review. Rejects with `SiteChainError`. */
   decode(call: Uint8Array): Promise<SiteDecodedCall>;
   /**
-   * Builds, submits and watches the transaction of a call this session decoded, without decoding it again. Each call
-   * submits anew, so call it once per transaction.
+   * Builds the signed transaction of a call this session decoded, without decoding it again. papi fills every
+   * extension for the account of `publicKey`, with its default mortality, and `creator` signs. Resolves with the
+   * transaction's bytes and never broadcasts it. Rejects with what `creator` rejects with, or with the chain's error or
+   * the fillers' load error.
    */
-  submit(call: SiteDecodedCall, creator: TxCreator): AsyncIterable<SiteSubmitEvent>;
+  create(call: SiteDecodedCall, creator: TxCreator, publicKey: Uint8Array): Promise<Uint8Array>;
   /** Ends the session's chain client. */
   close(): void;
 }
@@ -84,145 +72,10 @@ export interface SiteChainDeps {
   /** The provider of the Asset Hub of `genesis`, or `null` when the backend cannot reach it. */
   provider: (genesis: string) => JsonRpcProvider | null;
   loadApi: () => Promise<typeof PolkadotApi>;
+  /** Resolves with papi's extension fillers, and rejects with the load error when their chunk does not load. */
+  loadFillers: () => Promise<Pick<typeof TxFillers, 'withNonce' | 'withCommonExtensions'>>;
   /** The signal that bounds one decode. */
   deadline?: () => AbortSignal;
-}
-
-function isEnum(value: unknown): value is { type: string; value: unknown } {
-  return typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string';
-}
-
-/** The dispatch error's variant, then each nested variant, joined by `.`. */
-function dispatchErrorText(error: { type: string; value: unknown }): string {
-  const path = [error.type];
-  let inner = error.value;
-  while (isEnum(inner)) {
-    path.push(inner.type);
-    inner = inner.value;
-  }
-  return path.join('.');
-}
-
-function included(event: TxInBestBlock): SiteSubmitEvent {
-  const { txHash, block } = event;
-  return event.ok
-    ? { kind: 'included', txHash, blockHash: block.hash, ok: true }
-    : { kind: 'included', txHash, blockHash: block.hash, ok: false, error: dispatchErrorText(event.dispatchError) };
-}
-
-interface Waiting {
-  resolve(result: IteratorResult<SiteSubmitEvent, undefined>): void;
-  reject(error: unknown): void;
-}
-
-/**
- * Reads a transaction's watch as the window's events, ending at the first best block. An error before `created` is
- * the creator's and is rethrown unchanged. Stopping the iteration unsubscribes at once, even while a read waits, so a
- * transaction cancelled before broadcast is never broadcast.
- */
-export function submitEvents(events: TxEvents, isInvalid: (error: unknown) => boolean): AsyncIterable<SiteSubmitEvent> {
-  const queue: SiteSubmitEvent[] = [];
-  let failure: { error: unknown } | null = null;
-  let waiting: Waiting | null = null;
-  let subscription: { unsubscribe(): void } | null = null;
-  let started = false;
-  let ended = false;
-  let created = false;
-
-  const settle = (): void => {
-    const reader = waiting;
-    if (reader === null) {
-      return;
-    }
-    const next = queue.shift();
-    if (next !== undefined) {
-      waiting = null;
-      reader.resolve({ done: false, value: next });
-    } else if (failure !== null) {
-      waiting = null;
-      const { error } = failure;
-      failure = null;
-      reader.reject(error);
-    } else if (ended) {
-      waiting = null;
-      reader.resolve({ done: true, value: undefined });
-    }
-  };
-
-  const end = (): void => {
-    ended = true;
-    const watch = subscription;
-    subscription = null;
-    watch?.unsubscribe();
-  };
-
-  const observer = {
-    next(event: TxEvent): void {
-      if (ended) {
-        return;
-      }
-      if (event.type === 'created') {
-        created = true;
-      } else if (event.type === 'broadcasted') {
-        queue.push({ kind: 'submitted', txHash: event.txHash });
-      } else if (event.type === 'inBestBlock') {
-        queue.push(included(event));
-        end();
-      }
-      settle();
-    },
-    error(error: unknown): void {
-      if (ended) {
-        return;
-      }
-      if (!created) {
-        failure = { error };
-      } else {
-        queue.push(isInvalid(error) ? { kind: 'invalid', error } : { kind: 'lost', error });
-      }
-      end();
-      settle();
-    },
-    complete(): void {
-      if (ended) {
-        return;
-      }
-      queue.push({ kind: 'lost', error: new Error('The transaction watch ended before a best block') });
-      end();
-      settle();
-    },
-  };
-
-  const start = (): void => {
-    started = true;
-    const watch = events.subscribe(observer);
-    // The watch may end while it subscribes, before there was a subscription to close.
-    if (ended) {
-      watch.unsubscribe();
-    } else {
-      subscription = watch;
-    }
-  };
-
-  const iterator: AsyncIterator<SiteSubmitEvent, undefined> = {
-    next: () => {
-      if (!started && !ended) {
-        start();
-      }
-      return new Promise((resolve, reject) => {
-        waiting = { resolve, reject };
-        settle();
-      });
-    },
-    return: () => {
-      end();
-      queue.length = 0;
-      failure = null;
-      settle();
-      return Promise.resolve({ done: true, value: undefined });
-    },
-  };
-  return { [Symbol.asyncIterator]: () => iterator };
 }
 
 function isInvalidCallData(error: unknown): boolean {
@@ -270,8 +123,10 @@ export function createSiteChain(deps: SiteChainDeps): SiteChain {
           const transaction = await decodeCall(call);
           return { display: displayCall(transaction.decodedCall), transaction };
         },
-        submit: (call, creator) =>
-          submitEvents(call.transaction.createSubmitAndWatch(creator), error => error instanceof api.InvalidTxError),
+        create: async (call, creator, publicKey) => {
+          const { withNonce, withCommonExtensions } = await deps.loadFillers();
+          return call.transaction.create(withNonce(publicKey)(withCommonExtensions(creator)));
+        },
         close() {
           if (!closed) {
             closed = true;

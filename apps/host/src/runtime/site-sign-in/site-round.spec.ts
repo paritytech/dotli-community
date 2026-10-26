@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
@@ -17,26 +18,24 @@ import {
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
 import { memorySiteGrantsIdb } from '@dotli/storage/testing';
-import type { SessionResult } from '../session-handoff/messages.js';
+import { CoreRedialError } from '../page-core.js';
 import type { ResponderState } from '../session-handoff/responder.js';
-import type { RefusalReason } from '../session-handoff/session-protocol.js';
 import { createChanges } from '../../testing/changes.js';
-import type { DotliAuthState } from '../session/auth-state.js';
+import { MainAccountError, type MainAccount } from './main-account.js';
 import {
   createSiteRound,
   forgetsUnsentGrant,
   SiteRoundFailure,
   SiteRoundRefusal,
   SiteRoundRejected,
-  type MainAccount,
   type SiteAction,
   type SiteRound,
   type SiteRoundDeps,
   type SiteScreen,
 } from './site-round.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
+import { displayAccount } from './site-account.js';
 import type { SiteGroups } from './site-groups.js';
-import { groupDerivationIndex, siteDerivationIndex } from './site-signer.js';
 
 const ORIGIN = 'https://my-site.com';
 const SELF = 'https://dot.li';
@@ -46,17 +45,9 @@ const METRIC = 'test.site_round';
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
 const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
-const MAIN_UI_STATE = JSON.stringify({
-  connected: true,
-  publicKey: MAIN_KEY,
-  liteUsername: 'alice.01',
-  fullUsername: 'alice.dot',
-});
-const MAIN_BLOB = 'MAIN-SESSION-BLOB';
-const WALLET_ENTROPY = new Uint8Array(16).fill(0x5c);
 
-const SITE_KEY = new Uint8Array(32).fill(0x22);
-const KNOWN_KEY = new Uint8Array(32).fill(0x33);
+/** The account the site names, which the round never reads. */
+const ACCOUNT: ProductAccountId = { dotNsIdentifier: 'myapp.dot', derivationIndex: { tag: 'Index', value: 0 } };
 
 const TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(1));
 const NEW_TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(2));
@@ -75,22 +66,15 @@ interface FakeResult {
 
 const RESULT: FakeResult = { done: 'the action ran' };
 
-/** What the window flow hands over for a main store that holds a paired session. */
-const PAIRED: SessionResult = { session: { blob: MAIN_BLOB, uiState: MAIN_UI_STATE }, localWallet: null };
-
-const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true, publicKey: MAIN_KEY } };
-
 const MAIN: MainAccount = {
   owner: OWNER,
   username: { name: 'alice.dot', kind: 'full' },
-  publicKey: fromHex(MAIN_KEY),
 };
 
 function grantOf(fields: Partial<SiteGrant> = {}): SiteGrant {
   return {
     token: TOKEN,
     origin: ORIGIN,
-    publicKey: toHex(KNOWN_KEY),
     owner: OWNER,
     firstUsedAt: NOW - 1000,
     lastUsedAt: NOW - 1000,
@@ -116,6 +100,8 @@ interface ActionRun {
 interface HarnessOptions {
   /** The site's origin, {@link ORIGIN} by default. */
   origin?: string;
+  /** The account the site names, {@link ACCOUNT} by default. */
+  account?: ProductAccountId;
   /** The window's own origin, {@link SELF} by default. */
   self?: string;
   siteToken?: string | null;
@@ -128,9 +114,8 @@ interface HarnessOptions {
   newToken?: string;
   /** Grants the main store keeps before the round. */
   grants?: SiteGrant[];
-  auth?: DotliAuthState;
-  /** What the main store's account cache holds, read on a Retry. */
-  uiCache?: string | null;
+  /** Reads the main account the window's core reports, {@link MAIN} at once by default. */
+  mainAccount?: (signal: AbortSignal) => Promise<MainAccount>;
   /** Failures the action throws, one per run, before it runs to its result. */
   failures?: Error[];
   /** Whether each run waits for the test to finish it. */
@@ -143,20 +128,18 @@ interface HarnessOptions {
   windowFlowFails?: boolean;
   /** Whether reading a grant fails. */
   readFails?: boolean;
-  /** The refusal the action asks a Cancel to answer with. */
-  cancelAs?: RefusalReason;
 }
 
 /**
  * A site's round over fakes: a responder that records what it posts, ends its round on its first terminal call and
  * holds a result sent while it waits to be vetted again, an in-memory grants store, an action the test scripts, and a
- * window flow the test delivers through.
+ * window flow the test says stored a sign-in through.
  */
 async function harness(options: HarnessOptions = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
-  // Notified when an action runs, a save starts, a forget ends, the round subscribes to the session or a result is
-  // held, which a test waits on.
+  // Notified when an action runs, a save starts, a forget ends, the round reads the main account or a result is held,
+  // which a test waits on.
   const changes = createChanges();
   const posts: Post[] = [];
   const origin = options.origin ?? ORIGIN;
@@ -205,7 +188,8 @@ async function harness(options: HarnessOptions = {}) {
   }
   let saving = 0;
   let forgotten = 0;
-  let authWaits = 0;
+  // The signal of each read of the main account.
+  const mainReads: AbortSignal[] = [];
   /** Counts a save, then holds it at the gate and fails it when the test says so. */
   const gateSave = async (): Promise<void> => {
     saving += 1;
@@ -232,33 +216,23 @@ async function harness(options: HarnessOptions = {}) {
     },
     ...(options.readFails === true ? { read: () => Promise.reject(new Error('The grants database is closed')) } : {}),
   };
-  const auth = createSyncStore<DotliAuthState>('testSiteRoundAuth', options.auth ?? CONNECTED);
-  const watchedAuth: ReadableStore<DotliAuthState> = {
-    get: auth.get,
-    initial: auth.initial,
-    subscribe: listener => {
-      authWaits += 1;
-      changes.notify();
-      return auth.subscribe(listener);
-    },
-  };
+  const readMain = options.mainAccount ?? (() => Promise.resolve(MAIN));
   const failures = [...(options.failures ?? [])];
-  const runs: (ActionRun & { auth: DotliAuthState['tag'] })[] = [];
+  const runs: ActionRun[] = [];
   const action: SiteAction<FakeResult> = {
     route: 'sign',
     outcome: () => 'granted',
-    ...(options.cancelAs === undefined ? {} : { cancelAs: () => options.cancelAs ?? null }),
     run: input => {
       const failure = failures.shift();
-      const done = deferred<{ result: FakeResult; publicKey: Uint8Array }>();
+      const done = deferred<FakeResult>();
       const finish = (error?: Error): void => {
         if (error === undefined) {
-          done.resolve({ result: RESULT, publicKey: input.knownKey ?? SITE_KEY });
+          done.resolve(RESULT);
         } else {
           done.reject(error);
         }
       };
-      runs.push({ input, finish, auth: auth.get().tag });
+      runs.push({ input, finish });
       changes.notify();
       if (failure !== undefined) {
         finish(failure);
@@ -269,12 +243,13 @@ async function harness(options: HarnessOptions = {}) {
     },
   };
   let windowFlowFails = options.windowFlowFails === true;
-  const windowFlows: { deliver: (result: SessionResult) => void; close: () => void }[] = [];
+  const windowFlows: { stored: () => void; close: () => void }[] = [];
   const closed = deferred<undefined>();
   let closes = 0;
   const flow = createSiteRound({
     request: {
       round: 'r1',
+      account: options.account ?? ACCOUNT,
       statement: STATEMENT,
       siteToken: options.siteToken ?? null,
       groupToken: options.groupToken ?? null,
@@ -284,14 +259,17 @@ async function harness(options: HarnessOptions = {}) {
     responder,
     grants,
     groups: options.groups ?? GROUPS,
-    auth: watchedAuth,
-    readUiCache: () => Promise.resolve(options.uiCache === undefined ? MAIN_UI_STATE : options.uiCache),
-    startWindowFlow: (deliver, close) => {
+    mainAccount: signal => {
+      mainReads.push(signal);
+      changes.notify();
+      return readMain(signal);
+    },
+    startWindowFlow: (stored, close) => {
       if (windowFlowFails) {
         windowFlowFails = false;
         throw new Error('The window flow could not start');
       }
-      windowFlows.push({ deliver, close });
+      windowFlows.push({ stored, close });
     },
     now: () => NOW,
     randomToken: () => options.newToken ?? NEW_TOKEN,
@@ -310,15 +288,15 @@ async function harness(options: HarnessOptions = {}) {
     flow,
     posts,
     stored,
-    auth,
     runs,
+    mainReads,
     screens,
     views: () => screens.map(shown => shown.view),
     metrics,
     errors,
     closed: closed.promise,
     closes: () => closes,
-    /** The window flow the round started, which the test delivers through. */
+    /** The window flow the round started, which the test says stored a sign-in through. */
     windowFlow: () => must(windowFlows[0], 'a started window flow'),
     windowFlows,
     /** Resolves once the screen shows `view`. */
@@ -332,8 +310,8 @@ async function harness(options: HarnessOptions = {}) {
     untilSaving: () => changes.until(() => saving > 0),
     /** Resolves once a grant was forgotten. */
     untilForgotten: () => changes.until(() => forgotten > 0),
-    /** Resolves once the round waits on the session's state. */
-    untilAuthWaited: () => changes.until(() => authWaits > 0),
+    /** Resolves once the round read the main account `count` times. */
+    untilMainRead: (count = 1) => changes.until(() => mainReads.length >= count),
     /** Resolves once a result waits for the window to be vetted again. */
     untilHeld: () => changes.until(() => held !== null),
     /** The window comes back from the back-forward cache and waits to be vetted again. */
@@ -365,44 +343,69 @@ function resultOf(posts: Post[]): Extract<Post, { type: 'dotli:s:result' }> {
   return post;
 }
 
-/** Consents on the consent view and hands over the paired main session. */
-async function consentAndDeliver(flow: SiteRound, h: Harness, result = PAIRED) {
+/** Consents on the consent view, and the window flow says a sign-in is stored. */
+async function consentAndStore(flow: SiteRound, h: Harness) {
   await h.until('consent');
   await flow.consent();
-  h.windowFlow().deliver(result);
+  h.windowFlow().stored();
 }
 
 describe('site round', () => {
+  it('As a site, I ask for my account and the consent names it', async () => {
+    // Given a round for a site that names an account
+    const h = await harness();
+
+    // When the round shows its consent
+    await h.until('consent');
+
+    // Then the consent carries that account as the window writes it
+    expect(h.flow.screen.get()).toMatchObject({ view: 'consent', account: displayAccount(ACCOUNT) });
+  });
+
   it('As a user on a new site, I consent and the action runs for my main account, and the site gets its result and a token', async () => {
     // Given a site the main store keeps no grant for
     const h = await harness();
 
-    // When the user consents and the window flow hands over the paired session
-    await consentAndDeliver(h.flow, h);
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
     await h.closed;
 
-    // Then the action ran once for the main account at the site's derivation index with no known key, and the site got
-    // its result and a new token
-    expect(h.runs.map(run => ({ main: run.input.main, index: run.input.index, knownKey: run.input.knownKey }))).toEqual(
-      [{ main: MAIN, index: siteDerivationIndex(ORIGIN), knownKey: null }],
-    );
+    // Then the action ran once for the main account, and the site got its result and a new token for a grant that keeps
+    // no key
+    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
     expect(h.posts).toEqual([{ type: 'dotli:s:result', result: RESULT, site_token: NEW_TOKEN }]);
     expect(await h.stored.list()).toEqual([
-      { token: NEW_TOKEN, origin: ORIGIN, publicKey: toHex(SITE_KEY), owner: OWNER, firstUsedAt: NOW, lastUsedAt: NOW },
+      { token: NEW_TOKEN, origin: ORIGIN, owner: OWNER, firstUsedAt: NOW, lastUsedAt: NOW },
     ]);
     expect(h.screens).toEqual([
       { view: 'site-signing', origin: ORIGIN, route: 'sign' },
-      { view: 'consent', origin: ORIGIN, statement: STATEMENT, group: null },
+      { view: 'consent', origin: ORIGIN, statement: STATEMENT, group: null, account: displayAccount(ACCOUNT) },
       { view: 'window' },
       { view: 'site-signing', origin: ORIGIN, route: 'sign' },
     ]);
     expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'new' }]);
   });
 
+  it('As a site, I name my account and the round runs its action for it', async () => {
+    // Given a site that names an account by a raw index
+    const account: ProductAccountId = {
+      dotNsIdentifier: 'myapp.dot',
+      derivationIndex: { tag: 'Raw', value: `0x${'7'.repeat(64)}` },
+    };
+    const h = await harness({ account });
+
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
+    await h.closed;
+
+    // Then the action ran for exactly that account
+    expect(h.runs.map(run => run.input.account)).toEqual([account]);
+  });
+
   it('As a site that got its result, I hear nothing more when the window flow closes the window', async () => {
     // Given a round that sent its result
     const h = await harness();
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // When the window flow closes the window, as it does once the round was answered
@@ -420,7 +423,7 @@ describe('site round', () => {
     await h.until('consent');
     await h.flow.consent();
     h.restore();
-    h.windowFlow().deliver(PAIRED);
+    h.windowFlow().stored();
     await h.untilHeld();
     const closesWhileHeld = h.closes();
 
@@ -435,38 +438,147 @@ describe('site round', () => {
   });
 
   it('As a user with no session in the main store, I pair in the window and the site gets its result', async () => {
-    // Given a main store with no session, so the window flow pairs, and a paired session handed over while the session
-    // still authenticates, so the round waits on it
-    const h = await harness({ auth: { tag: 'Disconnected' } });
-    await h.until('consent');
-    await h.flow.consent();
-    h.auth.set({ tag: 'Authenticating' });
-    h.windowFlow().deliver(PAIRED);
-    await h.untilAuthWaited();
+    // Given a main store with no session, so the window flow pairs, and a core that reports the paired session only
+    // after the flow stored it
+    const reported = deferred<MainAccount>();
+    const h = await harness({ mainAccount: () => reported.promise });
+    await consentAndStore(h.flow, h);
+    await h.untilMainRead();
     const ranBefore = h.runs.length;
 
-    // When the session connects
-    h.auth.set(CONNECTED);
+    // When the core reports the session
+    reported.resolve(MAIN);
     await h.closed;
 
-    // Then the action did not run before the session connected, ran once it had, and the site got its result
+    // Then the action did not run before the core reported, ran for its account once it had, and the site got its
+    // result
     expect(ranBefore).toBe(0);
-    expect(h.runs.map(run => run.auth)).toEqual(['Connected']);
+    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
   });
 
-  it('As a site the user granted before, I skip consent, the action gets the kept key and I keep my token', async () => {
+  it("As a user with a local wallet, I start a site's round and it goes on without pairing", async () => {
+    // Given a site the user granted before, and a main store whose local wallet the window's core boots on, so the
+    // core reports the main account as it does for any stored sign-in
+    const h = await harness({ siteToken: TOKEN, grants: [grantOf()] });
+    await h.until('window');
+
+    // When the window flow says a sign-in is stored, as it does at once for a stored wallet
+    h.windowFlow().stored();
+    await h.closed;
+
+    // Then the round read the main account from the core and ran the action, with one window flow and no failure
+    expect(h.mainReads).toHaveLength(1);
+    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
+    expect(h.windowFlows).toHaveLength(1);
+    expect(h.views()).not.toContain('site-failed');
+    expect(resultOf(h.posts).result).toEqual(RESULT);
+  });
+
+  it("As a user, I start a site's round and it reads the main account only once the core reports it", async () => {
+    // Given a core whose first report the main account cannot be read from
+    let reads = 0;
+    const h = await harness({
+      mainAccount: () => {
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new MainAccountError('unavailable', 'The session carries no readable key'))
+          : Promise.resolve(MAIN);
+      },
+    });
+    await consentAndStore(h.flow, h);
+    await h.until('site-failed');
+    const failed = h.flow.screen.get();
+
+    // When the user presses Try again
+    await h.flow.retry();
+    await h.closed;
+
+    // Then the failure offered Try again, which read the main account again with the round's signal, and the action ran
+    expect(failed).toEqual({ view: 'site-failed', origin: ORIGIN, route: 'sign', retry: true });
+    expect(h.mainReads).toHaveLength(2);
+    expect(h.mainReads.every(signal => signal.aborted)).toBe(true);
+    expect(h.windowFlows).toHaveLength(1);
+    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
+    expect(h.metrics.counted(METRIC)).toEqual([
+      { outcome: 'error', reason: 'main_account' },
+      { outcome: 'granted', reason: 'new' },
+    ]);
+  });
+
+  it('As a user whose stored session is gone, I press Try again and the window starts the sign-in flow again', async () => {
+    // Given a core that reports the stored session gone, then the session the new sign-in stored
+    let reads = 0;
+    const h = await harness({
+      mainAccount: () => {
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
+          : Promise.resolve(MAIN);
+      },
+    });
+    await consentAndStore(h.flow, h);
+    await h.until('site-failed');
+
+    // When the user presses Try again
+    await h.flow.retry();
+    const readsOnRetry = h.mainReads.length;
+    must(h.windowFlows[1], 'a second window flow').stored();
+    await h.closed;
+
+    // Then Try again started the window flow again instead of reading the main account, and its sign-in went on
+    expect(readsOnRetry).toBe(1);
+    expect(h.windowFlows).toHaveLength(2);
+    expect(h.mainReads).toHaveLength(2);
+    expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
+  });
+
+  it('As an operator, I see a round whose core could not boot again counted, and the round does not capture the core redial', async () => {
+    // Given a core whose redial failed, which the page core already reported
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const redial = new CoreRedialError(new Error('The worker crashed'));
+    const h = await harness({
+      mainAccount: () => Promise.reject(new MainAccountError('unavailable', 'The core could not boot', redial)),
+    });
+
+    // When the round reads the main account
+    await consentAndStore(h.flow, h);
+    await h.until('site-failed');
+
+    // Then the failure is counted and not captured again
+    expect(captured).toEqual([]);
+    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'main_account' }]);
+  });
+
+  it('As an operator, I see a round whose stored session is gone counted and not captured', async () => {
+    // Given a core that reports the stored session gone, which only a new sign-in brings back
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const h = await harness({
+      mainAccount: () => Promise.reject(new MainAccountError('signed_out', 'The main session ended')),
+    });
+
+    // When the round reads the main account
+    await consentAndStore(h.flow, h);
+    await h.until('site-failed');
+
+    // Then the failure is counted as the main account's and nothing is captured
+    expect(captured).toEqual([]);
+    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'main_account' }]);
+  });
+
+  it('As a site the user granted before, I skip consent and keep my token', async () => {
     // Given a grant for this site and this main account
     const h = await harness({ siteToken: TOKEN, grants: [grantOf()] });
 
-    // When the window flow hands over the paired session
+    // When the window flow says a sign-in is stored
     await h.until('window');
-    h.windowFlow().deliver(PAIRED);
+    h.windowFlow().stored();
     await h.closed;
 
-    // Then no consent showed, the action got the kept key, the site got no new token and the grant's last use moved on
+    // Then no consent showed, the action ran for the account the site named, the site got no new token and the grant's
+    // last use moved on
     expect(h.views()).not.toContain('consent');
-    expect(h.runs.map(run => run.input.knownKey)).toEqual([KNOWN_KEY]);
+    expect(h.runs.map(run => run.input.account)).toEqual([ACCOUNT]);
     expect(resultOf(h.posts).site_token).toBeUndefined();
     expect(await h.stored.list()).toEqual([grantOf({ lastUsedAt: NOW })]);
     expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'known' }]);
@@ -476,12 +588,11 @@ describe('site round', () => {
     // Given a grant whose token the site sends but which another origin was given
     const h = await harness({ siteToken: TOKEN, grants: [grantOf({ origin: 'https://other.example' })] });
 
-    // When the user consents and the window flow hands over the paired session
-    await consentAndDeliver(h.flow, h);
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
     await h.closed;
 
-    // Then the action got no known key and the site got a new token
-    expect(h.runs.map(run => run.input.knownKey)).toEqual([null]);
+    // Then the site got a new token
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
   });
 
@@ -490,17 +601,16 @@ describe('site round', () => {
     const h = await harness({ siteToken: TOKEN, grants: [grantOf({ owner: '0xother' })] });
     await h.until('window');
 
-    // When the window flow hands over the session, the user consents and the round goes on
-    h.windowFlow().deliver(PAIRED);
+    // When the window flow says a sign-in is stored, the user consents and the round goes on
+    h.windowFlow().stored();
     await h.until('consent');
     const forgotten = await h.stored.read(TOKEN);
     await h.flow.consent();
     await h.closed;
 
-    // Then the old grant is gone, the action got no known key and the site got a new token
+    // Then the old grant is gone and the site got a new token
     expect(forgotten).toBeNull();
     expect(h.windowFlows).toHaveLength(1);
-    expect(h.runs.map(run => run.input.knownKey)).toEqual([null]);
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
     expect((await h.stored.list()).map(grant => grant.token)).toEqual([NEW_TOKEN]);
   });
@@ -522,39 +632,6 @@ describe('site round', () => {
     expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'declined' }]);
   });
 
-  it('As a user signed in with only a local wallet, I refuse the site with unsupported_wallet', async () => {
-    // Given a main store that holds only a local wallet
-    const h = await harness();
-
-    // When the window flow hands it over
-    await consentAndDeliver(h.flow, h, { session: null, localWallet: { entropy: WALLET_ENTROPY, identity: null } });
-    await h.closed;
-
-    // Then the site is refused for the wallet and the action never ran
-    expect(h.posts).toEqual([{ type: 'dotli:s:refused', reason: 'unsupported_wallet' }]);
-    expect(h.runs).toEqual([]);
-    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'unsupported_wallet' }]);
-  });
-
-  it('As a user whose cached account is gone, I see the failure and retry from the main store', async () => {
-    // Given a delivered session without its account
-    const h = await harness();
-    await consentAndDeliver(h.flow, h, { session: { blob: MAIN_BLOB, uiState: null }, localWallet: null });
-    await h.until('site-failed');
-
-    // When the user retries
-    await h.flow.retry();
-    await h.closed;
-
-    // Then the retry read the account the main store caches and the site got its result
-    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
-    expect(resultOf(h.posts).result).toEqual(RESULT);
-    expect(h.metrics.counted(METRIC)).toEqual([
-      { outcome: 'error', reason: 'cache' },
-      { outcome: 'granted', reason: 'new' },
-    ]);
-  });
-
   it('As a user who cancels on the consent view, I tell the site and close the window', async () => {
     // Given the consent view
     const h = await harness();
@@ -573,7 +650,7 @@ describe('site round', () => {
     // Given a round whose new grant is being saved
     const gate = deferred<undefined>();
     const h = await harness({ saveGate: gate.promise });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.untilSaving();
 
     // When the user cancels and the save then commits
@@ -591,7 +668,7 @@ describe('site round', () => {
     // Given a round whose new grant is being saved to a store that will fail it
     const gate = deferred<undefined>();
     const h = await harness({ saveGate: gate.promise, saveFails: true });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.untilSaving();
 
     // When the user cancels and the save then fails
@@ -613,7 +690,7 @@ describe('site round', () => {
   it('As a user who cancels while the action runs, I stop the action and the site hears only the cancel', async () => {
     // Given an action that runs until the test ends it
     const h = await harness({ held: true });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     const run = await h.started();
 
     // When the user cancels and the action then ends with its result
@@ -629,31 +706,14 @@ describe('site round', () => {
     expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
-  it('As a user who cancels while an action that names its cancel runs, I refuse the site with that reason and not a cancel', async () => {
-    // Given an action that runs until the test ends it and answers a Cancel with transaction_unknown
-    const h = await harness({ held: true, cancelAs: 'transaction_unknown' });
-    await consentAndDeliver(h.flow, h);
-    const run = await h.started();
-
-    // When the user cancels
-    h.flow.cancel();
-    await h.closed;
-
-    // Then the action's signal aborted, the site was refused with the action's reason, once, and it counted as a refusal
-    expect(run.input.signal.aborted).toBe(true);
-    expect(h.posts).toEqual([{ type: 'dotli:s:refused', reason: 'transaction_unknown' }]);
-    expect(h.closes()).toBe(1);
-    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'transaction_unknown' }]);
-  });
-
   it('As a user whose window flow failed to start, I retry and the window flow starts and the site gets its result', async () => {
     // Given a site granted before, whose window flow fails to start
     const h = await harness({ siteToken: TOKEN, grants: [grantOf()], windowFlowFails: true });
     await h.until('site-failed');
 
-    // When the user retries and the started window flow hands over the paired session
+    // When the user retries and the started window flow says a sign-in is stored
     await h.flow.retry();
-    h.windowFlow().deliver(PAIRED);
+    h.windowFlow().stored();
     await h.closed;
 
     // Then the retry started the window flow, and the site got its result
@@ -669,17 +729,16 @@ describe('site round', () => {
     // Given a grant for this site in a grants store whose read fails
     const h = await harness({ siteToken: TOKEN, grants: [grantOf()], readFails: true });
 
-    // When the user consents and the window flow hands over the paired session
-    await consentAndDeliver(h.flow, h);
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
     await h.closed;
 
-    // Then the failed read was reported and counted, and the action got no known key and the site a new token
+    // Then the failed read was reported and counted, and the site got a new token
     expect(h.errors).toHaveLength(1);
     expect(h.metrics.counted(METRIC)).toEqual([
       { outcome: 'error', reason: 'grant_read' },
       { outcome: 'granted', reason: 'new' },
     ]);
-    expect(h.runs.map(run => run.input.knownKey)).toEqual([null]);
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
   });
 
@@ -688,7 +747,7 @@ describe('site round', () => {
     const h = await harness({ failures: [new SiteRoundRefusal('no_username')] });
 
     // When the round reaches the action
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site is refused with the action's reason, nothing was kept and nothing was reported
@@ -705,7 +764,7 @@ describe('site round', () => {
     const h = await harness({ failures: [new SiteRoundRefusal('transaction_invalid', failure)] });
 
     // When the round reaches the action
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site is refused, the refusal and its cause were reported once, and only the refusal was counted
@@ -721,7 +780,7 @@ describe('site round', () => {
   it('As a site whose round the user left, I hear nothing of a refusal the action throws after', async () => {
     // Given an action that runs until the test ends it, and a user who cancelled meanwhile
     const h = await harness({ held: true });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     const run = await h.started();
     h.flow.cancel();
     await h.closed;
@@ -742,7 +801,7 @@ describe('site round', () => {
     const h = await harness({ failures: [new SiteRoundRejected()] });
 
     // When the round reaches the action
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site hears the round was cancelled and nothing was kept
@@ -754,7 +813,7 @@ describe('site round', () => {
   it('As a user whose action failed, I see the failure with Try again, retry and the site gets its result', async () => {
     // Given an action that fails once at a step that may be tried again
     const h = await harness({ failures: [new SiteRoundFailure('chain', true, 'The chain is out of reach')] });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
     const failed = { screen: h.flow.screen.get(), posts: [...h.posts], errors: h.errors.length };
 
@@ -778,8 +837,8 @@ describe('site round', () => {
 
   it('As a user whose action failed past trying again, I see the failure without Try again and a Retry does nothing', async () => {
     // Given an action that fails at a step that may not be tried again
-    const h = await harness({ failures: [new SiteRoundFailure('submit', false, 'The watch was lost')] });
-    await consentAndDeliver(h.flow, h);
+    const h = await harness({ failures: [new SiteRoundFailure('chain', false, 'Another network')] });
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
 
     // When a Retry is asked anyway
@@ -789,7 +848,7 @@ describe('site round', () => {
     expect(h.flow.screen.get()).toEqual({ view: 'site-failed', origin: ORIGIN, route: 'sign', retry: false });
     expect(h.runs).toHaveLength(1);
     expect(h.posts).toEqual([]);
-    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'submit' }]);
+    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'error', reason: 'chain' }]);
   });
 
   it('As a user whose action failed for a reason it does not name, I see the failure with Try again counted for the action', async () => {
@@ -797,7 +856,7 @@ describe('site round', () => {
     const h = await harness({ failures: [new Error('Something broke')] });
 
     // When the round reaches the action
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     await h.until('site-failed');
 
     // Then the failure shows with Try again, is reported and counted for the action, and the site heard nothing
@@ -810,7 +869,7 @@ describe('site round', () => {
   it('As a user, I press confirm before the action asks for one and the press goes nowhere', async () => {
     // Given an action that runs until the test ends it
     const h = await harness({ held: true });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     const run = await h.started();
     const settled: string[] = [];
 
@@ -830,7 +889,7 @@ describe('site round', () => {
   it('As a user, I press confirm after the action showed another view and only its next ask settles', async () => {
     // Given an action that asks for a confirm and then shows another view
     const h = await harness({ held: true });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     const run = await h.started();
     const settled: string[] = [];
     const first = run.input.confirmed();
@@ -854,7 +913,7 @@ describe('site round', () => {
   it('As a user who cancels while the action waits for my confirm, I end its wait', async () => {
     // Given an action that waits for the user's confirm
     const h = await harness({ held: true });
-    await consentAndDeliver(h.flow, h);
+    await consentAndStore(h.flow, h);
     const run = await h.started();
     const asked = run.input.confirmed();
 
@@ -868,7 +927,6 @@ describe('site round', () => {
 });
 
 const SHOP = 'https://shop.my-site.com';
-const GROUP_INDEX = groupDerivationIndex('my-site.com', GROUP_TOKEN);
 
 /** A grant of `registrable`'s group under {@link GROUP_TOKEN}, made by `origin`. */
 function groupGrantOf(registrable: string, fields: Partial<SiteGrant> = {}): SiteGrant {
@@ -877,26 +935,29 @@ function groupGrantOf(registrable: string, fields: Partial<SiteGrant> = {}): Sit
 }
 
 describe('site round of a group', () => {
-  it('As a user on a new site of a group, I consent naming its registrable domain and the action runs for the group', async () => {
+  it('As a user on a new site of a group, I consent naming its registrable domain and the site gets a grant of the group', async () => {
     // Given a site that asks under a group token, with no grant kept
     const h = await harness({ groupToken: GROUP_TOKEN });
 
-    // When the user consents and the window flow hands over the paired session
-    await consentAndDeliver(h.flow, h);
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
     await h.closed;
 
-    // Then the consent named the group's registrable domain, the action ran at the group's index, and the site got a
-    // new token for a grant of the group
-    expect(h.screens).toContainEqual({ view: 'consent', origin: ORIGIN, statement: STATEMENT, group: 'my-site.com' });
-    expect(h.runs.map(run => ({ index: run.input.index, knownKey: run.input.knownKey }))).toEqual([
-      { index: GROUP_INDEX, knownKey: null },
-    ]);
+    // Then the consent named the group's registrable domain, the action ran for the account the site named, and the
+    // site got a new token for a grant of the group
+    expect(h.screens).toContainEqual({
+      view: 'consent',
+      origin: ORIGIN,
+      statement: STATEMENT,
+      group: 'my-site.com',
+      account: displayAccount(ACCOUNT),
+    });
+    expect(h.runs.map(run => run.input.account)).toEqual([ACCOUNT]);
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
     expect(await h.stored.list()).toEqual([
       {
         token: NEW_TOKEN,
         origin: ORIGIN,
-        publicKey: toHex(SITE_KEY),
         owner: OWNER,
         firstUsedAt: NOW,
         lastUsedAt: NOW,
@@ -915,17 +976,14 @@ describe('site round of a group', () => {
       grants: [groupGrantOf('my-site.com')],
     });
 
-    // When the window flow hands over the paired session
+    // When the window flow says a sign-in is stored
     await h.until('window');
-    h.windowFlow().deliver(PAIRED);
+    h.windowFlow().stored();
     await h.closed;
 
-    // Then no consent showed, the action got the group's key at the group's index, the site kept its token and the
-    // grant lists both origins
+    // Then no consent showed, the action ran, the site kept its token and the grant lists both origins
     expect(h.views()).not.toContain('consent');
-    expect(h.runs.map(run => ({ index: run.input.index, knownKey: run.input.knownKey }))).toEqual([
-      { index: GROUP_INDEX, knownKey: KNOWN_KEY },
-    ]);
+    expect(h.runs).toHaveLength(1);
     expect(resultOf(h.posts).site_token).toBeUndefined();
     expect(await h.stored.list()).toEqual([
       groupGrantOf('my-site.com', {
@@ -957,14 +1015,19 @@ describe('site round of a group', () => {
         grants: [groupGrantOf(grantRegistrable, { origin: grantOrigin })],
       });
 
-      // When the user consents and the window flow hands over the paired session
-      await consentAndDeliver(h.flow, h);
+      // When the user consents and the window flow says a sign-in is stored
+      await consentAndStore(h.flow, h);
       await h.closed;
 
-      // Then the consent named the site's own registrable domain, the action got no known key, and the site got a new
-      // token for a grant apart from the other
-      expect(h.screens).toContainEqual({ view: 'consent', origin, statement: STATEMENT, group: registrable });
-      expect(h.runs.map(run => run.input.knownKey)).toEqual([null]);
+      // Then the consent named the site's own registrable domain, and the site got a new token for a grant apart from
+      // the other
+      expect(h.screens).toContainEqual({
+        view: 'consent',
+        origin,
+        statement: STATEMENT,
+        group: registrable,
+        account: displayAccount(ACCOUNT),
+      });
       expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
       expect((await h.stored.list()).map(grant => grant.group?.registrable).sort()).toEqual(
         [grantRegistrable, registrable].sort(),
@@ -979,12 +1042,11 @@ describe('site round of a group', () => {
     // Given a grant whose token the site sends, of a group the request does not name the same way
     const h = await harness(options);
 
-    // When the user consents and the window flow hands over the paired session
-    await consentAndDeliver(h.flow, h);
+    // When the user consents and the window flow says a sign-in is stored
+    await consentAndStore(h.flow, h);
     await h.closed;
 
-    // Then the action got no known key and the site got a new token
-    expect(h.runs.map(run => run.input.knownKey)).toEqual([null]);
+    // Then the site got a new token
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
   });
 
@@ -1033,10 +1095,10 @@ describe('site round of a group', () => {
     const store = createSiteGrantStore(memorySiteGrantsIdb());
     const gate = deferred<undefined>();
     const a = await harness({ store, groupToken: GROUP_TOKEN, saveGate: gate.promise });
-    await consentAndDeliver(a.flow, a);
+    await consentAndStore(a.flow, a);
     await a.untilSaving();
     const b = await harness({ store, origin: SHOP, groupToken: GROUP_TOKEN, newToken: OTHER_TOKEN });
-    await consentAndDeliver(b.flow, b);
+    await consentAndStore(b.flow, b);
     await b.closed;
 
     // When the user cancels round A and its save then commits
@@ -1053,7 +1115,6 @@ describe('site round of a group', () => {
       {
         token: OTHER_TOKEN,
         origin: SHOP,
-        publicKey: toHex(SITE_KEY),
         owner: OWNER,
         firstUsedAt: NOW,
         lastUsedAt: NOW,
@@ -1071,8 +1132,8 @@ describe('site round of a group', () => {
     });
     await h.until('window');
 
-    // When the window flow hands over the session, the user consents and the round goes on
-    h.windowFlow().deliver(PAIRED);
+    // When the window flow says a sign-in is stored, the user consents and the round goes on
+    h.windowFlow().stored();
     await h.until('consent');
     const forgotten = await h.stored.read(TOKEN);
     await h.flow.consent();
@@ -1080,8 +1141,13 @@ describe('site round of a group', () => {
 
     // Then the old grant is gone, the consent named the group, and the site got a new token for this account's grant
     expect(forgotten).toBeNull();
-    expect(h.screens).toContainEqual({ view: 'consent', origin: ORIGIN, statement: STATEMENT, group: 'my-site.com' });
-    expect(h.runs.map(run => run.input.knownKey)).toEqual([null]);
+    expect(h.screens).toContainEqual({
+      view: 'consent',
+      origin: ORIGIN,
+      statement: STATEMENT,
+      group: 'my-site.com',
+      account: displayAccount(ACCOUNT),
+    });
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
     expect((await h.stored.list()).map(grant => ({ token: grant.token, owner: grant.owner }))).toEqual([
       { token: NEW_TOKEN, owner: OWNER },

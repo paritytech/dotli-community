@@ -6,12 +6,17 @@
  * no message channel.
  */
 
+import type { Network } from '@dotli/config';
+import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
 import { asRecord, type SessionRequest } from '../session-handoff/session-protocol.js';
+import { parseSiteAccount } from './site-account.js';
 
 export interface SiteRequest {
   round: string;
   nonce: string;
+  /** The product account the site names. */
+  account: ProductAccountId;
   statement: string | null;
   siteToken: string | null;
   /** The site's group, which signs in once for every origin of the site's registrable domain. */
@@ -32,8 +37,8 @@ const REDIRECT_KEY_BYTES = 32;
 /** Keys a site never sends in this stage, on any route. */
 export const REFUSED_KEYS = ['intent'] as const;
 
-/** The site request in `request`, or null when it is a bad request. Unknown fields are ignored. */
-export function parseSiteRequest(request: SessionRequest): SiteRequest | null {
+/** The site request in `request` on `net`, or null when it is a bad request. Unknown fields are ignored. */
+export function parseSiteRequest(request: SessionRequest, net: Network): SiteRequest | null {
   const params = asRecord(request.params);
   if (params === null || REFUSED_KEYS.some(key => key in params)) {
     return null;
@@ -42,13 +47,14 @@ export function parseSiteRequest(request: SessionRequest): SiteRequest | null {
   if (typeof nonce !== 'string' || !NONCE.test(nonce)) {
     return null;
   }
+  const account = parseSiteAccount(params['account'], net);
   const statement = optionalString(params['statement'], isStatement);
   const siteToken = optionalString(params['site_token'], isSiteToken);
   const groupToken = optionalString(params['group_token'], isGroupToken);
-  if (statement === undefined || siteToken === undefined || groupToken === undefined) {
+  if (account === null || statement === undefined || siteToken === undefined || groupToken === undefined) {
     return null;
   }
-  return { round: request.round, nonce, statement, siteToken, groupToken };
+  return { round: request.round, nonce, account, statement, siteToken, groupToken };
 }
 
 /** An optional string field: `null` when absent, the value when valid, `undefined` when present and invalid. */

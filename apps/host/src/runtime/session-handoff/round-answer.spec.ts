@@ -19,6 +19,7 @@ const SITE = 'https://example.com';
 const ENABLED: readonly Network[] = ['paseo-next-v2'];
 const HUB = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].assethub.genesis;
 const CALL = '0x0a0300';
+const PRODUCT = `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`;
 
 /** A request on `route` with `params` as the page sent them. */
 function requestOf(route: SessionRoute, params: Record<string, unknown>): SessionRequest {
@@ -277,7 +278,13 @@ describe('session window round answer', () => {
     const boot = deferred<string>();
     const answered = answerSignIn({
       responder,
-      request: requestOf('auth', { v: 1, net: 'paseo-next-v2', nonce: 'abcdefgh', origin: 'https://other.example' }),
+      request: requestOf('auth', {
+        v: 1,
+        net: 'paseo-next-v2',
+        nonce: 'abcdefgh',
+        account: `${PRODUCT}/0`,
+        origin: 'https://other.example',
+      }),
       enabled: ENABLED,
       booted: boot.promise,
     });
@@ -291,7 +298,14 @@ describe('session window round answer', () => {
     expect(round).toEqual({
       party: 'third',
       origin: SITE,
-      request: { round: 'r1', nonce: 'abcdefgh', statement: null, siteToken: null, groupToken: null },
+      request: {
+        round: 'r1',
+        nonce: 'abcdefgh',
+        account: { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } },
+        statement: null,
+        siteToken: null,
+        groupToken: null,
+      },
       net: 'paseo-next-v2',
       booted: 'bridge',
     });
@@ -324,7 +338,7 @@ describe('session window round answer', () => {
     const { metrics, responder, hello, answers } = harness();
     const answered = answerSignIn({
       responder,
-      request: requestOf('auth', { v: 2, net: 'paseo-next-v2', nonce: 'abcdefgh' }),
+      request: requestOf('auth', { v: 2, net: 'paseo-next-v2', nonce: 'abcdefgh', account: `${PRODUCT}/0` }),
       enabled: ENABLED,
       booted: Promise.resolve('bridge'),
     });
@@ -371,6 +385,7 @@ describe('session window round answer', () => {
         net: 'paseo-next-v2',
         chain: HUB,
         call: CALL,
+        account: `${PRODUCT}/0`,
         origin: 'https://other.example',
       }),
       enabled: ENABLED,
@@ -386,7 +401,14 @@ describe('session window round answer', () => {
     expect(round).toEqual({
       party: 'third-sign',
       origin: SITE,
-      request: { round: 'r1', siteToken: null, groupToken: null, chain: HUB, call: CALL },
+      request: {
+        round: 'r1',
+        account: { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } },
+        siteToken: null,
+        groupToken: null,
+        chain: HUB,
+        call: CALL,
+      },
       booted: 'bridge',
     });
     expect(answers()).toEqual([]);
@@ -423,7 +445,7 @@ describe('session window round answer', () => {
     const { metrics, responder, hello, answers } = harness();
     const answered = answerSignIn({
       responder,
-      request: requestOf('sign', { v: 1, net: 'paseo-next-v2', chain: HUB, call: CALL }),
+      request: requestOf('sign', { v: 1, net: 'paseo-next-v2', chain: HUB, call: CALL, account: `${PRODUCT}/0` }),
       enabled: ENABLED,
       booted: Promise.resolve('bridge'),
     });

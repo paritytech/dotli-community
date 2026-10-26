@@ -1,12 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { hex } from '@scure/base';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createSyncStore, deferred, fromHex, storeStatus, toHex, untilStatus } from '@dotli/shared';
+import { blake2b, createSyncStore, deferred, fromHex, storeStatus, toHex, untilStatus } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { memorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -19,10 +20,12 @@ import type { DotliAuthState } from '../session/auth-state.js';
 import { createFakeSessionPresence } from '../session/presence.fake.js';
 import { ownerSignInFlag } from '../session/sign-in-flag.js';
 import { createFakePageEvents } from '../../testing/page-events.js';
+import { MainAccountError, mainAccountOf, type MainAccount } from './main-account.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
+import { displayAccount } from './site-account.js';
 import { encodeSs58 } from './site-assertion.js';
 import type { DisplayCall } from './site-call.js';
-import type { SiteChain, SiteSubmitEvent } from './site-chain.js';
+import type { SiteChain } from './site-chain.js';
 import type { SiteSignRequest } from './site-sign-request.js';
 import type { SiteSigner } from './site-signer.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowDeps } from './site-window.js';
@@ -31,10 +34,17 @@ const SELF = 'https://dot.li';
 const ORIGIN = 'https://my-site.com';
 const NET = NetworkName.PASEO;
 const NETWORK = NETWORK_NAME_TO_SERVICES_CONFIG[NET];
+const ACCOUNT: ProductAccountId = {
+  dotNsIdentifier: `myapp.${NETWORK.dotns.TLD}`,
+  derivationIndex: { tag: 'Index', value: 0 },
+};
 const NOW = Date.parse('2026-10-23T15:00:00.000Z');
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
-const MAIN_UI_STATE = JSON.stringify({ connected: true, publicKey: MAIN_KEY, fullUsername: 'alice.dot' });
+const MAIN_SESSION = { connected: true, publicKey: MAIN_KEY, fullUsername: 'alice.dot' };
+const MAIN_UI_STATE = JSON.stringify(MAIN_SESSION);
+/** The main account the window's core reports, read as the window reads it. */
+const MAIN: MainAccount = must(mainAccountOf(MAIN_SESSION), 'the main account');
 const MAIN_BLOB = 'MAIN-SESSION-BLOB';
 const WALLET_ENTROPY = new Uint8Array(16).fill(0x5c);
 const WALLET_ACCOUNT = '5LocalWalletIdentityAccountOfTheMainStore';
@@ -50,15 +60,16 @@ const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true
 const CALL = '0x0a0300010203';
 const PAYLOAD_CALL = '0x0a0300040506';
 const DISPLAY: DisplayCall = { name: 'Balances.transfer_keep_alive', args: [{ name: 'value', value: '1' }] };
-const TX_HASH = `0x${'ab'.repeat(32)}`;
-const BLOCK_HASH = `0x${'cd'.repeat(32)}`;
+/** The signed transaction the fake chain builds. */
+const SIGNED_TX = `0x${'5e'.repeat(80)}`;
 
 /**
  * A session window over fakes for a site's round: the opener and its messages, a main store that holds a paired
- * session and a local wallet, the window's auth state, an in-memory grants store and a signer that signs at once, with
- * the window's real responder and real window flow. The site said hello, so the window is vetted.
+ * session and a local wallet, the window's auth state, the main account its core reports through `mainAccount`, an
+ * in-memory grants store and a signer that signs at once, with the window's real responder and real window flow. The
+ * site said hello, so the window is vetted.
  */
-function windowParts() {
+function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.resolve(MAIN)) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   recordLog({ onFinished: onTestFinished, level: 'error' });
   const opener = createFakeWindowHandle();
@@ -123,8 +134,7 @@ function windowParts() {
       registrable: () => Promise.reject(new Error('The window loaded the suffix list for a site of no group')),
     },
     signer,
-    auth: createSyncStore<DotliAuthState>('testSiteAuth', CONNECTED),
-    readUiCache: () => Promise.resolve(MAIN_UI_STATE),
+    mainAccount,
     now: () => NOW,
     randomToken: () => TOKEN,
     close: () => {
@@ -168,23 +178,29 @@ function watchWindow({ site, screen }: SiteWindow) {
   };
 }
 
-/** A site's sign-in in a session window over the window's parts. */
-function harness() {
-  const parts = windowParts();
+/**
+ * A site's sign-in in a session window over the window's parts, whose core reports the main account as `mainAccount`
+ * says.
+ */
+function harness(mainAccount?: SiteWindowDeps['mainAccount']) {
+  const parts = windowParts(mainAccount);
   const window = openSiteSignIn({
     ...parts.deps,
-    request: { round: 'r1', nonce: '8f2c1a9e0b7d4e6f', statement: null, siteToken: null, groupToken: null },
+    request: {
+      round: 'r1',
+      nonce: '8f2c1a9e0b7d4e6f',
+      account: ACCOUNT,
+      statement: null,
+      siteToken: null,
+      groupToken: null,
+    },
   });
   return { ...parts, ...watchWindow(window) };
 }
 
-/** Asset Hub that decodes any call and includes its transaction, recording each call it decodes as hex. */
+/** Asset Hub that decodes any call and builds its signed transaction, recording each call it decodes as hex. */
 function fakeChain() {
   const decoded: string[] = [];
-  const events: SiteSubmitEvent[] = [
-    { kind: 'submitted', txHash: TX_HASH },
-    { kind: 'included', txHash: TX_HASH, blockHash: BLOCK_HASH, ok: true },
-  ];
   const chain: SiteChain = {
     open: () =>
       Promise.resolve({
@@ -192,26 +208,10 @@ function fakeChain() {
           decoded.push(toHex(call));
           return Promise.resolve({
             display: DISPLAY,
-            transaction: {
-              createSubmitAndWatch: () => {
-                throw new Error('The fake chain submits through its session');
-              },
-            },
+            transaction: { create: () => Promise.reject(new Error('The fake chain builds through its session')) },
           });
         },
-        submit: () => {
-          const queue = [...events];
-          return {
-            [Symbol.asyncIterator]: () => ({
-              next: (): Promise<IteratorResult<SiteSubmitEvent>> => {
-                const event = queue.shift();
-                return Promise.resolve(
-                  event === undefined ? { done: true, value: undefined } : { done: false, value: event },
-                );
-              },
-            }),
-          };
-        },
+        create: () => Promise.resolve(fromHex(SIGNED_TX)),
         close: () => undefined,
       }),
   };
@@ -219,26 +219,23 @@ function fakeChain() {
 }
 
 /**
- * A site's transaction window over the window's parts and a chain that includes it, for a request that carries
- * `call` or leaves it to a payload. `asked` resolves once the window asked for the payload. With `grantRead`, the
- * request carries an old token whose read waits for it. `submitted` names the rounds the tab already submitted.
+ * A site's transaction window over the window's parts and a chain that builds it, for a request that carries `call`
+ * or leaves it to a payload. `asked` resolves once the window asked for the payload. With `grantRead`, the request
+ * carries an old token whose read waits for it.
  */
-function transactionHarness(
-  call: string | null,
-  { grantRead, submitted = [] }: { grantRead?: Promise<void>; submitted?: string[] } = {},
-) {
+function transactionHarness(call: string | null, { grantRead }: { grantRead?: Promise<void> } = {}) {
   const parts = windowParts();
   const { chain, decoded } = fakeChain();
   const asked = deferred<undefined>();
   const request: SiteSignRequest = {
     round: 'r1',
+    account: ACCOUNT,
     siteToken: grantRead === undefined ? null : OLD_TOKEN,
     groupToken: null,
     chain: NETWORK.assethub.genesis,
     call,
   };
   const { responder, grants } = parts.deps;
-  const marked = new Set(submitted);
   const opening = openSiteTransaction({
     ...parts.deps,
     request,
@@ -257,13 +254,7 @@ function transactionHarness(
       },
     },
     chain,
-    txSigner: { creator: () => () => Promise.reject(new Error('The fake chain builds no transaction')) },
-    submitted: {
-      has: round => marked.has(round),
-      mark: round => {
-        marked.add(round);
-      },
-    },
+    txSigner: { creator: () => () => Promise.reject(new Error('The fake chain signs no transaction')) },
   });
   return { ...parts, decoded, asked: asked.promise, opening };
 }
@@ -291,6 +282,7 @@ describe('site sign-in window', () => {
       encodeSs58(fromHex(MAIN_KEY), NETWORK.ss58Prefix),
       hex.encode(WALLET_ENTROPY),
       WALLET_ACCOUNT,
+      toHex(blake2b(fromHex(MAIN_KEY), 32)),
     ];
     expect(sent.filter(message => message.includes('dotli:s:result'))).toHaveLength(1);
     expect(sent.join('\n')).toContain(toHex(SITE_KEY));
@@ -318,6 +310,28 @@ describe('site sign-in window', () => {
       { view: 'site-signing', route: 'auth' },
     ]);
   });
+
+  it('As a user whose stored session is gone, I press Try again and the window resumes the sign-in in a new flow', async () => {
+    // Given a core that first reports the stored session gone, then the session the new flow resumes
+    let reads = 0;
+    const h = harness(() => {
+      reads += 1;
+      return reads === 1
+        ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
+        : Promise.resolve(MAIN);
+    });
+    await h.until('consent');
+    await h.site.consent();
+    await h.until('site-failed');
+
+    // When the user presses Try again
+    await h.site.retry();
+    await h.closed;
+
+    // Then the window flow ran again, its view showed, and the site got its one result
+    expect(h.shown.filter(shown => shown.view === 'connecting')).toHaveLength(2);
+    expect(h.posted().filter(message => JSON.stringify(message).includes('dotli:s:result'))).toHaveLength(1);
+  });
 });
 
 describe('site group window', () => {
@@ -331,13 +345,26 @@ describe('site group window', () => {
       openSiteSignIn({
         ...parts.deps,
         groups: { registrable: hostname => Promise.resolve(suffixes.registrable(hostname)) },
-        request: { round: 'r1', nonce: '8f2c1a9e0b7d4e6f', statement: null, siteToken: null, groupToken: 'my group' },
+        request: {
+          round: 'r1',
+          nonce: '8f2c1a9e0b7d4e6f',
+          account: ACCOUNT,
+          statement: null,
+          siteToken: null,
+          groupToken: 'my group',
+        },
       }),
     );
     await w.until('consent');
 
     // Then the consent names the site's origin and its group's registrable domain
-    expect(w.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, statement: null, group: 'my-site.com' });
+    expect(w.screen.get()).toEqual({
+      view: 'consent',
+      origin: ORIGIN,
+      statement: null,
+      group: 'my-site.com',
+      account: displayAccount(ACCOUNT),
+    });
   });
 });
 
@@ -357,7 +384,7 @@ describe('site transaction window', () => {
     expect(w.screen.get()).toMatchObject({ origin: ORIGIN });
   });
 
-  it("As a site, I get my transaction's result for the call my request carries, ignoring any payload", async () => {
+  it('As a site, I get my signed transaction for the call my request carries, ignoring any payload', async () => {
     // Given a site's request that carries its call, and a payload with another call the site posted as well
     const h = transactionHarness(CALL);
     h.payload(PAYLOAD_CALL);
@@ -370,12 +397,12 @@ describe('site transaction window', () => {
     w.site.confirm();
     await h.closed;
 
-    // Then the request's call was decoded, and the site got the transaction's result
+    // Then the request's call was decoded, and the site got the signed transaction
     expect(h.decoded).toEqual([CALL]);
     expect(h.posted()).toContainEqual({
       type: 'dotli:s:result',
       round: 'r1',
-      result: { tx_hash: TX_HASH, status: 'included', block_hash: BLOCK_HASH },
+      result: { transaction: SIGNED_TX },
       site_token: TOKEN,
     });
   });
@@ -412,23 +439,6 @@ describe('site transaction window', () => {
     expect(h.posted()).toContainEqual({ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' });
     expect(h.metrics.counted('session_pages.site_transaction')).toEqual([
       { outcome: 'refused', reason: 'bad_request' },
-    ]);
-  });
-
-  it('As a site whose window reloaded after it submitted my transaction, I am refused with transaction_unknown before my call or any consent', async () => {
-    // Given a reloaded window whose tab submitted this round's transaction, for a request with no call
-    const h = transactionHarness(null, { submitted: ['r1'] });
-
-    // When the window opens the round
-    const window = await h.opening;
-    await h.closed;
-
-    // Then no round starts, nothing was decoded, and the site is refused as unknown, counted as its transaction
-    expect(window).toBeNull();
-    expect(h.decoded).toEqual([]);
-    expect(h.posted()).toContainEqual({ type: 'dotli:s:refused', round: 'r1', reason: 'transaction_unknown' });
-    expect(h.metrics.counted('session_pages.site_transaction')).toEqual([
-      { outcome: 'refused', reason: 'transaction_unknown' },
     ]);
   });
 });

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A site's round in the session window, its sign-in or its transaction, wired to the window flow it reuses. The window
-// flow resumes the main session and hands it to the site's round, never to the responder, so what the site gets is only
-// what its own round builds. The window shows the site's views, or the window flow's while the site hands the window to
-// that flow. A transaction's round starts only once the window has the site's call.
+// flow signs in or resumes the main session and tells the site's round only that a sign-in is stored, never the session
+// and never the responder, so what the site gets is only what its own round builds. The window shows the site's views,
+// or the window flow's while the site hands the window to that flow. A transaction's round starts only once the window
+// has the site's call.
 
 import type { Network } from '@dotli/config';
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
@@ -13,7 +14,7 @@ import type { SignInScreen, SiteWindowScreen } from '../../state/session-window.
 import type { Responder } from '../session-handoff/responder.js';
 import { refuseRound } from '../session-handoff/round-answer.js';
 import type { WindowFlow, WindowFlowDeps } from '../session-handoff/window-flow.js';
-import type { DotliAuthState } from '../session/auth-state.js';
+import type { MainAccount } from './main-account.js';
 import type { SiteChain } from './site-chain.js';
 import type { SiteGroups } from './site-groups.js';
 import type { SiteRequest } from './site-request.js';
@@ -21,7 +22,7 @@ import type { SiteRound, SiteRoundDeps } from './site-round.js';
 import { createSiteSignIn } from './site-sign-in.js';
 import { parseSiteCall, type SiteSignRequest } from './site-sign-request.js';
 import type { SiteSigner } from './site-signer.js';
-import { createSiteTransaction, type SiteSubmissions } from './site-transaction.js';
+import { createSiteTransaction } from './site-transaction.js';
 import type { SiteTxSigner } from './site-tx-signer.js';
 
 /** What the site's round decides for its window flow, which the caller completes with the window's own parts. */
@@ -42,9 +43,11 @@ export interface SiteWindowDeps {
   /** The window's own origin. */
   self: string;
   signer: SiteSigner;
-  auth: ReadableStore<DotliAuthState>;
-  /** The main store's cached account, read again on a Retry. */
-  readUiCache: () => Promise<string | null>;
+  /**
+   * The main account the window's core reports, once it reports one. Rejects with a `MainAccountError` when the core
+   * cannot boot or its session is gone, or once `signal` aborts.
+   */
+  mainAccount: (signal: AbortSignal) => Promise<MainAccount>;
   now: () => number;
   randomToken: () => string;
   close: () => void;
@@ -61,7 +64,6 @@ export type SiteTransactionWindowDeps = Omit<SiteWindowDeps, 'request' | 'net'> 
   request: SiteSignRequest;
   chain: SiteChain;
   txSigner: SiteTxSigner;
-  submitted: SiteSubmissions;
 };
 
 /**
@@ -73,13 +75,28 @@ function openSiteWindow(
   createRound: (startWindowFlow: SiteRoundDeps<unknown>['startWindowFlow']) => SiteRound,
 ): SiteWindow {
   const { responder } = deps;
-  // The window flow's screen, once the site started that flow.
+  // The window flow's screen, while a flow the site started has not stored its sign-in.
   const flowScreen = createSyncStore<SignInScreen | null>('siteWindowFlow', null);
-  const site = createRound((deliver, close) => {
-    // A site is named by its full origin, so two sites on one host never read the same.
-    const flow = deps.createWindowFlow({ responder, intent: 'resume', pageLabel: origin => origin, deliver, close });
+  const site = createRound((stored, close) => {
+    // A round whose stored session is gone starts a flow again on Try again. The flow before it delivered, so its
+    // phase is ended and it acts on nothing, and it is left to go with the window.
+    let stopFollowing = (): void => undefined;
+    const flow = deps.createWindowFlow({
+      responder,
+      intent: 'resume',
+      // A site is named by its full origin, so two sites on one host never read the same.
+      pageLabel: origin => origin,
+      // The flow is done once it stored a sign-in, so a flow the round starts after it shows alone. The result stays
+      // here, so nothing of the session reaches the round.
+      deliver: () => {
+        stopFollowing();
+        flowScreen.set(null);
+        stored();
+      },
+      close,
+    });
     flowScreen.set(flow.screen.get());
-    flow.screen.subscribe(() => {
+    stopFollowing = flow.screen.subscribe(() => {
       flowScreen.set(flow.screen.get());
     });
   });
@@ -115,8 +132,7 @@ export function openSiteSignIn(deps: SiteWindowDeps): SiteWindow {
       groups: deps.groups,
       self: deps.self,
       signer: deps.signer,
-      auth: deps.auth,
-      readUiCache: deps.readUiCache,
+      mainAccount: deps.mainAccount,
       startWindowFlow,
       now: deps.now,
       randomToken: deps.randomToken,
@@ -128,17 +144,10 @@ export function openSiteSignIn(deps: SiteWindowDeps): SiteWindow {
 /**
  * Runs a site's transaction for the vetted origin with the window flow it reuses, once the window has the site's call:
  * the request's, else the payload's, while the responder's view stays on show. Resolves with the window once the round
- * opened, or null once it refused a round whose transaction this tab submitted before, or a call that is not one, and
- * closed the window.
+ * opened, or null once it refused a call that is not one and closed the window.
  */
 export async function openSiteTransaction(deps: SiteTransactionWindowDeps): Promise<SiteWindow | null> {
   const { request, responder } = deps;
-  if (deps.submitted.has(request.round)) {
-    // A window reloaded after the chain had the round's transaction, which no consent or call may lead to again.
-    refuseRound(responder, 'third', 'transaction_unknown', 'sign');
-    deps.close();
-    return null;
-  }
   // A request that carries its call never reads a payload.
   const call = parseSiteCall(request.call ?? (await responder.payload()));
   if (call === null) {
@@ -158,9 +167,7 @@ export async function openSiteTransaction(deps: SiteTransactionWindowDeps): Prom
       chain: deps.chain,
       txSigner: deps.txSigner,
       signer: deps.signer,
-      submitted: deps.submitted,
-      auth: deps.auth,
-      readUiCache: deps.readUiCache,
+      mainAccount: deps.mainAccount,
       startWindowFlow,
       now: deps.now,
       randomToken: deps.randomToken,

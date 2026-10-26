@@ -13,7 +13,6 @@ function grantOf(token: string, origin: string, lastUsedAt: number): SiteGrant {
   return {
     token,
     origin,
-    publicKey: `0x${'ab'.repeat(32)}`,
     owner: `0x${'cd'.repeat(32)}`,
     firstUsedAt: 1000,
     lastUsedAt,

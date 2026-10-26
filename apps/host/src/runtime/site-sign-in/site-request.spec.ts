@@ -1,19 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { base64urlnopad } from '@scure/base';
 import { describe, expect, it } from 'vitest';
 import type { SessionRequest } from '../session-handoff/session-protocol.js';
 import { parseSiteRequest, readRedirectFields } from './site-request.js';
 
 const NONCE = 'abcd1234';
+const PRODUCT = `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`;
 
 const request = (extra: Record<string, unknown>): SessionRequest => ({
   route: 'auth',
   round: 'r1',
   v: 1,
   net: 'paseo-next-v2',
-  params: { v: 1, net: 'paseo-next-v2', round: 'r1', nonce: NONCE, ...extra },
+  params: { v: 1, net: 'paseo-next-v2', round: 'r1', nonce: NONCE, account: `${PRODUCT}/0`, ...extra },
 });
 
 const token = (bytes: number) => base64urlnopad.encode(new Uint8Array(bytes).fill(7));
@@ -24,10 +26,17 @@ describe('site request', () => {
     const input = request({});
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then the fields are read and the optional ones are null
-    expect(parsed).toEqual({ round: 'r1', nonce: NONCE, statement: null, siteToken: null, groupToken: null });
+    expect(parsed).toEqual({
+      round: 'r1',
+      nonce: NONCE,
+      account: { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } },
+      statement: null,
+      siteToken: null,
+      groupToken: null,
+    });
   });
 
   it.each([
@@ -42,7 +51,7 @@ describe('site request', () => {
     const input = request({ nonce });
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then it is read only when the nonce is in bounds
     expect(parsed !== null).toBe(accepted);
@@ -54,10 +63,32 @@ describe('site request', () => {
     const numeric = request({ nonce: 12345678 });
 
     // When they are parsed
-    const results = [parseSiteRequest(missing), parseSiteRequest(numeric)];
+    const results = [parseSiteRequest(missing, 'paseo-next-v2'), parseSiteRequest(numeric, 'paseo-next-v2')];
 
     // Then both are refused
     expect(results).toEqual([null, null]);
+  });
+
+  it('As a site, I leave out the account and the window refuses my request', () => {
+    // Given a request without an account
+    const input = request({ account: undefined });
+
+    // When it is parsed
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
+
+    // Then it is refused
+    expect(parsed).toBeNull();
+  });
+
+  it('As a site, I send a malformed account and the window refuses my request', () => {
+    // Given a request whose account names no network TLD
+    const input = request({ account: 'myapp/0' });
+
+    // When it is parsed
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
+
+    // Then it is refused
+    expect(parsed).toBeNull();
   });
 
   it.each([
@@ -77,7 +108,7 @@ describe('site request', () => {
     const input = request({ statement });
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then the statement is kept only when it is valid
     expect(parsed?.statement ?? null).toBe(accepted ? statement : null);
@@ -96,7 +127,7 @@ describe('site request', () => {
     const input = request({ site_token: siteToken });
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then the token is kept only when it is 32 bytes unpadded
     expect(parsed?.siteToken ?? null).toBe(accepted ? siteToken : null);
@@ -108,7 +139,7 @@ describe('site request', () => {
     const input = request({ intent: 'signin' });
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then it is refused
     expect(parsed).toBeNull();
@@ -133,7 +164,7 @@ describe('site request', () => {
     const input = request({ group_token: groupToken });
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then the group token is kept only when it is valid, and an invalid one is a bad request
     expect(parsed?.groupToken ?? null).toBe(accepted ? groupToken : null);
@@ -145,10 +176,17 @@ describe('site request', () => {
     const input = request({ return_to: 'https://x.example', pub: '0x00' });
 
     // When it is parsed
-    const parsed = parseSiteRequest(input);
+    const parsed = parseSiteRequest(input, 'paseo-next-v2');
 
     // Then it is read as if they were absent
-    expect(parsed).toEqual({ round: 'r1', nonce: NONCE, statement: null, siteToken: null, groupToken: null });
+    expect(parsed).toEqual({
+      round: 'r1',
+      nonce: NONCE,
+      account: { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } },
+      statement: null,
+      siteToken: null,
+      groupToken: null,
+    });
   });
 });
 

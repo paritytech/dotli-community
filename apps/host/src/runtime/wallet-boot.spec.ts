@@ -281,6 +281,46 @@ describe('wallet boot', () => {
     expect((await walletBoot.restore()).wallet).toEqual(WALLET);
   });
 
+  it('As the session window serving a site, I boot on the stored local wallet and the mode reads local', async () => {
+    // Given the sign-in window's boot over a stored local wallet, whose load already read it as data
+    const { mode, walletBoot } = bootWith(() => restored(WALLET), 'signin-window');
+    await walletBoot.restore();
+
+    // When the window serves a site and its core reads
+    walletBoot.serveSites();
+    const boot = await walletBoot.read();
+
+    // Then it boots the wallet and the mode reads local
+    expect(boot).toEqual(WALLET);
+    expect(mode.get()).toEqual({ mode: 'local', failure: null });
+  });
+
+  it('As the session window serving a site over a wallet that no longer decrypts, I am told once why', async () => {
+    // Given the sign-in window's boot over an unreadable wallet, which its load already reported
+    const { mode, walletBoot } = bootWith(() => restored({ status: 'unreadable' }), 'signin-window');
+    await walletBoot.restore();
+
+    // When the window serves a site and its core reads
+    walletBoot.serveSites();
+    const boot = await walletBoot.read();
+
+    // Then it pairs, the failure stays on show and was reported once
+    expect(boot).toBeNull();
+    expect(mode.get().failure).toMatch(/could not be decrypted/);
+    expect(captures.exception).toHaveBeenCalledTimes(1);
+  });
+
+  it("As the session window for dot.li's own page, I keep a stored wallet as data", async () => {
+    // Given the sign-in window's boot over a stored local wallet, serving no site
+    const { walletBoot } = bootWith(() => restored(WALLET), 'signin-window');
+
+    // When its core reads
+    const boot = await walletBoot.read();
+
+    // Then it pairs
+    expect(boot).toBeNull();
+  });
+
   it('As a page, I apply the rule as a load, and a window applies it as a window', async () => {
     // Given a page's boot and a sign-out window's boot
     const page = bootWith(() => restored({ status: 'none' }));

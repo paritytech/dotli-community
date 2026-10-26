@@ -8,7 +8,7 @@
 // pages.
 
 import { base64urlnopad, utf8 } from '@scure/base';
-import { isValidNetwork } from '@dotli/config/networks';
+import { isValidNetwork, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config/networks';
 import { PROTOCOL_VERSION, requestUrl } from '../../../src/runtime/session-handoff/session-protocol.js';
 
 const X25519 = { name: 'X25519' } as const;
@@ -97,6 +97,7 @@ async function signIn(): Promise<void> {
     net,
     round,
     nonce,
+    account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0`,
     return_to: `${location.origin}${RETURN_PATH}`,
     pub: base64urlnopad.encode(pub),
   };

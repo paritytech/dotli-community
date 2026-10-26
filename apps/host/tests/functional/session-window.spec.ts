@@ -146,7 +146,6 @@ async function seedSiteGrant(page: Page): Promise<void> {
       tx.objectStore('grants').put({
         token: 'functional-test-token',
         origin,
-        publicKey: '0x01',
         owner: '0x02',
         firstUsedAt: now,
         lastUsedAt: now,
@@ -499,6 +498,21 @@ test.describe('Signing a site in', () => {
     expect(window.isClosed()).toBe(true);
     await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
     await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
+  });
+});
+
+test.describe('Refusing a site request', () => {
+  test('As a site, I leave out the account and the window refuses my request', async ({ page }) => {
+    // Given a site's page whose request names no account
+    await page.goto(await serveSiteOpener(page, { account: 'none' }));
+
+    // When the site opens the sign-in window
+    const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
+
+    // Then the window shows refused and the site was refused as a bad request
+    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'refused', { timeout: TIMEOUT_MS });
+    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
+    await expect(siteReply(page)).toHaveAttribute('data-reason', 'bad_request');
   });
 });
 

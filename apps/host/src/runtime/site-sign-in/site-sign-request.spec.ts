@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
+import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
 import { describe, expect, it } from 'vitest';
 import type { SessionRequest } from '../session-handoff/session-protocol.js';
 import { parseSiteCall, parseSiteSignRequest } from './site-sign-request.js';
 
 const PASEO_HUB = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].assethub.genesis;
+const PRODUCT = `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`;
+const ACCOUNT: ProductAccountId = { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } };
 const PREVIEW_HUB = NETWORK_NAME_TO_SERVICES_CONFIG.previewnet.assethub.genesis;
 
 /** A transaction request on Paseo, naming its Asset Hub, with `extra` over its fields. */
@@ -16,7 +19,7 @@ const request = (extra: Record<string, unknown>): SessionRequest => ({
   round: 'r1',
   v: 1,
   net: 'paseo-next-v2',
-  params: { v: 1, net: 'paseo-next-v2', round: 'r1', chain: PASEO_HUB, ...extra },
+  params: { v: 1, net: 'paseo-next-v2', round: 'r1', chain: PASEO_HUB, account: `${PRODUCT}/0`, ...extra },
 });
 
 const token = (bytes: number) => base64urlnopad.encode(new Uint8Array(bytes).fill(7));
@@ -33,7 +36,14 @@ describe('site sign request', () => {
     const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
 
     // Then all three are read
-    expect(parsed).toEqual({ round: 'r1', siteToken: token(32), chain: PASEO_HUB, call: '0x0a03', groupToken: null });
+    expect(parsed).toEqual({
+      round: 'r1',
+      account: ACCOUNT,
+      siteToken: token(32),
+      chain: PASEO_HUB,
+      call: '0x0a03',
+      groupToken: null,
+    });
   });
 
   it('As a site, I send no call and no token and the window reads both as absent', () => {
@@ -44,7 +54,36 @@ describe('site sign request', () => {
     const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
 
     // Then the call and the token are null
-    expect(parsed).toEqual({ round: 'r1', siteToken: null, chain: PASEO_HUB, call: null, groupToken: null });
+    expect(parsed).toEqual({
+      round: 'r1',
+      account: ACCOUNT,
+      siteToken: null,
+      chain: PASEO_HUB,
+      call: null,
+      groupToken: null,
+    });
+  });
+
+  it('As a site, I leave out the account and the window refuses my request', () => {
+    // Given a request without an account
+    const input = request({ account: undefined });
+
+    // When it is parsed
+    const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
+
+    // Then it is refused
+    expect(parsed).toBeNull();
+  });
+
+  it('As a site, I send a malformed account and the window refuses my request', () => {
+    // Given a request whose account names no network TLD
+    const input = request({ account: 'myapp/0' });
+
+    // When it is parsed
+    const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
+
+    // Then it is refused
+    expect(parsed).toBeNull();
   });
 
   it("As a site, I name another network's Asset Hub and the request is refused", () => {
@@ -66,7 +105,14 @@ describe('site sign request', () => {
     const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
 
     // Then it is read
-    expect(parsed).toEqual({ round: 'r1', siteToken: null, chain: PASEO_HUB, call: null, groupToken: null });
+    expect(parsed).toEqual({
+      round: 'r1',
+      account: ACCOUNT,
+      siteToken: null,
+      chain: PASEO_HUB,
+      call: null,
+      groupToken: null,
+    });
   });
 
   it.each<[string, unknown]>([
@@ -136,7 +182,14 @@ describe('site sign request', () => {
     const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
 
     // Then the group token is read beside the site token
-    expect(parsed).toEqual({ round: 'r1', siteToken: token(32), chain: PASEO_HUB, call: null, groupToken: 'my group' });
+    expect(parsed).toEqual({
+      round: 'r1',
+      account: ACCOUNT,
+      siteToken: token(32),
+      chain: PASEO_HUB,
+      call: null,
+      groupToken: 'my group',
+    });
   });
 
   it.each<[string, unknown]>([
@@ -164,7 +217,14 @@ describe('site sign request', () => {
     const parsed = parseSiteSignRequest(input, 'paseo-next-v2');
 
     // Then they change nothing
-    expect(parsed).toEqual({ round: 'r1', siteToken: null, chain: PASEO_HUB, call: null, groupToken: null });
+    expect(parsed).toEqual({
+      round: 'r1',
+      account: ACCOUNT,
+      siteToken: null,
+      chain: PASEO_HUB,
+      call: null,
+      groupToken: null,
+    });
   });
 });
 

@@ -443,30 +443,29 @@ export const SESSION_WINDOW_REFUSED = 'session_window.refused';
  * browser without X25519, `bad_key` for a site key no secret derives with, `return_to_party` for a return address of no
  * site, `return_to_not_listed` or `well_known_unreachable` for one the site's well-known file does not list),
  * `cancelled` with `page` for the window's own Cancel or `phone` for a request the user rejected on the phone, and
- * `error` with the step whose failure shows, with or without Try again (`cache`, `account`, `sign`, or `action` for a
- * failure of the round that names no step), with the grants store call that failed while the round went on (`grant`,
- * `grant_read`, `grant_forget`, `grant_touch`), with `group_list` for a Public Suffix List that did not load, beside
- * the `refused` with `bad_request` of the group's request, or with `seal` for a redirect answer the window could not
- * seal. A new grant that could not be saved counts `error` with `grant`, and the round still counts `granted` with
- * `new` or `group`, since the site gets its result without a token. `granted`, `refused` and `cancelled` count once
- * per round, `error` each time it happens.
+ * `error` with the step whose failure shows, with or without Try again (`main_account`, `account`, `sign`, or `action`
+ * for a failure of the round that names no step), with the grants store call that failed while the round went on
+ * (`grant`, `grant_read`, `grant_forget`, `grant_touch`), with `group_list` for a Public Suffix List that did not load,
+ * beside the `refused` with `bad_request` of the group's request, or with `seal` for a redirect answer the window could
+ * not seal. A new grant that could not be saved counts `error` with `grant`, and the round still counts `granted` with
+ * `new` or `group`, since the site gets its result without a token. `granted`, `refused` and `cancelled` count once per
+ * round, `error` each time it happens.
  */
 export const SITE_SIGN_IN = 'session_pages.site_sign_in';
 
 /**
- * Count. How a site's transaction round through the session window went. Tagged `outcome` and `reason`: `included` for
- * a transaction a best block holds that dispatched, or `failed` for one whose dispatch failed, each with `new` for a
- * site the user granted in this round, `known` for one the main store already keeps or `group` for a site of a group,
- * new or known, `refused` with the reason the window posted, a bad request or payload the window refused before the
- * round included, and a Cancel after the chain had the transaction counted as `transaction_unknown`, `cancelled` with
- * `page` for the window's own Cancel or `phone` for a transaction the user rejected on the phone, and `error` with the
- * step whose failure shows, with or without Try again (`cache`, `account`, `chain`, `build`, `submit`, or `action` for
- * a failure of the round that names no step), with the grants store call that failed while the round went on (`grant`,
- * `grant_read`, `grant_forget`, `grant_touch`), or with `group_list` for a Public Suffix List that did not load, beside
- * the `refused` with `bad_request` of the group's request. A new grant that could not be saved counts `error` with
- * `grant`, and the round still counts its outcome with `new` or `group`, since the site gets its result without a
- * token. A chain session that could not be closed counts `error` with `chain` beside the round's outcome. `included`,
- * `failed`, `refused` and `cancelled` count once per round, `error` each time it happens.
+ * Count. How a site's transaction round through the session window went. Tagged `outcome` and `reason`: `signed` for a
+ * transaction the site got signed, with `new` for a site the user granted in this round, `known` for one the main store
+ * already keeps or `group` for a site of a group, new or known, `refused` with the reason the window posted, including
+ * a bad request or payload the window refused before the round, `cancelled` with `page` for the window's own Cancel or
+ * `phone` for a transaction the user rejected on the phone, and `error` with the step whose failure shows, with or
+ * without Try again (`main_account`, `account`, `chain`, `build`, or `action` for a failure of the round that names no
+ * step), with the grants store call that failed while the round went on (`grant`, `grant_read`, `grant_forget`,
+ * `grant_touch`), or with `group_list` for a Public Suffix List that did not load, beside the `refused` with
+ * `bad_request` of the group's request. A new grant that could not be saved counts `error` with `grant`, and the round
+ * still counts `signed` with `new` or `group`, since the site gets its result without a token. A chain session that
+ * could not be closed counts `error` with `chain` beside the round's outcome. `signed`, `refused` and `cancelled` count
+ * once per round, `error` each time it happens.
  */
 export const SITE_TRANSACTION = 'session_pages.site_transaction';
 

@@ -10,8 +10,6 @@ import { SITE_GRANTS_STORE } from './schema.js';
 export interface SiteGrant {
   token: string;
   origin: string;
-  /** The per-site public key, `0x` hex. */
-  publicKey: string;
   /** Hex of the hash of the main account's public key, so a grant names whose it is without naming the account. */
   owner: string;
   firstUsedAt: number;

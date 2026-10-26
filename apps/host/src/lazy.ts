@@ -53,5 +53,8 @@ export const loadHostRuntimeChunk = async () => {
 /** The chain client, for the reads a visit may never make. */
 export const loadPolkadotApi = () => import('polkadot-api');
 
+/** papi's transaction extension fillers, for the first transaction a site asks to sign. */
+export const loadTxFillers = () => import('@polkadot-api/signers-common');
+
 /** The QR encoder, for the first code a visit shows. */
 export const loadQrCode = () => import('qrcode');

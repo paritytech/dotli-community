@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The session window's entry. It reads the request the page put in its URL, answers the page that opened it, and boots
-// the protocol frame and the bridge on its own settings. The sign-in window boots session state with a core that only
-// pairs, so nothing it does switches wallet mode or reloads the page. Once the first hello named the opener's party, it
-// runs its flow for dot.li's own page, or a site's sign-in or transaction, which takes the main session through that
-// same flow. A site's sign-in by redirect needs no opener: the window vets the return address the request names, and
-// answers the round once, sealed in that address. The sign-out window answers its opener's hello too, but boots no
-// session state, so its own flow reads the stored session first, and its steps never wait on the opener. The site list
-// answers no page and boots nothing: it reads only the grants the main store keeps.
+// the protocol frame and the bridge on its own settings. For dot.li's own page, the sign-in window boots session state
+// with a core that only pairs, so nothing it does switches wallet mode or reloads the page. Once the first hello named
+// the opener's party, it runs its flow for dot.li's own page, or a site's sign-in or transaction. For a site, the window
+// first runs its core under the product id of the account the site names, on a stored local wallet when there is one,
+// and the site's round has that same flow sign in or resume a sign-in. A site's sign-in by redirect needs no opener:
+// the window vets the return address the request names, and answers the round once, sealed in that address. The
+// sign-out window answers its opener's hello too, but boots no session state, so its own flow reads the stored session
+// first, and its steps never wait on the opener. The site list answers no page and boots nothing: it reads only the
+// grants the main store keeps.
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
@@ -48,7 +50,6 @@ import { readRedirectFields, SITE_TOKEN_BYTES, type RedirectFields } from './run
 import { checkReturnTo } from './runtime/site-sign-in/site-return.js';
 import { sealProbe, sealRedirect } from './runtime/site-sign-in/site-seal.js';
 import { forgetsUnsentGrant } from './runtime/site-sign-in/site-round.js';
-import type { SiteSubmissions } from './runtime/site-sign-in/site-transaction.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindowDeps } from './runtime/site-sign-in/site-window.js';
 import { authStore } from './runtime/state/auth.js';
 import { windowSettings } from './session-settings.js';
@@ -199,16 +200,6 @@ const siteGroups = createSiteGroups({
   fetch: (input, init) => fetch(input, init),
 });
 
-const SUBMITTED_KEY = 'dotli:s:submitted:';
-
-/** The rounds this tab submitted a transaction for, kept in its session storage, which outlives a reload. */
-const submittedRounds: SiteSubmissions = {
-  has: round => pageSessionStorage.getItem(SUBMITTED_KEY + round) !== null,
-  mark: round => {
-    pageSessionStorage.setItem(SUBMITTED_KEY + round, '1');
-  },
-};
-
 /** A fresh site token, unpadded base64url. */
 function newSiteToken(): string {
   return base64urlnopad.encode(crypto.getRandomValues(new Uint8Array(SITE_TOKEN_BYTES)));
@@ -224,6 +215,8 @@ function siteWindowDeps(
   close: () => void,
 ): Omit<SiteWindowDeps, 'request' | 'net'> {
   const { booted: bridgeModule } = round;
+  // Before the round starts, so the first core the window boots is the site's.
+  bridgeModule.serveSite(round.request.account);
   return {
     origin: round.origin,
     responder,
@@ -232,8 +225,7 @@ function siteWindowDeps(
     groups: siteGroups,
     self: window.location.origin,
     signer: bridgeModule.siteSigner,
-    auth: authStore,
-    readUiCache: bridgeModule.windowStore.store.readUiCache,
+    mainAccount: signal => bridgeModule.mainAccount.read(signal),
     now: Date.now,
     randomToken: newSiteToken,
     close,
@@ -273,7 +265,6 @@ async function openSiteTransactionFlow(
     request: round.request,
     chain: bridgeModule.siteChain,
     txSigner: bridgeModule.siteTxSigner,
-    submitted: submittedRounds,
   });
   // A refused round keeps showing the responder, which says it refused, while the window closes.
   if (opened === null) {

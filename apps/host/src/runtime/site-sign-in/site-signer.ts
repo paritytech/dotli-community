@@ -1,13 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** Reads the user's account for a site and signs a site's assertion with it, each over one connection to the page core. */
+/**
+ * Reads the key of the product account a site names and signs a site's assertion with that account, each over one
+ * connection to the page core.
+ */
 
 import { AccountClient, SigningClient, type ProductAccountId } from '@parity/truapi';
-import type { ResultAsync } from 'neverthrow';
-import { blake2b, fromHex, toHex, type AsyncTaskPool } from '@dotli/shared';
+import type { Result, ResultAsync } from 'neverthrow';
+import { fromHex } from '@dotli/shared';
 import { SITE_ASSERTION_LIFETIME_MS } from './site-assertion.js';
-import { CoreRestoringError, withCoreCalls, type CoreCallsDeps, type SiteCallError } from './core-calls.js';
+import { withCoreCalls, type CoreCallsDeps, type SiteCallError } from './core-calls.js';
 
 type SiteSignStep = 'account' | 'sign';
 
@@ -35,41 +38,25 @@ export class SiteSignError extends Error {
 
 export interface SiteSigner {
   /**
-   * Signs `text` of the public key of the site account at derivation `index`, built anew for each signing attempt.
-   * Without a known key the account is read first. Rejects with {@link SiteSignRejectedError} on a rejection,
-   * {@link SiteSignError} on a failed call, and with the core's own error when no connection could be made.
+   * Reads the public key of `account`, then signs `text` of that key with it. Rejects with
+   * {@link SiteSignRejectedError} on a rejection, {@link SiteSignError} on a failed call or a key that is not 32 bytes,
+   * and with the core's own error when no connection could be made.
    */
   sign(
-    index: `0x${string}`,
+    account: ProductAccountId,
     text: (publicKey: Uint8Array) => string,
-    knownPublicKey: Uint8Array | null,
   ): Promise<{ publicKey: Uint8Array; signature: string }>;
   /**
-   * The public key of the user's site account at derivation `index`. Rejects with {@link SiteSignRejectedError} on a
-   * rejection, {@link SiteSignError} on a failed call or a key that is not 32 bytes, and with the core's own error when
-   * no connection could be made.
+   * The public key of `account`. Rejects with {@link SiteSignRejectedError} on a rejection, {@link SiteSignError} on a
+   * failed call or a key that is not 32 bytes, and with the core's own error when no connection could be made.
    */
-  account(index: `0x${string}`): Promise<Uint8Array>;
+  account(account: ProductAccountId): Promise<Uint8Array>;
 }
 
 /** An sr25519 public key's length. */
 const PUBLIC_KEY_BYTES = 32;
 
-/** The site's account index, the same for one origin each time and distinct across origins. */
-export function siteDerivationIndex(origin: string): `0x${string}` {
-  return toHex(blake2b(new TextEncoder().encode(`dotli:s:site:${origin}`), 32));
-}
-
-/**
- * The account index of a site group, named by its registrable domain and its token. The same for one group each time,
- * and distinct across groups and from any site's own index.
- */
-export function groupDerivationIndex(registrable: string, token: string): `0x${string}` {
-  // A registrable domain holds no space, so the key splits one way.
-  return toHex(blake2b(new TextEncoder().encode(`dotli:s:group:${registrable} ${token}`), 32));
-}
-
-/** The site account's public key the core answered, or the account step's failure for one that is not a key. */
+/** The named account's public key the core answered, or the account step's failure for one that is not a key. */
 function accountKey(publicKey: string): Uint8Array {
   let key: Uint8Array;
   try {
@@ -88,73 +75,50 @@ function domainTag(error: SiteCallError): string | null {
 }
 
 /**
- * Runs one call, again while it answers `restoring`. A rejection and any other answer or failure end it with the
- * matching error.
+ * Runs one call once. A rejection ends it with {@link SiteSignRejectedError}, and any other failure with
+ * {@link SiteSignError}.
  */
-async function siteCall<T>(
-  step: SiteSignStep,
-  restores: AsyncTaskPool,
-  restoring: string,
-  call: () => ResultAsync<T, SiteCallError>,
-): Promise<T> {
-  let value: T;
+async function siteCall<T>(step: SiteSignStep, call: () => ResultAsync<T, SiteCallError>): Promise<T> {
+  let result: Result<T, SiteCallError>;
   try {
-    value = await restores.call(async () => {
-      const result = await call();
-      if (result.isOk()) {
-        return result.value;
-      }
-      if (domainTag(result.error) === restoring) {
-        throw new CoreRestoringError(result.error);
-      }
-      throw result.error.tag === 'Cancelled' || domainTag(result.error) === 'Rejected'
-        ? new SiteSignRejectedError(step, result.error)
-        : new SiteSignError(step, result.error);
-    });
+    result = await call();
   } catch (error) {
-    if (error instanceof SiteSignRejectedError || error instanceof SiteSignError) {
-      throw error;
-    }
-    throw new SiteSignError(step, error instanceof CoreRestoringError ? error.error : error);
+    throw new SiteSignError(step, error);
   }
-  return value;
+  if (result.isOk()) {
+    return result.value;
+  }
+  throw result.error.tag === 'Cancelled' || domainTag(result.error) === 'Rejected'
+    ? new SiteSignRejectedError(step, result.error)
+    : new SiteSignError(step, result.error);
 }
 
-/** What one call of the signer runs over: the core's clients for the site account, and its retry pool. */
+/** What one call of the signer runs over: the account the site names and the core's clients. */
 interface SiteCalls {
   account: ProductAccountId;
   accounts: AccountClient;
   signing: SigningClient;
-  restores: AsyncTaskPool;
 }
 
-/** Reads the site account's public key. */
+/** Reads the named account's public key. */
 async function readAccount(calls: SiteCalls): Promise<Uint8Array> {
-  const read = await siteCall('account', calls.restores, 'NotConnected', () =>
-    calls.accounts.getAccount({ productAccountId: calls.account }),
-  );
+  const read = await siteCall('account', () => calls.accounts.getAccount({ productAccountId: calls.account }));
   return accountKey(read.account.publicKey);
 }
 
 export function createSiteSigner(deps: CoreCallsDeps): SiteSigner {
-  /** Runs `use` over one connection to the core for the site account at `index`, which it closes after. */
-  const withCalls = <T>(index: `0x${string}`, use: (calls: SiteCalls) => Promise<T>): Promise<T> =>
+  /** Runs `use` over one connection to the core for `account`, which it closes after. */
+  const withCalls = <T>(account: ProductAccountId, use: (calls: SiteCalls) => Promise<T>): Promise<T> =>
     // Each request, an account read or a signature, may wait on the phone as long as a site assertion stays valid.
-    withCoreCalls(deps, SITE_ASSERTION_LIFETIME_MS, ({ transport, productId, restores }) =>
-      use({
-        account: { dotNsIdentifier: productId, derivationIndex: { tag: 'Raw', value: index } },
-        accounts: new AccountClient(transport),
-        signing: new SigningClient(transport),
-        restores,
-      }),
+    withCoreCalls(deps, SITE_ASSERTION_LIFETIME_MS, ({ transport }) =>
+      use({ account, accounts: new AccountClient(transport), signing: new SigningClient(transport) }),
     );
 
   return {
-    sign: (index, text, knownPublicKey) =>
-      withCalls(index, async calls => {
-        const publicKey = knownPublicKey ?? (await readAccount(calls));
-        // Built for each attempt, so an approval after retries signs a text issued with that attempt and still valid.
-        const { signature } = await siteCall('sign', calls.restores, 'PermissionDenied', () =>
+    sign: (account, text) =>
+      withCalls(account, async calls => {
+        const publicKey = await readAccount(calls);
+        const { signature } = await siteCall('sign', () =>
           calls.signing.signRaw({
             account: calls.account,
             payload: { tag: 'Payload', value: { payload: text(publicKey) } },
@@ -162,6 +126,6 @@ export function createSiteSigner(deps: CoreCallsDeps): SiteSigner {
         );
         return { publicKey, signature };
       }),
-    account: index => withCalls(index, readAccount),
+    account: account => withCalls(account, readAccount),
   };
 }

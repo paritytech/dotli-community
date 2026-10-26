@@ -102,12 +102,17 @@ export function openerOutcome(page: Page): Locator {
 
 /**
  * Serves the site fixture page at the root of `origin`, a third-party https origin unless the test picks another, and
- * returns its URL, which names the window's origin and the `route` it opens. The page opens the window from its button
- * as a site does and marks the window's last reply on its output.
+ * returns its URL, which names the window's origin and the `route` it opens. `account: 'none'` makes the page leave the
+ * account out of its request. The page opens the window from its button as a site does and marks the window's last
+ * reply on its output.
  */
 export async function serveSiteOpener(
   page: Page,
-  { origin = SITE_ORIGIN, route: windowRoute = 'auth' }: { origin?: string; route?: 'auth' | 'sign' } = {},
+  {
+    origin = SITE_ORIGIN,
+    route: windowRoute = 'auth',
+    account,
+  }: { origin?: string; route?: 'auth' | 'sign'; account?: 'none' } = {},
 ): Promise<string> {
   await page.route(`${origin}/**`, async route => {
     const { pathname } = new URL(route.request().url());
@@ -120,6 +125,9 @@ export async function serveSiteOpener(
     }
   });
   const query = new URLSearchParams({ window: ROOT_ORIGIN, net: NETWORK, route: windowRoute });
+  if (account !== undefined) {
+    query.set('account', account);
+  }
   return `${origin}/?${query.toString()}`;
 }
 

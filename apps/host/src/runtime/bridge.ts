@@ -4,13 +4,14 @@
 // The page's TrUAPI chunk: the bridge over the page's own core runtime, session and frame host, asking the page's
 // dialogs, showing its notifications and drawing around the frame with its layout.
 
+import type { ProductAccountId } from '@parity/truapi';
 import { getActiveServicesConfig } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, onPageReturn } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../page-prompts.js';
-import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi } from '../lazy.js';
+import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
 import { pageNotifications } from '../page-notifications.js';
 import { productFrameContainer, productFrameView } from '../product-frame-view.js';
 import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
@@ -21,7 +22,9 @@ import { hostChainProvider, watchHostChains } from './host-callbacks/chain.js';
 import { pagePermissions, productPermissions } from './page-permissions.js';
 import { forgetsSiteGrants, pageRole } from './page-role.js';
 import { coreStorage, onStoredSessionChanged, signInFlag, type SessionRead } from './session/core-storage.js';
-import { createHostCallbacks } from './host-callbacks/handlers.js';
+import { createHostCallbacks, promptAsks } from './host-callbacks/handlers.js';
+import { LANDING_PRODUCT } from './page-core.js';
+import { windowAsks } from './host-callbacks/window-asks.js';
 import { onSessionFlagChange, sessionPresence } from './session/presence.js';
 import { onLocalWalletChange } from './session/wallet-changes.js';
 import { watchPresence } from './session/presence-watch.js';
@@ -29,6 +32,7 @@ import { reconcilePage } from './session/restore-rule.js';
 import { createSessionLease } from './session/session-lease.js';
 import { sessionState } from './session/session-state.js';
 import { siteWallet } from './session/site-wallet.js';
+import { createMainAccountSource, type MainAccountSource } from './site-sign-in/main-account.js';
 import { createSiteChain } from './site-sign-in/site-chain.js';
 import { createSiteSigner } from './site-sign-in/site-signer.js';
 import { createSiteTxSigner } from './site-sign-in/site-tx-signer.js';
@@ -41,7 +45,7 @@ import type { WindowSignOutDeps } from './session-handoff/window-signout.js';
 import { authStore } from './state/auth.js';
 import { setSigningOut } from './state/sign-out.js';
 import { getWalletMode } from './state/wallet-mode.js';
-import { readWalletBoot, restoreOnBoot } from './wallet-boot.js';
+import { readWalletBoot, restoreOnBoot, serveSites } from './wallet-boot.js';
 import { walletSwitch } from './wallet-switch.js';
 
 // Already in this chunk for leaving local mode, so a page with no sign-in window takes it from here for a phrase.
@@ -78,7 +82,13 @@ const bootRuntime = createCoreRuntimeBoot({
       ...options,
       prompts: hostPrompts,
       notifications: pageNotifications(),
-      permissions: { registry: pagePermissions, product: productPermissions },
+      asks:
+        pageRole() === 'signin-window'
+          ? windowAsks
+          : promptAsks({
+              prompts: hostPrompts,
+              permissions: { registry: pagePermissions, product: productPermissions },
+            }),
     }),
   loadLocalWalletCore,
 });
@@ -103,17 +113,45 @@ const bridge = createBridge({
 
 export const { initBridge, setPageProduct, startProductFrame } = bridge;
 
+// Whether the window already serves a site, which it decides once per page.
+let servingSite = false;
+
+/**
+ * The session window serves a site's round: its core runs under the product id of the account the site names, with
+ * dot.li's own pairing, and boots on a stored local wallet. Called before anything boots a core. Once per page, so a
+ * second call does nothing.
+ */
+export function serveSite(account: ProductAccountId): void {
+  if (servingSite) {
+    return;
+  }
+  servingSite = true;
+  // dot.li's own pairing, as the site never names the window's product.
+  setPageProduct({ ...LANDING_PRODUCT, label: account.dotNsIdentifier, productId: account.dotNsIdentifier });
+  serveSites();
+}
+
+/**
+ * The main account a site's round runs for, as the session window's core reports it. It holds a lease of its own, so
+ * the core stays up for a local wallet as for a paired session.
+ */
+export const mainAccount: MainAccountSource = createMainAccountSource({
+  acquire: () => bridge.core.acquire(),
+  coreReport: sessionState.coreReport,
+});
+
 /** Signs a site's assertion on the page's own core, for the session window. */
 export const siteSigner = createSiteSigner({ acquire: () => bridge.core.acquire() });
 
-/** Builds a site's transaction for the main account on the page's own core, for the session window. */
+/** Signs a site's transaction as the account the site names on the page's own core, for the session window. */
 export const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });
 
-/** Asset Hub for the session window, where a site's call is decoded and submitted. */
+/** Asset Hub for the session window, where a site's call is decoded and built into its signed transaction. */
 export const siteChain = createSiteChain({
   genesis: () => getActiveServicesConfig().assethub.genesis,
   provider: genesis => hostChainProvider(genesis),
   loadApi: loadPolkadotApi,
+  loadFillers: loadTxFillers,
 });
 
 const endSession = (blob: string): Promise<void> => bridge.endSession(fromHex(blob));

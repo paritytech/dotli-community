@@ -24,7 +24,7 @@ import { labelToProductId } from './runtime-config.js';
 
 export interface PageProduct {
   label: string;
-  /** Overrides the label-derived product id, for the local debug routes. */
+  /** Overrides the id the label derives, such as for the local debug routes or the account a site names. */
   productId?: string | undefined;
   /** How pairing presents itself, when not as the product. */
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };

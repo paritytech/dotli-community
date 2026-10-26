@@ -49,14 +49,22 @@ export interface WalletBoot {
   restore(): Promise<Restored>;
   /**
    * Null boots the pairing host. A failed read cannot tell the mode, so it falls back to Polkadot App. On a page that
-   * only pairs, the sign-in and sign-out windows, a stored wallet never picks the mode.
+   * only pairs, the sign-in and sign-out windows, a stored wallet never picks the mode, except in a sign-in window that
+   * serves a site, which boots on a stored local wallet.
    */
   read(): Promise<LocalWalletBoot | null>;
+  /**
+   * The sign-in window serves a site from here on, so a stored local wallet picks the mode and the wallet mode is
+   * reported again. Called before anything boots a core, as a core already booted keeps the mode it read.
+   */
+  serveSites(): void;
 }
 
 export function createWalletBoot(deps: WalletBootDeps): WalletBoot {
   const { report, role } = deps;
   const pairingOnly = pairsOnly(role);
+  // A window that serves a site boots on the stored wallet, which it otherwise keeps as data.
+  let servesSites = false;
   const reader: PresenceReader = loadReader(role);
   // One restore at a time, so a caller that queued behind an answered one takes its answer.
   const restores = createAsyncTaskPool({ poolSize: 1 });
@@ -67,7 +75,13 @@ export function createWalletBoot(deps: WalletBootDeps): WalletBoot {
   let dead: Reconciled['dead'] = null;
 
   const localOf = (wallet: WalletRead): LocalWalletBoot | null =>
-    wallet.status === 'ok' && !pairingOnly ? wallet : null;
+    wallet.status === 'ok' && (!pairingOnly || servesSites) ? wallet : null;
+
+  /** The mode `wallet` picks, with why a wallet that no longer decrypts was forgotten. */
+  const modeOf = (wallet: Exclude<WalletRead, { status: 'failed' }>): WalletModeState => ({
+    mode: localOf(wallet) === null ? 'app' : 'local',
+    failure: wallet.status === 'unreadable' ? UNREADABLE : null,
+  });
 
   /** A frame that cannot answer is the environment's failure, so each pass that met it is a breadcrumb and a count. */
   const reportOutage = (error: unknown): void => {
@@ -80,10 +94,7 @@ export function createWalletBoot(deps: WalletBootDeps): WalletBoot {
     if (wallet.status === 'unreadable') {
       reportLocalWalletFailure(new Error(UNREADABLE), 'unreadable');
     }
-    report({
-      mode: localOf(wallet) === null ? 'app' : 'local',
-      failure: wallet.status === 'unreadable' ? UNREADABLE : null,
-    });
+    report(modeOf(wallet));
   };
 
   /**
@@ -100,7 +111,7 @@ export function createWalletBoot(deps: WalletBootDeps): WalletBoot {
     if (presence === 'present' && signedIn) {
       deps.flag.renew();
     }
-    if (wallet.status === 'ok' && pairingOnly) {
+    if (wallet.status === 'ok' && localOf(wallet) === null) {
       log.event('local wallet kept as data, page pairs', { flow: 'wallet' });
     }
   };
@@ -133,7 +144,15 @@ export function createWalletBoot(deps: WalletBootDeps): WalletBoot {
 
   return {
     restore,
-    read: async () => (await restore()).local,
+    // By the rule that holds now, as the restore keeps its first answer for the saved copy.
+    read: async () => localOf((await restore()).wallet),
+    serveSites() {
+      servesSites = true;
+      // Reported once already, so only the mode goes out again.
+      if (walletAnswer !== undefined) {
+        report(modeOf(walletAnswer));
+      }
+    },
   };
 }
 
@@ -155,6 +174,11 @@ function pageBoot(): WalletBoot {
 
 export async function readWalletBoot(): Promise<LocalWalletBoot | null> {
   return pageBoot().read();
+}
+
+/** The sign-in window serves a site, so its cores boot on a stored local wallet. */
+export function serveSites(): void {
+  pageBoot().serveSites();
 }
 
 /** Settles once the restore rule ran on the page's copy, with what it left. */

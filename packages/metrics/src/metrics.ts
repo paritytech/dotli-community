@@ -46,7 +46,7 @@ export type MetricOutcome =
   | 'kept'
   // A site's sign-in and transaction through the session window, and its revoke from the site list
   | 'granted'
-  | 'included'
+  | 'signed'
   | 'failed'
   | 'revoked';
 

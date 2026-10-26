@@ -678,6 +678,25 @@ describe('session state', () => {
     await published.until(() => auth.get().tag === 'Connected');
   });
 
+  it("As the window, I follow the core's own report and not the saved copy", async () => {
+    // Given a page whose saved copy shows a sign-in before any core reported
+    shared.entries.set(SESSION_KEY, '0x010203');
+    shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
+    onTestFinished(session.start());
+    await published.until(() => auth.get().tag === 'Connected');
+    const beforeCore = session.coreReport.get();
+
+    // When a core reports the session, then the page's last core goes
+    coreReports({ tag: 'Connected', value: connectedSessionUiInfo() });
+    const reported = session.coreReport.get();
+    session.coresGone();
+
+    // Then only the core's own report showed, mapped as the page shows it
+    expect(beforeCore).toBeNull();
+    expect(reported).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+    expect(session.coreReport.get()).toBeNull();
+  });
+
   it('As a page whose live core signed me out, I leave a session stored later for the core to pick up', async () => {
     // Given a page whose live core reported signed out
     onTestFinished(session.start());

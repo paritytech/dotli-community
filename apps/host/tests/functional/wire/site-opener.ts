@@ -46,9 +46,16 @@ window.addEventListener('message', event => {
 });
 
 button.addEventListener('click', () => {
-  const params =
+  const routeParams =
     route === 'sign'
       ? { v: PROTOCOL_VERSION, net, round, chain: NETWORK_NAME_TO_SERVICES_CONFIG[net].assethub.genesis, call }
       : { v: PROTOCOL_VERSION, net, round, nonce };
+  // `account=none` leaves the account out, as a site that forgot it would.
+  const params = {
+    ...routeParams,
+    ...(query.get('account') === 'none'
+      ? {}
+      : { account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0` }),
+  };
   opened = window.open(requestUrl(windowOrigin, route, params), '_blank');
 });
