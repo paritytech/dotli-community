@@ -8,7 +8,17 @@ import { config } from '@config/eslint/vite';
 
 // The root lints its scripts and the Storybook config. Every workspace lints itself.
 export default defineConfig([
-  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**', 'storybook-static/**'] },
+  {
+    ignores: [
+      'apps/**',
+      'config/**',
+      'packages/**',
+      'docs/**',
+      'storybook-static/**',
+      // Gitignored checkouts of other branches, whose files resolve this checkout's packages.
+      '.claude/worktrees/**',
+    ],
+  },
   ...config,
   {
     languageOptions: {

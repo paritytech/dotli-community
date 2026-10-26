@@ -38,11 +38,7 @@ export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDeb
     product,
     auth,
     walletMode,
-    walletSwitch: {
-      useLocalWallet: () => Promise.resolve('reloading'),
-      usePolkadotApp: () => Promise.resolve('reloading'),
-    },
-    phraseToEntropy: () => null,
+    walletSwitch: { importPhrase: () => undefined, usePolkadotApp: () => undefined },
     diagnostics: {
       rows: () => ROWS.map((row): DiagnosticsRow => [...row]),
       lightClientVersion: () => '0.3.1',

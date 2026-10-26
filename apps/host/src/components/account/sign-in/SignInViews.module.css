@@ -1,0 +1,203 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A screen's content, centred in one column. */
+.screen {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  width: 100%;
+  margin: 0;
+  text-align: center;
+}
+/* The phone layout keeps its symbol close to the heading. */
+.screen[data-layout='app'] {
+  gap: var(--sp-5);
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.title {
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  overflow-wrap: anywhere;
+}
+.body {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+/* The product's own words, set apart from the host's copy. */
+.reason {
+  margin: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-small);
+  font-style: italic;
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.symbol {
+  display: block;
+  flex: none;
+  color: var(--chrome-text);
+}
+.mark-icon {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  color: var(--chrome-text);
+  /* Thin at every size, whatever line the icon draws at by default. */
+  stroke-width: 1.25;
+}
+.screen[data-tone='ok'] .mark-icon {
+  color: var(--chrome-ok);
+}
+.screen[data-tone='err'] .mark-icon {
+  color: var(--chrome-err);
+}
+.screen[data-tone='warn'] .mark-icon {
+  color: var(--chrome-warn);
+}
+.screen[data-tone='idle'] .mark-icon {
+  color: var(--chrome-idle);
+}
+.screen > .mark-spinner {
+  margin: 0;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
+}
+.step-number {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-chip);
+  height: var(--h-chip);
+  border-radius: var(--r-full);
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+  font-size: var(--fs-label);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.progress > .progress-spinner {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+/* The raw reason, kept for bug reports. */
+.detail {
+  align-self: stretch;
+  color: var(--chrome-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+/* What the page may ask of the account, as one row. */
+.grant {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+  align-self: stretch;
+  min-height: 40px;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  text-align: left;
+}
+.grant-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--chrome-ok);
+  stroke-width: 2;
+}
+.failure {
+  margin: 0;
+  color: var(--chrome-err-text);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-body);
+}
+
+.button-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+.note {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  text-align: center;
+}
+.link {
+  border-radius: var(--r-hair);
+  color: var(--chrome-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link:hover {
+  color: var(--chrome-action);
+}
+.link:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .mark-icon {
+    width: 64px;
+    height: 64px;
+  }
+}

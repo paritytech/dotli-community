@@ -8,7 +8,7 @@ import { SITE_ID } from '@dotli/config';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { CoreStorage, CoreStorageKey } from '@parity/truapi-host';
 import { SHARED_CORE_SESSION_KEY, protocolClient, type SharedStoreStatus } from '@dotli/protocol';
-import { m, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { m, recordExpected, reportExpected, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
@@ -19,6 +19,10 @@ import {
   openIdb,
   toHex,
 } from '@dotli/shared';
+import { pageRole } from '../page-role.js';
+import { sessionPresence } from './presence.js';
+import { createPageSignInFlag, type SignInFlag, type StoredSignIn } from './sign-in-flag.js';
+import { siteWallet } from './site-wallet.js';
 
 const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
@@ -38,8 +42,11 @@ const CORE_SECRET_KEY_ID = 'allowance-keys';
 /** This site's part of the shared auth store, which every subdomain reaches through the protocol frame. */
 export interface SharedSessionStore {
   read(key: string): Promise<string | null>;
-  write(key: string, value: string): Promise<void>;
+  /** Resolves whether the value changed. An equal value is neither written nor told to other tabs. */
+  write(key: string, value: string): Promise<boolean>;
   clear(key: string): Promise<void>;
+  /** Clears `key` only while it still holds `expected`, in one step on the store. Resolves whether it did. */
+  clearIf(key: string, expected: string): Promise<boolean>;
   /** Hears the keys other tabs change. */
   subscribe(listener: (key: string) => void): () => void;
   getStatus(): SharedStoreStatus;
@@ -47,13 +54,13 @@ export interface SharedSessionStore {
   subscribeStatus(listener: (status: SharedStoreStatus) => void): () => void;
 }
 
+/** A read of the saved session, or why the store could not answer it. */
+export type SessionRead = { status: 'ok'; blob: string | null } | { status: 'failed'; error: unknown };
+
 /** The saved session as session state reads it. */
 export interface StoredSession {
-  /**
-   * The saved session blob, or null for none and for a read that failed. Never throws, as the core clears the stored
-   * session after a read error, which would log every subdomain out.
-   */
-  readSession(): Promise<string | null>;
+  /** The saved session, or why the store could not answer it. Never rejects, and reports a failed read itself. */
+  readSession(): Promise<SessionRead>;
   /** Hears whether each session read failed, a core's or session state's own. */
   subscribeSessionReads(listener: (failed: boolean) => void): () => void;
   /** The cached account, or null for none and for a read that failed. Never throws, and reports its own failure. */
@@ -64,23 +71,39 @@ export interface StoredSession {
   subscribeStatus(listener: (status: SharedStoreStatus) => void): () => void;
   /** A session written in this tab, changed by another tab, or readable again once the store is back. */
   onStoredSessionChanged(listener: () => void): () => void;
+  /** Hears each core's write of its session that failed, with the failure. */
+  onSessionWriteFailed(listener: (error: unknown) => void): () => void;
 }
 
 export interface CoreStorageOptions {
   /**
-   * A local wallet core holds its session in memory, so its `AuthSession` slot is a no-op. The paired session stays
-   * as it was for the switch back.
+   * The core keeps its session in memory, so its `AuthSession` slot is a no-op and nothing it does reaches the stored
+   * session or the signed-in flag. For a core that must never write either.
    */
-  local?: boolean | undefined;
+  sessionInMemory?: boolean | undefined;
 }
 
 export interface HostCoreStorage extends StoredSession {
-  /** The slots one core reads and writes. */
+  /** The slots one core reads and writes. Its clear drops only the session it last read or wrote. */
   adapters(options?: CoreStorageOptions): CoreStorage;
+  /**
+   * Clears the saved session and its cached account only while the session is still `blob`, so a sign-in stored since
+   * stays. Resolves whether it did.
+   */
+  dropSessionIf(blob: string): Promise<boolean>;
+  /**
+   * Stores a session signed in elsewhere with its cached account, and tells this page's cores and session state, so
+   * they pick it up without a reload. A blob equal to the stored one is left as it is, and they are still told, since
+   * where the copy is the main store the window wrote it before any of them could follow. Rejects when the store
+   * refuses the session.
+   */
+  installSession(blob: string, uiState: string | null): Promise<void>;
 }
 
 export interface CoreStorageDeps {
   shared: SharedSessionStore;
+  /** What every core's session write and clear go through, which moves the signed-in flag as the page's role says. */
+  flag: SignInFlag;
   /** This origin's slots. Reached on every call, as the page's localStorage throws where the browser blocks it. */
   local?: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   /** Where the at-rest key is kept. */
@@ -89,6 +112,7 @@ export interface CoreStorageDeps {
 
 export function createCoreStorage({
   shared,
+  flag,
   local = () => localStorage,
   keyDb = () => indexedDB,
 }: CoreStorageDeps): HostCoreStorage {
@@ -99,6 +123,9 @@ export function createCoreStorage({
   const sessionReadListeners = createListenerSet<boolean>({
     onListenerError: reportListener('storage', 'core_storage.session_read'),
   });
+  const sessionWriteFailures = createListenerSet<unknown>({
+    onListenerError: reportListener('storage', 'core_storage.session_write'),
+  });
 
   const emitLocalChange = (): void => {
     localChangeListeners.emit(undefined);
@@ -108,26 +135,51 @@ export function createCoreStorage({
     sessionReadListeners.emit(failed);
   };
 
+  const dropSessionIf = async (blob: string): Promise<boolean> => {
+    if (!(await shared.clearIf(SHARED_CORE_SESSION_KEY, blob))) {
+      return false;
+    }
+    await writeUiCache(null);
+    emitLocalChange();
+    return true;
+  };
+
+  const installSession = async (blob: string, uiState: string | null): Promise<void> => {
+    // A copy that is the main store already holds the blob, yet may lack the account the window read, so a known
+    // account is cached either way. An unknown one clears only the cache of a session this replaced.
+    if ((await shared.write(SHARED_CORE_SESSION_KEY, blob)) || uiState !== null) {
+      await writeUiCache(uiState);
+    }
+    emitLocalChange();
+  };
+
   // Hits and misses are counted too, so failures read as a rate. An unreachable shared store is the environment's
   // failure, so it is a breadcrumb rather than an issue.
-  const readSession = async (): Promise<string | null> => {
+  const readSession = async (): Promise<SessionRead> => {
     let raw: string | null;
     try {
       raw = await shared.read(SHARED_CORE_SESSION_KEY);
-    } catch (err) {
-      reportExpected(err, {
+    } catch (error) {
+      reportExpected(error, {
         flow: 'storage',
         step: 'session_read',
         metric: S.SHARED_SESSION_READ,
         message: '[dot.li] shared auth session read failed:',
       });
       emitSessionRead(true);
-      return null;
+      return { status: 'failed', error };
     }
     const blob = raw === '' ? null : raw;
     m.count(S.SHARED_SESSION_READ, { outcome: blob === null ? 'miss' : 'hit' });
     emitSessionRead(false);
-    return blob;
+    return { status: 'ok', blob };
+  };
+
+  // Null for none and for a read that failed, never a throw, as a read error would make the core clear the stored
+  // session, which would log every subdomain out.
+  const readSessionBlob = async (): Promise<string | null> => {
+    const read = await readSession();
+    return read.status === 'ok' ? read.blob : null;
   };
 
   // One load at a time, and every later call finds the key already loaded.
@@ -211,21 +263,8 @@ export function createCoreStorage({
   };
 
   const readCoreStorageValue = async (key: CoreStorageKey): Promise<Uint8Array | undefined> => {
-    if (key.tag === 'AuthSession') {
-      const raw = await readSession();
-      return raw === null ? undefined : decodeStoredBytes(raw, 'shared auth session');
-    }
     const raw = local().getItem(coreLocalStorageKey(key));
     return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
-  };
-
-  const writeCoreStorageValue = async (key: CoreStorageKey, value: Uint8Array): Promise<void> => {
-    if (key.tag === 'AuthSession') {
-      await shared.write(SHARED_CORE_SESSION_KEY, toHex(value));
-      emitLocalChange();
-      return;
-    }
-    local().setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, value));
   };
 
   // An unreachable shared store is the environment's failure, so it is a breadcrumb rather than an issue.
@@ -260,37 +299,71 @@ export function createCoreStorage({
     }
   };
 
-  const clearCoreStorageValue = async (key: CoreStorageKey): Promise<void> => {
-    if (key.tag === 'AuthSession') {
-      await shared.clear(SHARED_CORE_SESSION_KEY);
-      await writeUiCache(null);
-      emitLocalChange();
-      return;
-    }
-    local().removeItem(coreLocalStorageKey(key));
+  /** The `AuthSession` slot of one core, which drops only the session it last read or wrote. */
+  const sessionSlot = () => {
+    let held: string | null = null;
+    return {
+      async read(): Promise<Uint8Array | undefined> {
+        held = await readSessionBlob();
+        return held === null ? undefined : decodeStoredBytes(held, 'shared auth session');
+      },
+      async write(value: Uint8Array): Promise<void> {
+        const blob = toHex(value);
+        try {
+          await flag.store(async () => {
+            const changed = await shared.write(SHARED_CORE_SESSION_KEY, blob);
+            held = blob;
+            if (changed) {
+              emitLocalChange();
+            }
+          });
+        } catch (error) {
+          // The core hears it as its own write failing, and a login waiting for this session hears it here.
+          sessionWriteFailures.emit(error);
+          throw error;
+        }
+      },
+      async clear(): Promise<void> {
+        const blob = held;
+        held = null;
+        if (blob !== null) {
+          await flag.clear(() => dropSessionIf(blob));
+        }
+      },
+    };
   };
 
   return {
-    adapters(options = {}) {
-      const skips = (key: CoreStorageKey): boolean => options.local === true && key.tag === 'AuthSession';
+    adapters({ sessionInMemory = false } = {}) {
+      const session = sessionInMemory ? null : sessionSlot();
       return {
         async readCoreStorage(key) {
-          return skips(key) ? undefined : readCoreStorageValue(key);
+          if (key.tag === 'AuthSession') {
+            return session?.read();
+          }
+          return readCoreStorageValue(key);
         },
         async writeCoreStorage(key, value) {
-          if (!skips(key)) {
-            await writeCoreStorageValue(key, value);
+          if (key.tag === 'AuthSession') {
+            await session?.write(value);
+            return;
           }
+          local().setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, value));
         },
         async clearCoreStorage(key) {
-          if (!skips(key)) {
-            await clearCoreStorageValue(key);
+          if (key.tag === 'AuthSession') {
+            await session?.clear();
+            return;
           }
+          local().removeItem(coreLocalStorageKey(key));
         },
       };
     },
+    dropSessionIf,
+    installSession,
     readSession,
     subscribeSessionReads: listener => sessionReadListeners.subscribe(listener),
+    onSessionWriteFailed: listener => sessionWriteFailures.subscribe(listener),
     readUiCache,
     writeUiCache,
     getStatus: () => shared.getStatus(),
@@ -328,10 +401,11 @@ function siteSharedSessionStore(): SharedSessionStore {
     read: key => protocolClient().readSharedAuthStorage(SITE_ID, key),
     write: (key, value) => protocolClient().writeSharedAuthStorage(SITE_ID, key, value),
     clear: key => protocolClient().clearSharedAuthStorage(SITE_ID, key),
+    clearIf: (key, expected) => protocolClient().clearSharedAuthStorageIf(SITE_ID, key, expected),
     subscribe: listener =>
       protocolClient().subscribeSharedAuthStorage(change => {
-        if (change.siteId === SITE_ID) {
-          listener(change.key);
+        if (change.tag === 'session' && change.value.siteId === SITE_ID) {
+          listener(change.value.key);
         }
       }),
     getStatus: () => protocolClient().getSharedStoreStatus(),
@@ -339,8 +413,41 @@ function siteSharedSessionStore(): SharedSessionStore {
   };
 }
 
+/** What the page's copy holds, as the page's flag keeper reads it after a write or a clear. Records a failed read. */
+async function storedSignIn(): Promise<StoredSignIn> {
+  const [session, wallet] = await Promise.all([
+    coreStorage.readSession(),
+    siteWallet.read().then(
+      (read): StoredSignIn => (read.status === 'ok' ? 'held' : 'none'),
+      (error: unknown): StoredSignIn => {
+        recordExpected(error, { flow: 'wallet', step: 'presence_wallet_read' });
+        return 'unread';
+      },
+    ),
+  ]);
+  if ((session.status === 'ok' && session.blob !== null) || wallet === 'held') {
+    return 'held';
+  }
+  return session.status === 'failed' || wallet === 'unread' ? 'unread' : 'none';
+}
+
+/**
+ * The page's sign-in flag keeper, which the page's role picks. Every keeper renews a flag that is still set. The
+ * owner's, on the sign-in window, a preview opened on its own and the landing page, raises the flag with each sign-in
+ * it stores and drops it once the store holds none. Any other page's deletes it with a session its core drops, raising
+ * it again only for a sign-in stored meanwhile.
+ */
+export const signInFlag: SignInFlag = createPageSignInFlag({
+  role: pageRole,
+  presence: sessionPresence,
+  storedSignIn,
+});
+
 /** The page's one core storage, so a write by one core reaches every other core's listener. */
-export const coreStorage: HostCoreStorage = createCoreStorage({ shared: siteSharedSessionStore() });
+export const coreStorage: HostCoreStorage = createCoreStorage({
+  shared: siteSharedSessionStore(),
+  flag: signInFlag,
+});
 
 export function onStoredSessionChanged(listener: () => void): () => void {
   return coreStorage.onStoredSessionChanged(listener);

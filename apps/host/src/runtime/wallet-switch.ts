@@ -1,13 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Every switch reloads, so the core boots in the new mode instead of being swapped while it runs. A failed switch is
-// reported here and leaves the page as it was, so callers only show it.
+// The switch in place, for a page with no sign-in window. Every switch reloads, so the core boots in the new mode
+// instead of being swapped while it runs. A failed switch is reported here and leaves the page as it was, so callers
+// only show it.
 
-import { SITE_ID } from '@dotli/config';
-import { protocolClient } from '@dotli/protocol';
 import { log } from '@dotli/shared';
-import { reportLocalWalletFailure } from './wallet-boot.js';
+import { reportLocalWalletFailure } from './wallet-failure.js';
+import { signInFlag } from './session/core-storage.js';
+import { siteWallet } from './session/site-wallet.js';
 
 /** `reloading` once the switch is stored for every app, `failed` after the failure was reported. */
 export type WalletSwitchOutcome = 'reloading' | 'failed';
@@ -15,17 +16,19 @@ export type WalletSwitchOutcome = 'reloading' | 'failed';
 export interface WalletSwitch {
   /** Uses this wallet in every app on the domain. */
   useLocalWallet(entropy: Uint8Array): Promise<WalletSwitchOutcome>;
-  /** Forgets the local wallet in every app on the domain, so they sign with Polkadot App again. */
-  usePolkadotApp(): Promise<WalletSwitchOutcome>;
+  /**
+   * Forgets the local wallet in every app on the domain through `forget`, so they sign with Polkadot App again. The
+   * caller passes the forget, so it can forget only the record it read.
+   */
+  usePolkadotApp(forget: () => Promise<void>): Promise<WalletSwitchOutcome>;
 }
 
 export interface WalletSwitchDeps {
   save: (entropy: Uint8Array) => Promise<void>;
-  forget: () => Promise<void>;
   reload: () => void;
 }
 
-export function createWalletSwitch({ save, forget, reload }: WalletSwitchDeps): WalletSwitch {
+export function createWalletSwitch({ save, reload }: WalletSwitchDeps): WalletSwitch {
   return {
     async useLocalWallet(entropy) {
       try {
@@ -38,7 +41,7 @@ export function createWalletSwitch({ save, forget, reload }: WalletSwitchDeps): 
       reload();
       return 'reloading';
     },
-    async usePolkadotApp() {
+    async usePolkadotApp(forget) {
       try {
         await forget();
       } catch (error) {
@@ -53,8 +56,9 @@ export function createWalletSwitch({ save, forget, reload }: WalletSwitchDeps): 
 }
 
 export const walletSwitch: WalletSwitch = createWalletSwitch({
-  save: entropy => protocolClient().saveSharedLocalWallet(SITE_ID, entropy),
-  forget: () => protocolClient().forgetSharedLocalWallet(SITE_ID),
+  // Through the page's flag keeper, so a page that owns the flag raises it before the wallet lands in the main store,
+  // and a framed preview leaves it alone.
+  save: entropy => signInFlag.store(() => siteWallet.save(entropy, null)),
   reload: () => {
     window.location.reload();
   },

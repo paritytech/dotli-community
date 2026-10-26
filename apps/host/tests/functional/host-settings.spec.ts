@@ -99,8 +99,12 @@ test.describe('Settings works', () => {
     page,
   }) => {
     // Given
-    // `window.name` survives the restart's reload, so it counts the pages this tab has booted.
+    // `window.name` survives the restart's reload, so it counts the pages this tab has booted. Only the page's own,
+    // since the protocol frame shares the landing page's origin and storage and runs this too.
     await page.addInitScript(() => {
+      if (window.top !== window) {
+        return;
+      }
       const boots = Number(window.name || '0') + 1;
       window.name = String(boots);
       if (boots === 1) {
@@ -335,9 +339,9 @@ test.describe('Settings fails', () => {
   test('As a user who chose the shared light client, opening the app in a browser without shared worker support moves me to a per-tab light client and tells me so', async ({
     page,
   }) => {
-    // Given
+    // Given: seeded in the page alone, since the protocol frame shares its origin and storage and runs this too
     await page.addInitScript(() => {
-      if (window.name !== 'seeded') {
+      if (window.top === window && window.name !== 'seeded') {
         localStorage.setItem('dotli:chain-backend', 'smoldot-shared-worker');
         window.name = 'seeded';
       }

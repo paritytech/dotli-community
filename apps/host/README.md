@@ -15,17 +15,18 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   composes it owns the data.
 - Own the page state only the host reads: the network monitor behind the network panel (block bars, phases, peers,
   transfer and the health verdict) and the landing page's recently visited names.
-- Start the protocol iframe, the TrUAPI bridge and the auth controller.
+- Start the protocol iframe, the TrUAPI bridge and, on a page with a sign-in modal, the auth controller.
 - Own the host side of TrUAPI and the session: one page core with the product frame piped to it, the host callbacks
-  (chain, chat, storage, prompts, notifications), login and logout through Polkadot App or a local wallet, the wallet
-  mode and switch, and the auth, product, permission, theme and chat stores.
+  (chain, chat, storage, prompts, notifications), sign-in and sign-out through the sign-in window on the root domain
+  with Polkadot App or a local wallet, the signed-in flag, the wallet mode and switch, and the auth, product,
+  permission, theme and chat stores.
 - Not content rendering, which the sandbox does.
 
 ## Design
 
-- Two Astro pages, the shell and the landing page. Each has its own entry. Both start Sentry before any other module
-  runs, then call one page start (the chunk and island failure offers and the desktop offer) and share one startup step:
-  settings, the protocol iframe, the bridge and auth.
+- Three Astro pages, the shell, the landing page and the sign-in window. Each has its own entry. All start Sentry before
+  any other module runs, then call one page start (the chunk and island failure offers and the desktop offer) and share
+  one startup step: settings, the protocol iframe, the bridge and, on a page with a sign-in modal, the auth controller.
 - Settings are read once at boot from the link, the store every subdomain shares and this origin's storage, and stored
   back to both stores. The boot configures the protocol frame on this origin's settings and the link's, then again once
   the shared store answers unless the page resets. The settings popover and the failure screen's backend switch save
@@ -38,14 +39,40 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The building blocks group by domain beside the flows that use them, and take their types from the runtime, so a
   permission, a theme or a chat message has one type. Each has a CSS module beside it and most have a story that carries
   their tests.
+- The sign-in views are building blocks that each return their title, their content, their buttons and a note apart, so
+  each layout orders them its own way, and read no store. The window page and the sign-in modal place the same views.
+  One function picks the view for each step of a pairing, another the modal's views that wait on the sign-in window, and
+  a third the screen for each of the window's own views.
 - The TrUAPI side lives in its own folder. The bridge is its own chunk, which every page loads in parallel with its
   boot. It brings the TrUAPI host, the session state and the TrUAPI codecs, so none of them is in the boot chunk. One
   runtime boots per page core, a signing host on the local wallet when there is one, else the pairing host. A core that
-  goes stale is rebuilt without being asked. The signing worker and the local wallet core load on demand.
-- The session layer (the auth state type, the session state the boot starts and the core's shared-store adapter) sits
-  apart from the TrUAPI host callbacks. State the runtime reads or writes (auth, product, permissions, theme, wallet
-  mode) lives with the runtime, and the page chrome's own state (topbar, URL pill, chat panel, network) lives with the
-  page.
+  goes stale is rebuilt without being asked. A core outlives its last lease by a few seconds, so a lease taken soon
+  after keeps the same core. The signing worker and the local wallet core load on demand.
+- The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
+  signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
+  reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
+  state (topbar, URL pill, chat panel, network) lives with the page.
+- Each entry chooses the page's role once, before the boot reads anything: a page (a product), the landing page, a
+  preview opened on its own, a preview its preview host frames, the sign-in window or the sign-out window. The role
+  alone says where a sign-in runs, whether the page shares the signed-in flag or raises it, whether a stored wallet
+  picks the wallet mode, under which reader the restore rule on load counts, whether the page shows the stored session
+  and whether it offers to continue a sign-in made elsewhere.
+- A presence flag on the root domain says whether some sign-in exists, since Safari keeps each product's sign-in apart.
+  It is a cookie on the root domain and every subdomain that holds presence only, never a secret or an identifier,
+  written by the page itself. On a local root, where Chromium refuses such a cookie, it lives in the local server's
+  store. A preview its preview host frames keeps its sign-in in that host's partition, so its flag reads as unknown and
+  it writes none.
+- The restore rule is one step over the page's copy. It reads the flag, the session and the wallet, and clears a paired
+  session the flag says is gone with a compare-and-clear, so a sign-in stored meanwhile stays. It never clears the local
+  wallet, which only a sign-out forgets. A flag that cannot be read keeps everything. A page runs the rule once as it
+  loads, before boot picks a wallet mode or a core reads the session, and an open page runs it again each time the flag
+  changes, another tab changes the local wallet or the user comes back. Each drop is counted under its reader.
+- A page that shows signed out while the flag says a sign-in exists offers to continue it. Session state works that out
+  from the flag and the copy, and the account button and a product's login prompt then open the sign-in window to
+  resume, which sends what the main store holds without offering Continue.
+- The protocol frame lives at `/__protocol/` on the root domain, so it shares that origin with the landing page, the
+  sign-in window and products opened by path. A settings wipe there clears the host's own keys and databases and keeps
+  the frame's, its stores and its databases, which the frame owns.
 - The page builds one route to the core's permission store and one permissions store over it. The product frame and the
   permission prompts get both, the menu reads the store and the diagnostics read the route. A product's newest
   connection answers. A stored answer returns at once, and only a question waits its turn behind other dialogs.
@@ -54,7 +81,31 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   goes through one write that retries, and a newer panel change supersedes an older one. A change announces once, and
   the frame reloads only when its `allow` attribute changes.
 - The auth controller drives the sign-in modal by writing its store. It holds the blocking-modal lease while the modal
-  is up, so one blocking prompt shows at a time.
+  is up, so one blocking prompt shows at a time. Its sign-in, phrase import and sign-out are the one interface every
+  page offers, the debug panel's wallet tab included: they open the sign-in window, or on a preview or the landing page,
+  pair in place and take a recovery phrase in the modal. That phrase check and the phrase form load only when the phrase
+  view first opens.
+- The sign-in window is a page on the bare host, with settings of its own that it never stores. It answers only an
+  opener on an origin its rule allows, and replies to that origin alone. Once it knows its opener, it decides from the
+  main store, never from the opener: it offers Continue for a stored wallet or paired session, pairs on its own core, or
+  takes a recovery phrase when asked for one. A step that fails leaves a failure with Try again.
+- The sign-out window applies the restore rule to the main store and tells its opener it has read. Unless the page tells
+  the phone itself, it ends the session it found on a core of its own, which holds it in memory only and so never
+  touches the main store or the flag.
+- Every product signs in and out through the sign-in window, opened in the click's own turn, since a product's copy may
+  not be the main store. The landing page, whose copy is the main store, and a preview, whose opener policy cuts the
+  link to any window, pair in place. The window's result is written into the page's copy, where its cores and session
+  state pick it up. Sign out opens the sign-out window and drops the flag in the same turn. In paired mode the page
+  reads its copy in that turn and ends that session on a core of its own, so the phone hears of it. In local mode the
+  page waits for the window's read, then forgets the wallet it read and reloads. The sign-out answers whether the phone
+  heard, with one more try for a caller that lets the user retry.
+- The landing page has no product to hold a core, so it holds one lease on its page core while its copy holds a paired
+  session, from the first idle moment after boot, and so hears the phone end the session. It follows the stored session,
+  not the auth state, so a core that reports signed out for a moment never drops and reboots it.
+- The sign-in window, the landing page and a preview opened on its own keep the flag in step with the main store: every
+  sign-in they store or clear goes through one flag writer, which raises the flag before the store holds a sign-in and
+  drops it once the store holds none. A core's storage drops only the session that core last read or wrote, so a core
+  that ends its session never clears a sign-in made elsewhere since.
 - An approved review that goes to the paired phone waits there. Each core keeps a tracker that every connection to it
   taps, both ways, so it infers the phone requests from the frames that pass. A tap that fails is reported and the frame
   passes untouched. An approved review claims the request it belongs to. This is a temporary workaround, as the core
@@ -68,9 +119,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - Components are imported where they are used. The startup size budgets in CI guard what each page loads first.
 - The bridge, and what a visit may never open, load on demand through a lazy loader, each in its own chunk: the bridge,
   the panel bodies (chat, account, chains, permissions, settings), the violation panel, the debug panel and its wire
-  describer, the local wallet and workbox, the host runtime and its worker, the chain client and the QR encoder. The
-  small pieces of a product load (branding, the cache check, the failure screen, the verification tooltip) are plain
-  imports.
+  describer, the recovery phrase form, the local wallet and workbox, the host runtime and its worker, the chain client
+  and the QR encoder. The small pieces of a product load (branding, the cache check, the failure screen, the
+  verification tooltip) are plain imports.
 - The host runtime, the wire describer, the block verifier and the gateway resolver each load once and serve every
   caller after. A failed load is forgotten, so the next caller, a sign-in Retry for one, loads it again without a page
   reload. The describer and the verifier report only their first miss.
@@ -113,12 +164,29 @@ flowchart LR
   loader --> checks["manifest gate, block verifier, load-failure screens"]
   startup --> bridge["runtime bridge and auth"]
   bridge --> page["dialogs, notifications, frame view, network monitor"]
+  bridge -- "click: sign in or out" --> window["sign-in window on the root domain"]
+  window -- "result into the page's copy" --> bridge
+```
+
+A sign-in round between a page and the window:
+
+```mermaid
+sequenceDiagram
+  participant P as page
+  participant W as sign-in window
+  P->>W: open in the click's turn
+  W->>P: ready, to any origin
+  P->>W: hello with a fresh round, to the root origin
+  W->>W: vet the opener, decide from the main store
+  W->>P: result to the vetted origin, or refused with only the round
+  P->>P: on focus or visible, a closed window ends the round as cancelled
 ```
 
 ## Entry points
 
-- The shell page. Dev server on port 4321.
+- The shell page. Dev server on port 4001.
 - The landing page, served for the bare host's root.
+- The sign-in window, served for the bare host's `/__session`.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
   functional run needs the build the root `build:test` script makes, as CI does. It turns metrics on and gives Sentry a

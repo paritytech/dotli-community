@@ -3,8 +3,11 @@
 
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
 
-/** `error` carries the raw failure `message` and the user-facing copy derived from it. */
-export type AuthModalView =
+/**
+ * How far a pairing got: the code being made, the code to scan, the phone approving, or a failure. `error` carries the
+ * raw failure `message` and the user-facing copy derived from it.
+ */
+export type PairingView =
   | { kind: 'spinner' }
   | { kind: 'pairing'; payload: string }
   | { kind: 'authenticating' }
@@ -19,6 +22,20 @@ export type AuthModalView =
       /** Raw reason for bug reports, absent when the copy hides it. */
       detail?: string | undefined;
     };
+
+/**
+ * What the sign-in modal shows: a pairing's view, or one of its own. `window` waits for the sign-in window, `blocked`
+ * and `refused` say why it could not sign in, and `prompt` asks for the click a product's own login request cannot
+ * give, worded to resume a sign-in made elsewhere when one waits. `phrase` takes a recovery phrase on a page that pairs
+ * in place.
+ */
+export type AuthModalView =
+  | PairingView
+  | { kind: 'window' }
+  | { kind: 'blocked' }
+  | { kind: 'refused' }
+  | { kind: 'prompt'; resume: boolean }
+  | { kind: 'phrase' };
 
 /**
  * `open` is true only while the modal holds the blocking-modal lease. `productLabel` has the TLD

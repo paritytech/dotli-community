@@ -36,8 +36,11 @@ export interface CreateHostCallbacksOptions {
   pairingHostGlobal?: boolean | undefined;
   /** Where the callbacks' prompts queue, on the page's one coordinator. */
   blockingModalScope: BlockingModalScope;
-  /** For a local wallet core, whose storage must not touch the paired session. */
-  local?: boolean | undefined;
+  /**
+   * Keeps the core's session away from the stored session and the signed-in flag, for a core that must never write
+   * either.
+   */
+  sessionInMemory?: boolean | undefined;
   /** Whether the core still speaks for the session. */
   inService?: (() => boolean) | undefined;
   /** What the core's confirmations claim the phone's requests from. A local wallet core's claims nothing. */
@@ -61,7 +64,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCa
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope,
-    local,
+    sessionInMemory,
     inService,
     phoneRequests,
     prompts,
@@ -87,7 +90,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCa
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: coreStorage.adapters({ local }),
+    coreStorage: coreStorage.adapters({ sessionInMemory }),
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
         dotSuffix: pairingDotSuffix,

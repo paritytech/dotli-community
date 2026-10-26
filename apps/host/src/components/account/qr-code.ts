@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { loadQrCode } from '../../lazy.js';
+import { wholeModuleSide } from './qr-size.js';
 
 export interface QrDrawOptions {
-  /** The drawn side in px, quiet zone included. */
+  /**
+   * The side the layout allows in px, quiet zone included. The code is drawn at the largest whole-pixel module size
+   * within it.
+   */
   width: number;
   /** The quiet zone, in modules. */
   margin: number;
@@ -26,5 +30,10 @@ export const drawQrCode: DrawQr = async (canvas, payload, options, signal) => {
   if (signal?.aborted === true) {
     return;
   }
-  await QRCode.default.toCanvas(canvas, payload, options);
+  const { modules } = QRCode.default.create(payload, { errorCorrectionLevel: options.errorCorrectionLevel });
+  const width = wholeModuleSide(options.width, modules.size, options.margin);
+  await QRCode.default.toCanvas(canvas, payload, { ...options, width });
+  // The canvas shows at the size it was drawn, which the stylesheet may scale down to fit a narrow screen.
+  canvas.style.removeProperty('width');
+  canvas.style.removeProperty('height');
 };

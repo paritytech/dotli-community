@@ -1,14 +1,22 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The page's one refcounted TrUAPI core, under its product's label. The core goes with its last lease, a faulted one
-// is never handed out again, and one that goes down while it is the page's core is replaced at once when it is held.
-// One nobody holds just goes, and the next request dials.
+// The page's one refcounted TrUAPI core, under its product's label. The core outlives its last lease by the destroy
+// delay, so a lease taken soon after keeps it. A faulted one is never handed out again, and one that goes down while it
+// is the page's core is replaced at once when it is held. One nobody holds just goes, and the next request dials.
 
 import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, log, type AsyncTaskPool, type ListenerSet } from '@dotli/shared';
+import {
+  createAsyncTaskPool,
+  createListenerSet,
+  log,
+  realTimers,
+  type AsyncTaskPool,
+  type ListenerSet,
+  type Timers,
+} from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './core-runtime.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './phone-requests.js';
@@ -65,6 +73,15 @@ export interface PageCoreDeps {
   redials?: AsyncTaskPool;
   /** Makes the tracker of each dialed core, which its connections' frames feed. Default: {@link createPhoneRequestTracker}. */
   createPhoneRequests?: () => PhoneRequestTracker;
+  /**
+   * Told each time the page's last core goes, so what that core reported about the session is no longer anyone's to
+   * keep. A core dialed later reports again.
+   */
+  onCoresGone?: () => void;
+  /** How long a core outlives its last lease. Default {@link CORE_DESTROY_DELAY_MS}. 0 or less disposes at once. */
+  destroyDelay?: number;
+  /** The timers the destroy delay runs on. The page's own by default. */
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 }
 
 export interface PageCore {
@@ -73,6 +90,8 @@ export interface PageCore {
   /** A request made while the core redials waits for the replacement. */
   acquire(): Promise<CoreLease>;
   cancelPairing(): void;
+  /** Resets the session of every core already dialed, booting none, for a session that ended elsewhere. */
+  resetSession(): Promise<void>;
 }
 
 interface Core {
@@ -82,14 +101,19 @@ interface Core {
   faulted: boolean;
   downListeners: ListenerSet<undefined>;
   phoneRequests: PhoneRequestTracker;
+  /** Runs while the core outlives its last lease. */
+  destroyTimer: { handle: unknown } | null;
   dispose(): void;
 }
 
-const LANDING_PRODUCT: PageProduct = {
+/** What a page core serves until the page names its product. A page that never names one keeps it. */
+export const LANDING_PRODUCT: PageProduct = {
   label: 'dotli',
   pairing: { label: 'Polkadot Web', dotSuffix: false, hostGlobal: true },
 };
 
+/** How long a core in service outlives its last lease, so a lease taken soon after keeps the same core. */
+const CORE_DESTROY_DELAY_MS = 5_000;
 const REDIAL_RETRIES = 2;
 const REDIAL_FIRST_DELAY_MS = 1_000;
 
@@ -105,10 +129,19 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       retryCount: REDIAL_RETRIES,
       retryDelay: retry => REDIAL_FIRST_DELAY_MS * 2 ** retry,
     });
+  const destroyDelay = deps.destroyDelay ?? CORE_DESTROY_DELAY_MS;
+  const timers = deps.timers ?? realTimers;
   let pageProduct = LANDING_PRODUCT;
   let current: Core | null = null;
   // Also holds cores a product change or fault replaced while they still had leases.
   const cores = new Set<Core>();
+
+  function clearDestroyTimer(core: Core): void {
+    if (core.destroyTimer !== null) {
+      timers.clearTimeout(core.destroyTimer.handle);
+      core.destroyTimer = null;
+    }
+  }
 
   function isPageProduct(core: Core): boolean {
     return core.product.label === pageProduct.label && productIdOf(core.product) === productIdOf(pageProduct);
@@ -218,12 +251,14 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       runtime,
       leases: 0,
       faulted: false,
+      destroyTimer: null,
       phoneRequests,
       downListeners: createListenerSet<undefined>({ onListenerError: reportListener('wallet', 'page_core.down') }),
       dispose() {
         if (!cores.delete(core)) {
           return;
         }
+        clearDestroyTimer(core);
         if (current === core) {
           current = null;
         }
@@ -232,12 +267,15 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
         unsubscribeStore?.();
         blockingModalScope.dispose();
         phoneRequests.dispose();
+        if (cores.size === 0) {
+          deps.onCoresGone?.();
+        }
       },
     };
     cores.add(core);
     const previous = current;
     current = core;
-    // Only a redialed core can be current without a lease, and nobody waits on it once it is replaced.
+    // Only a redialed or lingering core can be current without a lease, and nobody waits on it once it is replaced.
     if (previous !== null && previous.leases === 0) {
       previous.dispose();
     }
@@ -324,8 +362,8 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
   return {
     setProduct(product) {
       pageProduct = product;
-      // Only a redial is current with no lease. It serves the product the page left, so it goes now rather than with
-      // the next request.
+      // Only a redialed or lingering core is current with no lease. It serves the product the page left, so it goes
+      // now rather than with the next request.
       if (current !== null && current.leases === 0 && !isPageProduct(current)) {
         current.dispose();
       }
@@ -336,6 +374,8 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       if (core === null || core.faulted || !isPageProduct(core)) {
         core = dial(pageProduct);
       }
+      // A lingering core is leased again, so it stays.
+      clearDestroyTimer(core);
       core.leases++;
       let released = false;
       // A core outliving a lease must not call back a holder that let it go.
@@ -351,7 +391,18 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
         leaseUnsubscribes.clear();
         core.leases--;
         if (core.leases === 0) {
-          core.dispose();
+          const lingers =
+            destroyDelay > 0 && cores.has(core) && core === current && !core.faulted && isPageProduct(core);
+          if (lingers) {
+            core.destroyTimer = {
+              handle: timers.setTimeout(() => {
+                core.destroyTimer = null;
+                core.dispose();
+              }, destroyDelay),
+            };
+          } else {
+            core.dispose();
+          }
         }
       };
       let booted: BootedCoreRuntime;
@@ -398,6 +449,21 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
           },
         );
       }
+    },
+
+    async resetSession() {
+      await Promise.all(
+        [...cores].map(async core => {
+          let booted: BootedCoreRuntime;
+          try {
+            booted = await core.runtime;
+          } catch {
+            // A core that never booted holds no session, and its boot failure was reported as it failed.
+            return;
+          }
+          await booted.runtime.resetSessionState();
+        }),
+      );
     },
   };
 }

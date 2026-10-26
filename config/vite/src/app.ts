@@ -9,24 +9,27 @@ import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { loadEnv, mergeConfig, type Plugin, type PluginOption, type UserConfig } from 'vite';
+import mkcert from 'vite-plugin-mkcert';
 import wasmPlugin from 'vite-plugin-wasm';
 import { buildInfo } from './build-info-plugin.ts';
 import { appBuildOptions, rolldownOptions } from './build-options.ts';
 import { cssModules } from './css-modules.ts';
 import { runtimeNetworkConfigScript } from './runtime-network-config-plugin.ts';
 import { provideSentryRelease, sentryUploadRelease } from './sentry-release.ts';
-import { isolationHeaders, type Site } from './serving.ts';
+import { createLocalServing, PROTOCOL_PREFIX, type LocalServing, type Site } from './serving.ts';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
 export interface DotliApp {
-  /** The path the app is served under, from `VITE_APP_URL`. */
+  /** The path the app is served under: `/__protocol/` for the protocol app, else from `VITE_APP_URL`. */
   base: string;
   /** For a worker build that lists its own plugins. */
   wasm: () => Plugin;
   /** The app's Vite config: the shared one with `own` merged over it, and the Sentry upload last, as its plugin asks. */
   vite: (own: UserConfig) => UserConfig;
+  /** The routes and headers of the local roots the app was made for, which its own dev plugins take. */
+  serving: LocalServing;
 }
 
 /** Falls back to git HEAD so local builds show a real commit too. Left unset, it reads as "dev". */
@@ -66,8 +69,21 @@ function sentryUpload(appDir: string, envDir: string): PluginOption {
   }));
 }
 
-/** The shared build of the app in `appDir`, which serves `site`. */
-export function dotliApp(appDir: string, site: Site): DotliApp {
+/**
+ * A locally trusted certificate for the dev servers, since Safari keeps `Secure` cookies and the session window's
+ * opener rule off plain http on any host but localhost. Previews stay on http, as the functional tests load them there.
+ */
+function devCertificate(roots: readonly string[]): PluginOption {
+  // Its own `apply` takes only a command, and 'serve' covers the preview server too.
+  const plugin = mkcert({
+    hosts: roots.flatMap(root => [root, `*.${root}`, `*.app.${root}`]),
+  }) as Plugin;
+  return { ...plugin, apply: (_config, { command, isPreview }) => command === 'serve' && isPreview !== true };
+}
+
+/** The shared build of the app in `appDir`, which serves `site` under the local roots `roots` when run locally. */
+export function dotliApp(appDir: string, site: Site, roots: readonly string[]): DotliApp {
+  const serving = createLocalServing(roots);
   provideCommitSha(appDir);
   provideSentryRelease(appDir);
   const appUrl = process.env['VITE_APP_URL'] ?? '';
@@ -81,7 +97,7 @@ export function dotliApp(appDir: string, site: Site): DotliApp {
     css: { modules: cssModules() },
     // The isolation headers run ahead of an app's own plugins, so they read `/__preview` before the host's SPA
     // fallback rewrites it.
-    plugins: [wasm(), runtimeNetworkConfigScript(), buildInfo(site), isolationHeaders()],
+    plugins: [wasm(), runtimeNetworkConfigScript(), buildInfo(site), serving.isolationHeaders(), devCertificate(roots)],
     worker: { rolldownOptions: rolldownOptions() },
     build: {
       ...appBuildOptions(),
@@ -89,11 +105,16 @@ export function dotliApp(appDir: string, site: Site): DotliApp {
       modulePreload: { polyfill: false },
       sourcemap: 'hidden',
     },
-    // The three dev servers take neighbouring ports, so one must not drift onto the next.
-    server: { strictPort: true },
+    server: {
+      // Each origin has its own fixed dev port, which a busy port must fail rather than move off.
+      strictPort: true,
+      // Vite trusts only `localhost` by name, and refuses the hot reload socket on any other local root.
+      allowedHosts: roots.map(root => `.${root}`),
+    },
   };
   return {
-    base: appUrl === '' ? '/' : new URL(appUrl).pathname,
+    serving,
+    base: site === 'protocol' ? `${PROTOCOL_PREFIX}/` : appUrl === '' ? '/' : new URL(appUrl).pathname,
     wasm,
     vite: own => {
       const merged: UserConfig = mergeConfig(shared, own);

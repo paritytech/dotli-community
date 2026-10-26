@@ -123,7 +123,6 @@ function start(overrides: Partial<PwaDeps> = {}) {
     },
     reload,
     page: {
-      isHidden: () => page.document.hidden,
       isOnline: () => page.window.onLine,
       visibility: page.document,
       every: (_ms, run) => {

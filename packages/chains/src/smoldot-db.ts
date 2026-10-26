@@ -5,7 +5,7 @@
 
 import { idbRequest, idbTransaction, log, openIdb, withTimeout } from '@dotli/shared';
 
-const DB_NAME = 'dotli-smoldot-db';
+export const SMOLDOT_DB_NAME = 'dotli-smoldot-db';
 const STORE = 'chain-databases';
 // Last resume time per genesis hash. The SharedWorker's console is unreachable, so this is how warm
 // start is observed from outside.
@@ -40,7 +40,7 @@ function upgrade(db: IDBDatabase): void {
 }
 
 // A tab on v1 blocks the upgrade, which rejects, so warm start degrades to cold.
-const openDb = (factory: IDBFactory): Promise<IDBDatabase> => openIdb(factory, DB_NAME, DB_VERSION, upgrade);
+const openDb = (factory: IDBFactory): Promise<IDBDatabase> => openIdb(factory, SMOLDOT_DB_NAME, DB_VERSION, upgrade);
 
 async function read(factory: IDBFactory, genesisHash: string): Promise<string | null> {
   const db = await openDb(factory);

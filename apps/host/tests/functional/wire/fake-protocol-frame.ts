@@ -178,18 +178,20 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
     return ok();
   });
 
-  // Storage reads and the owner lookup find nothing, and writes and the warmup succeed.
+  // Storage reads and the owner lookup find nothing, writes and the warmup succeed, and a compare finds no match.
   serving.handleRequest(resolve.owner, () => ok(null));
   serving.handleRequest(frame.warmup, () => ok());
   serving.handleRequest(storage.authRead, () => ok(null));
   serving.handleRequest(storage.modeRead, () => ok(null));
-  serving.handleRequest(storage.authWrite, () => ok());
+  serving.handleRequest(storage.authWrite, () => ok(true));
   serving.handleRequest(storage.authClear, () => ok());
-  serving.handleRequest(storage.modeWrite, () => ok());
+  serving.handleRequest(storage.authClearIf, () => ok(false));
+  serving.handleRequest(storage.modeWrite, () => ok(true));
   serving.handleRequest(storage.modeClear, () => ok());
   serving.handleRequest(wallet.save, () => ok());
   serving.handleRequest(wallet.identity, () => ok());
   serving.handleRequest(wallet.forget, () => ok());
+  serving.handleRequest(wallet.forgetIf, () => ok(false));
 }
 
 // Read while the script runs, the only time its own tag is `currentScript`.

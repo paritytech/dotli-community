@@ -250,6 +250,7 @@ async function pairOnce(
     await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0, undefined, {
       timeout: 30_000,
     });
+    // The landing page pairs on the page itself, in the main store.
     await authBtn.click();
 
     const qrCanvas = page.locator('#auth-modal-qr canvas');
@@ -269,7 +270,8 @@ async function pairOnce(
         .catch(() => 'unknown')
     ).trim();
 
-    // Includes the cross-origin shared-auth iframe's storage, which lets worker fixtures skip pairing.
+    // The frame now shares the landing page's origin, so this origin's storage holds the main store's session, and the
+    // signed-in flag stays in the preview server's store, which lets worker fixtures skip pairing.
     await ctx.storageState({ path: STATE_FILE });
     const paired = signingHost;
     signingHost = null;
@@ -283,8 +285,8 @@ async function pairOnce(
   }
 }
 
-// Signed in when the user badge renders. Racing the sign-in modal's failure
-// view and the CLI's exit turns a hang into a fast, attributable failure.
+// Signed in when the landing page's user badge renders. Racing the sign-in modal's failure view and the CLI's exit
+// turns a hang into a fast, attributable failure.
 async function waitForSignedIn(
   page: Page,
   signingHost: SigningHostProcess,

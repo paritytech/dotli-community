@@ -22,14 +22,15 @@ export interface HostWalletMode {
   failure: string | null;
 }
 
-/** `reloading` once the switch is stored for every app, `failed` after the failure was reported. */
-export type WalletSwitchOutcome = 'reloading' | 'failed';
-
+/**
+ * The page's sign-in, where the page takes it: its sign-in window, or its own modal on a page that pairs in place. Each
+ * call opens it before it returns, so a click handler calls it with no wait.
+ */
 export interface WalletSwitch {
-  /** Uses this wallet in every app on the domain. */
-  useLocalWallet(entropy: Uint8Array): Promise<WalletSwitchOutcome>;
-  /** Forgets the local wallet in every app on the domain, so they sign with Polkadot App again. */
-  usePolkadotApp(): Promise<WalletSwitchOutcome>;
+  /** Opens the page's recovery phrase view, where the phrase is typed. */
+  importPhrase(): void;
+  /** Signs out, so every app on the domain signs with Polkadot App again. */
+  usePolkadotApp(): void;
 }
 
 /** A row the host marks `copyable` gets a copy button. */
@@ -73,10 +74,7 @@ export interface DebugPanelHost {
   /** The Wallet tab shows the local wallet's account from it. */
   auth: ReadableStore<HostAuth>;
   walletMode: ReadableStore<HostWalletMode>;
-  /** Each switch reports its own failure, so the Wallet tab only shows it. */
   walletSwitch: WalletSwitch;
-  /** Null for anything that is not a valid recovery phrase. */
-  phraseToEntropy: (phrase: string) => Uint8Array | null;
   diagnostics: DiagnosticsSource;
   archive: ArchiveLoader;
   /** Where the page's content starts and ends, which the panel docks against. */

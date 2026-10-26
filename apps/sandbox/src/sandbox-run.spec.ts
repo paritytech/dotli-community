@@ -158,6 +158,29 @@ describe('runSandbox contract', () => {
     expect(captured).toMatchObject([{ ctx: { step: 'contract_origin' } }]);
   });
 
+  it('As a developer on local.host, I open my sandbox on its app subdomain and it loads the product', async () => {
+    // Given a sandbox whose product loads
+    const sandbox = harness([{ outcome: 'loaded' }]);
+
+    // When it runs on an app subdomain of local.host
+    await runSandbox(framed(sandboxUrl({}, 'myapp.app.local.host:4322')), sandbox.deps);
+
+    // Then the product is configured and loaded with no failure
+    expect(sandbox.events).toEqual(['configure paseo-next-v2', 'load 1']);
+    expect(sandbox.failures).toEqual([]);
+  });
+
+  it('As an operator, I see a sandbox served on local.host outside an app subdomain fail as a contract error', async () => {
+    // Given a sandbox whose product loads
+    const sandbox = harness([{ outcome: 'loaded' }]);
+
+    // When it runs on local.host outside an app subdomain
+    await runSandbox(framed(sandboxUrl({}, 'myapp.local.host:4322')), sandbox.deps);
+
+    // Then it fails the origin contract
+    expect(sandbox.failures).toMatchObject([{ step: 'contract_origin' }]);
+  });
+
   it('As a visitor whose sandbox reloaded without its params, I wait for the host to render it again and see the load fail if it does not in time', async () => {
     // Given a reload that stripped the params
     vi.useFakeTimers();

@@ -1,7 +1,8 @@
 # ${DOMAIN}: DO NOT EDIT THE INSTALLED COPY. Rendered per env by `make deploy-nginx` with envsubst.
 # ${RL} and ${SENTRY} are "" to enable their lines or "#" to comment them out. ${RL} is on for the production
 # domains, ${SENTRY} when SENTRY_DSN is set.
-#   host.${DOMAIN}    protocol build
+#   ${DOMAIN}         host build, and the protocol build under /__protocol/
+#   host.${DOMAIN}    protocol build, kept for one release for shells cached by the previous one
 #   *.${DOMAIN}       host build
 #   *.app.${DOMAIN}   app build
 
@@ -47,6 +48,12 @@ server {
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
+
+    set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN} revx.dev stg.revx.dev http://localhost:*";
+    set $protocol_root "${WEBROOT}/protocol";
+    include /etc/nginx/snippets/dotli-protocol-frame.conf;
+    include /etc/nginx/snippets/dotli-session-page.conf;
+    include /etc/nginx/snippets/dotli-session-file.conf;
 
     # The landing page. Every other path gets the shell, which opens the product `/<label>` names and sends a URL with no
     # product back here.
@@ -117,9 +124,11 @@ server {
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    root ${WEBROOT}/protocol;
+    set $protocol_root "${WEBROOT}/protocol";
+    root $protocol_root;
     index index.html;
 
+    include /etc/nginx/snippets/dotli-protocol-frame.conf;
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
@@ -154,6 +163,7 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+    include /etc/nginx/snippets/dotli-session-file.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";

@@ -73,6 +73,23 @@ describe('readShellRoute', () => {
     expect(bare).toEqual({ kind: 'landing' });
   });
 
+  it('As a developer on local.host, I open a product subdomain and get that product, while its sandbox or the bare host gets none', () => {
+    // Given a product subdomain, a sandbox host and the bare host on local.host
+    const productUrl = at('https://doom.local.host:4321/deep');
+    const sandboxUrl = at('https://bafy.app.local.host:4322/');
+    const bareUrl = at('https://local.host:4321/');
+
+    // When each is read
+    const product = readShellRoute(productUrl, LOCAL_DEBUG);
+    const sandbox = readShellRoute(sandboxUrl, LOCAL_DEBUG);
+    const bare = readShellRoute(bareUrl, LOCAL_DEBUG);
+
+    // Then only the product subdomain routes to its product
+    expect(product).toEqual({ kind: 'product', label: 'doom', base: '' });
+    expect(sandbox).toEqual({ kind: 'landing' });
+    expect(bare).toEqual({ kind: 'landing' });
+  });
+
   it('As a developer previewing a web container, I get the preview with the product id I asked for on localhost', () => {
     // When
     const route = readShellRoute(previewAt(PREVIEW, '&dotliProductId=localhost%3A3000'), LOCAL_DEBUG);
@@ -165,7 +182,7 @@ function landing(
   origin: string,
   pathname: string,
   workers: number,
-  localhost = true,
+  localRoot: string | null = 'localhost',
 ): { deps: LandingDeps; replace: ReturnType<typeof vi.fn>; unregister: ReturnType<typeof vi.fn> } {
   const url = new URL(origin);
   const replace = vi.fn();
@@ -180,7 +197,7 @@ function landing(
         origin: url.origin,
         replace,
       },
-      localhost,
+      localRoot,
       workers: () => Promise.resolve(Array.from({ length: workers }, () => ({ unregister }))),
     },
     replace,
@@ -214,13 +231,24 @@ describe('leaveForLanding', () => {
 
   it('As a visitor on a deployed sandbox host, I am sent to the landing page on the base domain', async () => {
     // Given
-    const { deps, replace } = landing(`https://bafy.app.${BASE_DOMAIN}`, '/', 0, false);
+    const { deps, replace } = landing(`https://bafy.app.${BASE_DOMAIN}`, '/', 0, null);
 
     // When
     await leaveForLanding(deps);
 
     // Then
     expect(replace).toHaveBeenCalledWith(`https://${BASE_DOMAIN}/?network=previewnet`);
+  });
+
+  it('As a developer on a local.host sandbox host, I am sent to the landing page on local.host and my port', async () => {
+    // Given a page on a sandbox host of local.host
+    const { deps, replace } = landing('https://bafy.app.local.host:4321', '/', 0, 'local.host');
+
+    // When the page leaves for the landing page
+    await leaveForLanding(deps);
+
+    // Then it goes to local.host on the same port
+    expect(replace).toHaveBeenCalledWith('https://local.host:4321/?network=previewnet');
   });
 
   it('As a visitor whose server answers the landing URL with the shell, I see an error rather than a reload loop', async () => {

@@ -74,6 +74,9 @@ export function readShellRoute(location: ShellLocation, options: RouteOptions): 
   return readPathProduct(location.pathname) ?? { kind: 'landing' };
 }
 
+/** The sign-in window's path on the bare host. */
+export const SESSION_WINDOW_PATH = '/__session';
+
 /**
  * A link to a product on the bare host: `/<name>` or `/<name>.dot`, then the product's own path. The only way to a
  * subname, whose host a wildcard certificate does not cover.
@@ -134,7 +137,8 @@ export function localTargetPath(target: LocalTarget): string {
 
 export interface LandingDeps {
   location: Pick<Location, 'protocol' | 'port' | 'pathname' | 'search' | 'origin' | 'replace'>;
-  localhost: boolean;
+  /** The local root the shell is served under, or `null` when deployed. */
+  localRoot: string | null;
   /** The service workers registered on this origin. */
   workers: () => Promise<readonly { unregister: () => Promise<boolean> }[]>;
 }
@@ -146,9 +150,10 @@ export interface LandingDeps {
  */
 export async function leaveForLanding(deps: LandingDeps): Promise<void> {
   const { protocol, port, pathname, search } = deps.location;
-  const origin = deps.localhost
-    ? `${protocol}//localhost${port === '' ? '' : `:${port}`}`
-    : `${protocol}//${BASE_DOMAIN}`;
+  const origin =
+    deps.localRoot !== null
+      ? `${protocol}//${deps.localRoot}${port === '' ? '' : `:${port}`}`
+      : `${protocol}//${BASE_DOMAIN}`;
   const registrations = await deps.workers();
   if (registrations.length === 0 && origin === deps.location.origin && pathname === '/') {
     throw new Error('the server answered the landing page URL with the shell');

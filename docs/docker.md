@@ -1,5 +1,6 @@
 ---
-summary: "The prebuilt dotli artifacts (container image and release tarball), each repointed at a forked dev chain per run without rebuilding"
+summary: "The prebuilt dotli artifacts (container image and release tarball), each repointed at a forked dev chain
+  per run without rebuilding"
 read_when:
   - You want to run dotli against a locally forked chain (zombie-bite, chopsticks)
   - You are changing the runtime network config schema or how it reaches the browser
@@ -114,10 +115,12 @@ while believing otherwise.
 
 ## Why `*.localhost` on one port
 
-dotli needs four hostnames: an apex, `host.<domain>` for the protocol iframe,
-`*.app.<domain>` for sandboxes, and `*.<domain>` for the shell. The container
-serves them as `localhost`, `host.localhost`, `*.app.localhost`, `*.localhost`,
-mirroring what `scripts/preview-server.ts` does for local previews.
+dotli needs three hostnames: an apex, `*.app.<domain>` for sandboxes, and
+`*.<domain>` for the shell. The apex also serves the protocol iframe under
+`/__protocol/` and the sign-in window at `/__session`. The container serves them
+as `localhost`, `*.app.localhost` and `*.localhost`. `host.localhost` still
+answers with the protocol build for one more release, so a shell cached by the
+previous release finds its frame.
 
 This needs no code changes and no DNS setup: the flat `*.localhost` shape is
 already special-cased in `getProtocolOrigin` (`packages/protocol/src/client.ts`),
@@ -138,11 +141,11 @@ the bundle reads the port from the current location.
 
 ## Base domain
 
-dot.li needs four hostnames (an apex, `host.<base>`, `*.<base>` and
-`*.app.<base>`) and normally derives `<base>` from the last two segments of the
-current hostname. That is right for `dot.li` and `paseo.li` and wrong for anything
-deeper: `dotli.ppn-65iw.pdp-stg-scw.parity.io` would derive `parity.io`, then look
-for its protocol iframe at `host.parity.io` and accept `*.app.parity.io` as sandbox
+dot.li needs three hostnames (an apex, `*.<base>` and `*.app.<base>`) and normally
+derives `<base>` from the last two segments of the current hostname. That is right
+for `dot.li` and `paseo.li` and wrong for anything deeper:
+`dotli.ppn-65iw.pdp-stg-scw.parity.io` would derive `parity.io`, then look for its
+protocol iframe at `parity.io/__protocol/` and accept `*.app.parity.io` as sandbox
 origins.
 
 Such hosts must state it:

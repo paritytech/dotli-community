@@ -3,6 +3,7 @@
 
 // Imports no Solid, so the naming rules are unit tested apart from the views that show them.
 
+import type { ContinueOffer } from '../../state/session-window.js';
 import type { AccountSession } from './account.js';
 
 // A session can install without any username (the account has no dotNS record
@@ -37,4 +38,10 @@ export function shortenAccount(account: string | undefined): string | undefined 
 
 export function sessionDisplayName(state: AccountSession): string | undefined {
   return sessionUsername(state) ?? shortenAccount(state.identityAccountId ?? state.publicKey);
+}
+
+/** The name the sign-in window's Continue shows. A wallet imported there has no names until a core reads them. */
+export function offeredAccountName(offer: ContinueOffer): string {
+  const name = offer.account === null ? undefined : sessionDisplayName(offer.account);
+  return name ?? (offer.wallet === 'local' ? 'Recovery phrase wallet' : 'Polkadot App account');
 }

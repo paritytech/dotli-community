@@ -12,6 +12,8 @@ export interface AccountStores {
   auth: ReadableStore<DotliAuthState>;
   loggedIn: ReadableStore<boolean>;
   walletMode: ReadableStore<{ mode: 'app' | 'local' }>;
+  signingOut: ReadableStore<boolean>;
+  elsewhere: ReadableStore<boolean>;
 }
 
 /** The account as the views read it, for an island's own lifetime. */
@@ -19,6 +21,8 @@ export function useAccount(stores: AccountStores): Account {
   const auth = useStore(stores.auth);
   const loggedIn = useStore(stores.loggedIn);
   const local = useStore(stores.walletMode, state => state.mode === 'local');
+  const signingOut = useStore(stores.signingOut);
+  const elsewhere = useStore(stores.elsewhere);
   const last = createMemo<TruapiSessionUiState | undefined>(prev => {
     const state = auth();
     return state.tag === 'Connected' ? state.session : prev;
@@ -30,6 +34,8 @@ export function useAccount(stores: AccountStores): Account {
     connected,
     restoring: () => auth().tag === 'Restoring',
     unreachable: () => auth().tag === 'Unreachable',
+    signingOut,
     local,
+    elsewhere,
   };
 }

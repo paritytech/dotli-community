@@ -29,7 +29,21 @@ export type MetricOutcome =
   // be matched
   | 'gone'
   | 'undecodable'
-  | 'unmatchable';
+  | 'unmatchable'
+  // Signed-in flag
+  | 'dropped'
+  | 'signed_out'
+  | 'switched'
+  | 'unreadable'
+  // Sign-in and sign-out windows
+  | 'opened'
+  | 'blocked'
+  | 'busy'
+  | 'signed_in'
+  | 'cancelled'
+  | 'told_phone'
+  | 'nothing'
+  | 'kept';
 
 /** Dashboards slice on the named keys, so keep new attributes within them. */
 export type MetricAttributes = {

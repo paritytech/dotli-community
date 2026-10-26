@@ -46,10 +46,10 @@ export async function deleteAllDatabases(
 }
 
 /**
- * Empties each store in turn, whatever happened to the one before, then rejects with an `OriginWipeError` naming every
- * part that failed.
+ * Empties each store in turn, except the databases in `keepDatabases`, whatever happened to the one before, then
+ * rejects with an `OriginWipeError` naming every part that failed.
  */
-export async function wipeOriginStores(stores: OriginStores): Promise<void> {
+export async function wipeOriginStores(stores: OriginStores, keepDatabases: readonly string[] = []): Promise<void> {
   const failures = new Map<OriginWipePart, unknown>();
   const run = async (part: OriginWipePart, wipe: () => Promise<unknown>): Promise<void> => {
     try {
@@ -60,7 +60,7 @@ export async function wipeOriginStores(stores: OriginStores): Promise<void> {
   };
   const { indexedDB: idb, caches, serviceWorker } = stores;
   if (idb !== null) {
-    await run('indexeddb', () => deleteAllDatabases(idb));
+    await run('indexeddb', () => deleteAllDatabases(idb, keepDatabases));
   }
   if (caches !== null) {
     await run('cache_storage', async () => {

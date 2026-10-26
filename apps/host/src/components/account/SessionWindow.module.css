@@ -1,0 +1,69 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The window opens as a tab or a pop-up of any size, so the card centres in whatever it is given. */
+.window {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: var(--sp-6) calc(var(--sp-5) + var(--safe-right)) calc(var(--sp-6) + var(--safe-bottom))
+    calc(var(--sp-5) + var(--safe-left));
+}
+
+.card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  width: 420px;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--sp-10);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--chrome-shadow-pop);
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  align-self: stretch;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+}
+
+/* A form reads from the start of the line. */
+.window[data-view='phrase'] .content {
+  text-align: start;
+}
+
+/* A phone has the whole page to itself: the content in the middle, the actions and the note within the thumb's reach. */
+@media (max-width: 560px) {
+  .window {
+    align-items: stretch;
+    gap: var(--sp-5);
+    padding: var(--sp-8) calc(var(--sp-5) + var(--safe-right)) calc(var(--sp-8) + var(--safe-bottom))
+      calc(var(--sp-5) + var(--safe-left));
+  }
+  .card {
+    display: contents;
+  }
+  .content {
+    flex: 1;
+    justify-content: center;
+    margin-bottom: var(--sp-3);
+  }
+}

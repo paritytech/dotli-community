@@ -1,0 +1,39 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The sign-in window on the bare host, which servers answer at /__session. No topbar and no product, only the logo's
+// header over the window's content. The island renders at build time on its first view, so Connecting is the first
+// paint.
+import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
+// `.jsx`, since Astro finds a hydrated island's `.tsx` source from that extension and not from `.js`.
+import { Overlays } from '../islands/Overlays.jsx';
+import { SessionWindow } from '../islands/SessionWindow.jsx';
+import BetaTag from '../components/BetaTag.astro';
+import PageHead from '../components/PageHead.astro';
+import s from './session.module.css';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <PageHead />
+  </head>
+  <body class={s['page']} data-session-window>
+    <header class={s['header']}>
+      {/* The brand's horizontal lockup, at its sizes and spacing. */}
+      <span class={s['lockup']}>
+        <LogoSymbol class={s['mark']} height={22} />
+        <LogoWordmark class={s['wordmark']} height={14} />
+        <BetaTag class={s['beta']} />
+      </span>
+    </header>
+    <SessionWindow client:load />
+    <div class={s['balance']} aria-hidden="true"></div>
+    {/* Marked, so a full-page screen keeps it. */}
+    <div data-overlays>
+      <Overlays client:idle={{ timeout: 1000 }} />
+    </div>
+    <script src="../session.ts"></script>
+  </body>
+</html>

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The page as the debug panel reads it. Loaded only with the panel, so the diagnostics, the wallet switch, the archive
-// reader and the recovery phrase check stay out of the boot chunk.
+// The page as the debug panel reads it. Loaded only with the panel, so the diagnostics and the archive reader stay out
+// of the boot chunk.
 
 import { bitswapGet } from '@dotli/bitswap';
 import { getBackend, type Backend } from '@dotli/config';
@@ -12,12 +12,11 @@ import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
 import { setDockInset } from './product-frame-layout.js';
 import { getTopbarState } from './state/topbar.js';
 import { closeDebugMode } from './settings-actions.js';
+import { importPhrase, logout } from './runtime/auth-controller.js';
 import { authStore } from './runtime/state/auth.js';
 import { pageDiagnostics } from './runtime/diagnostics.js';
-import { phraseToEntropy } from './runtime/recovery-phrase.js';
 import { productStore } from './runtime/state/product.js';
 import { walletModeStore } from './runtime/state/wallet-mode.js';
-import { walletSwitch } from './runtime/wallet-switch.js';
 
 /** One block's bytes by CID. */
 type BlockSource = (cid: string) => Promise<Uint8Array>;
@@ -37,8 +36,7 @@ export const debugPanelHost: DebugPanelHost = {
   product: productStore,
   auth: authStore,
   walletMode: walletModeStore,
-  walletSwitch,
-  phraseToEntropy,
+  walletSwitch: { importPhrase, usePolkadotApp: logout },
   diagnostics: pageDiagnostics,
   archive: cid => readArchiveFiles(cid, archiveTransport(getBackend(), relayBlock)),
   contentInsets: { top: 'var(--content-top)', bottom: 'var(--content-bottom)' },

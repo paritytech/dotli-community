@@ -35,6 +35,7 @@ import {
   getNetwork,
   isLocalhost,
   isSandboxOrigin,
+  LOCAL_ROOT,
 } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
 import {
@@ -62,6 +63,7 @@ import {
   type ShellRoute,
 } from './shell-route.js';
 import { createBlockVerifier } from './block-verifier.js';
+import { shellPageRole, type PageRole } from './runtime/page-role.js';
 import { reportLazyMiss } from './lazy-miss.js';
 import { startDebugPanel } from './debug-panel.js';
 import { startMainThreadMonitor } from './main-thread-monitor.js';
@@ -98,7 +100,7 @@ async function loadRpcResolver(): Promise<RpcResolver> {
 }
 
 /** Starts the debug tools, the sandbox channel, the settings and the bridge. */
-async function startShell(route: ShellRoute): Promise<Shell> {
+async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays off and every emit returns early.
@@ -133,6 +135,7 @@ async function startShell(route: ShellRoute): Promise<Shell> {
   }
 
   const startup = await startHost(flowId, {
+    role,
     emitDotliDebugEvent,
     startShellState: () => {
       startShellState();
@@ -303,9 +306,10 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
 
 async function main(): Promise<void> {
   startPage();
+  const framed = window.self !== window.top;
   const route = readShellRoute(window.location, {
     localhost: isLocalhost,
-    framed: window.self !== window.top,
+    framed,
     // Behind the compile-time flag, so release bundles drop the localhost proxy.
     localhostProxy: DEBUG ? readLocalhostUrl : undefined,
   });
@@ -318,7 +322,7 @@ async function main(): Promise<void> {
   if (route.kind === 'preview' || route.kind === 'localhost') {
     showLocalhostPill(route.host);
   }
-  const shell = await startShell(route);
+  const shell = await startShell(route, shellPageRole(route, framed));
   switch (route.kind) {
     case 'preview':
       await openLocalTarget(route, shell);
@@ -335,7 +339,7 @@ async function main(): Promise<void> {
       announceRoute(route, shell.flowId);
       await leaveForLanding({
         location: window.location,
-        localhost: isLocalhost,
+        localRoot: LOCAL_ROOT,
         workers: async () => ('serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations() : []),
       });
       return;

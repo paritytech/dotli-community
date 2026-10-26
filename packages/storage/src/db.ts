@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The one "dotli" IndexedDB connection, opened on first use.
+// The "dotli" and "dotli-wallet" IndexedDB connections, each opened on first use.
 
 import { createAsyncTaskPool, openIdb } from '@dotli/shared';
-import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
+import { DB_NAME, DB_VERSION, upgradeDotliDb, upgradeWalletDb, WALLET_DB_NAME, WALLET_DB_VERSION } from './schema.js';
 
 /**
  * A connection closing under unload or another tab's upgrade, or an open blocked by an older tab.
@@ -67,3 +67,8 @@ export interface DotliIdb {
 
 /** The page's own IndexedDB. */
 export const pageIdb: DotliIdb = { connect: getDb, keyRange: () => IDBKeyRange };
+
+const getWalletDb = createDbConnection(() => openIdb(indexedDB, WALLET_DB_NAME, WALLET_DB_VERSION, upgradeWalletDb));
+
+/** The frame's wallet database, apart from the page's so no cleanup of that one can reach it. */
+export const walletIdb: DotliIdb = { connect: getWalletDb, keyRange: () => IDBKeyRange };

@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Switches every app on this domain between Polkadot App and a local wallet. Each switch reloads the page.
+// Switches every app on this domain between Polkadot App and a local wallet. The page takes the recovery phrase in its
+// own sign-in, so the panel only asks for it.
 
-import { createSignal, onCleanup, Show, untrack } from 'solid-js';
+import { Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { useStore } from '@dotli/ui';
 import type { DebugPanelHost, HostAuth } from './host.js';
@@ -16,19 +17,9 @@ import { KeyValue, KeyValueList } from './shared/KeyValueList.js';
 import { Note } from './shared/Note.js';
 import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
-import { TextArea } from './shared/TextArea.js';
-
-/** Aborted as the form leaves the tab, so a switch that answers late changes nothing. */
-function whileShown(): AbortSignal {
-  const shown = new AbortController();
-  onCleanup(() => {
-    shown.abort();
-  });
-  return shown.signal;
-}
 
 /** What the tab reads of the host and asks of it. */
-export type WalletHost = Pick<DebugPanelHost, 'auth' | 'walletMode' | 'walletSwitch' | 'phraseToEntropy'>;
+export type WalletHost = Pick<DebugPanelHost, 'auth' | 'walletMode' | 'walletSwitch'>;
 
 export function WalletView(props: { active: boolean; host: WalletHost }): JSX.Element {
   return (
@@ -45,67 +36,34 @@ function Wallet(props: { host: WalletHost }): JSX.Element {
   return (
     <Stack gap="md">
       <Show when={state().failure}>{failure => <ErrorText testId="td-wallet-failure">{failure()}</ErrorText>}</Show>
-      <Show when={state().mode === 'local'} fallback={<ImportForm submitLabel="Use locally" host={props.host} />}>
+      <Show when={state().mode === 'local'} fallback={<ImportPrompt host={props.host} />}>
         <LocalWallet host={props.host} />
       </Show>
     </Stack>
   );
 }
 
-/** Takes a phrase and switches every app to it. While replacing a local wallet, Cancel keeps the current one. */
-function ImportForm(props: { submitLabel: string; host: WalletHost; onCancel?: () => void }): JSX.Element {
-  const [phrase, setPhrase] = createSignal('');
-  const [error, setError] = createSignal<string | null>(null);
-  const [saving, setSaving] = createSignal(false);
-  const shown = whileShown();
-
-  const submit = (event: SubmitEvent): void => {
-    event.preventDefault();
-    const entropy = props.host.phraseToEntropy(phrase());
-    if (entropy === null) {
-      setError('Not a valid recovery phrase');
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    void props.host.walletSwitch.useLocalWallet(entropy).then(outcome => {
-      if (outcome === 'failed' && !shown.aborted) {
-        setSaving(false);
-        setError('The wallet could not be saved. Try again.');
-      }
-    });
-  };
-
+/** Opens the page's phrase view, where the phrase is typed and every app is switched to it. */
+function ImportPrompt(props: { host: WalletHost }): JSX.Element {
   return (
-    <Stack narrow onSubmit={submit}>
+    <Stack narrow>
       <Note testId="td-wallet-about">
-        Copy the recovery phrase from Polkadot App and paste it here to use the same account in this browser, with no
-        phone. Every app on this domain then signs with it locally.
+        Copy the recovery phrase from Polkadot App and paste it into the sign-in that opens to use the same account in
+        this browser, with no phone. Every app on this domain then signs with it locally.
       </Note>
       <Callout testId="td-wallet-warning" tone="warn">
         This is not secure. The phrase leaves your phone and stays in this browser, where anything that gets into the
         browser can take it. Use it only for an account you can afford to lose.
       </Callout>
-      <TextArea
-        id="td-wallet-phrase"
-        testId="td-wallet-phrase"
-        label="Polkadot App recovery phrase"
-        value={phrase()}
-        verbatim
-        onInput={setPhrase}
-      />
-      <Show when={error()}>{message => <ErrorText testId="td-wallet-error">{message()}</ErrorText>}</Show>
       <Inline>
-        <Button type="submit" testId="td-wallet-use-local" disabled={saving()}>
-          {props.submitLabel}
+        <Button
+          testId="td-wallet-import"
+          onClick={() => {
+            props.host.walletSwitch.importPhrase();
+          }}
+        >
+          Use a recovery phrase
         </Button>
-        <Show when={props.onCancel}>
-          {cancel => (
-            <Button testId="td-wallet-cancel" disabled={saving()} onClick={cancel()}>
-              Cancel
-            </Button>
-          )}
-        </Show>
       </Inline>
     </Stack>
   );
@@ -113,71 +71,41 @@ function ImportForm(props: { submitLabel: string; host: WalletHost; onCancel?: (
 
 function LocalWallet(props: { host: WalletHost }): JSX.Element {
   const auth = useStore(untrack(() => props.host.auth));
-  const [replacing, setReplacing] = createSignal(false);
-  const [leaving, setLeaving] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
-  const shown = whileShown();
   const session = (): HostAuth['session'] => {
     const state = auth();
     return state.tag === 'Connected' ? state.session : undefined;
   };
 
-  const forget = (): void => {
-    setError(null);
-    setLeaving(true);
-    void props.host.walletSwitch.usePolkadotApp().then(outcome => {
-      if (outcome === 'failed' && !shown.aborted) {
-        setLeaving(false);
-        setError('Could not switch back. Try again.');
-      }
-    });
-  };
-
   return (
-    <Show
-      when={!replacing()}
-      fallback={
-        <ImportForm
-          submitLabel="Replace"
-          host={props.host}
-          onCancel={() => {
-            setReplacing(false);
+    <Stack narrow>
+      <KeyValueList>
+        <KeyValue name="Identity account">
+          <Code testId="td-wallet-account">{session()?.identityAccountId ?? 'Activating'}</Code>
+        </KeyValue>
+        <KeyValue name="Username">
+          <Code testId="td-wallet-username">{session()?.liteUsername ?? 'None'}</Code>
+        </KeyValue>
+      </KeyValueList>
+      <Inline>
+        <Button
+          testId="td-wallet-replace"
+          title="Use another recovery phrase instead"
+          onClick={() => {
+            props.host.walletSwitch.importPhrase();
           }}
-        />
-      }
-    >
-      <Stack narrow>
-        <KeyValueList>
-          <KeyValue name="Identity account">
-            <Code testId="td-wallet-account">{session()?.identityAccountId ?? 'Activating'}</Code>
-          </KeyValue>
-          <KeyValue name="Username">
-            <Code testId="td-wallet-username">{session()?.liteUsername ?? 'None'}</Code>
-          </KeyValue>
-        </KeyValueList>
-        <Show when={error()}>{message => <ErrorText testId="td-wallet-error">{message()}</ErrorText>}</Show>
-        <Inline>
-          <Button
-            testId="td-wallet-replace"
-            disabled={leaving()}
-            title="Use another recovery phrase instead"
-            onClick={() => {
-              setError(null);
-              setReplacing(true);
-            }}
-          >
-            Replace
-          </Button>
-          <Button
-            testId="td-wallet-forget"
-            disabled={leaving()}
-            title="Forget this wallet and go back to Polkadot App"
-            onClick={forget}
-          >
-            Forget
-          </Button>
-        </Inline>
-      </Stack>
-    </Show>
+        >
+          Replace
+        </Button>
+        <Button
+          testId="td-wallet-forget"
+          title="Sign out, ending this wallet and any Polkadot App session, so the next sign-in pairs with Polkadot App"
+          onClick={() => {
+            props.host.walletSwitch.usePolkadotApp();
+          }}
+        >
+          Use Polkadot App
+        </Button>
+      </Inline>
+    </Stack>
   );
 }

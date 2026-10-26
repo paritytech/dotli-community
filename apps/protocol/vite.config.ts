@@ -4,8 +4,9 @@
 import { defineConfig } from 'vite';
 import { dotliApp } from '@config/vite/app';
 import { modeSync } from '@config/vite/mode-sync';
+import { LOCAL_ROOTS } from '@dotli/config/local-roots';
 
-const app = dotliApp(import.meta.dirname, 'protocol');
+const app = dotliApp(import.meta.dirname, 'protocol', LOCAL_ROOTS);
 
 export default defineConfig(
   app.vite({

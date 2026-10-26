@@ -8,6 +8,7 @@
     "./src/boot.ts",
     "./src/landing.ts",
     "./src/main.ts",
+    "./src/session.ts",
     "./src/startup.ts"
   ],
   "scripts": {

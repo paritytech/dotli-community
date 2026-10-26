@@ -64,6 +64,7 @@ describe('createFrameRpc', () => {
           value: {
             entropy: Uint8Array;
             identity: { identityAccountId: string; liteUsername: string | null } | null;
+            version: Uint8Array;
           };
         }
     >();

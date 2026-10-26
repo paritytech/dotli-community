@@ -1,0 +1,77 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The window shows no product, so its controls take the dark scheme of the dotli chrome. */
+:global(:root:has(body[data-session-window])) {
+  color-scheme: dark;
+}
+
+/* The header, the window's content and the balance under it, as one column the height of the window. */
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+/* The balance as tall as the header keeps the card in the window's middle. */
+.header,
+.balance {
+  flex: none;
+  box-sizing: content-box;
+  height: 72px;
+  margin: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: var(--safe-top) calc(var(--sp-10) + var(--safe-right)) 0 calc(var(--sp-10) + var(--safe-left));
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lockup {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
+  padding-right: var(--sp-4);
+  color: var(--text-strong);
+}
+.mark,
+.wordmark {
+  display: block;
+  flex: none;
+}
+
+/* Out of the flow, over the lockup's end. */
+.beta {
+  position: absolute;
+  top: calc(-1 * var(--sp-1_5));
+  right: 0;
+}
+
+/* A phone shows the page as one surface: no rule under the header, and the room under the content goes to the actions. */
+@media (max-width: 560px) {
+  /* A plain row under the status bar's inset, as tall as the lockup. */
+  .header {
+    height: auto;
+    padding: calc(var(--sp-14) + var(--safe-top)) calc(var(--sp-5) + var(--safe-right)) 0
+      calc(var(--sp-5) + var(--safe-left));
+    border-bottom: 0;
+  }
+  .mark {
+    width: auto;
+    height: 20px;
+  }
+  .wordmark {
+    width: auto;
+    height: 13px;
+  }
+  .balance {
+    display: none;
+  }
+}

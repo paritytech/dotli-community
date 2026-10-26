@@ -28,6 +28,7 @@ function wallet(liteUsername: string | null | undefined): LocalWalletBoot {
     status: 'ok',
     entropy: ENTROPY,
     identity: liteUsername === undefined ? null : { identityAccountId: IDENTITY_ACCOUNT, liteUsername },
+    version: Uint8Array.of(1),
   };
 }
 

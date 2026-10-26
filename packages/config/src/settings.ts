@@ -56,7 +56,10 @@ export interface SettingsSources {
   url?: ParsedUrlSettings;
   /** Whether this browser can start the SharedWorker the shared light client runs in. */
   sharedWorkerAvailable: boolean;
-  /** Each `*.localhost` origin is its own site, where this origin's choice wins so parallel test workers stay apart. */
+  /**
+   * Whether this origin's choice wins: on localhost, whose shared store is the local server's, so test workers stay
+   * apart.
+   */
   preferLocal?: boolean;
 }
 

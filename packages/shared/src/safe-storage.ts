@@ -12,8 +12,14 @@ export interface SafeStorage {
   clear: () => void;
 }
 
+/** Web storage that can also list its keys, for a reader that keeps some of them. */
+export interface ListableStorage extends SafeStorage {
+  /** Every stored key, none when storage is blocked. */
+  keys: () => string[];
+}
+
 /** Reaches `open()` on every call, since reading `localStorage` itself throws where the browser blocks it. */
-export function safeStorage(open: () => Storage): SafeStorage {
+export function safeStorage(open: () => Storage): ListableStorage {
   const attempt = <T>(use: (storage: Storage) => T, fallback: T): T => {
     try {
       return use(open());
@@ -38,11 +44,22 @@ export function safeStorage(open: () => Storage): SafeStorage {
         storage.clear();
       }, undefined);
     },
+    keys: () =>
+      attempt(storage => {
+        const keys: string[] = [];
+        for (let i = 0; i < storage.length; i++) {
+          const key = storage.key(i);
+          if (key !== null) {
+            keys.push(key);
+          }
+        }
+        return keys;
+      }, []),
   };
 }
 
 /** This origin's localStorage. */
-export const pageLocalStorage: SafeStorage = safeStorage(() => localStorage);
+export const pageLocalStorage: ListableStorage = safeStorage(() => localStorage);
 
 /** This tab's sessionStorage. */
 export const pageSessionStorage: SafeStorage = safeStorage(() => sessionStorage);

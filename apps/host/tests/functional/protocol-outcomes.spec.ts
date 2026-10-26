@@ -8,6 +8,7 @@ import { expect } from '@playwright/test';
 import { ERROR_TITLES, HOST_ERRORS } from '../../src/error-copy.js';
 import { PORT } from '../env.js';
 import { seedBackend, type Backend } from './fixtures/settings.js';
+import { isProtocolFrameUrl } from './helpers/frames.js';
 import { recordProtocolMessages, waitForProtocolMessage, type MessageMatch } from './helpers/wire-recorder.js';
 import { test } from './helpers/shared-mode-reset.js';
 import { BLOCK_PROVIDER_WASM, PROTOCOL_SHARED_WORKER, prependToWorker } from './helpers/worker-prelude.js';
@@ -26,7 +27,7 @@ const smoldotDb = (chain: string): MessageMatch => ({
 const frameStatusEnd: MessageMatch = { section: 'frame', method: 'status', tag: 'interrupt' };
 
 const isProviderWasm = (url: URL): boolean =>
-  url.hostname === 'host.localhost' && url.pathname.includes('truapi_provider_bg');
+  isProtocolFrameUrl(url.href) && url.pathname.includes('truapi_provider_bg');
 
 test('As a user on a per-tab light client that cannot start, I see the crash the protocol frame reports', async ({
   page,

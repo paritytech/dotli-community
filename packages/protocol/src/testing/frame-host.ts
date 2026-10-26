@@ -23,7 +23,7 @@ import { createFrameStatus, type FrameStatus } from '../frame-status.js';
 import type { ProtocolFrameConfig, ProtocolFrameDeps, ProtocolFrameTimeouts } from '../frame.js';
 import { protocolSchema, type ProtocolTransport } from '../schema.js';
 
-export const FRAME_ORIGIN = 'https://host.dot.li';
+export const FRAME_ORIGIN = 'https://dot.li';
 
 /** The host page's origin, as the frame's window knows it. */
 const HOST_ORIGIN = 'https://dot.li';

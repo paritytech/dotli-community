@@ -1,17 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { withActiveTld } from '@dotli/config';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
-import type { AuthCommands } from './core-login.js';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
+import type { AuthCommands, LoginOutcome } from './core-login.js';
 import {
   createAuthController,
   disableAuthModal,
-  friendlyAuthError,
   initAuthController,
   startLogin,
   type AuthController,
+  type InPagePhrase,
 } from './auth-controller.js';
 import {
   createBlockingModalCoordinator,
@@ -22,10 +23,17 @@ import {
 import type { DotliAuthState } from './session/auth-state.js';
 import { authModalStore, resetAuthModal, type AuthModalState } from '../state/auth-modal.js';
 import { setAuthState } from './state/auth.js';
-import { createSyncStore, type SyncStore } from '@dotli/shared';
+import { createSyncStore, deferred, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import { setProductLoaded } from './state/product.js';
 import { createChanges, type Changes } from '../testing/changes.js';
+import type { SessionResult, SignInIntent } from './session-handoff/messages.js';
+import type { PageCancelReason, SessionHandoff, SignInOutcome } from './session-handoff/opener.js';
+import type { WalletMode } from './state/wallet-mode.js';
+import type { WalletSwitchOutcome } from './wallet-switch.js';
+
+/** What a fake login answers, which the controller does not read. */
+const LOGIN_CANCELLED: LoginOutcome = { kind: 'cancelled' };
 
 const CLOSED_MODAL: AuthModalState = { open: false, productLabel: null, reason: null, view: { kind: 'spinner' } };
 const getAuthModalState = authModalStore.get;
@@ -35,7 +43,11 @@ interface Started {
   auth: SyncStore<DotliAuthState>;
   coordinator: BlockingModalCoordinator;
   /** What the controller asked of the bridge chunk's commands. */
-  calls: { logins: (string | undefined)[]; logouts: number; cancels: number };
+  calls: {
+    logins: (string | undefined)[];
+    logouts: number;
+    cancels: number;
+  };
   /** Notified at each command asked and each change of the auth modal. */
   changes: Changes;
 }
@@ -49,24 +61,59 @@ afterEach(() => {
   resetAuthModal();
 });
 
+/** Pages without the sign-in window never write a result. */
+const noResult = (): Promise<never> => Promise.reject(new Error('This page has no sign-in window'));
+
+/** A test that asks for no phrase loads no phrase import. */
+const noPhrase = (): Promise<never> => Promise.reject(new Error('No phrase import in this test'));
+
+const PHRASE = 'twelve good words';
+const ENTROPY = new Uint8Array(16).fill(7);
+
+/** The phrase import of a page that pairs in place, which knows only `PHRASE` and answers saves with `outcome`. */
+function fakePhrase(outcome: WalletSwitchOutcome = 'reloading') {
+  const used: Uint8Array[] = [];
+  const phrase: InPagePhrase = {
+    toEntropy: candidate => (candidate === PHRASE ? ENTROPY : null),
+    useLocalWallet: entropy => {
+      used.push(entropy);
+      return Promise.resolve(outcome);
+    },
+  };
+  return { phrase, used };
+}
+
 /** A controller over its own auth store, whose commands only record what they are asked. */
 function start(
-  options: { coordinator?: BlockingModalCoordinator; commands?: () => Promise<AuthCommands> } = {},
+  options: {
+    coordinator?: BlockingModalCoordinator;
+    commands?: () => Promise<AuthCommands>;
+    handoff?: SessionHandoff | null;
+    applyResult?: (result: SessionResult) => Promise<'applied' | 'reloading'>;
+    walletMode?: WalletMode;
+    inPagePhrase?: () => Promise<InPagePhrase>;
+    /** Whether a sign-in made elsewhere waits, as session state says. */
+    elsewhere?: () => boolean;
+  } = {},
 ): Started {
   const auth = createSyncStore<DotliAuthState>('auth-test', { tag: 'Restoring' }, { equals: () => false });
-  const calls = { logins: [] as (string | undefined)[], logouts: 0, cancels: 0 };
+  const calls = {
+    logins: [] as (string | undefined)[],
+    logouts: 0,
+    cancels: 0,
+  };
   const changes = createChanges();
   disposers.push(authModalStore.subscribe(changes.notify));
   const commands: AuthCommands = {
     login: reason => {
       calls.logins.push(reason);
       changes.notify();
-      return Promise.resolve();
+      return Promise.resolve(LOGIN_CANCELLED);
     },
     logout: () => {
       calls.logouts += 1;
       changes.notify();
-      return Promise.resolve();
+      return Promise.resolve({ phone: 'told' as const });
     },
     cancelLogin: () => {
       calls.cancels += 1;
@@ -78,6 +125,11 @@ function start(
     coordinator,
     commands: options.commands ?? (() => Promise.resolve(commands)),
     auth,
+    handoff: options.handoff ?? null,
+    applyResult: options.applyResult ?? noResult,
+    walletMode: () => options.walletMode ?? 'app',
+    inPagePhrase: options.inPagePhrase ?? noPhrase,
+    elsewhere: options.elsewhere ?? (() => false),
   });
   disposers.push(() => {
     controller.dispose();
@@ -295,7 +347,7 @@ describe('auth controller: login requests', () => {
     const failure = new Error('login exploded');
     const failing: AuthCommands = {
       login: () => Promise.reject(failure),
-      logout: () => Promise.resolve(),
+      logout: () => Promise.resolve({ phone: 'told' as const }),
       cancelLogin: () => undefined,
     };
     const { controller, auth, changes } = start({ commands: () => Promise.resolve(failing) });
@@ -510,11 +562,14 @@ describe('auth controller: blocking-modal lease', () => {
     const cancels: string[] = [];
     const changes = createChanges();
     const controller = initAuthController({
+      handoff: null,
+      applyResult: noResult,
+      inPagePhrase: noPhrase,
       coordinator: createBlockingModalCoordinator(),
       commands: () =>
         Promise.resolve({
-          login: () => Promise.resolve(),
-          logout: () => Promise.resolve(),
+          login: () => Promise.resolve(LOGIN_CANCELLED),
+          logout: () => Promise.resolve({ phone: 'told' as const }),
           cancelLogin: () => {
             cancels.push('cancel');
             changes.notify();
@@ -701,6 +756,793 @@ describe('auth controller: auth states', () => {
   });
 });
 
+interface FakeHandoff extends SessionHandoff {
+  readonly signIns: SignInIntent[];
+  readonly signOuts: { notified: boolean }[];
+  focuses: number;
+  /** Why each open round was ended by the page. */
+  readonly cancels: PageCancelReason[];
+  /** Ends the open round with `outcome`, on behalf of the window or the user. */
+  end(outcome: SignInOutcome): void;
+}
+
+/** A handoff whose rounds end when the test says, recording what the page asked of it. */
+function fakeHandoff(): FakeHandoff {
+  let round: ReturnType<typeof deferred<SignInOutcome>> | null = null;
+  const handoff: FakeHandoff = {
+    signIns: [],
+    signOuts: [],
+    focuses: 0,
+    cancels: [],
+    signIn(intent) {
+      handoff.signIns.push(intent);
+      round ??= deferred<SignInOutcome>();
+      return round.promise;
+    },
+    signOut(options) {
+      handoff.signOuts.push(options);
+    },
+    signOutRead: () => Promise.resolve(),
+    focus() {
+      handoff.focuses += 1;
+    },
+    // As the real one, only an open round counts.
+    cancel(reason) {
+      if (round === null) {
+        return;
+      }
+      handoff.cancels.push(reason);
+      handoff.end({ kind: 'cancelled' });
+    },
+    end(outcome) {
+      const open = round;
+      round = null;
+      open?.resolve(outcome);
+    },
+  };
+  return handoff;
+}
+
+const RESULT: SessionResult = { session: { blob: '0xaa', uiState: null }, localWallet: null };
+const SIGNED_IN: DotliAuthState = { tag: 'Connected', session: { connected: true } };
+
+/** A page whose sign-in goes through the window, signed out, with the waiting view of a first Sign in on show. */
+function startWindowRound(options: Parameters<typeof start>[0] = {}): Started & { handoff: FakeHandoff } {
+  const handoff = fakeHandoff();
+  const started = start({ ...options, handoff });
+  started.auth.set({ tag: 'Disconnected' });
+  started.controller.startLogin();
+  return { ...started, handoff };
+}
+
+/** Writes of the window's result the test settles, each one recorded as asked. */
+function heldResults(): {
+  applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
+  asked: Promise<SessionResult>;
+  written: ReturnType<typeof deferred<'applied' | 'reloading'>>;
+  results: SessionResult[];
+} {
+  const results: SessionResult[] = [];
+  const asked = deferred<SessionResult>();
+  const written = deferred<'applied' | 'reloading'>();
+  return {
+    applyResult: result => {
+      results.push(result);
+      asked.resolve(result);
+      return written.promise;
+    },
+    asked: asked.promise,
+    written,
+    results,
+  };
+}
+
+describe('auth controller: the sign-in window', () => {
+  it('As a debug panel user, I import a phrase and the window opens at its phrase view while I wait', () => {
+    // Given a signed-out page with a sign-in window
+    const handoff = fakeHandoff();
+    const { controller, auth, calls } = start({ handoff });
+    auth.set({ tag: 'Disconnected' });
+
+    // When the debug panel imports a phrase
+    controller.importPhrase();
+
+    // Then: opened in the click's own turn, and the core is not asked to pair
+    expect(handoff.signIns).toEqual(['phrase']);
+    expect(getAuthModalState()).toEqual({ open: true, productLabel: null, reason: null, view: { kind: 'window' } });
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a debug panel user with a local wallet, I replace it and the window opens', () => {
+    // Given a signed-in page in local mode with a sign-in window
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff, walletMode: 'local' });
+    auth.set(SIGNED_IN);
+
+    // When the debug panel imports a phrase
+    controller.importPhrase();
+
+    // Then the phrase window opens
+    expect(handoff.signIns).toEqual(['phrase']);
+  });
+
+  it('As a signed-in debug panel user typing a phrase in the sign-in window, I see my session reported again and the window stays open', () => {
+    // Given a signed-in page in local mode whose phrase window is open
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff, walletMode: 'local' });
+    auth.set(SIGNED_IN);
+    controller.importPhrase();
+
+    // When: the core reports the session it already had
+    auth.set(SIGNED_IN);
+
+    // Then the round is not cancelled and the waiting view stays
+    expect(handoff.cancels).toEqual([]);
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'window' } });
+  });
+
+  it('As a debug panel user on a page that pairs in place, I import a phrase and the modal opens at its phrase view', async () => {
+    // Given a signed-out page that pairs in place
+    const { phrase } = fakePhrase();
+    const { controller, auth, calls, changes } = start({ inPagePhrase: () => Promise.resolve(phrase) });
+    auth.set({ tag: 'Disconnected' });
+
+    // When the debug panel imports a phrase
+    controller.importPhrase();
+
+    // Then the view shows once its phrase check loaded, and no pairing starts
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+    expect(getAuthModalState().open).toBe(true);
+    expect(controller.isValidPhrase(PHRASE)).toBe(true);
+    expect(controller.isValidPhrase('not a phrase')).toBe(false);
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a debug panel user on a page that pairs in place, I import my phrase and it is used for every app', async () => {
+    // Given the modal open at its phrase view
+    const { phrase, used } = fakePhrase();
+    const { controller, changes } = start({ inPagePhrase: () => Promise.resolve(phrase) });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+
+    // When a valid phrase is imported
+    await controller.importPhraseInPage(PHRASE);
+
+    // Then its entropy is used as the local wallet
+    expect(used).toEqual([ENTROPY]);
+  });
+
+  it('As a debug panel user on a page that pairs in place, I enter a phrase that is not one and nothing is saved', async () => {
+    // Given the modal open at its phrase view
+    const { phrase, used } = fakePhrase();
+    const { controller, changes } = start({ inPagePhrase: () => Promise.resolve(phrase) });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+
+    const exceptions: unknown[] = [];
+    disposers.push(
+      bindCaptureSink({
+        exception: error => {
+          exceptions.push(error);
+        },
+        expected: () => undefined,
+      }),
+    );
+
+    // When a phrase that is not one is imported
+    const imported = controller.importPhraseInPage('not a phrase');
+
+    // Then the form says it, and what the user typed is not reported
+    await expect(imported).rejects.toThrow('Not a valid recovery phrase');
+    expect(used).toEqual([]);
+    expect(exceptions).toEqual([]);
+  });
+
+  it('As a debug panel user, I import a phrase before its module loaded and the failure is reported', async () => {
+    // Given a phrase import that has not loaded
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const exceptions: [unknown, CaptureContext][] = [];
+    disposers.push(
+      bindCaptureSink({
+        exception: (error, context) => {
+          exceptions.push([error, context]);
+        },
+        expected: () => undefined,
+      }),
+    );
+    const { controller } = start();
+
+    // When a phrase is imported before the module loaded
+    const imported = controller.importPhraseInPage(PHRASE);
+
+    // Then the import rejects and the load failure is reported and counted
+    await expect(imported).rejects.toThrow('The recovery phrase import was not loaded');
+    expect(exceptions).toEqual([
+      [expect.any(Error), { flow: 'wallet', step: 'local_wallet', tags: { reason: 'phrase-load' } }],
+    ]);
+    expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'phrase-load' }]);
+  });
+
+  it('As a debug panel user on a page that pairs in place, I import a phrase whose wallet could not be saved and the form says so', async () => {
+    // Given the modal at its phrase view over a wallet save that fails
+    const { phrase } = fakePhrase('failed');
+    const { controller, changes } = start({ inPagePhrase: () => Promise.resolve(phrase) });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+
+    // When a valid phrase is imported
+    const imported = controller.importPhraseInPage(PHRASE);
+
+    // Then the form says it, and the modal stays on the phrase view
+    await expect(imported).rejects.toThrow('The recovery phrase wallet could not be saved');
+    expect(getAuthModalState().view.kind).toBe('phrase');
+  });
+
+  it("As a debug panel user typing a phrase, I keep my phrase view on show while a product's pairing runs or fails", async () => {
+    // Given a signed-out page whose modal shows the phrase view
+    const { phrase } = fakePhrase();
+    const { controller, auth, changes } = start({ inPagePhrase: () => Promise.resolve(phrase) });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+
+    // When the core pairs for a product, then fails
+    auth.set({ tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' });
+    auth.set({ tag: 'Authenticating' });
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'timed out' });
+
+    // Then the phrase view stays on show
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'phrase' } });
+  });
+
+  it('As a debug panel user, I close the modal while the phrase check loads and it stays closed', async () => {
+    // Given a phrase check that has not loaded yet
+    const { phrase } = fakePhrase();
+    const loaded = deferred<InPagePhrase>();
+    const { controller } = start({ inPagePhrase: () => loaded.promise });
+    controller.importPhrase();
+
+    // When the modal closes and then the check loads
+    controller.closeAuthModal({ skipTruapiCancel: true });
+    loaded.resolve(phrase);
+    // The controller heard the load before this test, as it asked first.
+    await loaded.promise;
+
+    // Then the modal stays closed
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+  });
+
+  it('As a debug panel user whose phrase check could not load, I see the failure, and Retry opens the phrase view', async () => {
+    // Given a phrase check whose first load fails
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const { phrase } = fakePhrase();
+    let loads = 0;
+    const { controller, calls, changes } = start({
+      inPagePhrase: () => (++loads === 1 ? Promise.reject(new Error('chunk failed')) : Promise.resolve(phrase)),
+    });
+
+    // When the debug panel imports a phrase
+    controller.importPhrase();
+
+    // Then the failure shows and the missed chunk is counted
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    expect(metrics.counted('lazy_chunk.load')).toEqual([{ outcome: 'error', reason: 'phrase_import' }]);
+
+    // When Retry is pressed
+    controller.retryLogin();
+
+    // Then the phrase view opens, and no pairing starts
+    await changes.until(() => getAuthModalState().view.kind === 'phrase');
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a debug panel user, I import again while the sign-in window is open and it comes to the front', () => {
+    // Given a phrase window already open
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+
+    // When the debug panel imports again
+    controller.importPhrase();
+
+    // Then no second window opens and the open one is focused
+    expect(handoff.signIns).toEqual(['phrase']);
+    expect(handoff.focuses).toBe(1);
+  });
+
+  it('As a debug panel user, I import while the saved session cannot be reached and no window opens', () => {
+    // Given a page whose saved session cannot be reached
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff });
+    auth.set({ tag: 'Unreachable' });
+
+    // When the debug panel imports a phrase
+    controller.importPhrase();
+
+    // Then no window opens and the modal stays closed
+    expect(handoff.signIns).toEqual([]);
+    expect(getAuthModalState().open).toBe(false);
+  });
+
+  it('As a user on a product, I press Sign in and the window opens with the waiting view', () => {
+    // Given a signed-out page with a sign-in window
+    const handoff = fakeHandoff();
+    const { controller, auth, calls } = start({ handoff });
+    auth.set({ tag: 'Disconnected' });
+
+    // When the user presses Sign in
+    controller.startLogin();
+
+    // Then: opened in the click's own turn, and the core is not asked to pair
+    expect(handoff.signIns).toEqual(['signin']);
+    expect(getAuthModalState()).toEqual({ open: true, productLabel: null, reason: null, view: { kind: 'window' } });
+    expect(calls.logins).toEqual([]);
+  });
+
+  it('As a user, I press Sign in again while the window is open and that window comes to the front', () => {
+    // Given a sign-in window round under way
+    const { controller, handoff } = startWindowRound();
+
+    // When the user presses Sign in again and then Focus
+    controller.startLogin();
+    controller.focusSignInWindow();
+
+    // Then one window opened and it was focused each time
+    expect(handoff.signIns).toEqual(['signin']);
+    expect(handoff.focuses).toBe(2);
+    expect(getAuthModalState().view).toEqual({ kind: 'window' });
+  });
+
+  it("As a user whose page shares the sign-in window's store, I see my sign-in early and the window stays open for its result, which names my account", async () => {
+    // Given a window round whose result write is held
+    const held = heldResults();
+    const { auth, handoff, calls, changes } = startWindowRound({ applyResult: held.applyResult });
+
+    // When: the window's own store write signs the page in before its result arrives
+    auth.set(SIGNED_IN);
+
+    // Then: the round and its window stay, so the result with the account still lands
+    expect(handoff.cancels).toEqual([]);
+    expect(getAuthModalState().view).toEqual({ kind: 'window' });
+    expect(calls.cancels).toBe(0);
+
+    // When the result arrives and is written
+    handoff.end({ kind: 'result', result: RESULT });
+    await expect(held.asked).resolves.toBe(RESULT);
+    held.written.resolve('applied');
+
+    // Then the modal closes
+    await changes.until(() => !getAuthModalState().open);
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+  });
+
+  it('As a user, I finish signing in through the window and its result is written into this page while the waiting view closes', async () => {
+    // Given a window round whose result write is held
+    const held = heldResults();
+    const { controller, handoff, changes } = startWindowRound({ applyResult: held.applyResult });
+
+    // When the result comes and the user presses Sign in meanwhile
+    handoff.end({ kind: 'result', result: RESULT });
+    await expect(held.asked).resolves.toBe(RESULT);
+    controller.startLogin();
+
+    // Then: the waiting view stays until the write is done, and Sign in meanwhile starts no second round
+    expect(getAuthModalState().view).toEqual({ kind: 'window' });
+    expect(handoff.signIns).toEqual(['signin']);
+    held.written.resolve('applied');
+    await changes.until(() => !getAuthModalState().open);
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+  });
+
+  it('As a user, I press Cancel while the result is being written and no waiting view comes back', async () => {
+    // Given: a result being written
+    const held = heldResults();
+    const { controller, handoff } = startWindowRound({ applyResult: held.applyResult });
+    handoff.end({ kind: 'result', result: RESULT });
+    await held.asked;
+    // Registered after the controller's own wait on the write, so it settles after the controller saw it.
+    const seen = held.written.promise.then(() => undefined);
+
+    // When the user presses Cancel and the write then lands
+    controller.closeAuthModal();
+    held.written.resolve('applied');
+    await seen;
+
+    // Then the modal stays closed and the result was written once
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+    expect(held.results).toEqual([RESULT]);
+  });
+
+  it('As a user, I press Cancel on the waiting view and the window round ends', () => {
+    // Given a sign-in window round under way
+    const { controller, handoff } = startWindowRound();
+
+    // When the user presses Cancel
+    controller.closeAuthModal();
+
+    // Then the page cancels the round and the modal closes
+    expect(handoff.cancels).toEqual(['page']);
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+  });
+
+  it('As a user who closed the sign-in window, I am back to signed out with no error', async () => {
+    // Given a sign-in window round under way
+    const { handoff, changes } = startWindowRound();
+
+    // When the window is closed
+    handoff.end({ kind: 'cancelled' });
+
+    // Then the modal closes with no error
+    await changes.until(() => !getAuthModalState().open);
+    expect(getAuthModalState()).toEqual(CLOSED_MODAL);
+  });
+
+  it('As a user whose browser blocked the window, I see why and press Try again from a new click', async () => {
+    // Given a sign-in window round under way
+    const { controller, handoff, changes } = startWindowRound();
+
+    // When the browser blocks the window and the user presses Try again
+    handoff.end({ kind: 'blocked' });
+    await changes.until(() => getAuthModalState().view.kind === 'blocked');
+    controller.retryLogin();
+
+    // Then a second window opens and the waiting view shows
+    expect(handoff.signIns).toEqual(['signin', 'signin']);
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'window' } });
+  });
+
+  it('As a signed-in debug panel user whose phrase window was blocked, I press Try again and the phrase window opens', async () => {
+    // Given a signed-in page whose phrase window was blocked
+    const handoff = fakeHandoff();
+    const { controller, auth, changes } = start({ handoff, walletMode: 'local' });
+    auth.set(SIGNED_IN);
+    controller.importPhrase();
+    handoff.end({ kind: 'blocked' });
+    await changes.until(() => getAuthModalState().view.kind === 'blocked');
+
+    // When the user presses Try again
+    controller.retryLogin();
+
+    // Then the phrase window opens again and the waiting view shows
+    expect(handoff.signIns).toEqual(['phrase', 'phrase']);
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'window' } });
+  });
+
+  it('As a debug panel user whose wallet could not be written here, I press Retry and the phrase window opens', async () => {
+    // Given a phrase round whose result could not be written
+    disposers.push(bindCaptureSink({ exception: () => undefined, expected: () => undefined }));
+    const handoff = fakeHandoff();
+    const { controller, auth, changes } = start({
+      handoff,
+      applyResult: () => Promise.reject(new Error('The local wallet from the sign-in window could not be saved')),
+    });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+    handoff.end({ kind: 'result', result: RESULT });
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+
+    // When the user presses Retry
+    controller.retryLogin();
+
+    // Then the phrase window opens again
+    expect(handoff.signIns).toEqual(['phrase', 'phrase']);
+  });
+
+  it('As a user whose sign-in window was blocked, I close the modal and press Try again and a sign-in window opens', async () => {
+    // Given: a blocked phrase round whose modal the user closed
+    const handoff = fakeHandoff();
+    const { controller, auth, changes } = start({ handoff });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+    handoff.end({ kind: 'blocked' });
+    await changes.until(() => getAuthModalState().view.kind === 'blocked');
+    controller.closeAuthModal();
+
+    // When: a product's prompt later asks for the click
+    controller.retryLogin();
+
+    // Then a sign-in window opens after the blocked phrase window
+    expect(handoff.signIns).toEqual(['phrase', 'signin']);
+  });
+
+  it('As a user on a page the window refuses, I am told sign-in is not available here', async () => {
+    // Given a sign-in window round under way
+    const { handoff, changes } = startWindowRound();
+
+    // When the window refuses the page
+    handoff.end({ kind: 'refused' });
+
+    // Then the modal stays open on the refused view
+    await changes.until(() => getAuthModalState().view.kind === 'refused');
+    expect(getAuthModalState().open).toBe(true);
+  });
+
+  it('As a user whose sign-in could not be written here, I see the error with Retry and it is reported', async () => {
+    // Given a window round whose result write fails
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const exceptions: [unknown, CaptureContext][] = [];
+    disposers.push(
+      bindCaptureSink({
+        exception: (error, context) => {
+          exceptions.push([error, context]);
+        },
+        expected: () => undefined,
+      }),
+    );
+    const failure = new Error('The session from the sign-in window could not be stored');
+    const { handoff, changes } = startWindowRound({ applyResult: () => Promise.reject(failure) });
+
+    // When the result comes
+    handoff.end({ kind: 'result', result: RESULT });
+
+    // Then the error shows with Retry and the failure is reported and counted under the intent
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'error', retry: true } });
+    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'session_window', tags: { reason: 'signin' } }]]);
+    expect(metrics.counted('session_window.apply')).toEqual([{ outcome: 'error', reason: 'signin' }]);
+    expect(metrics.counted('session_window.round')).toEqual([]);
+  });
+
+  it('As an operator, I see a phrase window result the page could not write counted under the phrase intent', async () => {
+    // Given a phrase round whose result the page's copy refuses
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    disposers.push(bindCaptureSink({ exception: () => undefined, expected: () => undefined }));
+    const handoff = fakeHandoff();
+    const { controller, auth, changes } = start({
+      handoff,
+      applyResult: () => Promise.reject(new Error('The local wallet from the sign-in window could not be saved')),
+    });
+    auth.set({ tag: 'Disconnected' });
+    controller.importPhrase();
+
+    // When the window's result comes
+    handoff.end({ kind: 'result', result: RESULT });
+
+    // Then the failure is counted under the phrase intent, not as a round
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    expect(metrics.counted('session_window.apply')).toEqual([{ outcome: 'error', reason: 'phrase' }]);
+    expect(metrics.counted('session_window.round')).toEqual([]);
+  });
+
+  it("As a user, I get a product's login request and see Sign in to continue with nothing opened by itself", () => {
+    // Given a signed-out page with a sign-in window
+    const handoff = fakeHandoff();
+    const { auth } = start({ handoff });
+
+    // When a product asks for a login
+    auth.set(pairing);
+
+    // Then the prompt shows under the product's name and no window opens
+    expect(getAuthModalState()).toEqual({
+      open: true,
+      productLabel: 'localhost:3000',
+      reason: null,
+      view: { kind: 'prompt', resume: false },
+    });
+    expect(handoff.signIns).toEqual([]);
+  });
+
+  it('As a user shown Sign in to continue, I see nothing change on screen when the core repeats its pairing', () => {
+    // Given the prompt on show and every later modal write recorded
+    const { auth } = start({ handoff: fakeHandoff() });
+    auth.set({ ...pairing, deeplink: '' });
+    const writes: AuthModalState[] = [];
+    disposers.push(
+      authModalStore.subscribe(() => {
+        writes.push(getAuthModalState());
+      }),
+    );
+
+    // When: the core reports the pairing again, now with its deeplink
+    auth.set(pairing);
+
+    // Then nothing was written and the prompt stays
+    expect(writes).toEqual([]);
+    expect(getAuthModalState().view).toEqual({ kind: 'prompt', resume: false });
+  });
+
+  it("As a user asked by a product, I press Sign in and the window opens under the product's name", () => {
+    // Given a product's login request on show
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff });
+    auth.set(pairing);
+
+    // When the user presses Sign in and the core repeats its pairing
+    controller.startLogin();
+    auth.set(pairing);
+
+    // Then: the core's pairing updates leave the waiting view alone
+    expect(handoff.signIns).toEqual(['signin']);
+    expect(getAuthModalState()).toMatchObject({ open: true, productLabel: 'localhost:3000', view: { kind: 'window' } });
+  });
+
+  it('As a user whose sign-in waits elsewhere, I sign in and the window opens to resume it', () => {
+    // Given a signed-out page whose sign-in made elsewhere waits
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff, elsewhere: () => true });
+    auth.set({ tag: 'Disconnected' });
+
+    // When the user presses Sign in
+    controller.startLogin();
+
+    // Then the window opens to resume and the waiting view shows
+    expect(handoff.signIns).toEqual(['resume']);
+    expect(getAuthModalState()).toMatchObject({ open: true, view: { kind: 'window' } });
+  });
+
+  it("As a user whose sign-in waits elsewhere, I get a product's login request that offers to continue it and its button resumes", () => {
+    // Given a product's login request while a sign-in made elsewhere waits
+    const handoff = fakeHandoff();
+    const { controller, auth } = start({ handoff, elsewhere: () => true });
+    auth.set(pairing);
+
+    // When the prompt is read and its button pressed
+    const prompt = getAuthModalState().view;
+    controller.retryLogin();
+
+    // Then the prompt offers to continue and the window opens to resume
+    expect(prompt).toEqual({ kind: 'prompt', resume: true });
+    expect(handoff.signIns).toEqual(['resume']);
+  });
+
+  it('As a user whose resume window was blocked, I press Try again and it asks to resume again', async () => {
+    // Given a resume round under way
+    const { controller, handoff, changes } = startWindowRound({ elsewhere: () => true });
+
+    // When the browser blocks the window and the user presses Try again
+    handoff.end({ kind: 'blocked' });
+    await changes.until(() => getAuthModalState().view.kind === 'blocked');
+    controller.retryLogin();
+
+    // Then the window opens to resume again
+    expect(handoff.signIns).toEqual(['resume', 'resume']);
+  });
+
+  it('As a user whose waiting sign-in went before I pressed Try again, I press it and sign in as usual', async () => {
+    // Given a resume round whose window was blocked
+    let elsewhere = true;
+    const { controller, handoff, changes } = startWindowRound({ elsewhere: () => elsewhere });
+    handoff.end({ kind: 'blocked' });
+    await changes.until(() => getAuthModalState().view.kind === 'blocked');
+
+    // When the waiting sign-in goes and the user presses Try again
+    elsewhere = false;
+    controller.retryLogin();
+
+    // Then the second window opens to sign in
+    expect(handoff.signIns).toEqual(['resume', 'signin']);
+  });
+
+  it('As a user in paired mode, I sign out and the window opens with notified', async () => {
+    // Given a page in paired mode with a sign-in window
+    const handoff = fakeHandoff();
+    const { controller, calls, changes } = start({ handoff, walletMode: 'app' });
+
+    // When the user signs out
+    controller.logout();
+
+    // Then: the window opens in the click's own turn, before the core is asked
+    expect(handoff.signOuts).toEqual([{ notified: true }]);
+    expect(calls.logouts).toBe(0);
+    await changes.until(() => calls.logouts === 1);
+  });
+
+  it('As a signed-in user on a product page, I sign out and the window opens before the bridge answers', () => {
+    // Given a bridge chunk that has not loaded
+    const handoff = fakeHandoff();
+    const { controller } = start({ handoff, commands: () => new Promise<AuthCommands>(() => undefined) });
+
+    // When the user signs out
+    controller.logout();
+
+    // Then the sign-out window opened at once, marked notified
+    expect(handoff.signOuts).toEqual([{ notified: true }]);
+  });
+
+  it('As a user in local mode, I sign out and the window opens without notified, then the page logs out', async () => {
+    // Given a page in local mode with a sign-in window
+    const handoff = fakeHandoff();
+    const { controller, calls, changes } = start({ handoff, walletMode: 'local' });
+
+    // When the user signs out
+    controller.logout();
+
+    // Then: the window, which tells the phone, opens unnotified, and the page logs out
+    expect(handoff.signOuts).toEqual([{ notified: false }]);
+    await changes.until(() => calls.logouts === 1);
+  });
+
+  it('As a user in local mode on a preview its preview host frames, I sign out in place and the paired copy stays', async () => {
+    // Given: a page with no sign-in window, so nothing would tell the phone
+    const { controller, calls, changes } = start({ handoff: null, walletMode: 'local' });
+
+    // When the user signs out
+    controller.logout();
+
+    // Then the page logs out with no window
+    await changes.until(() => calls.logouts === 1);
+  });
+
+  it('As a user whose sign-in modal broke, I still sign in through the window and the modal stays closed', async () => {
+    // Given: a broken modal island
+    const exceptions: unknown[] = [];
+    disposers.push(
+      bindCaptureSink({
+        exception: error => {
+          exceptions.push(error);
+        },
+        expected: () => undefined,
+      }),
+    );
+    const failure = new Error('The session from the sign-in window could not be stored');
+    const handoff = fakeHandoff();
+    const { controller, auth, calls, changes } = start({ handoff, applyResult: () => Promise.reject(failure) });
+    controller.disableAuthModal();
+    auth.set({ tag: 'Disconnected' });
+    controller.startLogin();
+
+    // When: a blocked round, then a retry whose result cannot be written
+    handoff.end({ kind: 'blocked' });
+    await changes.until(() => getAuthModalState().view.kind === 'blocked');
+    controller.startLogin();
+    handoff.end({ kind: 'result', result: RESULT });
+
+    // Then: both windows opened and the failure is reported, while the modal never opened and each of its three opens
+    // (two sign-ins and the failure) cancelled the core's login instead
+    await changes.until(() => getAuthModalState().view.kind === 'error');
+    expect(handoff.signIns).toEqual(['signin', 'signin']);
+    expect(exceptions).toEqual([failure]);
+    expect(getAuthModalState().open).toBe(false);
+    await changes.until(() => calls.cancels === 3);
+  });
+
+  it('As a user whose sign-in modal breaks while the window is open, I still sign in through the window and the modal never opens', async () => {
+    // Given: a window round on show
+    const held = heldResults();
+    const { controller, handoff, calls, changes } = startWindowRound({ applyResult: held.applyResult });
+
+    // When: the modal island breaks, then the window sends its result
+    controller.disableAuthModal();
+    handoff.end({ kind: 'result', result: RESULT });
+
+    // Then: the round was not cancelled, its result is written, and the core's login was left alone
+    await expect(held.asked).resolves.toBe(RESULT);
+    expect(handoff.cancels).toEqual([]);
+    expect(getAuthModalState().open).toBe(false);
+    held.written.resolve('applied');
+    await changes.until(() => held.results.length === 1);
+    expect(calls.cancels).toBe(0);
+  });
+
+  it('As a user whose sign-in modal broke while the window is open, I close the window and the login still ends', async () => {
+    // Given a window round under way with the modal broken
+    const { controller, handoff, calls, changes } = startWindowRound();
+    controller.disableAuthModal();
+
+    // When the window is closed
+    handoff.end({ kind: 'cancelled' });
+
+    // Then: a product's login waiting on the core is answered
+    await changes.until(() => calls.cancels === 1);
+    expect(handoff.cancels).toEqual([]);
+  });
+
+  it('As a user on a preview its preview host frames, I sign in in place and see the pairing in the modal', async () => {
+    // Given: a page with no sign-in window
+    const { controller, auth, calls, changes } = start({ handoff: null });
+    auth.set({ tag: 'Disconnected' });
+
+    // When the user presses Sign in and the core pairs
+    controller.startLogin();
+    auth.set(pairing);
+
+    // Then the core logs in and the modal shows the pairing
+    await changes.until(() => calls.logins.length === 1);
+    expect(getAuthModalState().view).toEqual({ kind: 'pairing', payload: pairing.deeplink });
+  });
+});
+
 describe('auth controller on the page stores', () => {
   afterEach(() => {
     resetAllStoresForTests();
@@ -715,12 +1557,15 @@ describe('auth controller on the page stores', () => {
         login: reason => {
           logins.push(reason);
           loginAsked(undefined);
-          return Promise.resolve();
+          return Promise.resolve(LOGIN_CANCELLED);
         },
-        logout: () => Promise.resolve(),
+        logout: () => Promise.resolve({ phone: 'told' as const }),
         cancelLogin: () => undefined,
       };
       initAuthController({
+        handoff: null,
+        applyResult: noResult,
+        inPagePhrase: noPhrase,
         coordinator: createBlockingModalCoordinator(),
         commands: () => Promise.resolve(commands),
       });
@@ -739,11 +1584,14 @@ describe('auth controller on the page stores', () => {
     it('As a dotli integrator, a failed login while a product is loaded keeps the host-global retry view', () => {
       // Given
       initAuthController({
+        handoff: null,
+        applyResult: noResult,
+        inPagePhrase: noPhrase,
         coordinator: createBlockingModalCoordinator(),
         commands: () =>
           Promise.resolve({
-            login: () => Promise.resolve(),
-            logout: () => Promise.resolve(),
+            login: () => Promise.resolve(LOGIN_CANCELLED),
+            logout: () => Promise.resolve({ phone: 'told' as const }),
             cancelLogin: () => undefined,
           }),
       });
@@ -758,77 +1606,6 @@ describe('auth controller on the page stores', () => {
         open: true,
         productLabel: null,
         view: { kind: 'error', retry: true },
-      });
-    });
-  });
-
-  describe('auth error copy', () => {
-    it('As a new user, a failure worth retrying keeps its raw reason and the retry', () => {
-      // When
-      const copy = friendlyAuthError('transport closed before the wallet answered');
-
-      // Then
-      expect(copy.title).toBe('Connection to Polkadot App was lost');
-      expect(copy.detail).toBe('transport closed before the wallet answered');
-      expect(copy.retryable).not.toBe(false);
-    });
-
-    it('As a new user, a rejected statement-store transaction is explained, with the raw reason', () => {
-      // When
-      const copy = friendlyAuthError('submit RPC error: Invalid Transaction');
-
-      // Then
-      expect(copy.title).toBe('Statement Store transaction rejected');
-      expect(copy.detail).toBe('submit RPC error: Invalid Transaction');
-      expect(copy.retryable).not.toBe(false);
-    });
-
-    it('As a new user, I am told when I declined the login on my phone', () => {
-      // When
-      const copy = friendlyAuthError('Login request denied');
-
-      // Then
-      expect(copy.title).toBe('Sign-in was declined');
-      expect(copy.retryable).not.toBe(false);
-    });
-
-    it('As a new user, I am told when Polkadot App did not answer in time', () => {
-      // When
-      const copy = friendlyAuthError('runtime call timed out');
-
-      // Then
-      expect(copy.title).toBe('Sign-in timed out');
-      expect(copy.retryable).not.toBe(false);
-    });
-
-    it('As a new user, I am not offered a retry when this page cannot log in at all', () => {
-      // When
-      const copy = friendlyAuthError('Login is not supported by this host');
-
-      // Then
-      expect(copy.title).toBe('Sign-in is not available here');
-      expect(copy.retryable).toBe(false);
-    });
-
-    it('As a new user, a login runtime that fails to load reads as a page problem rather than a phone problem', () => {
-      // When
-      const copy = friendlyAuthError('worker init failed: undefined');
-
-      // Then
-      expect(copy.title).toBe('The sign-in service did not start');
-      expect(copy.retryable).not.toBe(false);
-    });
-
-    it('As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports', () => {
-      // When
-      const copy = friendlyAuthError('Host failure');
-
-      // Then
-      expect(copy).toEqual({
-        title: 'Sign-in did not complete',
-        subtitle:
-          'Something interrupted the connection to Polkadot App. Try again, and make sure the app is installed and up to date.',
-        detail: 'Host failure',
       });
     });
   });

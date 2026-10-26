@@ -12,12 +12,15 @@ import { createCoreRuntimeBoot, type CoreRuntimeDeps } from './core-runtime.js';
 import type { CreateHostCallbacksOptions } from './host-callbacks/handlers.js';
 import { createPhoneRequestTracker } from './phone-requests.js';
 import type { BootLocalWalletCore } from './local-wallet-core.js';
-import type { LocalWalletBoot } from './wallet-boot.js';
+import { createSyncStore } from '@dotli/shared';
+import type { WalletModeState } from './state/wallet-mode.js';
+import { createWalletBoot, type LocalWalletBoot } from './wallet-boot.js';
 
 const WALLET: LocalWalletBoot = {
   status: 'ok',
   entropy: Uint8Array.from({ length: 16 }, (_, i) => i + 1),
   identity: null,
+  version: Uint8Array.of(1),
 };
 
 class FakeHostWorker {
@@ -91,7 +94,7 @@ describe('core runtime boot', () => {
     const [worker, , options] = create.mock.calls[0] ?? [];
     expect(worker).toBeInstanceOf(FakeHostWorker);
     expect(options?.role).toBeUndefined();
-    expect(callbackOptions).toEqual([expect.objectContaining({ label: 'doom', local: false })]);
+    expect(callbackOptions).toEqual([expect.objectContaining({ label: 'doom', sessionInMemory: false })]);
     expect(bootLocalWalletCore).not.toHaveBeenCalled();
   });
 
@@ -105,6 +108,18 @@ describe('core runtime boot', () => {
 
     // Then
     expect(callbackOptions[0]?.inService).toBe(request.inService);
+  });
+
+  it('As a user in the sign-out window, I open it and it boots a pairing core whose session stays in memory', async () => {
+    // Given a boot with no stored wallet
+    const { deps, callbackOptions } = harness(null);
+
+    // When a core boots with its session in memory
+    const booted = await createCoreRuntimeBoot(deps)({ ...request, sessionInMemory: true });
+
+    // Then a pairing core boots with the in-memory session option
+    expect(booted).toMatchObject({ runtime: RUNTIME, local: false });
+    expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
   });
 
   it('As a local wallet user, I boot a signing core whose storage leaves my paired session alone', async () => {
@@ -122,7 +137,7 @@ describe('core runtime boot', () => {
     expect(hostConfig).not.toHaveProperty('productId');
     expect(wallet).toBe(WALLET);
     expect(isLive).toBe(request.isLive);
-    expect(callbackOptions).toEqual([expect.objectContaining({ local: true })]);
+    expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
     expect(callbackOptions[0]?.inService).toBe(request.inService);
     expect(create).not.toHaveBeenCalled();
   });
@@ -202,5 +217,31 @@ describe('core runtime boot', () => {
 
     // Then
     expect(stale).toBe(false);
+  });
+
+  it('As a user in the sign-in window, I open it over a stored wallet and it boots a pairing core', async () => {
+    // Given the window's wallet boot over a stored local wallet
+    const mode = createSyncStore<WalletModeState>('walletMode', { mode: 'app', failure: null });
+    const walletBoot = createWalletBoot({
+      reconcile: () =>
+        Promise.resolve({
+          presence: 'present',
+          session: { status: 'ok', blob: null },
+          wallet: WALLET,
+          dead: null,
+        }),
+      report: mode.set,
+      flag: { renew: () => undefined },
+      role: 'signin-window',
+    });
+    const h = harness();
+
+    // When a core boots
+    const booted = await createCoreRuntimeBoot({ ...h.deps, readWallet: () => walletBoot.read() })(request);
+
+    // Then the core pairs and the page stays out of local mode
+    expect(booted.local).toBe(false);
+    expect(h.bootLocalWalletCore).not.toHaveBeenCalled();
+    expect(mode.get().mode).toBe('app');
   });
 });

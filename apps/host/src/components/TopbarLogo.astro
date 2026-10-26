@@ -4,6 +4,7 @@
 
 // The Beta tag floats over the logo so the bar keeps the width it will have without it.
 import { LogoSymbol, LogoWordmark } from '@dotli/ui/brand';
+import BetaTag from './BetaTag.astro';
 import s from './TopbarLogo.module.css';
 
 const homeUrl = import.meta.env.VITE_APP_URL ?? '/';
@@ -12,5 +13,5 @@ const homeUrl = import.meta.env.VITE_APP_URL ?? '/';
 <a class={s['home']} id="topbar-home" href={homeUrl}>
   <LogoSymbol class={s['mark']} height={20} />
   <LogoWordmark class={s['brand']} height={13} />
-  <span class={s['beta']}>β</span>
+  <BetaTag class={s['beta']} />
 </a>

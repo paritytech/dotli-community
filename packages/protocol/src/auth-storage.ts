@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
+import { BASE_DOMAIN, SITE_ID, isSiteOrigin, type SiteId } from '@dotli/config';
 import type { ProtocolSchema } from './schema.js';
 
 type StorageMethod = keyof ProtocolSchema['sections']['storage'];
@@ -35,13 +35,18 @@ export function isValidSharedAuthKey(key: string): boolean {
   return SHARED_STORAGE_KEY_PATTERN.test(key);
 }
 
+/** What every shared auth key starts with. */
+export const SHARED_AUTH_KEY_PREFIX = 'TRUAPI_';
+/** What every shared mode key starts with. */
+export const SHARED_MODE_KEY_PREFIX = 'DOTLI_MODE_';
+
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
-  return `TRUAPI_${siteId}_${key}`;
+  return `${SHARED_AUTH_KEY_PREFIX}${siteId}_${key}`;
 }
 
 /** A prefix distinct from auth's so the two stores cannot collide. */
 export function buildSharedModeStorageKey(siteId: SiteId, key: string): string {
-  return `DOTLI_MODE_${siteId}_${key}`;
+  return `${SHARED_MODE_KEY_PREFIX}${siteId}_${key}`;
 }
 
 /** Checks the raw caller key, not the namespaced `buildSharedModeStorageKey` form. */
@@ -49,29 +54,10 @@ export function isValidSharedModeKey(key: string): boolean {
   return SHARED_STORAGE_KEY_PATTERN.test(key);
 }
 
-export function isSharedAuthOriginAllowed(origin: string): boolean {
-  try {
-    const url = new URL(origin);
-    const { hostname, protocol } = url;
-
-    if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
-      return hostname !== 'app.localhost' && !hostname.endsWith('.app.localhost');
-    }
-
-    if (protocol !== 'https:') {
-      return false;
-    }
-
-    if (hostname === BASE_DOMAIN || hostname === `host.${BASE_DOMAIN}`) {
-      return true;
-    }
-
-    return (
-      hostname !== `app.${BASE_DOMAIN}` &&
-      hostname.endsWith(`.${BASE_DOMAIN}`) &&
-      !hostname.endsWith(`.app.${BASE_DOMAIN}`)
-    );
-  } catch {
-    return false;
-  }
+/**
+ * A host or landing page on the root domain or a subdomain, never a product, and https unless under a local root that a
+ * build of kind `dev` trusts, which stands for the root domain.
+ */
+export function isSharedAuthOriginAllowed(origin: string, dev: boolean = import.meta.env.DEV): boolean {
+  return isSiteOrigin(origin, BASE_DOMAIN, dev);
 }

@@ -201,6 +201,12 @@ export const WALLET_LOCAL_ACTIVATE = 'wallet.local_activate';
 export const WALLET_CORE_REDIAL = 'wallet.core_redial';
 
 /**
+ * One `acquire` the session lease made of the page core. Tagged `outcome` (ok or error) and, on error, `reason`: `boot`
+ * for a first boot that failed and `redial` for a replacement that could not boot.
+ */
+export const WALLET_SESSION_LEASE = 'wallet.session_lease';
+
+/**
  * A render the product frame started on its own: on a replacement core, after a device permission change or at a
  * reloaded sandbox's ask. Tagged `outcome` (ok, error, or aborted when a newer render or a core loss took over) and
  * `reason` (which of those, or `core_deaths` once the frame stopped rendering on cores that kept dying), as no caller
@@ -214,7 +220,14 @@ export const PRODUCT_RERENDER = 'product.rerender';
  */
 export const WALLET_LOGIN_FRAME = 'wallet.login_frame';
 
-/** A topbar logout of a paired session. Tagged `outcome` and, on error, `reason`, as a failed one leaves the user in. */
+/**
+ * A page's sign-out of a paired session. Tagged `outcome` (`ok` once the phone was told) and, on error, `reason`:
+ * `read` for a copy that could not be read, `end` for a session that could not be activated or ended on the ending
+ * core, so the phone was not told, `drop` for a local-mode sign-out whose paired copy could not be dropped, on a page
+ * that pairs in place or on a product whose flag is unreadable, where a copy it could not read counts too, and
+ * `no_window` for a local-mode sign-out on a page that pairs in place, which lets the paired copy go without telling
+ * the phone. A paired sign-out counts once, and a core or copy that could not let go is reported as an issue only.
+ */
 export const WALLET_LOGOUT = 'wallet.logout';
 
 /** One read of the loaded product's permissions. Tagged `outcome` and, on error, `reason`, as a failed one leaves the menu without statuses. */
@@ -344,3 +357,79 @@ export const PHONE_REQUEST = 'signing.phone_request';
  * `outcome` (error) and `reason` (the error's name).
  */
 export const MODAL_HANDOFF = 'modal.handoff';
+
+/**
+ * Count. What the signed-in flag did to a stored sign-in as a reader went over it. Tagged `outcome`: `dropped` once for
+ * each pass of the restore rule that dropped a stored session because the flag was gone, `unreadable` once per page
+ * whose flag could not be read so session restore kept what it found, never for a preview its preview host frames,
+ * whose flag reads unknown by design, and `error` for a saved session the store would not clear. Tagged `reason`, the
+ * reader: `load` for a page's load, `visible` for an open page becoming visible, `window` for the sign-in or sign-out
+ * window over the main store.
+ */
+export const SESSION_PRESENCE = 'session.presence';
+
+/**
+ * Count. What an open page did as it became visible and found the signed-in flag changed. Tagged `outcome`:
+ * `signed_out` for a page it signed out, `switched` for a page it reloads onto a local wallet replaced elsewhere, and
+ * `error` for a sign-out that failed after its retries. Tagged `reason` (`visible`).
+ */
+export const SESSION_PRESENCE_WATCH = 'session.presence_watch';
+
+/**
+ * Count. A write of the signed-in flag that failed, so other subdomains read the old flag. Tagged `outcome` (`error`)
+ * and `reason`, the write (`set`, `clear`, or `renew` for a renew of a flag that is still set).
+ */
+export const SESSION_FLAG_WRITE = 'session.flag_write';
+
+/**
+ * Count. A page's ask to sign in through the sign-in window. Tagged `outcome`: `opened` for a window it opened,
+ * `blocked` for one the browser refused, and `busy` for an ask while the sign-out window was still open, which opened
+ * no window. Tagged `reason`, the intent (`signin, phrase, resume`).
+ */
+export const SESSION_WINDOW_SIGNIN = 'session_window.signin';
+
+/**
+ * Count. How a sign-in round through the window ended. Tagged `outcome` and `reason`, what ended it: `signed_in` with
+ * `window` for the window's result, or with `store` for a page that heard the window store the sign-in before its
+ * result came, `refused` with `window`, `cancelled` with `closed` for a window found closed when the page came back,
+ * `page` for the page's own Cancel or a window it opened in place of the round's, or `signed_out` for a sign-out that
+ * ended it.
+ */
+export const SESSION_WINDOW_ROUND = 'session_window.round';
+
+/**
+ * Count. A sign-in window's result the page could not write into its copy. Tagged `outcome` (`error`) and `reason`,
+ * the round's intent (`signin, phrase, resume`).
+ */
+export const SESSION_WINDOW_APPLY = 'session_window.apply';
+
+/**
+ * Count. A step of the sign-in window's own flow that failed, so the window reported it and showed a failure where the
+ * view has room. Tagged `outcome` (`error`) and `reason`, the step: `decide`, `continue`, `another`, `phrase`, `back`,
+ * `pairing` and `finish`.
+ */
+export const SESSION_WINDOW_FLOW = 'session_window.flow';
+
+/**
+ * Count. A page's opening of the sign-out window. Tagged `outcome` (`opened, blocked`) and `reason`, whether the page
+ * told the phone itself (`notified, unnotified`).
+ */
+export const SESSION_WINDOW_SIGNOUT = 'session_window.signout';
+
+/**
+ * Count. How the sign-out window's own sign-out ended. Tagged `outcome`: `told_phone` for a paired session it ended on
+ * its own core, `cleared` for a store it cleared without telling the phone, `nothing` for a store that held nothing,
+ * `kept` for a signed-in flag still set or unreadable, or set again by a sign-in elsewhere before the window cleared,
+ * so it left the store as it found it, and `error` for a step that failed while it still cleared what it could, or a
+ * boot that failed before it could sign out, which its own issue tells apart. Tagged `reason`, whether the page told
+ * the phone itself (`notified, unnotified`).
+ */
+export const SESSION_WINDOW_SIGNOUT_RESULT = 'session_window.signout_result';
+
+/**
+ * Count. A sign-in window that refused its opener, since a page outside the opener rule tried to sign in through it.
+ * Tagged `outcome` (`refused`) and `reason`, the rule's verdict: `app` for a product origin, `foreign` for another
+ * domain, `insecure` for a wrong scheme, `port` for a wrong port, `localhost` for a local opener of a deployed window
+ * and `malformed` for an origin that is not a bare one.
+ */
+export const SESSION_WINDOW_REFUSED = 'session_window.refused';

@@ -82,6 +82,28 @@ describe('config constants', () => {
       expect(isSandboxOrigin('http://localhost:5174')).toBe(false);
     });
 
+    it('As a developer on local.host, I load a product from an app subdomain and it is accepted as a sandbox origin', () => {
+      // Given an app subdomain of local.host and the bare app host
+      const origins = ['https://name.app.local.host:4322', 'https://app.local.host'];
+
+      // When each is checked as a sandbox origin
+      const accepted = origins.map(origin => isSandboxOrigin(origin));
+
+      // Then both are sandbox origins
+      expect(accepted).toEqual([true, true]);
+    });
+
+    it('As a developer on local.host, I load a product from an origin outside app and it is refused as a sandbox origin', () => {
+      // Given a product subdomain, the bare local.host and a lookalike app host
+      const origins = ['https://browse.local.host:4321', 'https://local.host:4321', 'https://name.app.notlocal.host'];
+
+      // When each is checked as a sandbox origin
+      const accepted = origins.map(origin => isSandboxOrigin(origin));
+
+      // Then none is a sandbox origin
+      expect(accepted).toEqual([false, false, false]);
+    });
+
     it('As the host, I refuse a malformed origin string as a sandbox origin without throwing', () => {
       // When / Then
       expect(isSandboxOrigin('garbage')).toBe(false);

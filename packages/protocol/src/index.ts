@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export {
+  SHARED_AUTH_KEY_PREFIX,
   SHARED_CORE_SESSION_KEY,
+  SHARED_MODE_KEY_PREFIX,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
@@ -27,6 +29,8 @@ export {
 } from './errors.js';
 export type { TelemetryEvent } from './codec-values.js';
 export {
+  isLocalWalletEntropy,
+  isLocalWalletIdentity,
   protocolSchema,
   type DomainFailure,
   type FrameFailure,

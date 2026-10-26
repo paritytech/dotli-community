@@ -27,7 +27,8 @@ DEPLOY_PATH_dev-paseo     := /var/www/paseolidev
 DEPLOY_PATH_fyi-paseo     := /var/www/paseofyi
 DEPLOY_PATH_dev-test      := /var/www/testnetli
 
-# One cert per env at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths. *.<base> covers host.<base>.
+# One cert per env at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths. *.<base> covers host.<base>,
+# which serves the frame for one more release. The frame itself lives on <base>, so no new name needs a cert or DNS.
 CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
 CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
 CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
@@ -153,7 +154,8 @@ deploy-nginx: _require-env
 	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
-# Protocol first: a new shell waits for the iframe's `listening` signal, which an older iframe never sends.
+# Protocol first: a new shell waits for the iframe's `listening` signal, which an older iframe never sends. The protocol
+# folder is served under /__protocol/ on the root domain and at the root of host.<base>, so the layout is unchanged.
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/protocol/dist/ $(1):$(2)/protocol/
 rsync -avz --delete --filter='P /assets/' apps/sandbox/dist/  $(1):$(2)/app/

@@ -5,7 +5,7 @@
 // judged when it shows.
 
 import { networkMonitor, type NetworkMonitor } from './network-monitor.js';
-import { createSyncStore, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, listen, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
 import { judgeNetworkHealth, nextOverdueAt, type NetworkHealth } from '../network-verdict.js';
 
 const health = createSyncStore<NetworkHealth>('network-health', 'quiet');
@@ -79,15 +79,16 @@ export function startNetworkHealth(
     }
   };
   judge();
-  const unsubscribe = monitor.subscribe(judge);
-  page.connectivity.addEventListener('online', judge);
-  page.connectivity.addEventListener('offline', judge);
-  page.visibility.addEventListener('visibilitychange', judge);
+  const stops = [
+    monitor.subscribe(judge),
+    listen(page.connectivity, 'online', judge),
+    listen(page.connectivity, 'offline', judge),
+    listen(page.visibility, 'visibilitychange', judge),
+  ];
   const stop = (): void => {
-    unsubscribe();
-    page.connectivity.removeEventListener('online', judge);
-    page.connectivity.removeEventListener('offline', judge);
-    page.visibility.removeEventListener('visibilitychange', judge);
+    for (const stopOne of stops) {
+      stopOne();
+    }
     disarm();
     stopInit = null;
   };

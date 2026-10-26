@@ -3,7 +3,7 @@
 
 // The host page's protocol client: the frame and the facades built on it, and the page's one instance.
 
-import { BASE_DOMAIN, DEV_PROTOCOL_PORT, isLocalhost } from '@dotli/config';
+import { BASE_DOMAIN, DEV_HOST_PORT, LOCAL_ROOT } from '@dotli/config';
 import { realTimers } from '@dotli/shared';
 import type { ProtocolVersionMismatchError } from './errors.js';
 import {
@@ -19,15 +19,36 @@ import { createRemoteResolve } from './remote-resolve.js';
 import { createSharedStore } from './shared-store.js';
 import { createFrameTelemetry } from './telemetry.js';
 
-export function getProtocolOrigin(): string {
-  if (isLocalhost) {
-    if (import.meta.env.DEV) {
-      return `http://host.localhost:${DEV_PROTOCOL_PORT}`;
-    }
-    const port = window.location.port.length > 0 ? window.location.port : '5173';
-    return `http://host.localhost:${port}`;
+/** The page's own facts, so a spec can place the page without a `window`. */
+export interface ProtocolOriginEnv {
+  /** The local root the page is served under, which a local frame shares, or `null` when deployed. */
+  localRoot: string | null;
+  dev: boolean;
+  /** The page's own scheme with its colon, which a local frame shares. */
+  protocol: string;
+  port: string;
+}
+
+function pageEnv(): ProtocolOriginEnv {
+  const { protocol, port } = window.location;
+  return { localRoot: LOCAL_ROOT, dev: import.meta.env.DEV, protocol, port };
+}
+
+function localPort(env: ProtocolOriginEnv): string {
+  if (env.dev) {
+    return DEV_HOST_PORT;
   }
-  return `https://host.${BASE_DOMAIN}`;
+  return env.port.length > 0 ? env.port : '5173';
+}
+
+/** The origin the hidden protocol frame loads from: the root domain's, or the local root's on a local page. */
+export function getProtocolOrigin(env: ProtocolOriginEnv = pageEnv()): string {
+  if (env.localRoot !== null) {
+    // Dev serves the frame from the host's own dev server. Preview and tests serve it on the page's port.
+    const port = localPort(env);
+    return `${env.protocol}//${env.localRoot}:${port}`;
+  }
+  return `https://${BASE_DOMAIN}`;
 }
 
 /** The host page's side of the protocol frame, on `deps`. The page builds one, and a spec builds one per test. */

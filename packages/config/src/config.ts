@@ -1,12 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { hostPlace, localRootOf } from './host-place.js';
+
 // BASE_DOMAIN never defaults silently, because the cross-origin allowlist (shared auth, protocol iframe, SITE_ID) is
-// keyed on it. Localhost falls back to "dot.li" to match production, any other unparsable hostname aborts boot.
+// keyed on it. A local root falls back to "dot.li" to match production, any other unparsable hostname aborts boot.
 // Astro's build-time render has no location and derives as localhost.
 const hostname = import.meta.env.SSR ? 'localhost' : self.location.hostname;
 const segments = hostname.split('.');
-const isLocalEnv = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
+
+/**
+ * The local root this page is served under, which stands for the root domain, or `null` when deployed. A page on the
+ * loopback address reaches its sibling origins under `localhost`.
+ */
+export const LOCAL_ROOT: string | null = localRootOf(hostname) ?? (hostname === '127.0.0.1' ? 'localhost' : null);
 
 /**
  * Runtime base domain for hosts with more than two segments, which would otherwise derive the wrong root.
@@ -43,7 +50,7 @@ function deriveBaseDomain(): string {
   if (configured !== null) {
     return configured;
   }
-  if (isLocalEnv) {
+  if (LOCAL_ROOT !== null) {
     return 'dot.li';
   }
   if (segments.length < 2) {
@@ -60,15 +67,17 @@ export const BASE_DOMAIN = deriveBaseDomain();
 // at runtime.
 export type SiteId = string;
 
-export const isLocalhost = isLocalEnv;
+export const isLocalhost = LOCAL_ROOT !== null;
 
 export const SITE_ID: SiteId = isLocalhost ? 'local.li' : BASE_DOMAIN;
 
-/**
- * Under `npm run dev` each origin is its own dev server, where a build serves all three from one port. Must match
- * `server.port` in apps/sandbox and apps/protocol.
- */
-export const DEV_SANDBOX_PORT = '4322';
+// Under `npm run dev` each origin is its own dev server, where a build serves all three from one port.
+
+/** The host's dev server port. */
+export const DEV_HOST_PORT = '4001';
+/** The sandbox's dev server port. */
+export const DEV_SANDBOX_PORT = '4002';
+/** The protocol frame's dev server port. */
 export const DEV_PROTOCOL_PORT = '4323';
 
 /**
@@ -78,12 +87,15 @@ export function isSandboxOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
     const { hostname, protocol } = url;
-    if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
-      return hostname.endsWith('.app.localhost') || hostname === 'app.localhost';
+    const root = localRootOf(hostname);
+    if (root !== null) {
+      return hostPlace(hostname, root) === 'app';
     }
     if (protocol !== 'https:') {
       return false;
     }
+    // A deployed sandbox is served only on a product's own `<label>.app.<root>`. The shell serves `app.<root>` itself,
+    // so that host is never a sandbox.
     return hostname.endsWith(`.app.${BASE_DOMAIN}`);
   } catch {
     return false;

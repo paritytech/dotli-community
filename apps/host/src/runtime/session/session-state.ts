@@ -1,26 +1,22 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The one writer of the auth store. Between the core's own reports the session is read from the saved copy at boot,
-// shown `Unreachable` while the shared store is down, and read again once it is back.
+// The one writer of the auth store. It shows the session of the saved copy or of the core that speaks for the page,
+// and whether a sign-in made elsewhere waits for the page.
 
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
-import { m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, errorName, log } from '@dotli/shared';
+import { createAsyncTaskPool } from '@dotli/shared';
+import { offersResume, pageRole } from '../page-role.js';
 import { getAuthState, setAuthState } from '../state/auth.js';
 import { getWalletMode } from '../state/wallet-mode.js';
-import { readWalletBoot, type LocalWalletBoot } from '../wallet-boot.js';
+import { setSessionElsewhere } from '../state/session-elsewhere.js';
+import { restoreOnBoot, type Restored } from '../wallet-boot.js';
 import type { DotliAuthState } from './auth-state.js';
 import { coreStorage, type StoredSession } from './core-storage.js';
+import type { Presence } from './presence.js';
+import { localSessionUiState, parseUiStateCache, type TruapiSessionUiState } from './ui-state.js';
 
-export interface TruapiSessionUiState {
-  connected: boolean;
-  publicKey?: string;
-  identityAccountId?: string;
-  liteUsername?: string;
-  fullUsername?: string;
-  primaryUsername?: string;
-}
+export type { TruapiSessionUiState } from './ui-state.js';
 
 function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   const primaryUsername = info.fullUsername ?? info.liteUsername;
@@ -40,12 +36,23 @@ export interface AuthStateWriter {
   set(next: DotliAuthState): void;
 }
 
+/** What session state takes from the restore on load. */
+type LoadRestore = Pick<Restored, 'local' | 'session' | 'wallet' | 'presence'>;
+
 export interface SessionStateDeps {
   store: StoredSession;
-  readWallet: () => Promise<LocalWalletBoot | null>;
+  /**
+   * What the restore rule left of the page's copy on load: the wallet the page boots on and the session. A session read
+   * after it never finds a dead one.
+   */
+  restore: () => Promise<LoadRestore>;
   auth: AuthStateWriter;
+  /** Where the page learns that it shows signed out while a sign-in exists elsewhere on the site. */
+  elsewhere: (next: boolean) => void;
   /** A local wallet's session lives in memory only, so it never touches the paired session's UI-state cache. */
   isLocalWallet: () => boolean;
+  /** Whether the page offers to continue a sign-in made elsewhere, which its role decides. */
+  offersResume: () => boolean;
 }
 
 /** How pairing presents itself in the modal. */
@@ -56,22 +63,74 @@ export interface PairingPresentation {
 }
 
 export interface SessionState {
-  /** Reads the saved session now and follows the shared store's status. A second call returns the first one's stop. */
-  start(): () => void;
   /**
-   * Reads the saved session and ends `Restoring` or `Unreachable` with it. Calls queue behind the read in flight, and
-   * each settles once its own read is applied.
+   * Shows the session the load's restore left, reads the saved copy again whenever it changes, such as by a sign-in
+   * from the window or the shared store coming back, and shows `Unreachable` while the shared store is down. The copy
+   * speaks for the page only while no core does. A second call returns the first one's stop.
    */
-  refresh(): Promise<void>;
-  /** A state the core reported, which also keeps the UI-state cache that boot rehydrates from. */
+  start(): () => void;
+  /** The page's last core went, so the saved copy speaks for the page again, read at once and on each change. */
+  coresGone(): void;
+  /**
+   * A state the core reported, which also keeps the UI-state cache that boot rehydrates from. From then the page is
+   * that core's, which follows the copy itself, until the page's last core went.
+   */
   reportCoreAuthState(state: AuthState, pairing: PairingPresentation): void;
   /** A login that failed before the core could report it. */
   reportLoginFailure(reason: string): void;
-  /** A logout whose core never booted. The badge shows signed out although the saved session could not be cleared. */
-  reportLogoutWithoutCore(): void;
+  /**
+   * The page is signed out with no core to report it: a logout whose core never booted, where the badge shows signed
+   * out although the saved session could not be cleared, or a sign-in ended on another page, whose saved copy this page
+   * already dropped.
+   */
+  reportSignedOut(): void;
+  /**
+   * The signed-in flag as a recheck read it while the page held no sign-in, so the page says whether a sign-in made
+   * elsewhere waits for it: the flag is set while the page holds none, as in Safari, where each product keeps its own
+   * copy. A page that shows a sign-in ignores it. A page that pairs in place offers none, as only the window resumes
+   * one.
+   */
+  reportFlag(presence: Presence): void;
 }
 
-export function createSessionState({ store, readWallet, auth, isLocalWallet }: SessionStateDeps): SessionState {
+/** The states in which the page holds no sign-in of its own and its button offers one. */
+function showsSignedOut(tag: DotliAuthState['tag']): boolean {
+  return tag === 'Disconnected' || tag === 'Pairing' || tag === 'Authenticating' || tag === 'LoginFailed';
+}
+
+/** Whether the load's restore left the copy without a session or a wallet, as far as it could read. */
+function heldNothing({ session, wallet }: Pick<Restored, 'session' | 'wallet'>): boolean {
+  return (
+    session.status === 'ok' && session.blob === null && (wallet.status === 'none' || wallet.status === 'unreadable')
+  );
+}
+
+export function createSessionState(deps: SessionStateDeps): SessionState {
+  const { store, restore, isLocalWallet } = deps;
+  // The flag as last read while the page held no sign-in. A sign-in the page shows makes it unknown, since a read made
+  // before it says nothing of another sign-in once this one ends.
+  let flag: Presence = 'unknown';
+  const elsewhereIn = (tag: DotliAuthState['tag']): boolean =>
+    flag === 'present' && showsSignedOut(tag) && deps.offersResume();
+  const auth: AuthStateWriter = {
+    get: () => deps.auth.get(),
+    set: next => {
+      if (next.tag === 'Connected') {
+        flag = 'unknown';
+      }
+      // First, so a listener of the auth state reads the answer that goes with it.
+      deps.elsewhere(elsewhereIn(next.tag));
+      deps.auth.set(next);
+    },
+  };
+  const heardFlag = (presence: Presence): void => {
+    const { tag } = auth.get();
+    if (tag === 'Connected') {
+      return;
+    }
+    flag = presence;
+    deps.elsewhere(elsewhereIn(tag));
+  };
   let lastReadFailed = false;
   store.subscribeSessionReads(failed => {
     lastReadFailed = failed;
@@ -94,32 +153,54 @@ export function createSessionState({ store, readWallet, auth, isLocalWallet }: S
     return raw === null ? null : parseUiStateCache(raw);
   };
 
+  // Who speaks for the page's session: the saved copy, read here, or a core that reported, which follows the copy
+  // itself. The page core says when its last core went.
+  let speaker: 'copy' | 'core' = 'copy';
+  const copySpeaks = (): boolean => speaker === 'copy';
+  // A core takes seconds to connect with a session stored for it, so while the page shows it signed out the copy may
+  // show one at once. A store that comes back may end `Unreachable` with no news from the core, whose session read
+  // already ended. A pairing stays the core's, and the core's next report decides from there.
+  const copyMayShow = (): boolean => {
+    const { tag } = auth.get();
+    return copySpeaks() || tag === 'Disconnected' || tag === 'LoginFailed' || tag === 'Unreachable';
+  };
+
   /**
-   * Ends `Restoring` or `Unreachable` with the local wallet when there is one, else with what was saved, and leaves
-   * any other state alone, as the core has then said where the session stands.
+   * Shows the local wallet when there is one, else what was saved, while the copy may show it. A read
+   * that finds nothing ends only `Restoring` or `Unreachable`, and leaves a sign-out or a failure on show alone.
    */
-  const applySavedSession = async (): Promise<void> => {
-    // Both go to the protocol frame, so the badge waits on whichever is slower, not on both in turn.
-    const localWallet = readWallet();
-    const raw = await store.readSession();
-    const wallet = await localWallet;
+  const applySavedSession = async (readSession: (restored: LoadRestore) => Promise<string | null>): Promise<void> => {
+    if (!copyMayShow()) {
+      return;
+    }
+    // The restore first, since the session read must come after the rule.
+    const restored = await restore();
+    const wallet = restored.local;
+    const raw = await readSession(restored);
     const session =
       wallet !== null
-        ? localSessionUiState(wallet)
+        ? localSessionUiState(wallet.identity)
         : raw === null
           ? null
           : ((await readUiCache()) ?? { connected: true });
-    if (!awaitsSavedSession()) {
+    if (!copyMayShow()) {
       return;
     }
     if (session !== null) {
       auth.set({ tag: 'Connected', session });
-    } else {
+    } else if (awaitsSavedSession()) {
       auth.set({ tag: lastReadFailed ? 'Unreachable' : 'Disconnected' });
     }
   };
 
-  const refresh = (): Promise<void> => savedSessionReads.call(applySavedSession);
+  /** Reads the saved session again and shows it, queued behind the read in flight, so the later read decides. */
+  const refresh = (): Promise<void> =>
+    savedSessionReads.call(() =>
+      applySavedSession(async () => {
+        const read = await store.readSession();
+        return read.status === 'ok' ? read.blob : null;
+      }),
+    );
 
   /** A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it. */
   const markUnreachable = (): void => {
@@ -136,25 +217,41 @@ export function createSessionState({ store, readWallet, auth, isLocalWallet }: S
       if (stop !== null) {
         return stop;
       }
-      let lastStatus = store.getStatus();
-      const unsubscribe = store.subscribeStatus(status => {
-        const recovered = lastStatus === 'unavailable' && status === 'available';
-        lastStatus = status;
+      const stopStatus = store.subscribeStatus(status => {
         if (status === 'unavailable') {
           markUnreachable();
-        } else if (recovered) {
+        }
+      });
+      // The load's own read, which the restore rule already made, with the flag it read beside a copy that held
+      // nothing.
+      void savedSessionReads.call(() =>
+        applySavedSession(restored => {
+          if (heldNothing(restored)) {
+            heardFlag(restored.presence);
+          }
+          const { session } = restored;
+          return Promise.resolve(session.status === 'ok' ? session.blob : null);
+        }),
+      );
+      // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
+      const stopChanges = store.onStoredSessionChanged(() => {
+        if (copyMayShow()) {
           void refresh();
         }
       });
-      void refresh();
       stop = () => {
-        unsubscribe();
+        stopStatus();
+        stopChanges();
         stop = null;
       };
       return stop;
     },
-    refresh,
+    coresGone() {
+      speaker = 'copy';
+      void refresh();
+    },
     reportCoreAuthState(state, pairing) {
+      speaker = 'core';
       switch (state.tag) {
         case 'Pairing': {
           auth.set({
@@ -199,75 +296,22 @@ export function createSessionState({ store, readWallet, auth, isLocalWallet }: S
     reportLoginFailure(reason) {
       auth.set({ tag: 'LoginFailed', kind: 'Other', reason });
     },
-    reportLogoutWithoutCore() {
+    reportSignedOut() {
+      // Every such sign-out deleted the flag, here or on the page that signed out.
+      flag = 'absent';
       auth.set({ tag: 'Disconnected' });
     },
+    reportFlag: heardFlag,
   };
 }
 
 /** The page's session state, the one writer of the auth store. */
 export const sessionState: SessionState = createSessionState({
   store: coreStorage,
-  readWallet: readWalletBoot,
+  restore: restoreOnBoot,
   auth: { get: getAuthState, set: setAuthState },
+  elsewhere: setSessionElsewhere,
   isLocalWallet: () => getWalletMode() === 'local',
+  // Read when first needed, as the role is chosen after this module loads.
+  offersResume: () => offersResume(pageRole()),
 });
-
-/** At once at boot, as the auth button spins until the saved session is read. */
-export function startSessionState(): () => void {
-  return sessionState.start();
-}
-
-function isOptionalString(value: unknown): value is string | undefined {
-  return value === undefined || typeof value === 'string';
-}
-
-/** The cache can be stale from another code version or corrupt, so a malformed blob degrades to null. */
-function parseUiStateCache(raw: string): TruapiSessionUiState | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    // A stale cache, which the next session report rewrites, rather than a failure.
-    log.event('Session UI cache unreadable', { flow: 'storage', error: errorName(err) ?? 'unknown' });
-    m.count(S.SHARED_SESSION_UI_CACHE, { outcome: 'invalid', reason: 'json' });
-    return null;
-  }
-  if (typeof parsed !== 'object' || parsed === null) {
-    return null;
-  }
-  const state = parsed as Record<string, unknown>;
-  if (
-    state['connected'] !== true ||
-    !isOptionalString(state['publicKey']) ||
-    !isOptionalString(state['identityAccountId']) ||
-    !isOptionalString(state['liteUsername']) ||
-    !isOptionalString(state['fullUsername']) ||
-    !isOptionalString(state['primaryUsername'])
-  ) {
-    return null;
-  }
-  return {
-    connected: true,
-    ...(state['publicKey'] !== undefined ? { publicKey: state['publicKey'] } : {}),
-    ...(state['identityAccountId'] !== undefined ? { identityAccountId: state['identityAccountId'] } : {}),
-    ...(state['liteUsername'] !== undefined ? { liteUsername: state['liteUsername'] } : {}),
-    ...(state['fullUsername'] !== undefined ? { fullUsername: state['fullUsername'] } : {}),
-    ...(state['primaryUsername'] !== undefined ? { primaryUsername: state['primaryUsername'] } : {}),
-  };
-}
-
-/** Before the first network read the record has no identity, so the badge shows signed in without a name. */
-function localSessionUiState(wallet: LocalWalletBoot): TruapiSessionUiState {
-  const identity = wallet.identity;
-  if (identity === null) {
-    return { connected: true };
-  }
-  return {
-    connected: true,
-    identityAccountId: identity.identityAccountId,
-    ...(identity.liteUsername !== null
-      ? { liteUsername: identity.liteUsername, primaryUsername: identity.liteUsername }
-      : {}),
-  };
-}

@@ -5,12 +5,12 @@
 // options as JSON on the script tag, so the fake runs only in that frame and is listening before the host speaks.
 
 import { expect, type Frame, type Page } from '@playwright/test';
-import { PORT } from '../../env.js';
 import type { BlockMode, FakeProtocolOptions } from '../wire/fake-protocol-frame.js';
+import { isProtocolFrameUrl } from './frames.js';
 import { FAKE_PROTOCOL_BUNDLE_PATH } from './wire-bundles.js';
 
-const PROTOCOL_HOST = `host.localhost:${PORT}`;
-const FAKE_SCRIPT_PATH = '/__dotli-e2e/fake-protocol-frame.js';
+// Under the frame's own path, so the root origin's pages never load it.
+const FAKE_SCRIPT_PATH = '/__protocol/__dotli-e2e/fake-protocol-frame.js';
 
 /** HTML attribute text for `value`, which may hold any character. */
 const attribute = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
@@ -21,7 +21,7 @@ export async function fakeProtocol(page: Page, options: FakeProtocolOptions): Pr
   await page.route('**', async route => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.host !== PROTOCOL_HOST) {
+    if (!isProtocolFrameUrl(url.href)) {
       await route.fallback();
     } else if (url.pathname === FAKE_SCRIPT_PATH) {
       await route.fulfill({ path: FAKE_PROTOCOL_BUNDLE_PATH, contentType: 'text/javascript' });
@@ -49,8 +49,8 @@ export const successfulResolveResponse = (cid: string): FakeProtocolOptions => (
 
 /** The protocol frame the page has now, waited for. */
 async function protocolFrame(page: Page): Promise<Frame> {
-  await expect.poll(() => page.frames().some(frame => frame.url().includes(PROTOCOL_HOST))).toBe(true);
-  const frame = page.frames().find(candidate => candidate.url().includes(PROTOCOL_HOST));
+  await expect.poll(() => page.frames().some(frame => isProtocolFrameUrl(frame.url()))).toBe(true);
+  const frame = page.frames().find(candidate => isProtocolFrameUrl(candidate.url()));
   if (frame === undefined) {
     throw new Error('the protocol frame went away');
   }

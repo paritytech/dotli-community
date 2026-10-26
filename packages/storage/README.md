@@ -26,19 +26,23 @@ scheduled notifications.
   a prune writes those marks before it ranks blocks.
 - The CID cache maps a label to its CID and raw manifest text for instant repeat visits. A hit is validated by today's
   validator.
-- The local wallet stores root entropy encrypted under a key this origin can use but not export.
+- The local wallet stores root entropy encrypted under a key this origin can use but not export. A load also gives the
+  record's version, its IV, which every save draws fresh and an identity update keeps. A forget that names a version
+  reads and deletes in one transaction, so a wallet saved since, even from the same phrase, stays.
 - Chat and scheduled notifications are small record stores. Chat lives on the product origin.
 
 ## Public API
 
 ### `@dotli/storage`
 
-- Schema: `DB_NAME`, `isExpectedDbError`.
+- Schema: `WALLET_DB_NAME` (the wallet's own database, which a wipe of the origin the frame shares with the landing page
+  keeps), `isExpectedDbError`.
 - Block cache: `getCachedBlock`, `putCachedBlock`, `deleteCachedBlock`, `pruneBlockCache`, `clearBlockCache`.
 - CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`. The last two resolve to whether they
   worked.
-- Local wallet: `createLocalWalletStore`, `saveLocalWallet`, `loadLocalWallet`, `forgetLocalWallet`,
-  `updateLocalWalletIdentity`, `LocalWalletUnreadableError`.
+- Local wallet, in its own database apart from the page's: `createLocalWalletStore`, `saveLocalWallet` (entropy and the
+  identity or null), `loadLocalWallet`, `forgetLocalWallet`, `forgetLocalWalletIf` (only while the record is still the
+  version a load gave, resolving whether it did), `updateLocalWalletIdentity`, `LocalWalletUnreadableError`.
 - Chat: `createRoom`, `setRoomFooter`, `listRooms`, `appendMessage`, `listMessages`, `latestMessageTimestamps`,
   `registerBot`, `listBots`, and the `ChatRoomFooter` type.
 - Scheduled notifications: `schedule`, `cancel`, `listAll`, `removeById`, `removeStale`, `allocateId`.
@@ -47,3 +51,4 @@ scheduled notifications.
 
 - `memoryIdb`: a fresh in-memory IndexedDB (fake-indexeddb) a store reads and writes in place of the page's own. Its
   `onTransaction` option sees each transaction as it opens, so a test can watch a commit or make one fail.
+- `memoryWalletIdb`: the same for the wallet database.

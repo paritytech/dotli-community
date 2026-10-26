@@ -33,15 +33,14 @@
   opacity: 0;
 }
 
-/* The auth modal, in the place FloatingLayer's topbar-end takes. */
+/* The same card, pinned under the topbar at its end edge, clear of the bar and the bottom inset. */
 .card[data-placement='topbar-end'] {
   position: fixed;
   top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
-  width: auto;
-  max-height: none;
-  padding: 0;
-  gap: 0;
+  max-height: calc(
+    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
+  );
   animation: anchored-in var(--dur) var(--ease-spring) both;
   transform-origin: top right;
 }

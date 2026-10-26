@@ -30,16 +30,6 @@
   position: absolute;
   top: 2px;
   right: 4px;
-  display: inline-flex;
-  align-items: center;
-  height: 12px;
-  padding: 0 var(--sp-hair);
-  border-radius: var(--r-full);
-  background: var(--chrome-fill-strong);
-  color: var(--chrome-text-muted);
-  font: var(--fw-semibold) 8px / 1 var(--font-sans);
-  letter-spacing: var(--ls-caps);
-  pointer-events: none;
 }
 /* Narrow pills: the mark alone, so the wordmark doesn't push actions into More. */
 @media (max-width: 620px) {

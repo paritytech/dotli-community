@@ -52,7 +52,7 @@ flowchart LR
 
 ## Entry points
 
-- The sandbox page. Dev server on port 4322.
+- The sandbox page. Dev server on port 4002.
 - The service worker, one file at the root.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`, `test`.
 - Its component stories run in the one Storybook at the repo root.

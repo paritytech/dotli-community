@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { SharedStoreStatus } from '@dotli/protocol';
-import type { SharedSessionStore } from './core-storage.js';
+import type { HostCoreStorage, SharedSessionStore } from './core-storage.js';
 
 /** An in-memory shared auth store with the protocol frame's failure modes. */
 export interface FakeSharedSessionStore extends SharedSessionStore {
@@ -13,7 +13,7 @@ export interface FakeSharedSessionStore extends SharedSessionStore {
   readError: Error | null;
   /** While set, reads wait on it, so a test can hold one in flight. */
   readGate: Promise<void> | null;
-  /** Every write, in order. */
+  /** Every write, in order, whether or not it changed the value. */
   readonly writes: [key: string, value: string][];
   /** Every key cleared, in order. */
   readonly clears: string[];
@@ -58,11 +58,12 @@ export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connec
         return Promise.reject(store.writeError);
       }
       store.writes.push([key, value]);
+      const changed = entries.get(key) !== value;
       entries.set(key, value);
       for (const resolve of writeWaiters.get(key)?.splice(0) ?? []) {
         resolve(value);
       }
-      return Promise.resolve();
+      return Promise.resolve(changed);
     },
     clear(key) {
       const error = store.clearError?.(key) ?? null;
@@ -72,6 +73,12 @@ export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connec
       store.clears.push(key);
       entries.delete(key);
       return Promise.resolve();
+    },
+    clearIf(key, expected) {
+      if (entries.get(key) !== expected) {
+        return Promise.resolve(false);
+      }
+      return store.clear(key).then(() => true);
     },
     nextWrite(key) {
       if (store.writeError !== null) {
@@ -115,4 +122,43 @@ export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connec
     statusListenerCount: () => statusListeners.size,
   };
   return store;
+}
+
+/** The page's copy as a login waits on it: a session a core stores, or a write of it that fails. */
+export interface FakeStoredSession extends Pick<
+  HostCoreStorage,
+  'readSession' | 'onStoredSessionChanged' | 'onSessionWriteFailed'
+> {
+  /** A core storing `blob`, which tells every listener. */
+  store(blob: string): void;
+  /** A core's write of its session failing. */
+  failWrite(error: Error): void;
+}
+
+export function createFakeStoredSession(blob: string | null = null): FakeStoredSession {
+  let stored = blob;
+  const changes = new Set<() => void>();
+  const failures = new Set<(error: unknown) => void>();
+  return {
+    readSession: () => Promise.resolve({ status: 'ok', blob: stored }),
+    onStoredSessionChanged: listener => {
+      changes.add(listener);
+      return () => changes.delete(listener);
+    },
+    onSessionWriteFailed: listener => {
+      failures.add(listener);
+      return () => failures.delete(listener);
+    },
+    store(next) {
+      stored = next;
+      for (const listener of [...changes]) {
+        listener();
+      }
+    },
+    failWrite(error) {
+      for (const listener of [...failures]) {
+        listener(error);
+      }
+    },
+  };
 }

@@ -17,11 +17,12 @@ export {
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';
-export { DB_NAME } from './schema.js';
+export { WALLET_DB_NAME } from './schema.js';
 export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cid-cache.js';
 export {
   createLocalWalletStore,
   forgetLocalWallet,
+  forgetLocalWalletIf,
   loadLocalWallet,
   LocalWalletUnreadableError,
   saveLocalWallet,

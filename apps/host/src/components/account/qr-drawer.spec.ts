@@ -58,14 +58,10 @@ function showing(answer: (draw: Draw) => Promise<void> = () => Promise.resolve()
   draws: Draw[];
   canvases: FakeCanvas[];
   drawn: string[];
-  size: { px: number };
-  resize: () => void;
 } {
   const draws: Draw[] = [];
   const canvases: FakeCanvas[] = [];
   const drawn: string[] = [];
-  const size = { px: 218 };
-  const watchers = new Set<() => void>();
   return {
     deps: {
       drawQr: (canvas, payload, options, signal) => {
@@ -78,11 +74,7 @@ function showing(answer: (draw: Draw) => Promise<void> = () => Promise.resolve()
         canvases.push(canvas);
         return canvas;
       },
-      size: () => size.px,
-      watchSize: redraw => {
-        watchers.add(redraw);
-        return () => watchers.delete(redraw);
-      },
+      size: () => 218,
       onDrawn: ({ payload }) => {
         drawn.push(payload);
       },
@@ -90,12 +82,6 @@ function showing(answer: (draw: Draw) => Promise<void> = () => Promise.resolve()
     draws,
     canvases,
     drawn,
-    size,
-    resize: () => {
-      for (const redraw of watchers) {
-        redraw();
-      }
-    },
   };
 }
 
@@ -220,86 +206,5 @@ describe('the sign-in QR drawer', () => {
     // Then
     expect(metrics.counted('auth.qr_render')).toEqual([{ outcome: 'ok' }, { outcome: 'ok' }]);
     expect(qr.drawn).toEqual(['polkadotapp://first', 'polkadotapp://second']);
-  });
-
-  it('As a user crossing the phone width, the code on show is redrawn at the new size on its own canvas', async () => {
-    // Given
-    const qr = showing();
-    presentQr('polkadotapp://pair', qr.deps);
-
-    // When
-    qr.size.px = 248;
-    qr.resize();
-    await answered(Promise.resolve());
-
-    // Then
-    expect(qr.canvases).toHaveLength(1);
-    expect(qr.draws.map(draw => [draw.canvas, draw.options.width])).toEqual([
-      [qr.canvases[0], 218],
-      [qr.canvases[0], 248],
-    ]);
-  });
-
-  it('As a phone user whose screen settled at the phone size before the code opened, the late size notice draws no second code', async () => {
-    // Given the code drawn at the phone size the page already had
-    const qr = showing();
-    qr.size.px = 248;
-    presentQr('polkadotapp://pair', qr.deps);
-
-    // When the viewport's change notice arrives after it
-    qr.resize();
-    await answered(Promise.resolve());
-
-    // Then
-    expect(qr.draws.map(draw => draw.options.width)).toEqual([248]);
-    expect(qr.drawn).toEqual(['polkadotapp://pair']);
-  });
-
-  it('As a phone user whose code was drawn, a size notice at the same size draws no second code', async () => {
-    // Given the code drawn at the phone size
-    const qr = showing();
-    qr.size.px = 248;
-    presentQr('polkadotapp://pair', qr.deps);
-    await answered(Promise.resolve());
-
-    // When
-    qr.resize();
-    await answered(Promise.resolve());
-
-    // Then
-    expect(qr.draws.map(draw => draw.options.width)).toEqual([248]);
-    expect(qr.drawn).toEqual(['polkadotapp://pair']);
-  });
-
-  it('As a user whose QR drawing failed, a size notice at the same size draws the code again and the failure is reported once', async () => {
-    // Given the first drawing fails and the next one succeeds
-    const failure = new Error('canvas unavailable');
-    const qr = showing(draw => (qr.draws.indexOf(draw) === 0 ? Promise.reject(failure) : Promise.resolve()));
-    presentQr('polkadotapp://pair', qr.deps);
-    await answered(Promise.reject(failure));
-
-    // When
-    qr.resize();
-    await answered(Promise.resolve());
-
-    // Then
-    expect(qr.draws.map(draw => draw.options.width)).toEqual([218, 218]);
-    expect(qr.drawn).toEqual(['polkadotapp://pair']);
-    expect(captured).toEqual([{ error: failure, context: { flow: 'wallet', step: 'qr_render' } }]);
-    expect(metrics.counted('auth.qr_render')).toEqual([{ outcome: 'error', reason: 'Error' }, { outcome: 'ok' }]);
-    expect(errorsLogged).toHaveLength(1);
-  });
-
-  it('As a user whose code went off show, a later size change draws nothing', () => {
-    // Given
-    const qr = showing();
-    const stop = presentQr('polkadotapp://pair', qr.deps);
-
-    // When
-    stop();
-    qr.resize();
-
-    // Then
-    expect(qr.draws).toHaveLength(1);
   });
 });

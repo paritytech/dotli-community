@@ -1,7 +1,7 @@
 # `@dotli/protocol`
 
-The host page's client for the hidden protocol frame, the origin that runs the light client and the shared store. It
-turns postMessage traffic into promises, streams and remote chain connections.
+The host page's client for the hidden protocol frame, the page at `/__protocol/` on the root domain that runs the light
+client and the shared store. It turns postMessage traffic into promises, streams and remote chain connections.
 
 ## Responsibility
 
@@ -41,6 +41,11 @@ flowchart TB
   trail and the errors (the flat name it had before the methods were grouped into sections, such as `resolveOwner` or
   `authStorageRead`, so dashboards read on unchanged), its budget, whether a page load's trail names it, whether each
   call is timed, and whether the frame answers it once it listens, before its light client is ready.
+- The frame's origin is the root domain's, or on a local root (`localhost`, or `local.host` in a development build) the
+  page's own scheme on that root, with the host's dev port in a development build and otherwise the page's own port. The
+  frame module adds its own `/__protocol/` path to that origin, and the transport stays locked to the origin. The frame
+  shares that origin with the host's pages on the root domain, so the provider tells the frame from those pages by its
+  window, not by its origin.
 - The frame module creates the iframe, publishes a `ProtocolStatus` (`idle`, `booting`, `listening`, `ready`, `failed`)
   and owns one provider and one transport per iframe. The window provider admits only bytes from that iframe's window at
   the frame's origin. It rebuilds itself when lost, after a backoff that grows while rebuilds keep failing, and a
@@ -94,6 +99,9 @@ were.
   subscription ends with it, so a remote chain connection hears that the frame stopped. The transport posts nothing as
   it closes, so the frame lets go of what it served as its iframe goes. The frame is then rebuilt.
 - A call made while the frame is down waits for the next transport.
+- The wallet save carries the identity, and the store and the wallet gained their compare-and-clear calls, which moved
+  the wire to a new version on purpose. A cached older shell then meets the reload screen instead of saving a wallet the
+  frame would read back without it.
 - A version mismatch is final. A rebuild cannot fix it and a reload can, so the frame moves to `failed`, stops
   rebuilding, and rejects every waiting and later call with `ProtocolVersionMismatchError`.
 - A frame rebuilt while an app is open can come from a newer release and refuse the page's wire. The client's
@@ -128,7 +136,19 @@ a call that is no longer waiting is ignored without a count.
 
 ### Shared store and chains
 
-- Shared store keys are named in one place, and only allowed origins may use them.
+- Shared store keys are named in one place, and only allowed origins may use them: a host or landing page on the root
+  domain or a subdomain, never a product's sandbox. A frame embedded under a local root gets a store of its own in
+  production, so any origin under a local root but a sandbox's is allowed. A production build trusts only `localhost` as
+  a local root, never the public `local.host`.
+- Under a product, Safari gives the frame that product's own copy of the store, while other browsers give every page the
+  one main store. The host keeps the copies in step through its sign-in window, which this package does not know.
+- A shared auth write resolves whether it changed the value, and an equal value is neither written nor told to other
+  tabs. A clear may name the value it expects (`clearSharedAuthStorageIf`), and the local wallet's forget the version a
+  read gave (`forgetSharedLocalWalletIf`). The frame then reads and clears in one step on its store and resolves whether
+  it cleared, so what another tab wrote between a page's read and its clear stays.
+- The shared auth changes are tagged. A `session` change carries an auth key and its new value, and a `wallet` change
+  says only that the local wallet record of a site changed, so a page hears another tab's import or forget on the
+  subscription it already holds.
 - A remote chain connection answers a request its chain halted under with the chain pool's halt marker, and tells its
   consumer whether the chain or the whole frame stopped. A connection its consumer leaves before it connects settles as
   a disconnect, and a chain message that cannot be parsed is reported, counted and dropped.
@@ -141,12 +161,14 @@ a call that is no longer waiting is ignored without a count.
 - Client: `protocolClient` (the page's client, built on first use: frame, resolution, remote chains, shared store and
   telemetry as one object), `ProtocolClient`, `ProtocolFrameConfig`, `ProtocolStatus`, `getProtocolOrigin`.
 - Remote chains: `isRemoteChainSupported`, `isRemoteChainConnectable`, `RemoteChainProvider`.
-- Shared store: `SharedStoreStatus`, `SHARED_CORE_SESSION_KEY`, the key helpers `buildSharedAuthStorageKey`,
-  `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`, and the request guards
-  `isSharedAuthOriginAllowed`, `isSharedAuthSiteId` and `isSharedModeRequestMethod`, which tells the mode store's
-  methods from the rest of the storage section.
+- Shared store: `SharedStoreStatus`, `SHARED_CORE_SESSION_KEY`, `SHARED_AUTH_KEY_PREFIX`, `SHARED_MODE_KEY_PREFIX`, the
+  key helpers `buildSharedAuthStorageKey`, `buildSharedModeStorageKey`, `isValidSharedAuthKey`, `isValidSharedModeKey`,
+  and the request guards `isSharedAuthOriginAllowed`, `isSharedAuthSiteId` and `isSharedModeRequestMethod`, which tells
+  the mode store's methods from the rest of the storage section.
 - Local wallet: `LocalWalletIdentity`, `LocalWalletReadResult` (a read's `status`: `none`, `unreadable`, or `ok` with
-  the entropy and the cached identity).
+  the entropy, the cached identity and the record's version, which changes with every save), and the checks for a wallet
+  that did not come through the codec: `isLocalWalletEntropy` (a recovery phrase's entropy size) and
+  `isLocalWalletIdentity` (the identity's shape).
 - The protocol as a transport schema: `protocolSchema`, whose `sections` `frame`, `resolve`, `storage`, `wallet` and
   `chain` hold the method objects every call and handler is made with, with the resolution hello and the typed failures
   of the frame status, the resolve methods and chain connections. `ProtocolSchema`, `ProtocolHello`, `ProtocolTransport`

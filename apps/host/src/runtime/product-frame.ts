@@ -7,7 +7,7 @@
 
 import { createMessagePortProvider, type WireProvider as Provider } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork } from '@dotli/config';
+import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, localRootOf } from '@dotli/config';
 import { sandboxLabel } from '@dotli/resolver';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
@@ -89,7 +89,7 @@ export interface ProductFrameView {
 /** What the frame reads and writes of the browser page. */
 export interface ProductFramePage {
   /** Where the host page is, which the app's origin and deep path follow. */
-  location: () => Pick<Location, 'href' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
+  location: () => Pick<Location, 'href' | 'protocol' | 'hostname' | 'port' | 'pathname' | 'search' | 'hash'>;
   reload: () => void;
 }
 
@@ -653,10 +653,10 @@ function sandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, locat
 }
 
 function appOrigin(label: string, location: PageLocation): string {
-  const { hostname } = location;
-  if (hostname.endsWith('.localhost') || hostname === 'localhost') {
+  const root = localRootOf(location.hostname);
+  if (root !== null) {
     const port = import.meta.env.DEV ? DEV_SANDBOX_PORT : location.port;
-    return `http://${sandboxLabel(label)}.app.localhost:${port}`;
+    return `${location.protocol}//${sandboxLabel(label)}.app.${root}:${port}`;
   }
   return `https://${sandboxLabel(label)}.app.${BASE_DOMAIN}`;
 }

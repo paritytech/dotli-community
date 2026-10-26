@@ -4,6 +4,8 @@
 import type { JSX } from '@solidjs/web';
 import { authStore, loggedInStore } from '../runtime/state/auth.js';
 import { logout, startLogin } from '../runtime/auth-controller.js';
+import { sessionElsewhereStore } from '../runtime/state/session-elsewhere.js';
+import { signingOutStore } from '../runtime/state/sign-out.js';
 import { walletModeStore } from '../runtime/state/wallet-mode.js';
 import { useStore } from '@dotli/ui';
 import { AccountItem } from '../components/account/AuthButton.js';
@@ -12,7 +14,13 @@ import { useAccount } from './account.js';
 
 /** The account button bound to the session, as the topbar and the landing page's corner show it. */
 export function AccountButton(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
-  const account = useAccount({ auth: authStore, loggedIn: loggedInStore, walletMode: walletModeStore });
+  const account = useAccount({
+    auth: authStore,
+    loggedIn: loggedInStore,
+    walletMode: walletModeStore,
+    signingOut: signingOutStore,
+    elsewhere: sessionElsewhereStore,
+  });
   const modalOpen = useStore(authModalStore, state => state.open);
   return (
     <AccountItem

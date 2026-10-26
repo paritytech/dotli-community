@@ -26,7 +26,7 @@ function setModal(next: AuthModalState): void {
 export const storyModal = modal;
 
 /** What the modal asked for in this story. */
-export const modalCalls = { closes: 0, retries: 0 };
+export const modalCalls = { closes: 0, retries: 0, focuses: 0 };
 
 /**
  * The callbacks a page gives the modal and the sign-in it opens. They move the modal as the page's controller would.
@@ -43,6 +43,9 @@ export const modalCallbacks = {
     modalCalls.retries += 1;
     setModal({ ...modal(), view: { kind: 'spinner' } });
   },
+  onFocusWindow: (): void => {
+    modalCalls.focuses += 1;
+  },
 };
 
 /** Moves the sign-in modal, as the page's controller does. */
@@ -55,4 +58,5 @@ export function resetStoryModal(): void {
   setModal(CLOSED_MODAL);
   modalCalls.closes = 0;
   modalCalls.retries = 0;
+  modalCalls.focuses = 0;
 }

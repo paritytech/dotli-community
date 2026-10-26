@@ -1,6 +1,7 @@
 # Docker profile, rendered by docker/entrypoint.sh with envsubst. Keep in sync with nginx.conf.template by hand.
 # Differs only in plain HTTP on one port, no rate limiting, no Sentry tunnel, and serving the runtime network config.
-#   host.${DOMAIN}    protocol build
+#   ${DOMAIN}         host build, and the protocol build under /__protocol/
+#   host.${DOMAIN}    protocol build, kept for one release for shells cached by the previous one
 #   *.${DOMAIN}       host build
 #   *.app.${DOMAIN}   app build
 
@@ -13,6 +14,12 @@ server {
     # Reaches only the locations with no add_header of their own, such as the landing page and the shell.
     include /etc/nginx/snippets/dotli-headers-host.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
+
+    set $csp_ancestors "${CSP}";
+    set $protocol_root "${WEBROOT}/protocol";
+    include /etc/nginx/snippets/dotli-protocol-frame.conf;
+    include /etc/nginx/snippets/dotli-session-page.conf;
+    include /etc/nginx/snippets/dotli-session-file.conf;
 
     # The landing page. Every other path gets the shell, which opens the product `/<label>` names and sends a URL with no
     # product back here.
@@ -69,9 +76,11 @@ server {
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    root ${WEBROOT}/protocol;
+    set $protocol_root "${WEBROOT}/protocol";
+    root $protocol_root;
     index index.html;
 
+    include /etc/nginx/snippets/dotli-protocol-frame.conf;
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
@@ -97,6 +106,7 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+    include /etc/nginx/snippets/dotli-session-file.conf;
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 

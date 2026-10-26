@@ -30,6 +30,11 @@ export interface CoreRuntimeRequest {
    * service speaks for the session.
    */
   inService: () => boolean;
+  /**
+   * Keeps the core's session slot in memory, so nothing it does reaches the stored session or the signed-in flag. For
+   * a core that must never write either.
+   */
+  sessionInMemory?: boolean;
 }
 
 export interface BootedCoreRuntime {
@@ -56,7 +61,7 @@ export interface CoreRuntimeDeps {
 }
 
 export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
-  return async ({ product, blockingModalScope, phoneRequests, isLive, inService }) => {
+  return async ({ product, blockingModalScope, phoneRequests, isLive, inService, sessionInMemory = false }) => {
     const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
     const callbacksFor = (local: boolean): WebWorkerHostCallbacks =>
       deps.createCallbacks({
@@ -65,7 +70,7 @@ export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
         pairingDotSuffix: product.pairing?.dotSuffix,
         pairingHostGlobal: product.pairing?.hostGlobal,
         blockingModalScope,
-        local,
+        sessionInMemory: local || sessionInMemory,
         inService,
         phoneRequests,
       });

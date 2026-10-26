@@ -42,6 +42,7 @@
     "@config/eslint": "*",
     "@config/storybook": "*",
     "@config/vite": "*",
+    "@dotli/config": "*",
     "@dotli/ui": "*",
     "@storybook/addon-a11y": "^10.6.2",
     "@storybook/addon-docs": "^10.6.2",

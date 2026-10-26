@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { chromium, expect, type Page } from '@playwright/test';
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from '../env.js';
 import { setupTest } from './helpers/context.js';
+import { isProtocolFrameUrl } from './helpers/frames.js';
 import { recordProtocolMessages, waitForProtocolMessage } from './helpers/wire-recorder.js';
 import { waitForResolutionOutcome } from '../product-frame.js';
 import { BACKENDS, seedSettings } from './fixtures/settings.js';
@@ -18,8 +19,6 @@ const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 /** A second product, so session 2 cannot be answered from the content cache. */
 const WARM_DOMAIN = process.env['WARM_DOMAIN'] ?? 'browse';
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
-/** The provider's smoldot database store lives on this origin. */
-const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;
 /** The longest the provider takes to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
 
@@ -79,9 +78,10 @@ interface SmoldotDbState {
 
 /** The protocol iframe is the test's only view of warm start, since the default backend writes from a SharedWorker. */
 async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
-  const frame = page.frames().find(f => f.url().startsWith(PROTOCOL_ORIGIN));
+  // The provider's smoldot database store lives on the frame's origin.
+  const frame = page.frames().find(f => isProtocolFrameUrl(f.url()));
   if (frame === undefined) {
-    throw new Error(`no protocol frame at ${PROTOCOL_ORIGIN}`);
+    throw new Error('no protocol frame');
   }
   return frame.evaluate(async () => {
     // Opening a database that does not exist yet would create it and block the provider's own upgrade.

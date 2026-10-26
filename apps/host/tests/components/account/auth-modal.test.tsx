@@ -39,11 +39,15 @@ describe('AuthModal and the product frame', () => {
     unmount = render(
       () => (
         <AuthModal
+          placement="topbar-end"
           state={state}
           onClose={() => setState(CLOSED)}
           onRetry={() => undefined}
+          onFocusWindow={() => undefined}
           drawQr={() => Promise.resolve()}
           isMobile={() => false}
+          isValidPhrase={() => false}
+          onImportPhrase={() => Promise.resolve()}
         />
       ),
       container,

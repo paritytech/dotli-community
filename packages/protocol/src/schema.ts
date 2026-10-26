@@ -5,7 +5,7 @@
 // bumps the version. Each subscription's interrupt is truapi's `Result<(), CallError>` of its reason, as the host's
 // handlers and subscribers expect.
 
-import { Bytes, Enum, Result, Struct, _void, str, type CodecType, type ResultPayload } from 'scale-ts';
+import { Bytes, Enum, Result, Struct, _void, bool, str, type CodecType, type ResultPayload } from 'scale-ts';
 import {
   callError,
   defineSchema,
@@ -53,17 +53,38 @@ const localWalletIdentity = Struct({ identityAccountId: str, liteUsername: nulla
 
 export type LocalWalletIdentity = CodecType<typeof localWalletIdentity>;
 
+/** Whether `value` has the identity's shape, for one that reached the host without the codec. */
+export function isLocalWalletIdentity(value: unknown): value is LocalWalletIdentity {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const { identityAccountId, liteUsername } = value as Record<string, unknown>;
+  return typeof identityAccountId === 'string' && (liteUsername === null || typeof liteUsername === 'string');
+}
+
+/**
+ * The entropy sizes a recovery phrase can encode, in bytes. The codec takes any bytes, so whoever stores or takes a
+ * wallet checks them.
+ */
+const ENTROPY_LENGTHS: ReadonlySet<number> = new Set([16, 20, 24, 28, 32]);
+
+/** Whether `entropy` has a size a recovery phrase can have. */
+export function isLocalWalletEntropy(entropy: Uint8Array): boolean {
+  return ENTROPY_LENGTHS.has(entropy.length);
+}
+
 const localWalletRead = Enum({
   none: _void,
   unreadable: _void,
-  ok: Struct({ entropy: Bytes(), identity: nullable(localWalletIdentity) }),
+  // The version changes with every save, so a forget can name the record it read.
+  ok: Struct({ entropy: Bytes(), identity: nullable(localWalletIdentity), version: Bytes() }),
 });
 
 /** What the frame answers a local wallet read with. */
 export type LocalWalletRead = CodecType<typeof localWalletRead>;
 
 export const protocolSchema = defineSchema({
-  version: 4,
+  version: 5,
   hello: resolutionHello,
   sections: {
     frame: {
@@ -102,25 +123,37 @@ export const protocolSchema = defineSchema({
     },
     storage: {
       authRead: request({ request: siteKey, response: nullableString }),
-      authWrite: request({ request: siteKeyValue, response: _void }),
+      // Answers whether it changed the value. An equal value is neither written nor told to other tabs.
+      authWrite: request({ request: siteKeyValue, response: bool }),
       authClear: request({ request: siteKey, response: _void }),
       authChanges: subscription({
         start: _void,
-        receive: Struct({ siteId: str, key: str, value: nullable(str) }),
+        // A `session` change is one auth key's new value. A `wallet` change says the local wallet record changed.
+        receive: Enum({
+          session: Struct({ siteId: str, key: str, value: nullable(str) }),
+          wallet: Struct({ siteId: str }),
+        }),
         interrupt: Result(_void, callError(_void)),
       }),
       modeRead: request({ request: siteKey, response: nullableString }),
-      modeWrite: request({ request: siteKeyValue, response: _void }),
+      modeWrite: request({ request: siteKeyValue, response: bool }),
       modeClear: request({ request: siteKey, response: _void }),
+      // Clears the key only while it holds `value`, in one step on the frame's store, and answers whether it did.
+      authClearIf: request({ request: siteKeyValue, response: bool }),
     },
     wallet: {
       read: request({ request: siteOnly, response: localWalletRead }),
-      save: request({ request: Struct({ siteId: str, entropy: Bytes() }), response: _void }),
+      save: request({
+        request: Struct({ siteId: str, entropy: Bytes(), identity: nullable(localWalletIdentity) }),
+        response: _void,
+      }),
       identity: request({
         request: Struct({ siteId: str, identity: localWalletIdentity }),
         response: _void,
       }),
       forget: request({ request: siteOnly, response: _void }),
+      // Forgets the wallet only while it is still the record of `version`, and answers whether it did.
+      forgetIf: request({ request: Struct({ siteId: str, version: Bytes() }), response: bool }),
     },
     chain: {
       send: request({ request: Struct({ connectionId: str, message: str }), response: _void }),

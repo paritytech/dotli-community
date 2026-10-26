@@ -53,7 +53,8 @@ flowchart LR
 ### `@dotli/chains`
 
 - Light client: `createLightClient`, `lightClientDeps`, `LightClient`, `LightClientDeps`, `LightClientStatus`,
-  `LightClientChange`, `SmoldotDbChain`, `SmoldotDbOutcome`.
+  `LightClientChange`, `SmoldotDbChain`, `SmoldotDbOutcome`, and `SMOLDOT_DB_NAME`, the name of the database that
+  warm-starts them.
 - Sync and metering: `enableSyncReporting`, `onChainSync`, `onChainDetail`, `chainBytesReceived`, `installByteMeter`,
   `ChainDetail`, `ChainPeer`, `ChainSyncEvent`, `ChainSyncKind`.
 - Gateway chains: `createCoreRpcChainProvider`, `getConnectedAssetHubRpcEndpoint`, `isCoreRpcChainSupported`,
