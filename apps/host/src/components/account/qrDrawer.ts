@@ -4,7 +4,7 @@
 // The sign-in QR's drawing, apart from the modal so its races are tested without a page.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 import type { QrDrawOptions } from './qrCode.js';
 
 export type QrShowing<Canvas> = {
@@ -52,7 +52,7 @@ export function presentQr<Canvas>(payload: string, deps: QrShowing<Canvas>): () 
         }
         log.error('[dot.li] QR render failed:', err);
         captureException(err, { flow: 'wallet', step: 'qr_render' });
-        m.count(S.AUTH_QR_RENDER, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+        m.count(S.AUTH_QR_RENDER, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
       },
     );
   return () => {

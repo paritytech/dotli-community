@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 
 export type TopbarState = {
   /** The host's topbar, which the sandbox app's page lacks. */
@@ -18,7 +18,7 @@ function initialState(): TopbarState {
   return { present: false, visible: true, autoHide: false, blockingModalActive: false, blockingModalsWaiting: 0 };
 }
 
-const topbar = createSyncStore<TopbarState>('topbar', initialState(), { equals: shallowEqual });
+const topbar = createSyncStore<TopbarState>({ name: 'topbar', initial: initialState(), equals: isShallowEqual });
 
 export const topbarStore: ReadableStore<TopbarState> = topbar;
 export const getTopbarState = topbar.get;

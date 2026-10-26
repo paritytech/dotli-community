@@ -19,7 +19,7 @@ function fakeUi(): PageUiModule {
 function setup(load: () => Promise<PageUiModule>, queued: readonly unknown[] = []) {
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
-  const toasts = createSyncStore<{ items: readonly unknown[] }>('test-toasts', { items: queued });
+  const toasts = createSyncStore<{ items: readonly unknown[] }>({ name: 'test-toasts', initial: { items: queued } });
   const texts: string[] = [];
   const hideFallback = vi.fn<() => void>();
   const ui = createSandboxUi({ load, toasts, showFallback: text => texts.push(text), hideFallback });

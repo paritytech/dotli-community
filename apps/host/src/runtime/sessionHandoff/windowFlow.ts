@@ -10,7 +10,7 @@
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createSyncStore, log, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createAsyncTaskPool, createSyncStore, log, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import { reportLazyMiss } from '../../lazyMiss.js';
 import type { PairingView } from '../../state/authModal.js';
 import type {
@@ -170,11 +170,11 @@ function reportStepFailure(error: unknown, name: StepName): void {
 
 export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
   const { responder, signIns, auth, commands, store, wallet } = deps;
-  const screen = createSyncStore<SignInScreen>(
-    'sessionWindowFlow',
-    responderScreen(responder.state(), pairingView(SPINNER, auth.get())),
-    { equals: shallowEqual },
-  );
+  const screen = createSyncStore<SignInScreen>({
+    name: 'sessionWindowFlow',
+    initial: responderScreen(responder.state(), pairingView(SPINNER, auth.get())),
+    equals: isShallowEqual,
+  });
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   let phase: Phase = { kind: 'waiting' };

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { SITE_ID } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import { protocolSchema, type LocalWalletRead } from '@dotli/protocol';
@@ -64,7 +64,7 @@ function setup(overrides: Partial<SharedStoreDeps> = {}): {
   channel: FakeChannel;
   store: ReturnType<typeof createSharedStoreHandler>;
 } {
-  const storage = memoryStorage();
+  const storage = createMemoryStorage();
   const channel = fakeChannel();
   const link = linkHost();
   const store = createSharedStoreHandler(link.serving, {

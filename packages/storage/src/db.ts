@@ -66,7 +66,9 @@ export function createDbConnection(open: () => Promise<IDBDatabase>): () => Prom
  * The page's one connection. `indexedDB` is read at each open, as a context without it, such as the build, still
  * loads this module.
  */
-const getDb = createDbConnection(() => openIdb(indexedDB, DB_NAME, DB_VERSION, upgradeDotliDb));
+const getDb = createDbConnection(() =>
+  openIdb({ factory: indexedDB, name: DB_NAME, version: DB_VERSION, upgrade: upgradeDotliDb }),
+);
 
 /** The IndexedDB a store reads and writes: its connection, and key ranges of the same implementation. */
 export type DotliIdb = {
@@ -78,13 +80,20 @@ export type DotliIdb = {
 /** The page's own IndexedDB. */
 export const pageIdb: DotliIdb = { connect: getDb, keyRange: () => IDBKeyRange };
 
-const getWalletDb = createDbConnection(() => openIdb(indexedDB, WALLET_DB_NAME, WALLET_DB_VERSION, upgradeWalletDb));
+const getWalletDb = createDbConnection(() =>
+  openIdb({ factory: indexedDB, name: WALLET_DB_NAME, version: WALLET_DB_VERSION, upgrade: upgradeWalletDb }),
+);
 
 /** The frame's wallet database, apart from the page's so no cleanup of that one can reach it. */
 export const walletIdb: DotliIdb = { connect: getWalletDb, keyRange: () => IDBKeyRange };
 
 const getSiteGrantsDb = createDbConnection(() =>
-  openIdb(indexedDB, SITE_GRANTS_DB_NAME, SITE_GRANTS_DB_VERSION, upgradeSiteGrantsDb),
+  openIdb({
+    factory: indexedDB,
+    name: SITE_GRANTS_DB_NAME,
+    version: SITE_GRANTS_DB_VERSION,
+    upgrade: upgradeSiteGrantsDb,
+  }),
 );
 
 /** The session windows' grants database, apart from the page's so no cleanup of that one can reach it. */

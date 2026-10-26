@@ -7,7 +7,7 @@ import { startShieldAutoHide } from './shieldAutohide.js';
 
 /** The auto-hide over a login store, counting how often it let the topbar fold. */
 function shieldAutoHide(): { login: { set: (next: boolean) => void }; arms: () => number; settle: () => void } {
-  const login = createSyncStore('shield-autohide-spec-login', false);
+  const login = createSyncStore({ name: 'shield-autohide-spec-login', initial: false });
   let arms = 0;
   const autoHide = startShieldAutoHide({
     loggedIn: login,

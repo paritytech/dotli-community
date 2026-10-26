@@ -66,7 +66,8 @@ function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Requi
   // the key would open another retry budget for the same block.
   // The chunk loads on first use, so the bridge chunk carries no hashing code. A failed load is retried with the poll,
   // and the first miss is reported since the poll itself acts on mismatches only.
-  const verify = createLazyLoad(deps.loadVerify ?? loadVerify, {
+  const verify = createLazyLoad({
+    load: deps.loadVerify ?? loadVerify,
     onFirstMiss: err => {
       reportLazyMiss('content', 'preimage_verify_load', err);
     },

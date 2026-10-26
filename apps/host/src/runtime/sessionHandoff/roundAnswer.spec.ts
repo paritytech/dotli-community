@@ -3,7 +3,7 @@
 
 import { NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { SIGNED_OUT_RESULT } from './messages.js';
 import { createFakeMessageBus, createFakeWindowHandle } from './messages.fake.js';
@@ -67,7 +67,7 @@ describe('session window round answer', () => {
   it('As a first-party page whose sign-out round the dispatch refuses, I get only the refusal and no read', async () => {
     // Given a sign-out window on a network this deployment does not run, whose read is already made
     const { responder, hello, answers } = harness();
-    const read = deferred<undefined>();
+    const read = createDeferred<undefined>();
     read.resolve(undefined);
     const { answered } = answerSignOut({
       responder,
@@ -87,7 +87,7 @@ describe('session window round answer', () => {
   it('As a page signing out, I get the read once when the read comes before the vetting', async () => {
     // Given a sign-out window whose read is made before any hello
     const { responder, hello, answers } = harness();
-    const read = deferred<undefined>();
+    const read = createDeferred<undefined>();
     const { answered } = answerSignOut({
       responder,
       request: requestOf('signout', { v: 1, net: 'paseo-next-v2' }),
@@ -107,7 +107,7 @@ describe('session window round answer', () => {
   it('As a page signing out, I get the read once when the vetting comes before the read', async () => {
     // Given a sign-out window vetted by dot.li's own page before its read is made
     const { responder, hello, answers } = harness();
-    const read = deferred<undefined>();
+    const read = createDeferred<undefined>();
     const { answered } = answerSignOut({
       responder,
       request: requestOf('signout', { v: 1, net: 'paseo-next-v2' }),
@@ -127,7 +127,7 @@ describe('session window round answer', () => {
   it('As a page signing out, I am released with the empty result when the window failed to boot and never read', async () => {
     // Given a sign-out window vetted by dot.li's own page, whose sign-out has not read yet
     const { responder, hello, answers } = harness();
-    const signedOut = deferred<undefined>();
+    const signedOut = createDeferred<undefined>();
     const { answered } = answerSignOut({
       responder,
       request: requestOf('signout', { v: 1, net: 'paseo-next-v2' }),
@@ -147,7 +147,7 @@ describe('session window round answer', () => {
   it('As a site opening the sign-out window, I get a bad request refusal and no read, counted as my sign-in', async () => {
     // Given a sign-out window whose read is already made
     const { metrics, responder, hello, answers } = harness();
-    const read = deferred<undefined>();
+    const read = createDeferred<undefined>();
     read.resolve(undefined);
     const { answered } = answerSignOut({
       responder,
@@ -172,7 +172,7 @@ describe('session window round answer', () => {
       responder,
       request: requestOf('signout', { v: 1, net: 'paseo-next-v2' }),
       enabled: ENABLED,
-      read: deferred<undefined>().promise,
+      read: createDeferred<undefined>().promise,
     });
 
     // When dot.li's own page says hello
@@ -254,7 +254,7 @@ describe('session window round answer', () => {
   it("As dot.li's own page, I open the sign-in window and get its flow's intent once it booted", async () => {
     // Given a sign-in window whose boot is still running
     const { responder, hello, answers } = harness();
-    const boot = deferred<string>();
+    const boot = createDeferred<string>();
     const answered = answerSignIn({
       responder,
       request: requestOf('auth', { v: 1, net: 'paseo-next-v2', intent: 'phrase' }),
@@ -275,7 +275,7 @@ describe('session window round answer', () => {
   it('As a site opening the sign-in window, I get my sign-in round for the origin I said hello from, once it booted', async () => {
     // Given a sign-in window whose boot is still running, with a site's request that names another origin
     const { metrics, responder, hello, answers } = harness();
-    const boot = deferred<string>();
+    const boot = createDeferred<string>();
     const answered = answerSignIn({
       responder,
       request: requestOf('auth', { v: 1, net: 'paseo-next-v2', origin: 'https://other.example' }),
@@ -363,7 +363,7 @@ describe('session window round answer', () => {
   it('As a site opening the sign window, I get my transaction round for the origin I said hello from, once it booted', async () => {
     // Given a sign window whose boot is still running, with a site's request that names another origin
     const { metrics, responder, hello, answers } = harness();
-    const boot = deferred<string>();
+    const boot = createDeferred<string>();
     const answered = answerSignIn({
       responder,
       request: requestOf('sign', {

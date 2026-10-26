@@ -18,9 +18,9 @@ const LOADED: ShownProduct = { status: 'loaded', label: 'app' };
 
 /** The page's product and permissions, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
-  const product = createSyncStore<ShownProduct>('permissions-test-product', { status: 'none' });
-  const state = createSyncStore<ReadPermissions>('permissions-test-state', { status: 'none' });
-  const pending = createSyncStore<PendingPermissions>('permissions-test-pending', null);
+  const product = createSyncStore<ShownProduct>({ name: 'permissions-test-product', initial: { status: 'none' } });
+  const state = createSyncStore<ReadPermissions>({ name: 'permissions-test-state', initial: { status: 'none' } });
+  const pending = createSyncStore<PendingPermissions>({ name: 'permissions-test-pending', initial: null });
   const intents = {
     refresh: vi.fn(() => Promise.resolve()),
     change: vi.fn((_label: string, _targets: PermissionTargets) => Promise.resolve<ChangeOutcome>({ failed: [] })),

@@ -183,7 +183,7 @@ describe('fetchArchive', () => {
     const logged: LogLevel[] = [];
     onTestFinished(
       bindLogSink({
-        emit: level => {
+        emit: ({ level }) => {
           logged.push(level);
         },
       }),
@@ -205,7 +205,7 @@ describe('fetchArchive', () => {
     const logged: LogLevel[] = [];
     onTestFinished(
       bindLogSink({
-        emit: level => {
+        emit: ({ level }) => {
           logged.push(level);
         },
       }),

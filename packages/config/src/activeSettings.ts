@@ -8,7 +8,7 @@
 import { createSyncStore } from '@dotli/shared';
 import type { Settings } from './settings.js';
 
-const store = createSyncStore<Settings | null>('active-settings', null);
+const store = createSyncStore<Settings | null>({ name: 'active-settings', initial: null });
 
 /** Null until boot sets them, when each reader takes its default. */
 export function activeSettings(): Settings | null {

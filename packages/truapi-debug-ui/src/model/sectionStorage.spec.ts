@@ -3,13 +3,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { readStoredSection, writeStoredSection } from './sectionStorage.js';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { blockedStorage } from '../testing/blockedStorage.js';
 
 describe('stored panel tab', () => {
   it('As a dotli developer, the tab I pick is the one the panel opens on next time', () => {
     // Given
-    const storage = memoryStorage();
+    const storage = createMemoryStorage();
 
     // When
     writeStoredSection('diagnostics', storage);
@@ -21,7 +21,7 @@ describe('stored panel tab', () => {
 
   it('As a dotli developer with an unknown tab stored, the panel opens on the TrUAPI tab', () => {
     // Given
-    const storage = memoryStorage({ 'truapi-debug:section': 'gone' });
+    const storage = createMemoryStorage({ entries: { 'truapi-debug:section': 'gone' } });
 
     // When
     const section = readStoredSection(storage);

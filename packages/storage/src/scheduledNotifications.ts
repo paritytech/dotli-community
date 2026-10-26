@@ -5,7 +5,7 @@
 // The host's scheduler coordinates which tab fires.
 
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbTransaction } from '@dotli/shared';
+import { runIdbTransaction } from '@dotli/shared';
 
 /** Drop scheduled notifications older than this many ms past `scheduledAt`. */
 const SCHEDULED_NOTIFICATIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -52,34 +52,39 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
     // An object, since the compiler cannot see the body assign the result before it is read after the transaction.
     const outcome: { result: ScheduleResult | null } = { result: null };
     try {
-      await idbTransaction(db, [RECORD_STORE, COUNTER_STORE], 'readwrite', tx => {
-        const records = tx.objectStore(RECORD_STORE);
-        const counters = tx.objectStore(COUNTER_STORE);
-        const countReq = records.index(BY_PRODUCT_ID).count(idb.keyRange().only(req.productId));
-        countReq.onsuccess = () => {
-          if (countReq.result >= SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP) {
-            outcome.result = { ok: false, error: 'ScheduleLimitReached' };
-            tx.abort();
-            return;
-          }
-          const counterReq = counters.get(req.productId);
-          counterReq.onsuccess = () => {
-            const current = counterReq.result as CounterEntry | undefined;
-            const next = (current?.next ?? 0) + 1;
-            counters.put({ productId: req.productId, next } satisfies CounterEntry);
-            const insertReq = records.add({
-              perProductId: next,
-              productId: req.productId,
-              title: req.title,
-              text: req.text,
-              deeplink: req.deeplink,
-              scheduledAt: req.scheduledAt,
-            });
-            insertReq.onsuccess = () => {
-              outcome.result = { ok: true, id: next };
+      await runIdbTransaction({
+        db,
+        stores: [RECORD_STORE, COUNTER_STORE],
+        mode: 'readwrite',
+        body: tx => {
+          const records = tx.objectStore(RECORD_STORE);
+          const counters = tx.objectStore(COUNTER_STORE);
+          const countReq = records.index(BY_PRODUCT_ID).count(idb.keyRange().only(req.productId));
+          countReq.onsuccess = () => {
+            if (countReq.result >= SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP) {
+              outcome.result = { ok: false, error: 'ScheduleLimitReached' };
+              tx.abort();
+              return;
+            }
+            const counterReq = counters.get(req.productId);
+            counterReq.onsuccess = () => {
+              const current = counterReq.result as CounterEntry | undefined;
+              const next = (current?.next ?? 0) + 1;
+              counters.put({ productId: req.productId, next } satisfies CounterEntry);
+              const insertReq = records.add({
+                perProductId: next,
+                productId: req.productId,
+                title: req.title,
+                text: req.text,
+                deeplink: req.deeplink,
+                scheduledAt: req.scheduledAt,
+              });
+              insertReq.onsuccess = () => {
+                outcome.result = { ok: true, id: next };
+              };
             };
           };
-        };
+        },
       });
     } catch (err: unknown) {
       // The cap aborts the transaction on purpose.
@@ -98,14 +103,19 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
   async function allocateId(productId: string): Promise<number> {
     const db = await idb.connect();
     let allocated = 0;
-    await idbTransaction(db, COUNTER_STORE, 'readwrite', tx => {
-      const counters = tx.objectStore(COUNTER_STORE);
-      const get = counters.get(productId);
-      get.onsuccess = () => {
-        const current = get.result as CounterEntry | undefined;
-        allocated = (current?.next ?? 0) + 1;
-        counters.put({ productId, next: allocated } satisfies CounterEntry);
-      };
+    await runIdbTransaction({
+      db,
+      stores: COUNTER_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const counters = tx.objectStore(COUNTER_STORE);
+        const get = counters.get(productId);
+        get.onsuccess = () => {
+          const current = get.result as CounterEntry | undefined;
+          allocated = (current?.next ?? 0) + 1;
+          counters.put({ productId, next: allocated } satisfies CounterEntry);
+        };
+      },
     });
     return allocated;
   }
@@ -114,22 +124,27 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
   async function cancel(productId: string, perProductId: number): Promise<boolean> {
     const db = await idb.connect();
     let deleted = false;
-    await idbTransaction(db, RECORD_STORE, 'readwrite', tx => {
-      const byProduct = tx.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
-      const cursorReq = byProduct.openCursor(idb.keyRange().only(productId));
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result;
-        if (!cursor) {
-          return;
-        }
-        const rec = cursor.value as ScheduledNotificationRecord;
-        if (rec.perProductId === perProductId) {
-          cursor.delete();
-          deleted = true;
-          return;
-        }
-        cursor.continue();
-      };
+    await runIdbTransaction({
+      db,
+      stores: RECORD_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const byProduct = tx.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
+        const cursorReq = byProduct.openCursor(idb.keyRange().only(productId));
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor) {
+            return;
+          }
+          const rec = cursor.value as ScheduledNotificationRecord;
+          if (rec.perProductId === perProductId) {
+            cursor.delete();
+            deleted = true;
+            return;
+          }
+          cursor.continue();
+        };
+      },
     });
     return deleted;
   }
@@ -137,15 +152,20 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
   async function removeById(hostId: number): Promise<boolean> {
     const db = await idb.connect();
     let existed = false;
-    await idbTransaction(db, RECORD_STORE, 'readwrite', tx => {
-      const records = tx.objectStore(RECORD_STORE);
-      const getReq = records.get(hostId);
-      getReq.onsuccess = () => {
-        if (getReq.result !== undefined) {
-          records.delete(hostId);
-          existed = true;
-        }
-      };
+    await runIdbTransaction({
+      db,
+      stores: RECORD_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const records = tx.objectStore(RECORD_STORE);
+        const getReq = records.get(hostId);
+        getReq.onsuccess = () => {
+          if (getReq.result !== undefined) {
+            records.delete(hostId);
+            existed = true;
+          }
+        };
+      },
     });
     return existed;
   }
@@ -155,16 +175,21 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
   ): Promise<ScheduledNotificationRecord[]> {
     const db = await idb.connect();
     const out: ScheduledNotificationRecord[] = [];
-    await idbTransaction(db, RECORD_STORE, 'readonly', tx => {
-      const cursorReq = open(tx.objectStore(RECORD_STORE));
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result;
-        if (!cursor) {
-          return;
-        }
-        out.push(cursor.value as ScheduledNotificationRecord);
-        cursor.continue();
-      };
+    await runIdbTransaction({
+      db,
+      stores: RECORD_STORE,
+      mode: 'readonly',
+      body: tx => {
+        const cursorReq = open(tx.objectStore(RECORD_STORE));
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor) {
+            return;
+          }
+          out.push(cursor.value as ScheduledNotificationRecord);
+          cursor.continue();
+        };
+      },
     });
     return out;
   }
@@ -177,18 +202,23 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
     const cutoff = now - maxAgeMs;
     const db = await idb.connect();
     let removed = 0;
-    await idbTransaction(db, RECORD_STORE, 'readwrite', tx => {
-      const idx = tx.objectStore(RECORD_STORE).index('byScheduledAt');
-      const cursorReq = idx.openCursor(idb.keyRange().upperBound(cutoff, true));
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result;
-        if (!cursor) {
-          return;
-        }
-        cursor.delete();
-        removed += 1;
-        cursor.continue();
-      };
+    await runIdbTransaction({
+      db,
+      stores: RECORD_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const idx = tx.objectStore(RECORD_STORE).index('byScheduledAt');
+        const cursorReq = idx.openCursor(idb.keyRange().upperBound(cutoff, true));
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor) {
+            return;
+          }
+          cursor.delete();
+          removed += 1;
+          cursor.continue();
+        };
+      },
     });
     return removed;
   }

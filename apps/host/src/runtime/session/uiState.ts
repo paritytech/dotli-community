@@ -6,7 +6,7 @@
 
 import type { LocalWalletIdentity } from '@dotli/protocol';
 import { m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 
 export type TruapiSessionUiState = {
   connected: boolean;
@@ -28,7 +28,7 @@ export function parseUiStateCache(raw: string): TruapiSessionUiState | null {
     parsed = JSON.parse(raw);
   } catch (err) {
     // A stale cache, which the next session report rewrites, rather than a failure.
-    log.event('Session UI cache unreadable', { flow: 'storage', error: errorName(err) ?? 'unknown' });
+    log.event('Session UI cache unreadable', { flow: 'storage', error: getErrorName(err) ?? 'unknown' });
     m.count(S.SHARED_SESSION_UI_CACHE, { outcome: 'invalid', reason: 'json' });
     return null;
   }

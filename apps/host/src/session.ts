@@ -16,7 +16,7 @@
 import './boot.js';
 import { defaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Network } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
-import { deferred, listen, log, pageLocalStorage, pageSessionStorage, randomId } from '@dotli/shared';
+import { createDeferred, listen, log, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
@@ -109,7 +109,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
   // Before the boot, so the handshake runs while the frame comes up. A refused opener leaves the sign-out views as
   // they are.
   const responder = startPageResponder<typeof SIGNED_OUT_RESULT>(request.round, judgeOpener);
-  const read = deferred<undefined>();
+  const read = createDeferred<undefined>();
   const release = (): void => {
     read.resolve(undefined);
   };
@@ -137,7 +137,7 @@ async function runSignOut(
   { notified, read, firstParty }: Pick<WindowSignOutDeps, 'notified' | 'read' | 'firstParty'>,
 ): Promise<void> {
   const { bridgeModule } = await startHost(
-    randomId(),
+    createRandomId(),
     windowHostOptions('signout-window', bootNetwork(taken, enabled)),
   ).catch((error: unknown) => {
     // Counted beside the window's own results, so every window opened counts how its sign-out ended. The boot
@@ -287,7 +287,10 @@ function showResponder(responder: Responder<unknown>): () => void {
 }
 
 async function bootSignIn(taken: SessionRequest, enabled: readonly Network[]): Promise<BridgeModule> {
-  const { bridgeModule } = await startHost(randomId(), windowHostOptions('signin-window', bootNetwork(taken, enabled)));
+  const { bridgeModule } = await startHost(
+    createRandomId(),
+    windowHostOptions('signin-window', bootNetwork(taken, enabled)),
+  );
   log.event('Route: session window', { flow: 'boot' });
   return bridgeModule;
 }
@@ -450,7 +453,7 @@ async function main(): Promise<void> {
   // A page that puts a new request in this window's fragment gets a fresh load for it.
   watchNewRequests({
     pathname: location.pathname,
-    listen: handler => listen(window, 'hashchange', handler),
+    listen: handler => listen({ target: window, type: 'hashchange', handler }),
     hash: () => location.hash,
     storage: pageSessionStorage,
     reload: () => {

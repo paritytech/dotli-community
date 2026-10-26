@@ -9,9 +9,9 @@ describe('bindLogSink', () => {
   it('As a test author, I bind a log sink for one test and unbinding it puts back the sink bound before', () => {
     // Given a sink bound for the file, and one bound over it for a single test
     const outer: LogLevel[] = [];
-    const unbindOuter = bindLogSink({ emit: level => outer.push(level) });
+    const unbindOuter = bindLogSink({ emit: ({ level }) => outer.push(level) });
     const inner: LogLevel[] = [];
-    const unbindInner = bindLogSink({ emit: level => inner.push(level) });
+    const unbindInner = bindLogSink({ emit: ({ level }) => inner.push(level) });
 
     // When the test's sink is unbound and the page warns again
     log.warn('first');

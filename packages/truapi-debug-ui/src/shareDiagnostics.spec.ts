@@ -25,7 +25,7 @@ function recordReports() {
   );
   onTestFinished(
     bindLogSink({
-      emit: (level, message) => {
+      emit: ({ level, message }) => {
         if (level === 'error') {
           errors.push(message);
         }

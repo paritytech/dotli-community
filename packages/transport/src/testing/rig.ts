@@ -4,7 +4,7 @@
 // A test schema and two transports over one in-memory channel, or one transport facing a raw peer the test speaks for.
 
 import { toError, toHex } from '@dotli/shared';
-import { manualTimers } from '@dotli/shared/testing';
+import { createManualTimers } from '@dotli/shared/testing';
 import { Bytes, Result, _void, enhanceCodec, str, type Codec, type ResultPayload } from 'scale-ts';
 import { callError, ok, type Failure, type TransportIssue } from '../errors.js';
 import { createProviderPair } from '../provider.fake.js';
@@ -136,7 +136,7 @@ type WatchedSide = {
 /** An opener on the left and an accepter on the right, over one in-memory channel. */
 export function rig() {
   const { left, right, delivered } = createProviderPair();
-  const timers = manualTimers();
+  const timers = createManualTimers();
   const { issues, onIssue } = issueLog();
   const opener = createTransport(testSchema, left, {
     handshake: 'offer',
@@ -189,7 +189,7 @@ export function countedSchema() {
 export function forwardRig(schema: typeof testSchema = testSchema) {
   const near = createProviderPair();
   const far = createProviderPair();
-  const timers = manualTimers();
+  const timers = createManualTimers();
   const { issues, onIssue } = issueLog();
   const opening = { timers, retryMs: RETRY_MS, timeoutMs: TIMEOUT_MS, onIssue };
   const peer = createTransport(schema, near.left, { handshake: 'offer', hello: 'peer', ...opening });
@@ -277,7 +277,7 @@ export function rawRig(
   watched: WatchedSide = {},
 ) {
   const { left, right } = createProviderPair();
-  const timers = manualTimers();
+  const timers = createManualTimers();
   const { issues, onIssue } = issueLog();
   const peer = rawPeer(right);
   const transport = createTransport(testSchema, wrap(left), {

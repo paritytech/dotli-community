@@ -7,7 +7,7 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { untilDom } from '@dotli/shared/testing';
+import { waitForDom } from '@dotli/shared/testing';
 import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
 import { setupTruapiDebugPanel } from '../src/truapiDebugPanel.js';
 import { PANEL_ID } from '../src/Panel.js';
@@ -64,7 +64,7 @@ describe('late render errors', () => {
     const bus = createDotliDebugBus();
     bus.enableBuffering();
     const dispose = setupTruapiDebugPanel({ host, bus, view: panelView });
-    await untilDom(() => document.getElementById(PANEL_ID) !== null);
+    await waitForDom(() => document.getElementById(PANEL_ID) !== null);
     const panel = document.getElementById(PANEL_ID);
     expect(panel?.isConnected).toBe(true);
     expect(bus.hasListeners()).toBe(true);
@@ -72,7 +72,7 @@ describe('late render errors', () => {
     // When
     view.breakLater?.();
     flush();
-    await untilDom(() => panel?.isConnected === false);
+    await waitForDom(() => panel?.isConnected === false);
 
     // Then
     expect(panel?.isConnected).toBe(false);

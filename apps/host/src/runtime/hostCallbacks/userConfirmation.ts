@@ -27,7 +27,7 @@ import type {
   RingLocationJunction,
 } from '@parity/truapi';
 import { withActiveTld } from '@dotli/config';
-import { deferred, toHex } from '@dotli/shared';
+import { createDeferred, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import type { BlockingModalScope, HoldSlot } from '../blockingModalQueue.js';
 import type { ModalButton, ModalField, ModalHandoff, ModalView } from '@dotli/ui';
@@ -411,7 +411,7 @@ function phoneWaitHandoff(
       answered.abort();
       reportPhoneEnd({ method, outcome, background, title, app: withActiveTld(label) }, notify);
     });
-    const closed = deferred<undefined>();
+    const closed = createDeferred<undefined>();
     hold(closed.promise);
     return {
       view: phoneWaitingView({ title, ...(icon === undefined ? {} : { icon }), ask: PHONE_METHODS[method].ask }),

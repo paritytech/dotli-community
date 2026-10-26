@@ -34,11 +34,14 @@ function snapshot(from: NetworkFeed): NetworkState {
 }
 
 export function createNetworkStore(): NetworkStore {
-  const network = createSyncStore<NetworkState>('network', {
-    chains: [],
-    transfer: { bytesPerSecond: null, fetched: null, total: null },
-    readAt: 0,
-    verdict: { text: 'Not in use', tone: 'quiet' },
+  const network = createSyncStore<NetworkState>({
+    name: 'network',
+    initial: {
+      chains: [],
+      transfer: { bytesPerSecond: null, fetched: null, total: null },
+      readAt: 0,
+      verdict: { text: 'Not in use', tone: 'quiet' },
+    },
   });
   const readers = new Set<object>();
   /** The monitor the store last started on, which a stale `get` rebuilds from. */

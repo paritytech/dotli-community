@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { SharedChannel } from '../sharedMode.js';
@@ -438,8 +438,8 @@ describe('page presence', () => {
 describe('presence writes', () => {
   it('As a page in development, I write my flag and the write settles only once the dev store took it', async () => {
     // Given a dev store whose write is held
-    const written = deferred<undefined>();
-    const asked = deferred<undefined>();
+    const written = createDeferred<undefined>();
+    const asked = createDeferred<undefined>();
     const writes: string[] = [];
     const channel: SharedChannel = {
       read: () => Promise.resolve(null),

@@ -6,7 +6,7 @@
 
 import { captureException, m, spans as S } from '@dotli/metrics';
 import type { CachedManifests } from '@dotli/storage';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import { compareCachedCid, judgeRedeploy } from './manifestGate.js';
 import type { NameSource } from './nameSource.js';
@@ -103,7 +103,7 @@ export async function revalidateCachedCopy(
       tags: { kind: 'cid_cache_revalidate_error', surface: 'host_cache_revalidate' },
     });
     log.error('[dot.li] Cached copy revalidation failed:', err);
-    m.count(S.CACHE_REVALIDATE, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+    m.count(S.CACHE_REVALIDATE, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
   }
 }
 

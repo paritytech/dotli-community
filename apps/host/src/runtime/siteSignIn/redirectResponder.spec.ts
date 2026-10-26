@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { describe, expect, it } from 'vitest';
 import { createRedirectResponder, type RedirectDelivery, type RedirectResponder } from './redirectResponder.js';
 
@@ -25,8 +25,8 @@ type SealCall = {
 function redirectResponder(sealed: () => Promise<string> = () => Promise.resolve(SEALED)) {
   const seals: SealCall[] = [];
   const events: string[] = [];
-  const navigated = deferred<string>();
-  const failure = deferred<{ error: unknown; siteToken: string | undefined; delivery: RedirectDelivery }>();
+  const navigated = createDeferred<string>();
+  const failure = createDeferred<{ error: unknown; siteToken: string | undefined; delivery: RedirectDelivery }>();
   const responder = createRedirectResponder({
     origin: ORIGIN,
     returnTo: RETURN_TO,
@@ -85,7 +85,7 @@ describe('redirect responder', () => {
     'As a window whose round %s, I hold the answer as pending while it seals and as sent once I navigate',
     async (_name, end) => {
       // Given a redirect responder whose seal has not finished
-      const seal = deferred<string>();
+      const seal = createDeferred<string>();
       const { responder, navigated } = redirectResponder(() => seal.promise);
 
       // When the round ends, then the seal finishes
@@ -226,7 +226,7 @@ describe('redirect responder', () => {
 
   it('As a site, I get one answer when the round ends again while the first answer is still sealing', async () => {
     // Given a redirect responder whose seal has not finished
-    const seal = deferred<string>();
+    const seal = createDeferred<string>();
     const { responder, seals, events, navigated } = redirectResponder(() => seal.promise);
     responder.send({ account: 'a' });
 

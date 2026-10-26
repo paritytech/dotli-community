@@ -7,7 +7,7 @@
 
 import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
 import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
-import { createSyncStore, shallowEqual, type SyncStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type SyncStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
 import { chatUnreadLabel } from '../../components/chat/unread.js';
 import type { ChatMessageRecord } from '../../runtime/chat/store.js';
@@ -114,12 +114,16 @@ export type ChatStage = {
 
 /** A fresh chat for one story. */
 export function chatStage(initial: Partial<StageState> = {}): ChatStage {
-  const state = createSyncStore<StageState>('story_chat_state', { ...INITIAL, ...initial }, { equals: shallowEqual });
-  const feed = createSyncStore<FeedState>(
-    'story_chat_feed',
-    { contacts: null, contactsFailed: false, messages: null, messagesFailed: false },
-    { equals: shallowEqual },
-  );
+  const state = createSyncStore<StageState>({
+    name: 'story_chat_state',
+    initial: { ...INITIAL, ...initial },
+    equals: isShallowEqual,
+  });
+  const feed = createSyncStore<FeedState>({
+    name: 'story_chat_feed',
+    initial: { contacts: null, contactsFailed: false, messages: null, messagesFailed: false },
+    equals: isShallowEqual,
+  });
   // What the views read, following each write as the page's stores reach them through `useStore`.
   const [current, setCurrent] = createSignal(state.get());
   state.subscribe(() => setCurrent(state.get()));

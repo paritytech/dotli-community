@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createSyncStore } from '@dotli/shared';
-import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
+import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections, createChatStore } from '../../src/runtime/chat/store.js';
 import { labelToProductId } from '../../src/runtime/runtimeConfig.js';
 import { setAuthState } from '../../src/runtime/state/auth.js';
@@ -23,19 +23,19 @@ describe('bindTopbarStatus', () => {
     document.body.innerHTML = '<header id="topbar"></header>';
     const bar = byId('topbar');
     const chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
-    const local = memoryStorage();
+    const local = createMemoryStorage();
     const stopChat = startChatPanelState(chat, local);
     const product = labelToProductId('chatty');
     setProductLoaded('chatty', product, { chat: true });
     setAuthState({ tag: 'Connected', session: { connected: true } });
-    const unbind = bindTopbarStatus(bar, createSyncStore<NetworkHealth>('test_health', 'ok'));
+    const unbind = bindTopbarStatus(bar, createSyncStore<NetworkHealth>({ name: 'test_health', initial: 'ok' }));
     expect(bar.hasAttribute('data-action')).toBe(false);
 
     // When
     await chat.postProductMessage(product, 'main', { tag: 'Text', value: { text: 'hi' } });
 
     // Then
-    await untilDom(() => bar.hasAttribute('data-action'));
+    await waitForDom(() => bar.hasAttribute('data-action'));
     expect(bar.hasAttribute('data-action')).toBe(true);
     unbind();
     stopChat();

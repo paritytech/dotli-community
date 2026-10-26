@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
-import { createSyncStore, untilStatus, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, waitForStatus, type ReadableStore } from '@dotli/shared';
 import type { DotliAuthState } from '../session/authState.js';
 import { createCoreStorage } from '../session/coreStorage.js';
 import { pageSignInFlag } from '../session/signInFlag.js';
@@ -39,7 +39,7 @@ function page(stored: { blob?: string; uiState?: string; wallet?: LocalWalletRea
       storedSignIn: () => Promise.resolve('none'),
     }),
   });
-  const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' }, { equals: () => false });
+  const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' }, equals: () => false });
   const session = createSessionState({
     store: storage,
     restore: async () => ({
@@ -72,7 +72,7 @@ function page(stored: { blob?: string; uiState?: string; wallet?: LocalWalletRea
 
 /** Waits until the page shows a sign-in, checking at each state it publishes. */
 function untilSignedIn(auth: ReadableStore<DotliAuthState>): Promise<void> {
-  return untilStatus(
+  return waitForStatus(
     {
       get: auth.get,
       subscribe: listener =>

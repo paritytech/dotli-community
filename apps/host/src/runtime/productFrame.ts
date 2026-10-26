@@ -11,7 +11,7 @@ import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, localRootOf } fr
 import { sandboxLabel } from '@dotli/resolver';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, log, noop, randomId, sleep } from '@dotli/shared';
+import { createAsyncTaskPool, log, noop, createRandomId, sleep } from '@dotli/shared';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chatStore.js';
 import { ownCoreConnection } from './coreConnection.js';
@@ -288,8 +288,8 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     // Written by the core's down report, which can arrive during any wait below.
     const heard = { coreDown: false };
     let shown: MountedHost | null = null;
-    const renderFlowId = randomId();
-    const bridgeFlowId = randomId();
+    const renderFlowId = createRandomId();
+    const bridgeFlowId = createRandomId();
     const productId = product.mode === 'iframe' ? (product.productId ?? product.label) : product.label;
     const stopSetup = m.timer(S.BRIDGE_SETUP);
     // Keep the product on screen while its replacement connects, which can take seconds.
@@ -571,7 +571,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
             return;
           }
           await rerender('recover');
-          await sleep(RECOVER_MIN_INTERVAL_MS, ask.signal);
+          await sleep(RECOVER_MIN_INTERVAL_MS, { signal: ask.signal });
         },
         { signal: ask.signal },
       )

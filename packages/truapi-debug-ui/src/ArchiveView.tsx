@@ -3,7 +3,7 @@
 
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { errorMessage, formatSize, type ReadableStore } from '@dotli/shared';
+import { getErrorMessage, formatSize, type ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
 import {
   imageType,
@@ -77,7 +77,7 @@ export function ArchiveView(props: {
         },
         (err: unknown) => {
           if (readCid === next) {
-            setRead({ status: 'failed', reason: errorMessage(err) });
+            setRead({ status: 'failed', reason: getErrorMessage(err) });
           }
         },
       );

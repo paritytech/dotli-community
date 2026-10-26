@@ -36,7 +36,7 @@ export type NameSource = {
 };
 
 export function createNameSource(deps: NameSourceDeps): NameSource {
-  const rpcResolver = createLazyLoad(deps.loadRpc);
+  const rpcResolver = createLazyLoad({ load: deps.loadRpc });
   const gateway = deps.backend === 'rpc-gateway';
 
   const resolveName = async (name: string, onPhase?: PhaseCallback): Promise<string | null> =>

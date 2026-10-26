@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BACKEND_KEY, CACHE_KEY, NETWORK_KEY } from '@dotli/config';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { windowSettings } from './sessionSettings.js';
 
 /** What `storage` holds, to compare before and after a read. */
@@ -21,10 +21,12 @@ function contents(storage: Storage): Record<string, string | null> {
 describe('windowSettings', () => {
   it("As a user in the sign-in window, I open it on the request's network and the network is never saved", () => {
     // Given this origin saved another network, a backend and a cache choice
-    const local = memoryStorage({
-      [NETWORK_KEY]: 'paseo-next-v2',
-      [BACKEND_KEY]: 'rpc-gateway',
-      [CACHE_KEY]: JSON.stringify({ skipCidCache: true, skipArchiveCache: false, skipWorkerCache: false }),
+    const local = createMemoryStorage({
+      entries: {
+        [NETWORK_KEY]: 'paseo-next-v2',
+        [BACKEND_KEY]: 'rpc-gateway',
+        [CACHE_KEY]: JSON.stringify({ skipCidCache: true, skipArchiveCache: false, skipWorkerCache: false }),
+      },
     });
     const before = contents(local);
 
@@ -42,7 +44,7 @@ describe('windowSettings', () => {
 
   it("As a user in the sign-in window on a fresh origin, I open it and it runs on the request's network", () => {
     // Given an origin with nothing stored
-    const local = memoryStorage();
+    const local = createMemoryStorage();
 
     // When the window opens on a request's network
     const settings = windowSettings('previewnet', local, true);
@@ -53,7 +55,9 @@ describe('windowSettings', () => {
 
   it('As a user in the sign-in window in a browser without SharedWorker, I open it and the light client runs per tab over a stored shared one', () => {
     // Given a stored shared-worker backend
-    const local = memoryStorage({ [NETWORK_KEY]: 'paseo-next-v2', [BACKEND_KEY]: 'smoldot-shared-worker' });
+    const local = createMemoryStorage({
+      entries: { [NETWORK_KEY]: 'paseo-next-v2', [BACKEND_KEY]: 'smoldot-shared-worker' },
+    });
 
     // When the window opens where SharedWorker is missing
     const settings = windowSettings('paseo-next-v2', local, false);

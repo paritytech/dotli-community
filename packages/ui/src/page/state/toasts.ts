@@ -5,7 +5,7 @@
 // resumes from what was left.
 
 import { captureException } from '@dotli/metrics';
-import { createSyncStore, registerStoreStateReset, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, registerStoreStateReset, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import type { StatusTone } from '../statusTone.js';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/iconProps.js';
@@ -54,7 +54,7 @@ type Timer = {
 };
 
 const INITIAL: ToastsState = { items: [], expanded: false };
-const toasts = createSyncStore<ToastsState>('toasts', INITIAL, { equals: shallowEqual });
+const toasts = createSyncStore<ToastsState>({ name: 'toasts', initial: INITIAL, equals: isShallowEqual });
 export const toastsStore: ReadableStore<ToastsState> = toasts;
 
 /** The page whose visibility pauses the countdowns. */

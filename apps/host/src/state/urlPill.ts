@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 
 /** "verified" means the visitor's light client checked it, "trusted" means an RPC provider did. */
 export type ShieldState = 'verified' | 'trusted';
@@ -20,7 +20,7 @@ export type UrlPillState =
       shield: ShieldState | null;
     };
 
-const urlPill = createSyncStore<UrlPillState>('url_pill', { kind: 'none' }, { equals: shallowEqual });
+const urlPill = createSyncStore<UrlPillState>({ name: 'url_pill', initial: { kind: 'none' }, equals: isShallowEqual });
 
 export const urlPillStore: ReadableStore<UrlPillState> = urlPill;
 

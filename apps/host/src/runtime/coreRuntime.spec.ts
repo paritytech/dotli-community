@@ -221,7 +221,7 @@ describe('core runtime boot', () => {
 
   it('As a user in the sign-in window, I open it over a stored wallet and it boots a pairing core', async () => {
     // Given the window's wallet boot over a stored local wallet
-    const mode = createSyncStore<WalletModeState>('walletMode', { mode: 'app', failure: null });
+    const mode = createSyncStore<WalletModeState>({ name: 'walletMode', initial: { mode: 'app', failure: null } });
     const walletBoot = createWalletBoot({
       reconcile: () =>
         Promise.resolve({

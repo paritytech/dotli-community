@@ -3,7 +3,7 @@
 
 // DOM queries and waits for functional tests and story plays.
 
-import { must, untilDom } from '@dotli/shared/testing';
+import { must, waitForDom } from '@dotli/shared/testing';
 
 type ElementClass<E extends Element> = abstract new (...args: never[]) => E;
 
@@ -35,6 +35,6 @@ export function byTestId(id: string, root: ParentNode = document, type: ElementC
 
 /** Resolves with the first element matching `selector` once the document has one. */
 export async function appears(selector: string): Promise<HTMLElement> {
-  await untilDom(() => document.querySelector(selector) !== null);
+  await waitForDom(() => document.querySelector(selector) !== null);
   return query(document, selector);
 }

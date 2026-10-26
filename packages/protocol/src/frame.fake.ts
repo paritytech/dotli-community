@@ -7,7 +7,7 @@
 // frame hands out its transport once its iframe loads, since a call starts the handshake. So calls made while it boots
 // wait as they would on a real frame.
 
-import { createStatusCell, realTimers, untilStatus, type Timers } from '@dotli/shared';
+import { createStatusCell, realTimers, waitForStatus, type Timers } from '@dotli/shared';
 import { createTransport } from '@dotli/transport';
 import { createProviderPair } from '@dotli/transport/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
@@ -42,7 +42,8 @@ export function createFakeFrame(
 ): FakeFrame {
   const timers = options.timers ?? realTimers;
   // A listener's throw fails the test that set the status.
-  const status = createStatusCell<ProtocolStatus>(options.status ?? 'ready', {
+  const status = createStatusCell<ProtocolStatus>({
+    initial: options.status ?? 'ready',
     onListenerError: error => {
       throw error;
     },
@@ -91,7 +92,7 @@ export function createFakeFrame(
   const until = (reached: readonly ProtocolStatus[]): Promise<ProtocolTransport> => {
     boot();
     let host: ProtocolTransport | null = null;
-    return untilStatus(status, next => {
+    return waitForStatus(status, next => {
       if (reached.includes(next)) {
         host = current?.host ?? null;
         return host !== null || lostWith;

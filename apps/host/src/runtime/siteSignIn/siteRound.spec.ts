@@ -5,13 +5,13 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import {
-  blake2b,
+  hashBlake2b,
   createSyncStore,
-  deferred,
+  createDeferred,
   fromHex,
-  storeStatus,
+  createStoreStatus,
   toHex,
-  untilStatus,
+  waitForStatus,
   type ReadableStore,
 } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
@@ -41,7 +41,7 @@ const NOW = Date.parse('2026-10-23T15:00:00.000Z');
 const METRIC = 'test.site_round';
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
-const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
+const OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 
 const TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(1));
 const NEW_TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(2));
@@ -136,7 +136,7 @@ async function harness(options: HarnessOptions = {}) {
   const posts: Post[] = [];
   const origin = options.origin ?? ORIGIN;
   const vetted: ResponderState = { kind: 'vetted', origin, party: 'third' };
-  const round = createSyncStore<ResponderState>('testSiteRoundResponder', vetted);
+  const round = createSyncStore<ResponderState>({ name: 'testSiteRoundResponder', initial: vetted });
   // A result sent while the window waits to be vetted again, which goes out with that vetting.
   let held: Post | null = null;
   const end = (post: Post, state: ResponderState): void => {
@@ -216,7 +216,7 @@ async function harness(options: HarnessOptions = {}) {
     outcome: () => 'granted',
     run: input => {
       const failure = failures.shift();
-      const done = deferred<FakeResult>();
+      const done = createDeferred<FakeResult>();
       const finish = (error?: Error): void => {
         if (error === undefined) {
           done.resolve(RESULT);
@@ -236,7 +236,7 @@ async function harness(options: HarnessOptions = {}) {
   };
   let windowFlowFails = options.windowFlowFails === true;
   const windowFlows: { stored: () => void; close: () => void }[] = [];
-  const closed = deferred<undefined>();
+  const closed = createDeferred<undefined>();
   let closes = 0;
   const flow = createSiteRound({
     request: {
@@ -322,7 +322,7 @@ async function harness(options: HarnessOptions = {}) {
 type Harness = Awaited<ReturnType<typeof harness>>;
 
 function untilView(screen: ReadableStore<SiteScreen>, view: SiteScreen['view']): Promise<void> {
-  return untilStatus(storeStatus(screen), shown => shown.view === view);
+  return waitForStatus(createStoreStatus(screen), shown => shown.view === view);
 }
 
 function resultOf(posts: Post[]): Extract<Post, { type: 'dotli:s:result' }> {
@@ -414,7 +414,7 @@ describe('site round', () => {
   it('As a user with no session in the main store, I pair in the window and the site gets its result', async () => {
     // Given a main store with no session, so the window flow pairs, and a core that reports the paired session only
     // after the flow stored it
-    const reported = deferred<MainAccount>();
+    const reported = createDeferred<MainAccount>();
     const h = await harness({ mainAccount: () => reported.promise });
     await consentAndStore(h.flow, h);
     await h.untilMainRead();
@@ -622,7 +622,7 @@ describe('site round', () => {
 
   it('As a user who cancels while the grant is kept, I leave no grant for a token the site never got', async () => {
     // Given a round whose new grant is being saved
-    const gate = deferred<undefined>();
+    const gate = createDeferred<undefined>();
     const h = await harness({ saveGate: gate.promise });
     await consentAndStore(h.flow, h);
     await h.untilSaving();
@@ -640,7 +640,7 @@ describe('site round', () => {
 
   it('As a user who cancels while the grant is kept, I see no failure when the save then fails, which is still reported', async () => {
     // Given a round whose new grant is being saved to a store that will fail it
-    const gate = deferred<undefined>();
+    const gate = createDeferred<undefined>();
     const h = await harness({ saveGate: gate.promise, saveFails: true });
     await consentAndStore(h.flow, h);
     await h.untilSaving();
@@ -1055,7 +1055,7 @@ describe('site round of a group', () => {
     // its grant meanwhile and sent its token
     const OTHER_TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(3));
     const store = createSiteGrantStore(memorySiteGrantsIdb());
-    const gate = deferred<undefined>();
+    const gate = createDeferred<undefined>();
     const a = await harness({ store, groupToken: GROUP_TOKEN, saveGate: gate.promise });
     await consentAndStore(a.flow, a);
     await a.untilSaving();

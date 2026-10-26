@@ -10,7 +10,7 @@
 import { getNetwork, type Network } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import { getProtocolOrigin } from '@dotli/protocol';
-import { deferred, log, onPageReturn } from '@dotli/shared';
+import { createDeferred, log, listenForPageReturn } from '@dotli/shared';
 import { signInSurface, type PageRole } from '../pageRole.js';
 import { sessionPresence, type SessionPresence } from '../session/presence.js';
 import {
@@ -213,7 +213,7 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
         m.count(S.SESSION_WINDOW_SIGNIN, { outcome: 'busy', reason: intent });
         return Promise.resolve({ kind: 'cancelled' });
       }
-      const outcome = deferred<SignInOutcome>();
+      const outcome = createDeferred<SignInOutcome>();
       const handle = open<SignInOutcome>(
         { kind: 'signin' },
         round => signInWindowUrl(intent, deps.network(), round, deps.windowOrigin),
@@ -247,7 +247,7 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
       }
       // A new window takes the shared window name, so a round left open would answer the new window's `ready`.
       current?.end('signed_out');
-      const read = deferred<undefined>();
+      const read = createDeferred<undefined>();
       // A blocked window never becomes `current`, so its read is the settled one `signOutRead` gives.
       const handle = open<true>(
         { kind: 'signout', read: read.promise },
@@ -298,7 +298,7 @@ function pageSessionHandoff(): SessionHandoff {
   pageHandoff ??= createSessionHandoff({
     open: (url, name) => window.open(url, name),
     listen: listenToMessages,
-    onReturn: listener => onPageReturn(document, window, listener),
+    onReturn: listener => listenForPageReturn({ visibility: document, target: window, handler: listener }),
     randomId: () => crypto.randomUUID(),
     windowOrigin: getProtocolOrigin(),
     network: getNetwork,

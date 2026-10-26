@@ -3,7 +3,7 @@
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { toError } from '@dotli/shared';
-import { manualTimers } from '@dotli/shared/testing';
+import { createManualTimers } from '@dotli/shared/testing';
 import {
   createTransport,
   domain,
@@ -321,7 +321,7 @@ function protocolRig() {
   const opener = createTransport(protocolSchema, left, {
     handshake: 'offer',
     hello: OPENER_HELLO,
-    timers: manualTimers(),
+    timers: createManualTimers(),
     onIssue: issue => issues.push(issue),
   });
   const accepter = createTransport(protocolSchema, right, { handshake: 'respond', hello: ACCEPTER_HELLO });

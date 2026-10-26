@@ -102,7 +102,7 @@ describe('session state', () => {
     elsewhere = false;
     role = 'page';
     // Each test is a fresh page, whose auth state is Restoring until the saved session is read.
-    auth = createSyncStore<DotliAuthState>('auth', { tag: 'Restoring' }, { equals: () => false });
+    auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Restoring' }, equals: () => false });
     reloadPage();
   });
 

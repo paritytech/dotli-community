@@ -4,8 +4,8 @@
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { createStatusCell, deferred, type StatusCell } from '@dotli/shared';
-import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
+import { createStatusCell, createDeferred, type StatusCell } from '@dotli/shared';
+import { createManualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { createFeedKeeper, type FeedEnds, type FeedFrame, type FeedName } from './feed.js';
 import type { ProtocolStatus } from './frame.js';
 
@@ -49,10 +49,11 @@ describe('createFeedKeeper', () => {
     );
 
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
     opened = [];
     current = { name: 'first' };
-    status = createStatusCell<ProtocolStatus>('ready', {
+    status = createStatusCell<ProtocolStatus>({
+      initial: 'ready',
       onListenerError: error => {
         throw error;
       },
@@ -142,7 +143,7 @@ describe('createFeedKeeper', () => {
 
     // Then
     expect(opened).toHaveLength(1);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
     expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
     expect(captured).toEqual([]);
   });
@@ -170,7 +171,7 @@ describe('createFeedKeeper', () => {
 
   it('As the host, a feed let go during the wait after an end is not reopened, and an ask still out is dropped', async () => {
     // Given a feed the frame ended, waiting to be reopened, and a frame whose next transport is still being asked for
-    const asked = deferred<Transport>();
+    const asked = createDeferred<Transport>();
     let transport = (): Promise<Transport> => Promise.resolve(current);
     const keeper = keeperOf(
       'shared_auth',
@@ -189,7 +190,7 @@ describe('createFeedKeeper', () => {
 
     // Then
     expect(opened).toHaveLength(1);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As the host, a feed that boots no frame hears none while the frame is down, then the next one that boots', async () => {

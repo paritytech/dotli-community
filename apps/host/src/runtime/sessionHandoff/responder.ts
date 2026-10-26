@@ -91,8 +91,11 @@ export function createResponder<R>({
   listen,
   onPageRestore,
 }: ResponderDeps & { round: string }): Responder<R> {
-  const store = createSyncStore<ResponderState>('sessionResponder', {
-    kind: opener === null ? 'no-opener' : 'connecting',
+  const store = createSyncStore<ResponderState>({
+    name: 'sessionResponder',
+    initial: {
+      kind: opener === null ? 'no-opener' : 'connecting',
+    },
   });
   // The first origin vetted, which the window answers alone, since the opener tab may move to another site while the
   // window sits in the back-forward cache.
@@ -243,10 +246,14 @@ export function createResponder<R>({
 }
 
 function listenToPageRestore(listener: () => void): () => void {
-  return listen(window, 'pageshow', event => {
-    if (event.persisted) {
-      listener();
-    }
+  return listen({
+    target: window,
+    type: 'pageshow',
+    handler: event => {
+      if (event.persisted) {
+        listener();
+      }
+    },
   });
 }
 

@@ -138,7 +138,8 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
   });
 
   // A callback's throw must not fail the shared build, nor leave the status behind a client already kept.
-  const status = createStatusCell<DotnsResolverStatus>('idle', {
+  const status = createStatusCell<DotnsResolverStatus>({
+    initial: 'idle',
     onListenerError: reportListener('resolve', 'resolver.status'),
   });
 
@@ -158,11 +159,11 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
       try {
         // `api.whenReady()` never settles without reachable peers, so the wait is bounded and its error names the cause.
         await span(S.SMOLDOT_FINALIZED_BLOCK, () =>
-          withTimeout(
-            client.api.whenReady(),
-            TIMEOUTS.HUB_FINALIZED_SYNC,
-            () => new NetworkSyncTimeoutError(hubChain, TIMEOUTS.HUB_FINALIZED_SYNC),
-          ),
+          withTimeout({
+            work: client.api.whenReady(),
+            ms: TIMEOUTS.HUB_FINALIZED_SYNC,
+            timeoutError: () => new NetworkSyncTimeoutError(hubChain, TIMEOUTS.HUB_FINALIZED_SYNC),
+          }),
         );
         syncMs = performance.now() - syncStart;
         if (timed) {
@@ -246,7 +247,7 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     );
     // The shared client keeps the full budget, so a short caller cannot cut short a longer one.
     const budget = budgetOf(opts);
-    return withTimeout(ready, budget, () => new NetworkSyncTimeoutError(hubChain, budget))
+    return withTimeout({ work: ready, ms: budget, timeoutError: () => new NetworkSyncTimeoutError(hubChain, budget) })
       .catch((err: unknown) => {
         // A caller that gave up while queued must not start a build nobody waits for.
         gaveUp.abort(err);
@@ -317,11 +318,11 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
     const initStart = performance.now();
     const client = open(connect());
     try {
-      await withTimeout(
-        client.api.whenReady(),
-        PEOPLE_FINALIZED_SYNC_MS,
-        () => new NetworkSyncTimeoutError(PEOPLE_CHAIN, PEOPLE_FINALIZED_SYNC_MS),
-      );
+      await withTimeout({
+        work: client.api.whenReady(),
+        ms: PEOPLE_FINALIZED_SYNC_MS,
+        timeoutError: () => new NetworkSyncTimeoutError(PEOPLE_CHAIN, PEOPLE_FINALIZED_SYNC_MS),
+      });
     } catch (err) {
       client.destroy();
       throw err;

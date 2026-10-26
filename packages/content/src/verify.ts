@@ -7,7 +7,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { equals as bytesEqual } from 'multiformats/bytes';
 import { CID } from 'multiformats/cid';
-import { log, named } from '@dotli/shared';
+import { log, setErrorName } from '@dotli/shared';
 import type { BlockSource } from './archive.js';
 import { BLAKE2B_256, SHA2_256 } from './codecs.js';
 import { CONTENT_ERRORS } from './errors.js';
@@ -20,7 +20,7 @@ function recomputeDigest(multihashCode: number, bytes: Uint8Array): Uint8Array {
       return blake2b(bytes, { dkLen: 32 });
     default:
       // Fail closed, since a hash we cannot recompute is content we cannot verify.
-      throw named(
+      throw setErrorName(
         new Error(`Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`),
         CONTENT_ERRORS.VERIFICATION,
       );
@@ -32,7 +32,7 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
   const expected = cid.multihash.digest;
   const actual = recomputeDigest(cid.multihash.code, bytes);
   if (!bytesEqual(actual, expected)) {
-    throw named(
+    throw setErrorName(
       new Error(`Content hash mismatch for ${cid.toString()}, refusing tampered content`),
       CONTENT_ERRORS.VERIFICATION,
     );
@@ -72,7 +72,7 @@ export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): Blo
 /** Ignores CID version, so v0 and v1 of the same content match, while a self-consistent foreign CAR does not. */
 export function assertSameContentId(actual: CID, expected: CID): void {
   if (actual.code !== expected.code || !bytesEqual(actual.multihash.bytes, expected.multihash.bytes)) {
-    throw named(
+    throw setErrorName(
       new Error(`CAR root ${actual.toString()} does not match requested ${expected.toString()}`),
       CONTENT_ERRORS.VERIFICATION,
     );

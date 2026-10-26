@@ -17,8 +17,8 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   createSyncStore,
-  randomId,
-  shallowEqual,
+  createRandomId,
+  isShallowEqual,
   type ReadableStore,
 } from '@dotli/shared';
 import {
@@ -175,7 +175,7 @@ const NO_VIEW: ChatView = {
 export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore {
   // A broken subscriber must not fail the product's call that made the write.
   const listeners = createListenerSet<ChatChange>({ onListenerError: reportListener('chat', 'chat_store.change') });
-  const view = createSyncStore<ChatView>('chat_view', NO_VIEW, { equals: shallowEqual });
+  const view = createSyncStore<ChatView>({ name: 'chat_view', initial: NO_VIEW, equals: isShallowEqual });
   let target: ChatFollow | null = null;
   // One read of each kind at a time, so results land in the order they were read. A change marks its read stale, and
   // a queued read that finds it fresh does nothing, so a burst of changes costs one more read.
@@ -345,7 +345,7 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
     },
 
     async postProductMessage(productId, roomId, content) {
-      const messageId = randomId();
+      const messageId = createRandomId();
       await repo.appendMessage({
         productId,
         roomId,
@@ -364,7 +364,7 @@ export function createChatStore({ repo, connections }: ChatStoreDeps): ChatStore
       await repo.appendMessage({
         productId,
         roomId,
-        messageId: randomId(),
+        messageId: createRandomId(),
         author: 'user',
         content,
         timestamp: Date.now(),

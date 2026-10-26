@@ -1,16 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { manualTimers } from '@dotli/shared/testing';
+import { createManualTimers } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
 import { createFlash } from './flash.js';
 
 function recordedFlash(): {
   flash: ReturnType<typeof createFlash<string>>;
   changes: (string | null)[];
-  clock: ReturnType<typeof manualTimers>;
+  clock: ReturnType<typeof createManualTimers>;
 } {
-  const clock = manualTimers();
+  const clock = createManualTimers();
   const changes: (string | null)[] = [];
   const flash = createFlash<string>({
     ms: 1000,

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { safeStorage, type SafeStorage } from '@dotli/shared';
-import { memoryStorage, must } from '@dotli/shared/testing';
+import { createSafeStorage, type SafeStorage } from '@dotli/shared';
+import { createMemoryStorage, must } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
 import { signInWindowUrl } from './messages.js';
 import { requestUrl } from './sessionProtocol.js';
@@ -38,8 +38,8 @@ function keptEntry(backing: Storage): KeptEntry {
 
 /** A SafeStorage over one shared backing store. */
 function fakeStorage(): { storage: SafeStorage; backing: Storage } {
-  const backing = memoryStorage();
-  return { storage: safeStorage(() => backing), backing };
+  const backing = createMemoryStorage();
+  return { storage: createSafeStorage(() => backing), backing };
 }
 
 describe('window request', () => {

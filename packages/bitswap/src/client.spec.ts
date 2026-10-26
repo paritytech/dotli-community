@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { RemoteChainHalt } from '@dotli/chains';
 import type { RemoteChainProvider } from '@dotli/protocol';
@@ -12,7 +12,7 @@ import { createBitswapClient, type BitswapClient } from './client.js';
 let timers: ManualTimers;
 
 beforeEach(() => {
-  timers = manualTimers();
+  timers = createManualTimers();
 });
 
 type Reply = { code: number; data?: string } | { hex: string } | 'silent';

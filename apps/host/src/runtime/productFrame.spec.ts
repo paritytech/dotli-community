@@ -967,7 +967,7 @@ describe('product frame and a device grant during a rebuild', () => {
 describe('product frame and the topbar login', () => {
   function loginOver(fakes: FakePageCore): () => Promise<void> {
     const commands = createCoreAuthCommands({
-      auth: createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' }, { equals: () => false }),
+      auth: createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' }, equals: () => false }),
       core: fakes.core,
       session: { reportLoginFailure: vi.fn() },
       walletMode: () => 'app',

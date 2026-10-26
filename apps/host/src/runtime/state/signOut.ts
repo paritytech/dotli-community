@@ -4,7 +4,7 @@
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
 
 // Written only by the page's sign-out, which reports here while it waits for the sign-out window.
-const signingOut = createSyncStore<boolean>('signingOut', false);
+const signingOut = createSyncStore<boolean>({ name: 'signingOut', initial: false });
 
 /** True while the page's sign-out waits for the sign-out window to read what it ends. */
 export const signingOutStore: ReadableStore<boolean> = signingOut;

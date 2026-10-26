@@ -9,7 +9,14 @@
 // wallet, reaches the site.
 
 import { m, reportExpected, type MetricOutcome } from '@dotli/metrics';
-import { createAsyncTaskPool, createSyncStore, deferred, log, shallowEqual, type ReadableStore } from '@dotli/shared';
+import {
+  createAsyncTaskPool,
+  createSyncStore,
+  createDeferred,
+  log,
+  isShallowEqual,
+  type ReadableStore,
+} from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import { CoreRedialError } from '../pageCore.js';
 import type { Responder } from '../sessionHandoff/responder.js';
@@ -211,7 +218,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   const { request, origin, responder, grants, action, metric } = deps;
   const { route } = action;
   const working: SiteActionScreen = { view: 'site-signing', origin, route };
-  const screen = createSyncStore<SiteScreen>('siteRound', working, { equals: shallowEqual });
+  const screen = createSyncStore<SiteScreen>({ name: 'siteRound', initial: working, equals: isShallowEqual });
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   // Aborted as the round's last word goes out, so nothing after it posts or changes the main store.
@@ -223,7 +230,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   // The main account once read, which a consent shown after it runs the action for.
   let account: MainAccount | null = null;
   // The confirm the action waits for, on the view it showed last.
-  let pending: ReturnType<typeof deferred<undefined>> | null = null;
+  let pending: ReturnType<typeof createDeferred<undefined>> | null = null;
 
   /** Rejects the confirm the action waits for, if any, which no press can settle any more. */
   const dropConfirm = (reason: string): void => {
@@ -243,7 +250,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
     if (ended.signal.aborted) {
       return Promise.reject(new Error('The round ended', { cause: ended.signal.reason }));
     }
-    const wait = deferred<undefined>();
+    const wait = createDeferred<undefined>();
     pending = wait;
     return wait.promise;
   };

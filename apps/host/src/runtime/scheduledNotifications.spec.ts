@@ -10,7 +10,7 @@ import {
   type ScheduledNotificationsDeps,
   type ScheduledNotificationStore,
 } from './scheduledNotifications.js';
-import { FakePage } from '@dotli/shared/testing';
+import { createFakePage, type FakePage } from '@dotli/shared/testing';
 
 let page: FakePage;
 
@@ -73,7 +73,7 @@ async function ticks(n: number): Promise<void> {
 describe('scheduled notifications poller', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    page = new FakePage();
+    page = createFakePage();
     captures.exception.mockReset();
     captures.expected.mockReset();
   });

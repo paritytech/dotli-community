@@ -4,7 +4,7 @@
 // Local product chat. Records live on the product origin, so the browser isolates each product's rooms.
 
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from '@dotli/shared';
+import { waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
 
 const ROOM_STORE = 'chat_rooms';
 const MESSAGE_STORE = 'chat_messages';
@@ -55,17 +55,22 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
   async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
     const db = await idb.connect();
     let status: 'New' | 'Exists' = 'New';
-    await idbTransaction(db, ROOM_STORE, 'readwrite', tx => {
-      const store = tx.objectStore(ROOM_STORE);
-      const existing = store.get([room.productId, room.roomId]) as IDBRequest<ChatRoomRecord | undefined>;
-      existing.onsuccess = () => {
-        status = existing.result === undefined ? 'New' : 'Exists';
-        store.put({
-          ...existing.result,
-          ...room,
-          createdAt: existing.result?.createdAt ?? Date.now(),
-        } satisfies ChatRoomRecord);
-      };
+    await runIdbTransaction({
+      db,
+      stores: ROOM_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const store = tx.objectStore(ROOM_STORE);
+        const existing = store.get([room.productId, room.roomId]) as IDBRequest<ChatRoomRecord | undefined>;
+        existing.onsuccess = () => {
+          status = existing.result === undefined ? 'New' : 'Exists';
+          store.put({
+            ...existing.result,
+            ...room,
+            createdAt: existing.result?.createdAt ?? Date.now(),
+          } satisfies ChatRoomRecord);
+        };
+      },
     });
     return status;
   }
@@ -74,15 +79,20 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
   async function setRoomFooter(productId: string, roomId: string, footer: ChatRoomFooter): Promise<boolean> {
     const db = await idb.connect();
     let found = false;
-    await idbTransaction(db, ROOM_STORE, 'readwrite', tx => {
-      const store = tx.objectStore(ROOM_STORE);
-      const existing = store.get([productId, roomId]) as IDBRequest<ChatRoomRecord | undefined>;
-      existing.onsuccess = () => {
-        if (existing.result !== undefined) {
-          found = true;
-          store.put({ ...existing.result, footer } satisfies ChatRoomRecord);
-        }
-      };
+    await runIdbTransaction({
+      db,
+      stores: ROOM_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const store = tx.objectStore(ROOM_STORE);
+        const existing = store.get([productId, roomId]) as IDBRequest<ChatRoomRecord | undefined>;
+        existing.onsuccess = () => {
+          if (existing.result !== undefined) {
+            found = true;
+            store.put({ ...existing.result, footer } satisfies ChatRoomRecord);
+          }
+        };
+      },
     });
     return found;
   }
@@ -91,13 +101,18 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
   async function registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
     const db = await idb.connect();
     let status: 'New' | 'Exists' = 'New';
-    await idbTransaction(db, BOT_STORE, 'readwrite', tx => {
-      const store = tx.objectStore(BOT_STORE);
-      const existing = store.get([bot.productId, bot.botId]) as IDBRequest<ChatBotRecord | undefined>;
-      existing.onsuccess = () => {
-        status = existing.result === undefined ? 'New' : 'Exists';
-        store.put({ ...bot, createdAt: existing.result?.createdAt ?? Date.now() } satisfies ChatBotRecord);
-      };
+    await runIdbTransaction({
+      db,
+      stores: BOT_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const store = tx.objectStore(BOT_STORE);
+        const existing = store.get([bot.productId, bot.botId]) as IDBRequest<ChatBotRecord | undefined>;
+        existing.onsuccess = () => {
+          status = existing.result === undefined ? 'New' : 'Exists';
+          store.put({ ...bot, createdAt: existing.result?.createdAt ?? Date.now() } satisfies ChatBotRecord);
+        };
+      },
     });
     return status;
   }
@@ -106,7 +121,7 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     const db = await idb.connect();
     const store = db.transaction(BOT_STORE, 'readonly').objectStore(BOT_STORE);
     const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
-    const bots = await idbRequest(store.getAll(range) as IDBRequest<ChatBotRecord[]>);
+    const bots = await waitForIdbRequest(store.getAll(range) as IDBRequest<ChatBotRecord[]>);
     return bots.sort((a, b) => a.createdAt - b.createdAt);
   }
 
@@ -114,7 +129,7 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     const db = await idb.connect();
     const store = db.transaction(ROOM_STORE, 'readonly').objectStore(ROOM_STORE);
     const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
-    const rooms = await idbRequest(store.getAll(range) as IDBRequest<ChatRoomRecord[]>);
+    const rooms = await waitForIdbRequest(store.getAll(range) as IDBRequest<ChatRoomRecord[]>);
     return rooms.sort((a, b) => a.createdAt - b.createdAt);
   }
 
@@ -122,11 +137,16 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
   async function appendMessage(message: NewChatMessage): Promise<number> {
     const db = await idb.connect();
     let seq = 0;
-    await idbTransaction(db, MESSAGE_STORE, 'readwrite', tx => {
-      const request = tx.objectStore(MESSAGE_STORE).add(message);
-      request.onsuccess = () => {
-        seq = request.result as number;
-      };
+    await runIdbTransaction({
+      db,
+      stores: MESSAGE_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const request = tx.objectStore(MESSAGE_STORE).add(message);
+        request.onsuccess = () => {
+          seq = request.result as number;
+        };
+      },
     });
     return seq;
   }
@@ -135,7 +155,7 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
     const db = await idb.connect();
     const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
     const range = idb.keyRange().bound([productId, ''], [productId, '￿']);
-    const all = await idbRequest(index.getAll(range) as IDBRequest<ChatMessageRecord[]>);
+    const all = await waitForIdbRequest(index.getAll(range) as IDBRequest<ChatMessageRecord[]>);
     const latest = new Map<string, number>();
     for (const message of all) {
       if (message.timestamp > (latest.get(message.roomId) ?? 0)) {
@@ -149,7 +169,7 @@ export function createChatRecords(idb: DotliIdb = pageIdb) {
   async function listMessages(productId: string, roomId: string, limit = 200): Promise<ChatMessageRecord[]> {
     const db = await idb.connect();
     const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
-    const all = await idbRequest(
+    const all = await waitForIdbRequest(
       index.getAll(idb.keyRange().only([productId, roomId])) as IDBRequest<ChatMessageRecord[]>,
     );
     return all.length > limit ? all.slice(all.length - limit) : all;

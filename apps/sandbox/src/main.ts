@@ -10,7 +10,7 @@ import '@dotli/ui/styles.css';
 import { BASE_DOMAIN, getActiveServicesConfig, setActiveNetwork } from '@dotli/config';
 import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@dotli/content';
 import { m, setResolutionId } from '@dotli/metrics';
-import { endpointHost } from '@dotli/shared';
+import { getEndpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decryptPrompt.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
@@ -171,7 +171,7 @@ void runSandbox(
       ui.showRetryScreen();
     },
     askRerender: askHostToRerender,
-    gatewayHost: () => endpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
+    gatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
     recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,
   },

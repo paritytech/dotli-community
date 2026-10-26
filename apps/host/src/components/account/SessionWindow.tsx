@@ -3,7 +3,7 @@
 
 import { createMemo, merge, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { shallowEqual } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
 import type { SignInScreen, WindowScreen } from '../../state/sessionWindow.js';
 import { isMobileDevice } from '../../device.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
@@ -120,7 +120,7 @@ function signInOf(screen: WindowScreen): SignInScreen | null {
 }
 
 function sameStep(a: WindowStep, b: WindowStep): boolean {
-  return a.view === 'pairing' && b.view === 'pairing' ? sameSignInScreen(a.pairing, b.pairing) : shallowEqual(a, b);
+  return a.view === 'pairing' && b.view === 'pairing' ? sameSignInScreen(a.pairing, b.pairing) : isShallowEqual(a, b);
 }
 
 /**

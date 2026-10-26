@@ -10,7 +10,15 @@ import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type 
 import { bitswapGet } from '@dotli/bitswap';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { protocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
-import { createAsyncTaskPool, dur, elapsed, errorMessage, log, randomId, serializeError } from '@dotli/shared';
+import {
+  createAsyncTaskPool,
+  formatDuration,
+  formatElapsed,
+  getErrorMessage,
+  log,
+  createRandomId,
+  serializeError,
+} from '@dotli/shared';
 import type { CachedManifests } from '@dotli/storage';
 import { emitDotliDebugEvent } from '@dotli/truapi-debug';
 import { readChatCapability } from './chatCapability.js';
@@ -192,14 +200,14 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
         chain_backend: backend,
       },
     });
-    trace.finish('error', { reason: errorMessage(err), errorKind: error.kind });
+    trace.finish('error', { reason: getErrorMessage(err), errorKind: error.kind });
     log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
     emitDotliDebugEvent({
       layer: 'boot',
       event: 'failed',
       flowId,
       timestamp: Date.now(),
-      payload: { label, reason: errorMessage(err), dependency },
+      payload: { label, reason: getErrorMessage(err), dependency },
     });
     // Once for the failed load, however many times the user moves between its error screens.
     setProductError();
@@ -342,7 +350,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     enterStep('name_resolve');
     const resolveStart = performance.now();
 
-    const resolveFlowId = randomId();
+    const resolveFlowId = createRandomId();
     const resolveSource: 'smoldot' | 'rpc-gateway' = backend !== 'rpc-gateway' ? 'smoldot' : 'rpc-gateway';
     emitDotliDebugEvent({
       layer: 'resolve',
@@ -375,7 +383,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     progress.nameResolved();
     performance.mark('dotli:resolve:end');
     log.debug(
-      `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${dur(resolveStart)} (total ${elapsed(startedAt)}) -> ${cid ?? 'null'}`,
+      `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${backend} in ${formatDuration(resolveStart)} (total ${formatElapsed(startedAt)}) -> ${cid ?? 'null'}`,
     );
     log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
       flow: 'resolve',

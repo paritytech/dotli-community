@@ -5,7 +5,7 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { errorName, log, named, randomId, serializeError } from '@dotli/shared';
+import { getErrorName, log, setErrorName, createRandomId, serializeError } from '@dotli/shared';
 import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import {
   getActiveCoreGatewaySupportedGenesisHashes,
@@ -66,7 +66,7 @@ function guardConsumer(label: 'halt' | 'message', call: () => void): void {
 
 /** What a connect that the consumer left before it connected settles with. */
 const disconnectedError = (): Error =>
-  named(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError');
+  setErrorName(new Error('Chain disconnected before it connected'), 'ChainDisconnectedError');
 
 /** Unsent messages get the retryable halt error on a chain halt, and a plain close error on a dead frame. */
 function haltRemote(connection: RemoteChainConnection, reason: RemoteChainHalt): void {
@@ -114,7 +114,7 @@ export function createRemoteChains(rpc: FrameRpc) {
     } catch (err: unknown) {
       captureException(err, { flow: 'protocol', step: 'chain_message_parse' });
       log.error(`[dot.li protocol] chain-message JSON parse failed (conn=${connectionId.slice(-8)}):`, err);
-      m.count(S.PROTOCOL_CHAIN_MESSAGE, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+      m.count(S.PROTOCOL_CHAIN_MESSAGE, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
       return;
     }
     guardConsumer('message', () => {
@@ -215,7 +215,7 @@ export function createRemoteChains(rpc: FrameRpc) {
     }
 
     return (onMessage, onHalt): JsonRpcConnection => {
-      const connectionId = randomId();
+      const connectionId = createRandomId();
       const remote: RemoteChainConnection = {
         onMessage,
         onHalt: onHalt ?? null,

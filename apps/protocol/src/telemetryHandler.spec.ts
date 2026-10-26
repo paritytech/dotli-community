@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChainDetail, ChainSyncEvent, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
 import { protocolSchema } from '@dotli/protocol';
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { err, hostFailure } from '@dotli/transport';
 import { createTelemetryHandler, type TelemetryDeps } from './telemetryHandler.js';
 import { closeHostLinks, linkHost, record } from './testing/hostLink.js';
@@ -33,7 +33,7 @@ function sources(options: {
 }): Sources {
   const dbListeners = new Set<DbListener>();
   let running = 0;
-  const allStopped = deferred<undefined>();
+  const allStopped = createDeferred<undefined>();
   const feed = (): (() => void) => {
     running += 1;
     return () => {

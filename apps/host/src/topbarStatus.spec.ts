@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections, createChatStore } from './runtime/chat/store.js';
 import { labelToProductId } from './runtime/runtimeConfig.js';
 import { setAuthState } from './runtime/state/auth.js';
@@ -68,7 +68,7 @@ describe('pageNeedsAction', () => {
   it('As a user with unread chat, the capsule leads with the action dot', async () => {
     // Given a loaded chat product, logged in, with the panel closed
     const chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
-    const local = memoryStorage();
+    const local = createMemoryStorage();
     stopChatState = startChatPanelState(chat, local);
     const product = labelToProductId('chatty');
     setProductLoaded('chatty', product, { chat: true });

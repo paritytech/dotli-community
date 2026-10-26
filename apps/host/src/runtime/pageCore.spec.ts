@@ -6,7 +6,7 @@ import type { TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { bindCaptureSink } from '@dotli/metrics';
 import { createAsyncTaskPool, type Timers } from '@dotli/shared';
-import { manualTimers, recordLog } from '@dotli/shared/testing';
+import { createManualTimers, recordLog } from '@dotli/shared/testing';
 import { createBlockingModalCoordinator } from './blockingModalQueue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './coreRuntime.js';
 import { CoreRedialError, createPageCore, type PageCore } from './pageCore.js';
@@ -318,7 +318,7 @@ describe('page core', () => {
 
   it('As a page, I release my last lease and take a new one within the destroy delay and keep the same core', async () => {
     // Given a core whose only lease was released
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const { core, requests, runtimes } = harness({ destroyDelay: 5000, timers });
     const first = await core.acquire();
     first.release();
@@ -330,12 +330,12 @@ describe('page core', () => {
     // Then the same core serves it, nothing was disposed and no timer is left
     expect(requests).toHaveLength(1);
     expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As a page, I release my last lease and the core goes once the destroy delay ends', async () => {
     // Given a core whose only lease was released
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const onCoresGone = vi.fn();
     const { core, runtimes } = harness({ destroyDelay: 5000, timers, onCoresGone });
     const lease = await core.acquire();
@@ -355,13 +355,13 @@ describe('page core', () => {
 
   it('As a page whose lingering core goes down, I see it go at once', async () => {
     // Given a lingering core that has a connection
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const { core, runtimes } = harness({ destroyDelay: 5000, timers });
     const lease = await core.acquire();
     await lease.connect();
     lease.release();
     expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
-    expect(timers.pending()).toBe(1);
+    expect(timers.countPending()).toBe(1);
 
     // When its connection closes
     const provider = nthRuntime(runtimes, 0).providers[0];
@@ -372,29 +372,29 @@ describe('page core', () => {
 
     // Then it is disposed at once and its timer is cleared
     expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As a page that changes product, I see a lingering core go at once', async () => {
     // Given a lingering core
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const { core, runtimes } = harness({ destroyDelay: 5000, timers });
     const lease = await core.acquire();
     lease.release();
     expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
-    expect(timers.pending()).toBe(1);
+    expect(timers.countPending()).toBe(1);
 
     // When the page names another product
     core.setProduct({ label: 'other' });
 
     // Then the core is disposed at once and its timer is cleared
     expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As a page that changed product while a login held the old core, I release the login and the old core goes at once', async () => {
     // Given a core held by a login while the page moves to another product
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const { core, runtimes } = harness({ destroyDelay: 5000, timers });
     const lease = await core.acquire();
     core.setProduct({ label: 'other' });
@@ -404,12 +404,12 @@ describe('page core', () => {
 
     // Then the old core is disposed at once, with no timer
     expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As a page signed out elsewhere, I reset the session and my lingering core drops it', async () => {
     // Given a lingering core
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const { core, runtimes } = harness({ destroyDelay: 5000, timers });
     const lease = await core.acquire();
     lease.release();

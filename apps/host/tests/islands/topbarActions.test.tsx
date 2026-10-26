@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
-import { resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
+import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { TopbarActions } from '../../src/islands/TopbarActions.js';
 import { createProductFrameView } from '../../src/productFrameView.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from '../../src/state/topbarSurfaces.js';
@@ -26,7 +26,7 @@ function mount(island: () => JSX.Element): void {
 
 /** Resolves once the page shows the popover `id` open or closed. */
 async function until(id: string, open: boolean): Promise<void> {
-  await untilDom(() => (document.getElementById(id)?.hasAttribute('data-open') ?? false) === open);
+  await waitForDom(() => (document.getElementById(id)?.hasAttribute('data-open') ?? false) === open);
 }
 
 afterEach(() => {

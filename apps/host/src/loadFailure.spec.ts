@@ -237,7 +237,7 @@ describe('presentLoadFailure', () => {
     const events: { message: string; attrs: Record<string, unknown> | undefined }[] = [];
     onTestFinished(
       bindLogSink({
-        emit: (level, message, attrs) => {
+        emit: ({ level, message, attrs }) => {
           if (level === 'info') {
             events.push({ message, attrs });
           }

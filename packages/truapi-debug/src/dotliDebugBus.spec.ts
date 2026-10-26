@@ -18,7 +18,7 @@ function recordListenerReports(): ListenerReports {
   const errors: string[] = [];
   onTestFinished(
     bindLogSink({
-      emit: (level, message) => {
+      emit: ({ level, message }) => {
         if (level === 'error') {
           errors.push(message);
         }

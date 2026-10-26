@@ -6,7 +6,14 @@
 
 /// <reference lib="webworker" />
 
-import { createLazyLoad, errorMessage, errorName, idbRequest, idbTransaction, openIdb } from '@dotli/shared';
+import {
+  createLazyLoad,
+  getErrorMessage,
+  getErrorName,
+  openIdb,
+  runIdbTransaction,
+  waitForIdbRequest,
+} from '@dotli/shared';
 import type { SetArchiveMessage } from './archiveHandoff.js';
 import { getMimeType } from './mime.js';
 
@@ -64,16 +71,26 @@ function unpackArchive(packed: ArrayBuffer, index: ArchiveIndex): Record<string,
 }
 
 function openArchiveDb(indexedDB: IDBFactory): Promise<IDBDatabase> {
-  return openIdb(indexedDB, ARCHIVE_DB_NAME, 1, db => {
-    db.createObjectStore(ARCHIVE_STORE);
+  return openIdb({
+    factory: indexedDB,
+    name: ARCHIVE_DB_NAME,
+    version: 1,
+    upgrade: db => {
+      db.createObjectStore(ARCHIVE_STORE);
+    },
   });
 }
 
 async function persistArchive(indexedDB: IDBFactory, archive: PersistedArchive): Promise<void> {
   const db = await openArchiveDb(indexedDB);
   try {
-    await idbTransaction(db, ARCHIVE_STORE, 'readwrite', tx => {
-      tx.objectStore(ARCHIVE_STORE).put(archive, CURRENT_ARCHIVE_KEY);
+    await runIdbTransaction({
+      db,
+      stores: ARCHIVE_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        tx.objectStore(ARCHIVE_STORE).put(archive, CURRENT_ARCHIVE_KEY);
+      },
     });
   } finally {
     db.close();
@@ -83,7 +100,7 @@ async function persistArchive(indexedDB: IDBFactory, archive: PersistedArchive):
 async function loadPersistedArchive(indexedDB: IDBFactory): Promise<PersistedArchive | null> {
   const db = await openArchiveDb(indexedDB);
   try {
-    const stored = (await idbRequest(
+    const stored = (await waitForIdbRequest(
       db.transaction(ARCHIVE_STORE, 'readonly').objectStore(ARCHIVE_STORE).get(CURRENT_ARCHIVE_KEY),
     )) as PersistedArchive | undefined;
     return stored ?? null;
@@ -99,8 +116,8 @@ function reportArchiveFailure(clients: readonly Client[], stage: 'persist' | 're
   const message = {
     type: 'ARCHIVE_FAILURE',
     stage,
-    name: errorName(shown) ?? 'NonErrorThrow',
-    message: errorMessage(shown),
+    name: getErrorName(shown) ?? 'NonErrorThrow',
+    message: getErrorMessage(shown),
   } as const;
   for (const client of clients) {
     client.postMessage(message);
@@ -135,8 +152,8 @@ export function startAppServiceWorker({
    * The archive kept for restarts, read back by the first fetch that finds none in memory. A failed read is not kept,
    * so the next fetch reads it again, while only the first failure is reported to the page.
    */
-  const restoreArchive = createLazyLoad(
-    async (): Promise<void> => {
+  const restoreArchive = createLazyLoad({
+    load: async (): Promise<void> => {
       const archive = await loadPersistedArchive(indexedDB);
       if (archive === null) {
         nothingPersisted = true;
@@ -145,18 +162,16 @@ export function startAppServiceWorker({
       // A SET_ARCHIVE that landed during the read is newer. The loader keeps nothing, so a later one frees the buffers.
       served ??= { files: unpackArchive(archive.packed, archive.index), directory: archive.directory ?? BASE };
     },
-    {
-      onFirstMiss: err => {
-        // Not awaited: the fetch waiting on this read-back must not wait on the report too.
-        void scope.clients.matchAll({ type: 'window' }).then(
-          clients => {
-            reportArchiveFailure(clients, 'restore', err);
-          },
-          () => undefined,
-        );
-      },
+    onFirstMiss: err => {
+      // Not awaited: the fetch waiting on this read-back must not wait on the report too.
+      void scope.clients.matchAll({ type: 'window' }).then(
+        clients => {
+          reportArchiveFailure(clients, 'restore', err);
+        },
+        () => undefined,
+      );
     },
-  );
+  });
 
   function hasArchive(): boolean {
     return served !== null;

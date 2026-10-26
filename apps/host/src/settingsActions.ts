@@ -201,7 +201,7 @@ function browserWipeParts(): WipeParts {
 export async function wipeOriginState(parts: WipeParts = browserWipeParts()): Promise<readonly WipeFailure[]> {
   let failed: WipeFailure[] = [];
   try {
-    await wipeOriginStores(parts.stores, OTHER_LAYERS_DATABASES);
+    await wipeOriginStores(parts.stores, { keepDatabases: OTHER_LAYERS_DATABASES });
   } catch (err: unknown) {
     if (!(err instanceof OriginWipeError)) {
       throw err;

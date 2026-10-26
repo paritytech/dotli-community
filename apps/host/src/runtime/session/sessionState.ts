@@ -215,7 +215,7 @@ export function createSessionState(deps: SessionStateDeps): SessionState {
     }
   };
 
-  const coreReport = createSyncStore<DotliAuthState | null>('sessionCoreReport', null);
+  const coreReport = createSyncStore<DotliAuthState | null>({ name: 'sessionCoreReport', initial: null });
 
   /** Shows what the core reported, and keeps it as the core's own report. */
   const reportCore = (next: DotliAuthState): void => {

@@ -5,13 +5,13 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
-  blake2b,
+  hashBlake2b,
   createSyncStore,
-  deferred,
+  createDeferred,
   fromHex,
-  storeStatus,
+  createStoreStatus,
   toHex,
-  untilStatus,
+  waitForStatus,
   type ReadableStore,
 } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
@@ -29,7 +29,7 @@ const ORIGIN = 'https://my-site.com';
 const NOW = Date.parse('2026-10-23T15:00:00.000Z');
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
-const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
+const OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 
 const TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(1));
 const NEW_TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(2));
@@ -85,7 +85,10 @@ async function harness(options: HarnessOptions = {}) {
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
   const origin = options.origin ?? ORIGIN;
   const posts: Post[] = [];
-  const round = createSyncStore<ResponderState>('testSiteResponder', { kind: 'vetted', origin, party: 'third' });
+  const round = createSyncStore<ResponderState>({
+    name: 'testSiteResponder',
+    initial: { kind: 'vetted', origin, party: 'third' },
+  });
   const end = (post: Post, state: ResponderState): void => {
     const { kind } = round.get();
     if (kind === 'answered' || kind === 'refused') {
@@ -131,7 +134,7 @@ async function harness(options: HarnessOptions = {}) {
     },
   };
   const windowFlows: { stored: () => void; close: () => void }[] = [];
-  const closed = deferred<undefined>();
+  const closed = createDeferred<undefined>();
   const flow = createSiteSignIn({
     request: {
       ...REQUEST,
@@ -173,7 +176,7 @@ async function harness(options: HarnessOptions = {}) {
 }
 
 function untilView(screen: ReadableStore<SiteScreen>, view: SiteScreen['view']): Promise<void> {
-  return untilStatus(storeStatus(screen), shown => shown.view === view);
+  return waitForStatus(createStoreStatus(screen), shown => shown.view === view);
 }
 
 function resultOf(posts: Post[]): Extract<Post, { type: 'dotli:s:result' }> {

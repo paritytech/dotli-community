@@ -49,7 +49,10 @@ const NO_PAYLOAD = new Promise<string>(() => undefined);
 
 export function createRedirectResponder(deps: RedirectResponderDeps): RedirectResponder {
   const { origin, returnTo, pub, round } = deps;
-  const store = createSyncStore<ResponderState>('redirectResponder', { kind: 'vetted', origin, party: 'third' });
+  const store = createSyncStore<ResponderState>({
+    name: 'redirectResponder',
+    initial: { kind: 'vetted', origin, party: 'third' },
+  });
   let delivery: RedirectDelivery = 'none';
 
   /**

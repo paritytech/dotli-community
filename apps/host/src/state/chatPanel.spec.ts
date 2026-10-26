@@ -23,7 +23,7 @@ import {
   setChatPanelWidth,
   totalChatUnread,
 } from './chatPanel.js';
-import { memoryStorage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
+import { createMemoryStorage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
 let remove: () => void = () => undefined;
 let local: Storage;
@@ -40,7 +40,7 @@ async function productMessage(label: string, roomId: string): Promise<void> {
 }
 
 beforeEach(() => {
-  local = memoryStorage();
+  local = createMemoryStorage();
   connections = createChatConnections();
   chat = createChatStore({ repo: memoryChatRepo(), connections });
   remove = startChatPanelState(chat, local);

@@ -4,7 +4,7 @@
 // Manifests from dotNS text records: the root on `<id>.<tld>`, one executable per kind on `<kind>.<id>.<tld>`.
 // CIDs live in each name's contenthash, not the JSON. Validators are handwritten to avoid a schema library.
 
-import { errorMessage } from '@dotli/shared';
+import { getErrorMessage } from '@dotli/shared';
 
 /** Formats v1 defines. Any other value only loses the icon. */
 export type IconFormat = 'jpeg' | 'png';
@@ -180,7 +180,7 @@ export function parseRootManifest(json: string): ValidationResult<RootManifest> 
   } catch (err) {
     return {
       ok: false,
-      errors: [`root manifest is not valid JSON: ${errorMessage(err)}`],
+      errors: [`root manifest is not valid JSON: ${getErrorMessage(err)}`],
     };
   }
   return validateRootManifest(raw);
@@ -193,7 +193,7 @@ export function parseExecutableManifest(json: string): ValidationResult<Executab
   } catch (err) {
     return {
       ok: false,
-      errors: [`executable manifest is not valid JSON: ${errorMessage(err)}`],
+      errors: [`executable manifest is not valid JSON: ${getErrorMessage(err)}`],
     };
   }
   return validateExecutableManifest(raw);

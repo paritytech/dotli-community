@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getActiveServicesConfig } from '@dotli/config';
-import { endpointHost, named, withTimeout } from '@dotli/shared';
+import { getEndpointHost, setErrorName, withTimeout } from '@dotli/shared';
 import { concatBytes } from '@noble/hashes/utils.js';
 
 import { CONTENT_ERRORS } from './errors.js';
@@ -44,7 +44,7 @@ async function gatewayGet(
   // Stops the transfer once this read has given up on it.
   const transfer = new AbortController();
   const stalled = (): Error => {
-    const err = named(
+    const err = setErrorName(
       new Error(`IPFS gateway ${host} sent nothing for ${String(limits.stallMs)}ms for ${request.cid}`),
       CONTENT_ERRORS.GATEWAY_STALLED,
     );
@@ -52,7 +52,7 @@ async function gatewayGet(
     return err;
   };
   const tooLarge = (): Error => {
-    const err = named(
+    const err = setErrorName(
       new Error(`IPFS gateway ${host} sent more than ${String(limits.maxBytes)} bytes for ${request.cid}`),
       CONTENT_ERRORS.GATEWAY_TOO_LARGE,
     );
@@ -60,11 +60,11 @@ async function gatewayGet(
     return err;
   };
 
-  const response = await withTimeout(
-    fetchImpl(request.url, { headers: { Accept: request.accept }, signal: transfer.signal }),
-    limits.stallMs,
-    stalled,
-  );
+  const response = await withTimeout({
+    work: fetchImpl(request.url, { headers: { Accept: request.accept }, signal: transfer.signal }),
+    ms: limits.stallMs,
+    timeoutError: stalled,
+  });
   if (!response.ok) {
     const err = new Error(`${request.failure}: HTTP ${httpStatus(response)} from ${host} for ${request.cid}`);
     // The error page's body is never read, so its transfer would otherwise stay open.
@@ -81,14 +81,14 @@ async function gatewayGet(
   const reader = response.body.getReader();
   const parts: Uint8Array[] = [];
   let received = 0;
-  let part = await withTimeout(reader.read(), limits.stallMs, stalled);
+  let part = await withTimeout({ work: reader.read(), ms: limits.stallMs, timeoutError: stalled });
   while (!part.done) {
     received += part.value.byteLength;
     if (received > limits.maxBytes) {
       throw tooLarge();
     }
     parts.push(part.value);
-    part = await withTimeout(reader.read(), limits.stallMs, stalled);
+    part = await withTimeout({ work: reader.read(), ms: limits.stallMs, timeoutError: stalled });
   }
   return { data: concatBytes(...parts), contentType };
 }
@@ -138,7 +138,7 @@ export async function fetchCarFromIpfs(
 }
 
 export function gatewayHost(gateway: string): string {
-  return endpointHost(gateway) ?? gateway;
+  return getEndpointHost(gateway) ?? gateway;
 }
 
 function httpStatus(response: Response): string {

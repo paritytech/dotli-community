@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { safeStorage } from '@dotli/shared';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createSafeStorage } from '@dotli/shared';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { readChatCapability, storageCapabilityCache, type CapabilityCache } from './chatCapability.js';
 
 /** A page load whose storage holds `seed`, and what it stores. */
 function page(seed: Record<string, string> = {}): { stored: Storage; cache: CapabilityCache } {
-  const stored = memoryStorage(seed);
+  const stored = createMemoryStorage({ entries: seed });
   return { stored, cache: storageCapabilityCache(stored) };
 }
 
@@ -71,7 +71,7 @@ describe('chat capability', () => {
   it('As a visitor whose browser blocks storage, my product still answers from its manifest', async () => {
     // Given
     const cache = storageCapabilityCache(
-      safeStorage(() => {
+      createSafeStorage(() => {
         throw new DOMException('The operation is insecure.', 'SecurityError');
       }),
     );

@@ -15,7 +15,7 @@ import {
   type ScheduledNotificationRecord,
 } from '@dotli/storage';
 import { captureException, recordExpected } from '@dotli/metrics';
-import { createAsyncTaskPool, log, onDocumentVisible, type VisibilitySource } from '@dotli/shared';
+import { createAsyncTaskPool, log, listenForDocumentVisible, type VisibilitySource } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 
 export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
@@ -255,7 +255,7 @@ export function createScheduledNotifications({
         ensurePolling();
       });
 
-      onDocumentVisible(visibility, ensurePolling);
+      listenForDocumentVisible(visibility, ensurePolling);
 
       // IDB starts closing as unload begins, so a later tick throws `InvalidStateError`. `pagehide`, not
       // `beforeunload`, because it also fires on the bfcache path.

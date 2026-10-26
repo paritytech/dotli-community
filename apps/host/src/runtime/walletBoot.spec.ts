@@ -32,7 +32,7 @@ function restored(
 function bootWith(answer: () => Reconciled, role: PageRole = 'page') {
   const reconcile = vi.fn((_reader: PresenceReader) => Promise.resolve(answer()));
   const flag = { renew: vi.fn() };
-  const mode = createSyncStore<WalletModeState>('walletMode', { mode: 'app', failure: null });
+  const mode = createSyncStore<WalletModeState>({ name: 'walletMode', initial: { mode: 'app', failure: null } });
   const walletBoot = createWalletBoot({
     reconcile,
     report: mode.set,

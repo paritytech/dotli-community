@@ -8,13 +8,13 @@ import type { TxCreator } from 'polkadot-api';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
-  blake2b,
+  hashBlake2b,
   createSyncStore,
-  deferred,
+  createDeferred,
   fromHex,
-  storeStatus,
+  createStoreStatus,
   toHex,
-  untilStatus,
+  waitForStatus,
   type ReadableStore,
 } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
@@ -46,7 +46,7 @@ const ACCOUNT: ProductAccountId = {
 const NOW = Date.parse('2026-10-25T15:00:00.000Z');
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
-const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
+const OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 /** The main account the window's core reports. */
 const MAIN: MainAccount = { owner: OWNER, username: { name: 'alice.dot', kind: 'full' } };
 // What the main store holds beside the main account, which the round never reads: a paired session and a local wallet.
@@ -121,7 +121,7 @@ function fakeChain(script: ChainScript, steps: string[] = []) {
   const decodedCalls: SiteDecodedCall[] = [];
   const builtCalls: SiteDecodedCall[] = [];
   const builtKeys: Uint8Array[] = [];
-  let allClosed = deferred<undefined>();
+  let allClosed = createDeferred<undefined>();
   const chain: SiteChain = {
     open: genesis => {
       opens.push(genesis);
@@ -130,7 +130,7 @@ function fakeChain(script: ChainScript, steps: string[] = []) {
         return Promise.reject(failure);
       }
       record.opened += 1;
-      allClosed = deferred<undefined>();
+      allClosed = createDeferred<undefined>();
       return Promise.resolve({
         decode: () => {
           record.decoded += 1;
@@ -243,10 +243,13 @@ type HarnessOptions = {
 /** A responder that records what it posts and ends its round on its first terminal call. */
 function recordingResponder() {
   const posts: Post[] = [];
-  const round = createSyncStore<ResponderState>('testSiteResponder', {
-    kind: 'vetted',
-    origin: ORIGIN,
-    party: 'third',
+  const round = createSyncStore<ResponderState>({
+    name: 'testSiteResponder',
+    initial: {
+      kind: 'vetted',
+      origin: ORIGIN,
+      party: 'third',
+    },
   });
   const end = (post: Post, state: ResponderState): void => {
     const { kind } = round.get();
@@ -302,7 +305,7 @@ async function roundOver(
   const tx = fakeTxSigner(options.builds);
   const { accountReader, accounts } = fakeAccountReader(options.accountFailures, steps, options.accountReads);
   const windowFlows: (() => void)[] = [];
-  const closed = deferred<undefined>();
+  const closed = createDeferred<undefined>();
   const flow = createSiteTransaction({
     request: {
       round: 'r1',
@@ -369,7 +372,7 @@ async function harness(options: HarnessOptions = {}) {
 }
 
 function untilView(screen: ReadableStore<SiteScreen>, view: SiteScreen['view']): Promise<void> {
-  return untilStatus(storeStatus(screen), shown => shown.view === view);
+  return waitForStatus(createStoreStatus(screen), shown => shown.view === view);
 }
 
 function resultOf(posts: Post[]): Extract<Post, { type: 'dotli:s:result' }> {
@@ -448,8 +451,8 @@ describe('site transaction', () => {
 
   it('As a user, I see the transaction prepared while its extensions fill and am asked to approve only once the phone is', async () => {
     // Given a chain that is still filling the extensions once the user signed on the review
-    const filling = deferred<undefined>();
-    const filled = deferred<undefined>();
+    const filling = createDeferred<undefined>();
+    const filled = createDeferred<undefined>();
     const h = await harness({
       filling: () => {
         filling.resolve(undefined);
@@ -505,7 +508,7 @@ describe('site transaction', () => {
 
   it('As a user who cancels while the phone asks me to approve, the site hears I cancelled and the chain is let go at once', async () => {
     // Given a phone that has not answered yet
-    const built = deferred<string>();
+    const built = createDeferred<string>();
     const h = await harness({ builds: [() => built.promise] });
     await consentAndStore(h);
     await sign(h.flow, h);
@@ -944,7 +947,7 @@ describe('site transaction action', () => {
         signal: new AbortController().signal,
       });
     await runFor(MAIN).catch(() => undefined);
-    const otherMain: MainAccount = { owner: toHex(blake2b(fromHex(`0x${'b'.repeat(64)}`), 32)), username: null };
+    const otherMain: MainAccount = { owner: toHex(hashBlake2b(fromHex(`0x${'b'.repeat(64)}`), 32)), username: null };
 
     // When the round runs again for the other main account
     await runFor(otherMain);
@@ -957,7 +960,7 @@ describe('site transaction action', () => {
   it('As a user who cancels while the phone asks me to approve, the chain session closes at once and only once', async () => {
     // Given the transaction action waiting on a phone that has not answered yet
     const chain = fakeChain({});
-    const built = deferred<string>();
+    const built = createDeferred<string>();
     const action = siteTransactionAction({
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
@@ -968,7 +971,7 @@ describe('site transaction action', () => {
       accountReader: fakeAccountReader().accountReader,
     });
     const ended = new AbortController();
-    const signing = deferred<undefined>();
+    const signing = createDeferred<undefined>();
     const running = action.run({
       main: { owner: OWNER, username: null },
       show: screen => {

@@ -34,7 +34,7 @@ import {
   type RemoteChainHalt,
 } from '@dotli/chains';
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log, toHex } from '@dotli/shared';
+import { getErrorName, log, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport, type RemoteChainFactory } from './frameTransport.js';
 import { createRedialGate, type RedialGate } from './redialGate.js';
@@ -231,7 +231,7 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
     } catch (error: unknown) {
       log.error(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
       captureException(error, { flow: 'protocol', step: 'chain_reopen' });
-      m.count(S.TRUAPI_CHAIN_REOPEN, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
+      m.count(S.TRUAPI_CHAIN_REOPEN, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
       return null;
     }
   };

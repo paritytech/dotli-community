@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pushToast, showToasts, toastsStore } from '../page/state/toasts.js';
-import { FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createFakePage, type FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { bindToastPage } from '../testing/index.js';
 import { createNotifier, NOTIFICATION_DISMISS_MS, type SystemNotifications } from './notification.js';
 
@@ -45,7 +45,7 @@ function leavingAfterDefaultDelay(): boolean[] {
 }
 
 beforeEach(() => {
-  page = new FakePage();
+  page = createFakePage();
   bindToastPage(page.document);
   system = undefined;
   focused = true;

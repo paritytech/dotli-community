@@ -3,14 +3,14 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ShowNotification } from '@dotli/ui';
-import { safeStorage } from '@dotli/shared';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createSafeStorage } from '@dotli/shared';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { offerDesktopApp } from './desktopOffer.js';
 
 type Offer = Parameters<ShowNotification>[0];
 
 /** The page's storage where the browser blocks it: every access throws. */
-const blockedStorage = safeStorage(() => {
+const blockedStorage = createSafeStorage(() => {
   throw new DOMException('The operation is insecure.', 'SecurityError');
 });
 
@@ -29,7 +29,7 @@ describe('desktop offer', () => {
 
   it('As a desktop visitor, I dismiss the offer once and am not offered it again', () => {
     // Given
-    const storage = memoryStorage();
+    const storage = createMemoryStorage();
     const first: Offer[] = [];
     offerDesktopApp({ storage: storage, notify: offer => first.push(offer) });
 
@@ -49,11 +49,11 @@ describe('desktop offer', () => {
 
     // When
     offerDesktopApp({
-      storage: memoryStorage(),
+      storage: createMemoryStorage(),
       notify: offer => shown.push(offer),
       downloadUrl: 'https://example.com/desktop',
     });
-    offerDesktopApp({ storage: memoryStorage(), notify: offer => shown.push(offer) });
+    offerDesktopApp({ storage: createMemoryStorage(), notify: offer => shown.push(offer) });
 
     // Then
     expect(shown.map(offer => offer.deeplink)).toEqual([

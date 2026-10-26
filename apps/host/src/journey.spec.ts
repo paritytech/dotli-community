@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { markContinuation, takeContinuation } from './continuation.js';
 
 import { beginAttempt as beginOnPage, endJourney as endOnPage, type Attempt, type JourneyDeps } from './journey.js';
@@ -30,7 +30,7 @@ const endJourney = (): void => {
 };
 
 beforeEach(() => {
-  session = memoryStorage();
+  session = createMemoryStorage();
   navigation = 'navigate';
 });
 

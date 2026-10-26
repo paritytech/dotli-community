@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createBlockingModalCoordinator, type BlockingModalCounts } from './blockingModalQueue.js';
 
@@ -119,7 +119,7 @@ describe('blocking modal queue, waiting count', () => {
     // Given
     const bar = countsSink();
     const scope = createBlockingModalCoordinator({ report: bar.report }).createScope();
-    const step = deferred<undefined>();
+    const step = createDeferred<undefined>();
     const next = vi.fn(() => 'next');
     const first = scope.enqueue((_signal, hold) => {
       hold(step.promise);

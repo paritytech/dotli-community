@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveChainRoles } from '@dotli/config';
 import { createNetworkMonitor, type NetworkMonitor } from './networkMonitor.js';
 import { startNetworkHealth as initPageNetworkHealth, networkHealthStore } from './networkHealth.js';
-import { FakePage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
+import { createFakePage, type FakePage, resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
 
 /** Every chain is connectable, so only what the monitor hears decides the health. */
 let monitor: NetworkMonitor;
@@ -39,7 +39,7 @@ function startNetworkHealth(on: Parameters<typeof initPageNetworkHealth>[0]): ()
 
 beforeEach(() => {
   vi.useFakeTimers();
-  page = new FakePage();
+  page = createFakePage();
   monitor = createNetworkMonitor({ isConnectable: () => true });
 });
 

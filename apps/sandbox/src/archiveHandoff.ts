@@ -72,7 +72,11 @@ export function handOverArchive(
     }
   });
   // Every exit closes the port and drops the page-wide listener, so a late answer finds nothing to settle.
-  return withTimeout(answered, timeoutMs, () => new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED)).finally(() => {
+  return withTimeout({
+    work: answered,
+    ms: timeoutMs,
+    timeoutError: () => new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED),
+  }).finally(() => {
     channel.port1.close();
     legacyReplies?.removeEventListener('message', onLegacyReply);
   });

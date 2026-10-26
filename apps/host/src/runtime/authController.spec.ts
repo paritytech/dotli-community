@@ -23,7 +23,7 @@ import {
 import type { DotliAuthState } from './session/authState.js';
 import { authModalStore, resetAuthModal, type AuthModalState } from '../state/authModal.js';
 import { setAuthState } from './state/auth.js';
-import { createSyncStore, deferred, type SyncStore } from '@dotli/shared';
+import { createSyncStore, createDeferred, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import { setProductLoaded } from './state/product.js';
 import { createChanges, type Changes } from '../testing/changes.js';
@@ -96,7 +96,11 @@ function start(
     elsewhere?: () => boolean;
   } = {},
 ): Started {
-  const auth = createSyncStore<DotliAuthState>('auth-test', { tag: 'Restoring' }, { equals: () => false });
+  const auth = createSyncStore<DotliAuthState>({
+    name: 'auth-test',
+    initial: { tag: 'Restoring' },
+    equals: () => false,
+  });
   const calls = {
     logins: [] as (string | undefined)[],
     logouts: 0,
@@ -768,7 +772,7 @@ type FakeHandoff = {
 
 /** A handoff whose rounds end when the test says, recording what the page asked of it. */
 function fakeHandoff(): FakeHandoff {
-  let round: ReturnType<typeof deferred<SignInOutcome>> | null = null;
+  let round: ReturnType<typeof createDeferred<SignInOutcome>> | null = null;
   const handoff: FakeHandoff = {
     signIns: [],
     signOuts: [],
@@ -776,7 +780,7 @@ function fakeHandoff(): FakeHandoff {
     cancels: [],
     signIn(intent) {
       handoff.signIns.push(intent);
-      round ??= deferred<SignInOutcome>();
+      round ??= createDeferred<SignInOutcome>();
       return round.promise;
     },
     signOut(options) {
@@ -819,12 +823,12 @@ function startWindowRound(options: Parameters<typeof start>[0] = {}): Started & 
 function heldResults(): {
   applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
   asked: Promise<SessionResult>;
-  written: ReturnType<typeof deferred<'applied' | 'reloading'>>;
+  written: ReturnType<typeof createDeferred<'applied' | 'reloading'>>;
   results: SessionResult[];
 } {
   const results: SessionResult[] = [];
-  const asked = deferred<SessionResult>();
-  const written = deferred<'applied' | 'reloading'>();
+  const asked = createDeferred<SessionResult>();
+  const written = createDeferred<'applied' | 'reloading'>();
   return {
     applyResult: result => {
       results.push(result);
@@ -998,7 +1002,7 @@ describe('auth controller: the sign-in window', () => {
   it('As a debug panel user, I close the modal while the phrase check loads and it stays closed', async () => {
     // Given a phrase check that has not loaded yet
     const { phrase } = fakePhrase();
-    const loaded = deferred<InPagePhrase>();
+    const loaded = createDeferred<InPagePhrase>();
     const { controller } = start({ inPagePhrase: () => loaded.promise });
     controller.importPhrase();
 

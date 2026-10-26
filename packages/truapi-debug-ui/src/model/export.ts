@@ -3,7 +3,7 @@
 
 // Unlike the display formatters in format.ts, the export truncates nothing.
 
-import { errorMessage, toHex } from '@dotli/shared';
+import { getErrorMessage, toHex } from '@dotli/shared';
 
 import type { StoredEvent } from './eventStore.js';
 import type { FilterState } from './filters.js';
@@ -43,7 +43,7 @@ export function buildExport(events: readonly StoredEvent[], meta: ExportMeta): s
   try {
     return JSON.stringify({ meta, events }, makeExportReplacer(), 2);
   } catch (err) {
-    const reason = errorMessage(err);
+    const reason = getErrorMessage(err);
     return JSON.stringify({ meta, error: `serialization failed: ${reason}` }, makeExportReplacer(), 2);
   }
 }

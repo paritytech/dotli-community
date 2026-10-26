@@ -9,7 +9,7 @@ import { createSignal } from 'solid-js';
 import { render } from '@solidjs/web';
 import type { AuthModalState } from '../../../src/state/authModal.js';
 import { AuthModal } from '../../../src/components/account/AuthModal.js';
-import { untilDom } from '@dotli/shared/testing';
+import { waitForDom } from '@dotli/shared/testing';
 import { appears, byId } from '@dotli/ui/testing';
 
 const CLOSED: AuthModalState = { open: false, productLabel: null, reason: null, view: { kind: 'spinner' } };
@@ -66,7 +66,7 @@ describe('AuthModal and the product frame', () => {
     // overflow; then the modal closes.
     document.body.style.overflow = 'hidden';
     byId('auth-modal-close').click();
-    await untilDom(() => !scrollLocked());
+    await waitForDom(() => !scrollLocked());
 
     // Then
     expect(isOpen()).toBe(false);

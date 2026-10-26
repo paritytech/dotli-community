@@ -76,7 +76,7 @@ describe('AuthModal island binding', () => {
 
   it('As a user, closing an open sign-in closes it, and a close after the controller closed it does nothing', () => {
     // Given
-    const modal = createSyncStore('auth-modal-binding-test', { open: true });
+    const modal = createSyncStore({ name: 'auth-modal-binding-test', initial: { open: true } });
     const close = vi.fn();
     const onClose = closeWhenOpen(modal, close);
 

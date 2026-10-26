@@ -8,7 +8,7 @@ import { log, pageLocalStorage, type SafeStorage } from '@dotli/shared';
 
 const CACHE_PREFIX = 'dotli:chat-capable:';
 
-const chatLog = log.child({ flow: 'chat' });
+const chatLog = log.createChild({ flow: 'chat' });
 
 /** Keeps the last answer per label for the next load. */
 export type CapabilityCache = {

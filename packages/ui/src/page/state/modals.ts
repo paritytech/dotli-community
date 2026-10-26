@@ -6,7 +6,7 @@
 
 import {
   createSyncStore,
-  errorName,
+  getErrorName,
   log,
   registerStoreStateReset,
   toAbortError,
@@ -99,7 +99,7 @@ type Pending = {
 // Registered before the store, so the pending dialogs detach before the store empties.
 registerStoreStateReset(resetModalState);
 
-const modals = createSyncStore<readonly ModalEntry[]>('modals', []);
+const modals = createSyncStore<readonly ModalEntry[]>({ name: 'modals', initial: [] });
 export const modalsStore: ReadableStore<readonly ModalEntry[]> = modals;
 
 const pending = new Map<number, Pending>();
@@ -181,7 +181,7 @@ export function settleModal(id: number, result: string, value?: string): void {
     // The answer still reaches the caller, and the dialog closes as without a handoff.
     captureException(err, { flow: 'ui', step: 'modal_handoff', tags: { kind: 'modal_handoff_error' } });
     log.error('[dot.li modal] handoff failed, closing the dialog:', err);
-    m.count(S.MODAL_HANDOFF, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+    m.count(S.MODAL_HANDOFF, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
   }
   if (next !== undefined && !next.signal.aborted) {
     entry.detach();

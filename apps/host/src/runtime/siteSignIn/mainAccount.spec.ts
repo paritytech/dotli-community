@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { blake2b, createSyncStore, fromHex, toHex, type ReadableStore } from '@dotli/shared';
+import { hashBlake2b, createSyncStore, fromHex, toHex, type ReadableStore } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
 import type { DotliAuthState } from '../session/authState.js';
 import { createMainAccountSource, mainAccountOf, MainAccountError, type MainAccountSource } from './mainAccount.js';
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
-const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
+const OWNER = toHex(hashBlake2b(fromHex(MAIN_KEY), 32));
 
 const CONNECTED: DotliAuthState = {
   tag: 'Connected',
@@ -29,7 +29,7 @@ type FakeLease = {
  */
 function harness({ acquireFailures = [] }: { acquireFailures?: (Error | undefined)[] } = {}) {
   const changes = createChanges();
-  const report = createSyncStore<DotliAuthState | null>('testCoreReport', null);
+  const report = createSyncStore<DotliAuthState | null>({ name: 'testCoreReport', initial: null });
   let waits = 0;
   const coreReport: ReadableStore<DotliAuthState | null> = {
     get: report.get,
@@ -143,7 +143,7 @@ describe('main account', () => {
     const main = mainAccountOf(session);
 
     // Then its owner is the hash of the key
-    expect(main?.owner).toBe(toHex(blake2b(fromHex(MAIN_KEY), 32)));
+    expect(main?.owner).toBe(toHex(hashBlake2b(fromHex(MAIN_KEY), 32)));
   });
 
   it("As the window, I read the main account and wait for the core's own report, never the saved copy", async () => {

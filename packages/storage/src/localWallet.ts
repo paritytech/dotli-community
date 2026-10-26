@@ -4,7 +4,7 @@
 // The local wallet's root entropy, encrypted at rest under a key this origin can use but never export.
 
 import { walletIdb, type DotliIdb } from './db.js';
-import { bytesEqual, idbRequest, idbTransaction } from '@dotli/shared';
+import { areBytesEqual, waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
 
 const STORE = 'local_wallet';
 const RECORD_ID = 'wallet';
@@ -44,15 +44,20 @@ export class LocalWalletUnreadableError extends Error {
 export function createLocalWalletStore(idb: DotliIdb = walletIdb) {
   async function readRecord(): Promise<LocalWalletRecord | undefined> {
     const db = await idb.connect();
-    return (await idbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID))) as
+    return (await waitForIdbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID))) as
       LocalWalletRecord | undefined;
   }
 
   /** Resolves on commit, so a reload right after never loses the write. */
   async function write(change: (store: IDBObjectStore) => void): Promise<void> {
     const db = await idb.connect();
-    await idbTransaction(db, STORE, 'readwrite', tx => {
-      change(tx.objectStore(STORE));
+    await runIdbTransaction({
+      db,
+      stores: STORE,
+      mode: 'readwrite',
+      body: tx => {
+        change(tx.objectStore(STORE));
+      },
     });
   }
 
@@ -80,15 +85,20 @@ export function createLocalWalletStore(idb: DotliIdb = walletIdb) {
    */
   async function updateLocalWalletIdentity(identity: LocalWalletIdentity): Promise<void> {
     const db = await idb.connect();
-    await idbTransaction(db, STORE, 'readwrite', tx => {
-      const store = tx.objectStore(STORE);
-      const req = store.get(RECORD_ID);
-      req.onsuccess = () => {
-        const record = req.result as LocalWalletRecord | undefined;
-        if (record !== undefined) {
-          store.put({ ...record, identity });
-        }
-      };
+    await runIdbTransaction({
+      db,
+      stores: STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const store = tx.objectStore(STORE);
+        const req = store.get(RECORD_ID);
+        req.onsuccess = () => {
+          const record = req.result as LocalWalletRecord | undefined;
+          if (record !== undefined) {
+            store.put({ ...record, identity });
+          }
+        };
+      },
     });
   }
 
@@ -105,17 +115,22 @@ export function createLocalWalletStore(idb: DotliIdb = walletIdb) {
   async function forgetLocalWalletIf(version: Uint8Array): Promise<boolean> {
     let forgot = false;
     const db = await idb.connect();
-    await idbTransaction(db, STORE, 'readwrite', tx => {
-      const store = tx.objectStore(STORE);
-      const req = store.get(RECORD_ID);
-      req.onsuccess = () => {
-        const current = req.result as LocalWalletRecord | undefined;
-        // Every save draws a fresh IV, so the IV is the record's version.
-        if (current !== undefined && bytesEqual(current.iv, version)) {
-          store.delete(RECORD_ID);
-          forgot = true;
-        }
-      };
+    await runIdbTransaction({
+      db,
+      stores: STORE,
+      mode: 'readwrite',
+      body: tx => {
+        const store = tx.objectStore(STORE);
+        const req = store.get(RECORD_ID);
+        req.onsuccess = () => {
+          const current = req.result as LocalWalletRecord | undefined;
+          // Every save draws a fresh IV, so the IV is the record's version.
+          if (current !== undefined && areBytesEqual(current.iv, version)) {
+            store.delete(RECORD_ID);
+            forgot = true;
+          }
+        };
+      },
     });
     return forgot;
   }

@@ -4,7 +4,7 @@
 // Requests to the protocol frame, each on its own budget, with the metrics and trail every call to the frame shares.
 
 import { m, spans as S } from '@dotli/metrics';
-import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import { getErrorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { failureReason, type AnyMethod, type Request } from '@dotli/transport';
 import { callName, policyOf, type CallName, type MethodPolicy } from './methodPolicy.js';
 import { ProtocolRequestError, callFailure, fromTransportError } from './errors.js';
@@ -55,7 +55,7 @@ function startCallTrail(policy: MethodPolicy, now: () => number): CallTrail {
       done = true;
       stop();
       if (outcome !== 'ok') {
-        m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: errorName(error) ?? 'unknown' });
+        m.count(S.PROTOCOL_REQUEST, { outcome, method, reason: getErrorName(error) ?? 'unknown' });
       }
       if (trailed) {
         log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
@@ -112,16 +112,16 @@ function startBudget({ name, budgetMs }: MethodPolicy, timers: Timers, signal: A
     bounded: work =>
       budgetMs === null
         ? work
-        : withTimeout(
+        : withTimeout({
             work,
-            budgetMs,
-            () => {
+            ms: budgetMs,
+            timeoutError: () => {
               timeout = callTimeoutError(name, budgetMs);
               giveUp.abort(timeout);
               return timeout;
             },
             timers,
-          ),
+          }),
     timedOut: reason => timeout !== undefined && reason === timeout,
   };
 }
@@ -174,7 +174,7 @@ export function createFrameRpc(
         sent.trail.settled(outcome, error);
       } else if (outcome === 'timeout') {
         // Never sent, since the frame did not come up within the budget.
-        m.count(S.PROTOCOL_REQUEST, { outcome, method: policy.name, reason: errorName(error) ?? 'unknown' });
+        m.count(S.PROTOCOL_REQUEST, { outcome, method: policy.name, reason: getErrorName(error) ?? 'unknown' });
       }
       throw error;
     }

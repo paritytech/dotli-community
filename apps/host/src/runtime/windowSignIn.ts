@@ -5,7 +5,7 @@
 // waits for it.
 
 import { spans as S } from '@dotli/metrics';
-import { errorMessage } from '@dotli/shared';
+import { getErrorMessage } from '@dotli/shared';
 import type { DotliAuthState } from './session/authState.js';
 import type { SessionResult, SignInIntent } from './sessionHandoff/messages.js';
 import type { SessionHandoff, SignInOutcome } from './sessionHandoff/opener.js';
@@ -102,7 +102,7 @@ export function createWindowSignIn(deps: WindowSignInDeps): SignInRoute {
       });
       if (round === windowRound) {
         windowRound.open = false;
-        modal.showFailure('Other', errorMessage(error));
+        modal.showFailure('Other', getErrorMessage(error));
       }
       return;
     }

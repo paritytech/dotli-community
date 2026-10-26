@@ -12,7 +12,7 @@ import {
   storageMirror,
   type RecentMirror,
 } from './recentLabels.js';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { memorySharedChannel, type MemorySharedChannel } from './runtime/sharedMode.fake.js';
 
@@ -74,7 +74,7 @@ describe('parseRecentLabels', () => {
 describe('recent labels across subdomains', () => {
   beforeEach(() => {
     channel = memorySharedChannel();
-    local = memoryStorage();
+    local = createMemoryStorage();
     mirror = storageMirror(local);
     metrics = bindRecordingSentry({ onFinished: onTestFinished });
     unbindCaptures = bindCaptureSink(captures);
@@ -211,7 +211,7 @@ describe('recent labels across subdomains', () => {
     const logged: LogLevel[] = [];
     onTestFinished(
       bindLogSink({
-        emit: level => {
+        emit: ({ level }) => {
           logged.push(level);
         },
       }),

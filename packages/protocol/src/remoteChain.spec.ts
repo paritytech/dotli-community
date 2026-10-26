@@ -12,8 +12,8 @@ import {
   type RecordedCapture,
   type RecordingSentry,
 } from '@dotli/metrics/testing';
-import { deferred } from '@dotli/shared';
-import { manualTimers, type ManualTimers, recordLog } from '@dotli/shared/testing';
+import { createDeferred } from '@dotli/shared';
+import { createManualTimers, type ManualTimers, recordLog } from '@dotli/shared/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
 import { err, hostFailure, ok, type MethodTypes, type Sink } from '@dotli/transport';
 import { ProtocolFatalError } from './errors.js';
@@ -65,7 +65,7 @@ function serveChains(serving: ProtocolTransport): ChainServer {
     };
   });
   serving.handleRequest(chain.send, ({ connectionId, message }) => {
-    const answer = deferred<undefined>();
+    const answer = createDeferred<undefined>();
     server.sends.push({ connectionId, message, answer });
     return answer.promise.then(() => ok());
   });
@@ -119,7 +119,7 @@ describe('createRemoteChains', () => {
   };
 
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
     servers = [];
     fake = createFakeFrame(
       serving => {
@@ -422,7 +422,7 @@ async function connectRemote(onHalt?: (reason: RemoteChainHalt) => void): Promis
 
 describe('createRemoteChainProvider halts', () => {
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
     host = createFrameHost(undefined, FRAME_CONFIG, timers);
   });
 

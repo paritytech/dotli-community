@@ -7,7 +7,7 @@
 import { localRootOf } from '@dotli/config';
 import { validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, errorMessage, gatewayUnreachable, log, named } from '@dotli/shared';
+import { createAsyncTaskPool, getErrorMessage, describeGatewayUnreachable, log, setErrorName } from '@dotli/shared';
 
 import type { LoadInput, LoadOutcome, LoadStep, SandboxParams } from './loadProduct.js';
 
@@ -47,7 +47,7 @@ export type SandboxRunDeps = {
 
 const MAX_ATTEMPTS = 5;
 
-const contentLog = log.child({ flow: 'content' });
+const contentLog = log.createChild({ flow: 'content' });
 
 /** Only confirms a `<label>.app.<root>` origin, since the CID arrives on the host contract. */
 function isAppSubdomain(hostname: string, baseDomain: string): boolean {
@@ -81,7 +81,7 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
 
   /** Reported, since a URL this sandbox cannot use is the host's fault, never the visitor's. */
   const failContract = (step: ContractStep, title: string, reason: string): void => {
-    const err = named(new Error(`${title}: ${reason}`), 'SandboxContractError');
+    const err = setErrorName(new Error(`${title}: ${reason}`), 'SandboxContractError');
     captureException(err, { flow: 'content', step, tags: { surface: 'sandbox_main' } });
     fail(step, title, reason);
   };
@@ -133,12 +133,12 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
       step,
       tags: { surface: 'sandbox_main', dependency, attempt: String(attempt) },
     });
-    const raw = errorMessage(err);
+    const raw = getErrorMessage(err);
     // The gateway path's commonest failure reads as an app bug verbatim, so it gets plain words. A failed dynamic
     // import starts the same way but means a missing chunk, not an unreachable gateway.
     const message =
       dependency === 'ipfs-gateway' && raw.includes('Failed to fetch') && !raw.includes('dynamically imported module')
-        ? gatewayUnreachable(deps.gatewayHost())
+        ? describeGatewayUnreachable(deps.gatewayHost())
         : `${raw} (via ${dependency})`;
     fail(step, 'Failed to load content', message, retry);
   };

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 
 /**
  * How far a pairing got: the code being made, the code to scan, the phone approving, or a failure. `error` carries the
@@ -58,11 +58,13 @@ const INITIAL: AuthModalState = {
 /** The view is rebuilt per write, so it is compared one level deeper. */
 function sameAuthModal(a: AuthModalState, b: AuthModalState): boolean {
   return (
-    a.open === b.open && a.productLabel === b.productLabel && a.reason === b.reason && shallowEqual(a.view, b.view)
+    a.open === b.open && a.productLabel === b.productLabel && a.reason === b.reason && isShallowEqual(a.view, b.view)
   );
 }
 
-const authModal = createSyncStore<AuthModalState>('auth_modal', INITIAL, {
+const authModal = createSyncStore<AuthModalState>({
+  name: 'auth_modal',
+  initial: INITIAL,
   equals: sameAuthModal,
 });
 

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { safeStorage } from '@dotli/shared';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createSafeStorage } from '@dotli/shared';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { markContinuation, peekContinuation, takeContinuation, type ContinuationStore } from './continuation.js';
 
 function unavailableStore(): ContinuationStore {
-  return safeStorage(() => {
+  return createSafeStorage(() => {
     throw new DOMException('The operation is insecure.', 'SecurityError');
   });
 }
@@ -15,7 +15,7 @@ function unavailableStore(): ContinuationStore {
 describe('continuation', () => {
   it('As a reloaded tab, I read why the app reloaded me once, and the load after reads no reason', () => {
     // Given
-    const store = memoryStorage();
+    const store = createMemoryStorage();
     markContinuation('settings_change', store);
 
     // When
@@ -30,7 +30,7 @@ describe('continuation', () => {
 
   it('As the leaving page, I peek at the reason and leave it for the next load', () => {
     // Given
-    const store = memoryStorage();
+    const store = createMemoryStorage();
     markContinuation('reload_button', store);
 
     // When
@@ -43,7 +43,7 @@ describe('continuation', () => {
 
   it('As a tab holding a reason this build does not know, I read no reason and clear it', () => {
     // Given
-    const store = memoryStorage({ 'dotli:continuation': 'from_a_newer_build' });
+    const store = createMemoryStorage({ entries: { 'dotli:continuation': 'from_a_newer_build' } });
 
     // When
     const taken = takeContinuation(store);

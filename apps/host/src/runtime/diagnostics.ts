@@ -4,7 +4,7 @@
 // The diagnostics report: build, transport, permissions, package versions and chain heights.
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
-import { errorName, log, named, withTimeout } from '@dotli/shared';
+import { getErrorName, log, setErrorName, withTimeout } from '@dotli/shared';
 import { formatAppVersion } from './manifestFacts.js';
 import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
 import { getConnectedAssetHubRpcEndpoint } from '@dotli/chains';
@@ -232,7 +232,10 @@ export function createFinalizedBlockQuery(
   source: FinalizedBlockSource,
 ): (genesisHash: string) => Promise<number | null> {
   return async genesisHash => {
-    const timeout = named(new Error(`No finalized block within ${String(FINALIZED_BLOCK_LIMIT_MS)}ms`), 'TimeoutError');
+    const timeout = setErrorName(
+      new Error(`No finalized block within ${String(FINALIZED_BLOCK_LIMIT_MS)}ms`),
+      'TimeoutError',
+    );
     try {
       const provider = await source.provider(genesisHash);
       if (provider === null) {
@@ -241,7 +244,11 @@ export function createFinalizedBlockQuery(
       const client = await source.createClient(provider);
       let block: { number: number };
       try {
-        block = await withTimeout(client.getFinalizedBlock(), FINALIZED_BLOCK_LIMIT_MS, () => timeout);
+        block = await withTimeout({
+          work: client.getFinalizedBlock(),
+          ms: FINALIZED_BLOCK_LIMIT_MS,
+          timeoutError: () => timeout,
+        });
       } finally {
         client.destroy();
       }
@@ -260,7 +267,7 @@ export function createFinalizedBlockQuery(
           message: '[dot.li diagnostics] finalized block query timed out:',
         });
       } else {
-        const reason = errorName(err) ?? 'unknown';
+        const reason = getErrorName(err) ?? 'unknown';
         log.error('[dot.li diagnostics] finalized block query failed:', err);
         captureException(err, { flow: 'ui', step: 'diagnostics_block', tags: { reason } });
         m.count(S.DIAGNOSTICS_FINALIZED_BLOCK, { outcome: 'error', reason });

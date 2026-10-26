@@ -69,7 +69,7 @@ function setup(backend: Backend): {
   const controller = createLoadingController({
     reducedMotion: () => true,
     frames: { request: () => 0, cancel: () => undefined, now: () => performance.now() },
-    pageContent: createSyncStore<PageContent>('load-progress-spec-page-content', 'page'),
+    pageContent: createSyncStore<PageContent>({ name: 'load-progress-spec-page-content', initial: 'page' }),
   });
   let given: LoadingPhase[] = [];
   const loading: LoadingScreen = {

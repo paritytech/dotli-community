@@ -8,7 +8,7 @@
 import { SITE_ID, isLocalhost, BACKEND_KEY, CACHE_KEY, type SharedSettings } from '@dotli/config';
 import { getProtocolOrigin, protocolClient } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 
 export type SharedChannel = {
   read: (key: string) => Promise<string | null>;
@@ -75,7 +75,7 @@ export async function readSharedSettings(channel: SharedChannel = getSharedChann
   } catch (error: unknown) {
     log.error('[dot.li shared-mode] read failed, using per-origin localStorage:', error);
     captureException(error, { flow: 'boot', step: 'shared_mode_read' });
-    m.count(S.SHARED_MODE_READ, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
+    m.count(S.SHARED_MODE_READ, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
     return null;
   }
 }
@@ -104,7 +104,7 @@ export async function writeSharedSettings(
               (err: unknown) => {
                 log.error(`[dot.li shared-mode] write of ${key} failed:`, err);
                 captureException(err, { flow: 'storage', step: 'shared_mode_write' });
-                m.count(S.SHARED_MODE_WRITE, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+                m.count(S.SHARED_MODE_WRITE, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
               },
             ),
           ],

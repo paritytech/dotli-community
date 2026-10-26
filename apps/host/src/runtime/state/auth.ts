@@ -5,8 +5,8 @@ import type { DotliAuthState } from '../session/authState.js';
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
 
 // Every login step must reach the auth controller, including a repeated LoginFailed, so no set is dropped as equal.
-const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Restoring' }, { equals: () => false });
-const session = createSyncStore<boolean>('session', false);
+const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Restoring' }, equals: () => false });
+const session = createSyncStore<boolean>({ name: 'session', initial: false });
 
 // Signed in from `Connected` until the session ends. The login steps in between leave it as it was, so a signed-in
 // user who pairs again stays signed in. Subscribed here first, so every other auth listener sees the session already.

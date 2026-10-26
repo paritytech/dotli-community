@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { deferred, untilStatus } from '@dotli/shared';
+import { createDeferred, waitForStatus } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
 import { memorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -57,7 +57,7 @@ async function harness(options: HarnessOptions = {}) {
   };
   const list = createSiteList({ grants });
   const until = (verdict: (screen: SiteListScreen) => boolean): Promise<void> =>
-    untilStatus(
+    waitForStatus(
       {
         get: list.screen.get,
         subscribe: listener =>
@@ -179,7 +179,7 @@ describe('site list', () => {
 
   it('As a user, I open the site list before the grants are read and see it loading, never an empty list', async () => {
     // Given a grants store whose read has not answered
-    const held = deferred<undefined>();
+    const held = createDeferred<undefined>();
     const h = await harness({ grants: [OLD], listHeld: held.promise });
 
     // When the list waits for its first read

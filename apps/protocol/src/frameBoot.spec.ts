@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProtocolInitFailedError, protocolSchema, type ProtocolHandler } from '@dotli/protocol';
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { domain, err, hostFailure, type MethodTypes } from '@dotli/transport';
 import { createDeferredSubscription, createFrameBoot, type DeferredSubscription, type FrameBoot } from './frameBoot.js';
 import { closeHostLinks, linkHost, record, roundTrip, type EndOf, type HostLink } from './testing/hostLink.js';
@@ -133,7 +133,7 @@ function telemetrySubscription(link: HostLink): DeferredTelemetry {
 /** Sends one byte total per subscription, and counts the subscriptions it started and stopped. */
 function source(): { handler: TelemetryHandler; started: () => number; stopped: Promise<void> } {
   let started = 0;
-  const stopped = deferred<undefined>();
+  const stopped = createDeferred<undefined>();
   return {
     handler: (_start, _context, sink) => {
       started += 1;

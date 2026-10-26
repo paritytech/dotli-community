@@ -6,7 +6,7 @@
 // script tag carries as JSON.
 
 import type { ManifestResult, RootManifest } from '@dotli/resolver';
-import { named } from '@dotli/shared';
+import { setErrorName } from '@dotli/shared';
 import {
   createFrameStatus,
   ProtocolFatalError,
@@ -152,7 +152,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          sink.interrupt(err(remoteEnd(named(new Error(resolution.message), resolution.name ?? 'Error'))));
+          sink.interrupt(err(remoteEnd(setErrorName(new Error(resolution.message), resolution.name ?? 'Error'))));
         }, resolution.delayMs ?? 0);
         return () => {
           clearTimeout(timer);

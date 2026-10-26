@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { manualTimers } from '@dotli/shared/testing';
+import { createManualTimers } from '@dotli/shared/testing';
 import { SandboxSilentError, watchSandbox } from './sandboxWatch.js';
 
 /** The sandbox's messages, with how many listeners still hear them. */
@@ -27,7 +27,7 @@ function sandboxMessages() {
 describe('watchSandbox', () => {
   it('As a visitor whose app frame starts, the deadline passes and nothing is left listening', async () => {
     // Given
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const messages = sandboxMessages();
     const watch = watchSandbox(messages.onHeard, timers);
     const expected = watch.expectWithin(30_000);
@@ -43,7 +43,7 @@ describe('watchSandbox', () => {
 
   it('As a visitor whose app frame spoke before the handoff ended, that message counts', async () => {
     // Given the sandbox speaking before the deadline starts
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const messages = sandboxMessages();
     const watch = watchSandbox(messages.onHeard, timers);
     messages.speak();
@@ -58,7 +58,7 @@ describe('watchSandbox', () => {
 
   it('As a visitor whose app frame never starts, the wait fails after its deadline and stops listening', async () => {
     // Given
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const messages = sandboxMessages();
     const expected = watchSandbox(messages.onHeard, timers).expectWithin(30_000);
     const settled = expected.catch((error: unknown) => error);
@@ -74,7 +74,7 @@ describe('watchSandbox', () => {
   it('As a visitor whose load ended before the deadline was set, nothing is left listening to the app frame', () => {
     // Given
     const messages = sandboxMessages();
-    const watch = watchSandbox(messages.onHeard, manualTimers());
+    const watch = watchSandbox(messages.onHeard, createManualTimers());
 
     // When
     watch.stop();

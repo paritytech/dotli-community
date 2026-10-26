@@ -7,7 +7,7 @@ import { log } from '@dotli/shared';
 import { withActiveTld } from '@dotli/config';
 import type { ProductManifests } from './manifestGate.js';
 
-const resolveLog = log.child({ flow: 'resolve' });
+const resolveLog = log.createChild({ flow: 'resolve' });
 
 const ICON_FETCH_BUDGET_MS = 10_000;
 

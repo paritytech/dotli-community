@@ -6,7 +6,7 @@
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
 import { m, reportListener } from '@dotli/metrics';
-import { createListenerSet, errorMessage, log } from '@dotli/shared';
+import { createListenerSet, getErrorMessage, log } from '@dotli/shared';
 import { chainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
@@ -282,7 +282,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
         );
       } catch (err: unknown) {
         // Telemetry only, and it throws only on a connection already gone, which the visitor never notices.
-        log.debug(`[dot.li chain-sync] peer list unavailable for ${chain}: ${errorMessage(err)}`);
+        log.debug(`[dot.li chain-sync] peer list unavailable for ${chain}: ${getErrorMessage(err)}`);
       }
     };
 
@@ -322,7 +322,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
       watch = watchLifecycle();
     } catch (err: unknown) {
       // The loading screen falls back to its own timings, so this is progress, not a failure.
-      log.event('Chain lifecycle watch unavailable', { flow: 'protocol', chain, reason: errorMessage(err) });
+      log.event('Chain lifecycle watch unavailable', { flow: 'protocol', chain, reason: getErrorMessage(err) });
       return { intercept, stop: () => undefined };
     }
 
@@ -334,7 +334,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
         }
       } catch (err: unknown) {
         // As when the watch is refused, the loading screen falls back to its own timings.
-        log.event('Chain lifecycle watch ended', { flow: 'protocol', chain, reason: errorMessage(err) });
+        log.event('Chain lifecycle watch ended', { flow: 'protocol', chain, reason: getErrorMessage(err) });
       }
     })();
 

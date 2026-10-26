@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 
 /** `gone` is terminal: the controller starts no timer once it is reached. */
 export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
@@ -27,9 +27,9 @@ export type LoadingState = {
 };
 
 // Matches the host page's build-time render, which paints first.
-const loading = createSyncStore<LoadingState>(
-  'loading',
-  {
+const loading = createSyncStore<LoadingState>({
+  name: 'loading',
+  initial: {
     progress: 0,
     step: ['Reaching out'],
     explanation: '',
@@ -39,8 +39,8 @@ const loading = createSyncStore<LoadingState>(
     phase: 'active',
   },
   // The typing loop writes every frame, and an unchanged frame notifies nobody.
-  { equals: shallowEqual },
-);
+  equals: isShallowEqual,
+});
 
 export const loadingStore: ReadableStore<LoadingState> = loading;
 export const getLoadingState = loading.get;

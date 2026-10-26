@@ -7,7 +7,7 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { untilDom } from '@dotli/shared/testing';
+import { waitForDom } from '@dotli/shared/testing';
 import { mountViolationPanel } from '../../../src/components/sandboxChecker/mount.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
@@ -59,7 +59,7 @@ describe('late render errors', () => {
     const iframe = document.createElement('iframe');
     document.body.appendChild(iframe);
     const dispose = mountViolationPanel(iframe, lateView('sandbox-checker-panel'));
-    await untilDom(() => document.getElementById('sandbox-checker-panel') !== null);
+    await waitForDom(() => document.getElementById('sandbox-checker-panel') !== null);
     const panel = document.getElementById('sandbox-checker-panel');
     expect(panel?.isConnected).toBe(true);
     const containers = document.body.childElementCount;
@@ -67,7 +67,7 @@ describe('late render errors', () => {
     // When
     view.breakLater?.();
     flush();
-    await untilDom(() => panel?.isConnected === false);
+    await waitForDom(() => panel?.isConnected === false);
 
     // Then
     expect(panel?.isConnected).toBe(false);

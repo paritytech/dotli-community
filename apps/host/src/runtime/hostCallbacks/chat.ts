@@ -6,7 +6,7 @@
 
 import type { ChatPlatform } from '@parity/truapi-host';
 import type { HostChatListSubscribeItem } from '@parity/truapi';
-import { createAsyncTaskPool, errorMessage } from '@dotli/shared';
+import { createAsyncTaskPool, getErrorMessage } from '@dotli/shared';
 import { chatStore } from '../chat/chatStore.js';
 import type { ChatStore } from '../chat/store.js';
 import { createResultStream } from './resultStream.js';
@@ -63,7 +63,7 @@ export function createChatPlatform(chat: ChatStore = chatStore): Required<ChatPl
             }
           } catch (error) {
             if (!stopped()) {
-              pushError({ reason: errorMessage(error) });
+              pushError({ reason: getErrorMessage(error) });
             }
           }
         };

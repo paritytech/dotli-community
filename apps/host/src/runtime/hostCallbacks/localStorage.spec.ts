@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { yielded } from '../../testing/fixtures.js';
 import * as page from './localStorage.js';
 
@@ -22,7 +22,7 @@ const createLocalStorageSubscribe = (): ReturnType<typeof page.createLocalStorag
 
 describe('local-storage host callbacks', () => {
   beforeEach(() => {
-    local = memoryStorage();
+    local = createMemoryStorage();
     otherTabs = new EventTarget();
     deps = { storage: () => local, events: () => otherTabs };
   });

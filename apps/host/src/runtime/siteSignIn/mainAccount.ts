@@ -6,12 +6,12 @@
 // It holds a lease on that core, so the core stays up from the read to the round's signer calls.
 
 import {
-  blake2b,
+  hashBlake2b,
   createAsyncTaskPool,
-  deferred,
+  createDeferred,
   fromHex,
   toHex,
-  untilStatus,
+  waitForStatus,
   type ReadableStore,
   type StatusCell,
 } from '@dotli/shared';
@@ -36,7 +36,7 @@ export function mainAccountOf(session: TruapiSessionUiState): MainAccount | null
   if (publicKey === undefined || !HEX_KEY.test(publicKey)) {
     return null;
   }
-  const owner = toHex(blake2b(fromHex(publicKey), 32));
+  const owner = toHex(hashBlake2b(fromHex(publicKey), 32));
   if (session.fullUsername !== undefined && session.fullUsername !== '') {
     return { owner, username: { name: session.fullUsername, kind: 'full' } };
   }
@@ -129,8 +129,8 @@ export function createMainAccountSource(deps: MainAccountSourceDeps): MainAccoun
    * will.
    */
   const reported = (down: AbortSignal, signal: AbortSignal): Promise<TruapiSessionUiState | null> => {
-    const session = deferred<TruapiSessionUiState | null>();
-    untilStatus(
+    const session = createDeferred<TruapiSessionUiState | null>();
+    waitForStatus(
       reportOn(down),
       report => {
         if (report === 'down') {
@@ -153,7 +153,7 @@ export function createMainAccountSource(deps: MainAccountSourceDeps): MainAccoun
             return false;
         }
       },
-      signal,
+      { signal },
     ).catch(session.reject);
     return session.promise;
   };

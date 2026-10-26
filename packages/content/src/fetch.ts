@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { dur, errorName, log } from '@dotli/shared';
+import { formatDuration, getErrorName, log } from '@dotli/shared';
 
 import { m, spans as S } from '@dotli/metrics';
 import { CID } from 'multiformats/cid';
@@ -39,7 +39,7 @@ async function fetchViaBitswapRpc(
     } catch (err) {
       m.count(S.CONTENT_BITSWAP_RPC, {
         outcome: isAbort(err) ? 'aborted' : 'error',
-        reason: errorName(err) ?? 'unknown',
+        reason: getErrorName(err) ?? 'unknown',
       });
       throw err;
     } finally {
@@ -82,7 +82,7 @@ async function readRawRoot(bytes: Uint8Array): Promise<FetchResult> {
 
 /** A frame's teardown rejects its fetches by the platform's abort name, which is not a failure. */
 function isAbort(err: unknown): boolean {
-  return errorName(err) === 'AbortError';
+  return getErrorName(err) === 'AbortError';
 }
 
 async function fetchViaGateway(
@@ -111,11 +111,14 @@ async function readViaGateway(
     log.event(`Requesting CAR of ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
     const carBuffer = await fetchCarFromIpfs(cidString, gateway, fetchImpl);
-    log.event(`Fetched ${String(Math.round(carBuffer.length / 1024))} KB CAR from ${host} in ${dur(gatewayStart)}`, {
-      flow: 'content',
-      gateway: host,
-      bytes: carBuffer.length,
-    });
+    log.event(
+      `Fetched ${String(Math.round(carBuffer.length / 1024))} KB CAR from ${host} in ${formatDuration(gatewayStart)}`,
+      {
+        flow: 'content',
+        gateway: host,
+        bytes: carBuffer.length,
+      },
+    );
     onStatus?.('Parsing content...');
     // Untrusted transport, so the CAR is bound to the requested CID.
     const files = await parseIpfsResponse(carBuffer, cid);
@@ -126,7 +129,7 @@ async function readViaGateway(
     log.event(`Requesting raw block ${cidString} from ${host}`, { flow: 'content', gateway: host });
     const gatewayStart = performance.now();
     const { data } = await fetchFromIpfs(cidString, gateway, fetchImpl);
-    log.event(`Fetched ${String(Math.round(data.length / 1024))} KB from ${host} in ${dur(gatewayStart)}`, {
+    log.event(`Fetched ${String(Math.round(data.length / 1024))} KB from ${host} in ${formatDuration(gatewayStart)}`, {
       flow: 'content',
       gateway: host,
       bytes: data.length,
@@ -178,7 +181,7 @@ export async function fetchArchive(
       // The sandbox ends this load as torn down, so it is a breadcrumb rather than an error.
       log.event(`Fetch of ${cidString} stopped as its frame went away`, { flow: 'content', method });
     } else {
-      log.child({ flow: 'content' }).error(`[dot.li fetch] ${method} failed for ${cidString}:`, err);
+      log.createChild({ flow: 'content' }).error(`[dot.li fetch] ${method} failed for ${cidString}:`, err);
     }
     throw err;
   }

@@ -13,7 +13,7 @@ import {
   createPendingReplies,
   fromHex,
   log,
-  named,
+  setErrorName,
   realTimers,
   serializeError,
   type Timers,
@@ -78,7 +78,7 @@ type SharedFetch = {
 };
 
 function abortError(cid: string, cause?: unknown): Error {
-  return named(
+  return setErrorName(
     new Error(`bitswap_v1_get(${cid}): aborted`, cause === undefined ? undefined : { cause }),
     ABORT_ERROR_NAME,
   );
@@ -104,7 +104,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
     }
     const bulletin = provider();
     if (bulletin === null) {
-      throw named(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE);
+      throw setErrorName(new Error('Bulletin is not in the supported chain set'), BITSWAP_ERRORS.UNAVAILABLE);
     }
     const opened = bulletin(
       (message: JsonRpcMessage) => {
@@ -112,7 +112,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
           return;
         }
         if ('error' in message) {
-          const err = named(
+          const err = setErrorName(
             new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
             BITSWAP_ERRORS.RPC,
           );
@@ -124,7 +124,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
         if (typeof message.result !== 'string') {
           replies.reject(
             message.id,
-            named(
+            setErrorName(
               new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
               BITSWAP_ERRORS.RPC,
             ),
@@ -142,7 +142,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
         }
         connection = null;
         replies.rejectAll(() => {
-          const err = named(new Error('Bulletin connection halted'), BITSWAP_ERRORS.CONNECTION);
+          const err = setErrorName(new Error('Bulletin connection halted'), BITSWAP_ERRORS.CONNECTION);
           // A halted chain is rebuilt on reconnect, so it is retried. A dead frame is fatal.
           return reason === 'chain' ? withCode(err, ERR_FAIL_RETRY) : err;
         });
@@ -163,7 +163,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
       replies.reject(
         id,
         withCode(
-          named(
+          setErrorName(
             new Error(`bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`),
             BITSWAP_ERRORS.TIMEOUT,
           ),
@@ -198,7 +198,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
       attempts.discovery += 1;
       if (attempts.discovery > DISCOVERY_RETRIES) {
         return withCode(
-          named(
+          setErrorName(
             new Error(
               `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(attempts.discovery)} failures (${String(attempts.made)} attempts made): ${serializeError(err)}`,
             ),
@@ -231,7 +231,7 @@ export function createBitswapClient({ provider, timers = realTimers }: BitswapCl
       attempts.made += 1;
       const remaining = attempts.deadline - timers.now();
       if (remaining <= 0) {
-        throw named(
+        throw setErrorName(
           new Error(
             `bitswap_v1_get(${cid}): timed out after ${String(TIMEOUTS.BITSWAP_TOTAL_BUDGET)}ms (${String(attempts.made - 1)} attempts made)`,
           ),

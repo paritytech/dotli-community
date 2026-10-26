@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { BASE_DOMAIN, DEV_HOST_PORT, SITE_ID } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
 import { SHARED_CORE_SESSION_KEY } from './authStorage.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
@@ -21,7 +21,7 @@ const { storage } = protocolSchema.sections;
 let timers: ManualTimers;
 
 beforeEach(() => {
-  timers = manualTimers();
+  timers = createManualTimers();
 });
 
 describe('getProtocolOrigin', () => {

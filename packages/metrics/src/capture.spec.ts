@@ -95,7 +95,7 @@ describe('reportExpected', () => {
     onTestFinished(bindCaptureSink(sink));
     onTestFinished(
       bindLogSink({
-        emit: (level, _message, _attrs, args) => {
+        emit: ({ level, args }) => {
           if (level === 'warn') {
             warnings.push(args ?? []);
           }
@@ -155,7 +155,7 @@ describe('reportListener', () => {
     const errorLines: unknown[][] = [];
     onTestFinished(
       bindLogSink({
-        emit: (level, _message, _attrs, args) => {
+        emit: ({ level, args }) => {
           if (level === 'error') {
             errorLines.push(args ?? []);
           }

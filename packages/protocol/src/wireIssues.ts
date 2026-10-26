@@ -5,7 +5,7 @@
 // logged it.
 
 import { captureException, reportListener, spans as S, type m } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 import { failureReason, type TransportIssue } from '@dotli/transport';
 import { callNameAt } from './methodPolicy.js';
 
@@ -46,7 +46,7 @@ function createIssueReporter(side: WireSide, count: typeof m.count): (issue: Wir
         });
         const what = method === null ? 'A message' : `A ${method} message`;
         log.error(`[dot.li protocol] ${what} could not be posted`, error);
-        count(S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: errorName(error) ?? 'unknown', side });
+        count(S.PROTOCOL_SERVE_POST, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', side });
         return;
       }
       case 'listener_threw':

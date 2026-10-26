@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { errorMessage } from '@dotli/shared';
+import { getErrorMessage } from '@dotli/shared';
 
 /** Dashboards and Sentry filters read these verbatim, so a rename breaks them. */
 export type ResolverErrorName =
@@ -55,7 +55,7 @@ export class ContenthashDecodeError extends ResolverError {
 
   constructor(domain: string, cause: unknown) {
     super(
-      `Failed to decode contenthash for "${domain}": ${errorMessage(cause)}`,
+      `Failed to decode contenthash for "${domain}": ${getErrorMessage(cause)}`,
       cause instanceof Error ? { cause } : undefined,
     );
     this.domain = domain;

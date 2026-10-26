@@ -4,7 +4,7 @@
 // A journey strings a tab's page loads at one app together until one reaches it, so Sentry can tell a recovered
 // failure from an abandoned one. The id lives in sessionStorage only, so it never identifies a person.
 
-import { pageSessionStorage, randomId, type SafeStorage } from '@dotli/shared';
+import { pageSessionStorage, createRandomId, type SafeStorage } from '@dotli/shared';
 import { takeContinuation, type Continuation } from './continuation.js';
 
 /**
@@ -76,7 +76,9 @@ export function beginAttempt(label: string, deps: JourneyDeps = pageJourney): At
   const entry = deps.takeContinuation() ?? navigationEntry(deps);
   const stored = readJourney(deps);
   const journey: StoredJourney =
-    stored?.label === label ? { ...stored, attempts: stored.attempts + 1 } : { id: randomId(), label, attempts: 1 };
+    stored?.label === label
+      ? { ...stored, attempts: stored.attempts + 1 }
+      : { id: createRandomId(), label, attempts: 1 };
   writeJourney(deps, journey);
   return { journeyId: journey.id, attemptNumber: journey.attempts, entry };
 }

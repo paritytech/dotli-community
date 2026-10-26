@@ -141,7 +141,7 @@ type LogLine = {
 function recordLogs(): LogLine[] {
   const lines: LogLine[] = [];
   bindLogSink({
-    emit: (level, message, _attrs, args) => {
+    emit: ({ level, message, args }) => {
       lines.push({ level, message, args });
       changed();
     },

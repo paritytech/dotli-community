@@ -4,7 +4,7 @@
 // The sandbox speaks within seconds of starting. A frame whose origin the browser blocks, or whose page never runs,
 // says nothing, and without a deadline the loading screen would wait for it for good.
 
-import { deferred, realTimers, withTimeout, type Timers } from '@dotli/shared';
+import { createDeferred, realTimers, withTimeout, type Timers } from '@dotli/shared';
 
 /** How long the sandbox has to speak once it was handed the content. */
 const SANDBOX_SILENCE_MS = 30_000;
@@ -29,7 +29,7 @@ export type SandboxWatch = {
  * the sandbox sends about its load and returns its unsubscribe.
  */
 export function watchSandbox(onHeard: (listener: () => void) => () => void, timers: Timers = realTimers): SandboxWatch {
-  const heard = deferred<undefined>();
+  const heard = createDeferred<undefined>();
   const stop = onHeard(() => {
     heard.resolve(undefined);
   });
@@ -39,10 +39,12 @@ export function watchSandbox(onHeard: (listener: () => void) => () => void, time
   });
   return {
     expectWithin: (ms = SANDBOX_SILENCE_MS) =>
-      withTimeout(heard.promise, ms, () => new SandboxSilentError(ms), timers).catch((error: unknown) => {
-        stop();
-        throw error;
-      }),
+      withTimeout({ work: heard.promise, ms, timeoutError: () => new SandboxSilentError(ms), timers }).catch(
+        (error: unknown) => {
+          stop();
+          throw error;
+        },
+      ),
     stop,
   };
 }

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { ALL_PERMISSIONS, createPermissionAuthorizations, type PermissionAuthorizations } from '../permissions.js';
-import { manualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
+import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
 import { productStore, setProductError, setProductLoaded } from './product.js';
 import { createProductPermissions, type PermissionsChange, type ProductPermissions } from './productPermissions.js';
 
@@ -390,7 +390,7 @@ describe('product permissions store', () => {
 
   it('As a user, a write the core refuses once is retried after 300 ms, alone, and the change announces once', async () => {
     // Given
-    const timers = manualTimers();
+    const timers = createManualTimers();
     permissionsOn(timers);
     const core = fakeCore();
     let refusals = 1;
@@ -422,7 +422,7 @@ describe('product permissions store', () => {
 
   it('As a user whose write fails three times, the change names it, is reported once and shows what the core kept', async () => {
     // Given
-    const timers = manualTimers();
+    const timers = createManualTimers();
     permissionsOn(timers);
     const core = fakeCore(LABEL, { Camera: 'Authorized', Microphone: 'Authorized', ChainSubmit: 'Denied' });
     let attempts = 0;
@@ -520,7 +520,7 @@ describe('product permissions store', () => {
 
   it('As a user making a newer move while one waits to retry, the older one stops retrying', async () => {
     // Given
-    const timers = manualTimers();
+    const timers = createManualTimers();
     permissionsOn(timers);
     const core = fakeCore();
     let cameraAttempts = 0;
@@ -584,7 +584,7 @@ describe('product permissions store', () => {
 
   it('As a product whose prompt answer the core cannot store after three attempts, I get the failure, it is reported once and nothing changes', async () => {
     // Given
-    const timers = manualTimers();
+    const timers = createManualTimers();
     permissionsOn(timers);
     const core = fakeCore();
     let attempts = 0;
@@ -654,7 +654,7 @@ describe('product permissions store', () => {
 
   it('As a product whose prompt was torn down while a write waits to retry, no more attempts are made and nothing changes', async () => {
     // Given: a prompt whose first write the core refused
-    const timers = manualTimers();
+    const timers = createManualTimers();
     permissionsOn(timers);
     const core = fakeCore();
     let attempts = 0;

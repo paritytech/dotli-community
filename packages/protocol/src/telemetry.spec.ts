@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok, type Sink } from '@dotli/transport';
 import { createFrameTelemetry } from './telemetry.js';
 import { createFakeFrame } from './frame.fake.js';
@@ -38,7 +38,7 @@ describe('createFrameTelemetry', () => {
   };
 
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
     sinks = [];
   });
 
@@ -144,7 +144,7 @@ describe('createFrameTelemetry', () => {
 
     // Then
     expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As the network panel, I hear chain sync and chain detail as the frame reports them', async () => {

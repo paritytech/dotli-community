@@ -6,7 +6,7 @@
 // ends it for good, since the frame that owned it was lost and reported, and following the next one opens it again.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, errorName, log, named, type Timers } from '@dotli/shared';
+import { createAsyncTaskPool, getErrorName, log, setErrorName, type Timers } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import type { FrameSubscriber } from './subscription.js';
 
@@ -57,7 +57,7 @@ function reportEnd(feed: FeedName, error: Error, capture: boolean): void {
     captureException(error, { flow: 'protocol', step: 'feed_end', tags: { feed } });
   }
   log.error(`[dot.li protocol] The frame ended the ${feed} feed, reopening it:`, error);
-  m.count(S.PROTOCOL_FEED_END, { outcome: 'error', feed, reason: errorName(error) ?? 'unknown' });
+  m.count(S.PROTOCOL_FEED_END, { outcome: 'error', feed, reason: getErrorName(error) ?? 'unknown' });
 }
 
 /**
@@ -105,7 +105,8 @@ export function createFeedKeeper<T>(
         const unsubscribe = open({
           end(error) {
             run.signal.removeEventListener('abort', onStop);
-            const ended = error ?? named(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
+            const ended =
+              error ?? setErrorName(new Error(`The frame ended the ${feed} feed`), 'ProtocolFeedEndedError');
             reportEnd(feed, ended, !captured);
             captured = true;
             if (timers.now() - openedAt >= STABLE_MS) {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { isDebugModeOn, leaveDebugMode, resolveDebugMode, type DebugModePage } from './debugMode.js';
 
 type FakePage = {
@@ -12,7 +12,7 @@ type FakePage = {
 
 /** A page at `href` whose tab storage holds `entries`. */
 function page(href: string, entries: Record<string, string> = {}): FakePage {
-  const stored = memoryStorage(entries);
+  const stored = createMemoryStorage({ entries: entries });
   const replaceState = vi.fn<(data: unknown, unused: string, url: string) => void>();
   return {
     replaceState,

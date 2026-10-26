@@ -6,11 +6,11 @@
 import * as Sentry from '@sentry/browser';
 import {
   bindLogSink,
-  errorName,
+  getErrorName,
   log,
-  type LogLevel,
+  type LogEntry,
   serializeError,
-  fullErrorChain,
+  getErrorChain,
   StoreListenerError,
 } from '@dotli/shared';
 
@@ -168,7 +168,7 @@ export function initSentry(source: SentrySource): void {
 
   // Handled failures leave a breadcrumb trail in production regardless of `DEBUG`.
   bindLogSink({
-    emit: (level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]) => {
+    emit: ({ level, message, attrs, args }: LogEntry) => {
       const sentryLevel: 'info' | 'warning' | 'error' =
         level === 'error' ? 'error' : level === 'warn' ? 'warning' : 'info';
       const { flow, ...data } = attrs ?? {};
@@ -201,7 +201,7 @@ export async function flushTelemetry(timeoutMs: number): Promise<void> {
   } catch (err: unknown) {
     log.error('[dot.li sentry] flush failed', err);
     captureException(err, { flow: 'protocol', step: 'flush_telemetry' });
-    m.count(S.TELEMETRY_FLUSH, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+    m.count(S.TELEMETRY_FLUSH, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
   }
 }
 
@@ -312,5 +312,5 @@ function nonErrorThrow(err: unknown): Error {
 }
 
 function nonErrorExtra(err: unknown): Record<string, unknown> {
-  return { rawThrown: err, errorChain: fullErrorChain(err) };
+  return { rawThrown: err, errorChain: getErrorChain(err) };
 }

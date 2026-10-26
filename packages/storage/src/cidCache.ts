@@ -7,7 +7,7 @@
 import type { Network } from '@dotli/config';
 import { createCacheReporter } from './cacheReporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from '@dotli/shared';
+import { waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
 import { m, spans as S } from '@dotli/metrics';
 
 const STORE = 'cids';
@@ -49,7 +49,7 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     const stop = m.timer(S.CACHE_READ_LATENCY);
     try {
       const db = await idb.connect();
-      const entry = (await idbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(label))) as
+      const entry = (await waitForIdbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(label))) as
         CidEntry | undefined;
       stop();
       return entry?.manifests === undefined || entry.network !== network
@@ -77,8 +77,13 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     const entry: CidEntry = { label, network, cid, manifests, timestamp: Date.now() };
     try {
       const db = await idb.connect();
-      await idbTransaction(db, STORE, 'readwrite', tx => {
-        tx.objectStore(STORE).put(entry);
+      await runIdbTransaction({
+        db,
+        stores: STORE,
+        mode: 'readwrite',
+        body: tx => {
+          tx.objectStore(STORE).put(entry);
+        },
       });
       stop();
     } catch (err) {
@@ -95,8 +100,13 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     const stop = m.timer(S.CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
-      await idbTransaction(db, STORE, 'readwrite', tx => {
-        tx.objectStore(STORE).clear();
+      await runIdbTransaction({
+        db,
+        stores: STORE,
+        mode: 'readwrite',
+        body: tx => {
+          tx.objectStore(STORE).clear();
+        },
       });
       stop();
       return true;
@@ -115,8 +125,13 @@ export function createCidCache(idb: DotliIdb = pageIdb) {
     const stop = m.timer(S.CACHE_WRITE_LATENCY);
     try {
       const db = await idb.connect();
-      await idbTransaction(db, STORE, 'readwrite', tx => {
-        tx.objectStore(STORE).delete(label);
+      await runIdbTransaction({
+        db,
+        stores: STORE,
+        mode: 'readwrite',
+        body: tx => {
+          tx.objectStore(STORE).delete(label);
+        },
       });
       stop();
       return true;

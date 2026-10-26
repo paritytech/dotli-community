@@ -20,7 +20,8 @@ export function createBlockVerifier({
   load,
   report,
 }: BlockVerifierDeps): (cid: string, bytes: Uint8Array) => Promise<boolean> {
-  const verifier = createLazyLoad(load, {
+  const verifier = createLazyLoad({
+    load,
     onFirstMiss: err => {
       report('block_verifier_load', err);
     },

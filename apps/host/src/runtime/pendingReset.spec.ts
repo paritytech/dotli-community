@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { createPendingResets } from './pendingReset.js';
 
 /** For a storage that works, where a read failure would be a bug in the test. */
@@ -13,7 +13,7 @@ function rethrow(err: unknown): never {
 describe('pending resets', () => {
   it('As a user who resets everything, I get each origin purged on the next boot and not on later ones', () => {
     // Given
-    const storage = memoryStorage();
+    const storage = createMemoryStorage();
     const beforeReload = createPendingResets(() => storage, rethrow);
     const afterReload = createPendingResets(() => storage, rethrow);
 
@@ -29,7 +29,7 @@ describe('pending resets', () => {
 
   it('As a user recovering from a lost light client, I reload with only the protocol origin purged', () => {
     // Given
-    const storage = memoryStorage();
+    const storage = createMemoryStorage();
     const pending = createPendingResets(() => storage, rethrow);
 
     // When

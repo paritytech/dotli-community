@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import type { PageRole } from '../pageRole.js';
 import { createFakeSessionPresence, type FakeSessionPresence } from './presence.fake.js';
 import {
@@ -46,7 +46,7 @@ function mainStore(initial: { session?: boolean; wallet?: boolean } = {}) {
     signIns,
     /** Holds the keeper's next check of the store until the returned release. */
     holdCheck: () => {
-      const held = deferred<undefined>();
+      const held = createDeferred<undefined>();
       gate = held.promise.then(() => {
         gate = null;
       });
@@ -268,7 +268,7 @@ describe('a page drop racing a sign-in on the shared store', () => {
   it('As a page that owns the flag, I raise it again when my write lands after another page deleted the flag I raised', async () => {
     // Given the owner's flag up, and its write held
     const { presence, store, page, owner } = twoTabs();
-    const written = deferred<undefined>();
+    const written = createDeferred<undefined>();
     const storing = owner.store(async () => {
       await written.promise;
       store.session = 'new';

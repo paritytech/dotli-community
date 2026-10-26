@@ -18,7 +18,7 @@ export type ProductState =
   | ({ status: 'loaded'; loadId: number; label: string; productId: string } & ProductDetails)
   | { status: 'error'; loadId: number };
 
-const product = createSyncStore<ProductState>('product', { status: 'none', loadId: 0 });
+const product = createSyncStore<ProductState>({ name: 'product', initial: { status: 'none', loadId: 0 } });
 
 export const productStore: ReadableStore<ProductState> = product;
 export const getProductState = product.get;

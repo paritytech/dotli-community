@@ -8,7 +8,7 @@ import type { ProductAccountId } from '@parity/truapi';
 import { getActiveServicesConfig } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
-import { createAsyncTaskPool, createLazyLoad, fromHex, onPageReturn } from '@dotli/shared';
+import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../pagePrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
@@ -58,11 +58,13 @@ export { hostAssetHubProvider, hostChainProvider } from './hostCallbacks/chain.j
 export { preloadWireDescriber } from './coreConnection.js';
 
 // One load serves the frame and every core.
-const hostRuntime = createLazyLoad(async () => {
-  const chunkLoadStart = performance.now();
-  const runtime = await loadHostRuntimeChunk();
-  m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
-  return runtime;
+const hostRuntime = createLazyLoad({
+  load: async () => {
+    const chunkLoadStart = performance.now();
+    const runtime = await loadHostRuntimeChunk();
+    m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
+    return runtime;
+  },
 });
 // Preloaded so it is ready when the first product renders.
 void hostRuntime().catch(() => {
@@ -276,7 +278,7 @@ export function startSessionState(): () => void {
   const stopWatch = watchPresence({
     onRecheck: handler => {
       const stops = [
-        onPageReturn(document, window, handler),
+        listenForPageReturn({ visibility: document, target: window, handler }),
         onSessionFlagChange(handler),
         onLocalWalletChange(handler),
       ];

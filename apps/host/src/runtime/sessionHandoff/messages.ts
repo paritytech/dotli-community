@@ -43,7 +43,7 @@ export type MessageEventLike = {
 
 /** Hears the page's own `message` events until the returned stop. */
 export function listenToMessages(handler: (event: MessageEventLike) => void): () => void {
-  return listen(window, 'message', handler);
+  return listen({ target: window, type: 'message', handler });
 }
 
 function isSession(value: unknown): value is SessionResult['session'] {

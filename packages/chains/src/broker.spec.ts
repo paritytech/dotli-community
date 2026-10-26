@@ -1440,7 +1440,7 @@ describe('broker warnings', () => {
   function warningsDuring(run: () => void): string[] {
     const warnings: string[] = [];
     const restore = bindLogSink({
-      emit: (level, message) => {
+      emit: ({ level, message }) => {
         if (level === 'warn') {
           warnings.push(message);
         }
@@ -1888,7 +1888,7 @@ describe('ChainBroker.halt', () => {
     const errors: string[] = [];
     onTestFinished(
       bindLogSink({
-        emit: (level, message) => {
+        emit: ({ level, message }) => {
           if (level === 'error') {
             errors.push(message);
           }

@@ -24,7 +24,9 @@ describe('the dotli database connection', () => {
   it('As a dotli user, I open the database again after an older tab blocked it and get a connection', async () => {
     // Given an older tab that holds the database on the previous schema
     const factory = new IDBFactory();
-    const getDb = createDbConnection(() => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
+    const getDb = createDbConnection(() =>
+      openIdb({ factory, name: DB_NAME, version: DB_VERSION, upgrade: upgradeDotliDb }),
+    );
     const olderTab = await openPreviousSchema(factory);
     await expect(getDb()).rejects.toThrow('Failed to open dotli DB: blocked by another tab');
 

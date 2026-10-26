@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { bindCaptureSink } from '@dotli/metrics';
-import { FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createFakePage, type FakePage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   bindToastPage,
@@ -43,7 +43,7 @@ function leaving(): boolean[] {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  page = new FakePage();
+  page = createFakePage();
   bindToastPage(page.document);
 });
 
@@ -249,7 +249,7 @@ describe('toast store', () => {
 
   it('As a dotli page reset between stories, I bind my page again and its countdown resumes', () => {
     // Given a page bound, reset, and bound twice more
-    const again = new FakePage();
+    const again = createFakePage();
     bindToastPage(again.document);
     resetAllStoresForTests();
     bindToastPage(again.document);

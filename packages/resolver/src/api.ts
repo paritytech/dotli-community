@@ -10,7 +10,7 @@ import { DisjointError, OperationInaccessibleError, StopError } from '@polkadot-
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
 import { mergeUint8 } from '@polkadot-api/utils';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createListenerSet, errorName, fromHex, log, toHex } from '@dotli/shared';
+import { createAsyncTaskPool, createListenerSet, getErrorName, fromHex, log, toHex } from '@dotli/shared';
 
 const enc = new TextEncoder();
 
@@ -122,7 +122,7 @@ export function createRawApi(
       }
       captureException(err, { flow: 'resolve', step: 'unpin' });
       log.error('[dot.li resolver] the light client refused an unpin:', err);
-      m.count(S.RESOLVE_UNPIN, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+      m.count(S.RESOLVE_UNPIN, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
     });
   }
 

@@ -11,12 +11,12 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   createStatusCell,
-  deferred,
+  createDeferred,
   log,
   realTimers,
   serializeError,
   toError,
-  untilStatus,
+  waitForStatus,
   withTimeout,
   type Timers,
 } from '@dotli/shared';
@@ -165,7 +165,7 @@ class FrameSlot<E extends FrameElement> {
   /** Null until the iframe loaded, for what must reach it in the turn the frame is dropped or ready. */
   transport: ProtocolTransport | null = null;
   /** Resolves with the transport once the iframe loaded, and rejects with the loss of a frame dropped before. */
-  readonly loaded = deferred<ProtocolTransport>();
+  readonly loaded = createDeferred<ProtocolTransport>();
 
   constructor() {
     // No caller may be waiting for the load, and the loss is reported where the frame is dropped.
@@ -222,7 +222,8 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   const count = deps.count ?? m.count;
   const wire = createWireReport('host', { count });
 
-  const status = createStatusCell<ProtocolStatus>('idle', {
+  const status = createStatusCell<ProtocolStatus>({
+    initial: 'idle',
     onListenerError: reportListener('protocol', 'protocol.status'),
   });
   const lostListeners = createListenerSet<Error>({
@@ -242,7 +243,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   let mismatch: ProtocolVersionMismatchError | null = null;
 
   let frameConfig: ProtocolFrameConfig | null = null;
-  const configured = deferred<undefined>();
+  const configured = createDeferred<undefined>();
 
   // One task keeps the frame. It retries without end, each wait doubling, and settles only when a frame it kept
   // stable is lost.
@@ -388,12 +389,12 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
     try {
       const iframe = createIframe(config);
       kept.iframe = iframe;
-      const transport = await withTimeout(
-        untilLoaded(kept, iframe),
-        timeouts.loadMs,
-        () => new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT),
+      const transport = await withTimeout({
+        work: untilLoaded(kept, iframe),
+        ms: timeouts.loadMs,
+        timeoutError: () => new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT),
         timers,
-      );
+      });
       phase = 'listen';
       await transport.whenConnected();
       if (slot === kept && status.get() === 'booting') {
@@ -402,17 +403,17 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       phase = 'ready';
       const stopReady = m.timer(S.PROTOCOL_IFRAME_READY);
       try {
-        await withTimeout(
-          untilStatus(status, next => next === 'ready', kept.loss.signal),
-          timeouts.readyMs,
-          () => new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT),
+        await withTimeout({
+          work: waitForStatus(status, next => next === 'ready', { signal: kept.loss.signal }),
+          ms: timeouts.readyMs,
+          timeoutError: () => new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT),
           timers,
-        );
+        });
       } finally {
         stopReady();
       }
       readyAt = timers.now();
-      await untilStatus(status, () => false, kept.loss.signal);
+      await waitForStatus(status, () => false, { signal: kept.loss.signal });
     } catch (thrown: unknown) {
       // A failed handshake rejects with the transport's own error, which the host knows by the protocol's class.
       const reason = fromTransportError(toError(thrown));
@@ -472,12 +473,12 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
   }
 
   function untilConfigured(): Promise<void> {
-    return withTimeout(
-      configured.promise,
-      timeouts.configureMs,
-      () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED),
+    return withTimeout({
+      work: configured.promise,
+      ms: timeouts.configureMs,
+      timeoutError: () => new Error(PROTOCOL_ERRORS.FRAME_UNCONFIGURED),
       timers,
-    );
+    });
   }
 
   /** Runs `run` with the config, in the turn it is called once there is one, and never after a version mismatch. */
@@ -499,7 +500,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       askForFrame(config);
       // Read when the status is reached, since the frame can be dropped before the wait's continuation runs.
       let reached: ProtocolTransport | null = null;
-      return untilStatus(status, next => {
+      return waitForStatus(status, next => {
         if (next === 'ready') {
           reached = slot?.transport ?? null;
           return reached !== null || downReason;

@@ -6,7 +6,7 @@
 // odd and the accepter even, so a frame's id tells whose call it is about. The transport owns whether it is open, and
 // everything it cannot handle goes to the owner's issue hook.
 
-import { createAsyncTaskPool, deferred, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import type { Codec, ResultPayload } from 'scale-ts';
 import {
   TransportHandshakeTimeoutError,
@@ -285,7 +285,7 @@ export function createTransport<H, T extends Sections>(
   const firstId = opens ? 1 : 2;
   let lastId = firstId - 2;
   // Settles once the handshake succeeds or fails, or the transport closes. The phase says which.
-  const handshakeOver = deferred<undefined>();
+  const handshakeOver = createDeferred<undefined>();
 
   const nextId = (): number => {
     lastId = lastId + 2 > MAX_ID ? firstId : lastId + 2;
@@ -1116,12 +1116,13 @@ export function createTransport<H, T extends Sections>(
     const answered =
       timeoutMs === null
         ? retrying
-        : withTimeout(
-            retrying,
-            timeoutMs,
-            () => new TransportHandshakeTimeoutError(`No handshake answer within ${String(timeoutMs)} ms`),
+        : withTimeout({
+            work: retrying,
+            ms: timeoutMs,
+            timeoutError: () =>
+              new TransportHandshakeTimeoutError(`No handshake answer within ${String(timeoutMs)} ms`),
             timers,
-          );
+          });
     answered.catch((error: unknown) => {
       settleHandshake(err(toError(error)));
     });

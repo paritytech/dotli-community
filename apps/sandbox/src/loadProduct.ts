@@ -7,7 +7,7 @@
 import { m, spans as S } from '@dotli/metrics';
 import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult } from '@dotli/content';
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 
 export type SandboxParams = Extract<ReturnType<typeof validateSandboxParams>, { ok: true }>['params'];
 
@@ -61,7 +61,7 @@ export type LoadProductDeps = {
   sinceStart: () => number;
 };
 
-const contentLog = log.child({ flow: 'content' });
+const contentLog = log.createChild({ flow: 'content' });
 
 function resultBytes(result: FetchResult): number {
   return result.type === 'single'
@@ -75,7 +75,7 @@ function resultFileCount(result: FetchResult): number {
 
 /** A frame's teardown rejects its fetches by the platform's abort name. */
 function isTeardownAbort(err: unknown): boolean {
-  return errorName(err) === 'AbortError';
+  return getErrorName(err) === 'AbortError';
 }
 
 export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProductDeps): Promise<LoadOutcome> {

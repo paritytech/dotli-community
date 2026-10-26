@@ -5,7 +5,7 @@
 // only the grants, so it needs no opener, no handshake and no core.
 
 import { m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createAsyncTaskPool, createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import { reportWalletFailure } from '../walletFailure.js';
 
@@ -51,7 +51,11 @@ function listedOf({ token, origin, firstUsedAt, lastUsedAt, group }: SiteGrant):
 export function createSiteList(deps: { grants: SiteGrantStore }): SiteList {
   const { grants } = deps;
   // Until the first read lands, so an empty list never shows before the grants are known.
-  const screen = createSyncStore<SiteListScreen>('siteList', { view: 'sites-loading' }, { equals: shallowEqual });
+  const screen = createSyncStore<SiteListScreen>({
+    name: 'siteList',
+    initial: { view: 'sites-loading' },
+    equals: isShallowEqual,
+  });
   // One read or revoke at a time, so a revoke sees the list the last read left and no older read lands after it.
   const steps = createAsyncTaskPool({ poolSize: 1 });
 

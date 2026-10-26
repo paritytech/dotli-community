@@ -5,7 +5,7 @@
 // open drops an account signed out elsewhere.
 
 import { m, recordExpected, spans as S } from '@dotli/metrics';
-import { bytesEqual, createAsyncTaskPool, log, realTimers, type AsyncTaskPool, type Timers } from '@dotli/shared';
+import { areBytesEqual, createAsyncTaskPool, log, realTimers, type AsyncTaskPool, type Timers } from '@dotli/shared';
 import { reportWalletFailure } from '../walletFailure.js';
 import type { Presence } from './presence.js';
 import type { Reconciled } from './restoreRule.js';
@@ -66,7 +66,7 @@ function verdictOf(page: Uint8Array | null, { presence, wallet }: Pick<Reconcile
   if (wallet.status === 'none') {
     return 'signed_out';
   }
-  return wallet.status === 'ok' && !bytesEqual(wallet.version, page) ? 'switched' : 'keep';
+  return wallet.status === 'ok' && !areBytesEqual(wallet.version, page) ? 'switched' : 'keep';
 }
 
 /**

@@ -381,7 +381,7 @@ describe('paired sign-out', () => {
 
   it('As a user whose core reads signed out once the window cleared the store, I sign out and the session my copy held is still ended', async () => {
     // Given the core commands over a core that already reports signed out
-    const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' });
+    const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' } });
     const commands = createAuthCommands({
       auth,
       login: () => Promise.resolve({ kind: 'cancelled' }),

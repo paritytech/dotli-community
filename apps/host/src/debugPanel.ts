@@ -4,7 +4,7 @@
 // The debug panel's chunk loads only in debug mode, so its load is the one place a failure to start it shows.
 
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 import type { DebugPanelHost, TruapiDebugMountModule } from '@dotli/truapi-debug-ui';
 
 export type DebugPanelDeps = {
@@ -23,7 +23,7 @@ export async function startDebugPanel({ load, host, startCollapsed }: DebugPanel
   } catch (err: unknown) {
     log.error('[dot.li] debug panel failed to start:', err);
     captureException(err, { flow: 'ui', step: 'debug_panel_load' });
-    m.count(S.DEBUG_PANEL_LOAD, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+    m.count(S.DEBUG_PANEL_LOAD, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
     return;
   }
   log.event('TrUAPI debug panel enabled', { flow: 'boot' });

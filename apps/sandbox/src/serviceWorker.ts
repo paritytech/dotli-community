@@ -12,7 +12,7 @@ import { handOverArchive } from './archiveHandoff.js';
 import { showNotification } from '@dotli/ui';
 import { SANDBOX_ERRORS } from './errors.js';
 
-const contentLog = log.child({ flow: 'content' });
+const contentLog = log.createChild({ flow: 'content' });
 
 /** The page's service worker container and the build it expects that worker to run. */
 export type AppServiceWorker = {
@@ -35,9 +35,13 @@ function querySwVersion(sw: ServiceWorker): Promise<string | null> {
     };
     sw.postMessage({ type: 'GET_SW_VERSION' }, [channel.port2]);
   });
-  return withTimeout(answer, SANDBOX_TIMEOUTS.SW_VERSION_ANSWER, () => {
-    silent = new Error('the service worker did not answer the version check');
-    return silent;
+  return withTimeout({
+    work: answer,
+    ms: SANDBOX_TIMEOUTS.SW_VERSION_ANSWER,
+    timeoutError: () => {
+      silent = new Error('the service worker did not answer the version check');
+      return silent;
+    },
   })
     .catch((error: unknown) => {
       // Silence is an older build's answer, not a failure.
@@ -139,7 +143,11 @@ export async function registerAppServiceWorker(
       });
     });
     try {
-      await withTimeout(controlled, SANDBOX_TIMEOUTS.SW_READY, () => new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE));
+      await withTimeout({
+        work: controlled,
+        ms: SANDBOX_TIMEOUTS.SW_READY,
+        timeoutError: () => new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE),
+      });
     } finally {
       container.removeEventListener('controllerchange', onControllerChange);
     }

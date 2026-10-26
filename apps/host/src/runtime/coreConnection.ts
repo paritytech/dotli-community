@@ -27,7 +27,8 @@ export function createWireDescriber(load: typeof loadWireDescriber): {
   preload: () => ReturnType<typeof loadWireDescriber>;
 } {
   return {
-    preload: createLazyLoad(load, {
+    preload: createLazyLoad({
+      load,
       onFirstMiss: err => {
         reportLazyMiss('ui', 'wire_describe_load', err);
       },

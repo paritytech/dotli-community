@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
-import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections, createChatStore, type ChatStore } from '../runtime/chat/store.js';
 import { labelToProductId } from '../runtime/runtimeConfig.js';
 import { setAuthState } from '../runtime/state/auth.js';
@@ -23,7 +23,7 @@ let stopState: () => void = () => undefined;
 beforeEach(() => {
   connections = createChatConnections();
   chat = createChatStore({ repo: memoryChatRepo(), connections });
-  local = memoryStorage();
+  local = createMemoryStorage();
   stopState = startChatPanelState(chat, local);
   setProductLoaded(LABEL, PRODUCT, { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });

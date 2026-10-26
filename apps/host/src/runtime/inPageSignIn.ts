@@ -4,7 +4,7 @@
 // The sign-in route of a page with no sign-in window. It pairs in place on the core, in the bridge chunk, and takes a
 // recovery phrase in the modal.
 
-import { errorMessage } from '@dotli/shared';
+import { getErrorMessage } from '@dotli/shared';
 import { reportLazyMiss } from '../lazyMiss.js';
 import type { AuthModalPort, SignInRoute } from './signInRoute.js';
 import { reportLocalWalletFailure } from './walletFailure.js';
@@ -51,7 +51,7 @@ export function createInPageSignIn(deps: InPageSignInDeps): SignInRoute {
         reportLazyMiss('wallet', 'phrase_import', error);
         if (modal.lease() === scope) {
           retryImportsPhrase = true;
-          modal.showFailure('Other', errorMessage(error));
+          modal.showFailure('Other', getErrorMessage(error));
         }
       },
     );

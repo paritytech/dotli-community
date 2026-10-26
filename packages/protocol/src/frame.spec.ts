@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 
 import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { deferred, toError } from '@dotli/shared';
-import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
+import { createDeferred, toError } from '@dotli/shared';
+import { createManualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { domain, err, ok } from '@dotli/transport';
 import { recordMessage } from '@dotli/transport/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
@@ -40,7 +40,7 @@ const READY_TIMEOUT_MS = 240_000;
 let timers: ManualTimers;
 
 beforeEach(() => {
-  timers = manualTimers();
+  timers = createManualTimers();
 });
 
 const advance = (ms = 0): Promise<void> => timers.advance(ms);
@@ -416,7 +416,7 @@ describe('createProtocolFrame', () => {
     frame.configure(FRAME_CONFIG);
     void frame.whenReady().catch(() => undefined);
     const first = dom.iframe();
-    const held = deferred<string | null>();
+    const held = createDeferred<string | null>();
     dom.serve(first).handleRequest(storage.authRead, () => held.promise.then(value => ok(value)));
     const firstStatus = await dom.bringUp();
     const firstTransport = await frame.transport();
@@ -549,7 +549,7 @@ describe('createProtocolFrame', () => {
     // Then the wait fails, and only the rebuild's wait is pending
     expect(await up).toContain(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED);
     expect(frame.getStatus()).toBe('failed');
-    expect(timers.pending()).toBe(1);
+    expect(timers.countPending()).toBe(1);
   });
 
   /** A configured frame that came up ready and then died with a fatal, so its keeper waits to rebuild it. */

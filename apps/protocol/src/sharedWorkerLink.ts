@@ -22,8 +22,8 @@ import {
 } from '@dotli/protocol';
 import {
   createListenerSet,
-  deferred,
-  errorName,
+  createDeferred,
+  getErrorName,
   log,
   realTimers,
   toError,
@@ -141,7 +141,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     stop();
     captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
     log.error('[dot.li protocol] Worker heartbeat failed', error);
-    m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: errorName(error) ?? 'unknown' });
+    m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
   };
   const unsubscribeBeats = transport.subscribe(protocolSchema.sections.frame.beat, undefined, {
     receive: () => {
@@ -204,7 +204,7 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   });
   // Why the wait failed, for the metric. A timeout carries none.
   let reason: string | undefined;
-  const ready = deferred<undefined>();
+  const ready = createDeferred<undefined>();
   // Until the wait settles, so what is heard after it changes nothing.
   let waiting = true;
   const failReadyWait = (error: Error, why: string): void => {
@@ -239,15 +239,15 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
     });
     return waitMs;
   };
-  const waited = withTimeout(
-    ready.promise,
-    readyTimeoutMs,
-    () => {
+  const waited = withTimeout({
+    work: ready.promise,
+    ms: readyTimeoutMs,
+    timeoutError: () => {
       timedOut = new ProtocolInitFailedError(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT);
       return timedOut;
     },
     timers,
-  ).then(
+  }).then(
     () => {
       m.measure(S.PROTOCOL_SW_READY, record('ok'));
     },

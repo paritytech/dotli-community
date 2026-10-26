@@ -26,7 +26,7 @@ export type SettingsState = {
 };
 
 // Null until the host seeds it, so nothing reads localStorage at import time or during build-time rendering.
-const settings = createSyncStore<SettingsState | null>('settings', null);
+const settings = createSyncStore<SettingsState | null>({ name: 'settings', initial: null });
 
 export const settingsStore: ReadableStore<SettingsState | null> = settings;
 export const getSettingsState = settings.get;

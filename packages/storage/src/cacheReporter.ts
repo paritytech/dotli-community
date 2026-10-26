@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
 import { isExpectedDbError } from './db.js';
 
 /** Storage pressure makes a refused write routine, so it is not a fault of dotli. */
 function isQuotaError(err: unknown): boolean {
-  return errorName(err) === 'QuotaExceededError';
+  return getErrorName(err) === 'QuotaExceededError';
 }
 
 /**
@@ -18,7 +18,12 @@ export function createCacheReporter(cache: string, tag: string): (action: string
   const captured = new Set<string>();
   return (action, err) => {
     const step = `${cache}_${action}`;
-    m.count(S.CACHE_STORAGE, { outcome: 'error', reason: errorName(err) ?? 'unknown', surface: cache, step: action });
+    m.count(S.CACHE_STORAGE, {
+      outcome: 'error',
+      reason: getErrorName(err) ?? 'unknown',
+      surface: cache,
+      step: action,
+    });
     if (isExpectedDbError(err) || isQuotaError(err)) {
       recordExpected(err, { flow: 'storage', step });
       return;

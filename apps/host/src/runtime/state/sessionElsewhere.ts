@@ -4,7 +4,7 @@
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
 
 // Written only by session state, which knows both what the page holds and what the signed-in flag last said.
-const elsewhere = createSyncStore<boolean>('sessionElsewhere', false);
+const elsewhere = createSyncStore<boolean>({ name: 'sessionElsewhere', initial: false });
 
 /**
  * True while the page shows signed out and the signed-in flag says a sign-in exists on the site, as in Safari, where a

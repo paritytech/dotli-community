@@ -32,8 +32,8 @@ export type SandboxUi = {
 
 export function createSandboxUi({ load, toasts, showFallback, hideFallback }: SandboxUiDeps): SandboxUi {
   let closed = false;
-  const ready = createLazyLoad(
-    async () => {
+  const ready = createLazyLoad({
+    load: async () => {
       const ui = await load();
       if (!closed) {
         hideFallback();
@@ -41,19 +41,17 @@ export function createSandboxUi({ load, toasts, showFallback, hideFallback }: Sa
       }
       return ui;
     },
-    {
-      onFirstMiss: err => {
-        // A missing chunk is a deploy race, counted as the host counts its own (owner's call: metric only).
-        reportExpected(err, {
-          flow: 'content',
-          step: 'page_ui_load',
-          metric: S.LAZY_CHUNK_LOAD,
-          reason: 'page_ui_load',
-          message: '[dot.li app] the page UI failed to load',
-        });
-      },
+    onFirstMiss: err => {
+      // A missing chunk is a deploy race, counted as the host counts its own (owner's call: metric only).
+      reportExpected(err, {
+        flow: 'content',
+        step: 'page_ui_load',
+        metric: S.LAZY_CHUNK_LOAD,
+        reason: 'page_ui_load',
+        message: '[dot.li app] the page UI failed to load',
+      });
     },
-  );
+  });
 
   /** `text` is what the page says in place of the UI when it cannot load. */
   const withUi = (show: (ui: PageUiModule) => void, text?: string): void => {

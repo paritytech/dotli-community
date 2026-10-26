@@ -3,7 +3,7 @@
 
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { deferred, bindLogSink, type LogLevel } from '@dotli/shared';
+import { createDeferred, bindLogSink } from '@dotli/shared';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { QrDrawOptions } from './qrCode.js';
 import { presentQr, type QrShowing } from './qrDrawer.js';
@@ -35,7 +35,7 @@ beforeEach(() => {
       expected: () => undefined,
     }),
     bindLogSink({
-      emit: (level: LogLevel, message: string) => {
+      emit: ({ level, message }) => {
         if (level === 'error') {
           errorsLogged.push(message);
         }
@@ -112,7 +112,7 @@ describe('the sign-in QR drawer', () => {
 
   it('As a user whose phone already scanned, a QR drawing that finishes late is neither drawn in nor counted', async () => {
     // Given
-    const held = deferred<undefined>();
+    const held = createDeferred<undefined>();
     const qr = showing(() => held.promise);
     const stop = presentQr('polkadotapp://pair', qr.deps);
 
@@ -130,7 +130,7 @@ describe('the sign-in QR drawer', () => {
 
   it('As a user whose phone already scanned, I am not reported a QR drawing that fails late', async () => {
     // Given
-    const held = deferred<undefined>();
+    const held = createDeferred<undefined>();
     const qr = showing(() => held.promise);
     const stop = presentQr('polkadotapp://pair', qr.deps);
 
@@ -160,7 +160,7 @@ describe('the sign-in QR drawer', () => {
 
   it("As a user shown a new pairing code, only the newest QR is drawn in, whenever the first one's drawing ends", async () => {
     // Given the first code's drawing held back
-    const first = deferred<undefined>();
+    const first = createDeferred<undefined>();
     const qr = showing(draw => (draw.payload === 'polkadotapp://first' ? first.promise : Promise.resolve()));
     const stopFirst = presentQr('polkadotapp://first', qr.deps);
 

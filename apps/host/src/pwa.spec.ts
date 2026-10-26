@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
-import { FakePage } from '@dotli/shared/testing';
+import { createFakePage } from '@dotli/shared/testing';
 import { startPwa, type PwaDeps, type PwaRegistration, type PwaWorkbox, type PwaWorker } from './pwa.js';
 
 type NotificationAction = NonNullable<Parameters<PwaDeps['showNotification']>[0]['action']>;
@@ -98,7 +98,7 @@ function fakeWorkbox(registration: PwaRegistration) {
 function start(overrides: Partial<PwaDeps> = {}) {
   const reg = fakeRegistration();
   const sw = fakeWorkbox(reg.registration);
-  const page = new FakePage();
+  const page = createFakePage();
   const actions: NotificationAction[] = [];
   /** Settles once the page acted on the update, by reloading or by telling the worker to take over. */
   const applied = Promise.withResolvers<undefined>();

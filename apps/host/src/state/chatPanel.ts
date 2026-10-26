@@ -8,7 +8,7 @@ import {
   createSyncStore,
   pageLocalStorage,
   registerStoreStateReset,
-  shallowEqual,
+  isShallowEqual,
   type ReadableStore,
   type SafeStorage,
 } from '@dotli/shared';
@@ -56,8 +56,10 @@ const INITIAL: ChatPanelState = {
 };
 
 // A drag past the clamp and repeated product or topbar events rebuild an equal state.
-const panel = createSyncStore<ChatPanelState>('chat_panel', INITIAL, {
-  equals: shallowEqual,
+const panel = createSyncStore<ChatPanelState>({
+  name: 'chat_panel',
+  initial: INITIAL,
+  equals: isShallowEqual,
 });
 export const chatPanelStore: ReadableStore<ChatPanelState> = panel;
 

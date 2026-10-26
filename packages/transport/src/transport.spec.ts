@@ -3,8 +3,8 @@
 
 import { type ResultPayload, str } from 'scale-ts';
 import { describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest';
-import { deferred, toHex } from '@dotli/shared';
-import { manualTimers, must, recordLog } from '@dotli/shared/testing';
+import { createDeferred, toHex } from '@dotli/shared';
+import { createManualTimers, must, recordLog } from '@dotli/shared/testing';
 import {
   TransportHandshakeTimeoutError,
   TransportMalformedResponseError,
@@ -310,7 +310,7 @@ describe('createTransport', () => {
     // Given
     const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
     const { left, right } = createProviderPair();
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const opener = createTransport(
       testSchema,
       {
@@ -341,7 +341,7 @@ describe('createTransport', () => {
   it('As an owner, disposing releases the provider, and a later connect posts nothing', async () => {
     // Given
     const { left } = createProviderPair();
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const unsubscribed = vi.fn();
     const post = vi.fn();
     const dispose = vi.fn();
@@ -423,7 +423,7 @@ describe('createTransport', () => {
   it('As an owner, a provider not in a correct environment closes my transport at once and nothing is posted', async () => {
     // Given
     const { left } = createProviderPair();
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const post = vi.fn();
     const provider: Provider = { ...left, isCorrectEnvironment: () => false, postMessage: post };
 
@@ -1403,7 +1403,7 @@ describe('serving', () => {
   it("As a handler, I read the caller's hello", async () => {
     // Given
     const { left, right } = createProviderPair();
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const opener = createTransport(testSchema, left, { handshake: 'offer', hello: 'opener', timers });
     const accepter = createTransport(testSchema, right, { handshake: 'respond', hello: 'accepter' });
     const servedByAccepter = vi.fn(() => ok('a'));
@@ -1501,7 +1501,7 @@ describe('serving', () => {
   it('As a caller, my call in flight when the peer disposes hears nothing, and the late answer is never posted', async () => {
     // Given
     const { opener, accepter, timers, delivered, issues } = rig();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     accepter.handleRequest(notes.read, () => answer.promise);
     opener.connect();
     const call = opener.request(notes.read, 'note');
@@ -1524,7 +1524,7 @@ describe('serving', () => {
     const broken = new Error('the peer window is gone');
     const { wrap, breakPosts } = breakable(broken);
     const { transport, timers, peer, issues } = await acceptedRaw(wrap);
-    const answer = deferred<ResultPayload<undefined, CallError<undefined>>>();
+    const answer = createDeferred<ResultPayload<undefined, CallError<undefined>>>();
     transport.handleRequest(notes.touch, () => answer.promise);
     peer.call(notes.touch, 7, { tag: 'request', value: undefined });
     await timers.advance(0);
@@ -1778,7 +1778,7 @@ describe('serving', () => {
   it('As a serving side, a request that reuses the id of one still in flight is refused as invalid, as truapi refuses it, and its handler does not run again', async () => {
     // Given a request the handler holds
     const { transport, timers, peer, issues } = await acceptedRaw();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     const handler = vi.fn(() => answer.promise);
     transport.handleRequest(notes.read, handler);
     peer.call(notes.read, 3, { tag: 'request', value: 'first' });
@@ -1812,7 +1812,7 @@ describe('serving', () => {
   it('As a serving side, I refuse an unreadable subscription message that reuses an in-flight request id and answer only the request', async () => {
     // Given a request the handler holds on id 3, beside a served subscription
     const { transport, timers, peer, issues } = await acceptedRaw();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     transport.handleRequest(notes.read, () => answer.promise);
     transport.handleSubscription(notes.watch, () => () => undefined);
     peer.call(notes.read, 3, { tag: 'request', value: 'first' });
@@ -1839,7 +1839,7 @@ describe('serving', () => {
   it('As a serving side, I refuse a start that reuses an in-flight request id and the request keeps its one answer', async () => {
     // Given a request the handler holds on id 3, beside a served subscription
     const { transport, timers, peer, issues } = await acceptedRaw();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     transport.handleRequest(notes.read, () => answer.promise);
     const watch = vi.fn(() => () => undefined);
     transport.handleSubscription(notes.watch, watch);
@@ -1867,7 +1867,7 @@ describe('serving', () => {
   it('As a serving side, I refuse a request for a method I do not serve on an in-flight id and answer only the first', async () => {
     // Given a request the handler holds on id 3, and no handler for echo.say
     const { transport, timers, peer, issues } = await acceptedRaw();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     transport.handleRequest(notes.read, () => answer.promise);
     peer.call(notes.read, 3, { tag: 'request', value: 'first' });
     await timers.advance(0);
@@ -1892,7 +1892,7 @@ describe('serving', () => {
   it('As a serving side, I answer each call of the peer side by side', async () => {
     // Given
     const { opener, accepter, timers } = rig();
-    const slow = deferred<ResultPayload<string, CallError<undefined>>>();
+    const slow = createDeferred<ResultPayload<string, CallError<undefined>>>();
     accepter.handleRequest(echo.say, text => (text === 'slow' ? slow.promise : ok(text)));
     opener.connect();
     const first = opener.request(echo.say, 'slow');
@@ -2234,7 +2234,7 @@ describe('the handshake', () => {
 
     // When
     const create = (provider: Provider, handshake: 'offer' | 'respond') => () =>
-      createTransport(schema, provider, { handshake, hello: 'a side', timers: manualTimers() });
+      createTransport(schema, provider, { handshake, hello: 'a side', timers: createManualTimers() });
 
     // Then
     expect(create(left, 'offer')).toThrow(refused);
@@ -2316,7 +2316,7 @@ describe('the handshake', () => {
   it('As an opener with no timeout set, my handshake waits 10 seconds for an answer, as host-api and truapi wait', async () => {
     // Given
     const { left } = createProviderPair();
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const transport = createTransport(testSchema, left, { handshake: 'offer', hello: 'opener', timers });
     let settled: unknown;
     void transport.whenConnected().catch((error: unknown) => {
@@ -2426,7 +2426,7 @@ describe('the handshake', () => {
         throw broken;
       },
     };
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const { issues, onIssue } = issueLog();
     const transport = createTransport(testSchema, provider, { handshake: 'offer', hello: 'opener', timers, onIssue });
 
@@ -2645,7 +2645,7 @@ async function forwardingToRaw() {
 async function forwardingFromRaw() {
   const near = rawRig('respond');
   const far = rig();
-  const answer = deferred<ResultPayload<string, CallError<string>>>();
+  const answer = createDeferred<ResultPayload<string, CallError<string>>>();
   const served = vi.fn(() => answer.promise);
   far.accepter.handleRequest(notes.read, served);
   near.transport.forward([notes.read, notes.watch], far.opener);
@@ -2768,7 +2768,7 @@ describe('forwarding', () => {
   it('As a forwarder, I answer each forwarded call HostFailure when the upstream closes under it', async () => {
     // Given
     const { peer, upstream, server, timers, issues } = forwardRig();
-    server.handleRequest(notes.read, () => deferred<ResultPayload<string, CallError<string>>>().promise);
+    server.handleRequest(notes.read, () => createDeferred<ResultPayload<string, CallError<string>>>().promise);
     serveWatch(server);
     const read = peer.request(notes.read, 'a note');
     const heard = watcher();
@@ -2788,7 +2788,7 @@ describe('forwarding', () => {
   it('As a forwarder that closes, I post nothing to my peer and stop each forwarded subscription on the upstream', async () => {
     // Given
     const { peer, forwarder, server, timers, issues, toForwarder, toUpstream } = forwardRig();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     server.handleRequest(notes.read, () => answer.promise);
     const { stops } = serveWatch(server);
     void peer.request(notes.read, 'a note');
@@ -2988,7 +2988,7 @@ describe('forwarding', () => {
   it('As a forwarder, I stop forwarding a method and new calls of it are Unsupported while open ones run to their end', async () => {
     // Given
     const { peer, server, timers, issues, stopForwarding } = forwardRig();
-    const answer = deferred<ResultPayload<string, CallError<string>>>();
+    const answer = createDeferred<ResultPayload<string, CallError<string>>>();
     server.handleRequest(notes.read, () => answer.promise);
     const { sinks, stops } = serveWatch(server);
     const read = peer.request(notes.read, 'a note');

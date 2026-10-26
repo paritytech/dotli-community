@@ -3,12 +3,16 @@
 
 import { describe, expect, it } from 'vitest';
 import { createThemeSubscribe } from './theme.js';
-import { createSyncStore, shallowEqual } from '@dotli/shared';
+import { createSyncStore, isShallowEqual } from '@dotli/shared';
 import type { ThemeState } from '../state/theme.js';
 import { yielded } from '../../testing/fixtures.js';
 
 function themeOf(resolved: 'light' | 'dark'): ReturnType<typeof createSyncStore<ThemeState>> {
-  return createSyncStore<ThemeState>('theme_test', { pref: 'system', resolved }, { equals: shallowEqual });
+  return createSyncStore<ThemeState>({
+    name: 'theme_test',
+    initial: { pref: 'system', resolved },
+    equals: isShallowEqual,
+  });
 }
 
 describe('theme host callbacks', () => {

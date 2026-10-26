@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
-import { resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
+import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { byId, byTestId } from '@dotli/ui/testing';
 import type { AuthCommands } from '../../src/runtime/coreLogin.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/blockingModalQueue.js';
@@ -38,7 +38,7 @@ let unmount: (() => void) | undefined;
 
 /** Resolves once the page shows the modal open or closed, which it does after the controller wrote the state. */
 async function untilModal(open: boolean): Promise<void> {
-  await untilDom(() => (document.getElementById('auth-modal-backdrop')?.hasAttribute('data-open') ?? false) === open);
+  await waitForDom(() => (document.getElementById('auth-modal-backdrop')?.hasAttribute('data-open') ?? false) === open);
 }
 
 /** The island mounted as Astro hydrates it, with no saved session and the page's controller started. */

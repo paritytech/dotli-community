@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
-import { untilDom } from '@dotli/shared/testing';
+import { waitForDom } from '@dotli/shared/testing';
 import { settle } from '../../src/testing/settle.js';
 import { mountRoot } from '../../src/mount/root.js';
 
@@ -114,7 +114,7 @@ describe('mountRoot', () => {
     flush();
     breakAgain();
     flush();
-    await untilDom(() => !el.isConnected);
+    await waitForDom(() => !el.isConnected);
 
     // Then the root is disposed and the break is reported once
     expect(order).toEqual(['disposed']);
@@ -135,7 +135,7 @@ describe('mountRoot', () => {
 
     // When
     mountRoot('broken-at-once', el, () => <Broken />, { removeContainer: true });
-    await untilDom(() => !el.isConnected);
+    await waitForDom(() => !el.isConnected);
 
     // Then
     expect(failure).toHaveBeenCalledTimes(1);

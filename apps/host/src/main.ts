@@ -27,7 +27,7 @@ import {
   type CachedManifests,
 } from '@dotli/storage';
 import { runWhenIdle, showNotification } from '@dotli/ui';
-import { elapsed, log, randomId } from '@dotli/shared';
+import { formatElapsed, log, createRandomId } from '@dotli/shared';
 import {
   DEBUG,
   getActiveServicesConfig,
@@ -101,7 +101,7 @@ async function loadRpcResolver(): Promise<RpcResolver> {
 
 /** Starts the debug tools, the sandbox channel, the settings and the bridge. */
 async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
-  log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
+  log.debug(`[dot.li perf] main() started (${formatElapsed(T0)})`);
 
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays off and every emit returns early.
   const debugMode = resolveDebugMode(window, DEBUG);
@@ -128,7 +128,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
     report: reportSandboxHandlerFailure,
   });
 
-  const flowId = randomId();
+  const flowId = createRandomId();
   if (debugMode.enabled) {
     startMainThreadMonitor(flowId, { emit: emitDotliDebugEvent, watch: watchDotliDebugEvents });
     listenForSandboxDebugEvents(sandboxChannel, emitDotliDebugEvent);

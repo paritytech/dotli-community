@@ -6,7 +6,7 @@
 // them, so none goes unseen.
 
 import { endListeners, protocolSchema, type ProtocolTransport, type SubscriptionEnd } from '@dotli/protocol';
-import { deferred } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { createProviderPair } from '@dotli/transport/testing';
 import { createTransport, describeIssue, type Subscription, type TransportIssue } from '@dotli/transport';
 
@@ -101,7 +101,7 @@ export function record<S, V, I>(
 ): Recording<V, I> {
   const events: V[] = [];
   const waiters: { count: number; resolve: () => void }[] = [];
-  const ended = deferred<EndOf<I>>();
+  const ended = createDeferred<EndOf<I>>();
   const unsubscribe = transport.subscribe(method, start, {
     receive: value => {
       events.push(value);

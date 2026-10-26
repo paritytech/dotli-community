@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createEffect, createMemo, createRoot, flush, type Accessor } from 'solid-js';
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import { useStore } from './useStore.js';
 
 /** Runs `setup` under a fresh owner, as a component body would, and returns what it built with the disposer. */
@@ -26,7 +26,7 @@ function watch<T>(store: ReadableStore<T>): { value: Accessor<T>; seen: T[]; dis
 describe('useStore', () => {
   it("As a component, I read the store's value and see it again after it changes", () => {
     // Given
-    const store = createSyncStore('test', 'first');
+    const store = createSyncStore({ name: 'test', initial: 'first' });
     const view = watch(store);
     flush();
     expect(view.seen).toEqual(['first']);
@@ -42,7 +42,7 @@ describe('useStore', () => {
 
   it('As a component, disposal unsubscribes me from the store', () => {
     // Given
-    const store = createSyncStore('test', 'x');
+    const store = createSyncStore({ name: 'test', initial: 'x' });
     let active = 0;
     const counted: ReadableStore<string> = {
       get: store.get,
@@ -69,7 +69,7 @@ describe('useStore', () => {
 
   it('As a component, a set issued right after setup and before the first flush is reflected once settled', () => {
     // Given
-    const store = createSyncStore('test', 'first');
+    const store = createSyncStore({ name: 'test', initial: 'first' });
     const view = watch(store);
 
     // When
@@ -83,7 +83,7 @@ describe('useStore', () => {
 
   it('As a component, a set dispatched from an owned scope like createRoot still reaches my mirror signal', () => {
     // Given
-    const store = createSyncStore('test', 'first');
+    const store = createSyncStore({ name: 'test', initial: 'first' });
     const view = watch(store);
     flush();
 
@@ -100,7 +100,7 @@ describe('useStore', () => {
 
   it('As a caller outside any reactive owner, useStore throws instead of leaking a subscription', () => {
     // Given
-    const store = createSyncStore('test', 'x');
+    const store = createSyncStore({ name: 'test', initial: 'x' });
 
     // When / Then
     expect(() => useStore(store)).toThrow('useStore must be called inside a component or reactive owner');
@@ -108,7 +108,7 @@ describe('useStore', () => {
 
   it('As a component selecting one field, a write to another field re-runs none of my computations', () => {
     // Given
-    const store = createSyncStore('test', { a: 1, b: 1 });
+    const store = createSyncStore({ name: 'test', initial: { a: 1, b: 1 } });
     let memoRuns = 0;
     let effectRuns = 0;
     const view = owned(() => {
@@ -147,10 +147,10 @@ describe('useStore', () => {
 
   it('As a component selecting a derived object, an equality I pass drops rebuilt equal slices', () => {
     // Given
-    const store = createSyncStore('test', { a: 1, b: 1, c: 1 });
+    const store = createSyncStore({ name: 'test', initial: { a: 1, b: 1, c: 1 } });
     let effectRuns = 0;
     const view = owned(() => {
-      const ab = useStore(store, s => ({ a: s.a, b: s.b }), shallowEqual);
+      const ab = useStore(store, s => ({ a: s.a, b: s.b }), isShallowEqual);
       createEffect(ab, () => {
         effectRuns += 1;
       });
@@ -177,7 +177,7 @@ describe('useStore', () => {
 
   it('As a component selecting a field, my selector runs once per store write, however often I read', () => {
     // Given
-    const store = createSyncStore('test', { a: 1 });
+    const store = createSyncStore({ name: 'test', initial: { a: 1 } });
     let selects = 0;
     const view = owned(() => {
       const a = useStore(store, s => {
@@ -205,7 +205,7 @@ describe('useStore', () => {
 
   it('As a handler, the accessor still returns the old value right after a set, until the next flush, while store.get() is current', () => {
     // Given
-    const store = createSyncStore('test', { a: 1 });
+    const store = createSyncStore({ name: 'test', initial: { a: 1 } });
     const view = owned(() => {
       const a = useStore(store, s => s.a);
       createEffect(a, () => undefined);

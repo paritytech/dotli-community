@@ -27,7 +27,7 @@ import {
   type ProtocolTransport,
   type SubscriptionEnd,
 } from '@dotli/protocol';
-import { errorName, log, serializeError, toError } from '@dotli/shared';
+import { getErrorName, log, serializeError, toError } from '@dotli/shared';
 import {
   createPortProvider,
   createTransport,
@@ -149,7 +149,7 @@ function endSpan(span: SpanHandle, error: Error | undefined | 'cancelled'): void
   if (error === undefined || error === 'cancelled') {
     span.setAttributes({ outcome: error ?? 'ok' });
   } else {
-    span.setAttributes({ outcome: 'error', error_name: errorName(error) ?? 'NonError' });
+    span.setAttributes({ outcome: 'error', error_name: getErrorName(error) ?? 'NonError' });
   }
   span.end();
 }
@@ -551,7 +551,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     } catch (err: unknown) {
       const msg = serializeError(err);
       log.error(`${TAG} Pre-sync failed: ${msg}`, err);
-      m.count(S.SMOLDOT_PRESYNC, { outcome: 'error', reason: errorName(err) ?? 'unknown' });
+      m.count(S.SMOLDOT_PRESYNC, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
       // A light client that died during pre-sync is the real cause, and the fatal already closed the worker.
       // The message already carries the cause, which the error logged above keeps in full.
       fail(new ProtocolInitFailedError(msg));

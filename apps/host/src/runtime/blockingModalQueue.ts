@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createAsyncTaskPool, deferred, toAbortError } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, toAbortError } from '@dotli/shared';
 
 const BLOCKING_MODAL_DISPOSED = 'Blocking modal scope disposed';
 
@@ -79,7 +79,7 @@ export function createBlockingModalCoordinator({
     // Ahead of this prompt's own abort listener in the pool, so its counts drop before the pool moves on. A later prompt
     // of the same scope can still be started then, and its abort check turns it away before its task runs.
     signal.addEventListener('abort', settle, { once: true });
-    const answer = deferred<T>();
+    const answer = createDeferred<T>();
     const shown = prompts.call(
       async () => {
         stage = 'shown';

@@ -5,7 +5,7 @@
 // between the paired session and the local wallet from the copy alone.
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
-import { bytesEqual, log } from '@dotli/shared';
+import { areBytesEqual, log } from '@dotli/shared';
 import type { HostCoreStorage } from '../session/coreStorage.js';
 import type { SessionResult } from './messages.js';
 
@@ -55,5 +55,5 @@ export async function applySessionResult(
 }
 
 function holds(stored: LocalWalletReadResult, entropy: Uint8Array): boolean {
-  return stored.status === 'ok' && bytesEqual(stored.entropy, entropy);
+  return stored.status === 'ok' && areBytesEqual(stored.entropy, entropy);
 }

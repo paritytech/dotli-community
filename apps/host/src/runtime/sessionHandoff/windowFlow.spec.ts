@@ -4,7 +4,7 @@
 import { describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createSyncStore, deferred, untilStatus } from '@dotli/shared';
+import { createSyncStore, createDeferred, waitForStatus } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindow.js';
 import type { AuthCommands, LoginOutcome } from '../coreLogin.js';
@@ -86,7 +86,9 @@ function harness(options: HarnessOptions = {}) {
     hello();
   }
   const presence = createFakeSessionPresence('present');
-  const auth = createSyncStore<DotliAuthState>('testAuth', options.auth ?? { tag: 'Disconnected' }, {
+  const auth = createSyncStore<DotliAuthState>({
+    name: 'testAuth',
+    initial: options.auth ?? { tag: 'Disconnected' },
     equals: () => false,
   });
   const main = {
@@ -97,7 +99,7 @@ function harness(options: HarnessOptions = {}) {
   const calls: string[] = [];
   const reads = { uiCache: 0 };
   // Each login the window asked for, which the test answers in place of the command layer.
-  const logins: ReturnType<typeof deferred<LoginOutcome>>[] = [];
+  const logins: ReturnType<typeof createDeferred<LoginOutcome>>[] = [];
   const failures: { phone: boolean; save: Error | null; forget: Error | null; read: Error | null } = {
     phone: false,
     save: null,
@@ -111,7 +113,7 @@ function harness(options: HarnessOptions = {}) {
   const commands: AuthCommands = {
     login: () => {
       calls.push('login');
-      const answer = deferred<LoginOutcome>();
+      const answer = createDeferred<LoginOutcome>();
       logins.push(answer);
       return answer.promise;
     },
@@ -144,7 +146,7 @@ function harness(options: HarnessOptions = {}) {
       calls.push('cancelLogin');
     },
   };
-  const closed = deferred<undefined>();
+  const closed = createDeferred<undefined>();
   // Each result the flow delivered, whether or not it went on to the opener.
   const delivered: SessionResult[] = [];
   const flow = createWindowFlow({
@@ -247,7 +249,7 @@ function harness(options: HarnessOptions = {}) {
 
 /** Waits until the flow shows `view`. */
 function untilScreen(flow: WindowFlow, met: (screen: SignInScreen) => boolean): Promise<void> {
-  return untilStatus(
+  return waitForStatus(
     {
       get: flow.screen.get,
       subscribe: listener =>
@@ -866,8 +868,8 @@ describe('session window flow', () => {
 
   it('As a debug panel user, I see no phrase form until the phrase check has loaded', async () => {
     // Given a phrase check still on its way
-    const called = deferred<undefined>();
-    const check = deferred<PhraseCheck>();
+    const called = createDeferred<undefined>();
+    const check = createDeferred<PhraseCheck>();
     const { flow } = harness({
       intent: 'phrase',
       vetted: true,
@@ -1111,8 +1113,8 @@ describe('session window flow', () => {
     const { flow, sent, vet, presence } = harness({ stored: { session: BLOB } });
     vet();
     await untilView(flow, 'continue');
-    const landed = deferred<undefined>();
-    const asked = deferred<undefined>();
+    const landed = createDeferred<undefined>();
+    const asked = createDeferred<undefined>();
     presence.set = () => {
       asked.resolve(undefined);
       return landed.promise;

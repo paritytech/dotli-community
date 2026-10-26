@@ -14,7 +14,7 @@ export type WalletModeState = {
   failure: string | null;
 };
 
-const walletMode = createSyncStore<WalletModeState>('walletMode', { mode: 'app', failure: null });
+const walletMode = createSyncStore<WalletModeState>({ name: 'walletMode', initial: { mode: 'app', failure: null } });
 
 export const walletModeStore: ReadableStore<WalletModeState> = walletMode;
 

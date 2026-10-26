@@ -25,8 +25,8 @@ afterEach(() => {
 
 /** The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
-  const settings = createSyncStore<SavedSettings | null>('settings-test-settings', null);
-  const theme = createSyncStore<{ pref: ThemePref }>('settings-test-theme', { pref: 'system' });
+  const settings = createSyncStore<SavedSettings | null>({ name: 'settings-test-settings', initial: null });
+  const theme = createSyncStore<{ pref: ThemePref }>({ name: 'settings-test-theme', initial: { pref: 'system' } });
   const { panel, dispose } = createRoot(d => ({
     panel: useSettingsPanel({
       settings,

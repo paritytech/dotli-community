@@ -8,9 +8,9 @@ import type { Continuation } from './continuation.js';
 import { createSettingsActions, wipeOriginState, type SettingsActionsDeps, type WipeParts } from './settingsActions.js';
 import { SMOLDOT_DB_NAME } from '@dotli/chains';
 import { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink, safeStorage, type OriginStores } from '@dotli/shared';
+import { bindLogSink, createSafeStorage, type OriginStores } from '@dotli/shared';
 
 const CACHE_ON = {
   skipCidCache: false,
@@ -216,7 +216,7 @@ describe('applyAndReset', () => {
     const warnings: string[] = [];
     onTestFinished(
       bindLogSink({
-        emit: (level, message) => {
+        emit: ({ level, message }) => {
           if (level === 'warn') {
             warnings.push(message);
           }
@@ -304,8 +304,8 @@ describe('full reset', () => {
   function parts(stores: Partial<OriginStores> = {}): WipeParts {
     return {
       stores: { indexedDB: null, caches: null, serviceWorker: null, ...stores },
-      local: safeStorage(() => local),
-      session: safeStorage(() => session),
+      local: createSafeStorage(() => local),
+      session: createSafeStorage(() => session),
     };
   }
 
@@ -339,8 +339,8 @@ describe('full reset', () => {
   }
 
   beforeEach(() => {
-    local = memoryStorage();
-    session = memoryStorage({ 'dotli:continuation': 'settings_change' });
+    local = createMemoryStorage();
+    session = createMemoryStorage({ entries: { 'dotli:continuation': 'settings_change' } });
   });
 
   it('As a dotli user, resetting my settings keeps the colour scheme I chose', async () => {
@@ -392,7 +392,7 @@ describe('full reset', () => {
     local.setItem('TRUAPI_dot.li_session', 'signed-in');
     local.setItem('DOTLI_MODE_dot.li_x', 'smoldot');
     local.setItem('dotli:network', 'paseo');
-    const base = safeStorage(() => local);
+    const base = createSafeStorage(() => local);
     const calls: string[] = [];
     const recording: WipeParts['local'] = {
       ...base,

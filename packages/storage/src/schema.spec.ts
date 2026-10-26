@@ -8,7 +8,7 @@ import { DB_NAME, DB_VERSION, upgradeDotliDb } from './schema.js';
 
 /** Opens the database on the current schema against `factory`, as the page's first read does. */
 function openCurrent(factory: IDBFactory): Promise<IDBDatabase> {
-  return openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb);
+  return openIdb({ factory, name: DB_NAME, version: DB_VERSION, upgrade: upgradeDotliDb });
 }
 
 describe('the database open', () => {

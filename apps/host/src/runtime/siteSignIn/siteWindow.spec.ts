@@ -7,7 +7,15 @@ import { hex } from '@scure/base';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { blake2b, createSyncStore, deferred, fromHex, storeStatus, toHex, untilStatus } from '@dotli/shared';
+import {
+  hashBlake2b,
+  createSyncStore,
+  createDeferred,
+  fromHex,
+  createStoreStatus,
+  toHex,
+  waitForStatus,
+} from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { memorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -89,7 +97,7 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     logout: () => Promise.reject(new Error('The window signed out')),
     cancelLogin: () => undefined,
   };
-  const closed = deferred<undefined>();
+  const closed = createDeferred<undefined>();
   const deps: Omit<SiteWindowDeps, 'request'> = {
     origin: ORIGIN,
     self: SELF,
@@ -97,7 +105,7 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     createWindowFlow: flow =>
       createWindowFlow({
         signIns,
-        auth: createSyncStore<DotliAuthState>('testSiteWindowAuth', CONNECTED),
+        auth: createSyncStore<DotliAuthState>({ name: 'testSiteWindowAuth', initial: CONNECTED }),
         commands,
         store: {
           readSession: () => Promise.resolve({ status: 'ok', blob: MAIN_BLOB }),
@@ -162,7 +170,7 @@ function watchWindow({ site, screen }: SiteWindow) {
     screen,
     shown,
     /** Resolves once the window shows `view`. */
-    until: (view: string) => untilStatus(storeStatus(screen), current => current.view === view),
+    until: (view: string) => waitForStatus(createStoreStatus(screen), current => current.view === view),
   };
 }
 
@@ -209,7 +217,7 @@ const ACCOUNT_READER: SiteAccountReader = {
 function transactionHarness(call: string | null, { grantRead }: { grantRead?: Promise<void> } = {}) {
   const parts = windowParts();
   const { chain, decoded } = fakeChain();
-  const asked = deferred<undefined>();
+  const asked = createDeferred<undefined>();
   const request: SiteSignRequest = {
     round: 'r1',
     account: ACCOUNT,
@@ -265,7 +273,7 @@ describe('site sign-in window', () => {
       'a'.repeat(64),
       hex.encode(WALLET_ENTROPY),
       WALLET_ACCOUNT,
-      toHex(blake2b(fromHex(MAIN_KEY), 32)),
+      toHex(hashBlake2b(fromHex(MAIN_KEY), 32)),
     ];
     const results = h.posted().filter(message => (message as { type: string }).type === 'dotli:s:result');
     expect(results).toEqual([
@@ -343,7 +351,7 @@ describe('site group window', () => {
 describe('site transaction window', () => {
   it("As a user, I see a site's transaction from Signing to its consent for the site I opened the window from", async () => {
     // Given a site's request that carries its call and a token whose grant is still being read
-    const grantRead = deferred<undefined>();
+    const grantRead = createDeferred<undefined>();
     const h = transactionHarness(CALL, { grantRead: grantRead.promise });
     const w = watchWindow(must(await h.opening, 'an opened transaction window'));
 

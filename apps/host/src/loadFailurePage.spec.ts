@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { createSessionErrorSightings } from './loadFailurePage.js';
 
 describe('sessionErrorSightings', () => {
   it('As a visitor reloading after a failure, I find the sighting kept for this tab until it is forgotten', () => {
     // Given the tab's session storage
-    const session = memoryStorage();
+    const session = createMemoryStorage();
     const sessionErrorSightings = createSessionErrorSightings(session);
     sessionErrorSightings.remember('hub-sync-timeout');
 

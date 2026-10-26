@@ -3,7 +3,7 @@
 
 import { createMemo, merge, onCleanup, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { shallowEqual } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
 import { Button, LayerTracker, Modal } from '@dotli/ui';
 import type { AuthModalState, AuthModalView, PairingView } from '../../state/authModal.js';
 import { isMobileDevice } from '../../device.js';
@@ -92,7 +92,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
     // A copy, so the screen it builds reads plain values.
     () => ({ ...shown().view }),
     // A new state may carry an equal view, which keeps the screen on show.
-    { equals: shallowEqual },
+    { equals: isShallowEqual },
   );
   // The first view of the screen on show, which a view on the same screen keeps.
   const screen = createMemo(view, { equals: sameSignInScreen });

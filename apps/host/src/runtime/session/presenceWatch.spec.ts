@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createAsyncTaskPool } from '@dotli/shared';
-import { manualTimers } from '@dotli/shared/testing';
+import { createManualTimers } from '@dotli/shared/testing';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createChanges } from '../../testing/changes.js';
@@ -30,7 +30,7 @@ function harness(flag: Presence, options: { signedIn?: boolean; wallet?: WalletR
   });
   // The page's sign-out queue, which the watch shares.
   const pageSignOuts = createAsyncTaskPool({ poolSize: 1 });
-  const timers = manualTimers();
+  const timers = createManualTimers();
   const stop = watchPresence({
     signOuts: pageSignOuts,
     timers: {
@@ -407,14 +407,14 @@ describe('presence watch', () => {
     tab.becomeVisible();
     await tab.changes.until(() => tab.signOuts.length === 1);
     tab.signOuts[0]?.reject(new Error('frame unavailable'));
-    await tab.changes.until(() => tab.timers.pending() === 1);
+    await tab.changes.until(() => tab.timers.countPending() === 1);
 
     // When the page rechecks meanwhile
     tab.becomeVisible();
     await tab.changes.until(() => tab.signOuts.length === 2);
 
     // Then the waiting retry is gone
-    expect(tab.timers.pending()).toBe(0);
+    expect(tab.timers.countPending()).toBe(0);
 
     // When the newer check's sign-out lands and the longest retry wait passes
     tab.finishSignOut(1);
@@ -432,13 +432,13 @@ describe('presence watch', () => {
     tab.becomeVisible();
     await tab.changes.until(() => tab.signOuts.length === 1);
     tab.signOuts[0]?.reject(new Error('frame unavailable'));
-    await tab.changes.until(() => tab.timers.pending() === 1);
+    await tab.changes.until(() => tab.timers.countPending() === 1);
 
     // When the watch stops
     tab.stop();
 
     // Then no retry waits
-    expect(tab.timers.pending()).toBe(0);
+    expect(tab.timers.countPending()).toBe(0);
 
     // When the longest retry wait passes
     await tab.timers.advance(16000);

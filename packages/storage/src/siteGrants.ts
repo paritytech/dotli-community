@@ -4,7 +4,7 @@
 // The sites a user signed in to from the main store: what a session window keeps of each one.
 
 import { siteGrantsIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from '@dotli/shared';
+import { waitForIdbRequest, runIdbTransaction } from '@dotli/shared';
 import { SITE_GRANTS_STORE } from './schema.js';
 
 export type SiteGrant = {
@@ -44,8 +44,13 @@ export type SiteGrantStore = {
 export function createSiteGrantStore(idb: DotliIdb = siteGrantsIdb): SiteGrantStore {
   async function write(change: (store: IDBObjectStore) => void): Promise<void> {
     const db = await idb.connect();
-    await idbTransaction(db, SITE_GRANTS_STORE, 'readwrite', tx => {
-      change(tx.objectStore(SITE_GRANTS_STORE));
+    await runIdbTransaction({
+      db,
+      stores: SITE_GRANTS_STORE,
+      mode: 'readwrite',
+      body: tx => {
+        change(tx.objectStore(SITE_GRANTS_STORE));
+      },
     });
   }
 
@@ -56,7 +61,7 @@ export function createSiteGrantStore(idb: DotliIdb = siteGrantsIdb): SiteGrantSt
   return {
     async read(token) {
       const db = await idb.connect();
-      const grant = (await idbRequest(
+      const grant = (await waitForIdbRequest(
         db.transaction(SITE_GRANTS_STORE, 'readonly').objectStore(SITE_GRANTS_STORE).get(token),
       )) as SiteGrant | undefined;
       return grant ?? null;
@@ -106,7 +111,7 @@ export function createSiteGrantStore(idb: DotliIdb = siteGrantsIdb): SiteGrantSt
     },
     async list() {
       const db = await idb.connect();
-      const grants = (await idbRequest(
+      const grants = (await waitForIdbRequest(
         db.transaction(SITE_GRANTS_STORE, 'readonly').objectStore(SITE_GRANTS_STORE).getAll(),
       )) as SiteGrant[];
       return grants.sort((a, b) => b.lastUsedAt - a.lastUsedAt);

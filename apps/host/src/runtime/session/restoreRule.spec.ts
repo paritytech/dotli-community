@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletReadResult } from '@dotli/protocol';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { createCoreStorage } from './coreStorage.js';
 import { pageSignInFlag } from './signInFlag.js';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './coreStorage.fake.js';
@@ -63,7 +63,7 @@ beforeEach(() => {
   const coreStorage = createCoreStorage({
     shared,
     flag: pageSignInFlag({ presence, storedSignIn: () => Promise.resolve('none') }),
-    local: () => memoryStorage(),
+    local: () => createMemoryStorage(),
     keyDb: () => new IDBFactory(),
   });
   store = {

@@ -425,7 +425,7 @@ function recordLogLines(): {
   let heard: (() => void) | null = null;
   onTestFinished(
     bindLogSink({
-      emit: (level, message, attrs) => {
+      emit: ({ level, message, attrs }) => {
         lines.push({ level, message, attrs });
         heard?.();
       },
@@ -541,7 +541,7 @@ function recordListenerReports(): ListenerReports {
   );
   onTestFinished(
     bindLogSink({
-      emit: (level: LogLevel, message: string) => {
+      emit: ({ level, message }) => {
         if (level === 'error') {
           errors.push(message);
         }

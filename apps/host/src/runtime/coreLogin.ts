@@ -19,7 +19,7 @@ import {
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { captureException, recordExpected, reportExpected, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, deferred, errorMessage, log, type ReadableStore, toError } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred, getErrorMessage, log, type ReadableStore, toError } from '@dotli/shared';
 import { ownCoreConnection } from './coreConnection.js';
 import type { DotliAuthState } from './session/authState.js';
 import type { HostCoreStorage } from './session/coreStorage.js';
@@ -164,7 +164,7 @@ export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): CoreCommands
         // The core already rendered a `LoginRequestError`, or stayed silent on purpose. Report a failure
         // only when it never saw one.
         if (!(error instanceof LoginRequestError)) {
-          deps.session.reportLoginFailure(errorMessage(error));
+          deps.session.reportLoginFailure(getErrorMessage(error));
         }
         return error instanceof LoginRequestError && error.error.tag === 'Cancelled' ? CANCELLED : FAILED;
       }
@@ -197,7 +197,7 @@ export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): CoreCommands
   } {
     let failure: { error: unknown } | null = null;
     let whenAnswered: DotliAuthState | null = null;
-    let woken = deferred<undefined>();
+    let woken = createDeferred<undefined>();
     const nudge = (): void => {
       woken.resolve(undefined);
     };
@@ -217,7 +217,7 @@ export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): CoreCommands
       async complete() {
         const answered = whenAnswered ?? deps.auth.get();
         for (;;) {
-          woken = deferred<undefined>();
+          woken = createDeferred<undefined>();
           if (failure !== null) {
             throw new Error('The paired session could not be stored', { cause: failure.error });
           }

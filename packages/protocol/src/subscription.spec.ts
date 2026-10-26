@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { _void } from 'scale-ts';
 import {
   createTransport,
@@ -56,7 +56,7 @@ describe('subscribe', () => {
   }
 
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
     statusSinks = [];
     resolveSinks = [];
     stops = 0;

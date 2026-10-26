@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
-import { resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
+import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { UrlPillShield } from '../../src/islands/UrlPillShield.js';
 import { anyTopbarSurfaceOpen } from '../../src/state/topbarSurfaces.js';
 import { setVerificationShieldState, showProductPill } from '../../src/state/urlPill.js';
@@ -40,20 +40,20 @@ describe('UrlPillShield island', () => {
     showProductPill('app', '.dot.li');
     setVerificationShieldState('trusted');
     mountIsland();
-    await untilDom(() => document.getElementById('verification-shield')?.dataset['state'] === 'trusted');
+    await waitForDom(() => document.getElementById('verification-shield')?.dataset['state'] === 'trusted');
 
     // When: Enter or Space on the shield, a click of `detail` 0
     byId('verification-shield').click();
 
     // Then
-    await untilDom(() => tooltipOpen());
+    await waitForDom(() => tooltipOpen());
     expect(anyTopbarSurfaceOpen()).toBe(true);
 
     // When
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
     // Then
-    await untilDom(() => !tooltipOpen());
+    await waitForDom(() => !tooltipOpen());
     expect(anyTopbarSurfaceOpen()).toBe(false);
   });
 });

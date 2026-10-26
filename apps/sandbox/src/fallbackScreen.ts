@@ -8,7 +8,7 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import s from './fallbackScreen.module.css';
 
-const contentLog = log.child({ flow: 'content' });
+const contentLog = log.createChild({ flow: 'content' });
 
 /** The part of `Document` the screen needs. */
 export type FallbackPage = {

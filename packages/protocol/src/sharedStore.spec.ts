@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createStatusCell } from '@dotli/shared';
-import { manualTimers, recordLog } from '@dotli/shared/testing';
+import { createManualTimers, recordLog } from '@dotli/shared/testing';
 import { err, hostFailure, ok, type Sink } from '@dotli/transport';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { createFrameRpc } from './rpc.js';
@@ -90,7 +90,8 @@ describe('createSharedStore', () => {
   it('As a returning user, a frame status listener that rebuilds the frame as it listens leaves my shared store down until the new frame listens', () => {
     // Given a frame that publishes its status as the real one does, a listener first in line that rebuilds the frame
     // the first time it listens, and a shared store built after that listener
-    const cell = createStatusCell<ProtocolStatus>('idle', {
+    const cell = createStatusCell<ProtocolStatus>({
+      initial: 'idle',
       onListenerError: error => {
         throw error;
       },
@@ -125,7 +126,7 @@ describe('createSharedStore', () => {
 
   it("As a returning user, another tab's shared auth write reaches me, and my subscription waits only for a listening frame", async () => {
     // Given a frame still booting, and a subscription made while it boots
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const warnings = recordLog({ onFinished: onTestFinished, level: 'warn' });
     const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { status: 'booting', timers });
@@ -153,7 +154,7 @@ describe('createSharedStore', () => {
 
   it('As a returning user, my shared auth subscription follows each new frame and stops in the frame once I leave', async () => {
     // Given a subscription on a frame that is then lost and rebuilt
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const sinks = new Set<ChangeSink>();
     const fake = createFakeFrame(relayingChanges(sinks), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers) });
@@ -182,7 +183,7 @@ describe('createSharedStore', () => {
 
   it('As a returning user, my shared auth subscription the frame ends while it stays up is reopened after a wait that doubles, and each end is reported and captured once', async () => {
     // Given a subscription on a frame that stays up
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const captured = recordCaptures({ onFinished: onTestFinished });
     const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
@@ -219,7 +220,7 @@ describe('createSharedStore', () => {
 
   it('As a returning user, my shared auth subscription ended by the loss of its frame is not reopened there and not reported', async () => {
     // Given a subscription on a frame that is up
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
@@ -238,7 +239,7 @@ describe('createSharedStore', () => {
 
   it('As a returning user, a frame lost while my shared auth subscription asks for it is neither reported nor followed', async () => {
     // Given a subscription on a frame that is dropped in the turn the subscription asks for it
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
@@ -251,12 +252,12 @@ describe('createSharedStore', () => {
 
     // Then
     expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([]);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it('As a returning user, I leave while my ended shared auth subscription waits to be reopened, and it is not reopened', async () => {
     // Given a subscription the frame ended
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const opened: ChangeSink[] = [];
     const fake = createFakeFrame(openingChanges(opened), { timers });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame, timers), timers });
@@ -271,7 +272,7 @@ describe('createSharedStore', () => {
 
     // Then
     expect(opened).toHaveLength(1);
-    expect(timers.pending()).toBe(0);
+    expect(timers.countPending()).toBe(0);
   });
 
   it.each([

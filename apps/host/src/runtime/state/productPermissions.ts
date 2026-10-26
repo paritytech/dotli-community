@@ -141,8 +141,12 @@ export function createProductPermissions({
   product,
   timers = realTimers,
 }: ProductPermissionsDeps): ProductPermissions {
-  const permissions = createSyncStore<ProductPermissionsState>('product_permissions', NONE, { equals: sameState });
-  const pending = createSyncStore<PendingPermissions>('product_permissions_pending', null);
+  const permissions = createSyncStore<ProductPermissionsState>({
+    name: 'product_permissions',
+    initial: NONE,
+    equals: sameState,
+  });
+  const pending = createSyncStore<PendingPermissions>({ name: 'product_permissions_pending', initial: null });
 
   // One listener's failure must not keep the change from the others.
   const changes = createListenerSet<PermissionsChange>({

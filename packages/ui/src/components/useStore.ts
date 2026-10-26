@@ -8,7 +8,7 @@ import type { ReadableStore } from '@dotli/shared';
  * Read a store as a Solid accessor that unsubscribes when its owner is disposed.
  *
  * Prefer `select` over reading one field of the whole value: Solid 2 runs an effect's function every time
- * its compute re-runs, even for an equal value. Pass `equals` (such as `shallowEqual`) when `select` builds
+ * its compute re-runs, even for an equal value. Pass `equals` (such as `isShallowEqual`) when `select` builds
  * a new object or array.
  *
  * The accessor lags a synchronous `set` until Solid's next flush. Handlers acting on a value just written

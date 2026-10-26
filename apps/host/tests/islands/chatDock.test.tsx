@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
-import { memoryStorage, resetAllStoresForTests, untilDom } from '@dotli/shared/testing';
+import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections, createChatStore, type ChatStore } from '../../src/runtime/chat/store.js';
 import { labelToProductId } from '../../src/runtime/runtimeConfig.js';
 import { setAuthState } from '../../src/runtime/state/auth.js';
@@ -41,7 +41,7 @@ function mountIsland(): void {
 
 beforeEach(() => {
   chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
-  const local = memoryStorage();
+  const local = createMemoryStorage();
   stopState = startChatPanelState(chat, local);
   setProductLoaded(LABEL, PRODUCT, { chat: true });
   setAuthState({ tag: 'Connected', session: { connected: true } });
@@ -65,7 +65,7 @@ describe('ChatDock island', () => {
     setChatPanelOpen(true);
 
     // Then
-    await untilDom(() => document.querySelector('[data-testid="chat-room-name"]')?.textContent === 'Main');
+    await waitForDom(() => document.querySelector('[data-testid="chat-room-name"]')?.textContent === 'Main');
     expect(byId('chat-panel').hidden).toBe(false);
     expect(byTestId('chat-room-name').textContent).toBe('Main');
   });
@@ -84,7 +84,7 @@ describe('ChatDock island', () => {
     byId('chat-panel-close').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     // Then
-    await untilDom(() => byId('chat-panel').hidden === true);
+    await waitForDom(() => byId('chat-panel').hidden === true);
     expect(chatPanelStore.get().open).toBe(false);
   });
 
@@ -96,12 +96,12 @@ describe('ChatDock island', () => {
     setTopbarVisible(false);
 
     // Then
-    await untilDom(() => byId('chat-panel').hasAttribute('data-topbar-hidden'));
+    await waitForDom(() => byId('chat-panel').hasAttribute('data-topbar-hidden'));
 
     // When
     setTopbarVisible(true);
 
     // Then
-    await untilDom(() => !byId('chat-panel').hasAttribute('data-topbar-hidden'));
+    await waitForDom(() => !byId('chat-panel').hasAttribute('data-topbar-hidden'));
   });
 });

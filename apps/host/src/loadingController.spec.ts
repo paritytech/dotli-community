@@ -46,7 +46,7 @@ beforeEach(() => {
   reducedMotion = false;
   page = new EventTarget();
   resetAllStoresForTests();
-  pageContent = createSyncStore<PageContent>('page-content-spec', 'page');
+  pageContent = createSyncStore<PageContent>({ name: 'page-content-spec', initial: 'page' });
   const frameTimers = new Map<number, ReturnType<typeof setTimeout>>();
   let lastFrame = 0;
   ctl = createLoadingController({

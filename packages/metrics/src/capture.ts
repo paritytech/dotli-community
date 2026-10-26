@@ -4,7 +4,7 @@
 // Captures forward to one bound sink, so tests record them by binding their own instead of mocking this package.
 // Sentry-free, so a module that only reports failures does not pull in the SDK.
 
-import { errorName, log } from '@dotli/shared';
+import { getErrorName, log } from '@dotli/shared';
 import { m, type MetricOutcome, type SpanHandle } from './metrics.js';
 import * as S from './spans.js';
 
@@ -95,7 +95,7 @@ export function reportExpected(
     log.warn(message, err);
   }
   recordExpected(err, { flow, step });
-  m.count(metric, { outcome, reason: reason ?? errorName(err) ?? 'unknown' });
+  m.count(metric, { outcome, reason: reason ?? getErrorName(err) ?? 'unknown' });
 }
 
 /**
@@ -106,6 +106,6 @@ export function reportListener(flow: Flow, owner: string): (error: unknown) => v
   return error => {
     captureException(error, { flow, step: 'listener', tags: { owner } });
     log.error(`[dot.li] A ${owner} listener threw`, error);
-    m.count(S.LISTENER_DELIVERY, { outcome: 'error', reason: errorName(error) ?? 'unknown', owner });
+    m.count(S.LISTENER_DELIVERY, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', owner });
   };
 }

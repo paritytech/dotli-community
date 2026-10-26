@@ -4,8 +4,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThemeState, themeStore } from './runtime/state/theme.js';
 import { createThemeController, type ThemeController } from './themeController.js';
-import { safeStorage, type SafeStorage } from '@dotli/shared';
-import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createSafeStorage, type SafeStorage } from '@dotli/shared';
+import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { FakeColorScheme } from './testing/colorScheme.js';
 
 let local: Pick<SafeStorage, 'getItem' | 'setItem'>;
@@ -15,7 +15,7 @@ let root: Map<string, string>;
 
 beforeEach(() => {
   resetAllStoresForTests();
-  local = memoryStorage();
+  local = createMemoryStorage();
   os = new FakeColorScheme('dark');
   root = new Map();
 });
@@ -42,7 +42,7 @@ function loadController(): ThemeController & { getThemeState: typeof getThemeSta
 
 /** A localStorage whose every access throws, as when the browser blocks it. */
 function blockedStorage(): SafeStorage {
-  return safeStorage(() => {
+  return createSafeStorage(() => {
     throw new DOMException('The operation is insecure.', 'SecurityError');
   });
 }

@@ -4,7 +4,7 @@
 import { ProtocolFatalError, ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
 import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } from '@dotli/config';
 
-import { endpointHost, errorMessage, gatewayUnreachable } from '@dotli/shared';
+import { getEndpointHost, getErrorMessage, describeGatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './errorCopy.js';
 import { ManifestRejectedError } from './manifestGate.js';
@@ -25,11 +25,11 @@ export {
 
 /** The first entry, since the gateway backend dials the list in order. */
 function assethubHost(): string | undefined {
-  return endpointHost(getActiveServicesConfig().assethub.rpcs.at(0));
+  return getEndpointHost(getActiveServicesConfig().assethub.rpcs.at(0));
 }
 
 function ipfsGatewayHost(): string | undefined {
-  return endpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0));
+  return getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0));
 }
 
 /** The name resolves over the Asset Hub RPC and the bytes come from the IPFS gateway. Some networks host both. */
@@ -123,7 +123,7 @@ function classifyError(
   title?: string;
 } {
   // A branch that forgets its `kind` is a compile error rather than an unkeyed error page.
-  const msg = errorMessage(err);
+  const msg = getErrorMessage(err);
 
   // The app's origin never answered, which a blocker or a filtered network causes, not the network the app is on.
   if (err instanceof SandboxSilentError) {
@@ -215,7 +215,7 @@ function classifyError(
     return {
       kind: 'failed-to-fetch',
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,
-      message: gatewayUnreachable(ipfsGatewayHost()),
+      message: describeGatewayUnreachable(ipfsGatewayHost()),
       recovery: 'switch-backend',
       tips: gatewayTips(),
     };

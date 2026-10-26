@@ -23,8 +23,8 @@ import {
   type FrameStatus,
   type FrameStatusEnd,
 } from '@dotli/protocol';
-import { deferred, toHex } from '@dotli/shared';
-import { FakePage, manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createDeferred, toHex } from '@dotli/shared';
+import { createFakePage, type FakePage, createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import {
   TransportUnsupportedProtocolVersionError,
   createPortProvider,
@@ -101,31 +101,31 @@ function fakeWorker(): FakeWorker {
     hello: { resolutionId: null },
   });
   const status = createFrameStatus();
-  const statusHeard = deferred<undefined>();
+  const statusHeard = createDeferred<undefined>();
   serving.handleSubscription(frame.status, (start, context, sink) => {
     statusHeard.resolve(undefined);
     return status.handler(start, context, sink);
   });
-  const portClosed = deferred<undefined>();
+  const portClosed = createDeferred<undefined>();
   channel.port1.addEventListener('close', () => {
     portClosed.resolve(undefined);
   });
   const heartbeats: (string | null)[] = [];
-  let beat = deferred<undefined>();
+  let beat = createDeferred<undefined>();
   let refusing = false;
   let holding = false;
-  const held = deferred<undefined>();
+  const held = createDeferred<undefined>();
   serving.handleRequest(frame.heartbeat, (_payload, context) => {
     heartbeats.push(context.hello.resolutionId);
     beat.resolve(undefined);
-    beat = deferred<undefined>();
+    beat = createDeferred<undefined>();
     if (refusing) {
       throw new Error('heartbeat refused');
     }
     return holding ? held.promise.then(() => ok()) : ok();
   });
   const beatSinks = new Set<Sink<MethodTypes<typeof frame.beat>['receive'], DomainError<typeof frame.beat>>>();
-  const beatsHeard = deferred<undefined>();
+  const beatsHeard = createDeferred<undefined>();
   serving.handleSubscription(frame.beat, (_start, _context, sink) => {
     beatSinks.add(sink);
     beatsHeard.resolve(undefined);
@@ -174,10 +174,10 @@ function link(
 ): ReturnType<typeof connectSharedWorker> {
   return connectSharedWorker({
     worker: fake.worker,
-    window: (options.page ?? new FakePage()).window,
+    window: (options.page ?? createFakePage()).window,
     resolutionId: options.resolutionId ?? null,
     readyTimeoutMs: READY_TIMEOUT_MS,
-    timers: options.timers ?? manualTimers(),
+    timers: options.timers ?? createManualTimers(),
   });
 }
 
@@ -253,9 +253,9 @@ describe('connectSharedWorker', () => {
 
   it('As a tab whose worker never says ready, my frame fails after the ready wait and lets go of the worker', async () => {
     // Given a link whose status the frame was handed
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const worker = fakeWorker();
-    const handed = deferred<WorkerEnd>();
+    const handed = createDeferred<WorkerEnd>();
     const linked = link(worker, { timers });
     linked.status.onEnd(handed.resolve);
     const failed = linked.ready.catch((err: unknown) => err);
@@ -304,7 +304,7 @@ describe('connectSharedWorker', () => {
   ])('As a dotli operator, I see the ready wait of a worker that $case timed under its outcome', async row => {
     // Given
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const worker = fakeWorker();
     const linked = link(worker, { timers }).ready.catch(() => undefined);
 
@@ -321,13 +321,13 @@ describe('connectSharedWorker', () => {
   it('As a dotli operator, I see a worker that never answers the handshake counted as a ready timeout, with one deadline', async () => {
     // Given a worker whose port nothing answers on
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const timers = manualTimers();
+    const timers = createManualTimers();
     const channel = new MessageChannel();
     channels.add(channel);
     const silent = Object.assign(new EventTarget(), { port: channel.port2 });
     const failed = connectSharedWorker({
       worker: silent,
-      window: new FakePage().window,
+      window: createFakePage().window,
       resolutionId: null,
       readyTimeoutMs: READY_TIMEOUT_MS,
       timers,
@@ -427,7 +427,7 @@ describe('connectSharedWorker', () => {
 
   it('As a tab kept in the back-forward cache, I keep my worker transport', async () => {
     // Given a tab on a ready worker
-    const page = new FakePage();
+    const page = createFakePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
     worker.status.ready();
@@ -443,7 +443,7 @@ describe('connectSharedWorker', () => {
 
   it('As a tab that leaves for good, I dispose my worker transport', async () => {
     // Given a tab on a ready worker
-    const page = new FakePage();
+    const page = createFakePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
     worker.status.ready();
@@ -527,7 +527,7 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
   const contexts = new Map<string, ProtocolContext>();
   serveWorker(worker, contexts);
   const workerStatus = createFrameStatus();
-  const heard = deferred<undefined>();
+  const heard = createDeferred<undefined>();
   worker.handleSubscription(frame.status, (start, context, sink) => {
     const stop = workerStatus.handler(start, context, sink);
     heard.resolve(undefined);
@@ -788,7 +788,7 @@ describe('the worker relay', () => {
 
   it('As the host, a call the worker holds when it releases my port fails with the release', async () => {
     // Given a worker that holds an owner read
-    const asked = deferred<undefined>();
+    const asked = createDeferred<undefined>();
     const { host, worker, workerStatus, workerStatusHeard } = linkHops(served => {
       served.handleRequest(resolve.owner, () => {
         asked.resolve(undefined);
@@ -831,7 +831,7 @@ describe('the worker relay', () => {
 
   it("As the host, my frame fails as a version mismatch when the link meets a worker of another version, as it would for my iframe's", async () => {
     // Given a ready frame whose worker holds an owner read
-    const asked = deferred<undefined>();
+    const asked = createDeferred<undefined>();
     const { host, link, workerStatusHeard } = linkHops(served => {
       served.handleRequest(resolve.owner, () => {
         asked.resolve(undefined);
@@ -859,7 +859,7 @@ describe('the worker relay', () => {
 
   it('As the host, my frame fails with why when the link to the worker closes, and a call the worker held fails with it', async () => {
     // Given a ready frame whose worker holds an owner read
-    const asked = deferred<undefined>();
+    const asked = createDeferred<undefined>();
     const { host, link, workerStatusHeard } = linkHops(served => {
       served.handleRequest(resolve.owner, () => {
         asked.resolve(undefined);

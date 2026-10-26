@@ -4,8 +4,8 @@
 import { beforeEach, describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { deferred, toError } from '@dotli/shared';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createDeferred, toError } from '@dotli/shared';
+import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { denied, domain, err, malformedFrame, ok, unsupported, type Request } from '@dotli/transport';
 import { callName } from './methodPolicy.js';
 import { PROTOCOL_ERRORS } from './errors.js';
@@ -71,7 +71,7 @@ describe('createFrameRpc', () => {
   });
 
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
     metrics = bindRecordingSentry({ onFinished: onTestFinished });
   });
 
@@ -373,7 +373,7 @@ describe('createFrameRpc', () => {
 
   it('As a dotli integrator, a request is timed on the clock I give it, apart from the timers its budget runs on', async () => {
     // Given a frame that answers once the test says, and a clock apart from the timers
-    const answer = deferred<string | null>();
+    const answer = createDeferred<string | null>();
     const fake = createFakeFrame(
       serving => {
         serving.handleRequest(resolve.owner, () => answer.promise.then(value => ok(value)));

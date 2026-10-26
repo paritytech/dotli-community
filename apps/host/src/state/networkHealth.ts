@@ -8,7 +8,7 @@ import { networkMonitor, type NetworkMonitor } from './networkMonitor.js';
 import { createSyncStore, listen, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
 import { judgeNetworkHealth, nextOverdueAt, type NetworkHealth } from '../networkVerdict.js';
 
-const health = createSyncStore<NetworkHealth>('network-health', 'quiet');
+const health = createSyncStore<NetworkHealth>({ name: 'network-health', initial: 'quiet' });
 
 export const networkHealthStore: ReadableStore<NetworkHealth> = health;
 
@@ -81,9 +81,9 @@ export function startNetworkHealth(
   judge();
   const stops = [
     monitor.subscribe(judge),
-    listen(page.connectivity, 'online', judge),
-    listen(page.connectivity, 'offline', judge),
-    listen(page.visibility, 'visibilitychange', judge),
+    listen({ target: page.connectivity, type: 'online', handler: judge }),
+    listen({ target: page.connectivity, type: 'offline', handler: judge }),
+    listen({ target: page.visibility, type: 'visibilitychange', handler: judge }),
   ];
   const stop = (): void => {
     for (const stopOne of stops) {

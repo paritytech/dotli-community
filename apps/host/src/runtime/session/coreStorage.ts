@@ -13,8 +13,8 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   fromHex,
-  idbRequest,
-  idbTransaction,
+  waitForIdbRequest,
+  runIdbTransaction,
   log,
   openIdb,
   toHex,
@@ -537,13 +537,18 @@ async function loadOrCreateCoreSecretKey(keyDb: () => IDBFactory): Promise<Crypt
 }
 
 function openKeyDb(factory: IDBFactory): Promise<IDBDatabase> {
-  return openIdb(factory, KEY_DB_NAME, 1, db => {
-    db.createObjectStore(KEY_DB_STORE);
+  return openIdb({
+    factory,
+    name: KEY_DB_NAME,
+    version: 1,
+    upgrade: db => {
+      db.createObjectStore(KEY_DB_STORE);
+    },
   });
 }
 
 async function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
-  const value: unknown = await idbRequest(
+  const value: unknown = await waitForIdbRequest(
     db.transaction(KEY_DB_STORE).objectStore(KEY_DB_STORE).get(CORE_SECRET_KEY_ID),
   );
   return isCryptoKey(value) ? value : undefined;
@@ -551,8 +556,13 @@ async function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
 
 /** Rejects when another tab added the key first, and on a commit-time abort such as a full quota. */
 function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
-  return idbTransaction(db, KEY_DB_STORE, 'readwrite', tx => {
-    tx.objectStore(KEY_DB_STORE).add(key, CORE_SECRET_KEY_ID);
+  return runIdbTransaction({
+    db,
+    stores: KEY_DB_STORE,
+    mode: 'readwrite',
+    body: tx => {
+      tx.objectStore(KEY_DB_STORE).add(key, CORE_SECRET_KEY_ID);
+    },
   });
 }
 

@@ -213,8 +213,12 @@ function documentCookieChanges(): CookieChanges | null {
   }
   return {
     subscribe: listener =>
-      listen(cookieStore, 'change', event => {
-        listener([...event.changed, ...event.deleted].map(cookie => cookie.name ?? ''));
+      listen({
+        target: cookieStore,
+        type: 'change',
+        handler: event => {
+          listener([...event.changed, ...event.deleted].map(cookie => cookie.name ?? ''));
+        },
       }),
   };
 }

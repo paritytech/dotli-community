@@ -73,18 +73,25 @@ function memoryIdbOf(
 
 /** A fresh in-memory IndexedDB, holding nothing, that a store reads and writes in place of the page's own. */
 export function memoryIdb(options: MemoryIdbOptions = {}): MemoryIdb {
-  return memoryIdbOf(factory => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb), options);
+  return memoryIdbOf(
+    factory => openIdb({ factory, name: DB_NAME, version: DB_VERSION, upgrade: upgradeDotliDb }),
+    options,
+  );
 }
 
 /** A fresh in-memory wallet database, in place of the frame's own. */
 export function memoryWalletIdb(options: MemoryIdbOptions = {}): MemoryIdb {
-  return memoryIdbOf(factory => openIdb(factory, WALLET_DB_NAME, WALLET_DB_VERSION, upgradeWalletDb), options);
+  return memoryIdbOf(
+    factory => openIdb({ factory, name: WALLET_DB_NAME, version: WALLET_DB_VERSION, upgrade: upgradeWalletDb }),
+    options,
+  );
 }
 
 /** A fresh in-memory site grants database, in place of the session windows' own. */
 export function memorySiteGrantsIdb(options: MemoryIdbOptions = {}): MemoryIdb {
   return memoryIdbOf(
-    factory => openIdb(factory, SITE_GRANTS_DB_NAME, SITE_GRANTS_DB_VERSION, upgradeSiteGrantsDb),
+    factory =>
+      openIdb({ factory, name: SITE_GRANTS_DB_NAME, version: SITE_GRANTS_DB_VERSION, upgrade: upgradeSiteGrantsDb }),
     options,
   );
 }

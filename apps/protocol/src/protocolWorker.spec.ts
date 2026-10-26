@@ -5,7 +5,7 @@
 // Each tab is a real transport on its own port pair, so the worker is driven over the wire as an iframe drives it.
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { manualTimers, must } from '@dotli/shared/testing';
+import { createManualTimers, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
@@ -19,7 +19,7 @@ import {
 } from '@dotli/protocol';
 import { createPortProvider, createTransport, domain, err, hostFailure, ok, type MethodTypes } from '@dotli/transport';
 import type { LightClient, LightClientChange, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/chains';
-import { deferred, bindLogSink, type LogLevel } from '@dotli/shared';
+import { createDeferred, bindLogSink, type LogLevel } from '@dotli/shared';
 import { createTestTicker } from './netBytes.fake.js';
 import {
   HEARTBEAT_MISSED_BEATS,
@@ -207,7 +207,7 @@ afterEach(() => {
   closeHostLinks();
 });
 
-type Presync = ReturnType<typeof deferred<undefined>>;
+type Presync = ReturnType<typeof createDeferred<undefined>>;
 
 /**
  * Ends a held pre-sync and settles once the worker has acted on it. The worker awaited that promise before the test
@@ -323,7 +323,7 @@ async function bootWorker(
   const logs: LogLine[] = [];
   const logWaiters: { message: string; resolve: () => void }[] = [];
   bindLogSink({
-    emit: (level, message) => {
+    emit: ({ level, message }) => {
       logs.push({ level, message });
       for (const waiter of logWaiters.filter(w => w.message === message)) {
         logWaiters.splice(logWaiters.indexOf(waiter), 1);
@@ -332,7 +332,7 @@ async function bootWorker(
     },
   });
   const connectListeners: ((event: { readonly ports: readonly WorkerPort[] }) => void)[] = [];
-  const closing = deferred<undefined>();
+  const closing = createDeferred<undefined>();
   const close = vi.fn<() => void>(() => {
     closing.resolve(undefined);
   });
@@ -413,7 +413,7 @@ async function bootWorker(
           window: new EventTarget(),
           resolutionId: null,
           readyTimeoutMs: 30_000,
-          timers: manualTimers(),
+          timers: createManualTimers(),
         });
         tabs.add(linked.transport);
         return linked;
@@ -503,7 +503,7 @@ describe('protocol SharedWorker', () => {
   it('As a dead shared worker, I send my buffered telemetry before I close', async () => {
     // Given a worker whose telemetry flush holds
     const light = fakeLightClient();
-    const flushing = deferred<undefined>();
+    const flushing = createDeferred<undefined>();
     const worker = await bootWorker(light, undefined, () => flushing.promise);
     worker.connect();
 
@@ -534,7 +534,7 @@ describe('protocol SharedWorker', () => {
 
   it('As a dotli user on the shared light client, I hear why pre-sync failed and the worker then closes, so my reconnect starts a fresh one', async () => {
     // Given a tab waiting on a pre-sync still under way
-    const presync = deferred<undefined>();
+    const presync = createDeferred<undefined>();
     const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
     const status = worker.connect().status;
 
@@ -550,7 +550,7 @@ describe('protocol SharedWorker', () => {
 
   it('As a dotli user on the shared light client, I wait on a pre-sync the light client dies under and the worker closes once', async () => {
     // Given a tab waiting on a pre-sync still under way
-    const presync = deferred<undefined>();
+    const presync = createDeferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
     const status = worker.connect().status;
@@ -567,8 +567,8 @@ describe('protocol SharedWorker', () => {
 
   it('As a tab that connects after the light client died, I hear the fatal on subscribe', async () => {
     // Given a worker whose light client died before the tab that started it connected
-    const flushed = deferred<undefined>();
-    const light = fakeLightClient({ presync: () => deferred<undefined>().promise });
+    const flushed = createDeferred<undefined>();
+    const light = fakeLightClient({ presync: () => createDeferred<undefined>().promise });
     const worker = await bootWorker(light, undefined, () => {
       flushed.resolve(undefined);
       return Promise.resolve();
@@ -638,7 +638,7 @@ describe('protocol SharedWorker', () => {
 
   it('As a dotli user whose pre-sync fails before my tab connected, I hear why at once and the worker then closes', async () => {
     // Given a worker whose pre-sync failed before the tab that started it connected
-    const presync = deferred<undefined>();
+    const presync = createDeferred<undefined>();
     const worker = await bootWorker(fakeLightClient({ presync: () => presync.promise }));
     await endPresync(presync, new Error('chainHead follow stopped'));
 
@@ -691,7 +691,7 @@ describe('protocol SharedWorker', () => {
 
   it('As a dotli user on the shared light client, I hear the stored database of each chain as the light client reads it', async () => {
     // Given a tab hearing telemetry while pre-sync is still under way
-    const presync = deferred<undefined>();
+    const presync = createDeferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
     const tab = worker.connect();
@@ -708,7 +708,7 @@ describe('protocol SharedWorker', () => {
 
   it('As a dotli user on the shared light client, I join while it syncs and hear what it read of each database so far', async () => {
     // Given a worker still syncing that already read the relay's database
-    const presync = deferred<undefined>();
+    const presync = createDeferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
     light.readDb('relay', 'unavailable');
@@ -737,7 +737,7 @@ describe('protocol SharedWorker', () => {
 
   it('As a dotli user on the shared light client, a light client that dies while Asset Hub syncs never tells a waiting tab it is ready', async () => {
     // Given a tab waiting on a pre-sync still under way
-    const presync = deferred<undefined>();
+    const presync = createDeferred<undefined>();
     const light = fakeLightClient({ presync: () => presync.promise });
     const worker = await bootWorker(light);
     const waiting = worker.connect().status;

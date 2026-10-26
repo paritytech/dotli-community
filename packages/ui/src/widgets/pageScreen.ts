@@ -12,7 +12,7 @@ import s from './pageScreen.module.css';
 /** `screen` while a full-page screen holds the page. */
 export type PageContent = 'page' | 'screen';
 
-const content = createSyncStore<PageContent>('page-content', 'page');
+const content = createSyncStore<PageContent>({ name: 'page-content', initial: 'page' });
 export const pageContentStore: ReadableStore<PageContent> = content;
 
 let disposeShown: (() => void) | undefined;

@@ -50,7 +50,9 @@ function harness(
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
   const fakes = createFakePageCore();
-  const auth = createSyncStore<DotliAuthState>('auth', options.auth ?? { tag: 'Disconnected' }, {
+  const auth = createSyncStore<DotliAuthState>({
+    name: 'auth',
+    initial: options.auth ?? { tag: 'Disconnected' },
     equals: () => false,
   });
   const session = { reportLoginFailure: vi.fn() };
@@ -515,7 +517,7 @@ function queueHarness(
   signOut: () => Promise<void>;
   end: (state: DotliAuthState) => void;
 } {
-  const auth = createSyncStore<DotliAuthState>('auth-test', initial, { equals: () => false });
+  const auth = createSyncStore<DotliAuthState>({ name: 'auth-test', initial, equals: () => false });
   const calls = { logins: [] as (string | undefined)[], signals: [] as AbortSignal[], logouts: 0, cancels: 0 };
   const answer = Promise.withResolvers<LoginOutcome>();
   const commands = createAuthCommands({

@@ -3,13 +3,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { readStoredDock, writeStoredDock } from './dockStorage.js';
-import { memoryStorage } from '@dotli/shared/testing';
+import { createMemoryStorage } from '@dotli/shared/testing';
 import { blockedStorage } from '../testing/blockedStorage.js';
 
 describe('stored panel dock', () => {
   it('As a dotli developer, a stored right dock is applied on the next mount', () => {
     // Given
-    const storage = memoryStorage({ 'truapi-debug:dock': 'right' });
+    const storage = createMemoryStorage({ entries: { 'truapi-debug:dock': 'right' } });
 
     // When
     const dock = readStoredDock(storage);
@@ -20,7 +20,7 @@ describe('stored panel dock', () => {
 
   it('As a dotli developer, the dock I pick is stored for the next mount', () => {
     // Given
-    const storage = memoryStorage();
+    const storage = createMemoryStorage();
 
     // When
     writeStoredDock('bottom', storage);

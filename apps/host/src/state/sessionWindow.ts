@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteList, SiteListScreen } from '../runtime/siteSignIn/siteList.js';
 import type { SiteRound, SiteScreen } from '../runtime/siteSignIn/siteRound.js';
 import { closeWindow } from '../sessionWindowPage.js';
@@ -78,11 +78,11 @@ export type WindowScreen =
   SignInScreen | { view: 'signing-out' } | { view: 'signed-out' } | SiteWindowScreen | RedirectScreen | SiteListScreen;
 
 // The page renders its first paint from this, so it starts where every window starts.
-const sessionWindow = createSyncStore<WindowScreen>(
-  'sessionWindow',
-  { view: 'connecting', pageHost: null, failure: null, pairing: { kind: 'spinner' } },
-  { equals: shallowEqual },
-);
+const sessionWindow = createSyncStore<WindowScreen>({
+  name: 'sessionWindow',
+  initial: { view: 'connecting', pageHost: null, failure: null, pairing: { kind: 'spinner' } },
+  equals: isShallowEqual,
+});
 
 export const sessionWindowStore: ReadableStore<WindowScreen> = sessionWindow;
 

@@ -9,8 +9,8 @@ import type { CoreStorageKey } from '@parity/truapi-host';
 import { createCoreStorage, type HostCoreStorage } from './coreStorage.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './coreStorage.fake.js';
-import { deferred } from '@dotli/shared';
-import { memoryStorage, must } from '@dotli/shared/testing';
+import { createDeferred } from '@dotli/shared';
+import { createMemoryStorage, must } from '@dotli/shared/testing';
 import { createFakeSessionPresence, type FakeSessionPresence } from './presence.fake.js';
 import { createPagePresence, type SessionPresence } from './presence.js';
 import { pageSignInFlag, ownerSignInFlag, type StoredSignIn } from './signInFlag.js';
@@ -63,7 +63,7 @@ let presence: FakeSessionPresence;
 
 describe('core storage', () => {
   beforeEach(() => {
-    local = memoryStorage();
+    local = createMemoryStorage();
     keyDb = new IDBFactory();
     shared = createFakeSharedSessionStore();
     presence = createFakeSessionPresence('present');
@@ -803,8 +803,8 @@ describe('core storage', () => {
 
   it('As a user in the sign-in window on a flag store that answers late, I pair and my session write waits for the flag', async () => {
     // Given a flag write still in flight, such as a request to the dev store
-    const landed = deferred<undefined>();
-    const asked = deferred<undefined>();
+    const landed = createDeferred<undefined>();
+    const asked = createDeferred<undefined>();
     const slow: SessionPresence = {
       read: () => Promise.resolve('absent'),
       set: () => {

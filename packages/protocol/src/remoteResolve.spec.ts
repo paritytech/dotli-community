@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { toError } from '@dotli/shared';
-import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { domain, err, hostFailure, ok } from '@dotli/transport';
 import { PROTOCOL_ERRORS } from './errors.js';
 import { createRemoteResolve } from './remoteResolve.js';
@@ -34,7 +34,7 @@ describe('createRemoteResolve', () => {
   }
 
   beforeEach(() => {
-    timers = manualTimers();
+    timers = createManualTimers();
   });
 
   it('As the host, I hear each phase, then the resolved name', async () => {

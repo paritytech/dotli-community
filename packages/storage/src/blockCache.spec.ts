@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { deferred } from '@dotli/shared';
-import { manualTimers } from '@dotli/shared/testing';
+import { createDeferred } from '@dotli/shared';
+import { createManualTimers } from '@dotli/shared/testing';
 import { type BlockCache, createBlockCache } from './blockCache.js';
 import { abortAtCommit } from './testing/abortAtCommit.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
@@ -57,7 +57,7 @@ describe('block cache', () => {
 
   it('As a user whose cache outgrew its limit, the blocks I used longest ago go first', async () => {
     // Given three 3-byte blocks stored in order, and the oldest read again last
-    const clock = manualTimers(1_000);
+    const clock = createManualTimers({ start: 1_000 });
     const timed = createBlockCache(idb, clock);
     await timed.putCachedBlock('bafyOld', new Uint8Array(3));
     await clock.advance(1_000);
@@ -188,7 +188,7 @@ describe('block cache', () => {
 
   it('As a user, the blocks I read stay marked used on my next visit, even when this visit never pruned', async () => {
     // Given three 3-byte blocks stored in order, and a signal for the write that marks a block used
-    const touched = deferred<undefined>();
+    const touched = createDeferred<undefined>();
     const watched = memoryIdb({
       onTransaction: tx => {
         if (isTouchWrite(tx)) {
@@ -198,7 +198,7 @@ describe('block cache', () => {
         }
       },
     });
-    const clock = manualTimers(1_000);
+    const clock = createManualTimers({ start: 1_000 });
     const visit = createBlockCache(watched, clock);
     await visit.putCachedBlock('bafyOld', new Uint8Array(3));
     await clock.advance(1_000);
@@ -220,7 +220,7 @@ describe('block cache', () => {
 
   it('As a user, a block the relay deletes right after reading it leaves nothing that crowds out the blocks I keep', async () => {
     // Given two 3-byte blocks, the older one fetched twice at once
-    const clock = manualTimers(1_000);
+    const clock = createManualTimers({ start: 1_000 });
     const timed = createBlockCache(idb, clock);
     await timed.putCachedBlock('bafyBad', new Uint8Array(3));
     await clock.advance(1_000);
@@ -245,7 +245,7 @@ describe('block cache touch failures', () => {
   it('As an operator, a touch the browser refuses at commit is counted, and the block is still served', async () => {
     // Given a block cached a while ago, and a database that refuses every write that marks a block used
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const clock = manualTimers(1_000);
+    const clock = createManualTimers({ start: 1_000 });
     const refusing = createBlockCache(
       memoryIdb({
         onTransaction: tx => {

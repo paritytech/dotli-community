@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { m } from '@dotli/metrics';
-import { FakePage, memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
+import { createFakePage, type FakePage, createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { markContinuation, peekContinuation } from './continuation.js';
 import {
   createChainPhaseTracker,
@@ -91,8 +91,8 @@ beforeEach(() => {
   const fake = fakeSentry();
   spans = fake.spans;
   m.bind(fake.sentry as Parameters<typeof m.bind>[0]);
-  page = new FakePage();
-  session = memoryStorage();
+  page = createFakePage();
+  session = createMemoryStorage();
   resetAllStoresForTests();
 });
 

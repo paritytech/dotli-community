@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { shallowEqual } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
 import type { AuthModalView } from '../../../state/authModal.js';
 
 function pairs(view: AuthModalView): boolean {
@@ -14,7 +14,7 @@ function pairs(view: AuthModalView): boolean {
  * lasts.
  */
 export function sameSignInScreen(a: AuthModalView, b: AuthModalView): boolean {
-  return pairs(a) && pairs(b) ? true : shallowEqual(a, b);
+  return pairs(a) && pairs(b) ? true : isShallowEqual(a, b);
 }
 
 /** The pairing deeplink a view carries, null while it is being made. */

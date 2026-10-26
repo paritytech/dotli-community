@@ -6,7 +6,7 @@
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, reportListener, spans as S } from '@dotli/metrics';
-import { createListenerSet, errorName, log, named, serializeError } from '@dotli/shared';
+import { createListenerSet, getErrorName, log, setErrorName, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './dagTotal.js';
 import { errorCode } from './errors.js';
@@ -69,7 +69,7 @@ const VERIFICATION_ERROR = 'ContentVerificationError';
 type RelayStep = 'verify' | 'cache_read' | 'cache_delete' | 'cache_write';
 
 /** A relay step that failed and was worked around, reported so the workaround does not hide it. */
-function reportRelayFailure(step: RelayStep, err: unknown, cid?: string, reason = errorName(err)): void {
+function reportRelayFailure(step: RelayStep, err: unknown, cid?: string, reason = getErrorName(err)): void {
   captureException(err, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
   log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(err)}`);
   m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: reason ?? 'unknown', step });
@@ -123,7 +123,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     } catch (err) {
       // The verifier reported why it could not run, so each block it leaves unchecked is a breadcrumb and a count.
       recordExpected(err, { flow: 'content', step: 'relay_verify' });
-      m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: errorName(err) ?? 'unknown', step: 'verify' });
+      m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: getErrorName(err) ?? 'unknown', step: 'verify' });
       return { kind: 'unknown', cause: err };
     }
   }
@@ -165,13 +165,13 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     // The sandbox re-hashes only the root block, so this is the check for every other block a peer sends.
     const verdict = await check(cid, bytes);
     if (verdict.kind === 'mismatch') {
-      const err = named(new Error(`Block ${cid} does not hash to its CID`), VERIFICATION_ERROR);
+      const err = setErrorName(new Error(`Block ${cid} does not hash to its CID`), VERIFICATION_ERROR);
       reportRelayFailure('verify', err, cid, 'mismatch');
       throw err;
     }
     // Fail closed. The verifier already reported why it could not run, so this refusal is not reported again.
     if (verdict.kind === 'unknown') {
-      throw named(
+      throw setErrorName(
         new Error(`Block ${cid} could not be checked against its CID`, { cause: verdict.cause }),
         VERIFICATION_ERROR,
       );
@@ -237,7 +237,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
         source.postMessage(reply, { targetOrigin: origin, transfer: [served.bytes.buffer as ArrayBuffer] });
       })
       .catch((err: unknown) => {
-        const name = errorName(err);
+        const name = getErrorName(err);
         const code = errorCode(err);
         const reply: BitswapResultMessage = {
           type: 'dotli:bitswap-result',

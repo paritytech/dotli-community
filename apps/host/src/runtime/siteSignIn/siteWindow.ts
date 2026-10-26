@@ -7,7 +7,7 @@
 // or the window flow's while the site hands the window to that flow. A transaction's round starts only once the window
 // has the site's call.
 
-import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteGrantStore } from '@dotli/storage';
 import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindow.js';
 import type { Responder } from '../sessionHandoff/responder.js';
@@ -77,7 +77,7 @@ function openSiteWindow(
 ): SiteWindow {
   const { responder } = deps;
   // The window flow's screen, while a flow the site started has not stored its sign-in.
-  const flowScreen = createSyncStore<SignInScreen | null>('siteWindowFlow', null);
+  const flowScreen = createSyncStore<SignInScreen | null>({ name: 'siteWindowFlow', initial: null });
   const site = createRound((stored, close) => {
     // A round whose stored session is gone starts a flow again on Try again. The flow before it delivered, so its
     // phase is ended and it acts on nothing, and it is left to go with the window.
@@ -102,11 +102,11 @@ function openSiteWindow(
     });
   });
 
-  const screen = createSyncStore<SignInScreen | SiteWindowScreen>(
-    'siteWindow',
-    { view: 'site-signing', origin: deps.origin, route },
-    { equals: shallowEqual },
-  );
+  const screen = createSyncStore<SignInScreen | SiteWindowScreen>({
+    name: 'siteWindow',
+    initial: { view: 'site-signing', origin: deps.origin, route },
+    equals: isShallowEqual,
+  });
   // Until the window flow shows a view, the window keeps what it showed.
   const show = (): void => {
     const shown = site.screen.get();
