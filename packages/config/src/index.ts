@@ -33,6 +33,7 @@ export {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
   chainRoleForGenesis,
+  defaultNetwork,
   getActiveChainRoles,
   getActiveCoreGatewayChains,
   getActiveCoreGatewaySupportedGenesisHashes,

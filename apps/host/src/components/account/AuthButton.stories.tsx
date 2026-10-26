@@ -38,7 +38,7 @@ const popupAria = (): (string | null)[] =>
   ['aria-haspopup', 'aria-expanded', 'aria-controls'].map(name => button().getAttribute(name));
 
 /** The button as the page binds it, to the story's account and sign-in. */
-function StoryButton(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
+function StoryButton(props: { idPrefix?: string; showName?: boolean; sitesUrl?: string }): JSX.Element {
   return (
     <AuthButton
       account={storyAccount}
@@ -48,6 +48,7 @@ function StoryButton(props: { idPrefix?: string; showName?: boolean }): JSX.Elem
       handOver={storyCallbacks.handOver}
       idPrefix={props.idPrefix}
       showName={props.showName}
+      sitesUrl={props.sitesUrl}
     />
   );
 }
@@ -127,6 +128,65 @@ export const Open: Story = {
       await expect(popover.querySelector('[data-testid="account-content"]')).toHaveTextContent(/^ASWelcome back/);
       await expect(byId('user-popover-disconnect')).toHaveTextContent('Sign out');
       await expect(document.querySelector('[data-testid="account-local"]')).toBeNull();
+    });
+  },
+};
+
+/** As a signed-in user, the popover links to my signed-in sites and opens them in a new tab. */
+export const SitesLink: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    connect(ALICE);
+  },
+  render: () => (
+    <TopbarFrame>
+      <StoryButton sitesUrl="https://dot.li/s/manage" />
+    </TopbarFrame>
+  ),
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('Then the menu links to the signed-in sites in a new tab', async () => {
+      const link = byTestId('account-sites', byId('user-popover'));
+      await expect(link).toHaveTextContent('Signed-in sites');
+      await expect(link).toHaveAttribute('href', 'https://dot.li/s/manage');
+      await expect(link).toHaveAttribute('target', '_blank');
+    });
+  },
+};
+
+/** As a signed-in user where no sites page is given, the popover shows no sites link. */
+export const NoSitesLink: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    connect(ALICE);
+  },
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('Then the menu has no signed-in sites link', async () => {
+      await expectAccount('Alice Smith', false);
+      await expect(document.querySelector('[data-testid="account-sites"]')).toBeNull();
+    });
+  },
+};
+
+/** As a signed-out user where a sites page is given, I see no sites link, and a click starts a sign-in. */
+export const SignedOutNoSitesLink: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    disconnect();
+  },
+  render: () => (
+    <TopbarFrame>
+      <StoryButton sitesUrl="https://dot.li/s/manage" />
+    </TopbarFrame>
+  ),
+  play: async ({ step, userEvent }) => {
+    await step('When I click the button', async () => {
+      await userEvent.click(button());
+    });
+    await step('Then a sign-in was asked for, and the page has no signed-in sites link', async () => {
+      await waitFor(() => expect(calls.signIns).toBe(1));
+      await expect(document.querySelector('[data-testid="account-sites"]')).toBeNull();
     });
   },
 };

@@ -10,7 +10,7 @@ import type { Network } from '@dotli/config';
 import { isValidNetwork } from '@dotli/config/networks';
 import { isLocalWalletEntropy, isLocalWalletIdentity, type LocalWalletIdentity } from '@dotli/protocol';
 import { listen } from '@dotli/shared';
-import { asRecord, PROTOCOL_VERSION, requestUrl, type SessionRoute } from './session-protocol.js';
+import { asRecord, PROTOCOL_VERSION, requestUrl, type SessionRequest } from './session-protocol.js';
 
 /**
  * What a round asks the window for. `resume` takes a sign-in the page knows exists elsewhere, which the window sends at
@@ -97,20 +97,20 @@ export function signOutWindowUrl(notified: boolean, net: Network, round: string,
   return requestUrl(origin, 'signout', { v: PROTOCOL_VERSION, net, round, ...(notified ? { notified } : {}) });
 }
 
-/** The request `params` make for `route`, or null when they break the contract. Unknown fields are ignored. */
-export function parseWindowRequest(
-  route: SessionRoute,
-  params: Readonly<Record<string, unknown>>,
-): WindowRequest | null {
-  const { v, net, round, intent, notified } = params;
-  if (v !== PROTOCOL_VERSION || typeof net !== 'string' || !isValidNetwork(net)) {
-    return null;
-  }
-  if (typeof round !== 'string' || round === '') {
+/** The first-party request `request` makes, or null when it breaks the contract. Unknown fields are ignored. */
+export function parseWindowRequest(request: SessionRequest): WindowRequest | null {
+  const { route, v, net, round, params } = request;
+  const { intent, notified } = params;
+  if (v !== PROTOCOL_VERSION || net === null || !isValidNetwork(net)) {
     return null;
   }
   if (route === 'signout') {
     return { route, net, round, notified: notified === true };
+  }
+  // The site list answers no page, and only sites send transactions, so a request on either path is none of dot.li's
+  // own.
+  if (route === 'manage' || route === 'sign') {
+    return null;
   }
   return isSignInIntent(intent) ? { route, net, round, intent } : null;
 }

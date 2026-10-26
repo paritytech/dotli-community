@@ -86,13 +86,51 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   pair in place and take a recovery phrase in the modal. That phrase check and the phrase form load only when the phrase
   view first opens.
 - The sign-in window is a page on the bare host, with settings of its own that it never stores. It answers only an
-  opener on an origin its rule allows, and replies to that origin alone. Once it knows its opener, it decides from the
-  main store, never from the opener: it offers Continue for a stored wallet or paired session, pairs on its own core, or
-  takes a recovery phrase when asked for one. A step that fails leaves a failure with Try again.
+  opener on an origin its rule allows, and replies to that origin alone. The first vetted hello names the round's party
+  and its origin, and a request the window cannot read for that party is refused with its reason. For dot.li's own page,
+  once it knows its opener, the window decides from the main store, never from the opener: it offers Continue for a
+  stored wallet or paired session, pairs on its own core, or takes a recovery phrase when asked for one. A step that
+  fails leaves a failure with Try again.
+- For a site, the sign-in window signs in for the vetted origin, never one the request names. It asks the user's consent
+  under the site's full origin unless the site's token names a grant of that origin, then runs the same flow to resume
+  the main session and hands that flow's result to the site's sign-in instead of the opener. The site gets the username,
+  an account made for that site only and its signed assertion, never the main session. A site that declares a group
+  signs in once for every origin of its registrable domain, which the window reads from the Public Suffix List it ships.
+  The consent names that registrable domain beside the origin. A group has one grant, whose token answers any origin of
+  the group, and every origin of it shares one account, made for that registrable domain and group token, and so the
+  same address. The window refuses a group on a public suffix or an address, on its own registrable domain, or when the
+  list does not load. That account, a site's or a group's, is a product account of the window core's product id, so it
+  stays private only while the operator holds the dotNS name `dotli` and never publishes a product under it. The window
+  closes once the site has its result, which a window restored from the back-forward cache sends on the site's next
+  hello.
+- A site that cannot keep a popup signs in by redirect: its sign-in request names a return address and a temporary key,
+  and the window needs no opener. Before it boots, the window checks that this browser can seal to the key, that the
+  address is a site's and not dot.li's own or a product's, and that the site's well-known file lists it, read within a
+  deadline and only when small. A check that fails says why and sends nothing, since the address is not yet trusted.
+  Once vetted, the round runs for the address's origin, and its one answer, the message a popup would get, goes back
+  sealed to the key in the address's fragment. The window forgets its kept request, then navigates there, which ends the
+  page, so it never closes itself. A seal that fails says so, and forgets a grant whose token the site never got, unless
+  it is a group's. Close on any view closes the window, or goes back in history when the browser keeps the tab open, but
+  does nothing while the sealed answer is on its way.
+- On `/s/sign`, a site asks the user to sign a transaction on Asset Hub from the main account. The window takes the
+  site's call from the request, else from the first payload the vetted site posts for the round, and shows Connecting
+  until it has one. A call that is not hex of 2 to 1 000 000 bytes, or a request of dot.li's own page, is a bad request.
+  The round asks consent and resumes the main session as a sign-in does, then decodes the call for the review, has the
+  phone build the transaction for the main account once the user confirms, and submits it once. The tab's session
+  storage keeps which rounds it submitted, so a reloaded window refuses such a round as unknown before consent. The site
+  gets the transaction's hash, its block and how it went, never the main account or the signed transaction.
+- The sign-in window reads a site's registrable domain from a copy of the Public Suffix List it ships, a data file under
+  the Mozilla Public License 2.0, read as text and kept with its license header, and refreshed with each release.
+- The site list lists the sites the main store keeps a grant for, the most recently used first, each with Revoke, which
+  forgets its grant at once. A group's row is headed by its registrable domain and lists the origins that used it, and
+  its Revoke forgets the group's one grant, so every origin of the group asks for consent again. The list reads only the
+  grants: it answers no page and boots no core.
 - The sign-out window applies the restore rule to the main store and sends its vetted opener an empty result once it has
-  read. Its steps never wait on the opener, so a read made before the vetting goes out with it. Unless the page tells
-  the phone itself, it ends the session it found on a core of its own, which holds it in memory only and so never
-  touches the main store or the flag.
+  read, or failed before it could, and its first vetting found a round of dot.li's own page, whichever comes last. Its
+  sign-out never waits on the opener, and a round it refuses still signs out. Unless the page tells the phone itself, it
+  ends the session it found on a core of its own, which holds it in memory only and so never touches the main store or
+  the flag. Unless it kept the sign-in, it then forgets every site's grant once its first vetting found a round of
+  dot.li's own page, before it closes, so a site that opens it forgets nothing.
 - Each window keeps the request its URL fragment carried in the tab's session storage, so a reload answers the same
   round, and reloads when a page puts a new request in its fragment.
 - Every product signs in and out through the sign-in window, opened in the click's own turn, since a product's copy may
@@ -100,8 +138,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   link to any window, pair in place. The window's result is written into the page's copy, where its cores and session
   state pick it up. Sign out opens the sign-out window and drops the flag in the same turn. In paired mode the page
   reads its copy in that turn and ends that session on a core of its own, so the phone hears of it. In local mode the
-  page waits for the window's read, then forgets the wallet it read and reloads. The sign-out answers whether the phone
-  heard, with one more try for a caller that lets the user retry.
+  page waits for the window's read, then forgets the wallet it read and reloads. The landing page and a preview opened
+  on its own forget every site's grant as they sign out, before any reload, and a product leaves that to the sign-out
+  window. A grant that cannot be forgotten is reported and never stops a sign-out. The sign-out answers whether the
+  phone heard, with one more try for a caller that lets the user retry.
 - The landing page has no product to hold a core, so it holds one lease on its page core while its copy holds a paired
   session, from the first idle moment after boot, and so hears the phone end the session. It follows the stored session,
   not the auth state, so a core that reports signed out for a moment never drops and reboots it.
@@ -191,7 +231,7 @@ sequenceDiagram
 
 - The shell page. Dev server on port 4001.
 - The landing page, served for the bare host's root.
-- The session window, served for the bare host's `/s/auth` and `/s/signout`.
+- The session window, served for the bare host's `/s/auth`, `/s/signout`, `/s/manage` and `/s/sign`.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
   functional run needs the build the root `build:test` script makes, as CI does. It turns metrics on and gives Sentry a

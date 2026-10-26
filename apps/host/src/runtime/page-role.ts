@@ -62,6 +62,15 @@ export function ownsFlag(role: PageRole): boolean {
 }
 
 /**
+ * Whether the page's own sign-out forgets the sites signed in through the session window: the pages that sign out in
+ * place in the main store. A product's sign-out leaves them to the sign-out window, and the sign-in window signs no one
+ * out.
+ */
+export function forgetsSiteGrants(role: PageRole): boolean {
+  return ownsFlag(role) && role !== 'signin-window';
+}
+
+/**
  * Whether a set flag over the page's empty copy means a sign-in made elsewhere, which the page offers to continue.
  * Only the window resumes one, and a page that pairs in place either reads the main store itself, where such a flag is
  * stale, or shares no flag.

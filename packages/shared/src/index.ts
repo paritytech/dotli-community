@@ -12,6 +12,7 @@ export { endpointHost, gatewayUnreachable } from './error-copy.js';
 export { errorMessage, errorName, fullErrorChain, named, serializeError, toError } from './errors.js';
 export { deleteIdb, idbRequest, idbTransaction, openIdb } from './idb.js';
 export { OriginWipeError, wipeOriginStores, type OriginStores, type OriginWipePart } from './origin-wipe.js';
+export { blake2b } from './blake2b.js';
 export { bytesEqual } from './bytes-equal.js';
 export { fromHex, toHex } from './hex.js';
 export { bindLogSink, log, type LogLevel } from './log.js';
@@ -24,7 +25,7 @@ export { dur, elapsed } from './perf.js';
 export { noop } from './noop.js';
 export { createPendingReplies, type PendingReplies } from './pending-replies.js';
 export { randomId } from './random-id.js';
-export { createStatusCell, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
+export { createStatusCell, storeStatus, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
 export {
   createSyncStore,
   registerStoreStateReset,

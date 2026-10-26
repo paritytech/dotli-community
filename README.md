@@ -234,6 +234,13 @@ Return to the package versions recorded in `package-lock.json` with:
 npm run unlink:truapi
 ```
 
+Refresh the Public Suffix List the session window ships with each release. The script refuses a download without the
+list's ICANN and private sections whole:
+
+```bash
+node scripts/update-public-suffix-list.ts
+```
+
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:4001` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`

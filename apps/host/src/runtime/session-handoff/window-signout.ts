@@ -5,10 +5,12 @@
 // main store still holds is dead, while a local wallet stays for that page to forget. The window applies the restore
 // rule to the main store, which clears only what it read while the flag is still gone, so a sign-in made elsewhere
 // since stays. It tells the page it has read, then ends the session the rule found dead on a core of its own when the
-// page could not tell the phone. Its steps never wait on the opener: the read goes out once the opener is vetted, and a
-// window that closes before then drops it. The core sends the phone its message in a task of its own after its
-// disconnect answers, so a window that told the phone stays open, saying the user is signed out, and the user closes
-// it. Any other window closes itself.
+// page could not tell the phone. Its sign-out never waits on the opener: the read goes out once the opener is vetted,
+// and a window that closes before then drops it. Only dot.li's own page ends the sites signed in through the session
+// window, so unless it kept the sign-in, the window forgets them once its first vetting found that page, and an
+// opener that never says hello keeps it open until then. The core sends the phone its message in a task of its own
+// after its disconnect answers, so a window that told the phone stays open, saying the user is signed out, and the user
+// closes it. Any other window closes itself.
 
 import { m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
@@ -33,6 +35,13 @@ export interface WindowSignOutDeps {
    * the page is vetted. Never throws.
    */
   read: () => void;
+  /**
+   * Whether the round's first vetting found dot.li's own page with a round the window answers, false for a site, a
+   * refused round or a window with no opener. Never rejects.
+   */
+  firstParty: Promise<boolean>;
+  /** Forgets every site signed in through the session window, as a sign-out ends their sign-ins too. */
+  forgetGrants: () => Promise<void>;
   close: () => void;
   /** Says the user is signed out, with Close, in place of closing, once the window told the phone. */
   showSignedOut: () => void;
@@ -58,6 +67,18 @@ async function tellPhone(deps: WindowSignOutDeps, dead: string | null): Promise<
     // Counted with how the window ended.
     reportWalletFailure(error, { what: 'sign-out window end', step: 'session_window_signout', reason: 'end' });
     return 'failed';
+  }
+}
+
+/** Forgets the grants. Never rejects, as a sign-out goes on whether or not they went. */
+async function forgetGrants(deps: WindowSignOutDeps): Promise<void> {
+  try {
+    await deps.forgetGrants();
+  } catch (error) {
+    // The sites keep their tokens until the user revokes them. Counted apart from how the sign-out ended, which this
+    // leaves unchanged.
+    reportWalletFailure(error, { what: 'sign-out window grants', step: 'session_window_signout', reason: 'grants' });
+    m.count(S.SITE_REVOKE, { outcome: 'error', reason: 'sign_out' });
   }
 }
 
@@ -96,6 +117,11 @@ export async function signOutInWindow(deps: WindowSignOutDeps): Promise<WindowSi
   try {
     const ended = await signOut(deps);
     told = ended.told;
+    // A flag still set or unreadable keeps the sign-in, and the sites signed in with it. A site that opened the window
+    // ends none of them.
+    if (ended.outcome !== 'kept' && (await deps.firstParty)) {
+      await forgetGrants(deps);
+    }
     log.event('sign-out window done', { flow: 'wallet', outcome: ended.outcome });
     m.count(S.SESSION_WINDOW_SIGNOUT_RESULT, {
       outcome: ended.outcome,

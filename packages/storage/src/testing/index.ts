@@ -6,7 +6,17 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { createDbConnection, type DotliIdb } from '../db.js';
 import { openIdb } from '@dotli/shared';
-import { DB_NAME, DB_VERSION, upgradeDotliDb, upgradeWalletDb, WALLET_DB_NAME, WALLET_DB_VERSION } from '../schema.js';
+import {
+  DB_NAME,
+  DB_VERSION,
+  SITE_GRANTS_DB_NAME,
+  SITE_GRANTS_DB_VERSION,
+  upgradeDotliDb,
+  upgradeSiteGrantsDb,
+  upgradeWalletDb,
+  WALLET_DB_NAME,
+  WALLET_DB_VERSION,
+} from '../schema.js';
 
 export interface MemoryIdb extends DotliIdb {
   /** The factory behind `connect`, for a test that opens the database itself. */
@@ -69,4 +79,12 @@ export function memoryIdb(options: MemoryIdbOptions = {}): MemoryIdb {
 /** A fresh in-memory wallet database, in place of the frame's own. */
 export function memoryWalletIdb(options: MemoryIdbOptions = {}): MemoryIdb {
   return memoryIdbOf(factory => openIdb(factory, WALLET_DB_NAME, WALLET_DB_VERSION, upgradeWalletDb), options);
+}
+
+/** A fresh in-memory site grants database, in place of the session windows' own. */
+export function memorySiteGrantsIdb(options: MemoryIdbOptions = {}): MemoryIdb {
+  return memoryIdbOf(
+    factory => openIdb(factory, SITE_GRANTS_DB_NAME, SITE_GRANTS_DB_VERSION, upgradeSiteGrantsDb),
+    options,
+  );
 }

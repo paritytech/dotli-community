@@ -12,11 +12,17 @@ import { SESSION_SEGMENT } from './session-segment.js';
 
 export const PROTOCOL_VERSION = 1;
 
-export type SessionRoute = 'auth' | 'signout';
+/**
+ * A session window's route. `manage` lists the signed-in sites and carries no request. `sign` signs and submits a
+ * site's transaction.
+ */
+export type SessionRoute = 'auth' | 'signout' | 'manage' | 'sign';
 
 const ROUTE_PATHS: Readonly<Record<SessionRoute, string>> = {
   auth: `/${SESSION_SEGMENT}/auth`,
   signout: `/${SESSION_SEGMENT}/signout`,
+  manage: `/${SESSION_SEGMENT}/manage`,
+  sign: `/${SESSION_SEGMENT}/sign`,
 };
 
 /** The route a window path names, or null when it names none. */
@@ -29,9 +35,14 @@ export function routeOfPath(pathname: string): SessionRoute | null {
   return null;
 }
 
+/** The URL of `route` on the session windows' `origin`, with no request. */
+export function routeUrl(origin: string, route: SessionRoute): string {
+  return `${origin}${ROUTE_PATHS[route]}`;
+}
+
 /** The window URL for a request. The params travel in the fragment, so no server sees them. */
 export function requestUrl(origin: string, route: SessionRoute, params: Readonly<Record<string, unknown>>): string {
-  return `${origin}${ROUTE_PATHS[route]}#params=${base64urlnopad.encode(utf8.decode(JSON.stringify(params)))}`;
+  return `${routeUrl(origin, route)}#params=${base64urlnopad.encode(utf8.decode(JSON.stringify(params)))}`;
 }
 
 /** `value` as a plain object, or null for anything else, arrays included. */
@@ -58,6 +69,52 @@ export function readRequestParams(hash: string): Record<string, unknown> | null 
   }
 }
 
+/**
+ * What a session request is before its party is known: the round to answer, the version and the network as the page
+ * sent them, and the raw params, whose party's own fields are parsed once the hello names the party.
+ */
+export interface SessionRequest {
+  route: SessionRoute;
+  round: string;
+  /** The request's version, or null when it is not a number. */
+  v: number | null;
+  /** The request's network name, or null when it is not a string. */
+  net: string | null;
+  params: Readonly<Record<string, unknown>>;
+}
+
+/** The request `params` make on `route`, or null when they carry no round to answer. */
+export function readSessionRequest(
+  route: SessionRoute,
+  params: Readonly<Record<string, unknown>>,
+): SessionRequest | null {
+  const { round, v, net } = params;
+  if (typeof round !== 'string' || round === '') {
+    return null;
+  }
+  return {
+    route,
+    round,
+    v: typeof v === 'number' ? v : null,
+    net: typeof net === 'string' ? net : null,
+    params,
+  };
+}
+
+/** Why a window refused a round, the closed set it ever posts. */
+export type RefusalReason =
+  | 'origin_not_allowed'
+  | 'bad_request'
+  | 'unsupported_version'
+  | 'unknown_network'
+  | 'declined'
+  | 'unsupported_wallet'
+  | 'no_username'
+  /** The chain refused the transaction before any block, or the phone does not support the request. */
+  | 'transaction_invalid'
+  /** The chain may have the transaction, but the window cannot say how it went. */
+  | 'transaction_unknown';
+
 export interface ReadyMessage {
   type: 'dotli:s:ready';
   versions: number[];
@@ -69,20 +126,36 @@ export interface HelloMessage {
   round: string;
 }
 
+/** A site's call too long for its request URL, sent after the hello. */
+export interface PayloadMessage {
+  type: 'dotli:s:payload';
+  round: string;
+  call: string;
+}
+
 export interface ResultMessage<R> {
   type: 'dotli:s:result';
   round: string;
   result: R;
+  /** The token a site keeps to be known on its next sign-in. */
+  site_token?: string;
 }
 
 export interface RefusedMessage {
   type: 'dotli:s:refused';
   round: string;
+  /** A string as an opener reads it, since a window of another release may send a reason this one does not know. */
   reason: string;
 }
 
+/** The user left the round without an answer. */
+export interface CancelledMessage {
+  type: 'dotli:s:cancelled';
+  round: string;
+}
+
 /** A message the window sends its opener. */
-export type PageMessage = ReadyMessage | ResultMessage<unknown> | RefusedMessage;
+export type PageMessage = ReadyMessage | ResultMessage<unknown> | RefusedMessage | CancelledMessage;
 
 /** The window's first message, naming the versions it speaks. */
 export const READY: ReadyMessage = { type: 'dotli:s:ready', versions: [PROTOCOL_VERSION] };
@@ -94,6 +167,16 @@ export function parseHello(data: unknown): HelloMessage | null {
   const round = r?.['round'];
   return r?.['type'] === 'dotli:s:hello' && typeof v === 'number' && typeof round === 'string'
     ? { type: 'dotli:s:hello', v, round }
+    : null;
+}
+
+/** A site's payload to the window, or null when `data` is not one. */
+export function parsePayload(data: unknown): PayloadMessage | null {
+  const r = asRecord(data);
+  const round = r?.['round'];
+  const call = r?.['call'];
+  return r?.['type'] === 'dotli:s:payload' && typeof round === 'string' && typeof call === 'string'
+    ? { type: 'dotli:s:payload', round, call }
     : null;
 }
 
@@ -113,8 +196,23 @@ export function parsePageMessage(data: unknown): PageMessage | null {
     return null;
   }
   if (type === 'dotli:s:result') {
-    return 'result' in r ? { type, round, result: r['result'] } : null;
+    return parseResult(r, round);
+  }
+  if (type === 'dotli:s:cancelled') {
+    return { type, round };
   }
   const reason = r['reason'];
   return type === 'dotli:s:refused' && typeof reason === 'string' ? { type, round, reason } : null;
+}
+
+function parseResult(r: Record<string, unknown>, round: string): ResultMessage<unknown> | null {
+  if (!('result' in r)) {
+    return null;
+  }
+  const message: ResultMessage<unknown> = { type: 'dotli:s:result', round, result: r['result'] };
+  if (!('site_token' in r)) {
+    return message;
+  }
+  const siteToken = r['site_token'];
+  return typeof siteToken === 'string' ? { ...message, site_token: siteToken } : null;
 }

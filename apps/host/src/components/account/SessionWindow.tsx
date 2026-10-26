@@ -4,7 +4,7 @@
 import { createMemo, merge, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { shallowEqual } from '@dotli/shared';
-import type { SignInScreen, WindowScreen, WindowView } from '../../state/session-window.js';
+import type { SignInScreen, WindowScreen } from '../../state/session-window.js';
 import { isMobileDevice } from '../../device.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 import { createPhraseFormLoad } from './phrase-form-load.js';
@@ -25,7 +25,7 @@ export type SessionWindowProps = Omit<
   loadPhraseScreen?: (() => Promise<PhraseScreenModule>) | undefined;
 };
 
-/** The sign-in window's content, under the page's header. It fills the rest of the page. */
+/** The session window's content, under the page's header. It fills the rest of the page. */
 export function SessionWindow(props: SessionWindowProps): JSX.Element {
   // The build-time render has no device, so it takes the desktop layout.
   const mobile = createMemo(() => (props.isMobile ?? isMobileDevice)(), { ssrSource: 'client', loadingValue: false });
@@ -54,6 +54,24 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
       }
       if (screen.view === 'phrase') {
         return { view: screen.view, form: phraseForm.form() };
+      }
+      if (screen.view === 'consent') {
+        return { view: screen.view, origin: screen.origin, statement: screen.statement, group: screen.group };
+      }
+      if (screen.view === 'site-signing') {
+        return { view: screen.view, origin: screen.origin, route: screen.route };
+      }
+      if (screen.view === 'site-review') {
+        return { view: screen.view, origin: screen.origin, call: screen.call };
+      }
+      if (screen.view === 'site-submitting') {
+        return { view: screen.view, origin: screen.origin, sent: screen.sent };
+      }
+      if (screen.view === 'site-failed') {
+        return { view: screen.view, origin: screen.origin, route: screen.route, retry: screen.retry };
+      }
+      if (screen.view === 'sites') {
+        return { view: screen.view, sites: screen.sites };
       }
       return { view: screen.view };
     },
@@ -88,7 +106,7 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
 }
 
 /** The window page's frame for one screen, laid out for the view it shows. */
-export function WindowShell(props: { view: WindowView; parts: SignInParts }): JSX.Element {
+export function WindowShell(props: { view: WindowScreen['view']; parts: SignInParts }): JSX.Element {
   return (
     <main class={s['window']} data-testid="session-window" data-view={props.view}>
       <WindowLayout parts={props.parts} />
@@ -96,9 +114,9 @@ export function WindowShell(props: { view: WindowView; parts: SignInParts }): JS
   );
 }
 
-/** The sign-in a screen shows, or null on a sign-out's views, which carry nothing of one. */
+/** dot.li's own sign-in a screen shows, or null on a sign-out's or a site's views, which carry nothing of one. */
 function signInOf(screen: WindowScreen): SignInScreen | null {
-  return screen.view === 'signing-out' || screen.view === 'signed-out' ? null : screen;
+  return 'pageHost' in screen ? screen : null;
 }
 
 function sameStep(a: WindowStep, b: WindowStep): boolean {

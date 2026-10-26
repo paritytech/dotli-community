@@ -1,12 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Which sign-in screen each view of the sign-in window shows, and what its buttons ask of the window.
+// Which screen each view of the session window shows, and what its buttons ask of the window, of a site's round or of
+// the site list.
 
-import { merge, omit } from 'solid-js';
-import { BanIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
+import { For, merge, omit, Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { Button, Callout, Row, SectionLabel, Stack, Well } from '@dotli/ui';
+import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
+import type { DisplayCall } from '../../runtime/site-sign-in/site-call.js';
+import type { ListedSite, SiteListScreen } from '../../runtime/site-sign-in/site-list.js';
 import type { PairingView } from '../../state/auth-modal.js';
-import type { ContinueOffer, WindowFailure, WindowView } from '../../state/session-window.js';
+import type {
+  ContinueOffer,
+  RedirectScreen,
+  SiteWindowScreen,
+  WindowFailure,
+  WindowView,
+} from '../../state/session-window.js';
 import type { PhraseForm } from './phrase-form-load.js';
 import type { DrawQr } from './qr-code.js';
 import { signInParts } from './sign-in/sign-in-parts.js';
@@ -27,7 +38,10 @@ export type WindowStep =
   | { view: 'pairing'; pairing: PairingView }
   | { view: 'continue'; offer: ContinueOffer; phoneFailed: boolean }
   | { view: 'phrase'; form: PhraseForm }
-  | { view: Exclude<WindowView, 'pairing' | 'continue' | 'phrase'> };
+  | { view: Exclude<WindowView, 'pairing' | 'continue' | 'phrase'> }
+  | SiteWindowScreen
+  | RedirectScreen
+  | SiteListScreen;
 
 /** What every window screen needs from the window. */
 export interface WindowPartsProps {
@@ -57,10 +71,26 @@ export interface WindowPartsProps {
   isValidPhrase: (phrase: string) => boolean;
   /** Without one, the `qrcode` chunk draws the code. */
   drawQr?: DrawQr | undefined;
+  /** Goes on with a site's sign-in from its consent view. */
+  onConsent: () => void;
+  /** Refuses the site from its consent view. */
+  onDecline: () => void;
+  /** Signs what a site's review shows. */
+  onSiteConfirm: () => void;
+  /** Runs a site's round again after a step of it failed. */
+  onSiteRetry: () => void;
+  /** The user gave up on a site's round. */
+  onSiteCancel: () => void;
+  /** Forgets the site of `token` from the site list. */
+  onRevoke: (token: string) => void;
+  /** Reads the site list again after its read failed. */
+  onSiteListRetry: () => void;
 }
 
 /** The views that only say where the window stands. */
-type StatusView = Extract<WindowView, 'connecting' | 'refused' | 'signing-out' | 'signed-out' | 'done-no-opener'>;
+type StatusView =
+  | Extract<WindowView, 'connecting' | 'refused' | 'signing-out' | 'signed-out' | 'done-no-opener'>
+  | RedirectScreen['view'];
 
 interface StatusCopy {
   mark: StatusMark;
@@ -101,6 +131,18 @@ const STATUS_COPY: Record<StatusView, StatusCopy> = {
     mark: { icon: CircleCheckIcon, tone: 'ok' },
     title: "You're signed in",
     body: 'Return to the app.',
+  },
+  'site-not-allowed': {
+    mark: { icon: BanIcon, tone: 'idle' },
+    title: 'This site did not allow this return address',
+    body: 'Nothing was sent to the site.',
+    close: 'Close',
+  },
+  'site-unsupported': {
+    mark: { icon: CircleAlertIcon, tone: 'warn' },
+    title: 'This browser cannot finish this sign-in',
+    body: 'Try again in another browser.',
+    close: 'Close',
   },
 };
 
@@ -245,6 +287,305 @@ function phraseParts(form: PhraseForm, props: WindowPartsProps): SignInParts {
   });
 }
 
+/** What a site gets once the user consents. */
+const SITE_GETS = [
+  'Your username',
+  'An address made for this site only',
+  'The right to ask for transactions from your main account, each confirmed again',
+] as const;
+
+/** The way out of a site's round, which tells the site the user left. */
+function siteCancel(props: WindowPartsProps): SignInAction {
+  return {
+    label: 'Cancel',
+    onPress: () => {
+      props.onSiteCancel();
+    },
+    dismisses: true,
+    testId: 'session-window-site-cancel',
+  };
+}
+
+/**
+ * A site asks to sign in: its full origin heads the view, then the registrable domain its group covers when it has one,
+ * then what it gets, and its own words when it sent any, shown as text and never as markup.
+ */
+function consentParts(
+  origin: string,
+  statement: string | null,
+  group: string | null,
+  props: WindowPartsProps,
+): SignInParts {
+  const asks = 'wants you to sign in with Polkadot';
+  const parts = StatusScreen({
+    title: origin,
+    body:
+      group === null ? (
+        asks
+      ) : (
+        <>
+          <div data-testid="session-window-group">for every site of {group} that shares this sign-in</div>
+          <div>{asks}</div>
+        </>
+      ),
+    actions: [
+      {
+        label: 'Continue',
+        primary: true,
+        onPress: () => {
+          props.onConsent();
+        },
+        testId: 'session-window-consent-button',
+      },
+      {
+        label: 'Cancel',
+        onPress: () => {
+          props.onDecline();
+        },
+        dismisses: true,
+        testId: 'session-window-decline',
+      },
+    ],
+    testId: 'session-window-consent',
+    titleTestId: 'session-window-title',
+  });
+  return {
+    ...parts,
+    content: (
+      <>
+        {parts.content}
+        <div role="list" data-testid="session-window-site-gets">
+          <Stack>
+            <For each={SITE_GETS}>
+              {line => (
+                <div role="listitem">
+                  <Callout icon={CheckIcon}>{line}</Callout>
+                </div>
+              )}
+            </For>
+          </Stack>
+        </div>
+        <Show when={statement}>
+          {said => (
+            <Stack>
+              <SectionLabel as="h2" text="The site says" />
+              <Well testId="session-window-statement">{said()}</Well>
+            </Stack>
+          )}
+        </Show>
+      </>
+    ),
+  };
+}
+
+/** What a site asks for, which names its views. */
+type SiteRoute = Extract<WindowStep, { view: 'site-failed' }>['route'];
+
+/** A site's round under way, which the phone may ask the user to approve. */
+function siteSigningParts(origin: string, route: SiteRoute, props: WindowPartsProps): SignInParts {
+  return StatusScreen({
+    mark: 'spinner',
+    title: route === 'auth' ? 'Approve the sign-in in Polkadot App' : 'Preparing the transaction',
+    body: origin,
+    actions: [siteCancel(props)],
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+    spinnerTestId: 'session-window-spinner',
+  });
+}
+
+/**
+ * A site asks for a transaction: its full origin heads the view, then the call by name and each argument with its
+ * value on a line of its own, as text and never as markup.
+ */
+function siteReviewParts(origin: string, call: DisplayCall, props: WindowPartsProps): SignInParts {
+  const parts = StatusScreen({
+    title: origin,
+    body: 'asks you to sign a transaction from your main account',
+    actions: [
+      {
+        label: 'Sign with Polkadot App',
+        primary: true,
+        onPress: () => {
+          props.onSiteConfirm();
+        },
+        testId: 'session-window-site-sign',
+      },
+      siteCancel(props),
+    ],
+    testId: 'session-window-review',
+    titleTestId: 'session-window-title',
+  });
+  return {
+    ...parts,
+    content: (
+      <>
+        {parts.content}
+        <Stack testId="session-window-call">
+          {/* The call's name shows in the case the chain spells it. */}
+          <Well>
+            <span role="heading" aria-level={2}>
+              {call.name}
+            </span>
+          </Well>
+          <For each={call.args}>
+            {arg => (
+              <Well testId="session-window-call-arg">
+                <span data-testid="session-window-call-arg-name">{arg.name}</span>
+                <span data-testid="session-window-call-arg-value">{arg.value}</span>
+              </Well>
+            )}
+          </For>
+        </Stack>
+      </>
+    ),
+  };
+}
+
+/** A site's transaction on its way: the phone builds it, then the chain has it. */
+function siteSubmittingParts(origin: string, sent: boolean, props: WindowPartsProps): SignInParts {
+  return StatusScreen({
+    mark: 'spinner',
+    title: sent ? 'Sending the transaction' : 'Approve the transaction in Polkadot App',
+    body: origin,
+    actions: [siteCancel(props)],
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+    spinnerTestId: 'session-window-spinner',
+  });
+}
+
+/** A step of a site's round failed. Try again, where a step may be tried again, runs the round again. */
+function siteFailedParts(origin: string, route: SiteRoute, retry: boolean, props: WindowPartsProps): SignInParts {
+  const tryAgain: SignInAction = {
+    label: 'Try again',
+    primary: true,
+    onPress: () => {
+      props.onSiteRetry();
+    },
+    testId: 'session-window-site-retry',
+  };
+  return StatusScreen({
+    mark: { icon: CircleAlertIcon, tone: 'err' },
+    title: route === 'auth' ? 'The sign-in could not finish' : 'The transaction could not finish',
+    body: origin,
+    actions: retry ? [tryAgain, siteCancel(props)] : [siteCancel(props)],
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+  });
+}
+
+const SITE_LIST_TITLE = 'Sites you signed in to';
+
+/** A date as the site list writes it, in the reader's locale. */
+function listDate(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/**
+ * One site of the list: its full origin on a line of its own, which wraps rather than cuts off, since two origins may
+ * differ only in their port, then when it was first used, and when it was last used with Revoke. A group heads with its
+ * registrable domain, then shows each of its origins so, and Revoke forgets the whole group.
+ */
+function ListedSiteRows(props: { site: ListedSite; onRevoke: (token: string) => void }): JSX.Element {
+  const name = (): string => props.site.group?.registrable ?? props.site.origin;
+  return (
+    <Well testId="session-window-site">
+      <Show
+        when={props.site.group}
+        fallback={<span data-testid="session-window-site-origin">{props.site.origin}</span>}
+      >
+        {group => (
+          <>
+            <span role="heading" aria-level={2} data-testid="session-window-site-group">
+              {group().registrable}
+            </span>
+            <For each={group().origins}>{origin => <span data-testid="session-window-site-origin">{origin}</span>}</For>
+          </>
+        )}
+      </Show>
+      <Row label={`Since ${listDate(props.site.firstUsedAt)}`} />
+      <Row label={`Last used ${listDate(props.site.lastUsedAt)}`}>
+        <Button
+          size="sm"
+          aria-label={`Revoke ${name()}`}
+          testId="session-window-site-revoke"
+          onClick={() => {
+            props.onRevoke(props.site.token);
+          }}
+        >
+          Revoke
+        </Button>
+      </Row>
+    </Well>
+  );
+}
+
+/** The sites the user signed in to, newest use first, each with Revoke, or a line that there are none. */
+function siteListParts(sites: readonly ListedSite[], props: WindowPartsProps): SignInParts {
+  return StatusScreen({
+    title: SITE_LIST_TITLE,
+    body: (
+      <Show
+        when={sites.length > 0}
+        fallback={<span data-testid="session-window-sites-empty">No site uses your Polkadot sign-in.</span>}
+      >
+        <Stack testId="session-window-sites">
+          <For each={sites}>
+            {site => (
+              <ListedSiteRows
+                site={site}
+                onRevoke={token => {
+                  props.onRevoke(token);
+                }}
+              />
+            )}
+          </For>
+        </Stack>
+      </Show>
+    ),
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+  });
+}
+
+/** The list waits for its first read of the grants. */
+function siteListLoadingParts(): SignInParts {
+  return StatusScreen({
+    mark: 'spinner',
+    title: SITE_LIST_TITLE,
+    body: null,
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+    spinnerTestId: 'session-window-spinner',
+  });
+}
+
+/** The grants could not be read, so the list says so in place of the sites. Try again reads them again. */
+function siteListFailedParts(props: WindowPartsProps): SignInParts {
+  return StatusScreen({
+    mark: { icon: CircleAlertIcon, tone: 'err' },
+    title: SITE_LIST_TITLE,
+    body: (
+      <span role="alert" data-testid="session-window-failure">
+        The list could not be read
+      </span>
+    ),
+    actions: [
+      {
+        label: 'Try again',
+        primary: true,
+        onPress: () => {
+          props.onSiteListRetry();
+        },
+        testId: 'session-window-sites-retry',
+      },
+    ],
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+  });
+}
+
 /** The screen for a step of the window. Each call builds the screen anew, so call it once per step. */
 export function windowParts(step: WindowStep, props: WindowPartsProps): SignInParts {
   switch (step.view) {
@@ -258,11 +599,29 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
       });
     case 'phrase':
       return phraseParts(step.form, props);
+    case 'consent':
+      return consentParts(step.origin, step.statement, step.group, props);
+    case 'site-signing':
+      return siteSigningParts(step.origin, step.route, props);
+    case 'site-review':
+      return siteReviewParts(step.origin, step.call, props);
+    case 'site-submitting':
+      return siteSubmittingParts(step.origin, step.sent, props);
+    case 'site-failed':
+      return siteFailedParts(step.origin, step.route, step.retry, props);
+    case 'sites':
+      return siteListParts(step.sites, props);
+    case 'sites-loading':
+      return siteListLoadingParts();
+    case 'sites-failed':
+      return siteListFailedParts(props);
     case 'connecting':
     case 'refused':
     case 'signing-out':
     case 'signed-out':
     case 'done-no-opener':
+    case 'site-not-allowed':
+    case 'site-unsupported':
       return statusParts(step.view, props);
   }
 }

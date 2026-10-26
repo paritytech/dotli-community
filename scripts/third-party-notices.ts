@@ -52,7 +52,10 @@ each package are retained in its distribution under \`node_modules\`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are compatible with this project's AGPL-3.0
 outbound license. Build-time-only tooling under weak-copyleft (LGPL-3.0, MPL-2.0) or source-available (FSL-1.1-MIT)
-terms is used to build the application and is not redistributed as part of it.`;
+terms is used to build the application and is not redistributed as part of it.
+
+The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
+License 2.0 (\`MPL-2.0\`), unmodified and with its license header.`;
 
 interface LockEntry {
   name?: string;

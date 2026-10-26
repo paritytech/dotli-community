@@ -1,10 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The "dotli" and "dotli-wallet" IndexedDB connections, each opened on first use.
+// The "dotli", "dotli-wallet" and "dotli-site-grants" IndexedDB connections, each opened on first use.
 
 import { createAsyncTaskPool, openIdb } from '@dotli/shared';
-import { DB_NAME, DB_VERSION, upgradeDotliDb, upgradeWalletDb, WALLET_DB_NAME, WALLET_DB_VERSION } from './schema.js';
+import {
+  DB_NAME,
+  DB_VERSION,
+  SITE_GRANTS_DB_NAME,
+  SITE_GRANTS_DB_VERSION,
+  upgradeDotliDb,
+  upgradeSiteGrantsDb,
+  upgradeWalletDb,
+  WALLET_DB_NAME,
+  WALLET_DB_VERSION,
+} from './schema.js';
 
 /**
  * A connection closing under unload or another tab's upgrade, or an open blocked by an older tab.
@@ -72,3 +82,10 @@ const getWalletDb = createDbConnection(() => openIdb(indexedDB, WALLET_DB_NAME, 
 
 /** The frame's wallet database, apart from the page's so no cleanup of that one can reach it. */
 export const walletIdb: DotliIdb = { connect: getWalletDb, keyRange: () => IDBKeyRange };
+
+const getSiteGrantsDb = createDbConnection(() =>
+  openIdb(indexedDB, SITE_GRANTS_DB_NAME, SITE_GRANTS_DB_VERSION, upgradeSiteGrantsDb),
+);
+
+/** The session windows' grants database, apart from the page's so no cleanup of that one can reach it. */
+export const siteGrantsIdb: DotliIdb = { connect: getSiteGrantsDb, keyRange: () => IDBKeyRange };

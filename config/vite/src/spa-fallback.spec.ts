@@ -103,16 +103,20 @@ describe('fallbackFor', () => {
     expect(action).toEqual({ kind: 'pass' });
   });
 
-  it('As a user, I open /s/auth and /s/signout on the bare host and get the session window with my query kept', () => {
-    // Given a server for both local roots and page loads of both session paths on the bare host with a query
+  it('As a user, I open /s/auth, /s/signout, /s/manage and /s/sign on the bare host and get the session window with my query kept', () => {
+    // Given a server for both local roots and page loads of each session path on the bare host with a query
     const { routeFor } = createLocalServing(ROOTS);
-    const requests = [pageLoad('/s/auth?debug=1', 'localhost'), pageLoad('/s/signout?debug=1', 'localhost')];
+    const requests = ['/s/auth', '/s/signout', '/s/manage', '/s/sign'].map(path =>
+      pageLoad(`${path}?debug=1`, 'localhost'),
+    );
 
     // When the fallback decides for each
     const actions = requests.map(req => fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor));
 
-    // Then it rewrites both to the session window with the query
+    // Then it rewrites each to the session window with the query
     expect(actions).toEqual([
+      { kind: 'rewrite', url: '/session?debug=1' },
+      { kind: 'rewrite', url: '/session?debug=1' },
       { kind: 'rewrite', url: '/session?debug=1' },
       { kind: 'rewrite', url: '/session?debug=1' },
     ]);

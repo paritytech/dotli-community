@@ -43,9 +43,9 @@ timeouts.
   (the page's own build unless `dev` says), for the checks that admit dotli's own pages.
   `isSiteOrigin(origin, baseDomain, dev)`, whether an origin is dotli's own page: the root or a subdomain, never a
   product, over https unless under a trusted local root.
-- Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `getActiveServicesConfig`, `getActiveTldSuffix`,
-  `withActiveTld`, the chain role helpers (`CHAIN_ROLES`, `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway
-  and genesis hash readers.
+- Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `defaultNetwork` (the first enabled one),
+  `getActiveServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role helpers (`CHAIN_ROLES`,
+  `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
 - Settings: `getSettings`, `setSettings`, `subscribeSettings`, `getBackend`, `parseBackend`, `getCacheSettings`,
   `isSharedWorkerAvailable`, `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`,
   `setActiveNetwork`, `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `ResolvedSettings`, `Settings`,
@@ -59,9 +59,9 @@ What a context that never receives the runtime network config may read: `DEBUG`,
 
 ### `@dotli/config/local-roots`
 
-`LOCAL_ROOTS`, the roots the local servers answer under, and `trustedLocalRoots(dev)`, the ones a build takes for the
-root domain: `local.host` only in a development build, as it is a public name. It imports nothing, so a page, a build
-config and a script Node runs directly all load it.
+`LOCAL_ROOTS`, the roots the local servers answer under, `LOOPBACK_ROOT`, the loopback one among them, and
+`trustedLocalRoots(dev)`, the ones a build takes for the root domain: `local.host` only in a development build, as it is
+a public name. It imports nothing, so a page, a build config and a script Node runs directly all load it.
 
 ### `@dotli/config/networks`
 

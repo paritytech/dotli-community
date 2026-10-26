@@ -8,8 +8,14 @@
  */
 
 import type { SafeStorage } from '@dotli/shared';
-import { parseWindowRequest, type WindowRequest } from './messages.js';
-import { asRecord, readRequestParams, routeOfPath, type SessionRoute } from './session-protocol.js';
+import {
+  asRecord,
+  readRequestParams,
+  readSessionRequest,
+  routeOfPath,
+  type SessionRequest,
+  type SessionRoute,
+} from './session-protocol.js';
 
 const REQUEST_KEY = 'dotli:s:request';
 
@@ -26,7 +32,7 @@ function keep(storage: SafeStorage, pathname: string, params: Record<string, unk
 }
 
 /** The request kept for `pathname`, or null when none is kept or the kept one no longer parses. */
-function kept(storage: SafeStorage, pathname: string, route: SessionRoute): WindowRequest | null {
+function kept(storage: SafeStorage, pathname: string, route: SessionRoute): SessionRequest | null {
   const raw = storage.getItem(REQUEST_KEY);
   if (raw === null) {
     return null;
@@ -39,14 +45,15 @@ function kept(storage: SafeStorage, pathname: string, route: SessionRoute): Wind
     return null;
   }
   const params = asRecord(entry?.['params']);
-  return entry?.['path'] === pathname && params !== null ? parseWindowRequest(route, params) : null;
+  return entry?.['path'] === pathname && params !== null ? readSessionRequest(route, params) : null;
 }
 
 /**
  * The request this window answers, or null when it has none. A fragment with params is this load's request whether or
- * not it reads, so it replaces what was kept. Without one, the request kept for this path serves a reload.
+ * not it reads, so it replaces what was kept. Without one, the request kept for this path serves a reload. Only a round
+ * is required here, so a request of another version or for another party is kept for the window to answer.
  */
-export function takeWindowRequest(deps: WindowRequestDeps): WindowRequest | null {
+export function takeWindowRequest(deps: WindowRequestDeps): SessionRequest | null {
   const { pathname, search, hash, storage, replaceUrl } = deps;
   const route = routeOfPath(pathname);
   if (route === null) {
@@ -57,13 +64,18 @@ export function takeWindowRequest(deps: WindowRequestDeps): WindowRequest | null
     return kept(storage, pathname, route);
   }
   replaceUrl(pathname + search);
-  const request = params === null ? null : parseWindowRequest(route, params);
+  const request = params === null ? null : readSessionRequest(route, params);
   if (params === null || request === null) {
     storage.removeItem(REQUEST_KEY);
     return null;
   }
   keep(storage, pathname, params);
   return request;
+}
+
+/** Forgets the kept request, so a reload or a step back to the window answers no round. */
+export function forgetWindowRequest(storage: SafeStorage): void {
+  storage.removeItem(REQUEST_KEY);
 }
 
 export interface NewRequestDeps {
@@ -80,7 +92,7 @@ export function watchNewRequests(deps: NewRequestDeps): () => void {
   const route = routeOfPath(pathname);
   return listen(() => {
     const params = readRequestParams(hash());
-    if (route === null || params === undefined || params === null || parseWindowRequest(route, params) === null) {
+    if (route === null || params === undefined || params === null || readSessionRequest(route, params) === null) {
       return;
     }
     keep(storage, pathname, params);

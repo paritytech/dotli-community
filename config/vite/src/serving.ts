@@ -42,7 +42,7 @@ export function pathInBuild(route: Route, pathname: string): string {
 }
 
 /** The session windows' paths on the bare host, which serve the session window at these exact paths only. */
-const SESSION_PATHS: ReadonlySet<string> = new Set(['/s/auth', '/s/signout']);
+const SESSION_PATHS: ReadonlySet<string> = new Set(['/s/auth', '/s/signout', '/s/manage', '/s/sign']);
 const SESSION_FILE = 'session.html';
 /** The session window's built file, which only its paths may serve, since those paths are what refuse framing. */
 const SESSION_FILE_PATH = `/${SESSION_FILE}`;

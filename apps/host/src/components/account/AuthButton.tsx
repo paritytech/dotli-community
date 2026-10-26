@@ -28,6 +28,8 @@ export interface AuthButtonProps {
   idPrefix?: string | undefined;
   /** Shows the name beside the initials, as the landing page does. */
   showName?: boolean | undefined;
+  /** The signed-in sites page, which the account popover links to in a new tab. */
+  sitesUrl?: string | undefined;
   /** Gets the button once it is on the page. */
   buttonRef?: ((button: HTMLButtonElement) => void) | undefined;
 }
@@ -168,7 +170,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         class={s['popover']}
         preload={AccountPanel.preload}
       >
-        <AccountPanel account={props.account} onLogout={props.onLogout} />
+        <AccountPanel account={props.account} onLogout={props.onLogout} sitesUrl={props.sitesUrl} />
       </Popover>
     </>
   );

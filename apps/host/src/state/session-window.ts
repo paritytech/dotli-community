@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
+import type { SiteList, SiteListScreen } from '../runtime/site-sign-in/site-list.js';
+import type { SiteRound, SiteScreen } from '../runtime/site-sign-in/site-round.js';
+import { closeWindow } from '../session-window-page.js';
 import type { PairingView } from './auth-modal.js';
 
 /**
@@ -57,8 +60,22 @@ export type SignInScreen =
   | (SignInFields & { view: 'continue'; offer: ContinueOffer })
   | (SignInFields & { view: Exclude<WindowView, 'continue' | 'signing-out' | 'signed-out'> });
 
-/** What the window shows. A sign-out only says where it stands, so it carries nothing of a sign-in. */
-export type WindowScreen = SignInScreen | { view: 'signing-out' } | { view: 'signed-out' };
+/** A view of a site's round, which names the site's full origin. */
+export type SiteWindowScreen = Extract<SiteScreen, { origin: string }>;
+
+/**
+ * Why a site's redirect sign-in cannot go on: the site did not allow the return address, or this browser cannot seal
+ * the answer to the site's key.
+ */
+export type RedirectScreen = { view: 'site-not-allowed' } | { view: 'site-unsupported' };
+
+/**
+ * What the window shows. A sign-out only says where it stands, so it carries nothing of a sign-in, a site's round
+ * shows its own views apart from those of dot.li's own sign-in, a redirect that cannot go on says why, and the site
+ * list shows the sites and nothing else.
+ */
+export type WindowScreen =
+  SignInScreen | { view: 'signing-out' } | { view: 'signed-out' } | SiteWindowScreen | RedirectScreen | SiteListScreen;
 
 // The page renders its first paint from this, so it starts where every window starts.
 const sessionWindow = createSyncStore<WindowScreen>(
@@ -116,4 +133,53 @@ export function windowIntents(): WindowIntents {
     throw new Error('Session window flow used before it started');
   }
   return pageIntents;
+}
+
+// What Close on any view does, for the island, which hydrates on its own and so cannot be handed it.
+let pageClose: () => void = closeWindow;
+
+/** Sets what Close on any view does, for a window whose round must keep it open a while. */
+export function setCloseIntent(close: () => void): void {
+  pageClose = close;
+}
+
+/** What Close on any view does: closes the window, unless the page set otherwise. */
+export function closeIntent(): () => void {
+  return pageClose;
+}
+
+/** What the site views' controls ask of a site's round. */
+export type SiteIntents = Pick<SiteRound, 'consent' | 'decline' | 'confirm' | 'retry' | 'cancel'>;
+
+// The site's round, for the island, which hydrates on its own and so cannot be handed it.
+let siteFlowIntents: SiteIntents | null = null;
+
+export function setSiteIntents(intents: SiteIntents): void {
+  siteFlowIntents = intents;
+}
+
+/** The running site round's intents. Only its own views offer a control that asks it, so it exists by then. */
+export function siteIntents(): SiteIntents {
+  if (siteFlowIntents === null) {
+    throw new Error('Site round used before it started');
+  }
+  return siteFlowIntents;
+}
+
+/** What the site list's controls ask of it. */
+export type SiteListIntents = Pick<SiteList, 'revoke' | 'retry'>;
+
+// The site list, for the island, which hydrates on its own and so cannot be handed it.
+let listIntents: SiteListIntents | null = null;
+
+export function setSiteListIntents(intents: SiteListIntents): void {
+  listIntents = intents;
+}
+
+/** The site list's intents. Only its own view offers a control that asks it, so it exists by then. */
+export function siteListIntents(): SiteListIntents {
+  if (listIntents === null) {
+    throw new Error('Site list used before it started');
+  }
+  return listIntents;
 }

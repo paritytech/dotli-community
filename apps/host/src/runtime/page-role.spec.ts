@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createPageRoleSlot,
+  forgetsSiteGrants,
   loadReader,
   offersResume,
   ownsFlag,
@@ -25,6 +26,7 @@ function supplied(role: PageRole) {
     reader: loadReader(role),
     showsSession: showsSession(role),
     offersResume: offersResume(role),
+    forgetsSiteGrants: forgetsSiteGrants(role),
   };
 }
 
@@ -47,6 +49,7 @@ describe('page role', () => {
       reader: 'load',
       showsSession: true,
       offersResume: false,
+      forgetsSiteGrants: false,
     });
   });
 
@@ -68,6 +71,7 @@ describe('page role', () => {
       reader: 'load',
       showsSession: true,
       offersResume: false,
+      forgetsSiteGrants: true,
     });
   });
 
@@ -87,6 +91,7 @@ describe('page role', () => {
       reader: 'load',
       showsSession: true,
       offersResume: false,
+      forgetsSiteGrants: true,
     });
   });
 
@@ -109,6 +114,7 @@ describe('page role', () => {
       reader: 'load',
       showsSession: true,
       offersResume: true,
+      forgetsSiteGrants: false,
     });
   });
 
@@ -128,6 +134,7 @@ describe('page role', () => {
       reader: 'window',
       showsSession: true,
       offersResume: false,
+      forgetsSiteGrants: false,
     });
   });
 
@@ -147,7 +154,19 @@ describe('page role', () => {
       reader: 'window',
       showsSession: false,
       offersResume: false,
+      forgetsSiteGrants: false,
     });
+  });
+
+  it('As a user signing out in place on a page that owns the main store, I sign out and my signed-in sites are forgotten, while the sign-in window that also owns the flag never forgets them', () => {
+    // Given every role a page may take
+    const roles: PageRole[] = ['page', 'landing', 'preview', 'framed-preview', 'signin-window', 'signout-window'];
+
+    // When each role says whether its sign-out forgets the grants
+    const forgets = roles.filter(forgetsSiteGrants);
+
+    // Then only the pages that pair in place in the main store forget them, and the sign-out window the rest
+    expect(forgets).toEqual(['landing', 'preview']);
   });
 
   it('As an operator, I choose a page role a second time and the same role changes nothing while another role is a wiring fault', () => {

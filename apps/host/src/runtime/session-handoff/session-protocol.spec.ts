@@ -8,7 +8,9 @@ import {
   READY,
   parseHello,
   parsePageMessage,
+  parsePayload,
   readRequestParams,
+  readSessionRequest,
   requestUrl,
   routeOfPath,
 } from './session-protocol.js';
@@ -29,6 +31,17 @@ describe('session protocol', () => {
     expect(url.startsWith('https://dot.li/s/auth#params=')).toBe(true);
     expect(url.split('#params=')[1]).not.toContain('=');
     expect(read).toEqual(params);
+  });
+
+  it('As a site, I build a transaction request and it lands on the sign route', () => {
+    // Given a site's transaction params
+    const params = { v: 1, net: 'paseo-next-v2', round: 'r3', chain: '0x01', call: '0x0001' };
+
+    // When the URL is built
+    const url = requestUrl('https://dot.li', 'sign', params);
+
+    // Then the URL is on the sign route
+    expect(url.startsWith('https://dot.li/s/sign#params=')).toBe(true);
   });
 
   it('As a page, I build a sign-out request and it lands on its own route', () => {
@@ -86,6 +99,26 @@ describe('session protocol', () => {
     expect(rejected).toEqual([null, null, null, null]);
   });
 
+  it("As a window, I parse a site's payload only in its exact shape and reject the rest", () => {
+    // Given a valid payload and messages that break its shape
+    const valid = { type: 'dotli:s:payload', round: 'r1', call: '0x0001' };
+    const broken = [
+      { type: 'dotli:s:payload', round: 'r1', call: 7 },
+      { type: 'dotli:s:payload', round: 'r1' },
+      { type: 'dotli:s:payload', round: 1, call: '0x0001' },
+      { type: 'dotli:s:hello', round: 'r1', call: '0x0001' },
+      null,
+    ];
+
+    // When each is parsed
+    const parsed = parsePayload({ ...valid, extra: true });
+    const rejected = broken.map(parsePayload);
+
+    // Then only the valid one parses, to its three fields
+    expect(parsed).toEqual(valid);
+    expect(rejected).toEqual(broken.map(() => null));
+  });
+
   it('As an opener, I parse ready, result and refused and reject everything else', () => {
     // Given the three messages and payloads that are none of them
     const ready = { type: 'dotli:s:ready', versions: [1] };
@@ -110,6 +143,68 @@ describe('session protocol', () => {
     expect(rejected).toEqual(others.map(() => null));
   });
 
+  it('As an opener, I parse a cancel and a result that carries a site token', () => {
+    // Given a cancel and a result with a site token
+    const cancelled = { type: 'dotli:s:cancelled', round: 'r1' };
+    const result = { type: 'dotli:s:result', round: 'r1', result: null, site_token: 'tok' };
+
+    // When each is parsed
+    const parsed = [cancelled, result].map(parsePageMessage);
+
+    // Then both read back unchanged
+    expect(parsed).toEqual([cancelled, result]);
+  });
+
+  it.each([
+    ['a cancel without its round', { type: 'dotli:s:cancelled' }],
+    ['a cancel with a non-string round', { type: 'dotli:s:cancelled', round: 1 }],
+    ['a result with a non-string site token', { type: 'dotli:s:result', round: 'r1', result: null, site_token: 7 }],
+  ])('As an opener, I reject %s', (_name, data) => {
+    // Given the broken message
+
+    // When it is parsed
+    const parsed = parsePageMessage(data);
+
+    // Then it is rejected
+    expect(parsed).toBeNull();
+  });
+
+  it('As a window, I read a request of another version, an unknown network and extra fields and keep them all', () => {
+    // Given params with version 2, a network this build does not know and a field of another party
+    const params = { v: 2, net: 'nope', round: 'r1', nonce: 'abcdefgh' };
+
+    // When the window reads them on the auth route
+    const request = readSessionRequest('auth', params);
+
+    // Then it keeps the version, the network and every field for whoever judges them
+    expect(request).toEqual({ route: 'auth', round: 'r1', v: 2, net: 'nope', params });
+  });
+
+  it('As a window, I read a request whose version and network are not of their type and keep them as unknown', () => {
+    // Given params whose version is a string and whose network is a number
+    const params = { v: '1', net: 7, round: 'r1' };
+
+    // When the window reads them
+    const request = readSessionRequest('signout', params);
+
+    // Then the version and the network are null
+    expect(request).toEqual({ route: 'signout', round: 'r1', v: null, net: null, params });
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['no round', { v: 1, net: 'paseo-next-v2' }],
+    ['an empty round', { v: 1, net: 'paseo-next-v2', round: '' }],
+    ['a non-string round', { v: 1, net: 'paseo-next-v2', round: 7 }],
+  ])('As a window, I read a request with %s and find none, since there is no round to answer', (_name, params) => {
+    // Given the params
+
+    // When the window reads them
+    const request = readSessionRequest('auth', params);
+
+    // Then there is no request
+    expect(request).toBeNull();
+  });
+
   it('As a window, I announce my version in my ready and an opener reads it', () => {
     // Given the exported ready
 
@@ -123,8 +218,10 @@ describe('session protocol', () => {
   it.each([
     ['/s/auth', 'auth'],
     ['/s/signout', 'signout'],
+    ['/s/manage', 'manage'],
     ['/s/auth/', null],
-    ['/s/sign', null],
+    ['/s/sign', 'sign'],
+    ['/s/sign/', null],
     ['/', null],
   ])('As a window, I map the path %s and find its route', (path, route) => {
     // Given the path

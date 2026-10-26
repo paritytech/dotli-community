@@ -1,13 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Drives the sign-in window, which a product signs in and out through, and serves the opener fixture page that opens
-// it where a dotli page cannot.
+// Drives the sign-in window, which a product signs in and out through, and serves the fixture pages that open it where
+// a dotli page cannot: an opener page that runs the pages' own handoff, and a third-party site, by popup or by redirect.
 
 import { resolve } from 'node:path';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { NETWORK, TIMEOUT_MS } from '../../env.js';
-import { SESSION_OPENER_BUNDLE_PATH } from './wire-bundles.js';
+import { ROOT_ORIGIN } from './frames.js';
+import { SESSION_OPENER_BUNDLE_PATH, SITE_OPENER_BUNDLE_PATH, SITE_REDIRECT_BUNDLE_PATH } from './wire-bundles.js';
 
 // Substrate's public development phrase. It holds nothing and is safe to commit.
 export const DEV_PHRASE = 'bottom drive obey lake curtain smoke basket hold race lonely fit walk';
@@ -15,6 +16,16 @@ export const DEV_PHRASE = 'bottom drive obey lake curtain smoke basket hold race
 const OPENER_PAGE = resolve(import.meta.dirname, '../fixtures/session-opener.html');
 const OPENER_PATH = '/__dotli-e2e/session-opener.html';
 const OPENER_SCRIPT_PATH = '/__dotli-e2e/session-opener.js';
+
+/** A third-party site on https, off the window's root domain. */
+export const SITE_ORIGIN = 'https://site.example';
+const SITE_PAGE = resolve(import.meta.dirname, '../fixtures/site-opener.html');
+const SITE_SCRIPT_PATH = '/site-opener.js';
+const REDIRECT_PAGE = resolve(import.meta.dirname, '../fixtures/site-redirect.html');
+const REDIRECT_SCRIPT_PATH = '/site-redirect.js';
+const WELL_KNOWN_PATH = '/.well-known/polkadot-signin.json';
+/** The address the redirect fixture comes back to with the window's answer. */
+export const SITE_RETURN_URL = `${SITE_ORIGIN}/back`;
 
 /** The window's content, whose `data-view` says which view it shows. */
 export function sessionWindow(window: Page): Locator {
@@ -87,4 +98,59 @@ export async function serveSessionOpener(page: Page, origin: string): Promise<st
  */
 export function openerOutcome(page: Page): Locator {
   return page.getByTestId('opener-outcome');
+}
+
+/**
+ * Serves the site fixture page at the root of `origin`, a third-party https origin unless the test picks another, and
+ * returns its URL, which names the window's origin and the `route` it opens. The page opens the window from its button
+ * as a site does and marks the window's last reply on its output.
+ */
+export async function serveSiteOpener(
+  page: Page,
+  { origin = SITE_ORIGIN, route: windowRoute = 'auth' }: { origin?: string; route?: 'auth' | 'sign' } = {},
+): Promise<string> {
+  await page.route(`${origin}/**`, async route => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === '/') {
+      await route.fulfill({ path: SITE_PAGE, contentType: 'text/html' });
+    } else if (pathname === SITE_SCRIPT_PATH) {
+      await route.fulfill({ path: SITE_OPENER_BUNDLE_PATH, contentType: 'text/javascript' });
+    } else {
+      await route.fulfill({ status: 404 });
+    }
+  });
+  const query = new URLSearchParams({ window: ROOT_ORIGIN, net: NETWORK, route: windowRoute });
+  return `${origin}/?${query.toString()}`;
+}
+
+/**
+ * Serves the redirect fixture page at the root of the third-party site and at its return address, with the site's
+ * well-known file, which lists the return address unless `listed` is false, and returns the page's URL. The page goes
+ * to the sign-in window by redirect from its button, and back on the return address marks the window's sealed answer
+ * on its output.
+ */
+export async function serveSiteRedirect(page: Page, { listed = true }: { listed?: boolean } = {}): Promise<string> {
+  await page.route(`${SITE_ORIGIN}/**`, async route => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === '/' || pathname === new URL(SITE_RETURN_URL).pathname) {
+      await route.fulfill({ path: REDIRECT_PAGE, contentType: 'text/html' });
+    } else if (pathname === REDIRECT_SCRIPT_PATH) {
+      await route.fulfill({ path: SITE_REDIRECT_BUNDLE_PATH, contentType: 'text/javascript' });
+    } else if (pathname === WELL_KNOWN_PATH) {
+      // The window reads the file from its own origin, so the site allows the read.
+      await route.fulfill({
+        json: { return_to: [listed ? SITE_RETURN_URL : `${SITE_ORIGIN}/elsewhere`] },
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
+    } else {
+      await route.fulfill({ status: 404 });
+    }
+  });
+  const query = new URLSearchParams({ window: ROOT_ORIGIN, net: NETWORK });
+  return `${SITE_ORIGIN}/?${query.toString()}`;
+}
+
+/** The site fixture's output, whose `data-type` and `data-reason` are those of the window's last reply. */
+export function siteReply(page: Page): Locator {
+  return page.getByTestId('site-reply');
 }

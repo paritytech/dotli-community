@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The "dotli" database's one schema, and the frame's wallet database.
+// The "dotli" database's one schema, and the frame's wallet and the session windows' grants databases.
 
 export const DB_NAME = 'dotli';
 export const DB_VERSION = 6;
@@ -66,5 +66,17 @@ export const WALLET_DB_VERSION = 1;
 export function upgradeWalletDb(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains('local_wallet')) {
     db.createObjectStore('local_wallet', { keyPath: 'id' });
+  }
+}
+
+/** The session windows' own database, apart from the page's so the landing page's wipe of its origin keeps it. */
+export const SITE_GRANTS_DB_NAME = 'dotli-site-grants';
+export const SITE_GRANTS_DB_VERSION = 1;
+export const SITE_GRANTS_STORE = 'grants';
+
+/** The sites a user signed in to, one record per site token. */
+export function upgradeSiteGrantsDb(db: IDBDatabase): void {
+  if (!db.objectStoreNames.contains(SITE_GRANTS_STORE)) {
+    db.createObjectStore(SITE_GRANTS_STORE, { keyPath: 'token' });
   }
 }

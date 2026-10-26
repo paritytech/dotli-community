@@ -43,7 +43,12 @@ export type MetricOutcome =
   | 'cancelled'
   | 'told_phone'
   | 'nothing'
-  | 'kept';
+  | 'kept'
+  // A site's sign-in and transaction through the session window, and its revoke from the site list
+  | 'granted'
+  | 'included'
+  | 'failed'
+  | 'revoked';
 
 /** Dashboards slice on the named keys, so keep new attributes within them. */
 export type MetricAttributes = {

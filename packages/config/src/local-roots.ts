@@ -5,7 +5,7 @@
 // page, a build config and a script Node runs directly all load it.
 
 /** The loopback name, which every build takes for the root domain. */
-const LOOPBACK_ROOT = 'localhost';
+export const LOOPBACK_ROOT = 'localhost';
 
 /** The roots a local server answers under, each standing for the root domain. */
 export const LOCAL_ROOTS: readonly string[] = [LOOPBACK_ROOT, 'local.host'];

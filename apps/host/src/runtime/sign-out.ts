@@ -52,6 +52,11 @@ export interface PageSignOutDeps {
    * there and answered as `failed`.
    */
   leaveLocalWallet: (forget: () => Promise<void>) => Promise<WalletSwitchOutcome>;
+  /**
+   * Forgets the sites signed in through the session window, which a sign-out that ends the sign-in ends too, or does
+   * nothing on a page whose sign-out leaves them to the sign-out window.
+   */
+  forgetGrants: () => Promise<void>;
   /** The main store's local wallet, which a local sign-out reads and then forgets only while it holds that record. */
   wallet: Pick<SiteWallet, 'read' | 'forgetIf'>;
   /**
@@ -99,7 +104,7 @@ export interface PageSignOut {
 }
 
 /** A closed set, so the metric's `reason` tag stays bounded. */
-type SignOutFailureReason = 'end' | 'reset' | 'drop';
+type SignOutFailureReason = 'end' | 'reset' | 'drop' | 'grants';
 
 function reportSignOutFailure(error: unknown, reason: SignOutFailureReason): void {
   reportWalletFailure(error, { what: `logout ${reason}`, step: 'logout', reason, metric: S.WALLET_LOGOUT });
@@ -145,6 +150,18 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
     deps.session.reportSignedOut();
   };
 
+  /** Forgets the grants. Never rejects, as the sign-out goes on whether or not they went. */
+  const forgetGrants = async (): Promise<void> => {
+    try {
+      await deps.forgetGrants();
+    } catch (error) {
+      // The sites keep their tokens until the user revokes them. Counted apart from how the sign-out ended, which this
+      // leaves unchanged.
+      reportLetGoFailure(error, 'grants');
+      m.count(S.SITE_REVOKE, { outcome: 'error', reason: 'sign_out' });
+    }
+  };
+
   /** Ends `blob` on the phone. A retry runs one at a time with the page's other sign-outs. */
   const tell = async (blob: string): Promise<LogoutOutcome> => {
     try {
@@ -175,6 +192,7 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
     const read = await held;
     const blob = read.status === 'ok' ? read.blob : null;
     await letGo(blob);
+    await forgetGrants();
     if (read.status === 'failed') {
       // Core storage reported the read. Nothing can tell the phone without the session.
       log.event('logout could not read the paired session', { flow: 'wallet' });
@@ -228,6 +246,8 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
         reportSignOutFailure(error, 'drop');
       }
     }
+    // Before the switch, which reloads the page.
+    await forgetGrants();
     // Either outcome ends the sign-out here: the page reloads, or the switch already reported why it stayed.
     await deps.leaveLocalWallet(async () => {
       await deps.flag.clear(() => forgetWalletRead(wallet));
@@ -247,6 +267,8 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
     if ((await deps.presence.read()) === 'unknown') {
       await dropPairedCopy();
     }
+    // Before the switch, which reloads the page.
+    await forgetGrants();
     // A local session lives only in memory, so signing out means leaving local mode. Either outcome ends the sign-out
     // here: the page reloads, or the switch already reported why it stayed.
     await deps.leaveLocalWallet(async () => {

@@ -7,6 +7,7 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import { isPhoneViewport } from '@dotli/ui';
 import { byTestId } from '@dotli/ui/testing';
 import { expectBefore } from '@config/storybook/play';
+import { must } from '@dotli/shared/testing';
 import type { PairingView } from '../../state/auth-modal.js';
 import type { SignInScreen } from '../../state/session-window.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
@@ -19,6 +20,8 @@ const DEEPLINK = 'polkadotapp://pair?handshake=test';
 const PHRASE = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
 const ALICE = { wallet: 'paired', account: { liteUsername: 'alice.01' } } as const;
+/** A site's full origin, port included, as the window names it. */
+const SITE_ORIGIN = 'https://site.example:8443';
 
 /** What the window asks of its page and its flow. */
 const onClose = fn<() => void>();
@@ -29,6 +32,15 @@ const onGoOnWithoutPhone = fn<() => void>();
 const onRetry = fn<() => void>();
 const onClosePhrase = fn<() => void>();
 const onImportPhrase = fn<(phrase: string) => Promise<void>>(() => Promise.resolve());
+/** What the site views ask of a site's sign-in. */
+const onConsent = fn<() => void>();
+const onDecline = fn<() => void>();
+const onSiteConfirm = fn<() => void>();
+const onSiteRetry = fn<() => void>();
+const onSiteCancel = fn<() => void>();
+/** What the site list asks of the grants. */
+const onRevoke = fn<(token: string) => void>();
+const onSiteListRetry = fn<() => void>();
 /** The QR renderer the window is given, which draws nothing. */
 const drawQr = fn<DrawQr>(() => Promise.resolve());
 /** The phrase form's loader the window is given, which loads the form's own chunk unless a story says otherwise. */
@@ -72,6 +84,13 @@ const meta = {
     onRetry,
     onClosePhrase,
     onImportPhrase,
+    onConsent,
+    onDecline,
+    onSiteConfirm,
+    onSiteRetry,
+    onSiteCancel,
+    onRevoke,
+    onSiteListRetry,
     isValidPhrase: phrase => phrase === PHRASE,
     drawQr,
     isMobile: (): boolean => false,
@@ -86,6 +105,13 @@ const meta = {
       onGoOnWithoutPhone,
       onRetry,
       onClosePhrase,
+      onConsent,
+      onDecline,
+      onSiteConfirm,
+      onSiteRetry,
+      onSiteCancel,
+      onRevoke,
+      onSiteListRetry,
     ]) {
       mock.mockClear();
     }
@@ -147,6 +173,54 @@ export const Refused: Story = {
         await expect(byTestId('session-window-title')).toHaveTextContent('Sign-in is not available for this page');
         await expect(status()).toHaveAttribute('data-tone', 'idle');
         await expect(status()).toHaveTextContent('This window does not sign in pages at that address.');
+        await expect(buttonNames()).toEqual(['Close']);
+      },
+    );
+    await step('When I press Close', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Close' }));
+    });
+    await step('Then the window was asked to close once', async () => {
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+  },
+};
+
+/** As a user of a site whose return address it does not list, I am told it did not allow it and can only close. */
+export const SiteNotAllowed: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-not-allowed' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step(
+      'Then the window says the site did not allow this return address, in the idle tone, with Close',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'site-not-allowed');
+        await expect(byTestId('session-window-title')).toHaveTextContent('This site did not allow this return address');
+        await expect(status()).toHaveAttribute('data-tone', 'idle');
+        await expect(status()).toHaveTextContent('Nothing was sent to the site.');
+        await expect(buttonNames()).toEqual(['Close']);
+      },
+    );
+    await step('When I press Close', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Close' }));
+    });
+    await step('Then the window was asked to close once', async () => {
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+  },
+};
+
+/** As a user whose browser cannot seal a redirect answer, I am told it cannot finish this sign-in and can only close. */
+export const SiteUnsupported: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-unsupported' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step(
+      'Then the window says this browser cannot finish this sign-in, in the warning tone, with Close',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'site-unsupported');
+        await expect(byTestId('session-window-title')).toHaveTextContent('This browser cannot finish this sign-in');
+        await expect(status()).toHaveAttribute('data-tone', 'warn');
+        await expect(status()).toHaveTextContent('Try again in another browser.');
         await expect(buttonNames()).toEqual(['Close']);
       },
     );
@@ -417,6 +491,28 @@ export const Pairing: Story = {
   },
 };
 
+/** As a user with no sign-in whom a site asks to sign in, I see the code to scan for the site's full origin. */
+export const PairingSite: Story = {
+  tags: ['!autodocs'],
+  args: {
+    screen: {
+      ...SIGN_IN_START,
+      view: 'pairing',
+      pageHost: SITE_ORIGIN,
+      pairing: { kind: 'pairing', payload: DEEPLINK },
+    },
+  },
+  play: async ({ canvas, step }) => {
+    await step('Then the code to scan names the site by its full origin, scheme and port included', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'pairing');
+      await expect(byTestId('auth-modal-hint')).toHaveTextContent(
+        `Scan the code to continue to ${SITE_ORIGIN}. One sign-in works across every app.`,
+      );
+      await expect(await canvas.findByRole('img', { name: 'Sign-in QR code' })).toBeVisible();
+    });
+  },
+};
+
 /** As a phone user with no sign-in, I see Open Polkadot App and Scan from another phone, with where to get the app. */
 export const PairingPhone: Story = {
   tags: ['!autodocs'],
@@ -617,6 +713,520 @@ export const StepFailed: Story = {
     });
     await step('Then the round was cancelled', async () => {
       await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
+    });
+  },
+};
+
+/** What a site gets, as the consent view lists it. */
+const SITE_GETS = [
+  'Your username',
+  'An address made for this site only',
+  'The right to ask for transactions from your main account, each confirmed again',
+];
+
+/** What the consent view lists that a site gets, one list item each. */
+const siteGets = (): string[] =>
+  within(byTestId('session-window-site-gets'))
+    .getAllByRole('listitem')
+    .map(item => item.textContent.trim());
+
+/** As a user a site asks to sign in, I see its full origin, what it gets and no words of its own, and answer it. */
+export const SiteConsent: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'consent', origin: SITE_ORIGIN, statement: null, group: null } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step(
+      'Then the card heads with the full origin, says what the site wants and lists what it gets',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'consent');
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
+        await expect(byTestId('session-window-title')).toHaveTextContent(SITE_ORIGIN);
+        await expect(byTestId('session-window-consent')).toHaveTextContent('wants you to sign in with Polkadot');
+        await expect(byTestId('session-window-site-gets')).toHaveAttribute('role', 'list');
+        await expect(siteGets()).toEqual(SITE_GETS);
+        await expect(canvas.queryByTestId('session-window-statement')).toBeNull();
+        await expect(canvas.queryByText('The site says')).toBeNull();
+        await expect(canvas.queryByTestId('session-window-group')).toBeNull();
+      },
+    );
+    await step('Then Continue leads and Cancel follows, in the card', async () => {
+      await expect(buttonNames()).toEqual(['Continue', 'Cancel']);
+      await expect(card()).toContainElement(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('When I press Continue', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Continue' }));
+    });
+    await step('Then the site sign-in was asked to go on once', async () => {
+      await waitFor(() => expect(onConsent).toHaveBeenCalledTimes(1));
+      await expect(onDecline).not.toHaveBeenCalled();
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site was declined once and no round of the window was cancelled', async () => {
+      await waitFor(() => expect(onDecline).toHaveBeenCalledTimes(1));
+      await expect(onSiteCancel).not.toHaveBeenCalled();
+      await expect(onCancel).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user a site asks to sign in with words of its own, I read them quoted as the site's, as plain text. */
+export const SiteConsentStatement: Story = {
+  tags: ['!autodocs'],
+  args: {
+    screen: { view: 'consent', origin: SITE_ORIGIN, statement: 'Sign in to keep <b>your</b> playlists.', group: null },
+  },
+  play: async ({ canvas, userEvent, step }) => {
+    await step("Then the site's words show under The site says, markup and all as text", async () => {
+      await expect(canvas.getByRole('heading', { level: 2 })).toHaveTextContent('The site says');
+      await expect(byTestId('session-window-statement')).toHaveTextContent('Sign in to keep <b>your</b> playlists.');
+      await expect(byTestId('session-window-statement').querySelector('b')).toBeNull();
+      await expect(siteGets()).toEqual(SITE_GETS);
+      await expect(buttonNames()).toEqual(['Continue', 'Cancel']);
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site was declined once', async () => {
+      await waitFor(() => expect(onDecline).toHaveBeenCalledTimes(1));
+      await expect(onConsent).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user a site of a group asks to sign in, I see its full origin and the registrable domain the sign-in covers. */
+export const SiteConsentGroup: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'consent', origin: SITE_ORIGIN, statement: null, group: 'site.example' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step(
+      'Then the card heads with the full origin, and says under it which sites share the sign-in',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'consent');
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
+        await expect(byTestId('session-window-group')).toHaveTextContent(
+          'for every site of site.example that shares this sign-in',
+        );
+        await expectBefore(byTestId('session-window-title'), byTestId('session-window-group'));
+        await expect(byTestId('session-window-consent')).toHaveTextContent('wants you to sign in with Polkadot');
+        await expect(siteGets()).toEqual(SITE_GETS);
+        await expect(buttonNames()).toEqual(['Continue', 'Cancel']);
+      },
+    );
+    await step('When I press Continue', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Continue' }));
+    });
+    await step('Then the site sign-in was asked to go on once', async () => {
+      await waitFor(() => expect(onConsent).toHaveBeenCalledTimes(1));
+      await expect(onDecline).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user signing a site in, I am told to approve in Polkadot App for its origin and can cancel. */
+export const SiteSigning: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-signing', origin: SITE_ORIGIN, route: 'auth' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window asks me to approve, names the origin and offers Cancel alone', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'site-signing');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Approve the sign-in in Polkadot App');
+      await expect(byTestId('session-window-spinner')).toBeVisible();
+      await expect(status()).toHaveTextContent(SITE_ORIGIN);
+      await expect(buttonNames()).toEqual(['Cancel']);
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site sign-in was cancelled once and no round of the window was', async () => {
+      await waitFor(() => expect(onSiteCancel).toHaveBeenCalledTimes(1));
+      await expect(onCancel).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user whose site sign-in failed, I am told so for its origin and try again or cancel. */
+export const SiteFailed: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-failed', origin: SITE_ORIGIN, route: 'auth', retry: true } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step(
+      'Then the window says the sign-in could not finish, in its tone, with Try again and Cancel',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'site-failed');
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('The sign-in could not finish');
+        await expect(status()).toHaveAttribute('data-tone', 'err');
+        await expect(status()).toHaveTextContent(SITE_ORIGIN);
+        await expect(buttonNames()).toEqual(['Try again', 'Cancel']);
+      },
+    );
+    await step('When I press Try again', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Try again' }));
+    });
+    await step('Then the site sign-in was asked to try again once, not the window flow', async () => {
+      await waitFor(() => expect(onSiteRetry).toHaveBeenCalledTimes(1));
+      await expect(onRetry).not.toHaveBeenCalled();
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site sign-in was cancelled once', async () => {
+      await waitFor(() => expect(onSiteCancel).toHaveBeenCalledTimes(1));
+      await expect(onCancel).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user whose site asked for a transaction, I am told it is being prepared for its origin and can cancel. */
+export const SitePreparingTransaction: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-signing', origin: SITE_ORIGIN, route: 'sign' } },
+  play: async ({ canvas, step }) => {
+    await step(
+      'Then the window says the transaction is being prepared, names the origin and offers Cancel alone',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'site-signing');
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Preparing the transaction');
+        await expect(byTestId('session-window-spinner')).toBeVisible();
+        await expect(status()).toHaveTextContent(SITE_ORIGIN);
+        await expect(buttonNames()).toEqual(['Cancel']);
+      },
+    );
+  },
+};
+
+/** As a user whose site transaction failed past trying again, I am told so for its origin and can only cancel. */
+export const SiteTransactionFailed: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-failed', origin: SITE_ORIGIN, route: 'sign', retry: false } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window says the transaction could not finish, in its tone, with Cancel alone', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'site-failed');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('The transaction could not finish');
+      await expect(status()).toHaveAttribute('data-tone', 'err');
+      await expect(status()).toHaveTextContent(SITE_ORIGIN);
+      await expect(buttonNames()).toEqual(['Cancel']);
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site round was cancelled once and never asked to try again', async () => {
+      await waitFor(() => expect(onSiteCancel).toHaveBeenCalledTimes(1));
+      await expect(onSiteRetry).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** A site's call with an argument whose value holds no break at all, and one whose text spans several lines. */
+const LONG_CALL = {
+  name: 'Utility.batch_all',
+  args: [
+    { name: 'remark', value: `0x${'ab'.repeat(120)}` },
+    { name: 'calls', value: JSON.stringify([{ type: 'System', value: { type: 'remark' } }], null, 2) },
+  ],
+};
+
+/** Each argument the review shows, as its name and its value. */
+const reviewedArgs = (): { name: string; value: string }[] =>
+  within(byTestId('session-window-call'))
+    .getAllByTestId('session-window-call-arg')
+    .map(arg => ({
+      name: within(arg).getByTestId('session-window-call-arg-name').textContent,
+      value: within(arg).getByTestId('session-window-call-arg-value').textContent,
+    }));
+
+/** As a user a site asks to sign a long call, I read its origin, its name and every argument whole, and sign it. */
+export const SiteReview: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-review', origin: SITE_ORIGIN, call: LONG_CALL } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the card heads with the full origin, says what the site asks and names the call', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'site-review');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
+      await expect(byTestId('session-window-review')).toHaveTextContent(
+        'asks you to sign a transaction from your main account',
+      );
+      await expect(canvas.getByRole('heading', { level: 2 })).toHaveTextContent('Utility.batch_all');
+    });
+    await step('Then each argument shows whole, its value wrapped inside the card', async () => {
+      await expect(reviewedArgs()).toEqual(LONG_CALL.args);
+      const frame = card().getBoundingClientRect();
+      for (const value of within(card()).getAllByTestId('session-window-call-arg-value')) {
+        await expect(value).toBeVisible();
+        const box = value.getBoundingClientRect();
+        await expect(box.left).toBeGreaterThanOrEqual(frame.left);
+        await expect(box.right).toBeLessThanOrEqual(frame.right);
+        await expect(value.scrollWidth).toBeLessThanOrEqual(value.clientWidth);
+      }
+    });
+    await step('Then Sign with Polkadot App leads and Cancel follows', async () => {
+      await expect(buttonNames()).toEqual(['Sign with Polkadot App', 'Cancel']);
+    });
+    await step('When I press Sign with Polkadot App', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Sign with Polkadot App' }));
+    });
+    await step('Then the site round was asked to sign once', async () => {
+      await waitFor(() => expect(onSiteConfirm).toHaveBeenCalledTimes(1));
+      await expect(onSiteCancel).not.toHaveBeenCalled();
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site round was cancelled once and no round of the window was', async () => {
+      await waitFor(() => expect(onSiteCancel).toHaveBeenCalledTimes(1));
+      await expect(onCancel).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user signing a site's transaction, I am told to approve it in Polkadot App for its origin and can cancel. */
+export const SiteSubmitting: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-submitting', origin: SITE_ORIGIN, sent: false } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window asks me to approve, names the origin and offers Cancel alone', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'site-submitting');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Approve the transaction in Polkadot App',
+      );
+      await expect(byTestId('session-window-spinner')).toBeVisible();
+      await expect(status()).toHaveTextContent(SITE_ORIGIN);
+      await expect(buttonNames()).toEqual(['Cancel']);
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site round was cancelled once', async () => {
+      await waitFor(() => expect(onSiteCancel).toHaveBeenCalledTimes(1));
+      await expect(onSiteConfirm).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user whose site transaction the chain has, I am told it is being sent for its origin and can cancel. */
+export const SiteSending: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-submitting', origin: SITE_ORIGIN, sent: true } },
+  play: async ({ canvas, step }) => {
+    await step(
+      'Then the window says the transaction is being sent, names the origin and offers Cancel alone',
+      async () => {
+        await expect(windowView()).toHaveAttribute('data-view', 'site-submitting');
+        await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sending the transaction');
+        await expect(byTestId('session-window-spinner')).toBeVisible();
+        await expect(status()).toHaveTextContent(SITE_ORIGIN);
+        await expect(buttonNames()).toEqual(['Cancel']);
+      },
+    );
+  },
+};
+
+/** Two sites in the list, the most recently used first, as the grants store lists them. */
+const SITES = [
+  {
+    token: 'token-newest',
+    origin: SITE_ORIGIN,
+    firstUsedAt: Date.UTC(2026, 8, 3),
+    lastUsedAt: Date.UTC(2026, 9, 20),
+    group: null,
+  },
+  {
+    token: 'token-old',
+    origin: 'https://old.example',
+    firstUsedAt: Date.UTC(2026, 1, 14),
+    lastUsedAt: Date.UTC(2026, 2, 1),
+    group: null,
+  },
+];
+
+/** A date as the site list writes it, in the reader's locale. */
+const shownDate = (ms: number): string =>
+  new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+/** The rows of the site list, each one site. */
+const siteRows = (): HTMLElement[] => [
+  ...byTestId('session-window-sites').querySelectorAll<HTMLElement>('[data-testid="session-window-site"]'),
+];
+
+/** As a user, I open my site list, read each site's origin and uses, and revoke one. */
+export const SiteList: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'sites', sites: SITES } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window heads its list and shows each site with its uses, the newest first', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'sites');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sites you signed in to');
+      const rows = siteRows();
+      await expect(rows).toHaveLength(2);
+      for (const [index, site] of SITES.entries()) {
+        const row = within(must(rows[index], 'a site row'));
+        await expect(row.getByTestId('session-window-site-origin')).toHaveTextContent(site.origin);
+        await expect(row.getByText(`Since ${shownDate(site.firstUsedAt)}`)).toBeVisible();
+        await expect(row.getByText(`Last used ${shownDate(site.lastUsedAt)}`)).toBeVisible();
+      }
+      await expect(buttonNames()).toEqual(['Revoke', 'Revoke']);
+      await expect(canvas.queryByText('No site uses your Polkadot sign-in.')).toBeNull();
+    });
+    await step('When I press Revoke on the older site', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Revoke https://old.example' }));
+    });
+    await step('Then that site alone was revoked, once', async () => {
+      await waitFor(() => expect(onRevoke).toHaveBeenCalledTimes(1));
+      await expect(onRevoke).toHaveBeenCalledWith('token-old');
+    });
+  },
+};
+
+/** The origins of one site group, as its grant lists them, the one that made it first. */
+const GROUP_ORIGINS = ['https://a.site.example', 'https://b.site.example', SITE_ORIGIN];
+
+/** A site group three origins use, beside a site of no group. */
+const GROUP_SITES = [
+  {
+    token: 'token-group',
+    origin: 'https://a.site.example',
+    firstUsedAt: Date.UTC(2026, 8, 3),
+    lastUsedAt: Date.UTC(2026, 9, 20),
+    group: { registrable: 'site.example', origins: GROUP_ORIGINS },
+  },
+  {
+    token: 'token-old',
+    origin: 'https://old.example',
+    firstUsedAt: Date.UTC(2026, 1, 14),
+    lastUsedAt: Date.UTC(2026, 2, 1),
+    group: null,
+  },
+];
+
+/** As a user, I read a site group in my list by its registrable domain and each origin, and revoke the group. */
+export const SiteListGroup: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'sites', sites: GROUP_SITES } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step(
+      'Then the group heads its row with its registrable domain, then each origin, then its uses',
+      async () => {
+        const rows = siteRows();
+        await expect(rows).toHaveLength(2);
+        const groupRow = must(rows[0], 'the group row');
+        const row = within(groupRow);
+        await expect(row.getByRole('heading')).toHaveTextContent('site.example');
+        await expect(row.getAllByTestId('session-window-site-origin').map(origin => origin.textContent)).toEqual(
+          GROUP_ORIGINS,
+        );
+        await expectBefore(
+          row.getByRole('heading'),
+          must(row.getAllByTestId('session-window-site-origin')[0], 'an origin'),
+        );
+        await expect(row.getByText(`Since ${shownDate(Date.UTC(2026, 8, 3))}`)).toBeVisible();
+        await expect(row.getByText(`Last used ${shownDate(Date.UTC(2026, 9, 20))}`)).toBeVisible();
+        await expect(row.getByRole('button', { name: 'Revoke site.example' })).toBeVisible();
+      },
+    );
+    await step('Then the site of no group shows its origin alone, with no heading of a group', async () => {
+      const row = within(must(siteRows()[1], 'the site row'));
+      await expect(row.queryByRole('heading')).toBeNull();
+      await expect(row.getByTestId('session-window-site-origin')).toHaveTextContent('https://old.example');
+    });
+    await step('When I press Revoke on the group', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Revoke site.example' }));
+    });
+    await step('Then the group alone was revoked, once', async () => {
+      await waitFor(() => expect(onRevoke).toHaveBeenCalledTimes(1));
+      await expect(onRevoke).toHaveBeenCalledWith('token-group');
+    });
+  },
+};
+
+/** As a user who signed in to no site, I am told no site uses my sign-in. */
+export const SiteListEmpty: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'sites', sites: [] } },
+  play: async ({ canvas, step }) => {
+    await step('Then the window heads its list, says no site uses my sign-in and offers no button', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'sites');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sites you signed in to');
+      await expect(canvas.getByText('No site uses your Polkadot sign-in.')).toBeVisible();
+      await expect(canvas.queryByTestId('session-window-site')).toBeNull();
+      await expect(buttonNames()).toEqual([]);
+    });
+  },
+};
+
+/** As a user whose site list could not be read, I am told so. */
+export const SiteListFailed: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'sites-failed' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window says the list could not be read, in its tone, and lists no site', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'sites-failed');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sites you signed in to');
+      await expect(status()).toHaveAttribute('data-tone', 'err');
+      await expect(canvas.getByRole('alert')).toHaveTextContent('The list could not be read');
+      await expect(canvas.queryByTestId('session-window-site')).toBeNull();
+      await expect(buttonNames()).toEqual(['Try again']);
+    });
+    await step('When I press Try again', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Try again' }));
+    });
+    await step('Then the list was asked to read again once, and no other flow was', async () => {
+      await waitFor(() => expect(onSiteListRetry).toHaveBeenCalledTimes(1));
+      await expect(onRetry).not.toHaveBeenCalled();
+      await expect(onSiteRetry).not.toHaveBeenCalled();
+    });
+  },
+};
+
+/** As a user whose site list is being read, I see it wait under its heading, never an empty list. */
+export const SiteListLoading: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'sites-loading' } },
+  play: async ({ canvas, step }) => {
+    await step('Then the window heads its list with a spinner, shows no empty list and offers no button', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'sites-loading');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Sites you signed in to');
+      await expect(byTestId('session-window-spinner')).toBeVisible();
+      await expect(canvas.queryByText('No site uses your Polkadot sign-in.')).toBeNull();
+      await expect(buttonNames()).toEqual([]);
+    });
+  },
+};
+
+/**
+ * A long origin with no hyphen or space to break at, whose port comes last, as two sites on one host differ only
+ * there.
+ */
+const LONG_ORIGIN = 'https://averylongsubdomainnamewithnobreak.ofasitewithalongname.example:8443';
+
+/** As a user, I read a long origin in full, port included, inside the card, before I revoke it. */
+export const SiteListLongOrigin: Story = {
+  tags: ['!autodocs'],
+  args: {
+    screen: {
+      view: 'sites',
+      sites: [
+        {
+          token: 'token-long',
+          origin: LONG_ORIGIN,
+          firstUsedAt: Date.UTC(2026, 8, 3),
+          lastUsedAt: Date.UTC(2026, 9, 20),
+          group: null,
+        },
+      ],
+    },
+  },
+  play: async ({ canvas, step }) => {
+    await step('Then the whole origin shows, wrapped and not cut off, port included', async () => {
+      const origin = byTestId('session-window-site-origin');
+      await expect(origin).toHaveTextContent(LONG_ORIGIN);
+      await expect(origin).toBeVisible();
+      const box = origin.getBoundingClientRect();
+      const frame = card().getBoundingClientRect();
+      await expect(box.left).toBeGreaterThanOrEqual(frame.left);
+      await expect(box.right).toBeLessThanOrEqual(frame.right);
+      await expect(origin.scrollWidth).toBeLessThanOrEqual(origin.clientWidth);
+      await expect(canvas.getByRole('button', { name: `Revoke ${LONG_ORIGIN}` })).toBeVisible();
     });
   },
 };

@@ -12,7 +12,7 @@ import {
   type WipeParts,
 } from './settings-actions.js';
 import { SMOLDOT_DB_NAME } from '@dotli/chains';
-import { WALLET_DB_NAME } from '@dotli/storage';
+import { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
 import { memoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { bindLogSink, safeStorage, type OriginStores } from '@dotli/shared';
@@ -328,6 +328,21 @@ describe('full reset', () => {
     };
   }
 
+  /** A database list whose every delete succeeds, and each deleted name is pushed to `deleted`. */
+  function recordingDatabases(names: string[], deleted: string[]): OriginStores['indexedDB'] {
+    return {
+      databases: () => Promise.resolve(names.map(name => ({ name, version: 1 }))),
+      deleteDatabase: name => {
+        deleted.push(name);
+        const request = {} as IDBOpenDBRequest;
+        queueMicrotask(() => {
+          request.onsuccess?.call(request, new Event('success'));
+        });
+        return request;
+      },
+    };
+  }
+
   beforeEach(() => {
     local = memoryStorage();
     session = memoryStorage({ 'dotli:continuation': 'settings_change' });
@@ -353,17 +368,7 @@ describe('full reset', () => {
     local.setItem('DOTLI_MODE_dot.li_x', 'smoldot');
     local.setItem('dotli:network', 'paseo');
     const deleted: string[] = [];
-    const indexedDB: OriginStores['indexedDB'] = {
-      databases: () => Promise.resolve(['dotli', WALLET_DB_NAME, SMOLDOT_DB_NAME].map(name => ({ name, version: 1 }))),
-      deleteDatabase: name => {
-        deleted.push(name);
-        const request = {} as IDBOpenDBRequest;
-        queueMicrotask(() => {
-          request.onsuccess?.call(request, new Event('success'));
-        });
-        return request;
-      },
-    };
+    const indexedDB = recordingDatabases(['dotli', WALLET_DB_NAME, SMOLDOT_DB_NAME], deleted);
 
     // When the origin is wiped
     await wipeOriginState(parts({ indexedDB }));
@@ -372,6 +377,18 @@ describe('full reset', () => {
     expect(local.getItem('TRUAPI_dot.li_session')).toBe('signed-in');
     expect(local.getItem('DOTLI_MODE_dot.li_x')).toBe('smoldot');
     expect(local.getItem('dotli:network')).toBeNull();
+    expect(deleted).toEqual(['dotli']);
+  });
+
+  it("As a user on the landing page, I wipe its origin and the session windows' site grants stay", async () => {
+    // Given the grants database beside the page's own
+    const deleted: string[] = [];
+    const indexedDB = recordingDatabases(['dotli', SITE_GRANTS_DB_NAME], deleted);
+
+    // When the origin is wiped
+    await wipeOriginState(parts({ indexedDB }));
+
+    // Then only the page's own database went
     expect(deleted).toEqual(['dotli']);
   });
 

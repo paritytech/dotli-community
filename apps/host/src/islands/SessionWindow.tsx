@@ -8,11 +8,16 @@ import type { JSX } from '@solidjs/web';
 import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
 import { showBrokenPage } from '../broken-page.js';
 import { SessionWindow as Content } from '../components/account/SessionWindow.js';
-import { closeWindow } from '../session-window-page.js';
-import { sessionWindowStore, windowIntents } from '../state/session-window.js';
+import {
+  closeIntent,
+  sessionWindowStore,
+  siteIntents,
+  siteListIntents,
+  windowIntents,
+} from '../state/session-window.js';
 
 /**
- * The sign-in window's content, bound to the view its entry writes. The page is nothing but this, so a failure breaks
+ * The session window's content, bound to the view its entry writes. The page is nothing but this, so a failure breaks
  * the whole page, and a full-page screen takes it over.
  */
 export function SessionWindow(): JSX.Element {
@@ -37,7 +42,9 @@ function BoundContent(): JSX.Element {
   return (
     <Content
       screen={screen()}
-      onClose={closeWindow}
+      onClose={() => {
+        closeIntent()();
+      }}
       onCancel={() => {
         windowIntents().cancel();
       }}
@@ -58,6 +65,27 @@ function BoundContent(): JSX.Element {
       }}
       onImportPhrase={phrase => windowIntents().importPhrase(phrase)}
       isValidPhrase={phrase => windowIntents().isValidPhrase(phrase)}
+      onConsent={() => {
+        void siteIntents().consent();
+      }}
+      onDecline={() => {
+        siteIntents().decline();
+      }}
+      onSiteConfirm={() => {
+        siteIntents().confirm();
+      }}
+      onSiteRetry={() => {
+        void siteIntents().retry();
+      }}
+      onSiteCancel={() => {
+        siteIntents().cancel();
+      }}
+      onRevoke={token => {
+        void siteListIntents().revoke(token);
+      }}
+      onSiteListRetry={() => {
+        void siteListIntents().retry();
+      }}
     />
   );
 }

@@ -7,6 +7,8 @@ import { logout, startLogin } from '../runtime/auth-controller.js';
 import { sessionElsewhereStore } from '../runtime/state/session-elsewhere.js';
 import { signingOutStore } from '../runtime/state/sign-out.js';
 import { walletModeStore } from '../runtime/state/wallet-mode.js';
+import { getProtocolOrigin } from '@dotli/protocol';
+import { routeUrl } from '../runtime/session-handoff/session-protocol.js';
 import { useStore } from '@dotli/ui';
 import { AccountItem } from '../components/account/AuthButton.js';
 import { authModalStore, setAuthModalTrigger } from '../state/auth-modal.js';
@@ -35,6 +37,7 @@ export function AccountButton(props: { idPrefix?: string; showName?: boolean }):
       handOver={setAuthModalTrigger}
       idPrefix={props.idPrefix}
       showName={props.showName}
+      sitesUrl={routeUrl(getProtocolOrigin(), 'manage')}
     />
   );
 }

@@ -20,7 +20,12 @@ import {
   openPhraseWindow,
   openSessionWindow,
   serveSessionOpener,
+  serveSiteOpener,
+  serveSiteRedirect,
   sessionWindow,
+  SITE_ORIGIN,
+  SITE_RETURN_URL,
+  siteReply,
   submitPhraseInWindow,
   untilClosed,
 } from './helpers/session-window.js';
@@ -49,6 +54,8 @@ const SANDBOX_ORIGIN = `http://x.app.localhost:${PORT}`;
 const STORED_SESSION_KEY = 'TRUAPI_local.li_session';
 const STORED_UI_STATE_KEY = 'TRUAPI_local.li_session:ui-state';
 const STORED_ACCOUNT = { connected: true, publicKey: '0x01', liteUsername: 'alice.01' };
+/** The site list, which reads the grants on the root origin. */
+const SITE_LIST_URL = `${ROOT_ORIGIN}/s/manage`;
 
 test.setTimeout(TIMEOUT_MS * 4);
 
@@ -116,6 +123,43 @@ function recordWindows(page: Page): Page[] {
     windows.push(window);
   });
   return windows;
+}
+
+/**
+ * A grant for the site fixture's origin, written into the grants database through the page's IndexedDB. The page's
+ * own first read creates that database, so a caller waits for that read to end first.
+ */
+async function seedSiteGrant(page: Page): Promise<void> {
+  await page.evaluate(async origin => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open('dotli-site-grants', 1);
+      open.onsuccess = () => {
+        resolve(open.result);
+      };
+      open.onerror = () => {
+        reject(open.error ?? new Error('The grants database did not open'));
+      };
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('grants', 'readwrite');
+      const now = Date.now();
+      tx.objectStore('grants').put({
+        token: 'functional-test-token',
+        origin,
+        publicKey: '0x01',
+        owner: '0x02',
+        firstUsedAt: now,
+        lastUsedAt: now,
+      });
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error('The grant was not written'));
+      };
+    });
+    db.close();
+  }, SITE_ORIGIN);
 }
 
 /** A paired sign-in and its cached account in the main store, written through a document on the root origin. */
@@ -435,6 +479,114 @@ test.describe('Signing in through the window fails', () => {
     await expect(sessionWindow(window)).toHaveAttribute('data-view', 'refused', { timeout: TIMEOUT_MS });
     await expect(openerOutcome(page)).toHaveAttribute('data-outcome', 'refused');
     await expect(openerOutcome(page)).toHaveAttribute('data-reply', 'reason round type');
+  });
+});
+
+test.describe('Signing a site in', () => {
+  test('As a site, I open the sign-in window, the user cancels on the consent screen and I get refused with declined', async ({
+    page,
+  }) => {
+    // Given a site's page on its own https origin, whose sign-in window asks the user's consent under its full origin
+    await page.goto(await serveSiteOpener(page));
+    const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
+    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
+    await expect(window.getByTestId('session-window-title')).toHaveText(SITE_ORIGIN);
+
+    // When the user cancels on the consent screen
+    await Promise.all([untilClosed(window), window.getByTestId('session-window-decline').click()]);
+
+    // Then the window closed and the site was refused as declined
+    expect(window.isClosed()).toBe(true);
+    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
+    await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
+  });
+});
+
+test.describe('Signing a site in by redirect', () => {
+  test('As a site that cannot keep a popup, I sign in by redirect, the user cancels on the consent screen and I get back refused with declined', async ({
+    page,
+  }) => {
+    // Given a site whose well-known file lists its return address, which goes to the sign-in window in its own tab
+    await page.goto(await serveSiteRedirect(page));
+    await page.getByTestId('opener-sign-in').click();
+    await expect(sessionWindow(page)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
+    await expect(page.getByTestId('session-window-title')).toHaveText(SITE_ORIGIN);
+
+    // When the user cancels on the consent screen
+    await page.getByTestId('session-window-decline').click();
+
+    // Then the tab is back on the return address, whose sealed answer opens to a refusal as declined
+    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused', { timeout: TIMEOUT_MS });
+    await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
+    expect(page.url().split('#')[0]).toBe(SITE_RETURN_URL);
+  });
+
+  test('As a site whose well-known file does not list my return address, I sign in by redirect and the window says I did not allow it', async ({
+    page,
+  }) => {
+    // Given a site whose well-known file lists another address
+    await page.goto(await serveSiteRedirect(page, { listed: false }));
+
+    // When it goes to the sign-in window by redirect
+    await page.getByTestId('opener-sign-in').click();
+
+    // Then the window stays, saying the site did not allow this return address
+    await expect(sessionWindow(page)).toHaveAttribute('data-view', 'site-not-allowed', { timeout: TIMEOUT_MS });
+    expect(new URL(page.url()).pathname).toBe('/s/auth');
+  });
+});
+
+test.describe("Signing a site's transaction", () => {
+  test('As a site, I open the sign window without a grant, the user cancels on the consent screen and I get refused with declined', async ({
+    page,
+  }) => {
+    // Given a site's page on its own https origin, whose sign window asks the user's consent under its full origin
+    await page.goto(await serveSiteOpener(page, { route: 'sign' }));
+    const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
+    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
+    await expect(window.getByTestId('session-window-title')).toHaveText(SITE_ORIGIN);
+
+    // When the user cancels on the consent screen
+    await Promise.all([untilClosed(window), window.getByTestId('session-window-decline').click()]);
+
+    // Then the window closed and the site was refused as declined
+    expect(window.isClosed()).toBe(true);
+    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
+    await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
+  });
+
+  test("As dot.li's own page, I open the sign window and am refused as a bad request", async ({ page }) => {
+    // Given a page on a product host of the root domain that asks for a transaction as a site would
+    await page.goto(await serveSiteOpener(page, { origin: OPENER_ORIGIN, route: 'sign' }));
+
+    // When it opens the sign window
+    const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
+
+    // Then the window shows refused and the page was refused as a bad request
+    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'refused', { timeout: TIMEOUT_MS });
+    await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
+    await expect(siteReply(page)).toHaveAttribute('data-reason', 'bad_request');
+  });
+});
+
+test.describe('The signed-in sites', () => {
+  test('As a user who signed in to a site, I open the site list, see that site and revoke it, and the list is empty', async ({
+    page,
+  }) => {
+    // Given the site list on the root origin, whose first read ended and so created the grants database, which then
+    // gets one site's grant
+    await page.goto(SITE_LIST_URL);
+    await expect(sessionWindow(page)).toHaveAttribute('data-view', 'sites', { timeout: TIMEOUT_MS });
+    await seedSiteGrant(page);
+    await page.reload();
+    await expect(page.getByTestId('session-window-site-origin')).toHaveText(SITE_ORIGIN, { timeout: TIMEOUT_MS });
+
+    // When the user revokes that site
+    await page.getByTestId('session-window-site-revoke').click();
+
+    // Then the list says no site uses the sign-in
+    await expect(page.getByTestId('session-window-sites-empty')).toBeVisible({ timeout: TIMEOUT_MS });
+    await expect(page.getByTestId('session-window-site')).toHaveCount(0);
   });
 });
 

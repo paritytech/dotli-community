@@ -70,6 +70,8 @@ interface Harness {
   resetSession: ReturnType<typeof vi.fn<() => Promise<void>>>;
   reportSignedOut: ReturnType<typeof vi.fn<() => void>>;
   leaveLocalWallet: ReturnType<typeof vi.fn<(forget: () => Promise<void>) => Promise<WalletSwitchOutcome>>>;
+  /** Forgets every site signed in through the session window. */
+  forgetGrants: ReturnType<typeof vi.fn<() => Promise<void>>>;
   wallet: FakeWallet;
   signOuts: AsyncTaskPool;
   /** Each end the sign-out ran through the core commands. */
@@ -129,6 +131,7 @@ function harness(
     await forget();
     return 'reloading';
   });
+  const forgetGrants = vi.fn(() => Promise.resolve());
   const signOuts = createAsyncTaskPool({ poolSize: 1 });
   // A spy of its own, since a mock does not keep the logout's type parameter.
   const coreRun = vi.fn<() => void>();
@@ -152,6 +155,7 @@ function harness(
       cores: { resetSession },
       session: { reportSignedOut },
       leaveLocalWallet,
+      forgetGrants,
       wallet: {
         read: () => {
           if (wallet.readFailure !== null) {
@@ -188,6 +192,7 @@ function harness(
     resetSession,
     reportSignedOut,
     leaveLocalWallet,
+    forgetGrants,
     wallet,
     signOuts,
     onCore: coreRun,
@@ -788,5 +793,114 @@ describe('sign-out on a page signed out elsewhere', () => {
 
     // Then the sign-out rejects
     await expect(signOut).rejects.toThrow('The local wallet could not be forgotten');
+  });
+});
+
+describe('signed-in sites on sign-out', () => {
+  it('As a user in paired mode, I sign out and my signed-in sites are forgotten once my page let the session go', async () => {
+    // Given a paired page holding a session in its copy
+    const fakes = harness();
+
+    // When the user signs out
+    await fakes.signOut.signOut();
+
+    // Then the grants were forgotten once, after the cores let the session go
+    expect(fakes.forgetGrants).toHaveBeenCalledTimes(1);
+    expect(nth(fakes.resetSession.mock.invocationCallOrder, 0)).toBeLessThan(
+      nth(fakes.forgetGrants.mock.invocationCallOrder, 0),
+    );
+  });
+
+  it('As a user in paired mode whose copy cannot be read, I sign out and my signed-in sites are still forgotten', async () => {
+    // Given a paired page whose copy cannot be read
+    const fakes = harness();
+    fakes.copy.readFailure = new Error('frame unreachable');
+
+    // When the user signs out
+    await fakes.signOut.signOut();
+
+    // Then the sign-in ended, and the grants with it
+    expect(fakes.forgetGrants).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user in local mode on a product, I sign out and my signed-in sites are forgotten before the page reloads', async () => {
+    // Given a local product page whose sign-out window read the main store
+    const fakes = harness({ walletMode: 'local' });
+
+    // When the user signs out
+    await fakes.signOut.signOut();
+
+    // Then the grants were forgotten once, before the page left local mode
+    expect(fakes.forgetGrants).toHaveBeenCalledTimes(1);
+    expect(nth(fakes.forgetGrants.mock.invocationCallOrder, 0)).toBeLessThan(
+      nth(fakes.leaveLocalWallet.mock.invocationCallOrder, 0),
+    );
+  });
+
+  it('As a user in local mode on a page with no sign-in window, I sign out and my signed-in sites are forgotten before the page reloads', async () => {
+    // Given a local page that pairs in place
+    const fakes = harness({ walletMode: 'local', signOutWindow: NO_WINDOW });
+
+    // When the user signs out
+    await fakes.signOut.signOut();
+
+    // Then the grants were forgotten once, before the page left local mode
+    expect(fakes.forgetGrants).toHaveBeenCalledTimes(1);
+    expect(nth(fakes.forgetGrants.mock.invocationCallOrder, 0)).toBeLessThan(
+      nth(fakes.leaveLocalWallet.mock.invocationCallOrder, 0),
+    );
+  });
+
+  it('As an operator, I see a paired sign-out whose grants could not be forgotten reported, while the phone is still told', async () => {
+    // Given a paired page whose grants cannot be forgotten
+    const fakes = harness();
+    const failure = new Error('grants database blocked');
+    fakes.forgetGrants.mockRejectedValue(failure);
+
+    // When the user signs out
+    const outcome = await fakes.signOut.signOut();
+
+    // Then the failure is reported under its own reason and counted as a forget that failed, and the sign-out ends as
+    // it would have
+    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
+      flow: 'wallet',
+      step: 'logout',
+      tags: { reason: 'grants' },
+    });
+    expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
+    expect(outcome).toEqual({ phone: 'told' });
+    expect(fakes.calls).toEqual(['reset', 'drop 0xsession', 'signed out', 'end 0xsession']);
+    expect(fakes.counted('wallet.logout')).toEqual([{ outcome: 'ok' }]);
+  });
+
+  it('As an operator, I see a local sign-out whose grants could not be forgotten reported, while the page still leaves local mode', async () => {
+    // Given a local page that pairs in place, whose grants cannot be forgotten
+    const fakes = harness({ walletMode: 'local', held: null, signOutWindow: NO_WINDOW });
+    const failure = new Error('grants database blocked');
+    fakes.forgetGrants.mockRejectedValue(failure);
+
+    // When the user signs out
+    const outcome = await fakes.signOut.signOut();
+
+    // Then the failure is reported and counted, and the wallet still goes as the page leaves local mode
+    expect(fakes.captures.exception).toHaveBeenCalledWith(failure, {
+      flow: 'wallet',
+      step: 'logout',
+      tags: { reason: 'grants' },
+    });
+    expect(fakes.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
+    expect(outcome).toEqual({ phone: 'told' });
+    expect(fakes.calls).toEqual(['leave local', 'forget wallet']);
+  });
+
+  it('As a tab signed out elsewhere, I am signed out locally and leave the signed-in sites to the sign-out that ended the sign-in', async () => {
+    // Given a paired tab whose copy the restore rule already cleared
+    const fakes = harness({ held: null });
+
+    // When the page signs out locally
+    await fakes.signOut.signOutLocally();
+
+    // Then nothing here forgets the grants
+    expect(fakes.forgetGrants).not.toHaveBeenCalled();
   });
 });

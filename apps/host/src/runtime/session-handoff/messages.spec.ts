@@ -10,12 +10,16 @@ import {
   signOutWindowUrl,
   SIGNED_OUT_RESULT,
 } from './messages.js';
-import { readRequestParams } from './session-protocol.js';
+import { readRequestParams, readSessionRequest, type SessionRoute } from './session-protocol.js';
 
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 
 /** The params a window reads from a request URL's fragment. */
 const paramsOf = (url: string) => must(readRequestParams(new URL(url).hash), 'request params');
+
+/** The first-party request `params` make on `route`, read as the window reads any request first. */
+const parse = (route: SessionRoute, params: Record<string, unknown>) =>
+  parseWindowRequest(must(readSessionRequest(route, params), 'a session request'));
 
 describe('window requests', () => {
   it('As a page, I build a sign-in window URL and the window reads it back as my request', () => {
@@ -23,7 +27,7 @@ describe('window requests', () => {
     const url = signInWindowUrl('phrase', 'paseo-next-v2', 'r1', 'https://dot.li');
 
     // When the window reads it
-    const request = parseWindowRequest('auth', paramsOf(url));
+    const request = parse('auth', paramsOf(url));
 
     // Then it is my request
     expect(request).toEqual({ route: 'auth', net: 'paseo-next-v2', round: 'r1', intent: 'phrase' });
@@ -36,13 +40,13 @@ describe('window requests', () => {
     const untoldUrl = signOutWindowUrl(false, 'paseo-next-v2', 'r2', 'https://dot.li');
 
     // When the window reads them
-    const told = parseWindowRequest('signout', paramsOf(toldUrl));
+    const told = parse('signout', paramsOf(toldUrl));
     const untold = paramsOf(untoldUrl);
 
     // Then notified travels only when true
     expect(told).toEqual({ route: 'signout', net: 'paseo-next-v2', round: 'r2', notified: true });
     expect('notified' in untold).toBe(false);
-    expect(parseWindowRequest('signout', untold)).toEqual({
+    expect(parse('signout', untold)).toEqual({
       route: 'signout',
       net: 'paseo-next-v2',
       round: 'r2',
@@ -55,7 +59,7 @@ describe('window requests', () => {
     const params = { v: 1, net: 'paseo-next-v2', round: 'r', notified: 'true' };
 
     // When it is parsed
-    const request = parseWindowRequest('signout', params);
+    const request = parse('signout', params);
 
     // Then it reads as false
     expect(request).toEqual({ route: 'signout', net: 'paseo-next-v2', round: 'r', notified: false });
@@ -65,15 +69,24 @@ describe('window requests', () => {
     ['another v', { v: 2, net: 'paseo-next-v2', round: 'r', intent: 'signin' }],
     ['no v', { net: 'paseo-next-v2', round: 'r', intent: 'signin' }],
     ['an unknown network', { v: 1, net: 'nope', round: 'r', intent: 'signin' }],
-    ['a missing round', { v: 1, net: 'paseo-next-v2', intent: 'signin' }],
-    ['an empty round', { v: 1, net: 'paseo-next-v2', round: '', intent: 'signin' }],
     ['an unknown intent', { v: 1, net: 'paseo-next-v2', round: 'r', intent: 'signout' }],
     ['a missing intent', { v: 1, net: 'paseo-next-v2', round: 'r' }],
   ])('As a window, I refuse a request with %s and it reads as null', (_name, params) => {
     // Given a request that breaks the contract
 
     // When the auth window parses it
-    const request = parseWindowRequest('auth', params);
+    const request = parse('auth', params);
+
+    // Then it is null
+    expect(request).toBeNull();
+  });
+
+  it("As a window, I read a request on the sign route as none of dot.li's own and it reads as null", () => {
+    // Given a request on the sign route that would read as a sign-in elsewhere
+    const params = { v: 1, net: 'paseo-next-v2', round: 'r', intent: 'signin' };
+
+    // When it is parsed
+    const request = parse('sign', params);
 
     // Then it is null
     expect(request).toBeNull();
@@ -84,7 +97,7 @@ describe('window requests', () => {
     const params = { v: 2, net: 'paseo-next-v2', round: 'r' };
 
     // When it is parsed
-    const request = parseWindowRequest('signout', params);
+    const request = parse('signout', params);
 
     // Then it is null
     expect(request).toBeNull();
@@ -95,10 +108,10 @@ describe('window requests', () => {
     const base = { v: 1, net: 'paseo-next-v2', round: 'r', intent: 'signin' };
 
     // When both are parsed
-    const withExtra = parseWindowRequest('auth', { ...base, site_token: 'x' });
+    const withExtra = parse('auth', { ...base, site_token: 'x' });
 
     // Then the extra field changes nothing
-    expect(withExtra).toEqual(parseWindowRequest('auth', base));
+    expect(withExtra).toEqual(parse('auth', base));
     expect(withExtra).not.toBeNull();
   });
 });

@@ -4,20 +4,22 @@
 // The page's TrUAPI chunk: the bridge over the page's own core runtime, session and frame host, asking the page's
 // dialogs, showing its notifications and drawing around the frame with its layout.
 
+import { getActiveServicesConfig } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, onPageReturn } from '@dotli/shared';
+import { siteGrants } from '@dotli/storage';
 import { hostPrompts } from '../page-prompts.js';
-import { loadHostRuntimeChunk, loadLocalWalletCore } from '../lazy.js';
+import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi } from '../lazy.js';
 import { pageNotifications } from '../page-notifications.js';
 import { productFrameContainer, productFrameView } from '../product-frame-view.js';
 import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
 import { createBridge } from './create-bridge.js';
 import { createCoreAuthCommands, type AuthCommands } from './core-login.js';
 import { createCoreRuntimeBoot } from './core-runtime.js';
-import { watchHostChains } from './host-callbacks/chain.js';
+import { hostChainProvider, watchHostChains } from './host-callbacks/chain.js';
 import { pagePermissions, productPermissions } from './page-permissions.js';
-import { pageRole } from './page-role.js';
+import { forgetsSiteGrants, pageRole } from './page-role.js';
 import { coreStorage, onStoredSessionChanged, signInFlag, type SessionRead } from './session/core-storage.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onSessionFlagChange, sessionPresence } from './session/presence.js';
@@ -27,6 +29,9 @@ import { reconcilePage } from './session/restore-rule.js';
 import { createSessionLease } from './session/session-lease.js';
 import { sessionState } from './session/session-state.js';
 import { siteWallet } from './session/site-wallet.js';
+import { createSiteChain } from './site-sign-in/site-chain.js';
+import { createSiteSigner } from './site-sign-in/site-signer.js';
+import { createSiteTxSigner } from './site-sign-in/site-tx-signer.js';
 import { createPageSignOut } from './sign-out.js';
 import { pageSignInHandoff } from './session-handoff/opener.js';
 import { applySessionResult } from './session-handoff/apply-result.js';
@@ -98,6 +103,19 @@ const bridge = createBridge({
 
 export const { initBridge, setPageProduct, startProductFrame } = bridge;
 
+/** Signs a site's assertion on the page's own core, for the session window. */
+export const siteSigner = createSiteSigner({ acquire: () => bridge.core.acquire() });
+
+/** Builds a site's transaction for the main account on the page's own core, for the session window. */
+export const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });
+
+/** Asset Hub for the session window, where a site's call is decoded and submitted. */
+export const siteChain = createSiteChain({
+  genesis: () => getActiveServicesConfig().assethub.genesis,
+  provider: genesis => hostChainProvider(genesis),
+  loadApi: loadPolkadotApi,
+});
+
 const endSession = (blob: string): Promise<void> => bridge.endSession(fromHex(blob));
 
 const coreCommands = createCoreAuthCommands({
@@ -116,6 +134,8 @@ const pageSignOut = createPageSignOut({
   cores: bridge.core,
   session: sessionState,
   leaveLocalWallet: forget => walletSwitch.usePolkadotApp(forget),
+  // Read per sign-out, as the page's role may be chosen after this is built.
+  forgetGrants: () => (forgetsSiteGrants(pageRole()) ? siteGrants.forgetAll() : Promise.resolve()),
   wallet: siteWallet,
   presence: sessionPresence,
   reportSigningOut: setSigningOut,

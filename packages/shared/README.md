@@ -52,8 +52,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Concurrency and state: `createAsyncTaskPool`, `createLazyLoad`, `createListenerSet`, `ListenerSet`,
   `ListenerSetOptions`, `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`,
   `createStatusCell`, `untilStatus` (a wait on a status cell until a verdict, which settles at once on the status there
-  is now and leaves through a signal), `toAbortError`, `createPendingReplies`, `PendingReplies`, `deferred` (a promise
-  with its resolve and reject).
+  is now and leaves through a signal), `storeStatus` (a sync store read as a status, for `untilStatus`), `toAbortError`,
+  `createPendingReplies`, `PendingReplies`, `deferred` (a promise with its resolve and reject).
 - Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
   `named`, `endpointHost`, `gatewayUnreachable`.
 - Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`, and `ListableStorage`, which adds
@@ -65,8 +65,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Origin wipe: `wipeOriginStores` (which keeps the databases it is told to), `OriginWipeError`, `OriginStores`,
   `OriginWipePart`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
-- Encoding and timing: `bytesEqual`, `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`, `randomId`, `noop`,
-  `Timers`, `realTimers`.
+- Encoding and timing: `bytesEqual`, `blake2b`, `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`,
+  `randomId`, `noop`, `Timers`, `realTimers`.
 
 ### `@dotli/shared/testing`
 

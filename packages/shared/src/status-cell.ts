@@ -6,6 +6,7 @@
 
 import { toError } from './errors.js';
 import { createListenerSet, type ListenerSetOptions } from './listener-set.js';
+import type { ReadableStore } from './sync-store.js';
 
 export type StatusCellOptions<T> = ListenerSetOptions<T>;
 
@@ -82,4 +83,17 @@ export function untilStatus<T>(
     unsubscribe = cell.subscribe(onStatus);
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+/** A sync store read as a status, so `untilStatus` can wait on it. */
+export function storeStatus<T>(
+  store: Pick<ReadableStore<T>, 'get' | 'subscribe'>,
+): Pick<StatusCell<T>, 'get' | 'subscribe'> {
+  return {
+    get: store.get,
+    subscribe: listener =>
+      store.subscribe(() => {
+        listener(store.get());
+      }),
+  };
 }

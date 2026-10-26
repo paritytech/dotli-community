@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { recordLog } from '@dotli/shared/testing';
 import type { Presence } from '../session/presence.js';
@@ -20,17 +21,21 @@ interface HarnessOptions {
   notified?: boolean;
   session?: string | null;
   wallet?: boolean;
-  failures?: { session?: boolean; wallet?: Error; end?: Error; drop?: Error };
+  failures?: { session?: boolean; wallet?: Error; end?: Error; drop?: Error; grants?: Error };
   /** Another tab's writes, run while the window's core ends the session. */
   duringEnd?: () => void;
   /** Another tab's writes, run while the restore rule drops the session it read. */
   duringDrop?: () => void;
+  /** Whether the round's first vetting is dot.li's own page, which it is by default. */
+  firstParty?: Promise<boolean>;
 }
 
 /** A sign-out window over fakes: the flag, the main store, the restore rule over both and the window's own core. */
 function harness(options: HarnessOptions = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
+  const captures = { exception: vi.fn(), expected: vi.fn() };
+  onTestFinished(bindCaptureSink(captures));
   const presence = createFakeSessionPresence(options.flag ?? 'absent');
   const main: { session: string | null; uiState: string | null; wallet: Uint8Array | null } = {
     session: options.session ?? null,
@@ -94,6 +99,11 @@ function harness(options: HarnessOptions = {}) {
       read: () => {
         calls.push('read');
       },
+      firstParty: options.firstParty ?? Promise.resolve(true),
+      forgetGrants: () => {
+        calls.push('forget grants');
+        return failures.grants === undefined ? Promise.resolve() : Promise.reject(failures.grants);
+      },
       close: () => {
         calls.push('close');
       },
@@ -101,7 +111,7 @@ function harness(options: HarnessOptions = {}) {
         calls.push('signed out');
       },
     });
-  return { run, restore, main, calls, ended, presence, metrics, errors };
+  return { run, restore, main, calls, ended, presence, metrics, errors, captures };
 }
 
 describe('signOutInWindow', () => {
@@ -348,5 +358,86 @@ describe('signOutInWindow', () => {
     expect(calls.at(-1)).toBe('close');
     expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'error', reason: 'notified' }]);
     expect(metrics.counted('session.presence')).toEqual([{ outcome: 'error', reason: 'window' }]);
+  });
+  it.each([
+    { outcome: 'told_phone', options: { session: BLOB }, last: 'signed out' },
+    { outcome: 'cleared', options: { session: BLOB, notified: true }, last: 'close' },
+    { outcome: 'nothing', options: {}, last: 'close' },
+    { outcome: 'error', options: { session: BLOB, failures: { end: new Error('core down') } }, last: 'close' },
+  ] satisfies { outcome: string; options: HarnessOptions; last: string }[])(
+    'As a user in a sign-out window that ends as $outcome, I sign out and every signed-in site is forgotten before the window closes or says I am signed out',
+    async ({ outcome, options, last }) => {
+      // Given a sign-out window whose sign-out ends as the outcome says
+      const { run, calls } = harness(options);
+
+      // When the sign-out flow runs
+      const ended = await run();
+
+      // Then the grants were forgotten once, after the store was read and before the window's last step
+      expect(ended).toBe(outcome);
+      expect(calls.filter(call => call === 'forget grants')).toHaveLength(1);
+      expect(calls.indexOf('read')).toBeLessThan(calls.indexOf('forget grants'));
+      expect(calls.slice(-2)).toEqual(['forget grants', last]);
+    },
+  );
+
+  it.each([
+    { outcome: 'told_phone', options: { session: BLOB }, last: 'signed out' },
+    { outcome: 'cleared', options: { session: BLOB, notified: true }, last: 'close' },
+    { outcome: 'nothing', options: {}, last: 'close' },
+    { outcome: 'error', options: { session: BLOB, failures: { end: new Error('core down') } }, last: 'close' },
+    { outcome: 'kept', options: { flag: 'present', session: BLOB }, last: 'close' },
+  ] satisfies { outcome: string; options: HarnessOptions; last: string }[])(
+    'As a site that opened the sign-out window, I see it end as $outcome and no signed-in site is forgotten',
+    async ({ outcome, options, last }) => {
+      // Given a sign-out window whose first vetting is no page of dot.li, and whose sign-out ends as the outcome says
+      const { run, calls } = harness({ ...options, firstParty: Promise.resolve(false) });
+
+      // When the sign-out flow runs
+      const ended = await run();
+
+      // Then no grant was forgotten, and the window still took its last step
+      expect(ended).toBe(outcome);
+      expect(calls).not.toContain('forget grants');
+      expect(calls.at(-1)).toBe(last);
+    },
+  );
+
+  it('As a user in a sign-out window opened while the flag is still set, I open it and my signed-in sites stay', async () => {
+    // Given a stored session with the flag present, so no page signed out
+    const { run, calls } = harness({ flag: 'present', session: BLOB });
+
+    // When the sign-out flow runs
+    const ended = await run();
+
+    // Then the sign-out kept everything, the grants included
+    expect(ended).toBe('kept');
+    expect(calls).not.toContain('forget grants');
+  });
+
+  it('As an operator, I see a sign-out window whose grants could not be forgotten reported, and its outcome and close unchanged', async () => {
+    // Given a stored session the page told the phone about, whose grants cannot be forgotten
+    const failure = new Error('grants database blocked');
+    const { run, main, calls, metrics, captures } = harness({
+      notified: true,
+      session: BLOB,
+      failures: { grants: failure },
+    });
+
+    // When the sign-out flow runs
+    const ended = await run();
+
+    // Then the failure is reported and counted as a forget that failed, while the store is cleared, counted cleared and
+    // the window closes
+    expect(captures.exception).toHaveBeenCalledWith(failure, {
+      flow: 'wallet',
+      step: 'session_window_signout',
+      tags: { reason: 'grants' },
+    });
+    expect(metrics.counted('session_pages.site_revoke')).toEqual([{ outcome: 'error', reason: 'sign_out' }]);
+    expect(ended).toBe('cleared');
+    expect(main.session).toBeNull();
+    expect(calls.at(-1)).toBe('close');
+    expect(metrics.counted('session_window.signout_result')).toEqual([{ outcome: 'cleared', reason: 'notified' }]);
   });
 });

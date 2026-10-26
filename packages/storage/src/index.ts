@@ -17,7 +17,8 @@ export {
   type ChatRoomRecord,
 } from './chat.js';
 export { isExpectedDbError } from './db.js';
-export { WALLET_DB_NAME } from './schema.js';
+export { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from './schema.js';
+export { createSiteGrantStore, siteGrants, type SiteGrant, type SiteGrantStore } from './site-grants.js';
 export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cid-cache.js';
 export {
   createLocalWalletStore,

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // What the sign-in window shows and does once it knows its opener. It decides from the main store, never from the
-// opener, offers what is stored or pairs, and sends what the store holds, at once for a page that resumes a sign-in it
-// knows exists. The request picks only which of these the window starts with. Every sign-in it stores or clears, its
-// core's included, goes through the window's one flag keeper, which raises the flag first and drops it once the store
-// holds none, so a pairing given up leaves no flag. The window runs no sign-in modal: it pairs on its core itself and
-// shows how far the pairing got.
+// opener, offers what is stored or pairs, and delivers what the store holds, at once for a page that resumes a sign-in
+// it knows exists. It never answers the opener itself. The request picks only which of these the window starts with.
+// Every sign-in it stores or clears, its core's included, goes through the window's one flag keeper, which raises the
+// flag first and drops it once the store holds none, so a pairing given up leaves no flag. The window runs no sign-in
+// modal: it pairs on its core itself and shows how far the pairing got.
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { spans as S } from '@dotli/metrics';
@@ -46,7 +46,8 @@ export interface PhraseCheck {
 }
 
 export interface WindowFlowDeps {
-  responder: Responder<SessionResult>;
+  /** Watched only, so the flow learns where the round stands and never answers the opener itself. */
+  responder: Pick<Responder<unknown>, 'state' | 'subscribe'>;
   /** The page's one flag keeper, so the flow's flag writes and the store writes stay in order. */
   signIns: SignInFlag;
   auth: ReadableStore<DotliAuthState>;
@@ -64,6 +65,10 @@ export interface WindowFlowDeps {
    * send.
    */
   intent: SignInIntent;
+  /** How the views name the page the window signs in for, from its vetted origin. */
+  pageLabel: (origin: string) => string;
+  /** Takes what the store holds once the flow ended its round with a vetted opener. */
+  deliver: (result: SessionResult) => void;
   close: () => void;
 }
 
@@ -263,8 +268,8 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
     return { session, localWallet };
   };
 
-  /** Ends the round with what the store holds: sent to the opener, which closes the window, or said as done. */
-  const deliver = (result: SessionResult): void => {
+  /** Ends the round with what the store holds: handed to `deliver`, or said as done when no page opened the window. */
+  const endRound = (result: SessionResult): void => {
     phase = { kind: 'ended' };
     if (responder.state().kind === 'no-opener') {
       log.event('sign-in window signed in with no opener', { flow: 'wallet' });
@@ -272,8 +277,7 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
       return;
     }
     log.event('sign-in window sends its result', { flow: 'wallet' });
-    // Now, or with the next vetting of a window restored from the back-forward cache meanwhile.
-    responder.send(result);
+    deps.deliver(result);
   };
 
   /** Sends what the login paired, which the command answered only once the main store held it. */
@@ -291,7 +295,7 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
         // for a page that shows the main store without a core of its own and for a later Continue.
         const uiState = JSON.stringify(account);
         await store.writeUiCache(uiState);
-        deliver({ session: { blob, uiState }, localWallet });
+        endRound({ session: { blob, uiState }, localWallet });
       },
       { pool: STEPS },
     );
@@ -407,7 +411,7 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
     }
     // The flag lands before the page gets the result, since the page reads it as it takes the result.
     await signIns.store(() => {
-      deliver(stored);
+      endRound(stored);
     });
   };
 
@@ -455,7 +459,7 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
           return;
         }
         phase = { kind: 'open', intent: deps.intent };
-        change({ pageHost: new URL(state.origin).host });
+        change({ pageHost: deps.pageLabel(state.origin) });
         break;
       case 'no-opener':
         phase = { kind: 'open', intent: deps.intent === 'phrase' ? 'phrase' : 'signin' };
@@ -562,7 +566,7 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
             showFailed();
             return;
           }
-          deliver({ session, localWallet: { entropy, identity: null } });
+          endRound({ session, localWallet: { entropy, identity: null } });
         },
         { pool: STEPS },
       ),

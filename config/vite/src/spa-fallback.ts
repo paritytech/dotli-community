@@ -11,8 +11,8 @@ export interface FallbackPages {
   /** The bare host's root. */
   landing: string;
   /**
-   * The session window, which the bare host's `/s/auth` and `/s/signout` answer with. It is one built file,
-   * `session.html`, that only these paths may serve.
+   * The session window, which the bare host's `/s/auth`, `/s/signout`, `/s/manage` and `/s/sign` answer with. It is
+   * one built file, `session.html`, that only these paths may serve.
    */
   session: string;
 }
@@ -29,9 +29,9 @@ export interface PageRequest {
 export type FallbackAction = { kind: 'pass' } | { kind: 'rewrite'; url: string } | { kind: 'not-found' };
 
 /**
- * Routes page loads: the bare host's root to `landing`, its `/s/auth` and `/s/signout` to `session`, and any other path
- * that names no public file to the shell page. A malformed escape names no file, so it is a 404. `routeFor` tells the
- * bare host from the others.
+ * Routes page loads: the bare host's root to `landing`, its `/s/auth`, `/s/signout`, `/s/manage` and `/s/sign` to
+ * `session`, and any other path that names no public file to the shell page. A malformed escape names no file, so it is
+ * a 404. `routeFor` tells the bare host from the others.
  */
 export function fallbackFor(
   req: PageRequest,

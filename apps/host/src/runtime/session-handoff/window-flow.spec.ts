@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createSyncStore, deferred, untilStatus } from '@dotli/shared';
@@ -15,6 +15,7 @@ import { ownerSignInFlag } from '../session/sign-in-flag.js';
 import type { SessionResult, SignInIntent } from './messages.js';
 import { createFakeMessageBus, createFakeWindowHandle } from './messages.fake.js';
 import { createFakePageEvents } from '../../testing/page-events.js';
+import { openerParty } from './opener-rule.js';
 import { createResponder } from './responder.js';
 import { createWindowFlow, type PhraseCheck, type WindowFlow, type WindowFlowDeps } from './window-flow.js';
 
@@ -54,6 +55,10 @@ interface HarnessOptions {
   auth?: DotliAuthState;
   /** The phrase check's loader, by default one that has it at once. */
   loadPhrase?: WindowFlowDeps['loadPhrase'];
+  /** Whether what the flow delivers goes on to the opener, as the window's own delivery sends it. True by default. */
+  forward?: boolean;
+  /** How the views name the vetted page, by its host as for dot.li's own page by default. */
+  pageLabel?: WindowFlowDeps['pageLabel'];
 }
 
 /**
@@ -68,7 +73,7 @@ function harness(options: HarnessOptions = {}) {
   const restores = createFakePageEvents();
   const responder = createResponder<SessionResult>({
     opener,
-    self: SELF,
+    judge: origin => openerParty(origin, SELF),
     round: 'r1',
     listen: messages.listen,
     onPageRestore: restores.subscribe,
@@ -140,6 +145,8 @@ function harness(options: HarnessOptions = {}) {
     },
   };
   const closed = deferred<undefined>();
+  // Each result the flow delivered, whether or not it went on to the opener.
+  const delivered: SessionResult[] = [];
   const flow = createWindowFlow({
     responder,
     signIns,
@@ -183,6 +190,13 @@ function harness(options: HarnessOptions = {}) {
     },
     loadPhrase: options.loadPhrase ?? (() => Promise.resolve(PHRASE_CHECK)),
     intent: options.intent ?? 'signin',
+    pageLabel: options.pageLabel ?? (origin => new URL(origin).host),
+    deliver: result => {
+      delivered.push(result);
+      if (options.forward !== false) {
+        responder.send(result);
+      }
+    },
     close: () => {
       calls.push('close');
       closed.resolve(undefined);
@@ -195,6 +209,7 @@ function harness(options: HarnessOptions = {}) {
     main,
     calls,
     reads,
+    delivered,
     /** The command layer answering the window's last login, paired by default. */
     answerLogin: (outcome: LoginOutcome = PAIRED) => {
       logins.at(-1)?.resolve(outcome);
@@ -310,6 +325,37 @@ describe('session window flow', () => {
     expect(calls).toEqual(['close']);
   });
 
+  it('As a user in the sign-in window with a stored session, I press Continue and the flow hands it to its delivery, which alone sends it', async () => {
+    // Given a vetted window on Continue whose delivery keeps what it gets
+    const { flow, sent, vet, delivered, calls } = harness({
+      stored: { session: BLOB, uiState: UI_STATE },
+      forward: false,
+    });
+    vet();
+    await untilView(flow, 'continue');
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+
+    // Then the flow delivered the stored session once, sent nothing itself and left the window open
+    expect(delivered).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+    expect(sent()).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it('As a window flow, I am given a responder I can only watch, so I cannot send', () => {
+    // Given the responder the flow depends on
+    type FlowResponder = WindowFlowDeps['responder'];
+
+    // When its type is read
+    const watched = expectTypeOf<FlowResponder>();
+
+    // Then it has a state and a subscription, and no send
+    watched.toHaveProperty('state');
+    watched.toHaveProperty('subscribe');
+    watched.not.toHaveProperty('send');
+  });
+
   it('As a user in the sign-in window with a stored session and a local wallet, I am offered the local wallet and press Continue to send it', async () => {
     // Given a main store holding a paired session and a local wallet
     const { flow, sent, vet, closed } = harness({
@@ -346,6 +392,18 @@ describe('session window flow', () => {
 
     // Then Continue offers the local wallet with no account
     expect(offerOn(flow)).toEqual({ wallet: 'local', account: null });
+  });
+
+  it('As a user in the sign-in window, I see the vetted page named as the window is told to name it', async () => {
+    // Given an empty main store and a window that names a page by its full origin
+    const { flow, vet } = harness({ pageLabel: origin => `named ${origin}` });
+
+    // When the opener is vetted
+    vet();
+    await untilView(flow, 'pairing');
+
+    // Then the pairing names the page by the label made from its vetted origin
+    expect(flow.screen.get().pageHost).toBe(`named ${PAGE}`);
   });
 
   it('As a user in the sign-in window, I pair and the cookie is left to the core while the session it stored is sent', async () => {
@@ -890,7 +948,7 @@ describe('session window flow', () => {
 
   it('As a user in a sign-in window with no opener, I sign in against the main store and nothing is sent, which the window says', async () => {
     // Given a window with no opener, pairing
-    const { flow, sent, auth, calls, storeSession, answerLogin } = harness({ opener: false });
+    const { flow, sent, delivered, auth, calls, storeSession, answerLogin } = harness({ opener: false });
     await untilView(flow, 'pairing');
 
     // When the core pairs and stores the session and the login answers
@@ -903,6 +961,7 @@ describe('session window flow', () => {
     // Then nothing is sent and no page is named
     expect(flow.screen.get().pageHost).toBeNull();
     expect(sent()).toEqual([]);
+    expect(delivered).toEqual([]);
     expect(calls).toEqual(['login']);
   });
 

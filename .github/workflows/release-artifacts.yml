@@ -161,7 +161,7 @@ jobs:
           test "$f" = "$p" \
             || { echo "::error::localhost/__protocol/ did not answer the protocol build ($f, expected $p)"; exit 1; }
           # The session window is the bare host's session page, not the shell, on each of its paths.
-          for s in /s/auth /s/signout; do
+          for s in /s/auth /s/signout /s/manage /s/sign; do
             curl -fsS -H 'Host: localhost' "http://127.0.0.1:5199$s" | grep -q 'data-session-window' \
               || { echo "::error::localhost$s is not the session page"; exit 1; }
           done
