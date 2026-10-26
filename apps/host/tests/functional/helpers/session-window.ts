@@ -103,7 +103,7 @@ export function openerOutcome(page: Page): Locator {
 /**
  * Serves the site fixture page at the root of `origin`, a third-party https origin unless the test picks another, and
  * returns its URL, which names the window's origin and the `route` it opens. `account: 'none'` makes the page leave the
- * account out of its request. The page opens the window from its button as a site does and marks the window's last
+ * account out of a transaction request. The page opens the window from its button as a site does and marks the window's last
  * reply on its output.
  */
 export async function serveSiteOpener(
@@ -158,7 +158,10 @@ export async function serveSiteRedirect(page: Page, { listed = true }: { listed?
   return `${SITE_ORIGIN}/?${query.toString()}`;
 }
 
-/** The site fixture's output, whose `data-type` and `data-reason` are those of the window's last reply. */
+/**
+ * The site fixture's output, whose `data-type` and `data-reason` are those of the window's last reply, and whose
+ * `data-result` is the reply's result as JSON for a result.
+ */
 export function siteReply(page: Page): Locator {
   return page.getByTestId('site-reply');
 }
