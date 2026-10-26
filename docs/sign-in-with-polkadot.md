@@ -29,7 +29,7 @@ the one path every browser allows.
 ## Conventions
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY" and
-"OPTIONAL" in this document are to be interpreted as described in [RFC 2119](RFC/2119.md).
+"OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
 The wire protocol (routes, request fields, messages, results, refusals, the redirect seal and the headers) is
 normative. The library API is a recommendation, which its owners MAY shape differently.
@@ -100,8 +100,9 @@ group when it declares one. Only scoped grants pass between them.
 
 - The window reads a site's origin from the browser: the `event.origin` of the site's hello, or in redirect mode the
   origin of a listed return URL. Never from a request field or `document.referrer`.
-- A site is an `https:` origin whose host is not the provider's host or under it, on any port, or a `localhost` origin
-  over `http:` or `https:` on any port, for development. Pages of the provider's own domain are dot.li's own and are not
+- A site is an `https:` origin whose host is not the provider's host or under it, on any port, or, for
+  development, an origin whose host is exactly `localhost`, over `http:` or `https:` on any port, other than the window's
+  own origin. A subdomain of `localhost` is a site only over `https:`. Pages of the provider's own domain are dot.li's own and are not
   sites. Any other origin, such as one on plain `http:` or a product's origin under the provider's domain, is refused
   with `origin_not_allowed`.
 - By default a grant belongs to the exact origin, such as `https://app.my-site.com`. With the registrable domain as
@@ -112,7 +113,7 @@ group when it declares one. Only scoped grants pass between them.
 | What         | Content                                                                                                    | Phone step                                                     |
 | ------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Sign-in      | The user's username, lite or full, or `null` when the user has none. A site token for a new grant          | None, except pairing by QR when dot.li has no session yet      |
-| Transactions | The transaction the site asked for, signed by the product account the site named, as bytes it submits itself | One approval per transaction                                   |
+| Transactions | The transaction the site asked for, signed by the product account the site named, as bytes it submits itself | The phone confirms each transaction, and MAY first ask the user to share the named account                                   |
 
 ### Identity
 
@@ -139,7 +140,7 @@ A site gets no user id beyond the username and the site token.
 
 dot.li and each site share a site token that names the site's grant. It adds to origin keying and never replaces it.
 
-- **Issue.** The window issues a token when a round ends in a new grant, on `/s/auth` or `/s/sign`: 32 random bytes in
+- **Issue.** The window issues a token when a round ends in a new grant that it could keep, on `/s/auth` or `/s/sign`: 32 random bytes in
   unpadded base64url. The token travels as `site_token` on the round's `dotli:s:result`, and only there. A result with
   no `site_token` leaves the site's token as it was.
 - **Reuse.** Every later request carries the token in `site_token`. The window skips the consent view when the token
@@ -183,7 +184,7 @@ Each route is an exact path with no trailing slash.
 
 | Route        | Shows                                                                                                              | Takes                                 | Returns                                                     | Third party                    |
 | ------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | ----------------------------------------------------------- | ------------------------------ |
-| `/s/auth`    | The site's origin and what it gets, then Continue and Cancel. Pairs by QR first when dot.li has no session         | A sign-in request, popup or redirect  | The username, and a site token for a new grant              | Yes                            |
+| `/s/auth`    | The site's origin and what it gets, then Continue and Cancel. With no session on dot.li, pairs by QR after Continue         | A sign-in request, popup or redirect  | The username, and a site token for a new grant              | Yes                            |
 | `/s/sign`    | The decoded call, the site's origin and the named account, then Confirm. The consent view first for an unknown token | A transaction request, popup only     | The signed transaction, and a site token for a new grant    | Yes                            |
 | `/s/manage`  | The sites the user granted, each with Revoke                                                                       | Nothing                               | Nothing                                                     | A site MAY link to it          |
 | `/s/signout` | dot.li's own sign-out                                                                                              | dot.li's own request                  | Nothing to a site                                           | No. A site MUST NOT open it    |
@@ -224,7 +225,8 @@ A site opens a route with its request in the URL fragment:
 | `site_token`  | string | OPTIONAL. Canonical unpadded base64url of exactly 32 bytes, 43 characters, as the window issued it                                      | `bad_request`                    |
 | `group_token` | string | OPTIONAL. 1 to 256 UTF-16 code units, with no CR, LF, U+2028 or U+2029 and no lone surrogate. The same on every origin of the group      | `bad_request`                    |
 
-The window checks `v` first, then `net`, then the route's own fields.
+On `/s/auth` the redirect fields, and in redirect mode the vetting, come first (see Redirect mode). Then the window
+checks `v`, then `net`, then the route's own fields.
 
 ### `/s/auth`
 
@@ -305,7 +307,7 @@ grant.
   the round.
 - It takes a payload only from the site's origin, for its round, after the hello, and only on `/s/sign` with no `call`
   in the request. The first one counts. A payload whose `call` breaks the `call` rule is refused with `bad_request`.
-- It posts nothing to a site before the hello names it, and nothing when it has no opener.
+- It posts nothing but `ready` before the hello names the site, and nothing at all when it has no opener.
 - It answers a round once, with one `result`, `refused` or `cancelled`, then usually closes itself. After a refusal of
   the request itself it MAY stay open and show the refusal.
 - It sets no deadline on the handshake. A user may take as long as pairing needs.
@@ -507,7 +509,7 @@ A recommendation, which the library's owners MAY shape differently.
 ```ts
 function createPolkadotSignIn(options: {
   network: string // a network the deployment enables, such as "paseo-next-v2"
-  provider?: string // the deployment's origin, by default the one for `network`
+  provider?: string // a deployment's origin, by default one that enables `network`
   sessionLifetime?: number // ms a session lasts on the site, default 30 days
   group?: {
     token: string // the same on every origin of the site
@@ -585,7 +587,7 @@ sequenceDiagram
   participant P as Polkadot App
   participant A as Asset Hub
   U->>S: Click an action
-  S->>W: window.open with chain, account and site token in the fragment
+  S->>W: window.open with v, net, round, chain, account and site token in the fragment
   W->>S: dotli:s:ready
   S->>W: dotli:s:hello
   S->>W: dotli:s:payload with the call, when the URL has none
@@ -598,6 +600,10 @@ sequenceDiagram
     U->>P: Scan and approve the pairing
   end
   W->>A: Decode the call
+  opt the phone asks first
+    W->>P: Read the named account
+    P->>U: Share the account
+  end
   W->>U: Review, the site's origin, the call and the account
   U->>W: Confirm
   W->>P: Sign as the named product account
@@ -606,7 +612,8 @@ sequenceDiagram
   S->>A: Submit the transaction
 ```
 
-A rejection on the phone ends the round with `cancelled`. A wallet that can't sign the transaction ends it with
+Before the review the window reads the named account from the Polkadot App, which MAY ask the user to share it. A
+rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the transaction ends it with
 `transaction_invalid`.
 
 ### Sign-out
@@ -669,4 +676,4 @@ sequenceDiagram
 | A compromised dot.li server                                          | Every signature still needs a phone approval. Reproducible builds and a monitor comparing release hashes with what the server serves would make tampering visible                                                    | Left out for now                |
 | iOS may drop the popup's opener while the user is in the Polkadot App | The window keeps its request across reloads, but does not finish by redirect when the opener is gone. Not tested on iOS                                                                                             | Left out for now                |
 | Safari clears dot.li's store after 7 days without a visit            | Every session page visit counts, since each needs a click. A user who only visits third-party sites pairs by QR again at the next sign-in, and each site shows the consent view again                               | Accepted                        |
-| Which origin serves which network                                    | One per deployment. The library maps a network to its provider, and `provider` overrides it                                                                                                                          | Decided                         |
+| Which origin serves which network                                    | Each deployment has its own origin and enables its own networks. The library maps a network to a deployment that enables it, and `provider` overrides it                                                                                                                          | Decided                         |
