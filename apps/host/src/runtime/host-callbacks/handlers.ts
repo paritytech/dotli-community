@@ -4,7 +4,7 @@
 // Each callback lives in its own file so dotli's UI and storage behaviour stays outside the Rust core.
 // Product storage keys are opaque because the core owns product namespacing.
 
-import type { RequiredHostCallbacks } from '@parity/truapi-host';
+import type { Permissions, RequiredHostCallbacks, UserConfirmation } from '@parity/truapi-host';
 import { createNavigateTo } from './open-url.js';
 import { createNotificationAdapters, type NotificationScheduler } from './push-notification.js';
 import { createPromptPermission, type PromptPermissionStores } from './prompt-permission.js';
@@ -36,22 +36,45 @@ export interface CreateHostCallbacksOptions {
   pairingHostGlobal?: boolean | undefined;
   /** Where the callbacks' prompts queue, on the page's one coordinator. */
   blockingModalScope: BlockingModalScope;
-  /** For a local wallet core, whose storage must not touch the paired session. */
-  local?: boolean | undefined;
+  /**
+   * Keeps the core's session away from the stored session and the signed-in flag, for a core that must never write
+   * either.
+   */
+  sessionInMemory?: boolean | undefined;
   /** Whether the core still speaks for the session. */
   inService?: (() => boolean) | undefined;
   /** What the core's confirmations claim the phone's requests from. A local wallet core's claims nothing. */
   phoneRequests: PhoneRequestTracker;
 }
 
+/** How a core's permission and confirmation asks are answered, given the core's own label, queue scope and phone. */
+export type HostAsks = (core: {
+  label: string;
+  blockingModalScope: BlockingModalScope;
+  phoneRequests: PhoneRequestTracker;
+}) => { permissions: Permissions; userConfirmation: Required<UserConfirmation> };
+
 /**
- * What the callbacks ask the page for: the user's answers, where push notifications wait until due, and the
- * permissions a prompt reads and records.
+ * What the callbacks ask the page for: the user's answers, where push notifications wait until due, and how the
+ * core's permission and confirmation asks are answered.
  */
 export interface HostCallbackDeps {
   prompts: HostPrompts;
   notifications: NotificationScheduler;
-  permissions: PromptPermissionStores;
+  asks: HostAsks;
+}
+
+/** Answers the core's asks by showing the page's prompts, and reads and records the permissions they decide. */
+export function promptAsks(deps: { prompts: HostPrompts; permissions: PromptPermissionStores }): HostAsks {
+  const { prompts, permissions } = deps;
+  return ({ label, blockingModalScope, phoneRequests }) => ({
+    permissions: createPromptPermission(
+      label,
+      { ask: prompts.askPermission, notify: prompts.notify, permissions },
+      blockingModalScope,
+    ),
+    userConfirmation: createUserConfirmationAdapters(label, prompts, blockingModalScope, phoneRequests),
+  });
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCallbackDeps): RequiredHostCallbacks {
@@ -61,21 +84,18 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCa
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope,
-    local,
+    sessionInMemory,
     inService,
     phoneRequests,
     prompts,
     notifications,
-    permissions,
+    asks,
   } = options;
+  const { permissions, userConfirmation } = asks({ label, blockingModalScope, phoneRequests });
   return {
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters(label, notifications, prompts.notify),
-    permissions: createPromptPermission(
-      label,
-      { ask: prompts.askPermission, notify: prompts.notify, permissions },
-      blockingModalScope,
-    ),
+    permissions,
     features: {
       featureSupported: createFeatureSupported(),
       supportedChains: createSupportedChains(),
@@ -87,7 +107,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCa
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: coreStorage.adapters({ local }),
+    coreStorage: coreStorage.adapters({ sessionInMemory }),
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
         dotSuffix: pairingDotSuffix,
@@ -95,7 +115,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions & HostCa
         inService,
       }),
     },
-    userConfirmation: createUserConfirmationAdapters(label, prompts, blockingModalScope, phoneRequests),
+    userConfirmation,
     theme: { subscribeTheme: createThemeSubscribe() },
     locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),

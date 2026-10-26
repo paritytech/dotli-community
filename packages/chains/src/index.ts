@@ -27,6 +27,7 @@ export {
   type ChainSyncEvent,
   type ChainSyncKind,
 } from './chain-sync.js';
+export { SMOLDOT_DB_NAME } from './smoldot-db.js';
 export {
   createLightClient,
   lightClientDeps,

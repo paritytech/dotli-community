@@ -57,11 +57,13 @@ const POLICIES = {
   'storage.modeRead': policy('modeStorageRead', store),
   'storage.modeWrite': policy('modeStorageWrite', store),
   'storage.modeClear': policy('modeStorageClear', store),
+  'storage.authClearIf': policy('authStorageClearIf', store),
   // Boot waits on it, so a protocol frame that does not load or answer must not hold the page for the default budget.
   'wallet.read': policy('localWalletRead', { ...store, budgetMs: 5_000 }),
   'wallet.save': policy('localWalletSave', store),
   'wallet.identity': policy('localWalletIdentity', store),
   'wallet.forget': policy('localWalletForget', store),
+  'wallet.forgetIf': policy('localWalletForgetIf', store),
   'chain.send': policy('chainSend', { timed: false }),
   'chain.connect': policy('chainConnect', { trailed: true }),
 } satisfies Record<Path, Policy<string>>;

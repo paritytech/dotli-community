@@ -29,9 +29,9 @@ flowchart LR
 - The feed subscribes to the bus at once, so the buffered boot replay is in the store before the panel mounts.
 - The models take their inputs as parameters and import no Solid, so the specs run under Node. Keys are stable, so a
   view updates a box in place as traffic streams in.
-- `DebugPanelHost` is the port: readable stores for product, auth and wallet mode, wallet switching, diagnostics, the
-  archive loader (the host picks gateway or blocks), content insets, a dock inset callback, and leaving debug mode,
-  which the host does on Hide. The panel imports no host module.
+- `DebugPanelHost` is the port: readable stores for product, auth and wallet mode, wallet switching (opening the page's
+  phrase view and signing out), diagnostics, the archive loader (the host picks gateway or blocks), content insets, a
+  dock inset callback, and leaving debug mode, which the host does on Hide. The panel imports no host module.
 - The root renders inside an error boundary. A throwing view is reported once and the root is disposed, so timers stop.
 - Effects (clipboard, download), the bus, the view and the repeated computations are options of the mount with page
   defaults. A caller replaces them to count work or fake the page. The views read the computations from a context the
@@ -56,7 +56,9 @@ tab, and picking one opens the panel on it. A collapsed panel also stops reading
 - **Resolution**: how the last page load went, phase by phase, with the open block and the chains that never started.
 - **Archive**: the files of the loaded product.
 - **Diagnostics**: the site, backend and package versions, to paste into a bug report.
-- **Wallet**: switches every app on the domain between Polkadot App and a local wallet.
+- **Wallet**: switches every app on the domain between Polkadot App and a local wallet. A recovery phrase is typed in
+  the page's own sign-in, the sign-in window or the page's modal on a page that pairs in place, which the tab only asks
+  the host to open. Going back to Polkadot App is a sign-out.
 
 ### Reading the TrUAPI section
 

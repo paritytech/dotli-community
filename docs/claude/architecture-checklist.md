@@ -19,6 +19,8 @@ rule, flag it and propose a row.
 
 - **blocking** (AGENTS.md § Architecture): A module writes another layer's state, or a layer reads state as a command
   instead of taking intent from above.
+- **major** (AGENTS.md § Architecture): A page on an origin it shares with another layer's stores clears the origin and
+  writes the other layer's keys or databases back, instead of removing only its own.
 - **blocking** (AGENTS.md § Architecture): A global event or channel between modules where an import would do, away from
   a real system boundary.
 - **blocking** (AGENTS.md § Architecture): A layer between a replaying source and its consumer that dedupes the replayed
@@ -41,6 +43,10 @@ rule, flag it and propose a row.
 - **major** (docs/code/placement.md § Cut rules): A building block that implements a whole flow, such as a multi-step
   modal or a panel with its own actions, or a flow placed in `@dotli/ui`.
 - **major** (AGENTS.md § Project): A debug-only feature, such as recovery-phrase sign-in, offered in user-facing UI.
+- **major** (docs/code/placement.md § Inside a package): A `<name>.fake.ts` that fakes something other than its peer
+  module, or a fixture several specs share kept outside `src/testing/`.
+- **major** (docs/code/placement.md § Inside a package): A constant two modules share kept in one of them instead of a
+  leaf module, or a protocol constant defined more than once.
 
 ## Package surfaces
 

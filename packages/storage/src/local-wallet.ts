@@ -3,8 +3,8 @@
 
 // The local wallet's root entropy, encrypted at rest under a key this origin can use but never export.
 
-import { pageIdb, type DotliIdb } from './db.js';
-import { idbRequest, idbTransaction } from '@dotli/shared';
+import { walletIdb, type DotliIdb } from './db.js';
+import { bytesEqual, idbRequest, idbTransaction } from '@dotli/shared';
 
 const STORE = 'local_wallet';
 const RECORD_ID = 'wallet';
@@ -20,6 +20,8 @@ export interface LocalWallet {
   entropy: Uint8Array;
   /** The identity last read from the network, null until the first read. */
   identity: LocalWalletIdentity | null;
+  /** Changes with every save and never with an identity update, so a forget can name the record it read. */
+  version: Uint8Array;
 }
 
 interface LocalWalletRecord {
@@ -38,8 +40,8 @@ export class LocalWalletUnreadableError extends Error {
   }
 }
 
-/** The local wallet over `idb`, the page's own by default. */
-export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
+/** The local wallet over `idb`, the wallet database by default. */
+export function createLocalWalletStore(idb: DotliIdb = walletIdb) {
   async function readRecord(): Promise<LocalWalletRecord | undefined> {
     const db = await idb.connect();
     return (await idbRequest(db.transaction(STORE, 'readonly').objectStore(STORE).get(RECORD_ID))) as
@@ -54,11 +56,11 @@ export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
     });
   }
 
-  async function saveLocalWallet(entropy: Uint8Array): Promise<void> {
+  async function saveLocalWallet(entropy: Uint8Array, identity: LocalWalletIdentity | null): Promise<void> {
     const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
     const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, Uint8Array.from(entropy));
-    const record: LocalWalletRecord = { id: RECORD_ID, key, iv, ciphertext, identity: null };
+    const record: LocalWalletRecord = { id: RECORD_ID, key, iv, ciphertext, identity };
     await write(store => {
       store.put(record);
     });
@@ -69,13 +71,7 @@ export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
     if (record === undefined) {
       return null;
     }
-    let plain: ArrayBuffer;
-    try {
-      plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: record.iv }, record.key, record.ciphertext);
-    } catch (error) {
-      throw new LocalWalletUnreadableError(error);
-    }
-    return { entropy: new Uint8Array(plain), identity: record.identity };
+    return { entropy: await decryptRecord(record), identity: record.identity, version: record.iv };
   }
 
   /**
@@ -102,10 +98,47 @@ export function createLocalWalletStore(idb: DotliIdb = pageIdb) {
     });
   }
 
-  return { saveLocalWallet, loadLocalWallet, updateLocalWalletIdentity, forgetLocalWallet };
+  /**
+   * Forgets the wallet only while it is still the record of `version`, read and deleted in one transaction, so a wallet
+   * saved since by another tab stays. Resolves whether it forgot it.
+   */
+  async function forgetLocalWalletIf(version: Uint8Array): Promise<boolean> {
+    let forgot = false;
+    const db = await idb.connect();
+    await idbTransaction(db, STORE, 'readwrite', tx => {
+      const store = tx.objectStore(STORE);
+      const req = store.get(RECORD_ID);
+      req.onsuccess = () => {
+        const current = req.result as LocalWalletRecord | undefined;
+        // Every save draws a fresh IV, so the IV is the record's version.
+        if (current !== undefined && bytesEqual(current.iv, version)) {
+          store.delete(RECORD_ID);
+          forgot = true;
+        }
+      };
+    });
+    return forgot;
+  }
+
+  return { saveLocalWallet, loadLocalWallet, updateLocalWalletIdentity, forgetLocalWallet, forgetLocalWalletIf };
 }
 
 export type LocalWalletStore = ReturnType<typeof createLocalWalletStore>;
 
-export const { saveLocalWallet, loadLocalWallet, updateLocalWalletIdentity, forgetLocalWallet }: LocalWalletStore =
-  createLocalWalletStore();
+export const {
+  saveLocalWallet,
+  loadLocalWallet,
+  updateLocalWalletIdentity,
+  forgetLocalWallet,
+  forgetLocalWalletIf,
+}: LocalWalletStore = createLocalWalletStore();
+
+async function decryptRecord(record: LocalWalletRecord): Promise<Uint8Array> {
+  try {
+    return new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: record.iv }, record.key, record.ciphertext),
+    );
+  } catch (error) {
+    throw new LocalWalletUnreadableError(error);
+  }
+}

@@ -4,6 +4,7 @@
 // Updates are prompted, not auto-applied, unless one was already waiting at page load, when nothing is in use yet.
 
 import { captureException, recordExpected } from '@dotli/metrics';
+import { onDocumentVisible, type VisibilitySource } from '@dotli/shared';
 import { showNotification, type ShowNotification } from '@dotli/ui';
 import { markContinuation } from './continuation.js';
 import { parseDotLabel } from './dot-label.js';
@@ -35,10 +36,8 @@ export interface PwaWorker {
 
 /** What the update checks read from the page. */
 export interface PwaPage {
-  isHidden: () => boolean;
   isOnline: () => boolean;
-  /** Fires `visibilitychange`. */
-  visibility: EventTarget;
+  visibility: VisibilitySource;
   every: (ms: number, run: () => void) => void;
 }
 
@@ -68,7 +67,6 @@ function pageDeps(): PwaDeps {
       window.location.reload();
     },
     page: {
-      isHidden: () => document.hidden,
       isOnline: () => navigator.onLine,
       visibility: document,
       every: (ms, run) => {
@@ -152,11 +150,7 @@ function registerShellWorker(wb: PwaWorkbox, deps: PwaDeps): void {
       // Registering the unchanged worker checks nothing, and the browser's own check after a navigation has no set time.
       checkForUpdate();
       deps.page.every(UPDATE_INTERVAL_MS, checkForUpdate);
-      deps.page.visibility.addEventListener('visibilitychange', () => {
-        if (!deps.page.isHidden()) {
-          checkForUpdate();
-        }
-      });
+      onDocumentVisible(deps.page.visibility, checkForUpdate);
     })
     .catch((err: unknown) => {
       captureException(err, { flow: 'pwa', step: 'sw_register' });

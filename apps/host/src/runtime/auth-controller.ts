@@ -1,36 +1,82 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The QR pairing modal's state machine, which writes the page's modal store. Imports no Solid and loads eagerly because
-// auth states arrive from boot, before any modal view mounts. The login itself runs in the bridge chunk, reached through
-// `commands`.
+// The sign-in modal's state machine, which writes the page's modal store. Imports no Solid and loads eagerly because
+// auth states arrive from boot, before any modal view mounts. The controller owns the modal and picks one sign-in route
+// per surface: the sign-in window's on a page that has one, or the page's own, which pairs in place on the core in the
+// bridge chunk, reached through `commands`.
 
 import { withActiveTld } from '@dotli/config';
 import { captureException } from '@dotli/metrics';
 import { errorMessage, log, type ReadableStore, registerStoreStateReset } from '@dotli/shared';
 import type { AuthCommands } from './core-login.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blocking-modal-queue.js';
+import { createInPageSignIn, type InPagePhrase } from './in-page-sign-in.js';
 import type { DotliAuthState } from './session/auth-state.js';
+import type { SessionResult } from './session-handoff/messages.js';
+import type { SessionHandoff } from './session-handoff/opener.js';
+import type { AuthModalPort, CloseAuthModalOptions, SignInRoute } from './sign-in-route.js';
 import { authStore } from './state/auth.js';
+import { sessionElsewhereStore } from './state/session-elsewhere.js';
+import { getWalletMode, type WalletMode } from './state/wallet-mode.js';
+import { createWindowSignIn } from './window-sign-in.js';
 import { authModalStore, resetAuthModal, updateAuthModal } from '../state/auth-modal.js';
+import { loginFailureView, type LoginFailureKind } from './login-failure.js';
+
+export type { CloseAuthModalOptions, InPagePhrase };
 
 export interface AuthControllerDeps {
   coordinator: BlockingModalCoordinator;
   /** The bridge chunk's commands. Awaited per intent, so an intent issued before the chunk loads still runs. */
   commands: () => Promise<AuthCommands>;
   auth: ReadableStore<DotliAuthState>;
+  /** The sign-in window, or null for a page that pairs in place. */
+  handoff: SessionHandoff | null;
+  /** Writes the window's result into this page's copy. Rejects with the failed step as the cause. */
+  applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
+  walletMode: () => WalletMode;
+  /** Loaded the first time a page with no window asks for a phrase, so a page that never asks loads none of it. */
+  inPagePhrase: () => Promise<InPagePhrase>;
+  /** Whether the page shows signed out while a sign-in made elsewhere waits, which a sign-in then resumes. */
+  elsewhere: () => boolean;
 }
 
 export interface AuthController {
-  /** Opens the modal and asks the core to log in, unless the modal already shows a login or the user is signed in. */
+  /**
+   * Opens the sign-in window and waits for it, asking it to resume a sign-in made elsewhere when one waits, or with no
+   * window opens the modal and asks the core to log in. Does
+   * nothing while a login is already on show or the user is signed in. The window opens before this returns, so a
+   * click handler reaches it with no wait between.
+   */
   startLogin(reason?: string, label?: string): void;
+  /**
+   * Opens the sign-in window at its recovery phrase view and waits for it, or with no window opens the modal at its
+   * phrase view. Also runs for a signed-in user, who replaces the local wallet.
+   */
+  importPhrase(): void;
+  /** Whether the modal's phrase view takes `phrase`. */
+  isValidPhrase(phrase: string): boolean;
+  /**
+   * Uses the wallet of a phrase the modal's phrase view took, which reloads the page. Rejects when it could not be
+   * saved, which the switch reported, when the phrase import has not loaded, which is reported here, or when the phrase
+   * is not valid, which is the user's input and goes unreported.
+   */
+  importPhraseInPage(phrase: string): Promise<void>;
+  /**
+   * The modal's Retry, Try again and Sign in. Asks for the recovery phrase again after a phrase round on show, else
+   * starts a sign-in.
+   */
+  retryLogin(): void;
+  /** Opens the sign-out window before this returns, then asks the core to log out. */
   logout(): void;
+  /** Brings the sign-in window of the open round to the front. */
+  focusSignInWindow(): void;
   /** Returns false when the modal is disabled, having cancelled the login instead. */
   openAuthModal(reason?: string, label?: string, options?: { dotSuffix?: boolean | undefined }): boolean;
-  closeAuthModal(opts?: { skipTruapiCancel?: boolean }): void;
+  closeAuthModal(opts?: CloseAuthModalOptions): void;
   /**
    * For when the auth-modal island failed. A login would otherwise hold the blocking-modal lease for a
-   * modal nobody can close, stalling every later prompt.
+   * modal nobody can close, stalling every later prompt. A sign-in window already open still signs in.
    */
   disableAuthModal(): void;
   /** Stops following the auth state and closes the modal without cancelling a login. */
@@ -124,7 +170,8 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
     return true;
   };
 
-  const closeAuthModal: AuthController['closeAuthModal'] = (opts = {}) => {
+  /** Takes the modal off screen and gives up its lease, leaving any login it showed running. */
+  const releaseModal = (): void => {
     resetAuthModal();
     const scope = authModalScope;
     const release = releaseAuthModal;
@@ -132,6 +179,11 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
     releaseAuthModal = null;
     release?.();
     scope?.dispose('Authentication modal closed');
+  };
+
+  const closeAuthModal: AuthController['closeAuthModal'] = (opts = {}) => {
+    route.end(opts.cancel ?? 'page');
+    releaseModal();
 
     if (opts.skipTruapiCancel !== true) {
       // A user close stops the core's pairing poll, which then resolves as Rejected.
@@ -139,61 +191,97 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
     }
   };
 
-  function showFailure(kind: Extract<DotliAuthState, { tag: 'LoginFailed' }>['kind'], reason: string): void {
+  function showFailure(kind: LoginFailureKind, reason: string): void {
     openAuthModal();
-    const friendly = kind === 'NoFreeAllowanceSlots' ? exhaustedAllowanceError(reason) : friendlyAuthError(reason);
-    updateAuthModal({
-      view: {
-        kind: 'error',
-        message: reason,
-        retry: friendly.retryable !== false,
-        pending: friendly.pending === true,
-        title: friendly.title,
-        subtitle: friendly.subtitle,
-        detail: friendly.detail,
-      },
-    });
+    updateAuthModal({ view: loginFailureView(kind, reason) });
   }
 
   /** `Disconnected` leaves the modal alone, so an unrelated disconnect never closes an active pairing. */
-  const applyAuthState = (state: DotliAuthState): void => {
+  const applyAuthState = (state: DotliAuthState, previous: DotliAuthState['tag']): void => {
     // The tag and failure kind only: a failure's reason can carry wallet text.
     log.event('auth state', {
       flow: 'wallet',
       state: state.tag,
       ...(state.tag === 'LoginFailed' ? { kind: state.kind } : {}),
     });
+    // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends both.
+    const login = state.tag === 'Pairing' || state.tag === 'Authenticating' || state.tag === 'LoginFailed';
+    if (login && authModalScope !== null && authModalStore.get().view.kind === 'phrase') {
+      return;
+    }
     switch (state.tag) {
       case 'Restoring':
       case 'Disconnected':
       case 'Unreachable':
         break;
       case 'Pairing':
-        openAuthModal(undefined, state.hostGlobal === true ? undefined : state.label, { dotSuffix: state.dotSuffix });
-        if (state.deeplink) {
-          updateAuthModal({
-            view: { kind: 'pairing', payload: state.deeplink },
-          });
-        }
+        route.pairing(state);
         break;
       case 'Authenticating':
-        updateAuthModal({ view: { kind: 'authenticating' } });
+        // The core's own states must not cover the route's wait.
+        if (!route.waiting()) {
+          updateAuthModal({ view: { kind: 'authenticating' } });
+        }
         break;
       case 'Connected':
-        closeAuthModal({ skipTruapiCancel: true });
+        // Only becoming signed in counts, so a session the core reports again leaves a phrase round started while
+        // signed in open.
+        if (previous === 'Connected') {
+          break;
+        }
+        // The route's wait goes on until its own outcome, so closing the modal now would lose that outcome.
+        if (route.waiting()) {
+          break;
+        }
+        // A sign-in by another route ends a sign-in the page still waits on, such as a blocked window's.
+        closeAuthModal({ skipTruapiCancel: true, cancel: 'signed_in' });
         break;
       case 'LoginFailed':
-        showFailure(state.kind, state.reason);
+        if (!route.waiting()) {
+          showFailure(state.kind, state.reason);
+        }
         break;
     }
   };
 
+  const modal: AuthModalPort = {
+    open: openAuthModal,
+    lease: () => authModalScope,
+    viewKind: () => authModalStore.get().view.kind,
+    show(view) {
+      updateAuthModal({ view });
+    },
+    showFailure,
+    close: closeAuthModal,
+  };
+
+  const route: SignInRoute =
+    deps.handoff === null
+      ? createInPageSignIn({
+          inPagePhrase: deps.inPagePhrase,
+          modal,
+          login(reason) {
+            runCommand('login', commands => commands.login(reason));
+          },
+        })
+      : createWindowSignIn({
+          handoff: deps.handoff,
+          applyResult: deps.applyResult,
+          elsewhere: deps.elsewhere,
+          walletMode: deps.walletMode,
+          modal,
+        });
+
   // The store never drops a set as equal, so every step of the ordered stream reaches here.
+  let lastTag = deps.auth.get().tag;
   const unsubscribe = deps.auth.subscribe(() => {
-    applyAuthState(deps.auth.get());
+    const state = deps.auth.get();
+    const previous = lastTag;
+    lastTag = state.tag;
+    applyAuthState(state, previous);
   });
 
-  return {
+  const controller: AuthController = {
     startLogin(reason, label) {
       const state = deps.auth.get();
       // A pairing writes its session to the shared store, so one started while the store is down would be lost.
@@ -204,142 +292,59 @@ export function createAuthController(deps: AuthControllerDeps): AuthController {
       if (state.tag === 'Connected') {
         return;
       }
-      // The modal already shows that login, and a reset would swap its QR for a spinner that never resolves. An error
-      // shows none, so its Retry logs in again.
-      if (authModalScope !== null && authModalStore.get().view.kind !== 'error') {
+      route.startLogin(reason, label);
+    },
+    importPhrase() {
+      if (deps.auth.get().tag === 'Unreachable') {
+        log.event('phrase import refused while the saved session is unreachable', { flow: 'wallet' });
         return;
       }
-      if (openAuthModal(reason, label)) {
-        runCommand('login', commands => commands.login(reason));
+      route.importPhrase();
+    },
+    isValidPhrase(phrase) {
+      return route.isValidPhrase(phrase);
+    },
+    importPhraseInPage(phrase) {
+      return route.importPhraseInPage(phrase);
+    },
+    retryLogin() {
+      if (route.retriesPhrase()) {
+        controller.importPhrase();
+      } else {
+        controller.startLogin();
       }
     },
     logout() {
+      // The route's sign-out window opens first, before any wait, since a browser opens a window only in the click's
+      // own turn. The signed-in flag is not the controller's to write.
+      route.signOut();
+      // With the bridge loaded, as on any signed-in page, this runs in the click's continuation, so a paired page reads
+      // its copy before the window's document loads.
       runCommand('logout', commands => commands.logout());
+    },
+    focusSignInWindow() {
+      route.focus();
     },
     openAuthModal,
     closeAuthModal,
     disableAuthModal() {
       authModalDisabled = true;
-      if (authModalScope !== null) {
-        closeAuthModal();
+      if (authModalScope === null) {
+        return;
       }
+      // The route's wait goes on and its own outcome ends the core's login, so only the modal is released.
+      if (route.waiting()) {
+        releaseModal();
+        return;
+      }
+      closeAuthModal();
     },
     dispose() {
       unsubscribe();
       closeAuthModal({ skipTruapiCancel: true });
     },
   };
-}
-
-export interface FriendlyAuthError {
-  title: string;
-  subtitle: string;
-  detail?: string | undefined;
-  retryable?: boolean | undefined;
-  pending?: boolean | undefined;
-}
-
-interface AuthErrorRule {
-  match: RegExp;
-  title: string;
-  subtitle: string;
-  retryable?: boolean;
-  pending?: boolean;
-  hideDetail?: boolean;
-}
-
-// First match wins, so specific rules sit above the broad buckets.
-const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
-  {
-    match: /Invalid Transaction|rejected by the node|re-broadcast rejected/,
-    title: 'Statement Store transaction rejected',
-    subtitle: 'Polkadot App could not register this browser because the chain rejected the registration transaction.',
-  },
-  {
-    match: /SubstrateSdk\.JSONRPCError error 1/,
-    title: 'Statement Store registration failed',
-    subtitle: 'Polkadot App reported a JSON-RPC failure while registering this browser as a device.',
-  },
-  {
-    match: /OriginPersonProviderError/,
-    title: 'Your account is still being set up',
-    subtitle: 'Please try again later',
-    pending: true,
-    hideDetail: true,
-  },
-  {
-    match: /version mismatch|unsupported version|incompatible|malformed ?frame/i,
-    title: 'Update Polkadot App',
-    subtitle: 'This browser and Polkadot App are out of step. Update the app and try again.',
-  },
-  {
-    match: /denied|rejected|declined/i,
-    title: 'Sign-in was declined',
-    subtitle: 'The request was declined in Polkadot App. Start again and approve it on your phone.',
-  },
-  {
-    match: /cancel/i,
-    title: 'Sign-in was cancelled',
-    subtitle: 'The pairing stopped before it finished. Try again when you are ready.',
-  },
-  {
-    match: /timed? ?out|timeout/i,
-    title: 'Sign-in timed out',
-    subtitle: 'Polkadot App did not answer in time. Check that your phone is online and try again.',
-  },
-  {
-    match: /not supported|unsupported/i,
-    title: 'Sign-in is not available here',
-    subtitle: 'This page cannot sign you in with Polkadot App.',
-    retryable: false,
-  },
-  {
-    match: /worker init failed|wasm|webassembly|dynamically imported module|auth host was disposed/i,
-    title: 'The sign-in service did not start',
-    subtitle: 'This page could not start its sign-in runtime. Reload the page and try again.',
-  },
-  {
-    match:
-      /disconnected|connection is closed|transport closed|not connected|connection (refused|reset|aborted)|network (unreachable|down)|host unreachable|failed to fetch|networkerror|load failed/i,
-    title: 'Connection to Polkadot App was lost',
-    subtitle:
-      'The link between this browser and your phone dropped before sign-in finished. Check that both are online and try again.',
-  },
-  {
-    match: /handshake|statement[- ]store|allowance/i,
-    title: 'Pairing could not complete',
-    subtitle: 'This browser and Polkadot App could not exchange their pairing messages. Try again in a moment.',
-  },
-];
-
-function exhaustedAllowanceError(message: string): FriendlyAuthError {
-  return {
-    title: 'No Statement Store slots left',
-    subtitle:
-      'Polkadot App has no free slot to register this browser. Try again once the current allowance period rolls over.',
-    detail: message,
-    retryable: false,
-  };
-}
-
-/** Unknown reasons keep the raw text as a detail line for bug reports. */
-export function friendlyAuthError(message: string): FriendlyAuthError {
-  const rule = AUTH_ERROR_RULES.find(candidate => candidate.match.test(message));
-  if (rule === undefined) {
-    return {
-      title: 'Sign-in did not complete',
-      subtitle:
-        'Something interrupted the connection to Polkadot App. Try again, and make sure the app is installed and up to date.',
-      detail: message,
-    };
-  }
-  return {
-    title: rule.title,
-    subtitle: rule.subtitle,
-    detail: rule.hideDetail === true ? undefined : message,
-    retryable: rule.retryable,
-    pending: rule.pending,
-  };
+  return controller;
 }
 
 // The page's controller, for islands that hydrate on their own and so cannot be handed one.
@@ -347,9 +352,16 @@ let pageController: AuthController | null = null;
 // An island can fail to hydrate before boot starts the controller.
 let pageModalBroken = false;
 
-export function initAuthController(deps: Omit<AuthControllerDeps, 'auth'>): AuthController {
+export function initAuthController(
+  deps: Omit<AuthControllerDeps, 'auth' | 'walletMode' | 'elsewhere'>,
+): AuthController {
   pageController?.dispose();
-  const controller = createAuthController({ ...deps, auth: authStore });
+  const controller = createAuthController({
+    ...deps,
+    auth: authStore,
+    walletMode: getWalletMode,
+    elsewhere: () => sessionElsewhereStore.get(),
+  });
   if (pageModalBroken) {
     controller.disableAuthModal();
   }
@@ -367,13 +379,32 @@ function requireController(): AuthController {
 export function startLogin(): void {
   requireController().startLogin();
 }
-export { startLogin as retryLogin };
+
+export function retryLogin(): void {
+  requireController().retryLogin();
+}
+
+export function importPhrase(): void {
+  requireController().importPhrase();
+}
+
+export function isValidPhrase(phrase: string): boolean {
+  return requireController().isValidPhrase(phrase);
+}
+
+export function importPhraseInPage(phrase: string): Promise<void> {
+  return requireController().importPhraseInPage(phrase);
+}
 
 export function logout(): void {
   requireController().logout();
 }
 
-export function closeAuthModal(opts: { skipTruapiCancel?: boolean } = {}): void {
+export function focusSignInWindow(): void {
+  requireController().focusSignInWindow();
+}
+
+export function closeAuthModal(opts: CloseAuthModalOptions = {}): void {
   requireController().closeAuthModal(opts);
 }
 

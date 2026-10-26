@@ -1,9 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Production shares mode preferences through the `host.<BASE_DOMAIN>` iframe's localStorage, but on localhost every
-// subdomain is its own site and Chrome partitions that storage per embedder. Local servers keep them in memory instead,
-// on the protocol origin.
+// Production shares mode preferences through the localStorage of the protocol frame at `<BASE_DOMAIN>/p/`, and
+// says whether a sign-in exists with a cookie on `<BASE_DOMAIN>`, which Chromium rejects for `Domain=localhost`. Local
+// servers keep both in memory instead, on the root origin, reached at `/__dotli-mode/`. The Astro dev server proxies
+// that path to the protocol dev server.
 
 import { Readable } from 'node:stream';
 import type { Plugin } from 'vite';

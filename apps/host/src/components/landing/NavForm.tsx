@@ -13,6 +13,7 @@ import s from './NavForm.module.css';
 const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
   empty: 'Enter a name to browse',
   'too-long': 'Names can be at most 63 characters',
+  'too-short': 'Names must be at least 2 characters',
   uppercase: 'Names can only contain a-z, 0-9 and hyphens',
   'leading-hyphen': "Names can't start or end with a hyphen",
   'trailing-hyphen': "Names can't start or end with a hyphen",

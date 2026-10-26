@@ -53,6 +53,7 @@ const WALLET: LocalWalletBoot = {
   status: 'ok',
   entropy: ENTROPY,
   identity: { identityAccountId: `0x${'11'.repeat(32)}`, liteUsername: 'alice.42' },
+  version: Uint8Array.of(1),
 };
 const HOST_CONFIG = { host: { name: 'Polkadot Web' } } as WebWorkerHostConfig;
 

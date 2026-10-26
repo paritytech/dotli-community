@@ -1,0 +1,15 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The Beta tag at the topbar's scale. Where it sits over the logo is the caller's, through `class`.
+import s from './BetaTag.module.css';
+
+interface Props {
+  class?: string | undefined;
+}
+
+const { class: placement } = Astro.props;
+---
+
+<span class:list={[s['tag'], placement]}>β</span>

@@ -72,7 +72,8 @@ and no data source.
   `Switch`, `Well`, `Callout`, `Row`, `Stack`, `SectionLabel`.
 - Floating layers: `Modal`, `Popover` and `usePopover`, `Tooltip`, plus the layer tracking (`LayerTracker`,
   `ModalFocusFallback`). A `Modal` whose content swaps in place names the value it swaps on with `refocusOn`, and focus
-  moves to its card or sheet each time that value changes.
+  moves to its card or sheet each time that value changes while it is open. Opening places focus through `initialFocus`.
+  With `placement="topbar-end"` the same card hangs from the topbar's end.
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar` and `ActionEntry`.
 - Stores: the modal store (`openModal`, `refuseModals`, which answers every dialog with its refusal while the overlays

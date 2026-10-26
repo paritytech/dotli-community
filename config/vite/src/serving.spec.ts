@@ -4,25 +4,54 @@
 import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  createLocalServing,
   fileHeaders,
   headerPolicy,
+  pathInBuild,
+  policyHeaders,
+  requestHostname,
   resolveFile,
-  responseHeaders,
   rootPage,
-  routeFor,
-  securityHeaders,
 } from './serving.js';
 import { nginxHeaders } from './testing/nginx.js';
 
 const NGINX_ANCESTORS = '$csp_ancestors';
 
+/** The roots a development server answers on. */
+const ROOTS = ['localhost', 'local.host'];
+
+describe('requestHostname', () => {
+  it('As a visitor on the https dev server, I send an HTTP/2 request whose :authority names the host and reach my product', () => {
+    // Given an HTTP/2 request's headers
+    const headers = { ':authority': 'browse.localhost:4321' };
+
+    // When the host is read from them
+    const hostname = requestHostname(headers);
+
+    // Then it is the :authority host without its port
+    expect(hostname).toBe('browse.localhost');
+  });
+
+  it('As a visitor over HTTP/1.1, I send a request and its Host header names the host', () => {
+    // Given an HTTP/1.1 request's headers
+    const headers = { host: 'browse.localhost:5173' };
+
+    // When the host is read from them
+    const hostname = requestHostname(headers);
+
+    // Then it is the Host header without its port
+    expect(hostname).toBe('browse.localhost');
+  });
+});
+
 describe('routeFor', () => {
   it('As a visitor, I open the bare host and get the host build with the landing page at its root', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const hostname = 'localhost';
 
     // When
-    const route = routeFor(hostname);
+    const route = serving.routeFor(hostname, '/');
 
     // Then
     expect(route).toEqual({ site: 'host', bare: true });
@@ -30,47 +59,229 @@ describe('routeFor', () => {
   });
 
   it('As a visitor, I open a product subdomain and get the shell', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const hostname = 'browse.localhost';
 
     // When
-    const route = routeFor(hostname);
+    const route = serving.routeFor(hostname, '/');
 
     // Then
     expect(route).toEqual({ site: 'host', bare: false });
     expect(rootPage(route)).toBe('index.html');
   });
 
-  it('As a product, I load my sandbox origin and the protocol origin and each reaches its own build', () => {
-    // Given
+  it('As a product page, I load my sandbox origin and get the app build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const sandbox = 'myapp.app.localhost';
-    const protocol = 'host.localhost';
 
-    // When
-    const routes = [routeFor(sandbox), routeFor(protocol)];
+    // When the sandbox origin's root is routed
+    const route = serving.routeFor(sandbox, '/');
+
+    // Then the app build serves it
+    expect(route.site).toBe('app');
+  });
+
+  it('As a page on localhost, I load /p/assets/x.js and get the protocol build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a protocol asset is routed on localhost
+    const route = serving.routeFor('localhost', '/p/assets/x.js');
+
+    // Then the protocol build serves it
+    expect(route).toEqual({ site: 'protocol', bare: false });
+  });
+
+  it("As a product page, I load /p/ on my host and get the host build, since the path is the product's own", () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the protocol path is routed on a product host
+    const route = serving.routeFor('browse.localhost', '/p/');
+
+    // Then the host build serves it
+    expect(route).toEqual({ site: 'host', bare: false });
+  });
+
+  it('As a visitor, I open /p without a trailing slash on localhost and get the host build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the protocol path without its trailing slash is routed on localhost
+    const route = serving.routeFor('localhost', '/p');
+
+    // Then the bare host build serves it
+    expect(route).toEqual({ site: 'host', bare: true });
+  });
+
+  it("As a product page, I load /p/x on my sandbox origin and get the app build, since the path is the product's own", () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a path under the protocol prefix is routed on a sandbox host
+    const route = serving.routeFor('x.app.localhost', '/p/x');
+
+    // Then the app build serves it
+    expect(route).toEqual({ site: 'app', bare: false });
+  });
+
+  it("As a user, I open the session windows on localhost and get the host build's session window", () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the session paths are routed on localhost
+    const routes = ['/s/auth', '/s/signout', '/s/manage', '/s/sign'].map(path => serving.routeFor('localhost', path));
+
+    // Then the bare host build serves each
+    expect(routes).toEqual([
+      { site: 'host', bare: true },
+      { site: 'host', bare: true },
+      { site: 'host', bare: true },
+      { site: 'host', bare: true },
+    ]);
+  });
+
+  it('As a user on an old shell, I open host.localhost for its frame and get the protocol build for one more release', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When host.localhost is routed
+    const route = serving.routeFor('host.localhost', '/');
+
+    // Then the protocol build serves it
+    expect(route).toEqual({ site: 'protocol', bare: false });
+  });
+
+  it('As a developer on local.host, I open the bare local.host and get the host build with the landing page', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the bare local.host is routed
+    const route = serving.routeFor('local.host', '/');
+
+    // Then the host build serves its landing page
+    expect(route).toEqual({ site: 'host', bare: true });
+    expect(rootPage(route)).toBe('landing.html');
+  });
+
+  it('As a developer on local.host, I open a product subdomain of it and get the shell', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a product subdomain of local.host is routed
+    const route = serving.routeFor('browse.local.host', '/');
+
+    // Then the host build serves the shell
+    expect(route).toEqual({ site: 'host', bare: false });
+    expect(rootPage(route)).toBe('index.html');
+  });
+
+  it('As a product page on local.host, I load my sandbox on its app subdomain and get the app build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a sandbox on an app subdomain of local.host is routed
+    const route = serving.routeFor('myapp.app.local.host', '/');
+
+    // Then the app build serves it
+    expect(route).toEqual({ site: 'app', bare: false });
+  });
+
+  it('As a user on an old shell on local.host, I open host.local.host for its frame and get the protocol build', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When host.local.host is routed
+    const route = serving.routeFor('host.local.host', '/');
+
+    // Then the protocol build serves it
+    expect(route).toEqual({ site: 'protocol', bare: false });
+  });
+
+  it('As a visitor on a host that only ends like a local root, I get the bare host', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a host that only ends like local.host is routed
+    const route = serving.routeFor('browse.notlocal.host', '/');
+
+    // Then it is the bare host
+    expect(route).toEqual({ site: 'host', bare: true });
+  });
+});
+
+describe('createLocalServing', () => {
+  it('As a user of a server for localhost alone, I open a product subdomain of local.host and get the bare host, and no local.host page may frame a sandbox', () => {
+    // Given a server for localhost alone
+    const serving = createLocalServing(['localhost']);
+
+    // When a product subdomain of local.host is routed
+    const route = serving.routeFor('browse.local.host', '/');
 
     // Then
-    expect(routes.map(route => route.site)).toEqual(['app', 'protocol']);
+    expect(route).toEqual({ site: 'host', bare: true });
+    expect(serving.frameAncestors).not.toContain('local.host');
+  });
+});
+
+describe('pathInBuild', () => {
+  it('As a page on localhost, I load a protocol file and it is looked up without the prefix its base adds', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const route = serving.routeFor('localhost', '/p/assets/x.js');
+
+    // When the protocol paths are looked up
+    const paths = [pathInBuild(route, '/p/assets/x.js'), pathInBuild(route, '/p/')];
+
+    // Then the prefix is gone
+    expect(paths).toEqual(['/assets/x.js', '/']);
+  });
+
+  it('As a user on an old shell on host.localhost, I ask for the protocol build at its root and the lookup keeps my path', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const route = serving.routeFor('host.localhost', '/host_version.json');
+
+    // When the version file is looked up
+    const path = pathInBuild(route, '/host_version.json');
+
+    // Then the path is kept
+    expect(path).toBe('/host_version.json');
+  });
+
+  it('As a page on localhost, I load a host file and it is looked up under its own path', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When a host file is looked up
+    const path = pathInBuild(serving.routeFor('localhost', '/a'), '/a');
+
+    // Then the path is kept
+    expect(path).toBe('/a');
   });
 });
 
 describe('headerPolicy', () => {
   it('As a sandbox page, I am served from my origin and every response is isolated', () => {
-    // Given
-    const sandbox = routeFor('myapp.app.localhost');
-    const protocol = routeFor('host.localhost');
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const sandbox = serving.routeFor('myapp.app.localhost', '/');
+    const protocol = serving.routeFor('localhost', '/p/assets/a.js');
 
     // When
-    const policies = [headerPolicy(sandbox, '/'), headerPolicy(protocol, '/assets/a.js')];
+    const policies = [headerPolicy(sandbox, '/'), headerPolicy(protocol, '/p/assets/a.js')];
 
     // Then
     expect(policies).toEqual(['isolated', 'isolated']);
   });
 
   it("As a preview embedder, I open /__preview and only the bare host's page is isolated", () => {
-    // Given
-    const bare = routeFor('localhost');
-    const shell = routeFor('browse.localhost');
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/');
+    const shell = serving.routeFor('browse.localhost', '/');
 
     // When
     const policies = [headerPolicy(bare, '/__preview'), headerPolicy(shell, '/__preview')];
@@ -79,9 +290,71 @@ describe('headerPolicy', () => {
     expect(policies).toEqual(['isolated', 'plain']);
   });
 
+  it('As a user, I open the session windows on the bare host and no page may frame them', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/s/auth');
+    const shell = serving.routeFor('browse.localhost', '/s/auth');
+
+    // When each session path's policy is read on both hosts
+    const policies = [
+      headerPolicy(bare, '/s/auth'),
+      headerPolicy(bare, '/s/signout'),
+      headerPolicy(bare, '/s/manage'),
+      headerPolicy(bare, '/s/sign'),
+      headerPolicy(shell, '/s/auth'),
+      headerPolicy(shell, '/s/signout'),
+      headerPolicy(shell, '/s/manage'),
+      headerPolicy(shell, '/s/sign'),
+    ];
+
+    // Then only the bare host's session windows are unframed
+    expect(policies).toEqual(['unframed', 'unframed', 'unframed', 'unframed', 'plain', 'plain', 'plain', 'plain']);
+  });
+
+  it.each(['/s/%61uth', '/s/%6Danage', '/s/%73ign'])(
+    'As a user, I open the percent-encoded session path %s on the bare host and no page may frame it',
+    path => {
+      // Given a server for both local roots and the bare host's route
+      const serving = createLocalServing(ROOTS);
+      const bare = serving.routeFor('localhost', path);
+
+      // When the policy of the encoded path is read
+      const policy = headerPolicy(bare, path);
+
+      // Then it is unframed like the plain path
+      expect(policy).toBe('unframed');
+    },
+  );
+
+  it('As a visitor, I send a malformed escape under the session segment and it is not treated as a session window', () => {
+    // Given a server for both local roots and the bare host's route
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/s/%E0%A4%A');
+
+    // When its policy is read
+    const policy = headerPolicy(bare, '/s/%E0%A4%A');
+
+    // Then it is not unframed
+    expect(policy).toBe('plain');
+  });
+
+  it('As a page, I ask the bare host for a path near the session windows and it is not treated as one', () => {
+    // Given a server for both local roots and the bare host's route
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/s/auth');
+
+    // When the policy of a trailing slash, another session segment path and the old path is read
+    const policies = ['/s/auth/', '/s/other', '/__session'].map(path => headerPolicy(bare, path));
+
+    // Then none of them is unframed
+    expect(policies).toEqual(['plain', 'plain', 'plain']);
+  });
+
   it('As a product host, my assets carry no COEP', () => {
-    // Given
-    const shell = routeFor('browse.localhost');
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const shell = serving.routeFor('browse.localhost', '/');
 
     // When
     const policy = headerPolicy(shell, '/assets/w.js');
@@ -91,8 +364,9 @@ describe('headerPolicy', () => {
   });
 
   it('As the bare host, my assets carry COEP so /__preview can start their workers', () => {
-    // Given
-    const bare = routeFor('localhost');
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/');
 
     // When
     const policy = headerPolicy(bare, '/assets/w.js');
@@ -104,11 +378,12 @@ describe('headerPolicy', () => {
 
 describe('responseHeaders', () => {
   it('As the release server, I send a hashed asset with its type, immutable caching and the private network header', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const pathname = '/assets/a.js';
 
     // When
-    const headers = responseHeaders('/dist/host/assets/a.js', pathname, 'worker-coep');
+    const headers = serving.responseHeaders('/dist/host/assets/a.js', pathname, 'worker-coep');
 
     // Then
     expect(headers).toMatchObject({
@@ -120,8 +395,11 @@ describe('responseHeaders', () => {
   });
 
   it('As the test server, I send a file of an unknown type as bytes', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
     // When
-    const headers = responseHeaders('/dist/app/blob.bin', '/blob.bin', 'isolated');
+    const headers = serving.responseHeaders('/dist/app/blob.bin', '/blob.bin', 'isolated');
 
     // Then
     expect(headers['Content-Type']).toBe('application/octet-stream');
@@ -145,45 +423,49 @@ describe('resolveFile', () => {
   }
 
   it('As a visitor, I open the bare host and get the landing page', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('landing.html', 'index.html');
 
     // When
-    const resolved = resolveFile(DIR, routeFor('localhost'), '/', disk.isFile);
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', '/'), '/', disk.isFile);
 
     // Then
     expect(resolved).toEqual({ file: join(DIR, 'landing.html'), pathname: '/landing.html' });
   });
 
   it('As a visitor, I follow a deep link on a product host and get the shell', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('index.html');
 
     // When
-    const resolved = resolveFile(DIR, routeFor('browse.localhost'), '/some/page', disk.isFile);
+    const resolved = resolveFile(DIR, serving.routeFor('browse.localhost', '/'), '/some/page', disk.isFile);
 
     // Then
     expect(resolved).toEqual({ file: join(DIR, 'index.html'), pathname: '/index.html' });
   });
 
   it('As a page, I load an asset that exists and get the file under its own path', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('index.html', 'assets/index-A.js');
 
     // When
-    const resolved = resolveFile(DIR, routeFor('browse.localhost'), '/assets/index-A.js', disk.isFile);
+    const resolved = resolveFile(DIR, serving.routeFor('browse.localhost', '/'), '/assets/index-A.js', disk.isFile);
 
     // Then
     expect(resolved).toEqual({ file: join(DIR, 'assets/index-A.js'), pathname: '/assets/index-A.js' });
   });
 
   it('As a page after a deploy, I ask for an asset, a worker or the version file that is gone and get a 404, not the shell', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('index.html');
 
     // When
     const answers = ['/assets/gone.js', '/host-sw.js', '/host_version.json'].map(path =>
-      resolveFile(DIR, routeFor('browse.localhost'), path, disk.isFile),
+      resolveFile(DIR, serving.routeFor('browse.localhost', '/'), path, disk.isFile),
     );
 
     // Then
@@ -191,12 +473,13 @@ describe('resolveFile', () => {
   });
 
   it('As an attacker, I ask for a path that climbs out of the build and am answered from inside it', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('index.html');
 
     // When
     const answers = ['/..%2f..%2f..%2fetc%2fpasswd', '/%2e%2e/%2e%2e/etc/passwd', '/a%00b', '..', '../x'].map(path =>
-      resolveFile(DIR, routeFor('browse.localhost'), path, disk.isFile),
+      resolveFile(DIR, serving.routeFor('browse.localhost', '/'), path, disk.isFile),
     );
 
     // Then
@@ -205,53 +488,164 @@ describe('resolveFile', () => {
   });
 
   it('As a visitor, I send a malformed escape and get a 404', () => {
-    // Given
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('index.html');
 
     // When
-    const resolved = resolveFile(DIR, routeFor('browse.localhost'), '/%E0%A4%A', disk.isFile);
+    const resolved = resolveFile(DIR, serving.routeFor('browse.localhost', '/'), '/%E0%A4%A', disk.isFile);
 
     // Then
     expect(resolved).toBeUndefined();
   });
 
-  it("As a visitor, I open a folder on the bare host and get its index, as nginx's bare-host block tries it", () => {
-    // Given
+  it('As a visitor, I open a folder on the bare host and get its index', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
     const disk = build('landing.html', 'index.html', 'docs/index.html');
 
-    // When
-    const resolved = resolveFile(DIR, routeFor('localhost'), '/docs/', disk.isFile);
+    // When the folder is resolved on the bare host
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', '/'), '/docs/', disk.isFile);
 
-    // Then
+    // Then the folder's index answers
     expect(resolved).toEqual({ file: join(DIR, 'docs/index.html'), pathname: '/docs/' });
+  });
+
+  it('As a user, I open /s/auth, /s/signout, /s/manage and /s/sign on the bare host and get the session window', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html', 'session.html');
+
+    // When each session path is resolved on the bare host
+    const resolved = ['/s/auth', '/s/signout', '/s/manage', '/s/sign'].map(path =>
+      resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile),
+    );
+
+    // Then the session window is served for each
+    expect(resolved).toEqual([
+      { file: join(DIR, 'session.html'), pathname: '/s/auth' },
+      { file: join(DIR, 'session.html'), pathname: '/s/signout' },
+      { file: join(DIR, 'session.html'), pathname: '/s/manage' },
+      { file: join(DIR, 'session.html'), pathname: '/s/sign' },
+    ]);
+  });
+
+  it('As a visitor, I open a path near the session windows on the bare host and get the shell, not the session window', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html', 'session.html');
+
+    // When a trailing slash, another session segment path and the old path are resolved on the bare host
+    const resolved = ['/s/auth/', '/s/other', '/__session'].map(
+      path => resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile)?.file,
+    );
+
+    // Then the shell answers each of them
+    expect(resolved).toEqual([join(DIR, 'index.html'), join(DIR, 'index.html'), join(DIR, 'index.html')]);
+  });
+
+  it('As a visitor, I send a malformed escape under the session segment on the bare host and get a 404, not the session window', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html', 'session.html');
+
+    // When the malformed path is resolved on the bare host
+    const path = '/s/%E0%A4%A';
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile);
+
+    // Then no file is served
+    expect(resolved).toBeUndefined();
+  });
+
+  it.each([
+    ['/s/%61uth', '/s/auth'],
+    ['/s/%6Danage', '/s/manage'],
+    ['/s/%73ign', '/s/sign'],
+  ])(
+    'As a user, I open the percent-encoded session path %s on the bare host and get the session window',
+    (path, decoded) => {
+      // Given a server for both local roots
+      const serving = createLocalServing(ROOTS);
+      const disk = build('landing.html', 'index.html', 'session.html');
+
+      // When the encoded session path is resolved on the bare host
+      const resolved = resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile);
+
+      // Then the session window is served
+      expect(resolved).toEqual({ file: join(DIR, 'session.html'), pathname: decoded });
+    },
+  );
+
+  it('As a user on a build without the session window, I open the session window and get a 404, not the shell', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html');
+
+    // When the session path is resolved on the bare host
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', '/s/auth'), '/s/auth', disk.isFile);
+
+    // Then no file is served
+    expect(resolved).toBeUndefined();
+  });
+
+  it('As a page framing the session window, I ask for its built file and get a 404 on any host', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html', 'session.html');
+
+    // When the built session file is asked for on each host and spelling
+    const answers = [
+      ['localhost', '/session.html'],
+      ['browse.localhost', '/session.html'],
+      ['localhost', '//session.html'],
+      ['localhost', '/./session.html'],
+      ['localhost', '/%73ession.html'],
+    ].map(([host = '', path = '']) => resolveFile(DIR, serving.routeFor(host, path), path, disk.isFile));
+
+    // Then no file is served for any of them
+    expect(answers).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
 });
 
 describe('the table against nginx', () => {
   it('As an operator, I run a Node server and a shell page carries the headers nginx sends', () => {
-    // Given
+    // Given the headers nginx sends with a shell page
     const nginx = nginxHeaders('nginx/snippets/dotli-headers-host.conf');
 
     // When
-    const headers = securityHeaders('plain', NGINX_ANCESTORS);
+    const headers = policyHeaders('plain', NGINX_ANCESTORS);
 
-    // Then
+    // Then they match nginx
     expect(headers).toEqual(nginx);
   });
 
+  it.each(['/s/auth', '/s/signout', '/s/manage', '/s/sign'])(
+    'As an operator, I run a Node server and the session window at %s carries the headers nginx sends',
+    location => {
+      // Given the headers nginx sends with that location of the session window
+      const nginx = nginxHeaders('nginx/snippets/dotli-session-page.conf', location);
+
+      // When the Node server's unframed headers are built
+      const headers = policyHeaders('unframed', NGINX_ANCESTORS);
+
+      // Then they match nginx
+      expect(headers).toEqual(nginx);
+    },
+  );
+
   it('As an operator, I run a Node server and a sandbox page carries the isolation headers nginx sends', () => {
-    // Given
+    // Given the headers nginx sends with a sandbox page
     const nginx = nginxHeaders('nginx/snippets/dotli-headers-iframeable.conf');
 
     // When
-    const headers = securityHeaders('isolated', NGINX_ANCESTORS);
+    const headers = policyHeaders('isolated', NGINX_ANCESTORS);
 
     // Then
     expect(headers).toEqual(nginx);
   });
 
   it('As an operator, I run a Node server and host and sandbox assets carry the headers nginx sends', () => {
-    // Given
+    // Given the headers nginx sends with host, preview and sandbox assets
     const nginx = [
       nginxHeaders('nginx/snippets/dotli-assets-host.conf'),
       nginxHeaders('nginx/snippets/dotli-assets-preview.conf'),
@@ -260,9 +654,9 @@ describe('the table against nginx', () => {
 
     // When
     const headers = [
-      { ...securityHeaders('plain', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
-      { ...securityHeaders('worker-coep', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
-      { ...securityHeaders('isolated', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
+      { ...policyHeaders('plain', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
+      { ...policyHeaders('worker-coep', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
+      { ...policyHeaders('isolated', NGINX_ANCESTORS), ...fileHeaders('/assets/a.js') },
     ];
 
     // Then
@@ -270,16 +664,113 @@ describe('the table against nginx', () => {
   });
 
   it('As an operator, I run a Node server and each service worker carries the headers nginx sends', () => {
-    // Given
+    // Given the headers nginx sends with each service worker
     const nginx = [nginxHeaders('nginx/snippets/dotli-sw-app.conf'), nginxHeaders('nginx/snippets/dotli-sw-host.conf')];
 
     // When
     const headers = [
-      { ...securityHeaders('isolated', NGINX_ANCESTORS), ...fileHeaders('/app-sw.js') },
-      { ...securityHeaders('plain', NGINX_ANCESTORS), ...fileHeaders('/host-sw.js') },
+      { ...policyHeaders('isolated', NGINX_ANCESTORS), ...fileHeaders('/app-sw.js') },
+      { ...policyHeaders('plain', NGINX_ANCESTORS), ...fileHeaders('/host-sw.js') },
     ];
 
     // Then
     expect(headers).toEqual(nginx);
+  });
+});
+
+describe('devHeaders', () => {
+  it('As a developer, I open the session window on the dev server and no page may frame it', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the dev server's headers for each session path are built
+    const headers = ['/s/auth', '/s/signout', '/s/sign'].map(path => serving.devHeaders('localhost', path));
+
+    // Then no page may frame any of them
+    expect(headers).toEqual([
+      { 'Content-Security-Policy': "frame-ancestors 'none'" },
+      { 'Content-Security-Policy': "frame-ancestors 'none'" },
+      { 'Content-Security-Policy': "frame-ancestors 'none'" },
+    ]);
+  });
+
+  it('As a developer, I open a percent-encoded session path on the dev server and no page may frame it', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the dev server's headers for the encoded session path are built
+    const headers = serving.devHeaders('localhost', '/s/%61uth');
+
+    // Then no page may frame it
+    expect(headers).toEqual({ 'Content-Security-Policy': "frame-ancestors 'none'" });
+  });
+
+  it('As a developer, I open /__preview and a shell page on the dev server, and only the preview is isolated', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the dev server's headers for the preview and a shell page are built
+    const preview = serving.devHeaders('localhost', '/__preview');
+    const shell = serving.devHeaders('browse.localhost', '/');
+
+    // Then only the preview carries the isolation headers
+    expect(preview).toEqual(serving.securityHeaders('isolated'));
+    expect(shell).toEqual({});
+  });
+
+  it('As a developer, I open a sandbox and a page under either local root on any port and scheme may frame it', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the dev server's headers for a local.host sandbox are built
+    const headers = serving.devHeaders('myapp.app.local.host', '/');
+
+    // Then its frame ancestors cover both local roots on any port and scheme
+    expect(headers['Content-Security-Policy']?.split(' ')).toEqual([
+      'frame-ancestors',
+      'http://localhost:*',
+      'http://*.localhost:*',
+      'http://local.host:*',
+      'http://*.local.host:*',
+      'https://localhost:*',
+      'https://*.localhost:*',
+      'https://local.host:*',
+      'https://*.local.host:*',
+    ]);
+  });
+});
+
+describe('protocolProxyBypass', () => {
+  it('As a page on localhost, I load /p/?mode=direct and the dev proxy hands it to the protocol app', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the proxy asks whether to skip the request
+    const bypass = serving.protocolProxyBypass({ url: '/p/?mode=direct', headers: { host: 'localhost:4001' } });
+
+    // Then it does not skip it
+    expect(bypass).toBeUndefined();
+  });
+
+  it('As an old shell on host.localhost, I load /p/x and the dev proxy hands it to the protocol app', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the proxy asks whether to skip the request
+    const bypass = serving.protocolProxyBypass({ url: '/p/x', headers: { host: 'host.localhost:4001' } });
+
+    // Then it does not skip it
+    expect(bypass).toBeUndefined();
+  });
+
+  it('As a product page, I load /p/x?y=1 on my host and the dev proxy leaves it to my host', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the proxy asks whether to skip the request
+    const bypass = serving.protocolProxyBypass({ url: '/p/x?y=1', headers: { host: 'browse.localhost:4001' } });
+
+    // Then the request goes on unchanged
+    expect(bypass).toBe('/p/x?y=1');
   });
 });

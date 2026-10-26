@@ -197,14 +197,23 @@ nvm use                  # or any Node 26 install
 npm install -g npm@latest
 npm install
 export VITE_NETWORKS=paseo-next-v2,previewnet
-npm run dev              # Dev servers with hot reload on localhost:4321
+npm run dev              # Dev servers with hot reload on https://localhost:4001
 npm run preview          # Production build served on localhost:5173, as the Playwright suites use it
 HOST=0.0.0.0 npm run preview   # The same, reachable from a phone on the LAN
 ```
 
-`npm run dev` starts one dev server per origin: the shell on 4321, the sandbox (`*.app.localhost`) on 4322 and the
-protocol iframe (`host.localhost`) on 4323. Use `npm run preview` for anything that depends on the production build,
-such as the shell's offline service worker.
+`npm run dev` starts one dev server per origin: the shell on 4001, the sandbox (`*.app.localhost`) on 4002 and the
+protocol iframe on 4003, which the shell's dev server proxies at `/p/`. Use `npm run preview` for anything that depends
+on the production build, such as the shell's offline service worker.
+
+The dev servers serve https with a locally trusted certificate from [mkcert](https://github.com/FiloSottile/mkcert),
+which the first `npm run dev` downloads and installs into the system trust store, asking for your password once. It
+covers `*.localhost` and `*.local.host`, since Safari keeps `Secure` cookies and the sign-in window off plain http on
+any host but localhost. The preview stays on http.
+
+`https://browse.local.host:4001` works like `browse.localhost`, for testing the sign-in flow in Safari. Only a
+development build trusts `local.host`, as it is a public name, so a production build served there acts as on any other
+domain.
 
 The TrUAPI packages are installed from their published `@parity` packages. To iterate against a local truapi checkout
 instead, run:
@@ -225,9 +234,16 @@ Return to the package versions recorded in `package-lock.json` with:
 npm run unlink:truapi
 ```
 
+Refresh the Public Suffix List the session window ships with each release. The script refuses a download without the
+list's ICANN and private sections whole:
+
+```bash
+node scripts/update-public-suffix-list.ts
+```
+
 Local development uses wildcard subdomains:
 
-- `host-playground.localhost:4321` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
+- `host-playground.localhost:4001` (dev) or `host-playground.localhost:5173` (preview) resolves `host-playground.dot`
   via the host
 
 ### Running the host-playground E2E locally

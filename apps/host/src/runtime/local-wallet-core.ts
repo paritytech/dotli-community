@@ -15,7 +15,8 @@ import { m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { loadSigningWorker } from '../lazy.js';
 import { refreshLiteUsername } from './local-wallet-identity.js';
-import { reportLocalWalletFailure, type LocalWalletBoot, type LocalWalletFailureReason } from './wallet-boot.js';
+import { reportLocalWalletFailure, type LocalWalletFailureReason } from './wallet-failure.js';
+import type { LocalWalletBoot } from './wallet-boot.js';
 
 type CreateRuntime = typeof createWebWorkerPairingHostRuntime;
 

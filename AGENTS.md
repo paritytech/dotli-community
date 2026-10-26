@@ -11,6 +11,8 @@ trustless, small on boot and fast on repeat visits.
 A debug-only feature, such as signing in with a recovery phrase, appears only in the debug panel, never in user-facing
 UI.
 
+The browser floor is ES2022 and Safari 17.4. Shipped code uses no runtime API newer than that.
+
 ## Glossary
 
 - **Host**: the top-level shell build. Owns the topbar, session and bridge.
@@ -32,6 +34,8 @@ Workflow thresholds (trivial, blast radius, peer file) live in `docs/code/glossa
 - Split the system into layers. Each owns one responsibility that a reader can name from its module.
 - Keep the interface between layers small, explicit and easy to read.
 - State flows up, intent flows down. Never write another layer's state, and never use state as a command.
+- A page that shares an origin with another layer's stores removes only its own keys and databases. It never clears the
+  origin and writes the other layer's state back.
 - A layer recovers from its own failures without waiting to be asked, and reports its status to the layer above.
 - Make calls across layers idempotent. Repeating or overlapping a call is safe and does the work once.
 - When a reopened subscription replays items its source still holds, the consumer dedupes them. Layers in between pass
@@ -77,6 +81,8 @@ TypeScript:
 - Never swallow errors. Rethrow with `{ cause }`, or `captureException` + `log.error` + an outcome metric.
 - One metric name per event, with `{ outcome, reason }`. No `_FAILURE` / `_TIMEOUT` constants.
 - `log.warn` only for real failures. Progress breadcrumbs use `log.event`.
+- A guarantee such as never rejecting belongs to the object the page builds, not to a free-standing wrapper every caller
+  must remember.
 - No `console.log`.
 
 UI:
@@ -108,6 +114,7 @@ Comments and docs:
 - JSDoc starts with one sentence. Files may open with a short purpose block.
 - No em-dashes, semicolons or Unicode arrows in prose. No decorative separators. No spec citations in comments.
 - Say "network" or "remote", not "on-chain".
+- Every interface method's JSDoc states its contract, such as whether and with what it rejects.
 - Comments never claim a relation to other code, which can change without touching the comment. When two values must
   stay in sync, share a token, variable or import, or write nothing.
 - Say "imports no Solid", never "Solid-free".
@@ -124,8 +131,9 @@ Tests:
   tests business logic. A test that needs a DOM tests an integration layer, so give the logic a seam.
 - A component is tested by a play function in its Storybook story, which runs in a real browser.
 - Functional tests may mock the DOM and run under happy-dom.
-- Name tests as user stories: `As a <role>, I <action> and <outcome>`.
+- Name tests as user stories: `As a <role>, I <action> and <outcome>`, where the role may carry a `who …` clause.
 - Separate bodies with `// Given`, `// When`, `// Then`.
+- The call under test sits in When, and Then only asserts.
 - Given/When/Then markers keep their descriptions. A comment cleanup never strips them to bare markers.
 - Don't commit tests that exercise a third-party SDK's own setup. Check that configuration once, by hand.
 - Select by `data-testid` or ARIA role. Never by class.

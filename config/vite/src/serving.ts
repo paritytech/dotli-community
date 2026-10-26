@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // How every local dotli server answers: which build serves a hostname, which file answers a path, and the headers each
-// response carries, split as nginx's snippets are. The release server, the test server and the dev servers read it, and
-// its spec holds nginx's snippets to it, so the functional tests run under the same sandbox isolation as a deploy.
+// response carries, by header policy. The release server, the test server and the dev servers read it, and its spec
+// holds the deploy's nginx snippets to it, so the functional tests run under the same sandbox isolation as a deploy.
+// What depends on the local roots is built once from the roots a server is given, so its routes and headers agree.
 
 import { statSync } from 'node:fs';
+import type { IncomingMessage } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -18,16 +20,48 @@ export interface Route {
   bare: boolean;
 }
 
-/** The build a local hostname reaches, as nginx's server blocks route a domain. */
-export function routeFor(hostname: string): Route {
-  const name = hostname.toLowerCase();
-  if (name === 'host.localhost') {
-    return { site: 'protocol', bare: false };
+/** The protocol app's path, which reaches the protocol build on the bare host. */
+export const PROTOCOL_PREFIX = '/p';
+
+/** The hostname a request names. HTTP/2, which the https dev servers speak, carries it as `:authority`, not `Host`. */
+export function requestHostname(headers: Readonly<Record<string, string | string[] | undefined>>): string {
+  const authority = headers['host'] ?? headers[':authority'];
+  return (typeof authority === 'string' ? authority : '').split(':')[0] ?? '';
+}
+
+/** A path under the prefix is the protocol app's only on the bare host, since on a product host it is the product's own. */
+export function isProtocolPath(pathname: string): boolean {
+  return pathname.startsWith(`${PROTOCOL_PREFIX}/`);
+}
+
+/**
+ * Maps `pathname` to its path in the route's build. The protocol build's files sit at its root, its base adds the
+ * prefix, and `host.` under a local root asks for them without it.
+ */
+export function pathInBuild(route: Route, pathname: string): string {
+  return route.site === 'protocol' && isProtocolPath(pathname) ? pathname.slice(PROTOCOL_PREFIX.length) : pathname;
+}
+
+/** The session windows' paths on the bare host, which serve the session window at these exact paths only. */
+const SESSION_PATHS: ReadonlySet<string> = new Set(['/s/auth', '/s/signout', '/s/manage', '/s/sign']);
+const SESSION_FILE = 'session.html';
+/** The session window's built file, which only its paths may serve, since those paths are what refuse framing. */
+const SESSION_FILE_PATH = `/${SESSION_FILE}`;
+
+/**
+ * Whether `pathname` is one of the session windows' paths on the bare host. The decoded path decides, so an encoded
+ * spelling keeps the frame refusal. A malformed escape is not one.
+ */
+export function isSessionPath(route: Route, pathname: string): boolean {
+  if (!route.bare) {
+    return false;
   }
-  if (name.includes('.app.')) {
-    return { site: 'app', bare: false };
+  try {
+    return SESSION_PATHS.has(decodeURIComponent(pathname));
+  } catch {
+    // A malformed escape names no file.
+    return false;
   }
-  return { site: 'host', bare: !name.endsWith('.localhost') };
 }
 
 /** The file that answers `/`. */
@@ -36,10 +70,11 @@ export function rootPage(route: Route): string {
 }
 
 /**
- * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a bare-host asset, whose worker script must
- * carry COEP itself or the isolated /__preview page cannot start it.
+ * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a bare-host asset, whose worker script
+ * must carry COEP itself or the isolated /__preview page cannot start it. `unframed` is a session window, which no page
+ * may frame and which sends no opener policy, since that would cut its link to the page that opened it.
  */
-export type HeaderPolicy = 'isolated' | 'worker-coep' | 'plain';
+export type HeaderPolicy = 'isolated' | 'worker-coep' | 'unframed' | 'plain';
 
 /**
  * COEP on the host's other documents would block the localhost proxy iframe, so only /__preview is isolated there.
@@ -49,25 +84,25 @@ export function headerPolicy(route: Route, pathname: string): HeaderPolicy {
   if (route.site !== 'host' || (route.bare && pathname === '/__preview')) {
     return 'isolated';
   }
+  if (isSessionPath(route, pathname)) {
+    return 'unframed';
+  }
   return route.bare && pathname.startsWith('/assets/') ? 'worker-coep' : 'plain';
 }
 
-/** Ports matter: CSP host-sources without one mean the scheme's default. */
-export const LOCAL_FRAME_ANCESTORS = 'http://localhost:* http://*.localhost:*';
-
 /**
- * Chrome's Private Network Access blocks loopback iframes across `*.localhost` subdomains without it, so the protocol
- * frame's handshake times out. nginx serves public origins and needs none.
+ * Chrome's Private Network Access blocks loopback iframes across a local root's subdomains without it, so the protocol
+ * frame's handshake times out. A deploy serves public origins and needs none.
  */
 const LOCAL_SERVER_HEADERS: Readonly<Record<string, string>> = {
   'Access-Control-Allow-Private-Network': 'true',
 };
 
-/** The security headers of `policy`. `frameAncestors` fills an isolated page's CSP, nginx's `$csp_ancestors`. */
-export function securityHeaders(
-  policy: HeaderPolicy,
-  frameAncestors: string = LOCAL_FRAME_ANCESTORS,
-): Record<string, string> {
+/** What no page may frame sends on top of the host build's headers. */
+const UNFRAMED: Readonly<Record<string, string>> = { 'Content-Security-Policy': "frame-ancestors 'none'" };
+
+/** The security headers of `policy`. `frameAncestors` fills an isolated page's CSP. */
+export function policyHeaders(policy: HeaderPolicy, frameAncestors: string): Record<string, string> {
   const shared = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -77,6 +112,9 @@ export function securityHeaders(
   };
   if (policy !== 'isolated') {
     const plain = { ...shared, 'X-Frame-Options': 'SAMEORIGIN' };
+    if (policy === 'unframed') {
+      return { ...plain, ...UNFRAMED };
+    }
     return policy === 'worker-coep' ? { ...plain, 'Cross-Origin-Embedder-Policy': 'credentialless' } : plain;
   }
   return {
@@ -85,29 +123,6 @@ export function securityHeaders(
     'Cross-Origin-Resource-Policy': 'cross-origin',
     'Cross-Origin-Embedder-Policy': 'credentialless',
     'Cross-Origin-Opener-Policy': 'same-origin',
-  };
-}
-
-/**
- * The isolated headers on the routes this table isolates, for the dev servers. Server-wide, COEP would break the
- * localhost dev servers, which ship no CORP.
- */
-export function isolationHeaders(): Plugin {
-  const headers = securityHeaders('isolated');
-  return {
-    name: 'dotli-isolation-headers',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const pathname = (req.url ?? '/').split('?')[0] ?? '/';
-        const hostname = (req.headers.host ?? '').split(':')[0] ?? '';
-        if (headerPolicy(routeFor(hostname), pathname) === 'isolated') {
-          for (const [name, value] of Object.entries(headers)) {
-            res.setHeader(name, value);
-          }
-        }
-        next();
-      });
-    },
   };
 }
 
@@ -124,10 +139,7 @@ export function fileHeaders(pathname: string): Record<string, string> {
   return { 'Cache-Control': 'no-cache' };
 }
 
-/**
- * Missing, these are a 404 rather than the shell, which a browser would try to run. nginx's exact locations answer so
- * where they exist.
- */
+/** Missing, these are a 404 rather than the shell, which a browser would try to run. */
 const NO_FALLBACK: ReadonlySet<string> = new Set([...SERVICE_WORKERS, '/host_version.json']);
 
 /** A file a local server sends. */
@@ -147,9 +159,10 @@ function isFileOnDisk(path: string): boolean {
 }
 
 /**
- * The file that answers `pathname` from the build in `dir`, in nginx's `try_files` order: the root page at `/`, the file
- * itself, a folder's index on the bare host, then the shell. A missing asset, worker or version file is a 404 instead.
- * `undefined` is a 404.
+ * The file that answers `pathname` from the build in `dir`, the first of: the root page at `/`, the file itself, a
+ * folder's index on the bare host, then the shell. On the bare host each of the session paths answers with the session
+ * page, which the host build never serves under its own file name. A missing asset, worker, session window or version
+ * file is a 404 instead. `undefined` is a 404.
  */
 export function resolveFile(
   dir: string,
@@ -169,8 +182,16 @@ export function resolveFile(
     const file = join(dir, page);
     return isFile(file) ? { file, pathname: `/${page}` } : undefined;
   }
+  if (isSessionPath(route, pathname)) {
+    const file = join(dir, SESSION_FILE);
+    return isFile(file) ? { file, pathname: decoded } : undefined;
+  }
   // The leading slash makes `normalize` settle `..` against the root, so no path leaves `dir`.
-  const file = join(dir, normalize(`/${decoded}`));
+  const normalized = normalize(`/${decoded}`);
+  if (route.site === 'host' && normalized === SESSION_FILE_PATH) {
+    return undefined;
+  }
+  const file = join(dir, normalized);
   if (isFile(file)) {
     return { file, pathname: decoded };
   }
@@ -204,12 +225,94 @@ export const MIME_TYPES: Readonly<Record<string, string>> = {
   '.map': 'application/json',
 };
 
-/** Everything a local server sends with a file. The type comes from `filePath`, so a .br or .gz sibling keeps it. */
-export function responseHeaders(filePath: string, pathname: string, policy: HeaderPolicy): Record<string, string> {
+/** The routes and headers of a local server, which answers under its local roots. */
+export interface LocalServing {
+  /**
+   * The build a local hostname and path reach. The protocol app answers under its prefix on the bare host, and at
+   * `host.` under a local root. Any host but a local root's subdomain is the bare host.
+   */
+  readonly routeFor: (hostname: string, pathname: string) => Route;
+  /** Every local root and its subdomains, on any port and scheme, which an isolated page lets frame it. */
+  readonly frameAncestors: string;
+  /** The security headers of `policy`, with the local roots as an isolated page's frame ancestors. */
+  readonly securityHeaders: (policy: HeaderPolicy) => Record<string, string>;
+  /** Everything a local server sends with a file. The type comes from `filePath`, so a .br or .gz sibling keeps it. */
+  readonly responseHeaders: (filePath: string, pathname: string, policy: HeaderPolicy) => Record<string, string>;
+  /**
+   * What a dev server adds to its own headers for a request: the isolated headers on the routes this table isolates,
+   * and the frame refusal on the session windows. Server-wide, COEP would break the localhost dev servers, which ship no
+   * CORP.
+   */
+  readonly devHeaders: (hostname: string, pathname: string) => Record<string, string>;
+  /** The dev servers' headers from `devHeaders`. */
+  readonly isolationHeaders: () => Plugin;
+  /** A dev server's proxy to the protocol app hands over only what this table routes to the protocol build. */
+  readonly protocolProxyBypass: (req: Pick<IncomingMessage, 'url' | 'headers'>) => string | undefined;
+}
+
+/** The routes and headers of a local server that answers under `roots`. */
+export function createLocalServing(roots: readonly string[]): LocalServing {
+  // Ports matter: CSP host-sources without one mean the scheme's default.
+  const frameAncestors = ['http:', 'https:']
+    .flatMap(scheme => roots.flatMap(root => [`${scheme}//${root}:*`, `${scheme}//*.${root}:*`]))
+    .join(' ');
+
+  const routeFor = (hostname: string, pathname: string): Route => {
+    const name = hostname.toLowerCase();
+    const root = roots.find(local => name.endsWith(`.${local}`));
+    // On a product or sandbox host the path is the product's own.
+    if (root === undefined && isProtocolPath(pathname)) {
+      return { site: 'protocol', bare: false };
+    }
+    // Kept for one release so a shell cached by an older release still finds its frame.
+    if (root !== undefined && name === `host.${root}`) {
+      return { site: 'protocol', bare: false };
+    }
+    if (name.includes('.app.')) {
+      return { site: 'app', bare: false };
+    }
+    return { site: 'host', bare: root === undefined };
+  };
+
+  const securityHeaders = (policy: HeaderPolicy): Record<string, string> => policyHeaders(policy, frameAncestors);
+
+  const devHeaders = (hostname: string, pathname: string): Record<string, string> => {
+    const policy = headerPolicy(routeFor(hostname, pathname), pathname);
+    if (policy === 'isolated') {
+      return securityHeaders('isolated');
+    }
+    return policy === 'unframed' ? { ...UNFRAMED } : {};
+  };
+
+  const protocolProxyBypass = (req: Pick<IncomingMessage, 'url' | 'headers'>): string | undefined => {
+    const url = req.url ?? '/';
+    const route = routeFor(requestHostname(req.headers), url.split('?')[0] ?? '/');
+    return route.site === 'protocol' ? undefined : url;
+  };
+
   return {
-    'Content-Type': MIME_TYPES[extname(filePath)] ?? 'application/octet-stream',
-    ...fileHeaders(pathname),
-    ...securityHeaders(policy),
-    ...LOCAL_SERVER_HEADERS,
+    routeFor,
+    frameAncestors,
+    securityHeaders,
+    responseHeaders: (filePath, pathname, policy) => ({
+      'Content-Type': MIME_TYPES[extname(filePath)] ?? 'application/octet-stream',
+      ...fileHeaders(pathname),
+      ...securityHeaders(policy),
+      ...LOCAL_SERVER_HEADERS,
+    }),
+    devHeaders,
+    protocolProxyBypass,
+    isolationHeaders: () => ({
+      name: 'dotli-isolation-headers',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          const pathname = (req.url ?? '/').split('?')[0] ?? '/';
+          for (const [name, value] of Object.entries(devHeaders(requestHostname(req.headers), pathname))) {
+            res.setHeader(name, value);
+          }
+          next();
+        });
+      },
+    }),
   };
 }

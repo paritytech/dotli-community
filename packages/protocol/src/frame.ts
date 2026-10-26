@@ -104,6 +104,9 @@ export interface FrameDocument<E extends FrameElement> {
   readonly body: { appendChild(node: E): E };
 }
 
+/** Where the build serves the frame on its origin. */
+const PROTOCOL_PATH = '/p/';
+
 export interface ProtocolFrameDeps<E extends FrameElement> {
   /** The protocol frame's origin. Messages from any other origin are ignored. */
   origin: string;
@@ -322,7 +325,7 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
       params.set('resolutionId', resolutionId);
     }
     const query = params.toString();
-    iframe.src = query.length > 0 ? `${origin}?${query}` : origin;
+    iframe.src = query.length > 0 ? `${origin}${PROTOCOL_PATH}?${query}` : `${origin}${PROTOCOL_PATH}`;
     iframe.setAttribute('aria-hidden', 'true');
     iframe.tabIndex = -1;
     iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';

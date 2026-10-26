@@ -11,9 +11,11 @@ import {
   type SettingsActionsDeps,
   type WipeParts,
 } from './settings-actions.js';
+import { SMOLDOT_DB_NAME } from '@dotli/chains';
+import { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
 import { memoryStorage } from '@dotli/shared/testing';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink, type OriginStores } from '@dotli/shared';
+import { bindLogSink, safeStorage, type OriginStores } from '@dotli/shared';
 
 const CACHE_ON = {
   skipCidCache: false,
@@ -305,7 +307,11 @@ describe('full reset', () => {
 
   /** A browser with none of the stores a wipe empties, over this test's storages, unless `stores` adds them. */
   function parts(stores: Partial<OriginStores> = {}): WipeParts {
-    return { stores: { indexedDB: null, caches: null, serviceWorker: null, ...stores }, local, session };
+    return {
+      stores: { indexedDB: null, caches: null, serviceWorker: null, ...stores },
+      local: safeStorage(() => local),
+      session: safeStorage(() => session),
+    };
   }
 
   /** A database list whose every delete the browser refuses, as `deleteDatabase` fires `error`. */
@@ -316,6 +322,21 @@ describe('full reset', () => {
         const request = { error: new DOMException('refused', 'UnknownError') } as unknown as IDBOpenDBRequest;
         queueMicrotask(() => {
           request.onerror?.call(request, new Event('error'));
+        });
+        return request;
+      },
+    };
+  }
+
+  /** A database list whose every delete succeeds, and each deleted name is pushed to `deleted`. */
+  function recordingDatabases(names: string[], deleted: string[]): OriginStores['indexedDB'] {
+    return {
+      databases: () => Promise.resolve(names.map(name => ({ name, version: 1 }))),
+      deleteDatabase: name => {
+        deleted.push(name);
+        const request = {} as IDBOpenDBRequest;
+        queueMicrotask(() => {
+          request.onsuccess?.call(request, new Event('success'));
         });
         return request;
       },
@@ -339,6 +360,70 @@ describe('full reset', () => {
     expect(local.getItem('dotli-theme')).toBe('light');
     expect(local.getItem('dotli:network')).toBeNull();
     expect(session.length).toBe(0);
+  });
+
+  it("As a user on the landing page, I wipe its origin and the frame's session, settings and wallet stay", async () => {
+    // Given the frame's keys and databases beside the page's own
+    local.setItem('TRUAPI_dot.li_session', 'signed-in');
+    local.setItem('DOTLI_MODE_dot.li_x', 'smoldot');
+    local.setItem('dotli:network', 'paseo');
+    const deleted: string[] = [];
+    const indexedDB = recordingDatabases(['dotli', WALLET_DB_NAME, SMOLDOT_DB_NAME], deleted);
+
+    // When the origin is wiped
+    await wipeOriginState(parts({ indexedDB }));
+
+    // Then only the page's own data went
+    expect(local.getItem('TRUAPI_dot.li_session')).toBe('signed-in');
+    expect(local.getItem('DOTLI_MODE_dot.li_x')).toBe('smoldot');
+    expect(local.getItem('dotli:network')).toBeNull();
+    expect(deleted).toEqual(['dotli']);
+  });
+
+  it("As a user on the landing page, I wipe its origin and the session windows' site grants stay", async () => {
+    // Given the grants database beside the page's own
+    const deleted: string[] = [];
+    const indexedDB = recordingDatabases(['dotli', SITE_GRANTS_DB_NAME], deleted);
+
+    // When the origin is wiped
+    await wipeOriginState(parts({ indexedDB }));
+
+    // Then only the page's own database went
+    expect(deleted).toEqual(['dotli']);
+  });
+
+  it("As a user on the landing page, I wipe its origin and the wipe never writes the frame's keys", async () => {
+    // Given the frame's keys and a page key in a storage that records its writes
+    local.setItem('TRUAPI_dot.li_session', 'signed-in');
+    local.setItem('DOTLI_MODE_dot.li_x', 'smoldot');
+    local.setItem('dotli:network', 'paseo');
+    const base = safeStorage(() => local);
+    const calls: string[] = [];
+    const recording: WipeParts['local'] = {
+      ...base,
+      setItem: (key, value) => {
+        calls.push(`setItem ${key}`);
+        base.setItem(key, value);
+      },
+      removeItem: key => {
+        calls.push(`removeItem ${key}`);
+        base.removeItem(key);
+      },
+      clear: () => {
+        calls.push('clear');
+        base.clear();
+      },
+    };
+
+    // When the origin is wiped
+    await wipeOriginState({ ...parts(), local: recording });
+
+    // Then nothing cleared the storage or touched a frame key, and only the page's key went
+    expect(calls).not.toContain('clear');
+    expect(calls.filter(call => /^(setItem|removeItem) (TRUAPI_|DOTLI_MODE_)/.test(call))).toEqual([]);
+    expect(local.getItem('TRUAPI_dot.li_session')).toBe('signed-in');
+    expect(local.getItem('DOTLI_MODE_dot.li_x')).toBe('smoldot');
+    expect(local.getItem('dotli:network')).toBeNull();
   });
 
   it('As a dotli user who never picked a theme, the reset does not invent one', async () => {

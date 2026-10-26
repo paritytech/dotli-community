@@ -4,13 +4,16 @@
 export {
   BASE_DOMAIN,
   DEBUG,
+  DEV_HOST_PORT,
   DEV_PROTOCOL_PORT,
   DEV_SANDBOX_PORT,
+  LOCAL_ROOT,
   SITE_ID,
   isLocalhost,
   isSandboxOrigin,
   type SiteId,
 } from './config.js';
+export { hostPlace, isSiteOrigin, localRootOf } from './host-place.js';
 export {
   BACKEND_KEY,
   BACKEND_LABELS,
@@ -30,6 +33,7 @@ export {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
   chainRoleForGenesis,
+  defaultNetwork,
   getActiveChainRoles,
   getActiveCoreGatewayChains,
   getActiveCoreGatewaySupportedGenesisHashes,

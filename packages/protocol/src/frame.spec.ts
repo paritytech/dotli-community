@@ -79,6 +79,21 @@ function outcomeOf(wait: Promise<unknown>): Promise<string> {
   );
 }
 
+describe('protocol frame location', () => {
+  it('As a host page, I load the frame and it opens at its path with the query', () => {
+    // Given a configured frame
+    const dom = createFrameDom(undefined, { timers });
+    const frame = createProtocolFrame(dom.deps);
+    frame.configure(FRAME_CONFIG);
+
+    // When the page asks for its transport
+    void frame.transport().catch(() => undefined);
+
+    // Then the iframe loads the protocol path with the mode and network
+    expect(dom.iframe().src).toBe('https://dot.li/p/?mode=direct&network=paseo-next-v2');
+  });
+});
+
 describe('createProtocolFrame', () => {
   it('As a dotli integrator, I hear only what the current frame sends from its origin', async () => {
     // Given what a frame says when its light client is ready, a listening frame, and another iframe on the page

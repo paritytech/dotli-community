@@ -105,7 +105,7 @@ flowchart TD
 | Resolving a `.dot` name to its manifests and content hash through dotNS, and the dotNS naming rules                            | `packages/resolver` (`@dotli/resolver`)               |
 | The protocol between the host and a sandbox frame: URL params, messages and the host's listener                                | `packages/sandbox-wire` (`@dotli/sandbox-wire`)       |
 | A small, framework-free helper every other package may use: logging, errors, task pool, listener set, sync store               | `packages/shared` (`@dotli/shared`)                   |
-| Persistent browser data in the one IndexedDB database: caches, local chat, the local wallet, scheduled notifications           | `packages/storage` (`@dotli/storage`)                 |
+| Persistent browser data in IndexedDB databases: caches, local chat, the local wallet, site grants, scheduled notifications     | `packages/storage` (`@dotli/storage`)                 |
 | A generic transport between documents, with requests and subscriptions declared from codecs                                    | `packages/transport` (`@dotli/transport`)             |
 | The debug event bus and debug mode, with no UI                                                                                 | `packages/truapi-debug` (`@dotli/truapi-debug`)       |
 | The TrUAPI debug panel, which loads only in debug mode                                                                         | `packages/truapi-debug-ui` (`@dotli/truapi-debug-ui`) |
@@ -133,6 +133,7 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
 - Functional tests live in `<pkg>/tests/` as `*.test.ts`.
 - Test-only modules live in `src`: `<name>.fake.ts` beside the module it fakes, shared fixtures in `src/testing/`. Never
   export them from `src/index.ts`. Another package reaches them through a `./testing` package entry.
+- A constant two modules share lives in a leaf module, and a protocol constant is defined once.
 - A shared fixture that reads the page is named `<name>.dom.ts`. Only functional tests and stories use it.
 - There is one Storybook, at the repo root. It runs every story in every app and package. Story fixtures and frames live
   in the package's `src/testing/stories/` and are never exported. Stories may also import `./testing` entries.

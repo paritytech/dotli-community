@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Builds each page script that speaks the real protocol wire into one classic script with no exports, which runs on
-// its own wherever it is loaded.
+// Builds each script a test loads into a page into one classic script with no exports, which runs on its own
+// wherever it is loaded.
 
 import { rm } from 'node:fs/promises';
 import { basename } from 'node:path';

@@ -18,7 +18,7 @@ export default defineConfig([
   ...importBans([onlyAllowedScopes(['@config/eslint'], 'Tooling imports only tooling.')]),
   {
     // Node loads this through the app configs directly, so its imports name `.ts` files.
-    files: ['src/app.ts', 'src/service-worker.ts', 'src/spa-fallback.ts'],
+    files: ['src/app.ts', 'src/service-worker.ts', 'src/spa-fallback.ts', 'src/serving.ts'],
     rules: {
       'no-restricted-imports': 'off',
     },

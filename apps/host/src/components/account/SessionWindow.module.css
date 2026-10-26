@@ -1,0 +1,96 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The window opens as a tab or a pop-up of any size, so the card centres in whatever it is given. */
+.window {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: var(--sp-6) calc(var(--sp-5) + var(--safe-right)) calc(var(--sp-6) + var(--safe-bottom))
+    calc(var(--sp-5) + var(--safe-left));
+}
+
+.card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  width: 420px;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--sp-10);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--chrome-shadow-pop);
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  align-self: stretch;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+}
+
+/* A form reads from the start of the line. */
+.window[data-view='phrase'] .content {
+  text-align: start;
+}
+
+/* A site's consent sets what the site gets and its own words under its origin, full width and from the start of the
+   line. A site's words may hold no space at all. */
+.window[data-view='consent'] .content {
+  align-items: stretch;
+  gap: var(--sp-6);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+/* A site's review sets the call under its origin, full width and from the start of the line. An argument's value keeps
+   the line breaks of its text and may hold no break at all. */
+.window[data-view='site-review'] .content {
+  align-items: stretch;
+  gap: var(--sp-6);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The site list sets its sites full width under its heading, each from the start of the line. An origin may hold no
+   break at all, and it wraps rather than hides its port. */
+.window[data-view='sites'] .content {
+  align-items: stretch;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+/* A phone has the whole page to itself: the content in the middle, the actions and the note within the thumb's reach. */
+@media (max-width: 560px) {
+  .window {
+    align-items: stretch;
+    gap: var(--sp-5);
+    padding: var(--sp-8) calc(var(--sp-5) + var(--safe-right)) calc(var(--sp-8) + var(--safe-bottom))
+      calc(var(--sp-5) + var(--safe-left));
+  }
+  .card {
+    display: contents;
+  }
+  .content {
+    flex: 1;
+    justify-content: center;
+    margin-bottom: var(--sp-3);
+  }
+}

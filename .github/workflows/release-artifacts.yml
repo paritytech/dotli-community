@@ -155,6 +155,18 @@ jobs:
           a=$(curl -fsS -H 'Host: x.app.localhost'    http://127.0.0.1:5199/ | grep -o 'assets/[^"]*\.js' | head -1)
           test "$h" != "$p" && test "$p" != "$a" && test "$h" != "$a" \
             || { echo "::error::hostname routing did not resolve three distinct builds ($h/$p/$a)"; exit 1; }
+          # The frame lives under /p/ on the root domain. host.localhost stays for one release, so the shell a
+          # service worker cached from the previous one still finds its frame.
+          f=$(curl -fsS -H 'Host: localhost' http://127.0.0.1:5199/p/ | grep -o 'assets/[^"]*\.js' | head -1)
+          test "$f" = "$p" \
+            || { echo "::error::localhost/p/ did not answer the protocol build ($f, expected $p)"; exit 1; }
+          # The session window is the bare host's session page, not the shell, on each of its paths.
+          for s in /s/auth /s/signout /s/manage /s/sign; do
+            curl -fsS -H 'Host: localhost' "http://127.0.0.1:5199$s" | grep -q 'data-session-window' \
+              || { echo "::error::localhost$s is not the session page"; exit 1; }
+          done
+          curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/host-sw.js | grep -q 'precache' \
+            || { echo "::error::browse.localhost/host-sw.js is not the host worker"; exit 1; }
           curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/dotli-network.js | grep -q '"label":"smoke"' \
             || { echo "::error::DOTLI_NETWORK did not reach the served config"; exit 1; }
           for h in browse.localhost host.localhost x.app.localhost; do

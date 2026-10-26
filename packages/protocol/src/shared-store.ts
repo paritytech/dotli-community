@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The shared store on `host.<BASE_DOMAIN>`: auth, mode preferences and the local wallet, one for every subdomain.
+// The shared store in the protocol frame on `<BASE_DOMAIN>/p/`: auth, mode preferences and the local wallet,
+// one for every subdomain where the browser lets an embedded frame reach it, and one per top-level origin in Safari.
 
 import type { SiteId } from '@dotli/config';
 import { reportListener } from '@dotli/metrics';
@@ -20,7 +21,7 @@ export type SharedAuthStorageListener = (change: SharedAuthChange) => void;
 export type LocalWalletReadResult =
   | { status: 'none' }
   | { status: 'unreadable' }
-  | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null };
+  | { status: 'ok'; entropy: Uint8Array; identity: LocalWalletIdentity | null; version: Uint8Array };
 
 function localWalletReadResult(answer: LocalWalletRead): LocalWalletReadResult {
   switch (answer.tag) {
@@ -29,7 +30,7 @@ function localWalletReadResult(answer: LocalWalletRead): LocalWalletReadResult {
     case 'unreadable':
       return { status: 'unreadable' };
     case 'ok':
-      return { status: 'ok', entropy: answer.value.entropy, identity: answer.value.identity };
+      return { status: 'ok', ...answer.value };
   }
 }
 
@@ -106,13 +107,19 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     /** Called on each change only. */
     subscribeSharedStoreStatus: (listener: (status: SharedStoreStatus) => void) => statusListeners.subscribe(listener),
     readSharedAuthStorage: (siteId: SiteId, key: string) => rpc.request(storage.authRead, { siteId, key }),
-    async writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
-      await rpc.request(storage.authWrite, { siteId, key, value });
-    },
+    /** Resolves whether the value changed. An equal value is neither written nor told to other tabs. */
+    writeSharedAuthStorage: (siteId: SiteId, key: string, value: string): Promise<boolean> =>
+      rpc.request(storage.authWrite, { siteId, key, value }),
     async clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
       await rpc.request(storage.authClear, { siteId, key });
     },
-    /** Lives on `host.<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
+    /**
+     * Clears the key only while it still holds `expected`, in one step on the frame's store, so a value another tab
+     * wrote since stays. Resolves whether it cleared it.
+     */
+    clearSharedAuthStorageIf: (siteId: SiteId, key: string, expected: string): Promise<boolean> =>
+      rpc.request(storage.authClearIf, { siteId, key, value: expected }),
+    /** Lives on `<BASE_DOMAIN>` so backend and cache preferences follow the user across subdomains. */
     readSharedModeStorage: (siteId: SiteId, key: string) => rpc.request(storage.modeRead, { siteId, key }),
     async writeSharedModeStorage(siteId: SiteId, key: string, value: string): Promise<void> {
       await rpc.request(storage.modeWrite, { siteId, key, value });
@@ -120,12 +127,16 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
     async clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
       await rpc.request(storage.modeClear, { siteId, key });
     },
-    /** The record lives on `host.<BASE_DOMAIN>`, so one import covers every app on the domain. */
+    /** The record lives on `<BASE_DOMAIN>`, so one import covers every app that reaches the main store. */
     async readSharedLocalWallet(siteId: SiteId): Promise<LocalWalletReadResult> {
       return localWalletReadResult(await rpc.request(wallet.read, { siteId }));
     },
-    async saveSharedLocalWallet(siteId: SiteId, entropy: Uint8Array): Promise<void> {
-      await rpc.request(wallet.save, { siteId, entropy });
+    async saveSharedLocalWallet(
+      siteId: SiteId,
+      entropy: Uint8Array,
+      identity: LocalWalletIdentity | null,
+    ): Promise<void> {
+      await rpc.request(wallet.save, { siteId, entropy, identity });
     },
     async updateSharedLocalWalletIdentity(siteId: SiteId, identity: LocalWalletIdentity): Promise<void> {
       await rpc.request(wallet.identity, { siteId, identity });
@@ -134,8 +145,14 @@ export function createSharedStore({ frame, rpc, timers = realTimers }: SharedSto
       await rpc.request(wallet.forget, { siteId });
     },
     /**
-     * Hears shared-auth writes from sibling tabs of the same root domain, relayed by the host iframe
-     * over `BroadcastChannel`. A tab's own writes do not arrive here.
+     * Forgets the wallet only while it is still the record of `version`, as a read gave it, so a wallet saved since
+     * stays. Resolves whether it did.
+     */
+    forgetSharedLocalWalletIf: (siteId: SiteId, version: Uint8Array): Promise<boolean> =>
+      rpc.request(wallet.forgetIf, { siteId, version }),
+    /**
+     * Hears other tabs' session and local wallet changes on the same root domain, relayed by the protocol frame over
+     * `BroadcastChannel`. A tab's own writes do not arrive here.
      */
     subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
       const unsubscribe = sharedAuthListeners.subscribe(listener);

@@ -17,17 +17,20 @@ import {
   runtimeNetworkConfigScriptBody,
 } from '@config/vite/runtime-network-config';
 import {
+  createLocalServing,
   headerPolicy,
+  pathInBuild,
+  requestHostname,
   resolveFile,
-  responseHeaders,
-  routeFor,
   type HeaderPolicy,
   type Site,
 } from '@config/vite/serving';
+import { LOCAL_ROOTS } from '@dotli/config/local-roots';
 
 const PORT = Number(process.env['PORT'] ?? '5173');
 const HOST = process.env['HOST'] ?? '127.0.0.1';
 const DIST = resolve(process.env['DIST'] ?? 'dist');
+const serving = createLocalServing(LOCAL_ROOTS);
 
 const DIRS: Record<Site, string> = {
   host: join(DIST, 'host'),
@@ -54,7 +57,7 @@ function send(
   acceptEncoding: string,
 ): void {
   const chosen = negotiate(filePath, acceptEncoding);
-  const headers = responseHeaders(filePath, pathname, policy);
+  const headers = serving.responseHeaders(filePath, pathname, policy);
   if (chosen.encoding !== undefined) {
     headers['Content-Encoding'] = chosen.encoding;
     headers['Vary'] = 'Accept-Encoding';
@@ -95,8 +98,6 @@ for (const dir of Object.values(DIRS)) {
 const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETWORK']);
 
 const server = createServer((req, res) => {
-  const route = routeFor((req.headers.host ?? '').split(':')[0] ?? '');
-  const dir = DIRS[route.site];
   let url: URL;
   try {
     url = new URL(req.url ?? '/', 'http://placeholder');
@@ -105,6 +106,8 @@ const server = createServer((req, res) => {
     res.writeHead(400).end('Bad Request');
     return;
   }
+  const route = serving.routeFor(requestHostname(req.headers), url.pathname);
+  const dir = DIRS[route.site];
   const acceptEncoding = req.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
 
@@ -115,7 +118,7 @@ const server = createServer((req, res) => {
     return;
   }
 
-  const resolved = resolveFile(dir, route, url.pathname);
+  const resolved = resolveFile(dir, route, pathInBuild(route, url.pathname));
   if (resolved === undefined) {
     res.writeHead(404).end('Not Found');
     return;
@@ -130,7 +133,7 @@ server.listen(PORT, HOST, () => {
   const config = process.env['DOTLI_NETWORK']?.trim();
   console.log(`dot.li serving ${DIST} on http://localhost:${String(port)} (bound ${HOST})`);
   console.log(`  shell     http://browse.localhost:${String(port)}`);
-  console.log(`  protocol  http://host.localhost:${String(port)}`);
+  console.log(`  protocol  http://localhost:${String(port)}/p/`);
   console.log(
     `  network   ${config === undefined || config === '' ? 'built-in (set DOTLI_NETWORK to override)' : config}`,
   );

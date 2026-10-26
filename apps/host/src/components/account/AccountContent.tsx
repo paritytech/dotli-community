@@ -13,6 +13,8 @@ import s from './AccountContent.module.css';
 export interface AccountContentProps {
   account: Account;
   onLogout: () => void;
+  /** The signed-in sites page. The link shows only with it and a signed-in account. */
+  sitesUrl?: string | undefined;
 }
 
 /** The account popover's body, its own chunk. */
@@ -62,6 +64,13 @@ export function AccountContent(props: AccountContentProps): JSX.Element {
         <Callout icon={InfoIcon}>
           <span id={id('hint')}>No username found for this account on this network.</span>
         </Callout>
+      </Show>
+      <Show when={props.account.loggedIn() ? props.sitesUrl : undefined}>
+        {url => (
+          <a class={s['sites']} href={url()} target="_blank" rel="noopener" data-testid="account-sites">
+            Signed-in sites
+          </a>
+        )}
       </Show>
       <hr class={s['divider']} />
       <Button id={id('disconnect')} block onClick={onDisconnect}>

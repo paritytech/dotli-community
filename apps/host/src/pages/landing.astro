@@ -18,7 +18,7 @@ import PageHead from '../components/PageHead.astro';
   </head>
   <body data-landing>
     <Landing />
-    <AuthModal client:idle />
+    <AuthModal client:idle placement="center" />
     {/* Marked, so a full-page screen keeps it. */}
     <div data-overlays>
       <Overlays client:idle={{ timeout: 1000 }} />

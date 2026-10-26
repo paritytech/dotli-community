@@ -4,13 +4,15 @@
 // The lite username the network holds for the local wallet's identity account, read until the network answers once
 // per page and cached in the shared wallet record so the next boot activates with it.
 
-import { getActiveServicesConfig, SITE_ID } from '@dotli/config';
+import { getActiveServicesConfig } from '@dotli/config';
 import { reportExpected, spans as S } from '@dotli/metrics';
-import { protocolClient, type LocalWalletIdentity } from '@dotli/protocol';
+import type { LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool, fromHex } from '@dotli/shared';
 import { loadPolkadotApi } from '../lazy.js';
 import { hostChainProvider } from './host-callbacks/chain.js';
-import { reportLocalWalletFailure, type LocalWalletBoot, type LocalWalletFailureReason } from './wallet-boot.js';
+import { siteWallet } from './session/site-wallet.js';
+import { reportLocalWalletFailure, type LocalWalletFailureReason } from './wallet-failure.js';
+import type { LocalWalletBoot } from './wallet-boot.js';
 
 export interface LiteUsernameRefreshDeps {
   /** The name People holds for the account, null when it has none. */
@@ -114,7 +116,7 @@ async function readFromPeople(identityAccountId: string): Promise<string | null>
 /** The page's refresh, shared by its local wallet cores. */
 const liteUsernameRefresh: LiteUsernameRefresh = createLiteUsernameRefresh({
   readLiteUsername: readFromPeople,
-  saveIdentity: identity => protocolClient().updateSharedLocalWalletIdentity(SITE_ID, identity),
+  saveIdentity: identity => siteWallet.updateIdentity(identity),
   reportFailure: reportLocalWalletFailure,
 });
 

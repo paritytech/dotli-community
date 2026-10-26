@@ -139,7 +139,7 @@ describe('createSharedStore', () => {
     fake.setStatus('listening');
     await timers.advance(0);
     for (const sink of sinks) {
-      sink.send({ siteId: 'dotli', key: 'k', value: 'v' });
+      sink.send({ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } });
     }
     await timers.advance(0);
     fake.setStatus('idle');
@@ -147,7 +147,7 @@ describe('createSharedStore', () => {
 
     // Then the write reached me, and the listening frame met the subscription's wait, so the drop is no failure
     expect(subscribedWhileBooting).toBe(0);
-    expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: 'v' }]);
+    expect(changes).toEqual([{ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } }]);
     expect(warnings).toEqual([]);
   });
 
@@ -168,7 +168,7 @@ describe('createSharedStore', () => {
 
     // When a sibling tab writes, and then I leave
     for (const sink of sinks) {
-      sink.send({ siteId: 'dotli', key: 'k', value: null });
+      sink.send({ tag: 'session', value: { siteId: 'dotli', key: 'k', value: null } });
     }
     await timers.advance(0);
     unsubscribe();
@@ -176,7 +176,7 @@ describe('createSharedStore', () => {
 
     // Then
     expect(subscribedOnRebuilt).toBe(1);
-    expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: null }]);
+    expect(changes).toEqual([{ tag: 'session', value: { siteId: 'dotli', key: 'k', value: null } }]);
     expect(sinks.size).toBe(0);
   });
 
@@ -203,12 +203,12 @@ describe('createSharedStore', () => {
     await timers.advance(1_999);
     const openedBeforeSecondWait = opened.length;
     await timers.advance(1);
-    opened[2]?.send({ siteId: 'dotli', key: 'k', value: 'v' });
+    opened[2]?.send({ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } });
     await timers.advance(0);
 
     // Then
     expect([openedBeforeFirstWait, openedAfterFirstWait, openedBeforeSecondWait, opened.length]).toEqual([1, 2, 2, 3]);
-    expect(changes).toEqual([{ siteId: 'dotli', key: 'k', value: 'v' }]);
+    expect(changes).toEqual([{ tag: 'session', value: { siteId: 'dotli', key: 'k', value: 'v' } }]);
     expect(metrics.counted(S.PROTOCOL_FEED_END)).toEqual([
       { outcome: 'error', feed: 'shared_auth', reason: 'ProtocolFeedEndedError' },
       { outcome: 'error', feed: 'shared_auth', reason: 'TypeError' },
@@ -291,19 +291,20 @@ describe('createSharedStore', () => {
     expect(result).toEqual(read);
   });
 
-  it('As a local wallet user, I read my wallet with its entropy and identity', async () => {
+  it('As a local wallet user, I read my wallet with its entropy, identity and version', async () => {
     // Given a frame that holds a wallet
     const entropy = new Uint8Array([1, 2, 3]);
     const identity = { identityAccountId: '5Grw', liteUsername: 'alice' };
+    const version = new Uint8Array([9, 9]);
     const fake = createFakeFrame(serving => {
-      serving.handleRequest(wallet.read, () => ok({ tag: 'ok' as const, value: { entropy, identity } }));
+      serving.handleRequest(wallet.read, () => ok({ tag: 'ok' as const, value: { entropy, identity, version } }));
     });
     const store = createSharedStore({ frame: fake.frame, rpc: createFrameRpc(fake.frame) });
 
-    // When
+    // When the wallet is read
     const result = await store.readSharedLocalWallet('dotli');
 
-    // Then
-    expect(result).toEqual({ status: 'ok', entropy, identity });
+    // Then it carries the entropy, the identity and the version
+    expect(result).toEqual({ status: 'ok', entropy, identity, version });
   });
 });

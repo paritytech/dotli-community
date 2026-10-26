@@ -37,6 +37,13 @@
 .name[data-address] {
   font-family: var(--font-mono);
 }
+.sites {
+  display: block;
+  padding: var(--sp-1);
+  color: var(--chrome-text);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
 .divider {
   height: 1px;
   margin: 0 var(--sp-1);

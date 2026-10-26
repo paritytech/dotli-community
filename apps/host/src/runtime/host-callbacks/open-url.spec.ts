@@ -10,11 +10,11 @@ const PORT = '3000';
 let assign: Mock<(url: string) => void>;
 let open: Mock<(url: string, target: string, features: string) => void>;
 
-/** Navigation on a dev tab at localhost:3000 that records where it is sent. */
-function createNavigateTo(): ReturnType<typeof createPageNavigateTo> {
+/** Navigation on a dev tab on port 3000 under `localRoot` that records where it is sent. */
+function createNavigateTo(localRoot = 'localhost', protocol = 'http:'): ReturnType<typeof createPageNavigateTo> {
   assign = vi.fn<(url: string) => void>();
   open = vi.fn<(url: string, target: string, features: string) => void>();
-  return createPageNavigateTo({ location: () => ({ protocol: 'http:', port: PORT, assign }), open });
+  return createPageNavigateTo({ location: () => ({ protocol, port: PORT, assign }), localRoot, open });
 }
 
 function spyOnNavigation(): {
@@ -62,6 +62,31 @@ describe('OpenUrl host callback', () => {
     // Then
     expect(assign).toHaveBeenCalledWith(`http://localhost:${PORT}/localhost:5199/path?q=1`);
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it('As a product user on local.host, I hand off to another dotNS product and the tab moves to its local.host subdomain', async () => {
+    // Given a product on local.host
+    const navigateTo = createNavigateTo('local.host', 'https:');
+    const { assign, open } = spyOnNavigation();
+
+    // When it opens another dotNS product
+    await navigateTo(`https://${withActiveTld('dim2')}/play`);
+
+    // Then the tab moves to that product's local.host subdomain
+    expect(assign).toHaveBeenCalledWith(`https://dim2.local.host:${PORT}/play`);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('As a product developer on local.host, I hand off to a localhost product and the tab moves into the local.host proxy path', async () => {
+    // Given a product on local.host
+    const navigateTo = createNavigateTo('local.host', 'https:');
+    const { assign } = spyOnNavigation();
+
+    // When it opens a localhost product
+    await navigateTo('localhost:5199/path');
+
+    // Then the tab moves into the local.host proxy path
+    expect(assign).toHaveBeenCalledWith(`https://local.host:${PORT}/localhost:5199/path`);
   });
 
   it('As a dotli integrator, a website opens in a new tab that cannot reach back into dotli', async () => {

@@ -1,0 +1,79 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.qr {
+  /* The side the code may take, quiet zone included. Script reads it, so it stays a whole px length. */
+  --qr-size: 300px;
+  display: grid;
+  /* The width there is, so the tile and the placeholder can be held within it. */
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+}
+.qr[hidden] {
+  display: none;
+}
+/* Hugs the canvas, which is drawn at a whole number of pixels per module and so may come out smaller than the side
+   asked for. The canvas carries its own quiet zone, so a narrow padding is all the white it needs around it. On a
+   screen too narrow for it, the tile takes the width there is and the code scales down with it. */
+.tile {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--sp-2);
+  border-radius: var(--r-pop);
+  background: var(--qr-bg);
+  box-shadow: var(--chrome-shadow-tile);
+  line-height: 0;
+}
+.tile:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  /* Scaled down, the modules keep hard edges. */
+  image-rendering: pixelated;
+}
+.badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-md);
+  background: var(--qr-bg);
+  transform: translate(-50%, -50%);
+}
+.badge-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  background: var(--qr-ink);
+  color: var(--qr-bg);
+}
+/* The tile at the full side asked for, the most the code may take, holds its place while it is drawn. */
+.placeholder {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: calc(var(--qr-size) + 2 * var(--sp-2));
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--r-pop);
+  background: var(--chrome-fill);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring-subtle);
+}
+.placeholder > .placeholder-spinner {
+  margin: 0;
+}

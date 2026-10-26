@@ -34,6 +34,11 @@ export const loadBridge = (): Promise<BridgeModule> => import('./runtime/bridge.
 export const loadSigningWorker = (): Promise<{ default: new () => Worker }> =>
   import('./runtime/signing-worker.js?worker');
 export type LocalWalletCoreModule = typeof LocalWalletCoreNamespace;
+/** The recovery phrase check, which only a phrase import needs. */
+export const loadRecoveryPhrase = () => import('./runtime/recovery-phrase.js');
+/** The debug-only recovery phrase form, which only a phrase view shows. */
+export const loadPhraseScreen = () => import('./components/account/PhraseScreen.js');
+export type PhraseScreenModule = Awaited<ReturnType<typeof loadPhraseScreen>>;
 export const loadLocalWalletCore = (): Promise<LocalWalletCoreModule> => import('./runtime/local-wallet-core.js');
 
 /** The published host runtime and its worker, which every core boots on and the product frame mounts with. */
@@ -47,6 +52,9 @@ export const loadHostRuntimeChunk = async () => {
 
 /** The chain client, for the reads a visit may never make. */
 export const loadPolkadotApi = () => import('polkadot-api');
+
+/** papi's transaction extension fillers, for the first transaction a site asks to sign. */
+export const loadTxFillers = () => import('@polkadot-api/signers-common');
 
 /** The QR encoder, for the first code a visit shows. */
 export const loadQrCode = () => import('qrcode');

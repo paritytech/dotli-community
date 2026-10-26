@@ -86,6 +86,23 @@ export const InvalidNameInline: Story = {
   },
 };
 
+/** As a visitor, I type a one-letter name and am told inline that names must be at least 2 characters. */
+export const OneLetterNameInline: Story = {
+  play: async ({ canvas, userEvent, step }) => {
+    const field = canvas.getByRole('textbox');
+    const href = window.location.href;
+    await step('When I submit a one-letter name', async () => {
+      await waitFor(() => expect(field).toBeEnabled());
+      await userEvent.type(field, 'p{Enter}');
+    });
+    await step('Then I see inline that names must be at least 2 characters, and I stay on the page', async () => {
+      await expect(canvas.getByRole('alert')).toHaveTextContent('Names must be at least 2 characters');
+      await expect(field).toHaveAttribute('aria-invalid', 'true');
+      await expect(window.location.href).toBe(href);
+    });
+  },
+};
+
 /** As a visitor, I press Go with nothing typed and am asked for a name. */
 export const EmptySubmitAsksForName: Story = {
   play: async ({ canvas, userEvent, step }) => {

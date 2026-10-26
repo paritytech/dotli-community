@@ -14,10 +14,13 @@ Build plugins and options shared by the host, sandbox and protocol builds, plus 
 - Entries run in Node and are type-checked without emitting.
 - Build-time rules live here as code, such as the inline-script check that fails the build when a script's text would
   end its tag early.
-- One serving table holds the routes and headers of every local server. It also picks the file that answers a path, in
-  nginx's order, so the release and test servers agree. Its spec reads the header values of nginx's snippets back
-  against it, so a header value cannot drift from nginx unnoticed. Which snippet each nginx location includes is not
-  checked.
+- One serving table holds the routes and headers of every local server. It does not own the local roots: each server
+  hands them in once and gets back the routing and headers built from them, so its routes, headers, certificate and
+  allowed hosts all follow the same roots. Under a local root, a subdomain is a product's shell, `app.` subdomains are
+  the sandbox and the root itself is the bare host, and a page under any local root may frame a sandbox. It also picks
+  the file that answers a path, in nginx's order, so the release and test servers agree. Its spec reads the header
+  values of nginx's snippets back against it, so a header value cannot drift from nginx unnoticed. Which snippet each
+  nginx location includes is not checked.
 - The runtime network config script has one owner for its path, headers and body. Every local server sends it with the
   container's headers, same-origin only, and reads `$DOTLI_NETWORK` once at start, so a value that is not JSON stops the
   server there. Its spec holds the headers to the container's nginx snippet.
@@ -28,23 +31,28 @@ Imported by the apps' Vite and Astro configs. Beyond them, test and Storybook co
 inline-script entries, a page head takes the social meta entry, the dev scripts take the mode sync, runtime network
 config and serving entries, and an app runtime takes the signing worker entry.
 
-- `./app`: `dotliApp`, which returns each app's Vite config: the shared preset (env directory, wasm, the runtime network
-  config, the build info, the dev isolation headers, CSS modules, the worker and build options, and the compile-time
-  values that strip the Sentry SDK's debug logger) with the app's own merged over it and the Sentry upload last. Making
-  it fills in the commit and a `dotli@semver` Sentry release.
+- `./app`: `dotliApp(appDir, site, roots)`, which returns each app's Vite config: the shared preset (env directory,
+  wasm, the runtime network config, the build info, the dev isolation headers, a locally trusted certificate for the dev
+  servers (not the preview), CSS modules, the worker and build options, and the compile-time values that strip the
+  Sentry SDK's debug logger) with the app's own merged over it and the Sentry upload last. Making it fills in the commit
+  and a `dotli@semver` Sentry release. It also returns the serving table it built from `roots`, for the app's own dev
+  plugins.
 - `./css-modules`: CSS-modules options with one short-name counter across every Vite environment of a build.
 - `./inline-script`: a `?inline-script` import returns a module bundled into one classic script, as text a response
   writes into a document dotli does not build.
 - `./astro-pwa`: an Astro integration that generates the manifest and service worker after the page is written.
 - `./service-worker`: builds a hand-written service worker into one file at the root, with the app's own environment.
-- `./spa-fallback`: dev middleware that routes page loads as nginx does and answers a malformed escape with 404, and the
-  decision it makes for each request.
+- `./spa-fallback`: dev middleware that routes page loads to the landing page, the sign-in window or the shell and
+  answers a malformed escape with 404, and the decision it makes for each request. The middleware takes the app's
+  serving table, and the decision takes its route function, to tell the bare host from the others.
 - `./truapi-signing-worker`: a second TrUAPI worker on the `testing` wasm bundle, which has a signing host.
 - `./mode-sync`: in-memory mode preference sync on the protocol origin for local servers.
 - `./runtime-network-config`: the `/dotli-network.js` script, its path, its same-origin headers and its body from
   `$DOTLI_NETWORK`, for the release and test servers, and the plugin that injects and serves it on opt-in.
-- `./serving`: the route, file and header table of the release, test and dev servers, and the dev servers' isolation
-  headers.
+- `./serving`: the route, file and header table of the release, test and dev servers. `createLocalServing(roots)` builds
+  what depends on the local roots once (the route of a host, the frame ancestors, the security, response and dev
+  headers, the dev servers' isolation plugin and the bypass of the dev proxy to the protocol app). What reads no roots,
+  such as the file a path resolves to and the headers of a policy for a given frame ancestors value, is a plain export.
 - `./dependency-versions`: the installed version of each direct workspace dependency in a scope, for the diagnostics
   panel.
 - `./build-info`: writes the build version file and reads the release version.

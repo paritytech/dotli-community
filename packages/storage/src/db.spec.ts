@@ -34,7 +34,7 @@ describe('the dotli database connection', () => {
 
     // Then a fresh open serves it on the current schema
     expect(db.version).toBe(DB_VERSION);
-    expect([...db.objectStoreNames]).toContain('local_wallet');
+    expect([...db.objectStoreNames]).not.toContain('local_wallet');
   });
 });
 

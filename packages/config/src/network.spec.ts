@@ -104,6 +104,18 @@ describe('genesis hash constants', () => {
 // The protocol SharedWorker never sees the runtime config. `FixedServicesConfig` keeps it to fields no override can
 // change, and these keep the merge true to that type.
 describe('runtime network overrides', () => {
+  it("As a deployment, I read each network's SS58 prefix and an override of another field keeps it", () => {
+    // Given the built-in networks
+    const base = NETWORK_NAME_TO_SERVICES_CONFIG;
+
+    // When an operator renames one of them
+    const merged = applyNetworkOverrides(base, { [NetworkName.PASEO]: { label: 'Fork' } });
+
+    // Then each network keeps its own prefix
+    expect(merged[NetworkName.PASEO].ss58Prefix).toBe(0);
+    expect(merged[NetworkName.PREVIEWNET].ss58Prefix).toBe(42);
+  });
+
   it('As an operator, I point a network at my own nodes and its genesis hashes and dotNS contracts stay the built-in ones', () => {
     // Given
     const base = NETWORK_NAME_TO_SERVICES_CONFIG;
@@ -135,11 +147,12 @@ describe('runtime network overrides', () => {
     ['a chain block time', { people: { blockTimeMs: 1 } }, 'people.blockTimeMs'],
     ['the Bulletin genesis hash', { bulletin: { genesis: '0x00' } }, 'bulletin.genesis'],
     ['the dotNS contracts', { dotns: {} }, 'dotns'],
+    ['the SS58 prefix', { ss58Prefix: 7 }, 'ss58Prefix'],
   ])('As an operator, I try to override %s and the config is refused', (_field, patch, path) => {
-    // When
+    // When the override is merged
     const merge = (): unknown => applyNetworkOverrides(NETWORK_NAME_TO_SERVICES_CONFIG, { [NetworkName.PASEO]: patch });
 
-    // Then
+    // Then the merge throws and names the field
     expect(merge).toThrow(`${path} is not overridable`);
   });
 });

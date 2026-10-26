@@ -158,6 +158,7 @@ export function createFakePageCore(): FakePageCore {
     },
     coordinator: createBlockingModalCoordinator(),
     redials: createAsyncTaskPool({ poolSize: 1 }),
+    destroyDelay: 0,
   });
   return {
     core,

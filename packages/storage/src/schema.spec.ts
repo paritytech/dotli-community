@@ -19,10 +19,10 @@ describe('the database open', () => {
     // When the page opens it
     const db = await openCurrent(factory);
 
-    // Then it is on the current version, with the newest store in place
+    // Then it is on the current version, without the wallet, which has its own database
     expect(db.name).toBe(DB_NAME);
     expect(db.version).toBe(DB_VERSION);
-    expect([...db.objectStoreNames]).toContain('local_wallet');
+    expect([...db.objectStoreNames]).not.toContain('local_wallet');
     db.close();
   });
 });

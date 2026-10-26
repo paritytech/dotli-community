@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../blocking-modal-queue.js';
-import { createHostCallbacks } from './handlers.js';
+import { createHostCallbacks, promptAsks } from './handlers.js';
 import { SUBMIT_MAX_PER_WINDOW } from './rate-limit.js';
 import type { NotificationScheduler } from './push-notification.js';
 import type { HostPrompts } from '../host-prompts.js';
@@ -15,6 +15,7 @@ import { createPhoneRequestTracker } from '../phone-requests.js';
 import { createPermissionAuthorizations } from '../permissions.js';
 import { createProductPermissions } from '../state/product-permissions.js';
 import { productStore } from '../state/product.js';
+import { windowAsks } from './window-asks.js';
 import type { PromptPermissionStores } from './prompt-permission.js';
 
 const PRODUCT: ProductContext = {
@@ -35,6 +36,11 @@ function permissionsOfTest(): PromptPermissionStores {
   return { registry, product: createProductPermissions({ registry, product: productStore }) };
 }
 
+/** The prompts and the asks that answer through them, over a registry with no connection. */
+function withPromptAsks(prompts: HostPrompts): { prompts: HostPrompts; asks: ReturnType<typeof promptAsks> } {
+  return { prompts, asks: promptAsks({ prompts, permissions: permissionsOfTest() }) };
+}
+
 /** Schedules for later with id 7, so delivering shows nothing. */
 const scheduler: NotificationScheduler = {
   schedule: () => Promise.resolve({ ok: true, id: 7, immediate: false }),
@@ -51,11 +57,10 @@ describe('blocking modal queue across host callbacks', () => {
     const scope = createBlockingModalCoordinator().createScope();
     const page = createFakePrompts();
     const callbacks = createHostCallbacks({
-      permissions: permissionsOfTest(),
       label: 'localhost:3000',
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: scope,
-      prompts: page.prompts,
+      ...withPromptAsks(page.prompts),
       notifications: scheduler,
     });
 
@@ -97,10 +102,9 @@ describe('blocking modal queue across host callbacks', () => {
     const phoneRequests = createPhoneRequestTracker();
     const tap = phoneRequests.connect();
     const callbacks = createHostCallbacks({
-      permissions: permissionsOfTest(),
       label: 'localhost:3000',
       blockingModalScope: scope,
-      prompts: page.prompts,
+      ...withPromptAsks(page.prompts),
       notifications: scheduler,
       phoneRequests,
     });
@@ -136,6 +140,35 @@ describe('blocking modal queue across host callbacks', () => {
   });
 });
 
+describe('session window asks across host callbacks', () => {
+  it("As the session window, I answer the core's asks myself and the page's prompts never show", async () => {
+    // Given host callbacks with the session window's asks over the page's prompts
+    const page = createFakePrompts();
+    const askPermission = vi.fn<PermissionAsk>(page.prompts.askPermission);
+    const callbacks = createHostCallbacks({
+      label: 'localhost:3000',
+      phoneRequests: createPhoneRequestTracker(),
+      blockingModalScope: createBlockingModalCoordinator().createScope(),
+      prompts: { ...page.prompts, askPermission },
+      asks: windowAsks,
+      notifications: scheduler,
+    });
+
+    // When the core asks for the camera and confirms an account access
+    const camera = await callbacks.permissions.devicePermission(PRODUCT, 'Camera');
+    const confirmed = await callbacks.userConfirmation.confirmUserAction({
+      tag: 'AccountAccess',
+      value: { requestingProductId: 'truapi-playground.dot', targetProductId: 'other-product.dot' },
+    });
+
+    // Then both are allowed and no page prompt was asked
+    expect(camera).toBe('AllowOnce');
+    expect(confirmed).toBe(true);
+    expect(askPermission).not.toHaveBeenCalled();
+    expect(page.pending()).toEqual([]);
+  });
+});
+
 describe('notifications across host callbacks', () => {
   /** Schedules with id 7, fired at once. */
   function fakeScheduler(): {
@@ -154,12 +187,11 @@ describe('notifications across host callbacks', () => {
     const { scheduler, schedule } = fakeScheduler();
     const ask = vi.fn<PermissionAsk>(() => Promise.resolve('granted'));
     const { notifications } = createHostCallbacks({
-      permissions: permissionsOfTest(),
       label: 'myapp',
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
-      prompts: promptsWith(ask),
+      ...withPromptAsks(promptsWith(ask)),
     });
 
     // When
@@ -184,12 +216,11 @@ describe('prompt rate limiting across host callbacks', () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
     const { permissions } = createHostCallbacks({
-      permissions: permissionsOfTest(),
       label: 'myapp',
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
-      prompts: promptsWith(ask),
+      ...withPromptAsks(promptsWith(ask)),
     });
 
     // When: camera prompts exhaust the whole window budget.
@@ -208,12 +239,11 @@ describe('prompt rate limiting across host callbacks', () => {
   it('As a dotli user, I get many notifications delivered and my prompts still pass', async () => {
     // Given: one callback surface, whose prompts and notifications share its one limiter
     const { permissions, notifications } = createHostCallbacks({
-      permissions: permissionsOfTest(),
       label: 'myapp',
       phoneRequests: createPhoneRequestTracker(),
       blockingModalScope: createBlockingModalCoordinator().createScope(),
       notifications: scheduler,
-      prompts: promptsWith(ask),
+      ...withPromptAsks(promptsWith(ask)),
     });
 
     // When: more notifications than the whole prompt budget are delivered

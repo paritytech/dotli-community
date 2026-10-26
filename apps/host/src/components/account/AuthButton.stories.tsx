@@ -14,6 +14,8 @@ import {
   notConnected,
   resetStoryAccount,
   setModalOpen,
+  signedInElsewhere,
+  signingOut,
   storyAccount,
   storyCallbacks,
   storyModalOpen,
@@ -29,13 +31,14 @@ const ALICE: AccountSession = { fullUsername: 'Alice Smith' };
 const PG: AccountSession = { liteUsername: 'pgherveou.04' };
 
 const button = (): HTMLElement => byId('auth-button');
+const signInLabel = (): HTMLElement => byTestId('auth-button-label', button());
 const badge = (): HTMLElement => byTestId('user-badge', button());
 const isOpen = (): boolean => document.getElementById('user-popover')?.hasAttribute('data-open') === true;
 const popupAria = (): (string | null)[] =>
   ['aria-haspopup', 'aria-expanded', 'aria-controls'].map(name => button().getAttribute(name));
 
 /** The button as the page binds it, to the story's account and sign-in. */
-function StoryButton(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
+function StoryButton(props: { idPrefix?: string; showName?: boolean; sitesUrl?: string }): JSX.Element {
   return (
     <AuthButton
       account={storyAccount}
@@ -45,6 +48,7 @@ function StoryButton(props: { idPrefix?: string; showName?: boolean }): JSX.Elem
       handOver={storyCallbacks.handOver}
       idPrefix={props.idPrefix}
       showName={props.showName}
+      sitesUrl={props.sitesUrl}
     />
   );
 }
@@ -63,6 +67,7 @@ async function expectButton(state: 'logged-out' | { initials: string | undefined
   if (state === 'logged-out') {
     await expect(popupAria()).toEqual(['dialog', storyModalOpen() ? 'true' : 'false', 'auth-modal-backdrop']);
     await expect(b.textContent.trim()).toBe('Sign in');
+    await expect(signInLabel()).not.toHaveAttribute('data-session');
     return;
   }
   await expect(b).toHaveAttribute('aria-controls', 'user-popover');
@@ -127,6 +132,65 @@ export const Open: Story = {
   },
 };
 
+/** As a signed-in user, the popover links to my signed-in sites and opens them in a new tab. */
+export const SitesLink: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    connect(ALICE);
+  },
+  render: () => (
+    <TopbarFrame>
+      <StoryButton sitesUrl="https://dot.li/s/manage" />
+    </TopbarFrame>
+  ),
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('Then the menu links to the signed-in sites in a new tab', async () => {
+      const link = byTestId('account-sites', byId('user-popover'));
+      await expect(link).toHaveTextContent('Signed-in sites');
+      await expect(link).toHaveAttribute('href', 'https://dot.li/s/manage');
+      await expect(link).toHaveAttribute('target', '_blank');
+    });
+  },
+};
+
+/** As a signed-in user where no sites page is given, the popover shows no sites link. */
+export const NoSitesLink: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    connect(ALICE);
+  },
+  play: async ctx => {
+    await open(ctx);
+    await ctx.step('Then the menu has no signed-in sites link', async () => {
+      await expectAccount('Alice Smith', false);
+      await expect(document.querySelector('[data-testid="account-sites"]')).toBeNull();
+    });
+  },
+};
+
+/** As a signed-out user where a sites page is given, I see no sites link, and a click starts a sign-in. */
+export const SignedOutNoSitesLink: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    disconnect();
+  },
+  render: () => (
+    <TopbarFrame>
+      <StoryButton sitesUrl="https://dot.li/s/manage" />
+    </TopbarFrame>
+  ),
+  play: async ({ step, userEvent }) => {
+    await step('When I click the button', async () => {
+      await userEvent.click(button());
+    });
+    await step('Then a sign-in was asked for, and the page has no signed-in sites link', async () => {
+      await waitFor(() => expect(calls.signIns).toBe(1));
+      await expect(document.querySelector('[data-testid="account-sites"]')).toBeNull();
+    });
+  },
+};
+
 /** As a phone user, my account opens as a sheet titled Account, its body without a heading of its own. */
 export const OpenPhone: Story = {
   tags: ['!autodocs'],
@@ -175,6 +239,41 @@ export const LoggedOut: Story = {
   play: async ({ step }) => {
     await step('Then the button reads Sign in and announces the auth modal', async () => {
       await expect(button().querySelector('[data-testid="user-badge"]')).toBeNull();
+      await expectButton('logged-out');
+    });
+  },
+};
+
+/**
+ * As a signed-out user whose sign-in made in another app waits, I see the button offer to continue it without naming an
+ * account and say what it continues, and a click starts a sign-in. It reads Sign in again once nothing waits.
+ */
+export const ContinueSession: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    disconnect();
+    signedInElsewhere();
+  },
+  play: async ({ userEvent, step }) => {
+    await step('Then the button reads Continue session and describes the sign-in it continues', async () => {
+      await expect(signInLabel()).toHaveAttribute('data-session', 'elsewhere');
+      await expect(button().textContent.trim()).toBe('Continue session');
+      await expect(button()).toHaveAttribute('aria-label', 'Continue session');
+      await expect(button()).toHaveAttribute('title', 'Continue the sign-in you already made to keep using this app');
+      await expect(popupAria()).toEqual(['dialog', 'false', 'auth-modal-backdrop']);
+    });
+    await step('When I click it', async () => {
+      await userEvent.click(button());
+    });
+    await step('Then one sign-in was asked for', async () => {
+      await waitFor(() => expect(calls.signIns).toBe(1));
+    });
+    await step('When the sign-in elsewhere is signed out, as a recheck of the flag finds', () => {
+      setModalOpen(false);
+      signedInElsewhere(false);
+    });
+    await step('Then the button reads Sign in again', async () => {
+      await waitFor(() => expect(signInLabel()).not.toHaveAttribute('data-session'));
       await expectButton('logged-out');
     });
   },
@@ -555,6 +654,28 @@ export const ConnectedAnnouncesPopover: Story = {
     await step('Then it is the account popover trigger again', async () => {
       await waitFor(() => expect(popupAria()).toEqual(['dialog', 'false', 'user-popover']));
       await expect(button()).toHaveAttribute('popovertarget', 'user-popover');
+    });
+  },
+};
+
+/** As a user signing out, I see a busy button named for the sign-out while the sign-out window reads. */
+export const SigningOut: Story = {
+  tags: ['!autodocs'],
+  beforeEach: () => {
+    connect({ fullUsername: 'Alice Smith' });
+    signingOut(true);
+  },
+  play: async ({ step }) => {
+    await step('Then the button is busy, disabled and says it signs out', async () => {
+      await expect(button()).toHaveAttribute('aria-busy', 'true');
+      await expect(button()).toBeDisabled();
+      await expect(button()).toHaveAttribute('title', 'Signing out');
+    });
+    await step('When the sign-out window has read', () => {
+      signingOut(false);
+    });
+    await step('Then the button takes clicks again', async () => {
+      await waitFor(() => expect(button()).not.toBeDisabled());
     });
   },
 };

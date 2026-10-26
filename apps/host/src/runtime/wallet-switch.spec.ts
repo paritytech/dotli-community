@@ -8,21 +8,23 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 
-/** A switch over a frame whose save and forget settle as given, with a fake Sentry and capture sink bound for this test. */
+/**
+ * A switch over a frame whose save and forget settle as given, with a fake Sentry and capture sink bound for this test.
+ */
 function switchWith(frame: { save?: () => Promise<void>; forget?: () => Promise<void> } = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
-  const save = vi.fn<(entropy: Uint8Array) => Promise<void>>(frame.save ?? (() => Promise.resolve()));
   const forget = vi.fn<() => Promise<void>>(frame.forget ?? (() => Promise.resolve()));
   const reload = vi.fn();
+  const save = vi.fn<(entropy: Uint8Array) => Promise<void>>(() => frame.save?.() ?? Promise.resolve());
   return {
     save,
     forget,
     reload,
     captures,
     counted: metrics.counted,
-    wallet: createWalletSwitch({ save, forget, reload }),
+    wallet: createWalletSwitch({ save, reload }),
   };
 }
 
@@ -64,7 +66,7 @@ describe('wallet switch', () => {
     const { forget, reload, wallet } = switchWith();
 
     // When
-    const outcome = await wallet.usePolkadotApp();
+    const outcome = await wallet.usePolkadotApp(forget);
 
     // Then
     expect(outcome).toBe('reloading');
@@ -75,10 +77,10 @@ describe('wallet switch', () => {
   it('As a user whose forget failed, I stay on the page and the failure is reported once', async () => {
     // Given
     const cause = new Error('frame unavailable');
-    const { reload, captures, counted, wallet } = switchWith({ forget: () => Promise.reject(cause) });
+    const { forget, reload, captures, counted, wallet } = switchWith({ forget: () => Promise.reject(cause) });
 
     // When
-    const outcome = await wallet.usePolkadotApp();
+    const outcome = await wallet.usePolkadotApp(forget);
 
     // Then
     expect(outcome).toBe('failed');

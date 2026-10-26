@@ -7,6 +7,7 @@
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import {
   log,
+  type ListableStorage,
   OriginWipeError,
   pageLocalStorage,
   pageSessionStorage,
@@ -17,12 +18,17 @@ import {
 } from '@dotli/shared';
 import { markContinuation, type Continuation } from './continuation.js';
 import { sharedSettingsOf, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
-import { clearCidCache, clearBlockCache } from '@dotli/storage';
+import { SHARED_AUTH_KEY_PREFIX, SHARED_MODE_KEY_PREFIX } from '@dotli/protocol';
+import { SMOLDOT_DB_NAME } from '@dotli/chains';
+import { clearCidCache, clearBlockCache, SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
 import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
 import { schedulePendingReset, type PendingResetTarget } from './runtime/pending-reset.js';
 import { writeSharedSettings } from './runtime/shared-mode.js';
 import { THEME_KEY } from './theme-controller.js';
+
+/** The databases other layers own on the origin the landing page shares with them, which a wipe there keeps. */
+const OTHER_LAYERS_DATABASES: readonly string[] = [WALLET_DB_NAME, SITE_GRANTS_DB_NAME, SMOLDOT_DB_NAME];
 
 /** Each step reports its own failures and resolves, so a rejection here is a fault `applyAndReset` reports. */
 export interface SettingsActionsDeps {
@@ -163,12 +169,15 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
 /** Survive a reset, since losing the theme would be a visible change nobody requested. */
 const PRESERVED_KEYS: readonly string[] = [THEME_KEY];
 
+/** The frame at `/p/` shares this origin, so its session and settings are not the landing page's to wipe. */
+const FRAME_KEY_PREFIXES: readonly string[] = [SHARED_AUTH_KEY_PREFIX, SHARED_MODE_KEY_PREFIX];
+
 export type WipeFailure = OriginWipePart;
 
 /** What a wipe empties: the origin's browser stores and both web storages. */
 export interface WipeParts {
   stores: OriginStores;
-  local: SafeStorage;
+  local: ListableStorage;
   session: SafeStorage;
 }
 
@@ -192,7 +201,7 @@ function browserWipeParts(): WipeParts {
 export async function wipeOriginState(parts: WipeParts = browserWipeParts()): Promise<readonly WipeFailure[]> {
   let failed: WipeFailure[] = [];
   try {
-    await wipeOriginStores(parts.stores);
+    await wipeOriginStores(parts.stores, OTHER_LAYERS_DATABASES);
   } catch (err: unknown) {
     if (!(err instanceof OriginWipeError)) {
       throw err;
@@ -209,11 +218,10 @@ export async function wipeOriginState(parts: WipeParts = browserWipeParts()): Pr
     }
   }
   parts.session.clear();
-  const preserved = PRESERVED_KEYS.map(key => [key, parts.local.getItem(key)] as const);
-  parts.local.clear();
-  for (const [key, value] of preserved) {
-    if (value !== null) {
-      parts.local.setItem(key, value);
+  // Removes key by key, never clearing and restoring, so a write the frame makes meanwhile is not undone.
+  for (const key of parts.local.keys()) {
+    if (!PRESERVED_KEYS.includes(key) && !FRAME_KEY_PREFIXES.some(prefix => key.startsWith(prefix))) {
+      parts.local.removeItem(key);
     }
   }
   return failed;

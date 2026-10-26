@@ -9,7 +9,7 @@ export const PORT = process.env['PORT'] ?? String(5173 + Number(process.env['TES
 export const TIMEOUT_MS = parseInt(process.env['TIMEOUT_MS'] ?? '45000', 10);
 
 /** Must match the first entry of the build's VITE_NETWORKS. */
-const NETWORK: Network = (() => {
+export const NETWORK: Network = (() => {
   const raw = process.env['NETWORK'] ?? NetworkName.PASEO;
   if (!isValidNetwork(raw)) {
     throw new Error(`NETWORK is not a known network: ${JSON.stringify(raw)}`);

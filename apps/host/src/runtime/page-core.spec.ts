@@ -5,8 +5,8 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { bindCaptureSink } from '@dotli/metrics';
-import { createAsyncTaskPool } from '@dotli/shared';
-import { recordLog } from '@dotli/shared/testing';
+import { createAsyncTaskPool, type Timers } from '@dotli/shared';
+import { manualTimers, recordLog } from '@dotli/shared/testing';
 import { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 import type { BootedCoreRuntime, CoreRuntimeRequest } from './core-runtime.js';
 import { CoreRedialError, createPageCore, type PageCore } from './page-core.js';
@@ -32,6 +32,7 @@ interface FakeRuntime {
   createProvider: ReturnType<typeof vi.fn<WorkerPairingHostRuntime['createProvider']>>;
   cancelPairing: ReturnType<typeof vi.fn<() => void>>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn<() => void>>;
+  resetSessionState: ReturnType<typeof vi.fn<() => Promise<void>>>;
   dispose: ReturnType<typeof vi.fn<() => void>>;
   providers: FakeProvider[];
 }
@@ -93,14 +94,19 @@ function fakeRuntime(changes: Changes): FakeRuntime {
   });
   const cancelPairing = vi.fn(changes.notify);
   const notifySessionStoreChanged = vi.fn(changes.notify);
+  const resetSessionState = vi.fn(() => {
+    changes.notify();
+    return Promise.resolve();
+  });
   const dispose = vi.fn(changes.notify);
   const runtime = {
     createProvider,
     cancelPairing,
     notifySessionStoreChanged,
+    resetSessionState,
     dispose,
   } as unknown as WorkerPairingHostRuntime;
-  return { runtime, createProvider, cancelPairing, notifySessionStoreChanged, dispose, providers };
+  return { runtime, createProvider, cancelPairing, notifySessionStoreChanged, resetSessionState, dispose, providers };
 }
 
 type Boot = (request: CoreRuntimeRequest) => Promise<BootedCoreRuntime>;
@@ -127,6 +133,11 @@ interface HarnessOptions {
   createPhoneRequests?: () => PhoneRequestTracker;
   /** Whether a wallet read now finds the local wallet, which makes a pairing core stale. */
   walletFound?: () => boolean;
+  onCoresGone?: () => void;
+  /** How long a core outlives its last lease. Default 0, which disposes at once. */
+  destroyDelay?: number;
+  /** The timers the destroy delay runs on. The real ones by default. */
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 }
 
 function harness(options: HarnessOptions = {}): Harness {
@@ -179,7 +190,10 @@ function harness(options: HarnessOptions = {}): Harness {
     },
     coordinator: createBlockingModalCoordinator(),
     redials: createAsyncTaskPool({ poolSize: 1, retryCount: 2 }),
+    destroyDelay: options.destroyDelay ?? 0,
+    ...(options.timers === undefined ? {} : { timers: options.timers }),
     ...(options.createPhoneRequests === undefined ? {} : { createPhoneRequests: options.createPhoneRequests }),
+    ...(options.onCoresGone === undefined ? {} : { onCoresGone: options.onCoresGone }),
   });
   return { core, runtimes, requests, outcomes, storeListeners, nextBoots, staleChecks, changes };
 }
@@ -263,6 +277,151 @@ function trackerOf(request: CoreRuntimeRequest | undefined): PhoneRequestTracker
 }
 
 describe('page core', () => {
+  it('As a page signed out elsewhere, I reset the session and the core my product holds drops it', async () => {
+    // Given a page core already running
+    const { core, runtimes } = harness();
+    await core.acquire();
+
+    // When the session is reset
+    await core.resetSession();
+
+    // Then the running core reset its session state
+    expect(nthRuntime(runtimes, 0).resetSessionState).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a page signed out elsewhere with no core running, I reset the session and no core boots to drop one', async () => {
+    // Given a page core that never booted
+    const { core, requests } = harness();
+
+    // When the session is reset
+    await core.resetSession();
+
+    // Then no core was booted
+    expect(requests).toHaveLength(0);
+  });
+
+  it('As a page signed out elsewhere while my core is still booting, I reset the session and a boot that fails leaves nothing to drop', async () => {
+    // Given: a core whose boot is in flight
+    const { core, nextBoots } = harness();
+    const boot = Promise.withResolvers<BootedCoreRuntime>();
+    nextBoots.push(() => boot.promise);
+    const lease = core.acquire();
+
+    // When the session is reset and the boot then fails
+    const reset = core.resetSession();
+    boot.reject(new Error('worker failed to start'));
+
+    // Then the lease fails with the boot and the reset settles
+    await expect(lease).rejects.toThrow('worker failed to start');
+    await expect(reset).resolves.toBeUndefined();
+  });
+
+  it('As a page, I release my last lease and take a new one within the destroy delay and keep the same core', async () => {
+    // Given a core whose only lease was released
+    const timers = manualTimers();
+    const { core, requests, runtimes } = harness({ destroyDelay: 5000, timers });
+    const first = await core.acquire();
+    first.release();
+
+    // When the delay has almost run out and a new lease is taken
+    await timers.advance(4999);
+    await core.acquire();
+
+    // Then the same core serves it, nothing was disposed and no timer is left
+    expect(requests).toHaveLength(1);
+    expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
+    expect(timers.pending()).toBe(0);
+  });
+
+  it('As a page, I release my last lease and the core goes once the destroy delay ends', async () => {
+    // Given a core whose only lease was released
+    const timers = manualTimers();
+    const onCoresGone = vi.fn();
+    const { core, runtimes } = harness({ destroyDelay: 5000, timers, onCoresGone });
+    const lease = await core.acquire();
+    lease.release();
+
+    // Then the core still lingers
+    expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
+    expect(onCoresGone).not.toHaveBeenCalled();
+
+    // When the destroy delay ends
+    await timers.advance(5000);
+
+    // Then the core is disposed once and the page hears its last core go
+    expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
+    expect(onCoresGone).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a page whose lingering core goes down, I see it go at once', async () => {
+    // Given a lingering core that has a connection
+    const timers = manualTimers();
+    const { core, runtimes } = harness({ destroyDelay: 5000, timers });
+    const lease = await core.acquire();
+    await lease.connect();
+    lease.release();
+    expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
+    expect(timers.pending()).toBe(1);
+
+    // When its connection closes
+    const provider = nthRuntime(runtimes, 0).providers[0];
+    if (provider === undefined) {
+      throw new Error('no provider was connected');
+    }
+    provider.goDown();
+
+    // Then it is disposed at once and its timer is cleared
+    expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
+    expect(timers.pending()).toBe(0);
+  });
+
+  it('As a page that changes product, I see a lingering core go at once', async () => {
+    // Given a lingering core
+    const timers = manualTimers();
+    const { core, runtimes } = harness({ destroyDelay: 5000, timers });
+    const lease = await core.acquire();
+    lease.release();
+    expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
+    expect(timers.pending()).toBe(1);
+
+    // When the page names another product
+    core.setProduct({ label: 'other' });
+
+    // Then the core is disposed at once and its timer is cleared
+    expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
+    expect(timers.pending()).toBe(0);
+  });
+
+  it('As a page that changed product while a login held the old core, I release the login and the old core goes at once', async () => {
+    // Given a core held by a login while the page moves to another product
+    const timers = manualTimers();
+    const { core, runtimes } = harness({ destroyDelay: 5000, timers });
+    const lease = await core.acquire();
+    core.setProduct({ label: 'other' });
+
+    // When the login releases it
+    lease.release();
+
+    // Then the old core is disposed at once, with no timer
+    expect(nthRuntime(runtimes, 0).dispose).toHaveBeenCalledTimes(1);
+    expect(timers.pending()).toBe(0);
+  });
+
+  it('As a page signed out elsewhere, I reset the session and my lingering core drops it', async () => {
+    // Given a lingering core
+    const timers = manualTimers();
+    const { core, runtimes } = harness({ destroyDelay: 5000, timers });
+    const lease = await core.acquire();
+    lease.release();
+
+    // When the session is reset
+    await core.resetSession();
+
+    // Then the core dropped its session and was not disposed
+    expect(nthRuntime(runtimes, 0).resetSessionState).toHaveBeenCalledTimes(1);
+    expect(nthRuntime(runtimes, 0).dispose).not.toHaveBeenCalled();
+  });
+
   it('As a dApp user, I open a product and the page core boots one core for it', async () => {
     // Given
     const { core, requests, outcomes } = harness();
@@ -384,6 +543,31 @@ describe('page core', () => {
     await changes.until(() => nthRuntime(runtimes, 0).dispose.mock.calls.length === 1);
     expect(requests).toHaveLength(1);
     expect(outcomes).toEqual(['ok']);
+  });
+
+  it('As a page whose last core goes with its last lease, I am told once, and not while another core lives', async () => {
+    // Given two leases on one core
+    let gone = 0;
+    const { core } = harness({
+      onCoresGone: () => {
+        gone += 1;
+      },
+    });
+    const first = await core.acquire();
+    const second = await core.acquire();
+
+    // When the first goes
+    first.release();
+
+    // Then the core still lives
+    expect(gone).toBe(0);
+
+    // When the last goes
+    second.release();
+    second.release();
+
+    // Then the page heard once that its last core went
+    expect(gone).toBe(1);
   });
 
   it('As a dApp user, I close a connection and the core stays ready without being dialed again', async () => {

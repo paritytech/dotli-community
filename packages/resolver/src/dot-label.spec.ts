@@ -26,6 +26,13 @@ describe('validateDotLabel', () => {
     // When / Then the label is refused as reserved
     expect(validateDotLabel('sn--abc')).toEqual({ ok: false, reason: 'reserved' });
   });
+
+  it('As a visitor, I try a one-letter name and it is refused, since no name under .dot is that short', () => {
+    // When / Then a one-letter label is refused as too short and a two-letter label is accepted
+    expect(validateDotLabel('p')).toEqual({ ok: false, reason: 'too-short' });
+    expect(isValidDotLabel('s')).toBe(false);
+    expect(validateDotLabel('01')).toEqual({ ok: true });
+  });
 });
 
 describe('validateDotName', () => {
@@ -36,6 +43,17 @@ describe('validateDotName', () => {
     expect(validateDotName('pr16.-back')).toEqual({ ok: false, reason: 'leading-hyphen' });
     expect(validateDotName('pr16..back')).toEqual({ ok: false, reason: 'empty' });
     expect(validateDotName('pr16.xn--pypal-4ve')).toEqual({ ok: false, reason: 'punycode' });
+  });
+
+  it('As a visitor, I open a subname and only its registered label must be two characters or more', () => {
+    // When / Then a one-letter subname label is accepted, a one-letter registered label is refused whether it stands
+    // alone or under a subname, a device name under its two-digit node is accepted, and a subname label still gets
+    // the shape rules
+    expect(validateDotName('a.my-app')).toEqual({ ok: true });
+    expect(validateDotName('pr16.a')).toEqual({ ok: false, reason: 'too-short' });
+    expect(validateDotName('p')).toEqual({ ok: false, reason: 'too-short' });
+    expect(validateDotName('michael.01')).toEqual({ ok: true });
+    expect(validateDotName('-a.my-app')).toEqual({ ok: false, reason: 'leading-hyphen' });
   });
 
   it('As a visitor, I try a name longer than a hostname can carry and it is refused', () => {

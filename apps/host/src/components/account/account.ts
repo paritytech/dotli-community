@@ -22,6 +22,10 @@ export interface Account {
   restoring: Accessor<boolean>;
   /** True while the saved session could not be read. */
   unreachable: Accessor<boolean>;
+  /** True while a sign-out waits for the sign-out window. */
+  signingOut: Accessor<boolean>;
   /** True while the keys live in this browser, not in Polkadot App. */
   local: Accessor<boolean>;
+  /** True while signed out here and a sign-in made elsewhere on the site waits to be continued. */
+  elsewhere: Accessor<boolean>;
 }

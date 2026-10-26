@@ -176,6 +176,8 @@
   --fs-small: 13px;
   --fs-body: 14px;
   --fs-title: 15px;
+  /* The Beta tag's type. */
+  --fs-tag: 8px;
   /* A popover's or prompt's title, the title size on phones. */
   --fs-pop-title: 14px;
   --fs-title-lg: 17px;

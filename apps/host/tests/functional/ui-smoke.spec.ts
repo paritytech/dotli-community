@@ -4,6 +4,8 @@
 // None of these wait for a chain: they stop at what the shell renders by itself.
 
 import { expect } from '@playwright/test';
+import { createLocalServing } from '@config/vite/serving';
+import { LOCAL_ROOTS } from '@dotli/config/local-roots';
 import jsQR from 'jsqr';
 import { PORT } from '../env.js';
 import { seedBackend } from './fixtures/settings.js';
@@ -72,8 +74,10 @@ test.describe('Shell UI smoke', () => {
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
   });
 
-  test('As a phone user, the sign-in opens as a sheet and the shell hydrates without warnings', async ({ page }) => {
-    // Given
+  test('As a phone user on the landing page, I press Sign in and see the sign-in sheet while the shell hydrates cleanly', async ({
+    page,
+  }) => {
+    // Given a phone-sized page that records every console error and warning
     const problems: string[] = [];
     page.on('console', message => {
       if (message.type() === 'error' || message.type() === 'warning') {
@@ -90,7 +94,7 @@ test.describe('Shell UI smoke', () => {
     await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
     await page.locator('#landing-auth-button').click();
 
-    // Then
+    // Then the modal opens as a sheet
     const frame = page.locator('#auth-modal-backdrop');
     await expect(frame).toHaveAttribute('data-open');
     await expect(frame).toHaveAttribute('data-layout', 'sheet');
@@ -244,23 +248,23 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#more-button')).toBeHidden();
   });
 
-  test('As a user, I can open the login QR modal and close it again', async ({ page }) => {
+  test('As a visitor on the landing page, I open the sign-in modal and close it again', async ({ page }) => {
     // Given: the idle-hydrated sign-in island has taken over its markup.
     await page.goto(LANDING_URL);
     await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
     const backdrop = page.locator('#auth-modal-backdrop');
 
-    // When
+    // When Sign in is pressed
     await page.locator('#landing-auth-button').click();
 
-    // Then
+    // Then the modal opens with its title
     await expect(backdrop).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
 
-    // When
+    // When the modal's close button is pressed
     await page.locator('#auth-modal-close').click();
 
-    // Then
+    // Then the modal closes
     await expect(backdrop).not.toHaveAttribute('data-open');
   });
 
@@ -471,7 +475,9 @@ test.describe('Shell UI smoke', () => {
     // Then
     expect((await shellDocument).headers()['x-frame-options']).toBe('SAMEORIGIN');
     const sandbox = (await sandboxDocument).headers();
-    expect(sandbox['content-security-policy']).toBe('frame-ancestors http://localhost:* http://*.localhost:*');
+    expect(sandbox['content-security-policy']).toBe(
+      `frame-ancestors ${createLocalServing(LOCAL_ROOTS).frameAncestors}`,
+    );
     expect(sandbox['cross-origin-embedder-policy']).toBe('credentialless');
   });
 
@@ -497,15 +503,17 @@ test.describe('Shell UI smoke', () => {
     await expect(page.getByTestId('verification-tooltip-row-verified')).toBeVisible();
   });
 
-  test('As a visitor signing in, I see a QR code that carries the pairing link', async ({ page }) => {
+  test('As a visitor signing in on the landing page, I see a QR code on the page that carries the pairing link', async ({
+    page,
+  }) => {
     // Given: the idle-hydrated sign-in island has taken over its markup.
     await page.goto(LANDING_URL);
     await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr]').length === 0);
 
-    // When
+    // When Sign in is pressed
     await page.locator('#landing-auth-button').click();
 
-    // Then
+    // Then the drawn code decodes to the pairing link it carries
     const canvas = page.getByTestId('auth-modal-qr-tile').locator('canvas');
     await expect(canvas).toHaveAttribute('data-qr-payload', /^polkadotapp:\/\//, { timeout: 15_000 });
     const payload = await canvas.getAttribute('data-qr-payload');

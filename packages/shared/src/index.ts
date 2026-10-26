@@ -11,24 +11,21 @@ export {
 export { endpointHost, gatewayUnreachable } from './error-copy.js';
 export { errorMessage, errorName, fullErrorChain, named, serializeError, toError } from './errors.js';
 export { deleteIdb, idbRequest, idbTransaction, openIdb } from './idb.js';
-export {
-  deleteAllDatabases,
-  OriginWipeError,
-  wipeOriginStores,
-  type OriginStores,
-  type OriginWipePart,
-} from './origin-wipe.js';
+export { OriginWipeError, wipeOriginStores, type OriginStores, type OriginWipePart } from './origin-wipe.js';
+export { blake2b } from './blake2b.js';
+export { bytesEqual } from './bytes-equal.js';
 export { fromHex, toHex } from './hex.js';
 export { bindLogSink, log, type LogLevel } from './log.js';
 export { formatRate, formatSize } from './byte-size.js';
 export { createLazyLoad } from './lazy-load.js';
 export { createListenerSet, type ListenerSet, type ListenerSetOptions } from './listener-set.js';
+export { listen, onDocumentVisible, onPageReturn, type VisibilitySource } from './listen.js';
 export { deferred } from './deferred.js';
 export { dur, elapsed } from './perf.js';
 export { noop } from './noop.js';
 export { createPendingReplies, type PendingReplies } from './pending-replies.js';
 export { randomId } from './random-id.js';
-export { createStatusCell, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
+export { createStatusCell, storeStatus, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
 export {
   createSyncStore,
   registerStoreStateReset,
@@ -38,7 +35,13 @@ export {
   type SyncStore,
   type SyncStoreOptions,
 } from './sync-store.js';
-export { pageLocalStorage, pageSessionStorage, safeStorage, type SafeStorage } from './safe-storage.js';
+export {
+  pageLocalStorage,
+  pageSessionStorage,
+  safeStorage,
+  type ListableStorage,
+  type SafeStorage,
+} from './safe-storage.js';
 export { realTimers, type Timers } from './timers.js';
 export { sleep } from './sleep.js';
 export { withTimeout } from './with-timeout.js';

@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@sentry/vite-plugin": "^11.8.0",
+    "vite-plugin-mkcert": "^2.1.0",
     "vite-plugin-pwa": "^2.0.0",
     "vite-plugin-wasm": "^3.6.0"
   },

@@ -14,7 +14,9 @@ interface AccountShape {
   connected: boolean;
   restoring: boolean;
   unreachable: boolean;
+  signingOut: boolean;
   local: boolean;
+  elsewhere: boolean;
 }
 
 /** Boot has not read the saved session yet. */
@@ -24,7 +26,9 @@ const RESTORING: AccountShape = {
   connected: false,
   restoring: true,
   unreachable: false,
+  signingOut: false,
   local: false,
+  elsewhere: false,
 };
 
 const [shape, setShape] = createSignal<AccountShape>(RESTORING);
@@ -42,7 +46,9 @@ export const storyAccount: Account = {
   connected: () => shape().connected,
   restoring: () => shape().restoring,
   unreachable: () => shape().unreachable,
+  signingOut: () => shape().signingOut,
   local: () => shape().local,
+  elsewhere: () => shape().elsewhere,
 };
 
 /** Whether the sign-in modal is open, as the account button reads it. */
@@ -75,12 +81,24 @@ export const storyCallbacks = {
 
 /** A connected session. */
 export function connect(session: AccountSession): void {
-  changeShape({ loggedIn: true, session, connected: true, restoring: false, unreachable: false });
+  changeShape({ loggedIn: true, session, connected: true, restoring: false, unreachable: false, elsewhere: false });
 }
 
 /** Signed out, as boot leaves a visitor with no saved session. */
 export function disconnect(): void {
-  changeShape({ loggedIn: false, session: undefined, connected: false, restoring: false, unreachable: false });
+  changeShape({
+    loggedIn: false,
+    session: undefined,
+    connected: false,
+    restoring: false,
+    unreachable: false,
+    elsewhere: false,
+  });
+}
+
+/** Signed out here while a sign-in made elsewhere on the site waits, or no longer waits. */
+export function signedInElsewhere(waits = true): void {
+  changeShape({ elsewhere: waits });
 }
 
 /** A pairing or a login under way: no longer connected, a signed-in user's session kept. */
@@ -91,6 +109,11 @@ export function notConnected(): void {
 /** The saved session cannot be reached. */
 export function unreachable(): void {
   changeShape({ loggedIn: false, session: undefined, connected: false, restoring: false, unreachable: true });
+}
+
+/** A sign-out waiting for the sign-out window, the account still shown. */
+export function signingOut(pending: boolean): void {
+  changeShape({ signingOut: pending });
 }
 
 /** The keys live in this browser. */

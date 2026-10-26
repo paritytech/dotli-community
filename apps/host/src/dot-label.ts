@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { BASE_DOMAIN } from '@dotli/config';
+import { BASE_DOMAIN, localRootOf } from '@dotli/config';
 import { isValidDotLabel } from '@dotli/resolver';
 
 /**
@@ -17,11 +17,12 @@ export function parseDotLabel(hostname: string = window.location.hostname): stri
     return isValidDotLabel(label) ? label : null;
   }
 
-  if (hostname.endsWith('.localhost')) {
-    if (hostname.endsWith('.app.localhost')) {
+  const root = localRootOf(hostname);
+  if (root !== null && hostname !== root) {
+    if (hostname.endsWith(`.app.${root}`)) {
       return null;
     }
-    const label = hostname.slice(0, -'.localhost'.length);
+    const label = hostname.slice(0, -(root.length + 1));
     return isValidDotLabel(label) ? label : null;
   }
 

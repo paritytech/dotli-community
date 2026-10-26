@@ -19,7 +19,7 @@ This is the very first application-level event you'll see in a tab. Everything d
 
   'boot:protocol_warmup_started': {
     title: 'Protocol iframe warmup started',
-    body: `The hidden protocol iframe at \`host.app.dot.li\` is being pre-warmed so it can service chain calls the instant a sandboxed product needs one. The backend decides the plumbing inside that iframe: \`smoldot-shared-worker\` (or \`shared-worker\` in an older archive) shares a smoldot instance with other tabs via a SharedWorker, \`smoldot-direct\` (\`direct\`) starts smoldot on the iframe's own main thread, and \`rpc-gateway\` (\`rpc\`) bypasses smoldot and connects to a WebSocket JSON-RPC endpoint.
+    body: `The hidden protocol iframe at \`dot.li/p/\` is being pre-warmed so it can service chain calls the instant a sandboxed product needs one. The backend decides the plumbing inside that iframe: \`smoldot-shared-worker\` (or \`shared-worker\` in an older archive) shares a smoldot instance with other tabs via a SharedWorker, \`smoldot-direct\` (\`direct\`) starts smoldot on the iframe's own main thread, and \`rpc-gateway\` (\`rpc\`) bypasses smoldot and connects to a WebSocket JSON-RPC endpoint.
 
 Warmup happens in the background and is non-blocking. If a product calls chain services before warmup finishes, the protocol iframe queues the call and drains it once ready.`,
   },

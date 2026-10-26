@@ -23,7 +23,7 @@ export interface ModalProps {
   initialFocus?: (() => HTMLElement | undefined) | undefined;
   /** Overrides what held focus at opening, for a trigger the browser may not focus on click. */
   restoreFocus?: (() => HTMLElement | undefined) | undefined;
-  /** Moves focus to the card or sheet each time its value changes after opening, for content swapped in place. */
+  /** Moves focus to the card or sheet each time its value changes while open, for content swapped in place. */
   refocusOn?: (() => unknown) | undefined;
   placement?: 'center' | 'topbar-end';
   scrim?: 'dark' | 'light';
@@ -70,12 +70,14 @@ function ModalRoot(props: ModalProps): JSX.Element {
     }
   });
 
-  let opened = false;
+  // The value on show while open. Opening places focus through `initialFocus`, so only a swap while open moves it.
+  let shown: { value: unknown } | undefined;
   createEffect(
-    () => props.refocusOn?.(),
-    () => {
-      if (!opened) {
-        opened = true;
+    () => ({ open: props.open, value: props.refocusOn?.() }),
+    ({ open, value }) => {
+      const swapped = open && shown !== undefined && !Object.is(shown.value, value);
+      shown = open ? { value } : undefined;
+      if (!swapped) {
         return;
       }
       const surface = frame?.querySelector('[data-modal-surface]');

@@ -8,7 +8,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Owns the primitives other layers build on: `createAsyncTaskPool`, `createListenerSet`, `createSyncStore`,
   `createStatusCell`, `log`.
 - Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing, a timeout, abort, web storage
-  that never throws, the IndexedDB callbacks as promises and the wipe of an origin's stores.
+  that never throws, event listening with its own stop, the IndexedDB callbacks as promises and the wipe of an origin's
+  stores.
 - Owns no page state, no dotNS rules, no metrics, no UI and no chain access. The log sink is bound from outside, and
   listener errors are reported through callbacks the caller passes in.
 
@@ -41,6 +42,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - The logger writes to the console only in debug builds, read from the `VITE_APP_DEBUG` build flag at load so the first
   log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`.
 - Error helpers turn any thrown value into a string or a chain for wire formats, logs and Sentry.
+- A listener on an event target hands back its stop, and the page turning visible is one listener on its document, so no
+  module keeps a handler only to remove it.
 
 ## Public API
 
@@ -49,16 +52,21 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Concurrency and state: `createAsyncTaskPool`, `createLazyLoad`, `createListenerSet`, `ListenerSet`,
   `ListenerSetOptions`, `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`,
   `createStatusCell`, `untilStatus` (a wait on a status cell until a verdict, which settles at once on the status there
-  is now and leaves through a signal), `toAbortError`, `createPendingReplies`, `PendingReplies`, `deferred` (a promise
-  with its resolve and reject).
+  is now and leaves through a signal), `storeStatus` (a sync store read as a status, for `untilStatus`), `toAbortError`,
+  `createPendingReplies`, `PendingReplies`, `deferred` (a promise with its resolve and reject).
 - Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
   `named`, `endpointHost`, `gatewayUnreachable`.
-- Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`.
+- Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`, and `ListableStorage`, which adds
+  `keys` and is what `safeStorage` returns.
 - IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
-- Origin wipe: `wipeOriginStores`, `deleteAllDatabases`, `OriginWipeError`, `OriginStores`, `OriginWipePart`.
+- Events: `listen(target, type, handler)`, `onDocumentVisible(doc, handler)` and `onPageReturn(doc, win, handler)`
+  (focus or turning visible), each returning its stop, and `VisibilitySource` (a document as far as its visibility
+  goes).
+- Origin wipe: `wipeOriginStores` (which keeps the databases it is told to), `OriginWipeError`, `OriginStores`,
+  `OriginWipePart`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
-- Encoding and timing: `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`, `randomId`, `noop`, `Timers`,
-  `realTimers`.
+- Encoding and timing: `bytesEqual`, `blake2b`, `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`,
+  `randomId`, `noop`, `Timers`, `realTimers`.
 
 ### `@dotli/shared/testing`
 

@@ -11,7 +11,7 @@ import { Readable } from 'node:stream';
 import { createWriteStream } from 'node:fs';
 
 const DIST = process.env['DIST'] ?? 'dist';
-const COMPRESS_EXTENSIONS = new Set(['.js', '.wasm', '.json', '.css', '.html', '.scale']);
+const COMPRESS_EXTENSIONS = new Set(['.js', '.wasm', '.json', '.css', '.html', '.scale', '.dat']);
 const MIN_SIZE = 1024;
 
 interface FileEntry {

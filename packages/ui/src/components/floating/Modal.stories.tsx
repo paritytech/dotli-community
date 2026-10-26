@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { TrashIcon } from '../icons/TrashIcon.js';
@@ -130,5 +130,90 @@ export const SwitchesFormKeepingContent: Story = {
       // The next story must not inherit the phone.
       await page.viewport(wide.width, wide.height);
     }
+  },
+};
+
+const [swapOpen, setSwapOpen] = createSignal(false);
+const [step, setStep] = createSignal(1);
+
+/** A modal mounted closed whose content swaps in place from step to step, and its trigger. */
+function SwapHarness() {
+  return (
+    <>
+      <Button
+        testId="swap-modal-trigger"
+        onClick={() => {
+          setSwapOpen(true);
+        }}
+      >
+        Pair
+      </Button>
+      <Modal
+        open={swapOpen()}
+        onOpenChange={next => {
+          setSwapOpen(next);
+        }}
+        title="Pair a device"
+        labelledBy="swap-modal-title"
+        initialFocus={() => document.querySelector<HTMLElement>('[data-testid="swap-modal-answer"]') ?? undefined}
+        refocusOn={step}
+        testId="swap-modal"
+      >
+        <Modal.Head titleId="swap-modal-title" title={`Step ${String(step())}`} />
+        <Modal.Actions>
+          <Show when={step()} keyed>
+            {current => (
+              <Button variant="secondary" block testId="swap-modal-answer">
+                {`Answer ${String(current)}`}
+              </Button>
+            )}
+          </Show>
+        </Modal.Actions>
+      </Modal>
+    </>
+  );
+}
+
+/**
+ * As a keyboard user, I see a dialog whose content swaps as it opens start on its answer, keep focus in it as its
+ * content swaps while open, and get focus back on its trigger when it closes as its content swaps.
+ */
+export const RefocusesOnSwapWhileOpen: Story = {
+  render: () => <SwapHarness />,
+  beforeEach: () => {
+    setSwapOpen(false);
+    setStep(1);
+  },
+  play: async ({ step: storyStep }) => {
+    const answer = (): HTMLElement => body.getByTestId('swap-modal-answer');
+    const trigger = (): HTMLElement => body.getByTestId('swap-modal-trigger');
+    await storyStep('Given focus on the trigger', async () => {
+      trigger().focus();
+      await expect(trigger()).toHaveFocus();
+    });
+    await storyStep('When it opens on content swapped as it opens', () => {
+      setStep(2);
+      setSwapOpen(true);
+    });
+    await storyStep('Then focus is on its answer', async () => {
+      await waitFor(() => expect(answer()).toHaveFocus());
+      await expect(answer()).toHaveTextContent('Answer 2');
+    });
+    await storyStep('When the content swaps while open', () => {
+      setStep(3);
+    });
+    await storyStep('Then the answer is new and focus is on the card, not the page', async () => {
+      await waitFor(() => expect(answer()).toHaveTextContent('Answer 3'));
+      await waitFor(() => expect(body.getByTestId('swap-modal')).toHaveFocus());
+    });
+    await storyStep('When it closes as its content swaps', () => {
+      setStep(4);
+      setSwapOpen(false);
+    });
+    await storyStep('Then focus is back on the trigger, not on the card fading out', async () => {
+      await waitFor(() => expect(trigger()).toHaveFocus());
+      await expect(body.getByTestId('swap-modal-backdrop')).not.toHaveAttribute('data-open');
+      await expect(trigger()).toHaveFocus();
+    });
   },
 };

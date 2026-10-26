@@ -24,7 +24,10 @@ export interface SettingsBootDeps {
   /** This origin's storage, which never throws. */
   local: SafeStorage;
   sharedWorkerAvailable: boolean;
-  /** On localhost, where each origin is its own site and parallel test workers must stay apart. */
+  /**
+   * Whether this origin's choice wins: on localhost, whose shared store is the local server's, so parallel test
+   * workers must stay apart.
+   */
   preferLocal: boolean;
   /** The cross-subdomain store's settings, or null when it cannot be read, which it reports itself. */
   readShared: () => Promise<SharedSettings | null>;

@@ -35,6 +35,7 @@ import {
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
 import { fakeIframe, fakeProductFrameView, type FakeProductFrameView } from './product-frame.fake.js';
+import { createFakeStoredSession } from './session/core-storage.fake.js';
 
 /** A handler that throws fails the test. */
 const rethrow = (error: unknown): never => {
@@ -80,6 +81,7 @@ let frameView: FakeProductFrameView;
 beforeEach(() => {
   location = {
     href: 'http://localhost:3000/',
+    protocol: 'http:',
     hostname: 'localhost',
     port: '3000',
     pathname: '/',
@@ -387,6 +389,28 @@ describe('product frame renders', () => {
     expect(url.pathname).toBe('/level/2');
     expect(url.searchParams.get('skill')).toBe('3');
     expect(url.hash).toBe('#boss');
+  });
+
+  it('As a developer on a local.host product subdomain, I open the product and its sandbox loads on the app subdomain of local.host', async () => {
+    // Given a page on a product subdomain of local.host
+    location = {
+      ...location,
+      href: 'https://doom.local.host:4321/',
+      protocol: 'https:',
+      hostname: 'doom.local.host',
+      port: '4321',
+    };
+    const fakes = harness();
+
+    // When the product frame settles
+    await settle(fakes, subdomainProduct('doom'), 0);
+
+    // Then the sandbox loads on the app subdomain of local.host
+    const created = nth(fakes.hosts, 0);
+    const url = new URL(created.options.iframeUrl);
+    expect(url.protocol).toBe('https:');
+    expect(url.hostname).toBe('doom.app.local.host');
+    expect(created.options.allowedOrigin).toBe(url.origin);
   });
 
   it('As a visitor who opened a subname, its sandbox loads on one hashed label a wildcard certificate covers', async () => {
@@ -945,11 +969,13 @@ describe('product frame and the topbar login', () => {
     const commands = createCoreAuthCommands({
       auth: createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' }, { equals: () => false }),
       core: fakes.core,
-      session: { reportLoginFailure: vi.fn(), reportLogoutWithoutCore: vi.fn() },
+      session: { reportLoginFailure: vi.fn() },
       walletMode: () => 'app',
-      leaveLocalWallet: () => Promise.resolve('reloading' as const),
+      storedSession: createFakeStoredSession('0xsession'),
     });
-    return () => commands.login();
+    return async () => {
+      await commands.login();
+    };
   }
 
   it('As a user who logs in before the product has loaded, the product joins the core my login runs on and my pairing survives its render', async () => {

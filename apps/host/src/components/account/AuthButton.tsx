@@ -28,6 +28,8 @@ export interface AuthButtonProps {
   idPrefix?: string | undefined;
   /** Shows the name beside the initials, as the landing page does. */
   showName?: boolean | undefined;
+  /** The signed-in sites page, which the account popover links to in a new tab. */
+  sitesUrl?: string | undefined;
   /** Gets the button once it is on the page. */
   buttonRef?: ((button: HTMLButtonElement) => void) | undefined;
 }
@@ -37,6 +39,14 @@ function accountKind(account: Account): string {
   return account.loggedIn() && account.local() ? 'Local account' : 'Account';
 }
 
+/** Signed out here while a sign-in made elsewhere on the site waits, which the button continues. */
+function resumes(account: Account): boolean {
+  return !account.loggedIn() && account.elsewhere();
+}
+
+/** What a button that resumes says it does. The page only knows a sign-in exists, so it names no account. */
+const RESUME_TITLE = 'Continue the sign-in you already made to keep using this app';
+
 /** What the button says it does in `account`'s state: its title, and its More row's label. */
 function authLabel(account: Account): string {
   if (account.restoring()) {
@@ -44,6 +54,12 @@ function authLabel(account: Account): string {
   }
   if (account.unreachable()) {
     return 'Reconnecting to your sign-in';
+  }
+  if (account.signingOut()) {
+    return 'Signing out';
+  }
+  if (resumes(account)) {
+    return 'Continue session';
   }
   if (!account.loggedIn()) {
     return 'Sign in with Polkadot App';
@@ -57,13 +73,14 @@ function authLabel(account: Account): string {
  * A click toggles the popover only while `Connected`, and starts a sign-in in any other state, a pairing
  * under way while logged in included. It takes no clicks while the saved session is being read or cannot be
  * reached. The trigger ARIA follows the click: the Popover writes it while `Connected`, this component writes it
- * for the auth modal otherwise.
+ * for the auth modal otherwise. Signed out while a sign-in made elsewhere waits, it reads Continue session.
  */
 export function AuthButton(props: AuthButtonProps): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   const [button, setButton] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
   const account = (): Account => props.account;
   const opensPopover = (): boolean => account().connected();
+  const busy = (): boolean => account().restoring() || account().unreachable() || account().signingOut();
   // The keys live in this browser, not in Polkadot App.
   const local = (): boolean => account().loggedIn() && account().local();
   const shownName = (): string | undefined => {
@@ -71,6 +88,8 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
     return session === undefined ? undefined : sessionDisplayName(session);
   };
   const label = (): string => authLabel(account());
+  // The name stays the visible text, and the title describes the sign-in a click continues.
+  const title = (): string => (!busy() && resumes(account()) ? RESUME_TITLE : label());
   // The visible text starts the accessible name, so speech input can use it.
   const ariaLabel = (): string => {
     const session = account().loggedIn() ? account().session() : undefined;
@@ -99,8 +118,9 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         }}
         onClick={onClick}
         id={id('auth-button')}
-        loading={account().restoring() || account().unreachable()}
-        title={label()}
+        testId={id('auth-button')}
+        loading={busy()}
+        title={title()}
         aria-label={ariaLabel()}
         aria-haspopup={opensPopover() ? undefined : 'dialog'}
         aria-expanded={opensPopover() ? undefined : props.modalOpen() ? 'true' : 'false'}
@@ -117,7 +137,13 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
           fallback={
             <>
               <UserIcon class={s['signInIcon']} />
-              <span class={s['label']}>Sign in</span>
+              <span
+                class={s['label']}
+                data-testid="auth-button-label"
+                data-session={resumes(account()) ? 'elsewhere' : undefined}
+              >
+                {resumes(account()) ? 'Continue session' : 'Sign in'}
+              </span>
             </>
           }
         >
@@ -144,7 +170,7 @@ export function AuthButton(props: AuthButtonProps): JSX.Element {
         class={s['popover']}
         preload={AccountPanel.preload}
       >
-        <AccountPanel account={props.account} onLogout={props.onLogout} />
+        <AccountPanel account={props.account} onLogout={props.onLogout} sitesUrl={props.sitesUrl} />
       </Popover>
     </>
   );

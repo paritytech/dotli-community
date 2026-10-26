@@ -29,6 +29,8 @@ import {
   type RecordedWireMessage,
 } from '@dotli/transport/testing';
 import {
+  isLocalWalletEntropy,
+  isLocalWalletIdentity,
   protocolSchema,
   type DomainFailure,
   type FrameFailure,
@@ -241,16 +243,20 @@ const cases: Cases = {
   },
   storage: {
     authRead: requestCase(storage.authRead, { request: siteKey, responses: [ok('token'), ok(null)] }),
-    authWrite: requestCase(storage.authWrite, { request: siteKeyValue, responses: [ok()] }),
+    authWrite: requestCase(storage.authWrite, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
     authClear: requestCase(storage.authClear, { request: siteKey, responses: [ok()] }),
     authChanges: subscriptionCase(storage.authChanges, {
       start: undefined,
-      values: [siteKeyValue, { ...siteKey, value: null }],
+      values: [
+        { tag: 'session', value: siteKeyValue },
+        { tag: 'wallet', value: { siteId: siteKey.siteId } },
+      ],
       interrupts: [ok()],
     }),
     modeRead: requestCase(storage.modeRead, { request: siteKey, responses: [ok('wallet'), ok(null)] }),
-    modeWrite: requestCase(storage.modeWrite, { request: siteKeyValue, responses: [ok()] }),
+    modeWrite: requestCase(storage.modeWrite, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
     modeClear: requestCase(storage.modeClear, { request: siteKey, responses: [ok()] }),
+    authClearIf: requestCase(storage.authClearIf, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
   },
   wallet: {
     read: requestCase(wallet.read, {
@@ -260,13 +266,21 @@ const cases: Cases = {
         ok({ tag: 'unreadable', value: undefined }),
         ok({
           tag: 'ok',
-          value: { entropy: Uint8Array.of(1, 2, 3), identity: { identityAccountId: '5Grwva', liteUsername: null } },
+          value: {
+            entropy: Uint8Array.of(1, 2, 3),
+            identity: { identityAccountId: '5Grwva', liteUsername: null },
+            version: Uint8Array.of(7),
+          },
         }),
-        ok({ tag: 'ok', value: { entropy: Uint8Array.of(4, 5, 6), identity: null } }),
+        ok({ tag: 'ok', value: { entropy: Uint8Array.of(4, 5, 6), identity: null, version: Uint8Array.of(8) } }),
       ],
     }),
     save: requestCase(wallet.save, {
-      request: { siteId: 'app.dot', entropy: Uint8Array.of(9, 8, 7) },
+      request: {
+        siteId: 'app.dot',
+        entropy: Uint8Array.of(9, 8, 7),
+        identity: { identityAccountId: '5Grwva', liteUsername: null },
+      },
       responses: [ok()],
     }),
     identity: requestCase(wallet.identity, {
@@ -274,6 +288,10 @@ const cases: Cases = {
       responses: [ok()],
     }),
     forget: requestCase(wallet.forget, { request: { siteId: 'app.dot' }, responses: [ok()] }),
+    forgetIf: requestCase(wallet.forgetIf, {
+      request: { siteId: 'app.dot', version: Uint8Array.of(9, 8, 7) },
+      responses: [ok(true), ok(false)],
+    }),
   },
   chain: {
     send: requestCase(chain.send, {
@@ -376,6 +394,24 @@ describe('protocolSchema', () => {
       { handshakeOffer: { version: protocolSchema.version, hello: OPENER_HELLO } },
       { handshakeResponse: ok(ACCEPTER_HELLO) },
     ]);
+  });
+
+  it('As a page, I save a wallet without an identity and it round trips with a null identity', async () => {
+    // Given an accepter that serves the save and an opener that sends one without an identity
+    const { opener, accepter, delivered } = protocolRig();
+    const save = requestCase(wallet.save, {
+      request: { siteId: 'app.dot', entropy: Uint8Array.of(9, 8, 7), identity: null },
+      responses: [ok()],
+    });
+    save.serve(accepter, []);
+    opener.connect();
+    await opener.whenConnected();
+
+    // When the save is sent
+    const heard = await save.call(opener);
+
+    // Then the answer and the recorded messages carry the null identity
+    heard.check(delivered.flatMap(data => recordMessage(protocolSchema, data) ?? []));
   });
 
   it('As a facade, I match a remote failure by its tag, not by a remote error name', () => {
@@ -481,5 +517,36 @@ describe('protocolSchema', () => {
       }
     });
     expect(refusals).toEqual([expect.any(FrameRefusedError) as FrameRefusedError]);
+  });
+});
+
+describe('local wallet checks', () => {
+  it('As a page taking a wallet, I accept only the entropy sizes a recovery phrase has', () => {
+    // Given entropy lengths from 12 to 33 bytes
+    const sizes = [12, 16, 20, 24, 28, 32, 33];
+
+    // When each is checked
+    const accepted = sizes.filter(size => isLocalWalletEntropy(new Uint8Array(size)));
+
+    // Then only the recovery phrase sizes pass
+    expect(accepted).toEqual([16, 20, 24, 28, 32]);
+  });
+
+  it("As a page taking a window's wallet, I accept an identity only in the codec's shape", () => {
+    // Given identities in and out of the codec's shape
+    const values: unknown[] = [
+      { identityAccountId: 'acc', liteUsername: null },
+      { identityAccountId: 'acc', liteUsername: 'alice' },
+      { identityAccountId: 'acc' },
+      { identityAccountId: 1, liteUsername: null },
+      null,
+      ['acc'],
+    ];
+
+    // When each is checked
+    const accepted = values.map(isLocalWalletIdentity);
+
+    // Then only the two in shape pass
+    expect(accepted).toEqual([true, true, false, false, false, false]);
   });
 });

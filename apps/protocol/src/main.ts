@@ -15,7 +15,7 @@ import {
 import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
-import { deleteAllDatabases, errorMessage, log, serializeError } from '@dotli/shared';
+import { errorMessage, log, serializeError } from '@dotli/shared';
 import {
   TIMEOUTS,
   getActiveServicesConfig,
@@ -33,7 +33,6 @@ import {
   ProtocolInitFailedError,
   protocolSchema,
 } from '@dotli/protocol';
-import { DB_NAME } from '@dotli/storage';
 import { createTransport, createWindowProvider } from '@dotli/transport';
 
 import { connectSharedWorker, registerWorkerRelay } from './shared-worker-link.js';
@@ -43,6 +42,7 @@ import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { createSharedStoreHandler, serveLocalWallet, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
 import { createRefusalReporter, reportRefusals } from './refusal-report.js';
 import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
+import { purgeWorkerCaches } from './worker-caches.js';
 import { createFrameBoot } from './frame-boot.js';
 import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
 
@@ -103,18 +103,13 @@ serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.telemet
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
 const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
-createSharedStoreHandler(served, {
+const sharedStores = createSharedStoreHandler(served, {
   storage: () => localStorage,
   channel: typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SHARED_AUTH_CHANNEL) : null,
 });
-serveLocalWallet(served);
-
-/** Deletes every IndexedDB that could warm-start the chains, keeping dotli's own stores of user state. */
-async function purgeWorkerCaches(): Promise<void> {
-  // Rejects rather than continuing, which would boot smoldot against the stale DB.
-  const deleted = await deleteAllDatabases(indexedDB, [DB_NAME]);
-  log.event('Worker caches purged', { flow: 'protocol', databases: deleted.length });
-}
+serveLocalWallet(served, siteId => {
+  sharedStores.walletChanged(siteId);
+});
 
 /** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
 function failInit(message: string, cause?: unknown): void {
@@ -149,7 +144,8 @@ async function init(): Promise<void> {
   // Before any smoldot init. A failed purge aborts, since a stale DB would silently ignore the user's setting.
   if (skipWorkerCache === true) {
     try {
-      await purgeWorkerCaches();
+      const deleted = await purgeWorkerCaches(indexedDB);
+      log.event('Worker caches purged', { flow: 'protocol', databases: deleted.length });
     } catch (err: unknown) {
       log.error('[dot.li protocol] purgeWorkerCaches failed:', err);
       failInit(`Failed to reset chain DB: ${errorMessage(err)}`, err);

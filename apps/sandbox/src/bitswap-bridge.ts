@@ -4,7 +4,7 @@
 // Asks the host parent, which proxies each block request to the protocol iframe's smoldot.
 
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
-import { TIMEOUTS } from '@dotli/config';
+import { TIMEOUTS, isSiteOrigin } from '@dotli/config';
 import { createPendingReplies, log, randomId, toError, withTimeout } from '@dotli/shared';
 
 export interface BitswapBridgeDeps {
@@ -23,26 +23,10 @@ export interface BitswapBridge {
 /** A host page origin: the root or a product subdomain of `baseDomain`, or a local one, never a sandbox. */
 export function hostOriginRule(baseDomain: string): (origin: string) => boolean {
   return origin => {
-    let url: URL;
-    try {
-      url = new URL(origin);
-    } catch {
-      return false;
-    }
-    const { hostname, protocol } = url;
-    if (hostname === '127.0.0.1') {
+    if (URL.canParse(origin) && new URL(origin).hostname === '127.0.0.1') {
       return true;
     }
-    if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
-      return hostname !== 'app.localhost' && !hostname.endsWith('.app.localhost');
-    }
-    if (protocol !== 'https:') {
-      return false;
-    }
-    if (hostname === `app.${baseDomain}` || hostname.endsWith(`.app.${baseDomain}`)) {
-      return false;
-    }
-    return hostname === baseDomain || hostname.endsWith(`.${baseDomain}`);
+    return isSiteOrigin(origin, baseDomain);
   };
 }
 

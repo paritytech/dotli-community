@@ -16,6 +16,9 @@ const SUBNAME_SANDBOX_PREFIX = 'sn--';
 /** The longest label a DNS name can carry. */
 const MAX_LABEL_LENGTH = 63;
 
+/** No name under the TLD is a single character, while 2-character nodes exist, such as a device name's two-digit node. */
+const MIN_REGISTERED_LABEL_LENGTH = 2;
+
 /** The longest name a DNS hostname can carry. */
 const MAX_NAME_LENGTH = 253;
 
@@ -26,6 +29,7 @@ export type DotLabelResult =
       reason:
         | 'empty'
         | 'too-long'
+        | 'too-short'
         | 'uppercase'
         | 'leading-hyphen'
         | 'trailing-hyphen'
@@ -35,7 +39,8 @@ export type DotLabelResult =
         | 'reserved';
     };
 
-export function validateDotLabel(label: string): DotLabelResult {
+/** Every label rule apart from the minimum length. */
+function validateLabelShape(label: string): DotLabelResult {
   if (label.length === 0) {
     return { ok: false, reason: 'empty' };
   }
@@ -68,17 +73,30 @@ export function validateDotLabel(label: string): DotLabelResult {
   return { ok: true };
 }
 
+/** Validates a label registered under the TLD. */
+export function validateDotLabel(label: string): DotLabelResult {
+  if (label.length > 0 && label.length < MIN_REGISTERED_LABEL_LENGTH) {
+    return { ok: false, reason: 'too-short' };
+  }
+  return validateLabelShape(label);
+}
+
 export function isValidDotLabel(label: string): boolean {
   return validateDotLabel(label).ok;
 }
 
-/** A dotNS name: one label, or a subname whose labels are each valid, such as `pr16.my-app`. */
+/**
+ * A dotNS name: one label, or a subname whose labels each have a label's shape, such as `pr16.my-app`. Only the last,
+ * registered label must also meet the length minimum.
+ */
 export function validateDotName(name: string): DotLabelResult {
   if (name.length > MAX_NAME_LENGTH) {
     return { ok: false, reason: 'too-long' };
   }
-  for (const label of name.split('.')) {
-    const result = validateDotLabel(label);
+  const labels = name.split('.');
+  const last = labels.length - 1;
+  for (const [index, label] of labels.entries()) {
+    const result = index === last ? validateDotLabel(label) : validateLabelShape(label);
     if (!result.ok) {
       return result;
     }

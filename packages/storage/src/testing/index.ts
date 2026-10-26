@@ -6,7 +6,17 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { createDbConnection, type DotliIdb } from '../db.js';
 import { openIdb } from '@dotli/shared';
-import { DB_NAME, DB_VERSION, upgradeDotliDb } from '../schema.js';
+import {
+  DB_NAME,
+  DB_VERSION,
+  SITE_GRANTS_DB_NAME,
+  SITE_GRANTS_DB_VERSION,
+  upgradeDotliDb,
+  upgradeSiteGrantsDb,
+  upgradeWalletDb,
+  WALLET_DB_NAME,
+  WALLET_DB_VERSION,
+} from '../schema.js';
 
 export interface MemoryIdb extends DotliIdb {
   /** The factory behind `connect`, for a test that opens the database itself. */
@@ -46,16 +56,35 @@ function observeTransactions(db: IDBDatabase, onTransaction: (tx: IDBTransaction
   return db;
 }
 
-/** A fresh in-memory IndexedDB, holding nothing, that a store reads and writes in place of the page's own. */
-export function memoryIdb(options: MemoryIdbOptions = {}): MemoryIdb {
+function memoryIdbOf(
+  open: (factory: IDBFactory) => Promise<IDBDatabase>,
+  { onTransaction }: MemoryIdbOptions,
+): MemoryIdb {
   const factory = new IDBFactory();
-  const { onTransaction } = options;
   return {
     factory,
     connect: createDbConnection(async () => {
-      const db = behaveLikeBrowserOnClose(await openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb));
+      const db = behaveLikeBrowserOnClose(await open(factory));
       return onTransaction === undefined ? db : observeTransactions(db, onTransaction);
     }),
     keyRange: () => IDBKeyRange,
   };
+}
+
+/** A fresh in-memory IndexedDB, holding nothing, that a store reads and writes in place of the page's own. */
+export function memoryIdb(options: MemoryIdbOptions = {}): MemoryIdb {
+  return memoryIdbOf(factory => openIdb(factory, DB_NAME, DB_VERSION, upgradeDotliDb), options);
+}
+
+/** A fresh in-memory wallet database, in place of the frame's own. */
+export function memoryWalletIdb(options: MemoryIdbOptions = {}): MemoryIdb {
+  return memoryIdbOf(factory => openIdb(factory, WALLET_DB_NAME, WALLET_DB_VERSION, upgradeWalletDb), options);
+}
+
+/** A fresh in-memory site grants database, in place of the session windows' own. */
+export function memorySiteGrantsIdb(options: MemoryIdbOptions = {}): MemoryIdb {
+  return memoryIdbOf(
+    factory => openIdb(factory, SITE_GRANTS_DB_NAME, SITE_GRANTS_DB_VERSION, upgradeSiteGrantsDb),
+    options,
+  );
 }

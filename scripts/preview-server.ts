@@ -15,7 +15,8 @@ import {
   RUNTIME_NETWORK_CONFIG_PATH,
   runtimeNetworkConfigScriptBody,
 } from '@config/vite/runtime-network-config';
-import { headerPolicy, resolveFile, responseHeaders, routeFor, type Site } from '@config/vite/serving';
+import { createLocalServing, headerPolicy, pathInBuild, resolveFile, type Site } from '@config/vite/serving';
+import { LOCAL_ROOTS } from '@dotli/config/local-roots';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
 type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;
@@ -25,6 +26,7 @@ const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETW
 
 const PORT = parseInt(process.env['PORT'] ?? '5173', 10);
 const HOST = process.env['HOST'] ?? '127.0.0.1';
+const serving = createLocalServing(LOCAL_ROOTS);
 const ROOT = join(import.meta.dirname, '..');
 const DIRS: Record<Site, string> = {
   host: join(ROOT, 'apps/host/dist'),
@@ -122,13 +124,13 @@ async function handle(req: Request): Promise<Response> {
     return new Response(runtimeConfigBody, { headers: RUNTIME_NETWORK_CONFIG_HEADERS });
   }
 
-  const route = routeFor(url.hostname);
-  const resolved = resolveFile(DIRS[route.site], route, url.pathname);
+  const route = serving.routeFor(url.hostname, url.pathname);
+  const resolved = resolveFile(DIRS[route.site], route, pathInBuild(route, url.pathname));
   if (resolved === undefined) {
     return new Response('Not Found', { status: 404 });
   }
   const body = Readable.toWeb(createReadStream(resolved.file)) as ReadableStream<Uint8Array>;
-  const headers = responseHeaders(resolved.file, resolved.pathname, headerPolicy(route, url.pathname));
+  const headers = serving.responseHeaders(resolved.file, resolved.pathname, headerPolicy(route, url.pathname));
   return new Response(body as BodyInit, { headers });
 }
 
