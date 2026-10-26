@@ -20,7 +20,7 @@ import type { SiteRequest } from './site-request.js';
 import type { SiteRound, SiteRoundDeps } from './site-round.js';
 import { createSiteSignIn } from './site-sign-in.js';
 import { parseSiteCall, type SiteSignRequest } from './site-sign-request.js';
-import type { SiteSigner } from './site-signer.js';
+import type { SiteAccountReader } from './site-account-reader.js';
 import { createSiteTransaction } from './site-transaction.js';
 import type { SiteTxSigner } from './site-tx-signer.js';
 
@@ -58,13 +58,13 @@ export interface SiteWindow {
 
 /**
  * What a site's transaction window runs on: a sign-in window's parts, with the chain, the transaction signer and the
- * signer that reads the site account.
+ * account reader that reads the site account.
  */
 export type SiteTransactionWindowDeps = Omit<SiteWindowDeps, 'request'> & {
   request: SiteSignRequest;
   chain: SiteChain;
   txSigner: SiteTxSigner;
-  signer: SiteSigner;
+  accountReader: SiteAccountReader;
 };
 
 /**
@@ -165,7 +165,7 @@ export async function openSiteTransaction(deps: SiteTransactionWindowDeps): Prom
       self: deps.self,
       chain: deps.chain,
       txSigner: deps.txSigner,
-      signer: deps.signer,
+      accountReader: deps.accountReader,
       mainAccount: deps.mainAccount,
       startWindowFlow,
       now: deps.now,

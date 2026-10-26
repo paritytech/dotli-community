@@ -25,7 +25,7 @@ import { parsePublicSuffixList } from './public-suffix-list.js';
 import type { DisplayCall } from './site-call.js';
 import type { SiteChain } from './site-chain.js';
 import type { SiteSignRequest } from './site-sign-request.js';
-import type { SiteSigner } from './site-signer.js';
+import type { SiteAccountReader } from './site-account-reader.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowDeps } from './site-window.js';
 
 const SELF = 'https://dot.li';
@@ -196,13 +196,13 @@ function fakeChain() {
   return { chain, decoded };
 }
 
-/** A signer that reads the site account at once. */
-const SIGNER: SiteSigner = {
+/** An account reader that reads the site account at once. */
+const ACCOUNT_READER: SiteAccountReader = {
   account: () => Promise.resolve(SITE_KEY),
 };
 
 /**
- * A site's transaction window over the window's parts, a chain that builds it and a signer that reads the site account,
+ * A site's transaction window over the window's parts, a chain that builds it and an account reader that reads the site account,
  * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
  * With `grantRead`, the request carries an old token whose read waits for it.
  */
@@ -237,7 +237,7 @@ function transactionHarness(call: string | null, { grantRead }: { grantRead?: Pr
       },
     },
     chain,
-    signer: SIGNER,
+    accountReader: ACCOUNT_READER,
     txSigner: { creator: () => () => Promise.reject(new Error('The fake chain signs no transaction')) },
   });
   return { ...parts, decoded, asked: asked.promise, opening };

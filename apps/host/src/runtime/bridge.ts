@@ -34,7 +34,7 @@ import { sessionState } from './session/session-state.js';
 import { siteWallet } from './session/site-wallet.js';
 import { createMainAccountSource, type MainAccountSource } from './site-sign-in/main-account.js';
 import { createSiteChain } from './site-sign-in/site-chain.js';
-import { createSiteSigner } from './site-sign-in/site-signer.js';
+import { createSiteAccountReader } from './site-sign-in/site-account-reader.js';
 import { createSiteTxSigner } from './site-sign-in/site-tx-signer.js';
 import { createPageSignOut } from './sign-out.js';
 import { pageSignInHandoff } from './session-handoff/opener.js';
@@ -143,7 +143,7 @@ export const mainAccount: MainAccountSource = createMainAccountSource({
 });
 
 /** Reads the key of the account a site names on the page's own core, for the session window. */
-export const siteSigner = createSiteSigner({ acquire: () => bridge.core.acquire() });
+export const siteAccountReader = createSiteAccountReader({ acquire: () => bridge.core.acquire() });
 
 /** Signs a site's transaction as the account the site names on the page's own core, for the session window. */
 export const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });

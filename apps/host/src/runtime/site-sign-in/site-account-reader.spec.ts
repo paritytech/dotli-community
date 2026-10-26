@@ -21,7 +21,7 @@ import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
 import { fromHex, toHex } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
 import { makeProvider } from '../page-core.fake.js';
-import { createSiteSigner, SiteSignError, SiteSignRejectedError } from './site-signer.js';
+import { createSiteAccountReader, SiteAccountReadError, SiteAccountRejectedError } from './site-account-reader.js';
 
 /** The account the site names, of a product other than the core's own. */
 const ACCOUNT: ProductAccountId = {
@@ -93,10 +93,10 @@ describe('site account', () => {
   it('As a user, I hand a round the key of the account the site named, with nothing signed', async () => {
     // Given a core that knows the named account
     const core = fakeCore({ account: [{ ok: SITE_KEY }] });
-    const signer = createSiteSigner({ acquire: core.acquire });
+    const reader = createSiteAccountReader({ acquire: core.acquire });
 
     // When the account is read
-    const key = await signer.account(ACCOUNT);
+    const key = await reader.account(ACCOUNT);
 
     // Then that account alone was read
     expect(key).toEqual(SITE_KEY);
@@ -107,24 +107,24 @@ describe('site account', () => {
   it('As a user who rejects the account on my phone, I see the account read rejected', async () => {
     // Given a core whose user rejects the account request
     const core = fakeCore({ account: [{ error: { tag: 'Domain', value: { tag: 'Rejected' } } }] });
-    const signer = createSiteSigner({ acquire: core.acquire });
+    const reader = createSiteAccountReader({ acquire: core.acquire });
 
     // When the account is read
-    const reading = signer.account(ACCOUNT);
+    const reading = reader.account(ACCOUNT);
 
     // Then it rejects as rejected
-    await expect(reading).rejects.toBeInstanceOf(SiteSignRejectedError);
+    await expect(reading).rejects.toBeInstanceOf(SiteAccountRejectedError);
   });
 
   it('As a user whose core answers an account key of the wrong length, I see the account read fail', async () => {
     // Given a core that answers the account with a 31-byte key
     const core = fakeCore({ account: [{ ok: new Uint8Array(31) }] });
-    const signer = createSiteSigner({ acquire: core.acquire });
+    const reader = createSiteAccountReader({ acquire: core.acquire });
 
     // When the account is read
-    const error: unknown = await signer.account(ACCOUNT).catch((caught: unknown) => caught);
+    const error: unknown = await reader.account(ACCOUNT).catch((caught: unknown) => caught);
 
     // Then it fails as a site sign-in call
-    expect(error).toBeInstanceOf(SiteSignError);
+    expect(error).toBeInstanceOf(SiteAccountReadError);
   });
 });

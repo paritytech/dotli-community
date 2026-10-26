@@ -11,27 +11,29 @@ import { fromHex } from '@dotli/shared';
 import { withCoreCalls, type CoreCallsDeps, type SiteCallError } from './core-calls.js';
 
 /** The user rejected the request on the phone, or it was withdrawn. */
-export class SiteSignRejectedError extends Error {
-  override name = 'SiteSignRejectedError';
+export class SiteAccountRejectedError extends Error {
+  override name = 'SiteAccountRejectedError';
 
   constructor(error: SiteCallError) {
     super("The site's account request was rejected", { cause: error });
   }
 }
 
-/** A site sign-in call that failed for any reason but a rejection. Its cause is the TrUAPI error. */
-export class SiteSignError extends Error {
-  override name = 'SiteSignError';
+/** An account key read that failed for any reason but a rejection. Its cause is the TrUAPI error. */
+export class SiteAccountReadError extends Error {
+  override name = 'SiteAccountReadError';
 
   constructor(error: unknown) {
     super("The site's account request failed", { cause: error });
   }
 }
 
-export interface SiteSigner {
+/** Reads the key of the product account a site names. It signs nothing. */
+export interface SiteAccountReader {
   /**
-   * The public key of `account`. Rejects with {@link SiteSignRejectedError} on a rejection, {@link SiteSignError} on a
-   * failed call or a key that is not 32 bytes, and with the core's own error when no connection could be made.
+   * The public key of `account`. Rejects with {@link SiteAccountRejectedError} on a rejection,
+   * {@link SiteAccountReadError} on a failed call or a key that is not 32 bytes, and with the core's own error when no
+   * connection could be made.
    */
   account(account: ProductAccountId): Promise<Uint8Array>;
 }
@@ -48,10 +50,10 @@ function accountKey(publicKey: string): Uint8Array {
   try {
     key = fromHex(publicKey);
   } catch (error) {
-    throw new SiteSignError(error);
+    throw new SiteAccountReadError(error);
   }
   if (key.length !== PUBLIC_KEY_BYTES) {
-    throw new SiteSignError(new Error(`The account key has ${String(key.length)} bytes`));
+    throw new SiteAccountReadError(new Error(`The account key has ${String(key.length)} bytes`));
   }
   return key;
 }
@@ -61,25 +63,25 @@ function domainTag(error: SiteCallError): string | null {
 }
 
 /**
- * Runs one call once. A rejection ends it with {@link SiteSignRejectedError}, and any other failure with
- * {@link SiteSignError}.
+ * Runs one call once. A rejection ends it with {@link SiteAccountRejectedError}, and any other failure with
+ * {@link SiteAccountReadError}.
  */
 async function siteCall<T>(call: () => ResultAsync<T, SiteCallError>): Promise<T> {
   let result: Result<T, SiteCallError>;
   try {
     result = await call();
   } catch (error) {
-    throw new SiteSignError(error);
+    throw new SiteAccountReadError(error);
   }
   if (result.isOk()) {
     return result.value;
   }
   throw result.error.tag === 'Cancelled' || domainTag(result.error) === 'Rejected'
-    ? new SiteSignRejectedError(result.error)
-    : new SiteSignError(result.error);
+    ? new SiteAccountRejectedError(result.error)
+    : new SiteAccountReadError(result.error);
 }
 
-/** What one call of the signer runs over: the account the site names and the core's clients. */
+/** What one read of the account runs over: the account the site names and the core's clients. */
 interface SiteCalls {
   account: ProductAccountId;
   accounts: AccountClient;
@@ -91,7 +93,12 @@ async function readAccount(calls: SiteCalls): Promise<Uint8Array> {
   return accountKey(read.account.publicKey);
 }
 
-export function createSiteSigner(deps: CoreCallsDeps): SiteSigner {
+/**
+ * Makes a reader that opens one connection to the page core for each read and closes it after. Its `account` rejects
+ * with {@link SiteAccountRejectedError} on a rejection, {@link SiteAccountReadError} on a failed call or a key that is
+ * not 32 bytes, and with the core's own error when no connection could be made.
+ */
+export function createSiteAccountReader(deps: CoreCallsDeps): SiteAccountReader {
   /** Runs `use` over one connection to the core for `account`, which it closes after. */
   const withCalls = <T>(account: ProductAccountId, use: (calls: SiteCalls) => Promise<T>): Promise<T> =>
     withCoreCalls(deps, PHONE_WAIT_MS, ({ transport }) => use({ account, accounts: new AccountClient(transport) }));

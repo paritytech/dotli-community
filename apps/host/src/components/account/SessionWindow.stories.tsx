@@ -802,12 +802,12 @@ export const SiteConsentGroup: Story = {
   },
 };
 
-/** As a user signing a site in, I am told to approve in Polkadot App for its origin and can cancel. */
+/** As a user signing a site in, the window shows Signing in for its origin and I can cancel. */
 export const SiteSigning: Story = {
   tags: ['!autodocs'],
   args: { screen: { view: 'site-signing', origin: SITE_ORIGIN, route: 'auth' } },
   play: async ({ canvas, userEvent, step }) => {
-    await step('Then the window asks me to approve, names the origin and offers Cancel alone', async () => {
+    await step('Then the window shows Signing in, names the origin and offers Cancel alone', async () => {
       await expect(windowView()).toHaveAttribute('data-view', 'site-signing');
       await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent('Signing in');
       await expect(byTestId('session-window-spinner')).toBeVisible();

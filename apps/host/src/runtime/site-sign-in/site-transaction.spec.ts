@@ -31,7 +31,7 @@ import { SiteChainError, type SiteChain, type SiteDecodedCall } from './site-cha
 import type { SiteRound, SiteScreen } from './site-round.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
 import type { SiteGroups } from './site-groups.js';
-import { SiteSignError, type SiteSigner } from './site-signer.js';
+import { SiteAccountReadError, type SiteAccountReader } from './site-account-reader.js';
 import { createSiteTransaction, siteTransactionAction, type SiteTransactionResult } from './site-transaction.js';
 import { SiteTxError } from './site-tx-signer.js';
 
@@ -189,11 +189,11 @@ function fakeTxSigner(builds: (() => Promise<string>)[] = []) {
   };
 }
 
-/** A signer that reads the site account at once, after it answers with each failure it was given. */
-function fakeSigner(failures: Error[] = [], steps: string[] = []) {
+/** An account reader that reads the site account at once, after it answers with each failure it was given. */
+function fakeAccountReader(failures: Error[] = [], steps: string[] = []) {
   const queue = [...failures];
   const accounts: ProductAccountId[] = [];
-  const signer: Pick<SiteSigner, 'account'> = {
+  const accountReader: Pick<SiteAccountReader, 'account'> = {
     account: account => {
       accounts.push(account);
       steps.push('account');
@@ -201,7 +201,7 @@ function fakeSigner(failures: Error[] = [], steps: string[] = []) {
       return failure === undefined ? Promise.resolve(SITE_KEY) : Promise.reject(failure);
     },
   };
-  return { signer, accounts };
+  return { accountReader, accounts };
 }
 
 function grantOf(): SiteGrant {
@@ -274,7 +274,7 @@ function recordingResponder() {
 
 /**
  * A site's transaction over fakes: `responder` answers the site, Asset Hub plays its script, the creator signs at
- * once and the signer reads the site account at once, unless the test says otherwise. `steps` names each decode,
+ * once and the account reader reads the site account at once, unless the test says otherwise. `steps` names each decode,
  * account read, review and build in the order they happened.
  */
 async function roundOver(
@@ -290,7 +290,7 @@ async function roundOver(
   const steps: string[] = [];
   const chain = fakeChain(options, steps);
   const tx = fakeTxSigner(options.builds);
-  const { signer, accounts } = fakeSigner(options.accountFailures, steps);
+  const { accountReader, accounts } = fakeAccountReader(options.accountFailures, steps);
   const windowFlows: (() => void)[] = [];
   const closed = deferred<undefined>();
   const flow = createSiteTransaction({
@@ -310,7 +310,7 @@ async function roundOver(
     groups: GROUPS,
     chain: chain.chain,
     txSigner: tx.txSigner,
-    signer,
+    accountReader,
     mainAccount: () => Promise.resolve(MAIN),
     startWindowFlow: stored => {
       windowFlows.push(stored);
@@ -693,8 +693,8 @@ describe('site transaction', () => {
   });
 
   it('As a user whose site account could not be read, I see the failure counted for the account', async () => {
-    // Given a signer whose account read fails
-    const h = await harness({ accountFailures: [new SiteSignError({ tag: 'Denied' })] });
+    // Given an account reader whose account read fails
+    const h = await harness({ accountFailures: [new SiteAccountReadError({ tag: 'Denied' })] });
 
     // When the round runs for the main account
     await consentAndStore(h);
@@ -746,7 +746,7 @@ describe('site transaction action', () => {
   it('As a site, I am refused with bad_request for a call that does not decode, before the site account is read', async () => {
     // Given the transaction action over a chain on which the call does not decode
     const chain = fakeChain({ decodeFailure: new SiteChainError('undecodable', 'The call does not decode') });
-    const { signer, accounts } = fakeSigner();
+    const { accountReader, accounts } = fakeAccountReader();
     const action = siteTransactionAction({
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
@@ -754,7 +754,7 @@ describe('site transaction action', () => {
       account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner().txSigner,
-      signer,
+      accountReader,
     });
     const shown: string[] = [];
 
@@ -780,7 +780,7 @@ describe('site transaction action', () => {
   it('As a round that ended before its transaction ran, I close the chain session once and ask nothing of it or the phone', async () => {
     // Given the transaction action of a round that already ended
     const chain = fakeChain({});
-    const { signer, accounts } = fakeSigner();
+    const { accountReader, accounts } = fakeAccountReader();
     const action = siteTransactionAction({
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
@@ -788,7 +788,7 @@ describe('site transaction action', () => {
       account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner().txSigner,
-      signer,
+      accountReader,
     });
     const ended = new AbortController();
     ended.abort();
@@ -814,7 +814,7 @@ describe('site transaction action', () => {
   });
 
   it('As a user who signs in again with another account before Try again, the site account is read again for the nonce', async () => {
-    // Given the transaction action whose first build fails, and a signer that reads another key for each main account
+    // Given the transaction action whose first build fails, and an account reader that reads another key for each main account
     const chain = fakeChain({ buildFailures: [new Error('Asset Hub stopped answering')] });
     const firstKey = new Uint8Array(32).fill(0x31);
     const secondKey = new Uint8Array(32).fill(0x32);
@@ -827,7 +827,7 @@ describe('site transaction action', () => {
       account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner().txSigner,
-      signer: {
+      accountReader: {
         account: account => {
           accounts.push(account);
           return Promise.resolve(must(keys.shift(), 'a key for each read'));
@@ -863,7 +863,7 @@ describe('site transaction action', () => {
       account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner([() => built.promise]).txSigner,
-      signer: fakeSigner().signer,
+      accountReader: fakeAccountReader().accountReader,
     });
     const ended = new AbortController();
     const signing = deferred<undefined>();

@@ -267,7 +267,7 @@ async function openSiteTransactionFlow(
     request: round.request,
     chain: bridgeModule.siteChain,
     txSigner: bridgeModule.siteTxSigner,
-    signer: bridgeModule.siteSigner,
+    accountReader: bridgeModule.siteAccountReader,
   });
   // A refused round keeps showing the responder, which says it refused, while the window closes.
   if (opened === null) {

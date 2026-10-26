@@ -10,7 +10,7 @@ import { createSiteRound, type SiteAction, type SiteRound, type SiteRoundDeps } 
 
 export type SiteSignInDeps = Omit<SiteRoundDeps<SiteSignInResult>, 'action' | 'metric'>;
 
-/** Resolves with the main account's username, or an empty one when it has none. Never rejects. */
+/** Resolves with the main account's username, or `null` when it has none. Never rejects. */
 export function siteSignInAction(): SiteAction<SiteSignInResult> {
   return {
     route: 'auth',

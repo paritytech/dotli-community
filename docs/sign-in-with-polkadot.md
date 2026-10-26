@@ -8,7 +8,7 @@ pages, and describes only what crosses the wire.
 
 Any website can offer "Sign in with Polkadot" that works in every browser, Safari included. A click opens a dot.li
 session page as a popup, the way Google sign-in works in popup mode. The user's pairing with the Polkadot App stays on
-the dot.li root domain. A site gets the user's username, or an empty one when the user has none, and a site token of its
+the dot.li root domain. A site gets the user's username, or `null` when the user has none, and a site token of its
 own, which it keeps in its own storage, so later visits restore with no popup.
 
 Sign-in signs nothing and proves nothing. It tells a site who the user says they are, for display. The real check comes
@@ -46,7 +46,7 @@ normative. The library API is a recommendation, which its owners MAY shape diffe
 - A user already signed in on dot.li signs in to a new site with a click and Continue. No QR code and no phone step.
 - Later visits restore silently from the site's own storage.
 - Safari, Chrome and Firefox behave the same.
-- A site gets the user's username, or an empty one, and a site token that stays the same until revoked.
+- A site gets the user's username, or `null`, and a site token that stays the same until revoked.
 - A site can ask dot.li to sign a transaction as a product account the site names, and gets the signed transaction to
   submit itself.
 - The user can see and revoke each site's access.

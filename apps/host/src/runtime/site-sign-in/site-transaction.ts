@@ -22,7 +22,7 @@ import {
   type SiteRoundDeps,
 } from './site-round.js';
 import type { SiteSignRequest } from './site-sign-request.js';
-import { SiteSignRejectedError, type SiteSigner } from './site-signer.js';
+import { SiteAccountRejectedError, type SiteAccountReader } from './site-account-reader.js';
 import { SiteTxError, type SiteTxSigner } from './site-tx-signer.js';
 
 /** What the site gets for its transaction: the signed transaction, in lowercase `0x` hex. */
@@ -36,7 +36,7 @@ export type SiteTransactionDeps = Omit<SiteRoundDeps<SiteTransactionResult>, 'ac
   call: Uint8Array;
   chain: SiteChain;
   txSigner: SiteTxSigner;
-  signer: Pick<SiteSigner, 'account'>;
+  accountReader: Pick<SiteAccountReader, 'account'>;
 };
 
 async function openChain(chain: SiteChain, genesis: string): Promise<SiteChainSession> {
@@ -95,9 +95,9 @@ export function siteTransactionAction(deps: {
   call: Uint8Array;
   chain: SiteChain;
   txSigner: SiteTxSigner;
-  signer: Pick<SiteSigner, 'account'>;
+  accountReader: Pick<SiteAccountReader, 'account'>;
 }): SiteAction<SiteTransactionResult> {
-  const { origin, account, genesis, call, chain, txSigner, signer } = deps;
+  const { origin, account, genesis, call, chain, txSigner, accountReader } = deps;
   // The named account's key once read for a main account, which a Retry within the round for that main account uses
   // rather than asking the phone again. Another main account derives another key.
   let readKey: { owner: string; key: Uint8Array } | null = null;
@@ -108,9 +108,9 @@ export function siteTransactionAction(deps: {
     }
     let key: Uint8Array;
     try {
-      key = await signer.account(account);
+      key = await accountReader.account(account);
     } catch (error) {
-      if (error instanceof SiteSignRejectedError) {
+      if (error instanceof SiteAccountRejectedError) {
         throw new SiteRoundRejected(error);
       }
       throw new SiteRoundFailure('account', true, 'The site account could not be read', error);
@@ -166,7 +166,7 @@ export function siteTransactionAction(deps: {
 
 /** A site's transaction in the session window: the site's round with the transaction as its action. */
 export function createSiteTransaction(deps: SiteTransactionDeps): SiteRound {
-  const { request, call, chain, txSigner, signer, ...round } = deps;
+  const { request, call, chain, txSigner, accountReader, ...round } = deps;
   return createSiteRound({
     ...round,
     request: { round: request.round, siteToken: request.siteToken, groupToken: request.groupToken },
@@ -177,7 +177,7 @@ export function createSiteTransaction(deps: SiteTransactionDeps): SiteRound {
       call,
       chain,
       txSigner,
-      signer,
+      accountReader,
     }),
     metric: S.SITE_TRANSACTION,
   });
