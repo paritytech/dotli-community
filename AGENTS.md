@@ -59,6 +59,10 @@ the placement rules in `docs/code/placement.md`.
 
 ## Code style
 
+How code is shaped and how pieces combine (factories, functions, composition, state, types, errors, modules, naming)
+lives in `docs/code/style.md`. Read it before you design, plan or write code. Where a rule below says otherwise, the
+rule below wins.
+
 General:
 
 - Don't disable rules without a one-line reason.

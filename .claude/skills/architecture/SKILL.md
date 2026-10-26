@@ -244,6 +244,10 @@ Brainstorming and planning both carry it:
   layout.
 - **Files split by responsibility.** Name each file by the one responsibility it holds, so no task produces a module
   that later has to be split.
+- **Code shape** (`docs/code/style.md`). The design names its building blocks in that doc's terms: the factories and
+  their params, the wrappers, the error classes, the cross-boundary message formats. Every code snippet in the plan
+  follows the doc, because implementers copy plan code. Each task's Context `Rules` cite the style sections that shape
+  its code, such as (docs/code/style.md § Errors).
 - **Failure paths walked.** For each layer the plan touches, walk what happens when it fails, before any task is
   dispatched.
 - **A Context entry per task.** Planning already found what each task needs to read, so write it down. Under the task's
@@ -282,7 +286,8 @@ Each pass checks `docs/_plans/<topic>-plan.md` against the actual repo:
    test? Are `must_not_touch`, `out_of_scope` and the verification commands stated? Are the failure paths of each layer
    walked? Is every task in exactly one review batch, sized and ordered as "Review batches" sets?
 5. **Architecturally sound?** The Architecture gate (AGENTS.md § Architecture), placement against
-   `docs/code/placement.md`, files split by responsibility, and the vocabulary of the package or app.
+   `docs/code/placement.md`, files split by responsibility, the vocabulary of the package or app, and the code shape
+   against `docs/code/style.md`: the building blocks the plan names and every snippet it dictates.
 6. **Sized honestly?** Compare the plan's file list against the step 2 probe and the frame. Flag a file or layer count
    that contradicts the frame. Flag braid the design never named, such as a new flag on a shared path or a parameter
    threaded through callers that don't use it. Step 2 measured the radius from the frame, and here it is enumerated
@@ -305,9 +310,10 @@ A pass returns "no gaps" or findings. The brief asks for a severity on each find
 - **Blocking**: a task executed as written fails or builds the wrong thing. An imagined path, symbol, export or command,
   a commit that leaves typecheck or tests failing, missing wiring, a step whose input comes from nowhere, or a
   divergence from the design (criterion 7).
-- **Major**: the plan executes but breaks the Architecture gate or the placement, sizes the change dishonestly, leaves a
-  failure path or a requirement without a test, or has a Context entry that leaves out a file or symbol its steps depend
-  on. Prose whose strength cannot be told from its context is major too.
+- **Major**: the plan executes but breaks the Architecture gate or the placement, dictates code that breaks
+  `docs/code/style.md`, sizes the change dishonestly, leaves a failure path or a requirement without a test, or has a
+  Context entry that leaves out a file or symbol its steps depend on. Prose whose strength cannot be told from its
+  context is major too.
 - **Minor**: everything else. Wording, a missing RFC 2119 word on an instruction whose strength is plain, the phrasing
   of a comment or commit message the plan dictates, a pointer one LSP lookup resolves, ordering or formatting.
 
@@ -350,10 +356,13 @@ the plan, is its controller.
 ### Briefs
 
 Every implementer and batch reviewer brief states the Architecture gate outright. It also carries the dotli context:
-placement is fixed, the vocabulary holds, and tests follow their owner docs.
+placement is fixed, the vocabulary holds, code follows `docs/code/style.md`, and tests follow their owner docs. A batch
+reviewer checks the code against (docs/claude/code-checklist.md § Code shape).
 
 Every implementer brief also says, in words:
 
+- Read `docs/code/style.md` before the first edit, and write every line to it. Where a plan snippet breaks it, write the
+  doc's shape and name the difference in the report.
 - No size, perf or measuring builds: no bundle-size comparisons, no production builds to inspect output, no perf suites.
 - No slow Playwright suite before a commit. Commit after the fast checks, and run that suite on its own.
 - No sleeps or fixed timeouts. Start a server a task needs once, up front, and wait on a readiness signal.
@@ -568,6 +577,8 @@ You are skipping the process when you see any of these.
   command.
 - **A plan that paraphrases a design value, names one file for several responsibilities or skips a failure path.** Each
   costs a full implement, review and fix cycle later.
+- **A plan snippet in a shape `docs/code/style.md` rules out, or an implementer brief that never names the doc.**
+  Implementers copy plan code, so one wrong shape lands in every task built from it.
 - **A task without a Context entry, or one that says "read the package".** Every implementer then rebuilds what planning
   already knew.
 - **A plan that quietly solves a different problem than the approved design.** Light steering is recorded in the plan.
@@ -608,6 +619,7 @@ You are skipping the process when you see any of these.
 - `docs/abstract/event-storming.md`: finding the seam when the frame does not fit one vocabulary.
 - `docs/code/glossary.md`: trivial and non-trivial, blast radius, complecting, frame, layer, public surface, peer file.
 - `docs/code/placement.md`: where code and files go, the layer map, the cut rules.
+- `docs/code/style.md`: how code is shaped and how pieces combine.
 - `docs/code/rule-extraction.md`: turning a correction into a durable rule.
 - `docs/RFC/2119.md`: MUST, SHOULD and MAY, the requirement levels plans are written in.
 - `AGENTS.md`: the Architecture gate and the code style rules.

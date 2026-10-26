@@ -45,12 +45,12 @@ and no finding parked as a follow-up (.claude/skills/architecture/SKILL.md § Re
    - `docs/claude/code-checklist.md` when the diff touches a component and its CSS module and story, a spec or
      functional test, or any other rule-bearing source file.
    - Load **both** when unsure. The checklists are severity-tagged and ready to quote. The owner docs behind them
-     (`AGENTS.md` and `docs/code/placement.md`) are rationale, cited only when the checklist alone doesn't cover the
-     case.
+     (`AGENTS.md`, `docs/code/placement.md` and `docs/code/style.md`) are rationale, cited only when the checklist alone
+     doesn't cover the case.
 
 4. **Pull rationale on demand** for a case the checklist cites but doesn't fully explain: the `AGENTS.md` section or
-   label a row cites, `docs/code/placement.md` for where code and files go, `docs/code/glossary.md` for a threshold such
-   as a peer file or a layer.
+   label a row cites, `docs/code/placement.md` for where code and files go, `docs/code/style.md` for how code is shaped,
+   `docs/code/glossary.md` for a threshold such as a peer file or a layer.
 
 5. **Diff intent against implementation.** Two passes. The second runs whether or not a plan exists.
 
@@ -79,8 +79,8 @@ and no finding parked as a follow-up (.claude/skills/architecture/SKILL.md § Re
    sentences, and tag the severity.
 
 7. **Group findings by theme**, one theme per checklist section: Layering, Placement, Package surfaces, Lazy loading and
-   Complexity from the architecture checklist, and Errors and logging, Metrics, Async and lifecycle, UI and styles,
-   Comments and prose and Tests from the code checklist.
+   Complexity from the architecture checklist, and Code shape, Errors and logging, Metrics, Async and lifecycle, UI and
+   styles, Comments and prose and Tests from the code checklist.
 
 8. **Doc-update proposals** (a separate section, never blocking). A recurring shape or a new convention in the diff that
    no doc covers yet: propose where it should be documented. This feeds `docs/code/rule-extraction.md`.
@@ -139,7 +139,7 @@ The body written to `docs/_reviews/<topic>-review.md`:
 ## Cross-references
 
 - Checklists: `docs/claude/architecture-checklist.md`, `docs/claude/code-checklist.md`.
-- Owner docs the rows cite: `AGENTS.md`, `docs/code/placement.md`.
+- Owner docs the rows cite: `AGENTS.md`, `docs/code/placement.md`, `docs/code/style.md`.
 - Thresholds: `docs/code/glossary.md`.
 - Turning recurring findings into durable rules: `docs/code/rule-extraction.md`.
 - The architecture review method (coupling maps, fitness functions): `docs/abstract/review-framework.md`.
