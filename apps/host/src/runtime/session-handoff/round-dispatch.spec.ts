@@ -8,7 +8,6 @@ import type { SessionRequest, SessionRoute } from './session-protocol.js';
 
 const ENABLED: readonly Network[] = ['paseo-next-v2', 'previewnet'];
 const TLD = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD;
-const PREVIEW_TLD = NETWORK_NAME_TO_SERVICES_CONFIG.previewnet.dotns.TLD;
 const PASEO_HUB = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].assethub.genesis;
 
 /** A request on `route` with `params` as the page sent them. */
@@ -37,7 +36,7 @@ describe('round dispatch', () => {
 
   it('As a session window, I get a request with no version and refuse it as unsupported before reading its network', () => {
     // Given a request with no version on a network nobody knows
-    const request = requestOf('auth', { net: 'kusama', nonce: 'abcdefgh' });
+    const request = requestOf('auth', { net: 'kusama' });
 
     // When the window dispatches its round for a site
     const round = dispatchRound(request, 'third', ENABLED);
@@ -59,7 +58,7 @@ describe('round dispatch', () => {
 
   it('As a session window, I get a request with no network and refuse it as unknown', () => {
     // Given a site's request that names no network
-    const request = requestOf('auth', { v: 1, nonce: 'abcdefgh' });
+    const request = requestOf('auth', { v: 1 });
 
     // When the window dispatches its round for a site
     const round = dispatchRound(request, 'third', ENABLED);
@@ -108,8 +107,8 @@ describe('round dispatch', () => {
   });
 
   it("As a sign-in window opened by dot.li's own page, I get a site's request and refuse it as a bad request", () => {
-    // Given a request with a nonce and no intent
-    const request = requestOf('auth', { v: 1, net: 'paseo-next-v2', nonce: 'abcdefgh' });
+    // Given a site's sign-in request, which carries no intent
+    const request = requestOf('auth', { v: 1, net: 'paseo-next-v2' });
 
     // When the window dispatches its round for dot.li's own page
     const round = dispatchRound(request, 'first', ENABLED);
@@ -118,43 +117,15 @@ describe('round dispatch', () => {
     expect(round).toEqual({ kind: 'refuse', reason: 'bad_request' });
   });
 
-  it('As a sign-in window opened by a site, I get its request as a third-party round on its network', () => {
-    // Given a site's sign-in request with words of its own
-    const request = requestOf('auth', {
-      v: 1,
-      net: 'previewnet',
-      nonce: 'abcdefgh',
-      account: `myapp.${PREVIEW_TLD}/0`,
-      statement: 'Keep your playlists',
-    });
+  it('As a sign-in window opened by a site, I get its request with no account as a third-party round', () => {
+    // Given a site's sign-in request that names no account
+    const request = requestOf('auth', { v: 1, net: 'previewnet' });
 
     // When the window dispatches its round for a site
     const round = dispatchRound(request, 'third', ENABLED);
 
-    // Then the round carries the site's request as read and the network it names
-    expect(round).toEqual({
-      kind: 'third',
-      request: {
-        round: 'r1',
-        nonce: 'abcdefgh',
-        account: { dotNsIdentifier: `myapp.${PREVIEW_TLD}`, derivationIndex: { tag: 'Index', value: 0 } },
-        statement: 'Keep your playlists',
-        siteToken: null,
-        groupToken: null,
-      },
-      net: 'previewnet',
-    });
-  });
-
-  it('As a sign-in window opened by a site, I get a request with a bad nonce and refuse it as a bad request', () => {
-    // Given a site's sign-in request whose nonce is too short
-    const request = requestOf('auth', { v: 1, net: 'previewnet', nonce: 'abc', account: `myapp.${PREVIEW_TLD}/0` });
-
-    // When the window dispatches its round for a site
-    const round = dispatchRound(request, 'third', ENABLED);
-
-    // Then the site's request does not parse
-    expect(round).toEqual({ kind: 'refuse', reason: 'bad_request' });
+    // Then the round carries the site's request as read
+    expect(round).toEqual({ kind: 'third', request: { round: 'r1', siteToken: null, groupToken: null } });
   });
 
   it("As a sign window opened by dot.li's own page, I refuse its request as a bad request", () => {
@@ -195,12 +166,9 @@ describe('round dispatch', () => {
     });
   });
 
-  it.each([
-    ['auth', { nonce: 'abcdefgh' }],
-    ['sign', { chain: PASEO_HUB }],
-  ] as const)('As a site on the %s path, I leave out the account and the window refuses my request', (route, extra) => {
-    // Given a site's request without an account
-    const request = requestOf(route, { v: 1, net: 'paseo-next-v2', ...extra });
+  it('As a site on the sign path, I leave out the account and the window refuses my request', () => {
+    // Given a site's transaction request without an account
+    const request = requestOf('sign', { v: 1, net: 'paseo-next-v2', chain: PASEO_HUB });
 
     // When the window dispatches its round for a site
     const round = dispatchRound(request, 'third', ENABLED);
@@ -209,22 +177,16 @@ describe('round dispatch', () => {
     expect(round).toEqual({ kind: 'refuse', reason: 'bad_request' });
   });
 
-  it.each([
-    ['auth', { nonce: 'abcdefgh' }],
-    ['sign', { chain: PASEO_HUB }],
-  ] as const)(
-    'As a site on the %s path, I send a malformed account and the window refuses my request',
-    (route, extra) => {
-      // Given a site's request whose account names no network TLD
-      const request = requestOf(route, { v: 1, net: 'paseo-next-v2', account: 'myapp/0', ...extra });
+  it('As a site on the sign path, I send a malformed account and the window refuses my request', () => {
+    // Given a site's transaction request whose account names no network TLD
+    const request = requestOf('sign', { v: 1, net: 'paseo-next-v2', chain: PASEO_HUB, account: 'myapp/0' });
 
-      // When the window dispatches its round for a site
-      const round = dispatchRound(request, 'third', ENABLED);
+    // When the window dispatches its round for a site
+    const round = dispatchRound(request, 'third', ENABLED);
 
-      // Then the site's request does not parse
-      expect(round).toEqual({ kind: 'refuse', reason: 'bad_request' });
-    },
-  );
+    // Then the site's request does not parse
+    expect(round).toEqual({ kind: 'refuse', reason: 'bad_request' });
+  });
 
   it("As a sign window opened by a site, I get a request for another network's chain and refuse it as a bad request", () => {
     // Given a site's transaction request naming Paseo's Asset Hub on another network
@@ -238,7 +200,7 @@ describe('round dispatch', () => {
   });
 
   it("As a sign-in window opened by a site, I get dot.li's own request and refuse it as a bad request", () => {
-    // Given a first-party request with an intent and no nonce
+    // Given a first-party request with an intent
     const request = requestOf('auth', { v: 1, net: 'paseo-next-v2', intent: 'resume' });
 
     // When the window dispatches its round for a site

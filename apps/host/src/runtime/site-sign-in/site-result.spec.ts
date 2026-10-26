@@ -5,27 +5,25 @@ import { describe, expect, it } from 'vitest';
 import { siteSignInResult } from './site-result.js';
 
 describe('site sign-in result', () => {
-  it('As a site, I receive the exact result keys and a lowercase 0x hex public key', () => {
-    // Given the signed assertion of a full username
-    const input = {
-      username: { name: 'alice.dot', kind: 'full' as const },
-      address: '5Grw',
-      publicKey: new Uint8Array([0xab, 0x00, 0xff, 0x0c]),
-      message: 'text',
-      signature: '0xdeadbeef',
-    };
+  it('As a site, I receive the username of a user who has one and nothing else', () => {
+    // Given a full username
+    const username = { name: 'alice', kind: 'full' as const };
 
     // When the result is built
-    const result = siteSignInResult(input);
+    const result = siteSignInResult(username);
 
-    // Then it has exactly the documented shape
-    expect(Object.keys(result)).toEqual(['username', 'address', 'public_key', 'assertion']);
-    expect(Object.keys(result.assertion)).toEqual(['message', 'signature']);
-    expect(result).toEqual({
-      username: { name: 'alice.dot', kind: 'full' },
-      address: '5Grw',
-      public_key: '0xab00ff0c',
-      assertion: { message: 'text', signature: '0xdeadbeef' },
-    });
+    // Then it carries the username alone
+    expect(result).toEqual({ username: { name: 'alice', kind: 'full' } });
+  });
+
+  it('As a site, I receive an empty username for a user who has none', () => {
+    // Given no username
+    const username = null;
+
+    // When the result is built
+    const result = siteSignInResult(username);
+
+    // Then its username is empty
+    expect(result).toEqual({ username: null });
   });
 });

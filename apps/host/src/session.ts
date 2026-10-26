@@ -213,10 +213,11 @@ function siteWindowDeps(
   responder: Responder<unknown>,
   round: Extract<SignInRound<BridgeModule>, { party: 'third' | 'third-sign' }>,
   close: () => void,
-): Omit<SiteWindowDeps, 'request' | 'net'> {
+): Omit<SiteWindowDeps, 'request'> {
   const { booted: bridgeModule } = round;
-  // Before the round starts, so the first core the window boots is the site's.
-  bridgeModule.serveSite(round.request.account);
+  // Before the round starts, so the first core the window boots runs as the right product: the named account's for a
+  // transaction, and dot.li's own for a sign-in, which names no account.
+  bridgeModule.serveSite(round.party === 'third-sign' ? round.request.account : null);
   return {
     origin: round.origin,
     responder,
@@ -224,7 +225,6 @@ function siteWindowDeps(
     grants: siteGrants,
     groups: siteGroups,
     self: window.location.origin,
-    signer: bridgeModule.siteSigner,
     mainAccount: signal => bridgeModule.mainAccount.read(signal),
     now: Date.now,
     randomToken: newSiteToken,
@@ -243,7 +243,6 @@ function openSiteFlow(
 ): () => void {
   const { site, screen } = openSiteSignIn({
     ...siteWindowDeps(responder, round, close),
-    net: round.net,
     request: round.request,
   });
   setSiteIntents(site);
@@ -265,6 +264,7 @@ async function openSiteTransactionFlow(
     request: round.request,
     chain: bridgeModule.siteChain,
     txSigner: bridgeModule.siteTxSigner,
+    signer: bridgeModule.siteSigner,
   });
   // A refused round keeps showing the responder, which says it refused, while the window closes.
   if (opened === null) {

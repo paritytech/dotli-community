@@ -6,7 +6,7 @@
 
 import { For, merge, omit, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { Button, Callout, Row, SectionLabel, Stack, Well } from '@dotli/ui';
+import { Button, Callout, Row, Stack, Well } from '@dotli/ui';
 import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
 import type { DisplayAccount } from '../../runtime/site-sign-in/site-account.js';
 import type { DisplayCall } from '../../runtime/site-sign-in/site-call.js';
@@ -289,12 +289,8 @@ function phraseParts(form: PhraseForm, props: WindowPartsProps): SignInParts {
 }
 
 /** What a site gets once the user consents. */
-function siteGets(account: DisplayAccount): string[] {
-  return [
-    'Your username',
-    `The address of your ${account.product} account ${account.index}`,
-    'The right to ask you to sign transactions, each confirmed again',
-  ];
+function siteGets(): string[] {
+  return ['Your username', 'The right to ask you to sign transactions, each confirmed again'];
 }
 
 /** The way out of a site's round, which tells the site the user left. */
@@ -311,22 +307,13 @@ function siteCancel(props: WindowPartsProps): SignInAction {
 
 /**
  * A site asks to sign in: its full origin heads the view, then the registrable domain its group covers when it has one,
- * then what it gets, and its own words when it sent any, shown as text and never as markup.
+ * then what it gets.
  */
-function consentParts(
-  origin: string,
-  statement: string | null,
-  group: string | null,
-  account: DisplayAccount,
-  props: WindowPartsProps,
-): SignInParts {
+function consentParts(origin: string, group: string | null, props: WindowPartsProps): SignInParts {
   const parts = StatusScreen({
     title: origin,
     body: (
       <>
-        <div data-testid="session-window-account">
-          Account: {account.product}/{account.index}
-        </div>
         {group === null ? null : (
           <div data-testid="session-window-group">for every site of {group} that shares this sign-in</div>
         )}
@@ -361,7 +348,7 @@ function consentParts(
         {parts.content}
         <div role="list" data-testid="session-window-site-gets">
           <Stack>
-            <For each={siteGets(account)}>
+            <For each={siteGets()}>
               {line => (
                 <div role="listitem">
                   <Callout icon={CheckIcon}>{line}</Callout>
@@ -370,14 +357,6 @@ function consentParts(
             </For>
           </Stack>
         </div>
-        <Show when={statement}>
-          {said => (
-            <Stack>
-              <SectionLabel as="h2" text="The site says" />
-              <Well testId="session-window-statement">{said()}</Well>
-            </Stack>
-          )}
-        </Show>
       </>
     ),
   };
@@ -610,7 +589,7 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
     case 'phrase':
       return phraseParts(step.form, props);
     case 'consent':
-      return consentParts(step.origin, step.statement, step.group, step.account, props);
+      return consentParts(step.origin, step.group, props);
     case 'site-signing':
       return siteSigningParts(step.origin, step.route, props);
     case 'site-review':

@@ -6,25 +6,16 @@
  * no message channel.
  */
 
-import type { Network } from '@dotli/config';
-import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
 import { asRecord, type SessionRequest } from '../session-handoff/session-protocol.js';
-import { parseSiteAccount } from './site-account.js';
 
 export interface SiteRequest {
   round: string;
-  nonce: string;
-  /** The product account the site names. */
-  account: ProductAccountId;
-  statement: string | null;
   siteToken: string | null;
   /** The site's group, which signs in once for every origin of the site's registrable domain. */
   groupToken: string | null;
 }
 
-const NONCE = /^[A-Za-z0-9]{8,128}$/;
-const STATEMENT_MAX = 512;
 const LINE_BREAK = /[\r\n\u2028\u2029]/;
 const GROUP_TOKEN_MAX = 256;
 // A lone surrogate, what `isWellFormed` rejects, read by code point so a pair never matches.
@@ -37,24 +28,21 @@ const REDIRECT_KEY_BYTES = 32;
 /** Keys a site never sends in this stage, on any route. */
 export const REFUSED_KEYS = ['intent'] as const;
 
-/** The site request in `request` on `net`, or null when it is a bad request. Unknown fields are ignored. */
-export function parseSiteRequest(request: SessionRequest, net: Network): SiteRequest | null {
+/**
+ * The site's sign-in request in `request`, or null when it is a bad request. Fields it does not read, such as an
+ * account, a nonce or a statement, are ignored.
+ */
+export function parseSiteRequest(request: SessionRequest): SiteRequest | null {
   const params = asRecord(request.params);
   if (params === null || REFUSED_KEYS.some(key => key in params)) {
     return null;
   }
-  const nonce = params['nonce'];
-  if (typeof nonce !== 'string' || !NONCE.test(nonce)) {
-    return null;
-  }
-  const account = parseSiteAccount(params['account'], net);
-  const statement = optionalString(params['statement'], isStatement);
   const siteToken = optionalString(params['site_token'], isSiteToken);
   const groupToken = optionalString(params['group_token'], isGroupToken);
-  if (account === null || statement === undefined || siteToken === undefined || groupToken === undefined) {
+  if (siteToken === undefined || groupToken === undefined) {
     return null;
   }
-  return { round: request.round, nonce, account, statement, siteToken, groupToken };
+  return { round: request.round, siteToken, groupToken };
 }
 
 /** An optional string field: `null` when absent, the value when valid, `undefined` when present and invalid. */
@@ -63,10 +51,6 @@ export function optionalString(value: unknown, isValid: (v: string) => boolean):
     return null;
   }
   return typeof value === 'string' && isValid(value) ? value : undefined;
-}
-
-function isStatement(value: string): boolean {
-  return value.length >= 1 && value.length <= STATEMENT_MAX && !LINE_BREAK.test(value) && !value.startsWith('URI: ');
 }
 
 /** Whether `value` is a group token: one well-formed line of 1 to 256 characters. */

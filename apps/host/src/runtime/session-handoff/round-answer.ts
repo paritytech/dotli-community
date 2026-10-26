@@ -60,7 +60,7 @@ function firstVetting(responder: Pick<Responder<unknown>, 'state' | 'subscribe'>
  */
 export type SignInRound<B> =
   | { party: 'first'; intent: SignInIntent; booted: B }
-  | { party: 'third'; origin: string; request: SiteRequest; net: Network; booted: B }
+  | { party: 'third'; origin: string; request: SiteRequest; booted: B }
   | { party: 'third-sign'; origin: string; request: SiteSignRequest; booted: B };
 
 /**
@@ -106,7 +106,7 @@ export async function answerSignIn<B>(
     return { party: 'first', intent: round.request.intent, booted };
   }
   if (round.kind === 'third') {
-    return { party: 'third', origin: vetted.origin, request: round.request, net: round.net, booted };
+    return { party: 'third', origin: vetted.origin, request: round.request, booted };
   }
   if (round.kind === 'third-sign') {
     return { party: 'third-sign', origin: vetted.origin, request: round.request, booted };

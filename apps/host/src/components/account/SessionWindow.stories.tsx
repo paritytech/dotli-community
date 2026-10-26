@@ -720,15 +720,8 @@ export const StepFailed: Story = {
 /** The account the site named. */
 const SITE_ACCOUNT = { product: 'myapp.dot', index: '0' };
 
-/** The account line under the consent view's origin. */
-const SITE_ACCOUNT_LINE = `Account: ${SITE_ACCOUNT.product}/${SITE_ACCOUNT.index}`;
-
 /** What a site gets, as the consent view lists it. */
-const SITE_GETS = [
-  'Your username',
-  `The address of your ${SITE_ACCOUNT.product} account ${SITE_ACCOUNT.index}`,
-  'The right to ask you to sign transactions, each confirmed again',
-];
+const SITE_GETS = ['Your username', 'The right to ask you to sign transactions, each confirmed again'];
 
 /** What the consent view lists that a site gets, one list item each. */
 const siteGets = (): string[] =>
@@ -736,10 +729,10 @@ const siteGets = (): string[] =>
     .getAllByRole('listitem')
     .map(item => item.textContent.trim());
 
-/** As a user a site asks to sign in, I see its full origin, what it gets and no words of its own, and answer it. */
+/** As a user a site asks to sign in, I see its full origin and what it gets, and answer it. */
 export const SiteConsent: Story = {
   tags: ['!autodocs'],
-  args: { screen: { view: 'consent', origin: SITE_ORIGIN, statement: null, group: null, account: SITE_ACCOUNT } },
+  args: { screen: { view: 'consent', origin: SITE_ORIGIN, group: null } },
   play: async ({ canvas, userEvent, step }) => {
     await step(
       'Then the card heads with the full origin, says what the site wants and lists what it gets',
@@ -747,13 +740,9 @@ export const SiteConsent: Story = {
         await expect(windowView()).toHaveAttribute('data-view', 'consent');
         await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(SITE_ORIGIN);
         await expect(byTestId('session-window-title')).toHaveTextContent(SITE_ORIGIN);
-        await expect(byTestId('session-window-account')).toHaveTextContent(SITE_ACCOUNT_LINE);
-        await expectBefore(byTestId('session-window-title'), byTestId('session-window-account'));
         await expect(byTestId('session-window-consent')).toHaveTextContent('wants you to sign in with Polkadot');
         await expect(byTestId('session-window-site-gets')).toHaveAttribute('role', 'list');
         await expect(siteGets()).toEqual(SITE_GETS);
-        await expect(canvas.queryByTestId('session-window-statement')).toBeNull();
-        await expect(canvas.queryByText('The site says')).toBeNull();
         await expect(canvas.queryByTestId('session-window-group')).toBeNull();
       },
     );
@@ -779,43 +768,10 @@ export const SiteConsent: Story = {
   },
 };
 
-/** As a user a site asks to sign in with words of its own, I read them quoted as the site's, as plain text. */
-export const SiteConsentStatement: Story = {
-  tags: ['!autodocs'],
-  args: {
-    screen: {
-      view: 'consent',
-      origin: SITE_ORIGIN,
-      statement: 'Sign in to keep <b>your</b> playlists.',
-      group: null,
-      account: SITE_ACCOUNT,
-    },
-  },
-  play: async ({ canvas, userEvent, step }) => {
-    await step("Then the site's words show under The site says, markup and all as text", async () => {
-      await expect(canvas.getByRole('heading', { level: 2 })).toHaveTextContent('The site says');
-      await expect(byTestId('session-window-statement')).toHaveTextContent('Sign in to keep <b>your</b> playlists.');
-      await expect(byTestId('session-window-statement').querySelector('b')).toBeNull();
-      await expect(byTestId('session-window-account')).toHaveTextContent(SITE_ACCOUNT_LINE);
-      await expect(siteGets()).toEqual(SITE_GETS);
-      await expect(buttonNames()).toEqual(['Continue', 'Cancel']);
-    });
-    await step('When I press Cancel', async () => {
-      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
-    });
-    await step('Then the site was declined once', async () => {
-      await waitFor(() => expect(onDecline).toHaveBeenCalledTimes(1));
-      await expect(onConsent).not.toHaveBeenCalled();
-    });
-  },
-};
-
 /** As a user a site of a group asks to sign in, I see its full origin and the registrable domain the sign-in covers. */
 export const SiteConsentGroup: Story = {
   tags: ['!autodocs'],
-  args: {
-    screen: { view: 'consent', origin: SITE_ORIGIN, statement: null, group: 'site.example', account: SITE_ACCOUNT },
-  },
+  args: { screen: { view: 'consent', origin: SITE_ORIGIN, group: 'site.example' } },
   play: async ({ canvas, userEvent, step }) => {
     await step(
       'Then the card heads with the full origin, and says under it which sites share the sign-in',
@@ -826,8 +782,6 @@ export const SiteConsentGroup: Story = {
           'for every site of site.example that shares this sign-in',
         );
         await expectBefore(byTestId('session-window-title'), byTestId('session-window-group'));
-        await expect(byTestId('session-window-account')).toHaveTextContent(SITE_ACCOUNT_LINE);
-        await expectBefore(byTestId('session-window-title'), byTestId('session-window-account'));
         await expect(byTestId('session-window-consent')).toHaveTextContent('wants you to sign in with Polkadot');
         await expect(siteGets()).toEqual(SITE_GETS);
         await expect(buttonNames()).toEqual(['Continue', 'Cancel']);

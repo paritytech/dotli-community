@@ -117,17 +117,19 @@ export const { initBridge, setPageProduct, startProductFrame } = bridge;
 let servingSite = false;
 
 /**
- * The session window serves a site's round: its core runs under the product id of the account the site names, with
- * dot.li's own pairing, and boots on a stored local wallet. Called before anything boots a core. Once per page, so a
- * second call does nothing.
+ * The session window serves a site's round, with dot.li's own pairing, and boots on a stored local wallet. With an
+ * `account`, a transaction's, its core runs under that account's product id. With null, a sign-in's, its core runs as
+ * dot.li's own product. Called before anything boots a core. Once per page, so a second call does nothing.
  */
-export function serveSite(account: ProductAccountId): void {
+export function serveSite(account: ProductAccountId | null): void {
   if (servingSite) {
     return;
   }
   servingSite = true;
-  // dot.li's own pairing, as the site never names the window's product.
-  setPageProduct({ ...LANDING_PRODUCT, label: account.dotNsIdentifier, productId: account.dotNsIdentifier });
+  if (account !== null) {
+    // dot.li's own pairing, as the site never names the window's product.
+    setPageProduct({ ...LANDING_PRODUCT, label: account.dotNsIdentifier, productId: account.dotNsIdentifier });
+  }
   serveSites();
 }
 

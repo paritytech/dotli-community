@@ -278,13 +278,7 @@ describe('session window round answer', () => {
     const boot = deferred<string>();
     const answered = answerSignIn({
       responder,
-      request: requestOf('auth', {
-        v: 1,
-        net: 'paseo-next-v2',
-        nonce: 'abcdefgh',
-        account: `${PRODUCT}/0`,
-        origin: 'https://other.example',
-      }),
+      request: requestOf('auth', { v: 1, net: 'paseo-next-v2', origin: 'https://other.example' }),
       enabled: ENABLED,
       booted: boot.promise,
     });
@@ -298,15 +292,7 @@ describe('session window round answer', () => {
     expect(round).toEqual({
       party: 'third',
       origin: SITE,
-      request: {
-        round: 'r1',
-        nonce: 'abcdefgh',
-        account: { dotNsIdentifier: PRODUCT, derivationIndex: { tag: 'Index', value: 0 } },
-        statement: null,
-        siteToken: null,
-        groupToken: null,
-      },
-      net: 'paseo-next-v2',
+      request: { round: 'r1', siteToken: null, groupToken: null },
       booted: 'bridge',
     });
     expect(answers()).toEqual([]);
@@ -314,11 +300,11 @@ describe('session window round answer', () => {
   });
 
   it('As a site opening the sign-in window with a request the window cannot read, I am refused as a bad request, counted', async () => {
-    // Given a booted sign-in window with a site's request that has no nonce
+    // Given a booted sign-in window with a site's request whose site token is malformed
     const { metrics, responder, hello, answers } = harness();
     const answered = answerSignIn({
       responder,
-      request: requestOf('auth', { v: 1, net: 'paseo-next-v2' }),
+      request: requestOf('auth', { v: 1, net: 'paseo-next-v2', site_token: 'not-a-token' }),
       enabled: ENABLED,
       booted: Promise.resolve('bridge'),
     });
@@ -338,7 +324,7 @@ describe('session window round answer', () => {
     const { metrics, responder, hello, answers } = harness();
     const answered = answerSignIn({
       responder,
-      request: requestOf('auth', { v: 2, net: 'paseo-next-v2', nonce: 'abcdefgh', account: `${PRODUCT}/0` }),
+      request: requestOf('auth', { v: 2, net: 'paseo-next-v2' }),
       enabled: ENABLED,
       booted: Promise.resolve('bridge'),
     });

@@ -388,6 +388,17 @@ async function sign(flow: SiteRound, h: Harness): Promise<void> {
 }
 
 describe('site transaction', () => {
+  it('As a site on a new origin, I ask for my call to be signed and the consent names my origin alone', async () => {
+    // Given a site of no group the main store keeps no grant for
+    const h = await harness();
+
+    // When the round shows its consent
+    await h.until('consent');
+
+    // Then the consent carries the site's origin and no group
+    expect(h.flow.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, group: null });
+  });
+
   it('As a site, I ask for my call to be signed and get it signed by my account with nothing sent', async () => {
     // Given a site the main store keeps no grant for, on its review
     const h = await harness();
@@ -748,6 +759,7 @@ describe('site transaction action', () => {
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
       call: CALL,
+      account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner().txSigner,
       signer,
@@ -758,7 +770,6 @@ describe('site transaction action', () => {
     const refusal: unknown = await action
       .run({
         main: { owner: OWNER, username: null },
-        account: ACCOUNT,
         show: screen => {
           shown.push(screen.view);
         },
@@ -782,6 +793,7 @@ describe('site transaction action', () => {
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
       call: CALL,
+      account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner().txSigner,
       signer,
@@ -794,7 +806,6 @@ describe('site transaction action', () => {
     const outcome: unknown = await action
       .run({
         main: { owner: OWNER, username: null },
-        account: ACCOUNT,
         show: screen => {
           shown.push(screen.view);
         },
@@ -821,6 +832,7 @@ describe('site transaction action', () => {
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
       call: CALL,
+      account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner().txSigner,
       signer: {
@@ -833,7 +845,6 @@ describe('site transaction action', () => {
     const runFor = (main: MainAccount) =>
       action.run({
         main,
-        account: ACCOUNT,
         show: () => undefined,
         confirmed: () => Promise.resolve(),
         signal: new AbortController().signal,
@@ -857,6 +868,7 @@ describe('site transaction action', () => {
       origin: ORIGIN,
       genesis: NETWORK.assethub.genesis,
       call: CALL,
+      account: ACCOUNT,
       chain: chain.chain,
       txSigner: fakeTxSigner([() => built.promise]).txSigner,
       signer: fakeSigner().signer,
@@ -865,7 +877,6 @@ describe('site transaction action', () => {
     const signing = deferred<undefined>();
     const running = action.run({
       main: { owner: OWNER, username: null },
-      account: ACCOUNT,
       show: screen => {
         if (screen.view === 'site-approving') {
           signing.resolve(undefined);

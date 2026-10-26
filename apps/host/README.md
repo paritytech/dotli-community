@@ -94,15 +94,15 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - For a site, the sign-in window signs in for the vetted origin, never one the request names. It asks the user's consent
   under the site's full origin unless the site's token names a grant of that origin, then runs the same flow to sign in
   or resume the main session, which tells the site's round only that a sign-in is stored and never answers the opener.
-  The window runs its core under the product id of the account the site names. The round runs on whichever wallet is
-  signed in, the local one included, with no pairing then, and reads the main account only from what that core reports,
-  never from the main store's copy. The site gets the username, the address of the product account it names and its
-  assertion signed with that account, never the main session. The window makes no account for a site or a group. A site
-  that declares a group signs in once for every origin of its registrable domain, which the window reads from the Public
-  Suffix List it ships. The consent names that registrable domain beside the origin. A group shares one grant, whose
-  token answers any origin of the group. The window refuses a group on a public suffix or an address, on its own
-  registrable domain, or when the list does not load. The window closes once the site has its result, which a window
-  restored from the back-forward cache sends on the site's next hello.
+  For a sign-in the window runs its core as dot.li's own product, and only for a transaction under the product id of the
+  account the site names. The round runs on whichever wallet is signed in, the local one included, with no pairing then,
+  and reads the main account only from what that core reports, never from the main store's copy. The site gets the main
+  account's username, or none when it has none, and nothing signed, never the main session. The window makes no account
+  for a site or a group. A site that declares a group signs in once for every origin of its registrable domain, which
+  the window reads from the Public Suffix List it ships. The consent names that registrable domain beside the origin. A
+  group shares one grant, whose token answers any origin of the group. The window refuses a group on a public suffix or
+  an address, on its own registrable domain, or when the list does not load. The window closes once the site has its
+  result, which a window restored from the back-forward cache sends on the site's next hello.
 - A site that cannot keep a popup signs in by redirect: its sign-in request names a return address and a temporary key,
   and the window needs no opener. Before it boots, the window checks that this browser can seal to the key, that the
   address is a site's and not dot.li's own or a product's, and that the site's well-known file lists it, read within a

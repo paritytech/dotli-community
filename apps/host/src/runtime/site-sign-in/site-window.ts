@@ -7,7 +7,6 @@
 // or the window flow's while the site hands the window to that flow. A transaction's round starts only once the window
 // has the site's call.
 
-import type { Network } from '@dotli/config';
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteGrantStore } from '@dotli/storage';
 import type { SignInScreen, SiteWindowScreen } from '../../state/session-window.js';
@@ -32,7 +31,6 @@ export interface SiteWindowDeps {
   request: SiteRequest;
   /** The vetted opener's origin, the site the round answers. */
   origin: string;
-  net: Network;
   /** The window's one responder, which the site's round answers through and the window flow only watches. */
   responder: Responder<unknown>;
   /** Starts the window flow over the window's own store and core. */
@@ -42,7 +40,6 @@ export interface SiteWindowDeps {
   groups: SiteGroups;
   /** The window's own origin. */
   self: string;
-  signer: SiteSigner;
   /**
    * The main account the window's core reports, once it reports one. Rejects with a `MainAccountError` when the core
    * cannot boot or its session is gone, or once `signal` aborts.
@@ -59,11 +56,15 @@ export interface SiteWindow {
   screen: ReadableStore<SignInScreen | SiteWindowScreen>;
 }
 
-/** What a site's transaction window runs on: a sign-in window's parts, with the chain and the transaction signer. */
-export type SiteTransactionWindowDeps = Omit<SiteWindowDeps, 'request' | 'net'> & {
+/**
+ * What a site's transaction window runs on: a sign-in window's parts, with the chain, the transaction signer and the
+ * signer that reads the site account.
+ */
+export type SiteTransactionWindowDeps = Omit<SiteWindowDeps, 'request'> & {
   request: SiteSignRequest;
   chain: SiteChain;
   txSigner: SiteTxSigner;
+  signer: SiteSigner;
 };
 
 /**
@@ -126,12 +127,10 @@ export function openSiteSignIn(deps: SiteWindowDeps): SiteWindow {
     createSiteSignIn({
       request: deps.request,
       origin: deps.origin,
-      net: deps.net,
       responder: deps.responder,
       grants: deps.grants,
       groups: deps.groups,
       self: deps.self,
-      signer: deps.signer,
       mainAccount: deps.mainAccount,
       startWindowFlow,
       now: deps.now,
