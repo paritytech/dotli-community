@@ -23,7 +23,7 @@ type ProviderListener = (message: Uint8Array) => void;
 type ProviderCloseListener = (error: Error) => void;
 
 /** A core connection the test speaks for. `listener` and `closeListener` are the core's side of it. */
-export interface FakeCoreProvider {
+export type FakeCoreProvider = {
   listener: ProviderListener | null;
   closeListener: ProviderCloseListener | null;
   postMessage: Mock<WireProvider['postMessage']>;
@@ -35,17 +35,17 @@ export interface FakeCoreProvider {
   dispose: Mock<() => void>;
   /** Told of each message the core posts and each dispose, which {@link answerConnection} points at its fakes. */
   changed: () => void;
-}
+};
 
-export interface FakeCoreRuntime {
+export type FakeCoreRuntime = {
   createProvider: Mock<() => Promise<FakeCoreProvider>>;
   cancelPairing: Mock<() => void>;
   disconnectSession: Mock<() => Promise<void>>;
   notifySessionStoreChanged: Mock<() => void>;
   dispose: Mock<() => void>;
-}
+};
 
-export interface FakePageCore {
+export type FakePageCore = {
   core: PageCore;
   /** Every runtime a boot produced, in order. */
   runtimes: FakeCoreRuntime[];
@@ -61,7 +61,7 @@ export interface FakePageCore {
   findLocalWallet(): void;
   /** Notified at each connection asked and each call on a runtime or an answered connection. */
   changes: Changes;
-}
+};
 
 /** A connection that answers nothing, for a product frame the test only places. */
 export function makeProvider(options: { onPostMessage?: (message: Uint8Array) => void } = {}): FakeCoreProvider {

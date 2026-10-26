@@ -20,13 +20,13 @@ const URL_PARAM_NAMES = {
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
 /** Per-axis URL parse: `null` for absent or invalid, so callers can `?? fallback`. */
-export interface ParsedUrlSettings {
+export type ParsedUrlSettings = {
   network: Network | null;
   backend: Backend | null;
   skipArchiveCache: boolean | null;
   skipCidCache: boolean | null;
   skipWorkerCache: boolean | null;
-}
+};
 
 function parseBoolean(raw: string | null): boolean | null {
   if (raw === null || !VALID_BOOLEAN_FLAGS.has(raw)) {

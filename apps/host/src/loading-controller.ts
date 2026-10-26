@@ -10,7 +10,7 @@ import { pageContentStore, prefersReducedMotion, type PageContent } from '@dotli
 import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
 
 /** A loading step owning the `[base, target]` band of the bar, crossed in about `expectedMs`. */
-export interface LoadingPhase {
+export type LoadingPhase = {
   label: string;
   base: number;
   target: number;
@@ -18,7 +18,7 @@ export interface LoadingPhase {
   stage: LoadingStage;
   /** The step reports a real percentage, so the bar waits instead of crawling past it. */
   reportsProgress?: boolean;
-}
+};
 
 const CRAWL_TICK_MS = 200;
 
@@ -98,18 +98,18 @@ export type SandboxFailedStep = string | undefined;
 const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
 
 /** Animation frames for the typed explanation, and their clock. */
-export interface LoadingFrames {
+export type LoadingFrames = {
   request: (step: (now: number) => void) => number;
   cancel: (handle: number) => void;
   now: () => number;
-}
+};
 
-export interface LoadingControllerDeps {
+export type LoadingControllerDeps = {
   reducedMotion: () => boolean;
   frames: LoadingFrames;
   /** What fills the page. A full-page screen takes the loading screen down with the page. */
   pageContent: ReadableStore<PageContent>;
-}
+};
 
 export type LoadingController = ReturnType<typeof createLoadingController>;
 

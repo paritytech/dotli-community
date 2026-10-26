@@ -4,12 +4,12 @@
 // Delivers a value to every listener, so one that throws cannot keep it from the others. Reporting the throw is
 // injected, since this package cannot depend on metrics: each owner passes its report.
 
-export interface ListenerSetOptions<T> {
+export type ListenerSetOptions<T> = {
   /** Hears a listener that threw. The other listeners still hear the value. */
   onListenerError: (error: unknown, value: T) => void;
-}
+};
 
-export interface ListenerSet<T> {
+export type ListenerSet<T> = {
   /** A listener subscribed twice is two subscriptions. The returned unsubscribe may run more than once. */
   subscribe: (listener: (value: T) => void) => () => void;
   /**
@@ -20,7 +20,7 @@ export interface ListenerSet<T> {
   /** One listener hears `value` at once, under the same report, as a replay to a late subscriber does. */
   deliver: (listener: (value: T) => void, value: T) => void;
   readonly size: number;
-}
+};
 
 export function createListenerSet<T>(options: ListenerSetOptions<T>): ListenerSet<T> {
   const listeners = new Set<(value: T) => void>();

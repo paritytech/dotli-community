@@ -6,11 +6,11 @@ import { bindLogSink } from '@dotli/shared';
 import { createDotliDebugBus, type DotliDebugBus, type DotliDebugBusEvent } from './dotli-debug-bus.js';
 import { bindRecordingSentry, recordCaptures, type RecordedCapture } from '@dotli/metrics/testing';
 
-interface ListenerReports {
+type ListenerReports = {
   captured: RecordedCapture[];
   errors: string[];
   counted: () => (Record<string, string> | undefined)[];
-}
+};
 
 /** Record the captures, error lines and metrics a throwing listener leaves, until the test ends. */
 function recordListenerReports(): ListenerReports {

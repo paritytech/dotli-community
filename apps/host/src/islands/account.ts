@@ -8,13 +8,13 @@ import type { TruapiSessionUiState } from '../runtime/session/session-state.js';
 import { useStore } from '@dotli/ui';
 import type { Account } from '../components/account/account.js';
 
-export interface AccountStores {
+export type AccountStores = {
   auth: ReadableStore<DotliAuthState>;
   loggedIn: ReadableStore<boolean>;
   walletMode: ReadableStore<{ mode: 'app' | 'local' }>;
   signingOut: ReadableStore<boolean>;
   elsewhere: ReadableStore<boolean>;
-}
+};
 
 /** The account as the views read it, for an island's own lifetime. */
 export function useAccount(stores: AccountStores): Account {

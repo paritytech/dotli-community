@@ -38,45 +38,45 @@ import { ok, type Failure, type ResultPayload, type Sink } from '@dotli/transpor
 export const SHARED_AUTH_CHANNEL = 'dotli:shared-auth';
 
 /** The tabs' broadcast channel, as much of it as the store uses. A `BroadcastChannel` is one. */
-export interface SharedAuthChannel {
+export type SharedAuthChannel = {
   postMessage(message: SharedAuthChange): void;
   addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
   removeEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
-}
+};
 
-export interface SharedStoreDeps {
+export type SharedStoreDeps = {
   /** Read per call, because touching `localStorage` can throw where the browser blocks storage. */
   storage: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   /** Null where the browser has no `BroadcastChannel`, so writes reach no other tab. */
   channel: SharedAuthChannel | null;
-}
+};
 
 const { storage } = protocolSchema.sections;
 
 /** One store's read, write and clear. Both stores share their codecs, so they share these types. */
-interface StoreMethods {
+type StoreMethods = {
   read: typeof storage.authRead;
   write: typeof storage.authWrite;
   clear: typeof storage.authClear;
-}
+};
 
 /** One store's keys: which a call may name, and where each lives for a site. */
-interface StoreKeys {
+type StoreKeys = {
   name: 'auth' | 'mode';
   isValid: (key: string) => boolean;
   build: (siteId: SiteId, key: string) => string;
-}
+};
 
 const AUTH_KEYS: StoreKeys = { name: 'auth', isValid: isValidSharedAuthKey, build: buildSharedAuthStorageKey };
 
 const MODE_KEYS: StoreKeys = { name: 'mode', isValid: isValidSharedModeKey, build: buildSharedModeStorageKey };
 
-export interface SharedStoreHandler {
+export type SharedStoreHandler = {
   /** Tells the other tabs the local wallet record of `siteId` changed, on the auth relay as a tagged wallet change. */
   walletChanged: (siteId: string) => void;
   /** Stops serving the stores and hearing other tabs. */
   stop: () => void;
-}
+};
 
 /** Answers with what `run` returns for the call's site once it checks. A site that does not check throws. */
 async function whenAdmitted<T>(

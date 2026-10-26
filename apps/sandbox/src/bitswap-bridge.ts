@@ -7,18 +7,18 @@ import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from
 import { TIMEOUTS, isSiteOrigin } from '@dotli/config';
 import { createPendingReplies, log, randomId, toError, withTimeout } from '@dotli/shared';
 
-export interface BitswapBridgeDeps {
+export type BitswapBridgeDeps = {
   /** The sandbox's own window, where the host's answers and `pagehide` arrive. */
   window: Pick<EventTarget, 'addEventListener'>;
   /** The host page that framed this sandbox. */
   parent: Pick<Window, 'postMessage'>;
   isHostOrigin: (origin: string) => boolean;
-}
+};
 
-export interface BitswapBridge {
+export type BitswapBridge = {
   /** `BitswapBlockSource` for `@dotli/content/fetch`. */
   requestBlock: (cid: string) => Promise<Uint8Array>;
-}
+};
 
 /** A host page origin: the root or a product subdomain of `baseDomain`, or a local one, never a sandbox. */
 export function hostOriginRule(baseDomain: string): (origin: string) => boolean {

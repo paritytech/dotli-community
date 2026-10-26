@@ -14,14 +14,14 @@ import {
 import { getLoadingState, updateLoading } from './state/loading.js';
 
 /** Records the span tree instead of sending it. `vitest.config.ts` turns metrics on so the real tree is built. */
-interface RecordedSpan {
+type RecordedSpan = {
   name: string;
   parent: RecordedSpan | null;
   attributes: Record<string, unknown>;
   ended: boolean;
   startTime?: number | undefined;
   endTime?: number | undefined;
-}
+};
 
 function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
   const spans: RecordedSpan[] = [];

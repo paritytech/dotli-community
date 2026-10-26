@@ -21,10 +21,10 @@ const DEAD = '0x010203';
 const ENTROPY = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
 
 /** The frame's local wallet as the rule reads it. */
-interface FakeWallet {
+type FakeWallet = {
   record: { entropy: Uint8Array; version: Uint8Array } | null;
   readError: Error | null;
-}
+};
 
 let shared: FakeSharedSessionStore;
 let presence: FakeSessionPresence;

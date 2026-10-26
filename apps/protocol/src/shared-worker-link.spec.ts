@@ -56,7 +56,7 @@ const { frame, resolve, chain } = protocolSchema.sections;
 
 const READY_TIMEOUT_MS = 30_000;
 
-interface FakeWorker {
+type FakeWorker = {
   worker: Pick<SharedWorker, 'port' | 'addEventListener'>;
   /** The worker's own status, which its serving end reports. */
   status: FrameStatus;
@@ -81,7 +81,7 @@ interface FakeWorker {
   serving: ProtocolTransport;
   /** The worker script failing to load. */
   failToStart: (message: string) => void;
-}
+};
 
 const channels = new Set<MessageChannel>();
 
@@ -500,7 +500,7 @@ type Root = MethodTypes<typeof resolve.rootManifest>;
 type ExecutableAnswer = Extract<Executable['response'], { success: true }>;
 type RootAnswer = Extract<Root['response'], { success: true }>;
 
-interface Hops {
+type Hops = {
   host: ProtocolTransport;
   /** The worker's end, where a spec registers what the worker answers. */
   worker: ProtocolTransport;
@@ -514,7 +514,7 @@ interface Hops {
   workerStatusHeard: Promise<void>;
   /** The frames delivered on the host's link to the iframe, and on the iframe's link to the worker. */
   wire: { host: readonly Uint8Array[]; worker: readonly Uint8Array[] };
-}
+};
 
 afterEach(() => {
   closeHostLinks();
@@ -577,10 +577,10 @@ function chainValues(frames: readonly Uint8Array[]): Uint8Array[] {
 }
 
 /** One end the host heard, under the call it ended. */
-interface HeardEnd {
+type HeardEnd = {
   call: string;
   end: EndOf<unknown>;
-}
+};
 
 describe('the worker relay', () => {
   it('As the host in shared-worker mode, my chain and resolve calls reach the worker and its answers reach me', async () => {

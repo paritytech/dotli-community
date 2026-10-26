@@ -24,7 +24,7 @@ const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 560;
 const DEFAULT_PANEL_WIDTH = 360;
 
-export interface ChatPanelState {
+export type ChatPanelState = {
   label: string | null;
   /** Differs from the label-derived id when the localhost debug path sets an override. */
   runtimeProductId: string | null;
@@ -39,7 +39,7 @@ export interface ChatPanelState {
   focusComposer: boolean;
   width: number;
   topbarVisible: boolean;
-}
+};
 
 const INITIAL: ChatPanelState = {
   label: null,

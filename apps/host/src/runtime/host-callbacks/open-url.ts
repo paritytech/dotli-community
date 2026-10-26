@@ -15,13 +15,13 @@ function identifierToLabel(identifier: string): string {
 }
 
 /** The tab the product runs in. */
-export interface NavigationPage {
+export type NavigationPage = {
   location: () => Pick<Location, 'protocol' | 'port' | 'assign'>;
   /** The local root the tab is served under, or `null` when deployed. */
   localRoot: string | null;
   /** Opens a website apart from the product's tab. */
   open: (url: string, target: string, features: string) => void;
-}
+};
 
 const browserPage: NavigationPage = {
   location: () => window.location,

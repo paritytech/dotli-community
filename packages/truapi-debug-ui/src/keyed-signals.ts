@@ -8,7 +8,7 @@ import { createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
  *
  * Built on `createSignal` alone because Solid's store module would land in the shared chunk on the host's boot path.
  */
-export interface KeyedSignals<K, V> {
+export type KeyedSignals<K, V> = {
   /** Inside a reactive owner, also subscribes to `key`. */
   read(key: K): V | undefined;
   /** `undefined` removes the key. */
@@ -16,13 +16,13 @@ export interface KeyedSignals<K, V> {
   keys(): IterableIterator<K>;
   /** The keys some reader is subscribed to. Tests only. */
   subscribedKeys(): IterableIterator<K>;
-}
+};
 
-interface Node<V> {
+type Node<V> = {
   get: Accessor<V | undefined>;
   set: (value: V | undefined) => void;
   readers: number;
-}
+};
 
 export function createKeyedSignals<K, V>(): KeyedSignals<K, V> {
   const values = new Map<K, V>();

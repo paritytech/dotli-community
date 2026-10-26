@@ -30,7 +30,7 @@ declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__: { name: string; version: string }[] | undefined;
 declare const __PARITY_TRUAPI_VERSIONS__: { name: string; version: string }[] | undefined;
 
-export interface PageDiagnosticsDeps {
+export type PageDiagnosticsDeps = {
   /** The AssetHub node the trusted provider answers on, or null before it connects. */
   connectedAssetHubNode: () => string | null;
   finalizedBlock: (genesisHash: string) => Promise<number | null>;
@@ -38,13 +38,13 @@ export interface PageDiagnosticsDeps {
   page: () => DiagnosticsPage;
   /** The product's permission statuses, for the report. */
   permissionStatuses: PermissionAuthorizations['statuses'];
-}
+};
 
 /** What the browser says about the page the report is from. */
-export interface DiagnosticsPage {
+export type DiagnosticsPage = {
   site: string;
   userAgent: string;
-}
+};
 
 export function createPageDiagnostics(deps: PageDiagnosticsDeps): DiagnosticsSource {
   return {
@@ -203,27 +203,27 @@ async function collectSmoldotInfo(
   };
 }
 
-export interface SmoldotInfo {
+export type SmoldotInfo = {
   version: string;
   /** Null on trusted providers, which run no light client to ask. */
   blocks: { relay: string; assetHub: string; people: string } | null;
-}
+};
 
 // smoldot is compiled into truapi-provider's wasm, so the provider version identifies the build.
 function buildLightClientVersionLabel(): string {
   return typeof __LIGHT_CLIENT_VERSION__ === 'string' ? __LIGHT_CLIENT_VERSION__ : 'unknown';
 }
 
-export interface FinalizedBlockClient {
+export type FinalizedBlockClient = {
   getFinalizedBlock: () => Promise<{ number: number }>;
   destroy: () => void;
-}
+};
 
-export interface FinalizedBlockSource {
+export type FinalizedBlockSource = {
   /** The host's provider for the chain, or null when the active backend does not serve it. */
   provider: (genesisHash: string) => Promise<RemoteChainProvider | null>;
   createClient: (provider: RemoteChainProvider) => Promise<FinalizedBlockClient>;
-}
+};
 
 const FINALIZED_BLOCK_LIMIT_MS = 10_000;
 

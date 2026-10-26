@@ -22,22 +22,22 @@ import type { BootCoreRuntime, BootedCoreRuntime } from './core-runtime.js';
 import { createPhoneRequestTracker, type PhoneRequestTracker } from './phone-requests.js';
 import { labelToProductId } from './runtime-config.js';
 
-export interface PageProduct {
+export type PageProduct = {
   label: string;
   /** Overrides the id the label derives, such as for the local debug routes or the account a site names. */
   productId?: string | undefined;
   /** How pairing presents itself, when not as the product. */
   pairing?: { label: string; dotSuffix: boolean; hostGlobal: boolean };
-}
+};
 
 /** Close it through `close`, never the provider, or the core is marked faulted. */
-export interface CoreConnection {
+export type CoreConnection = {
   provider: TrUApiProductProvider;
   productId: string;
   close(): void;
-}
+};
 
-export interface CoreLease {
+export type CoreLease = {
   runtime: WorkerPairingHostRuntime;
   connect(executionKind?: ProductExecutionKind): Promise<CoreConnection>;
   /**
@@ -47,7 +47,7 @@ export interface CoreLease {
   subscribeDown(listener: () => void): () => void;
   /** Idempotent. Drops the down listeners subscribed through this lease. */
   release(): void;
-}
+};
 
 /**
  * What took a core out of service, a closed set so the metric's `reason` tag stays bounded. `stale` is a pairing core
@@ -64,7 +64,7 @@ export class CoreRedialError extends Error {
   }
 }
 
-export interface PageCoreDeps {
+export type PageCoreDeps = {
   bootRuntime: BootCoreRuntime;
   /** Returns the unsubscribe. */
   onStoredSessionChanged: (listener: () => void) => () => void;
@@ -82,9 +82,9 @@ export interface PageCoreDeps {
   destroyDelay?: number;
   /** The timers the destroy delay runs on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
-}
+};
 
-export interface PageCore {
+export type PageCore = {
   /** Called as soon as the page knows it, so a core booted by an early login is already the product's. */
   setProduct(product: PageProduct): void;
   /** A request made while the core redials waits for the replacement. */
@@ -92,9 +92,9 @@ export interface PageCore {
   cancelPairing(): void;
   /** Resets the session of every core already dialed, booting none, for a session that ended elsewhere. */
   resetSession(): Promise<void>;
-}
+};
 
-interface Core {
+type Core = {
   product: PageProduct;
   runtime: Promise<BootedCoreRuntime>;
   leases: number;
@@ -104,7 +104,7 @@ interface Core {
   /** Runs while the core outlives its last lease. */
   destroyTimer: { handle: unknown } | null;
   dispose(): void;
-}
+};
 
 /** What a page core serves until the page names its product. A page that never names one keeps it. */
 export const LANDING_PRODUCT: PageProduct = {

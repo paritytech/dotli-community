@@ -29,7 +29,7 @@ import type { BlockingModalScope } from '../blocking-modal-queue.js';
 import type { HostPrompts } from '../host-prompts.js';
 import type { PhoneRequestTracker } from '../phone-requests.js';
 
-export interface CreateHostCallbacksOptions {
+export type CreateHostCallbacksOptions = {
   label: string;
   pairingLabel?: string | undefined;
   pairingDotSuffix?: boolean | undefined;
@@ -45,7 +45,7 @@ export interface CreateHostCallbacksOptions {
   inService?: (() => boolean) | undefined;
   /** What the core's confirmations claim the phone's requests from. A local wallet core's claims nothing. */
   phoneRequests: PhoneRequestTracker;
-}
+};
 
 /** How a core's permission and confirmation asks are answered, given the core's own label, queue scope and phone. */
 export type HostAsks = (core: {
@@ -58,11 +58,11 @@ export type HostAsks = (core: {
  * What the callbacks ask the page for: the user's answers, where push notifications wait until due, and how the
  * core's permission and confirmation asks are answered.
  */
-export interface HostCallbackDeps {
+export type HostCallbackDeps = {
   prompts: HostPrompts;
   notifications: NotificationScheduler;
   asks: HostAsks;
-}
+};
 
 /** Answers the core's asks by showing the page's prompts, and reads and records the permissions they decide. */
 export function promptAsks(deps: { prompts: HostPrompts; permissions: PromptPermissionStores }): HostAsks {

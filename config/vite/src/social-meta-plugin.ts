@@ -5,7 +5,7 @@
 
 import type { HtmlTagDescriptor, Plugin } from 'vite';
 
-export interface SocialMeta {
+export type SocialMeta = {
   /** Should match `<title>`. */
   title: string;
   /** Ideally under 160 characters. */
@@ -14,7 +14,7 @@ export interface SocialMeta {
   /** Root-relative path to a square PNG of at least 200x200. */
   image: string;
   imageAlt: string;
-}
+};
 
 /** Resolves `image` against `VITE_APP_URL`, keeping it relative when unset. */
 export function socialImageUrl(image: string): string {

@@ -26,29 +26,29 @@ const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
 
-interface InitOpts {
+type InitOpts = {
   /** Only tags log lines. */
   label: string;
-}
+};
 
-interface ScheduleRequest {
+type ScheduleRequest = {
   productId: string;
   title: string;
   text: string;
   deeplink: string | null;
   scheduledAt: number | null;
-}
+};
 
-export interface ScheduledNotificationStore {
+export type ScheduledNotificationStore = {
   schedule: typeof dbSchedule;
   cancel: typeof dbCancel;
   allocateId: typeof allocateId;
   listAll: typeof listAll;
   removeById: typeof removeById;
   removeStale: (now: number) => Promise<number>;
-}
+};
 
-export interface ScheduledNotificationsDeps {
+export type ScheduledNotificationsDeps = {
   store: ScheduledNotificationStore;
   show: ShowNotification;
   /** Undefined where the browser has no Web Locks. */
@@ -59,16 +59,16 @@ export interface ScheduledNotificationsDeps {
   visibility: VisibilitySource;
   /** The window, whose `pagehide` stops the poller and whose restoring `pageshow` starts it again. */
   lifecycle: EventTarget;
-}
+};
 
-export interface ScheduledNotifications {
+export type ScheduledNotifications = {
   /** Idempotent. */
   init: (opts: InitOpts) => void;
   /** An immediate fire (null or past `scheduledAt`) only allocates an id and is not persisted. */
   schedule: (req: ScheduleRequest) => Promise<ScheduleNotificationResult>;
   /** Idempotent. False when the record had already fired or never existed. */
   cancel: (productId: string, perProductId: number) => Promise<boolean>;
-}
+};
 
 const BROADCAST_CHANNEL_NAME = 'dotli:scheduled-notifications';
 type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };

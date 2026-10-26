@@ -14,19 +14,19 @@ import { createDotnsResolver, type ChainClient, type DotnsResolver } from './res
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 
 /** A chain client whose follow can be stopped from the test. */
-interface FakeClient extends ChainClient {
+type FakeClient = {
   stop: () => void;
   destroy: Mock<() => void>;
-}
+} & ChainClient;
 
 /** How one client behaves: its sync, and what a slot read answers. */
-interface ApiShape {
+type ApiShape = {
   whenReady?: () => Promise<void>;
   /** Every slot read rejects with this. */
   readFails?: Error;
   /** The chain halts under the read, in the pool's order: the read is answered first, then the follow stops. */
   haltsOnRead?: boolean;
-}
+};
 
 function apiStopped(): Error {
   const err = new Error('chainHead follow stopped');

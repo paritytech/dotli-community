@@ -7,7 +7,7 @@ import { siteGrantsIdb, type DotliIdb } from './db.js';
 import { idbRequest, idbTransaction } from '@dotli/shared';
 import { SITE_GRANTS_STORE } from './schema.js';
 
-export interface SiteGrant {
+export type SiteGrant = {
   token: string;
   origin: string;
   /** Hex of the hash of the main account's public key, so a grant names whose it is without naming the account. */
@@ -19,11 +19,11 @@ export interface SiteGrant {
    * that used it, the one that made it first.
    */
   group?: { registrable: string; token: string; origins: string[] };
-}
+};
 
 type SiteGroup = NonNullable<SiteGrant['group']>;
 
-export interface SiteGrantStore {
+export type SiteGrantStore = {
   read: (token: string) => Promise<SiteGrant | null>;
   /** Puts by token, so saving one token twice keeps one grant. */
   save: (grant: SiteGrant) => Promise<void>;
@@ -38,7 +38,7 @@ export interface SiteGrantStore {
   list: () => Promise<SiteGrant[]>;
   forget: (token: string) => Promise<void>;
   forgetAll: () => Promise<void>;
-}
+};
 
 /** The site grants over `idb`, the grants database by default. Every write resolves on commit. */
 export function createSiteGrantStore(idb: DotliIdb = siteGrantsIdb): SiteGrantStore {

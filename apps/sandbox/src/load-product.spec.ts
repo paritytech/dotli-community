@@ -23,7 +23,7 @@ function params(overrides: Partial<SandboxParams> = {}): SandboxParams {
 
 type FetchArchive = LoadProductDeps['fetchArchive'];
 
-interface Harness {
+type Harness = {
   deps: LoadProductDeps;
   /** What the load did, in order. */
   events: string[];
@@ -33,7 +33,7 @@ interface Harness {
   written: string[];
   stored: ArchiveFiles[];
   reports: { event: string; flowId: string; payload: Record<string, unknown> }[];
-}
+};
 
 const BLOCK_SOURCE = (): Promise<Uint8Array> => Promise.resolve(new Uint8Array());
 

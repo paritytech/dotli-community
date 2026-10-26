@@ -4,11 +4,11 @@
 // Topbar popovers, menus and the pairing modal register here so auto-hide keeps the bar up
 // while one is open or focused, even when it is portalled outside `#topbar`.
 
-export interface TopbarSurface {
+export type TopbarSurface = {
   element: () => HTMLElement | undefined;
   /** Open as last set (not as last rendered). */
   open: () => boolean;
-}
+};
 
 const surfaces = new Set<TopbarSurface>();
 

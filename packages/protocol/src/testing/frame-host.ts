@@ -154,10 +154,10 @@ export class FakeIframe extends EventTarget {
 }
 
 /** Where the frame mounts its iframe. Holds only fake iframes. */
-interface FakeMount {
+type FakeMount = {
   appendChild: <T>(node: T) => T;
   readonly iframes: ReadonlySet<FakeIframe>;
-}
+};
 
 function createMount(fires: MountEvent): FakeMount {
   const iframes = new Set<FakeIframe>();
@@ -184,7 +184,7 @@ function serveFrameStatus(serving: ProtocolTransport): FrameStatus {
 /** A frame of a later release, whose wire the host cannot speak. */
 const newerSchema = defineSchema({ version: 255, hello: _void, sections: {} });
 
-export interface FrameDom {
+export type FrameDom = {
   /** What a frame or client is built on. */
   deps: ProtocolFrameDeps<FakeIframe>;
   /** The mounted iframe, or throws when there is none. */
@@ -212,7 +212,7 @@ export interface FrameDom {
   sent(iframe?: FakeIframe): RecordedWireMessage[];
   /** Data sent by `iframe` (the current one by default) as it is, from the frame's origin unless told otherwise. */
   deliverRaw(data: unknown, iframe?: FakeIframe, origin?: string): void;
-}
+};
 
 /**
  * `options.mount` `'error'` makes each protocol iframe fail as it mounts, and null leaves its `load` to the test. The
@@ -311,9 +311,9 @@ export function createFrameDom(
   };
 }
 
-export interface FrameHost extends FrameDom {
+export type FrameHost = {
   client: ProtocolClient;
-}
+} & FrameDom;
 
 /**
  * `config` null leaves the client unconfigured, as before the host's boot says how to build the frame. The client waits

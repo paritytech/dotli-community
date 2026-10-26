@@ -87,7 +87,7 @@ export type PermissionAuthorizationProvider = Pick<
 >;
 
 /** Where a product's permissions are read and written: the core, through an open connection of that product. */
-export interface PermissionAuthorizations {
+export type PermissionAuthorizations = {
   /**
    * Routes `label`'s permissions through `provider` until the returned unregister. The newest connection answers, as a
    * render on a replacement core registers last.
@@ -101,7 +101,7 @@ export interface PermissionAuthorizations {
   grantedDevicePermissions(label: string): Promise<DevicePermissionName[]>;
   /** The iframe `allow` attribute for `label`'s granted device permissions, plus those every product gets. */
   allowAttribute(label: string): Promise<string>;
-}
+};
 
 function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
   if (permission === 'ChainSubmit' || permission === 'PreimageSubmit' || permission === 'StatementSubmit') {

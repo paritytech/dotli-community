@@ -21,10 +21,10 @@ export type HostDialogTitle =
 export type HostAnswer = 'Always allow' | 'Allow' | 'Allow once' | 'Sign';
 
 /** A dialog the host is expected to show, and the button that answers it. */
-export interface HostDialog {
+export type HostDialog = {
   title: HostDialogTitle;
   answer: HostAnswer;
-}
+};
 
 /**
  * Answers each expected dialog in order, failing when one never shows. The button is looked up inside the dialog with

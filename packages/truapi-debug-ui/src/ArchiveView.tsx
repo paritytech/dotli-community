@@ -29,10 +29,10 @@ import s from './ArchiveView.module.css';
 /** Cut so a huge bundle stays responsive. */
 const MAX_TEXT_CHARS = 1_000_000;
 
-export interface ObjectUrls {
+export type ObjectUrls = {
   create: (blob: Blob) => string;
   revoke: (url: string) => void;
-}
+};
 
 const pageObjectUrls: ObjectUrls = {
   create: blob => URL.createObjectURL(blob),

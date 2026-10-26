@@ -56,21 +56,21 @@ function createIssueReporter(side: WireSide, count: typeof m.count): (issue: Wir
   };
 }
 
-interface WireReportDeps {
+type WireReportDeps = {
   count: typeof m.count;
   /** Where a refused origin is logged. The shared log when unset. */
   warn?: (...args: unknown[]) => void;
-}
+};
 
 /** Where a side reports what its transport and its window provider drop. */
-interface WireReport {
+type WireReport = {
   /** The transport's issue hook. */
   onIssue: (issue: TransportIssue) => void;
   /** Data from the admitted peer that is not bytes, which the provider drops before the transport sees it. */
   onNotBytes: () => void;
   /** Bytes from a page at an origin the provider does not admit. */
   onRefusedOrigin: (origin: string) => void;
-}
+};
 
 /**
  * Reports what the transport and the window provider of `side` drop, each once. A refused message, a post the provider

@@ -11,12 +11,12 @@ const resolveLog = log.child({ flow: 'resolve' });
 
 const ICON_FETCH_BUDGET_MS = 10_000;
 
-export interface ProductBrandingDeps {
+export type ProductBrandingDeps = {
   /** Reads one block of the product's content, abandoned when the signal aborts. */
   fetchBlock: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
   /** Shows the icon in the tab. The page's `<link rel=icon>` by default. */
   setFavicon?: (href: string, format: 'jpeg' | 'png') => void;
-}
+};
 
 /** Cosmetic: an icon that fails leaves the tab as it was and never affects the app. */
 export async function applyProductBranding(

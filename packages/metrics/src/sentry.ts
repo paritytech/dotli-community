@@ -25,7 +25,7 @@ const ENABLED = import.meta.env.VITE_METRICS === 'true';
 export type SentrySource = 'host' | 'protocol' | 'worker' | 'sandbox';
 
 /** Structural view of a Sentry event, so tests need no SDK types. */
-interface SmoldotEventLike {
+type SmoldotEventLike = {
   exception?: {
     values?: {
       type?: string;
@@ -36,7 +36,7 @@ interface SmoldotEventLike {
     }[];
   };
   tags?: Record<string, string | number | boolean | bigint | symbol | null | undefined>;
-}
+};
 
 // Matches `.../smoldot/dist/...` and the Bun-versioned `.../smoldot@2.0.40/node_modules/smoldot/...`.
 const SMOLDOT_PATH_RE = /[/\\]smoldot(?:@[\w.+-]+)?[/\\]/i;

@@ -52,17 +52,17 @@ export async function shareDiagnostics(
   m.count(S.DIAGNOSTICS_SHARE, { outcome: 'ok' });
 }
 
-export interface DiagnosticsSharer {
+export type DiagnosticsSharer = {
   /** Shares the report. A click while a share runs belongs to it, so it settles with it and opens no second issue. */
   share(): Promise<void>;
-}
+};
 
-export interface DiagnosticsSharerDeps {
+export type DiagnosticsSharerDeps = {
   source: Pick<DiagnosticsSource, 'report' | 'openIssue'>;
   rows: readonly DiagnosticsRow[];
   /** Told when a share starts and ends, so the button can read busy. */
   onBusy: (busy: boolean) => void;
-}
+};
 
 const SHARE_POOL = 'diagnostics_share';
 

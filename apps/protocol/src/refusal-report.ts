@@ -18,18 +18,18 @@ import type { AnyMethod } from '@dotli/transport';
 
 export type FrameRoute = 'auth' | 'mode' | 'wallet' | 'chain';
 
-export interface FrameRefusal {
+export type FrameRefusal = {
   route: FrameRoute;
   /** The call by the name the metrics and the trail know it by. */
   method: CallName;
   /** What the handler threw, or the failure it answered with as the error host code sees. */
   error: Error;
-}
+};
 
-export interface RefusalReportDeps {
+export type RefusalReportDeps = {
   warn: (...args: unknown[]) => void;
   count: typeof m.count;
-}
+};
 
 export function createRefusalReporter({ warn, count }: RefusalReportDeps): (refusal: FrameRefusal) => void {
   return refusal => {

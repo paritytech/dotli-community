@@ -11,12 +11,12 @@ const SAFE_RIGHT = 'var(--safe-right, 0px)';
 const CONTENT_TOP = 'var(--content-top, 68px)';
 const CONTENT_BOTTOM = 'var(--content-bottom, 0px)';
 
-export interface ProductIframeBox {
+export type ProductIframeBox = {
   top: string;
   left: string;
   width: string;
   height: string;
-}
+};
 
 export function productIframeBox(opts: { topbarOffset: boolean }): ProductIframeBox {
   // The content edges already include the insets on the bar's side, so one term per edge covers both.

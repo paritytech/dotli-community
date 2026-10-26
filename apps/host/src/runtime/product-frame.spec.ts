@@ -42,13 +42,13 @@ const rethrow = (error: unknown): never => {
   throw error;
 };
 
-interface FakeIframeHost {
+type FakeIframeHost = {
   options: FrameHostOptions;
   iframe: HTMLIFrameElement;
   dispose: ReturnType<typeof vi.fn<() => void>>;
-}
+};
 
-interface Harness extends FakePageCore {
+type Harness = {
   frame: ProductFrame;
   /** Every frame the product frame created, in order. */
   hosts: FakeIframeHost[];
@@ -64,7 +64,7 @@ interface Harness extends FakePageCore {
   failFrames(failure: Error): void;
   /** The permission store announcing a change. */
   announce(change: Partial<PermissionsChange> & { label: string }): void;
-}
+} & FakePageCore;
 
 let channel: StartedSandboxChannel | null = null;
 

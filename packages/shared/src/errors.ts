@@ -5,7 +5,7 @@
 
 const UNKNOWN_PREFIX = '[serializeError:';
 
-export interface ErrorChainNode {
+export type ErrorChainNode = {
   name: string;
   message: string;
   stack?: string | undefined;
@@ -13,7 +13,7 @@ export interface ErrorChainNode {
   causes: ErrorChainNode[];
   /** Set when the source value was not an `Error` instance. */
   raw?: unknown;
-}
+};
 
 /** `err` with its `name` set, so it reaches Sentry as its own exception type. */
 export function named<E extends Error>(err: E, name: string): E {

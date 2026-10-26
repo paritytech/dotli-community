@@ -22,9 +22,9 @@ const APP: ManifestResult<ExecutableManifest> = {
 };
 
 /** The tab, as far as branding writes it: the icon formats it was given. */
-interface Tab {
+type Tab = {
   favicons: string[];
-}
+};
 
 let tab: Tab;
 

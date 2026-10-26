@@ -42,23 +42,23 @@ const rowTexts = (row: Element): (string | null)[] =>
     cell => cell.textContent,
   );
 
-interface ExpectedChain {
+type ExpectedChain = {
   label: string;
   peers?: { text: string; aria: string };
   cell:
     | { kind: 'unavailable' }
     | { kind: 'waiting'; text: string; ghost: 'searching' | 'counting' | 'due' }
     | { kind: 'bars'; titles: string[]; firstBlock: number };
-}
+};
 
-interface ExpectedBody {
+type ExpectedBody = {
   title: string;
   detail: string;
   tone: 'idle' | 'warn' | 'ok' | 'err' | 'quiet';
   chains: ExpectedChain[];
   speed?: [string, string];
   size?: [string, string];
-}
+};
 
 /** The body: head, status well, a group per known chain, transfer rows, tips. */
 async function expectBody(expected: ExpectedBody): Promise<void> {

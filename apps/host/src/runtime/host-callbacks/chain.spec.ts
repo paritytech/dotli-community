@@ -27,24 +27,24 @@ import { yielded } from '../../testing/fixtures.js';
 const fakeSocketChain: HostChainSources['rpcChain'] = (genesisHash, hooks) =>
   createCoreRpcChainProvider(genesisHash, hooks, FakeWebSocket as unknown as typeof WebSocket);
 
-interface Upstream {
+type Upstream = {
   sent: JsonRpcRequest[];
   emit: (message: JsonRpcMessage) => void;
   /** The chain dies, as its transport reports it. */
   halt: () => void;
   disconnect: Mock<() => void>;
   opened: number;
-}
+};
 
 /** Both backends' chains, recording each transport built in `upstreams`, on the backend a test sets. */
-interface FakeSources extends HostChainSources {
+type FakeSources = {
   upstreams: Upstream[];
   setBackend: (backend: Backend) => void;
   remoteChain: Mock<HostChainSources['remoteChain']>;
   rpcChain: Mock<HostChainSources['rpcChain']>;
   isRemoteChainConnectable: Mock<HostChainSources['isRemoteChainConnectable']>;
   isRpcChainSupported: Mock<HostChainSources['isRpcChainSupported']>;
-}
+} & HostChainSources;
 
 function newUpstream(): Upstream {
   return { sent: [], emit: () => undefined, halt: () => undefined, disconnect: vi.fn<() => void>(), opened: 0 };
@@ -455,13 +455,13 @@ describe('createChainConnect', () => {
 
 // The host page's chain pool end to end (Chain.ts, pool, broker, backend transport), with remote connections faked.
 
-interface RemoteConnection {
+type RemoteConnection = {
   genesisHash: string;
   sent: JsonRpcRequest[];
   emit: (message: JsonRpcMessage) => void;
   halt: (reason: RemoteChainHalt) => void;
   disconnect: Mock<() => void>;
-}
+};
 
 describe('host chain pool on a light client backend', () => {
   let people: string;
@@ -902,9 +902,9 @@ function statement(subscription: string, encoded: string): unknown {
   };
 }
 
-interface Notification {
+type Notification = {
   params: { subscription: string; result: { data: { statements: string[] } } };
-}
+};
 
 describe('host chain connection over Trusted Providers', () => {
   beforeEach(() => {

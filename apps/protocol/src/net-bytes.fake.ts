@@ -3,7 +3,7 @@
 
 import type { Ticker } from './net-bytes.js';
 
-export interface TestTicker {
+export type TestTicker = {
   ticker: Ticker;
   /** Runs every ticker that is running. */
   tick: () => void;
@@ -11,7 +11,7 @@ export interface TestTicker {
   started: () => number;
   /** How many tickers are running. */
   running: () => number;
-}
+};
 
 /** A ticker the test ticks. */
 export function createTestTicker(): TestTicker {

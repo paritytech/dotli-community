@@ -10,7 +10,7 @@ import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import s from './ToastCard.module.css';
 
-export interface ToastCardProps {
+export type ToastCardProps = {
   entry: ToastEntry;
   hidden: boolean;
   /** Place in the collapsed pile, 0 for the newest. */
@@ -18,7 +18,7 @@ export interface ToastCardProps {
   expanded: boolean;
   /** The stack holds one live toast, which keeps its close button while piled. */
   single: boolean;
-}
+};
 
 export function ToastCard(props: ToastCardProps): JSX.Element {
   // The stack keys cards by id, so it never changes.

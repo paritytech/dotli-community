@@ -3,7 +3,7 @@
 
 // Plain stores with no framework in them. Components read one through `useStore` in `@dotli/ui`.
 
-export interface ReadableStore<T> {
+export type ReadableStore<T> = {
   get: () => T;
   /** What a build-time render shows, as nothing writes a store then. */
   initial: T;
@@ -12,16 +12,16 @@ export interface ReadableStore<T> {
    * and its listeners before the outer setter notifies its own.
    */
   subscribe: (listener: () => void) => () => void;
-}
+};
 
-export interface SyncStore<T> extends ReadableStore<T> {
+export type SyncStore<T> = {
   /** A value equal to the current one is dropped and notifies nobody. */
   set: (next: T) => void;
   /** Tests only. */
   reset: () => void;
-}
+} & ReadableStore<T>;
 
-export interface SyncStoreOptions<T> {
+export type SyncStoreOptions<T> = {
   /**
    * Stores whose producers rebuild an object on every write pass {@link shallowEqual}.
    */
@@ -32,7 +32,7 @@ export interface SyncStoreOptions<T> {
    * completes. This package cannot depend on metrics.
    */
   onListenerError?: (error: Error) => void;
-}
+};
 
 /** A store listener that threw. The page's error handler groups it by `store`. */
 export class StoreListenerError extends Error {

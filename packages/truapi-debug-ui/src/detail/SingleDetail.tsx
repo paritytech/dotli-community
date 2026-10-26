@@ -13,13 +13,13 @@ import { LinkButton } from '../shared/LinkButton.js';
 import { SectionTitle } from '../shared/SectionTitle.js';
 import { ChainFields, ChainSummary, Payload, Summary } from './Sections.js';
 
-interface SingleDetailProps {
+type SingleDetailProps = {
   event: StoredEvent;
   /** Includes the event itself. */
   group: StoredEvent[];
   first: StoredEvent | undefined;
   onSelectPair: (seq: EventSeq) => void;
-}
+};
 
 export function SingleDetail(props: SingleDetailProps): JSX.Element {
   const ev = untrack(() => props.event);

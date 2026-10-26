@@ -40,7 +40,7 @@ const CANCELLED: LoginOutcome = { kind: 'cancelled' };
 const FAILED: LoginOutcome = { kind: 'failed' };
 
 /** The page's sign-in and sign-out on its core. */
-export interface AuthCommands {
+export type AuthCommands = {
   /**
    * Answers how the login ended. A click queued behind a login shares its answer. Answers `paired` at once for a user
    * already signed in. Rejects when the core paired but its session could not be stored.
@@ -53,19 +53,19 @@ export interface AuthCommands {
   logout(): Promise<LogoutOutcome>;
   /** Stops the pairing under way, at once and outside the queue, and ends the login round, so a later click logs in. */
   cancelLogin(): void;
-}
+};
 
 /** Login, logout and cancel on the core, which the page's sign-out runs its end through. */
-export interface CoreCommands extends Omit<AuthCommands, 'logout'> {
+export type CoreCommands = {
   /**
    * Ends the login round and cancels a pairing under way, since the core may never answer it, then runs `end` once no
    * login is open, in the order logins and logouts were asked for, and answers what it answers. What there is to end
    * is `end`'s to decide.
    */
   logout<T>(end: () => Promise<T>): Promise<T>;
-}
+} & Omit<AuthCommands, 'logout'>;
 
-export interface AuthCommandsDeps {
+export type AuthCommandsDeps = {
   auth: ReadableStore<DotliAuthState>;
   /**
    * One login to its end, answering how it ended and reporting its own failures. `signal` aborts once a cancel or a
@@ -73,15 +73,15 @@ export interface AuthCommandsDeps {
    */
   login(reason: string | undefined, signal: AbortSignal): Promise<LoginOutcome>;
   cancelPairing(): void;
-}
+};
 
 const AUTH_POOL = 'auth';
 
 /** The calls of one login, which share its answer. */
-interface LoginRound {
+type LoginRound = {
   readonly controller: AbortController;
   answer: LoginOutcome | null;
-}
+};
 
 const newRound = (): LoginRound => ({ controller: new AbortController(), answer: null });
 
@@ -138,7 +138,7 @@ export function createAuthCommands(deps: AuthCommandsDeps): CoreCommands {
   };
 }
 
-export interface CoreAuthCommandsDeps {
+export type CoreAuthCommandsDeps = {
   auth: ReadableStore<DotliAuthState>;
   core: Pick<PageCore, 'acquire' | 'cancelPairing'>;
   session: Pick<SessionState, 'reportLoginFailure'>;
@@ -146,7 +146,7 @@ export interface CoreAuthCommandsDeps {
   walletMode: () => WalletMode;
   /** The page's copy, which holds the session a pairing stored, or hears that its write failed. */
   storedSession: Pick<HostCoreStorage, 'readSession' | 'onStoredSessionChanged' | 'onSessionWriteFailed'>;
-}
+};
 
 export function createCoreAuthCommands(deps: CoreAuthCommandsDeps): CoreCommands {
   async function login(reason: string | undefined, signal: AbortSignal): Promise<LoginOutcome> {

@@ -10,9 +10,9 @@ import type { CoreConnection } from '../page-core.js';
 /** A call error whose domain error sits in a versioned envelope, as every TrUAPI method's does. */
 export type SiteCallError = CallErrorValue<{ tag: string; value: { tag: string } }> | UnsupportedCallError;
 
-export interface CoreCallsDeps {
+export type CoreCallsDeps = {
   acquire: () => Promise<{ connect(): Promise<CoreConnection>; release(): void }>;
-}
+};
 
 /**
  * Runs `use` over one lease and one connection to the core, which it closes and releases after. A request may wait on

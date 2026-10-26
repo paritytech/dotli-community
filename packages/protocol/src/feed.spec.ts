@@ -10,15 +10,15 @@ import { createFeedKeeper, type FeedEnds, type FeedFrame, type FeedName } from '
 import type { ProtocolStatus } from './frame.js';
 
 /** A frame's transport, known here by name only. */
-interface Transport {
+type Transport = {
   name: string;
-}
+};
 
 /** A subscription the keeper holds on `transport`. */
-interface HeldSubscription extends FeedEnds {
+type HeldSubscription = {
   transport: Transport;
   unsubscribed: boolean;
-}
+} & FeedEnds;
 
 describe('createFeedKeeper', () => {
   let timers: ManualTimers;

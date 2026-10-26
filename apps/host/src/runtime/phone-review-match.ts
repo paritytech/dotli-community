@@ -42,10 +42,10 @@ function encodeV1(method: PhoneMethod, value: unknown): Uint8Array {
   return PHONE_METHODS[method].request.enc({ tag: 'V1', value });
 }
 
-export interface PhoneReviewMatchDeps {
+export type PhoneReviewMatchDeps = {
   /** A review or request that would not encode. */
   reportEncodeFailure?: (method: PhoneMethod, error: unknown) => void;
-}
+};
 
 /** Matches a `getAccount` request for an account of `productId`. */
 function byAccountOf(productId: string): PhoneReviewMatch {

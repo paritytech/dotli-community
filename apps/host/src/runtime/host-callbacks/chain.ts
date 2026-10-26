@@ -40,7 +40,7 @@ import { createFrameChainTransport, type RemoteChainFactory } from './frame-tran
 import { createRedialGate, type RedialGate } from './redial-gate.js';
 
 /** Where the host's chains come from on each backend. */
-export interface HostChainSources {
+export type HostChainSources = {
   /** The backend in force. */
   backend: () => Backend;
   /** The light client backends' connections to the protocol frame. */
@@ -49,7 +49,7 @@ export interface HostChainSources {
   /** Trusted Providers' own sockets. */
   rpcChain: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
   isRpcChainSupported: (genesisHash: string) => boolean;
-}
+};
 
 const pageSources: HostChainSources = {
   backend: getBackend,
@@ -59,10 +59,10 @@ const pageSources: HostChainSources = {
   isRpcChainSupported: isCoreRpcChainSupported,
 };
 
-export interface HostChainPoolOptions extends Partial<Pick<HostChainSources, 'backend' | 'remoteChain' | 'rpcChain'>> {
+export type HostChainPoolOptions = {
   /** Unset, an idle chain closes after the pool's default minute. */
   destroyDelay?: number | undefined;
-}
+} & Partial<Pick<HostChainSources, 'backend' | 'remoteChain' | 'rpcChain'>>;
 
 /** Every backend switch reloads the page, so a pool entry never outlives its backend. */
 export function createHostChainPool({
@@ -82,9 +82,9 @@ export function createHostChainPool({
 }
 
 /** The protocol frame's status, read when a lease that died with the frame would be taken again. */
-export interface FrameStatusSource {
+export type FrameStatusSource = {
   getProtocolStatus(): ProtocolStatus;
-}
+};
 
 const protocolFrame: FrameStatusSource = { getProtocolStatus: () => protocolClient().getProtocolStatus() };
 
@@ -138,10 +138,10 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
  * A chain that halts each time it is rebuilt would otherwise be re-synced on each re-follow, and a frame that fails
  * each boot booted again. Kept per pool, since they hold back that pool's leases.
  */
-interface PoolGates {
+type PoolGates = {
   frame: RedialGate;
   chains: Map<string, RedialGate>;
-}
+};
 
 const poolGates = new WeakMap<ChainPool, PoolGates>();
 

@@ -10,7 +10,7 @@ import type { WalletMode } from '../state/wallet-mode.js';
 import type { SessionRead } from './core-storage.js';
 import { createSessionLease } from './session-lease.js';
 
-interface FakeLease {
+type FakeLease = {
   released: number;
   subscribed: number;
   /** Marks the core as down, so the next `subscribeDown` calls its listener at once. */
@@ -18,7 +18,7 @@ interface FakeLease {
   listener: (() => void) | null;
   subscribeDown(listener: () => void): () => void;
   release(): void;
-}
+};
 
 /** A session lease over a fake copy, wallet mode and core, whose reads and boots the test settles. */
 function harness(initial: { blob: string | null; mode?: WalletMode }) {

@@ -12,19 +12,19 @@ import { SANDBOX_ERRORS } from './errors.js';
 type PackedArchive = ReturnType<typeof packArchive>;
 
 /** The handoff message the controlling worker reads. */
-export interface SetArchiveMessage extends PackedArchive {
+export type SetArchiveMessage = {
   type: 'SET_ARCHIVE';
   /**
    * The directory of the path the page writes the product at, such as `/docs/` for `/docs/intro`. The page resolves
    * its relative URLs under it, while the archive holds every file from its root.
    */
   directory: string;
-}
+} & PackedArchive;
 
 /** The one `ServiceWorker` method the handoff needs, so tests drive it with a stand-in. */
-export interface ArchiveWorker {
+export type ArchiveWorker = {
   postMessage(message: unknown, transfer: Transferable[]): void;
-}
+};
 
 /**
  * Resolves on `ARCHIVE_READY`, rejects on `ARCHIVE_ERROR` or after `timeoutMs`. The answer comes on a port of its own,

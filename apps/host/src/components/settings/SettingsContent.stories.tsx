@@ -44,14 +44,14 @@ async function showCategory(click: (el: Element) => Promise<void>, category: Cat
 }
 
 /** What the popover shows for. */
-interface Shown {
+type Shown = {
   backend: Backend;
   network: Network;
   cache: CacheSettings;
   enabledNetworks: Network[];
   sharedWorkerSupported: boolean;
   debugOn: boolean;
-}
+};
 
 /** One choice card: its radio, its selection and its words. */
 async function expectChoice(

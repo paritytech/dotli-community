@@ -4,9 +4,9 @@
 export const SUBMIT_WINDOW_MS = 10_000;
 export const SUBMIT_MAX_PER_WINDOW = 20;
 
-export interface SubmitRateLimiter {
+export type SubmitRateLimiter = {
   allow: () => boolean;
-}
+};
 
 export function createSubmitRateLimiter(): SubmitRateLimiter {
   const timestamps: number[] = [];

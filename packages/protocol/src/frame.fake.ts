@@ -13,7 +13,7 @@ import { createProviderPair } from '@dotli/transport/testing';
 import type { ProtocolFrame, ProtocolStatus } from './frame.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 
-export interface FakeFrame {
+export type FakeFrame = {
   frame: ProtocolFrame;
   /** The frame moving to `status`. Up, it builds a frame if there is none, and `listening` and `ready` connect it. */
   setStatus(status: ProtocolStatus): void;
@@ -21,14 +21,14 @@ export interface FakeFrame {
   lose(error: Error): void;
   /** How many frames were built. */
   builds(): number;
-}
+};
 
-interface Built {
+type Built = {
   /** The host's side. */
   host: ProtocolTransport;
   /** The frame app's side, which serves the host. */
   serving: ProtocolTransport;
-}
+};
 
 /**
  * Up and ready unless `options.status` says otherwise, or the test moves it. `serve` sets up each frame's serving

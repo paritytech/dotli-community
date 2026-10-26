@@ -196,7 +196,7 @@ export type ProtocolHandler<M> =
       : never;
 
 /** What serves the protocol's methods, each of whose own errors the schema declares. A transport is one. */
-export interface ProtocolServing {
+export type ProtocolServing = {
   handleRequest<P, R, E extends DomainFailure>(
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
@@ -205,4 +205,4 @@ export interface ProtocolServing {
     method: Subscription<S, V, I>,
     handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
   ): () => void;
-}
+};

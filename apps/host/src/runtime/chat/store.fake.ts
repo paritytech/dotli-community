@@ -13,7 +13,7 @@ import type {
 import { createChanges } from '../../testing/changes.js';
 
 /** The room list and conversation reads of a `memoryChatRepo`, which a spec can count, hold and fail. */
-export interface ChatRepoReads {
+export type ChatRepoReads = {
   /** Reads made so far. */
   readonly count: { rooms: number; messages: number };
   /** While set, each read of that kind waits until released. */
@@ -26,7 +26,7 @@ export interface ChatRepoReads {
   releaseOne(error?: Error): void;
   /** Lets every held read land. */
   releaseAll(): void;
-}
+};
 
 /** A chat repo in memory, keeping IndexedDB's orders: rooms and bots by creation, messages by insertion. */
 export function memoryChatRepo(): ChatRepo & {

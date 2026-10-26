@@ -18,11 +18,11 @@ export type SandboxParams = Extract<ReturnType<typeof validateSandboxParams>, { 
 export type LoadStep =
   'init' | 'sw_register' | 'content_fetch' | 'verify' | 'decrypt' | 'sw_store' | 'archive_index' | 'render';
 
-export interface LoadInput {
+export type LoadInput = {
   params: SandboxParams;
   /** 1 for the page's first load, one more for each retry. */
   attempt: number;
-}
+};
 
 export type LoadOutcome =
   | { outcome: 'loaded' }
@@ -35,7 +35,7 @@ type FetchArchive = typeof fetchArchive;
 /** Reads one block through the host's relay. */
 export type BlockSource = (cid: string) => Promise<Uint8Array>;
 
-export interface LoadProductDeps {
+export type LoadProductDeps = {
   /** Progress text for the host's loading screen. */
   showStatus: (message: string) => void;
   /** Wipes what earlier products left in this origin. */
@@ -59,7 +59,7 @@ export interface LoadProductDeps {
   write: (html: string) => void;
   /** Milliseconds since the sandbox started. */
   sinceStart: () => number;
-}
+};
 
 const contentLog = log.child({ flow: 'content' });
 

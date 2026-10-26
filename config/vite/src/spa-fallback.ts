@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
 import { isProtocolPath, isSessionPath, requestHostname, type LocalServing } from './serving.ts';
 
 /** The pages the bare host answers with other than the shell, by their Astro routes. */
-export interface FallbackPages {
+export type FallbackPages = {
   /** The bare host's root. */
   landing: string;
   /**
@@ -15,15 +15,15 @@ export interface FallbackPages {
    * one built file, `session.html`, that only these paths may serve.
    */
   session: string;
-}
+};
 
 /** A request as the dev server's middleware sees it. */
-export interface PageRequest {
+export type PageRequest = {
   method: string | undefined;
   url: string | undefined;
   accept: string | undefined;
   hostname: string;
-}
+};
 
 /** What the dev server does with a request before Astro answers it. */
 export type FallbackAction = { kind: 'pass' } | { kind: 'rewrite'; url: string } | { kind: 'not-found' };

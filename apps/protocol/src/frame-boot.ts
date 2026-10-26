@@ -21,7 +21,7 @@ import { err, hostFailure, type Sink, type SubscriptionHandler } from '@dotli/tr
 
 type Handler<St, V, E> = SubscriptionHandler<St, V, SubscriptionEnd<E>, ProtocolHello>;
 
-interface Waiting<St, V, E> {
+type Waiting<St, V, E> = {
   start: St;
   context: ProtocolContext;
   sink: Sink<V, SubscriptionEnd<E>>;
@@ -29,16 +29,16 @@ interface Waiting<St, V, E> {
   stop: (() => void) | null;
   /** Stopped by the peer, an interrupt or a dispose, which may come while the real handler runs. */
   stopped: boolean;
-}
+};
 
-export interface DeferredSubscription<St, V, E> {
+export type DeferredSubscription<St, V, E> = {
   /** Registered at once. Each subscription waits until `serve`, and one that stops first never starts. */
   handler: Handler<St, V, E>;
   /** Starts every waiting subscription on `real`, and every later one at once. Only the first `serve` or `fail` counts. */
   serve(real: Handler<St, V, E>): void;
   /** Ends every waiting subscription with `error`, and every later one at once, for a source that will never come. */
   fail(error: Error): void;
-}
+};
 
 export function createDeferredSubscription<St, V, E>(): DeferredSubscription<St, V, E> {
   let real: Handler<St, V, E> | null = null;
@@ -97,7 +97,7 @@ export function createDeferredSubscription<St, V, E>(): DeferredSubscription<St,
 
 type Telemetry = ProtocolHandler<typeof protocolSchema.sections.frame.telemetry>;
 
-export interface FrameBoot {
+export type FrameBoot = {
   frameStatus: ProtocolHandler<typeof protocolSchema.sections.frame.status>;
   telemetry: Telemetry;
   /** Feeds the telemetry from the mode's light client. Only the first source, or the idle feed of `ready`, counts. */
@@ -111,7 +111,7 @@ export interface FrameBoot {
    * an end, so none waits.
    */
   interrupt(end: FrameStatusEnd): void;
-}
+};
 
 const idleTelemetry: Telemetry = () => () => undefined;
 

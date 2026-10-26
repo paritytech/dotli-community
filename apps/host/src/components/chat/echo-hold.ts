@@ -8,15 +8,15 @@
 const TYPING_HOLD_MS = 1000;
 
 /** The text field as the hold sees it. */
-export interface EchoField {
+export type EchoField = {
   /** What the field shows now. */
   value: () => string;
   /** Replaces what it shows, which moves the caret. */
   write: (text: string) => void;
   isFocused: () => boolean;
-}
+};
 
-export interface EchoHold {
+export type EchoHold = {
   /** The product's text for the field, applied now or held while the user types. */
   receive: (text: string) => void;
   /** The user typed a key. */
@@ -24,7 +24,7 @@ export interface EchoHold {
   /** Starts afresh with `text` as the product's, as for another field, forgetting typing and anything held. */
   reset: (text: string) => void;
   dispose: () => void;
-}
+};
 
 export function createEchoHold(field: EchoField): EchoHold {
   // The product text last seen, applied or held.

@@ -3,22 +3,22 @@
 
 // Where the hover tooltip goes and when it must be measured, apart from its DOM wiring in hover-tooltip.ts.
 
-export interface PanelBox {
+export type PanelBox = {
   left: number;
   top: number;
   right: number;
-}
+};
 
-export interface TooltipSize {
+export type TooltipSize = {
   width: number;
   height: number;
-}
+};
 
 /** Panel coordinates of the tooltip's top-left corner. */
-export interface TooltipPosition {
+export type TooltipPosition = {
   left: number;
   top: number;
-}
+};
 
 /** Below and right of the pointer, pulled back inside the panel's right edge and flipped above near the viewport bottom. */
 export function placeTooltip(
@@ -41,14 +41,14 @@ export function placeTooltip(
 }
 
 /** The layout reads and writes a placement needs, each costly enough to skip when nothing changed. */
-export interface TooltipLayout<E> {
+export type TooltipLayout<E> = {
   /** The panel's box. Read before any write, so layout is clean. */
   readPanel: () => PanelBox;
   /** Puts `text` in the tooltip, styled for `el`, and shows it. */
   writeText: (text: string, el: E) => void;
   /** The tooltip's size at the panel's left edge, since a prose tooltip near the right edge wraps narrow. */
   measure: () => TooltipSize;
-}
+};
 
 /**
  * Places the tooltip for each pointer event. The panel box is read again only for a newly shown element, and the

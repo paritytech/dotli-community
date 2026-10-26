@@ -13,10 +13,10 @@ const DEBUG = env?.VITE_APP_DEBUG === 'true';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-export interface LogSink {
+export type LogSink = {
   /** Called for every warn, error and event. A throw is swallowed. */
   emit: (level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]) => void;
-}
+};
 
 let sink: LogSink | null = null;
 
@@ -42,14 +42,14 @@ function safeEmit(level: LogLevel, message: string, attrs?: Record<string, unkno
   }
 }
 
-interface BoundLogger {
+type BoundLogger = {
   debug: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   /** Always-on lifecycle marker, sent to the sink as `info`. */
   event: (name: string, attrs?: Record<string, unknown>) => void;
   child: (scope: Record<string, unknown>) => BoundLogger;
-}
+};
 
 function createLogger(scope: Record<string, unknown>): BoundLogger {
   return {

@@ -6,11 +6,11 @@ import { must } from '@dotli/shared/testing';
 import { headerHex } from './testing/header-hex.js';
 import { openWatchFollow, type WatchFollowOptions } from './watch-follow.js';
 
-interface Sent {
+type Sent = {
   id: string;
   method: string;
   params: unknown[];
-}
+};
 
 /** A follow over a session the test answers, and what it reported. */
 function follow(options: { live?: () => boolean } = {}) {

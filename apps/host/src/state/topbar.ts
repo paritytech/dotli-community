@@ -3,7 +3,7 @@
 
 import { createSyncStore, shallowEqual, type ReadableStore } from '@dotli/shared';
 
-export interface TopbarState {
+export type TopbarState = {
   /** The host's topbar, which the sandbox app's page lacks. */
   present: boolean;
   visible: boolean;
@@ -12,7 +12,7 @@ export interface TopbarState {
   blockingModalActive: boolean;
   /** Prompts queued behind the one on screen. */
   blockingModalsWaiting: number;
-}
+};
 
 function initialState(): TopbarState {
   return { present: false, visible: true, autoHide: false, blockingModalActive: false, blockingModalsWaiting: 0 };

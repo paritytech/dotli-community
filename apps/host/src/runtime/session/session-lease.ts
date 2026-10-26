@@ -14,20 +14,20 @@ import type { HostCoreStorage } from './core-storage.js';
 
 type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 
-export interface SessionLeaseDeps {
+export type SessionLeaseDeps = {
   copy: Pick<HostCoreStorage, 'readSession' | 'onStoredSessionChanged'>;
   walletMode: () => WalletMode;
   /** Only the two lease calls the session lease makes. */
   core: { acquire(): Promise<HeldLease> };
-}
+};
 
-export interface SessionLease {
+export type SessionLease = {
   /**
    * Holds a lease while the copy holds a paired session. A second call returns the first one's stop. The stop is final:
    * a start after it starts nothing.
    */
   start(): () => void;
-}
+};
 
 export function createSessionLease(deps: SessionLeaseDeps): SessionLease {
   // One run at a time, so a run never sees the lease another run is taking.

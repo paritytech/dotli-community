@@ -95,20 +95,20 @@ export function observeChains(
 export type LightClientResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
   Pick<typeof Chains, 'enableSyncReporting'>;
 
-export interface LightClientServiceDeps {
+export type LightClientServiceDeps = {
   lightClient: Chains.LightClient;
   resolver: LightClientResolver;
   /** The SharedWorker passes the fixed config, since the runtime network config never reaches it. */
   services: FixedServicesConfig;
-}
+};
 
-export interface LightClientService {
+export type LightClientService = {
   /** The chains every engine scope connects to. */
   pool: ChainPool;
   dotns: DotnsResolver;
   /** Lets go of the observed chains. */
   stop: () => void;
-}
+};
 
 export function startLightClientService({
   lightClient,

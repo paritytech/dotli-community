@@ -4,9 +4,9 @@
 import type { JSX } from '@solidjs/web';
 
 /** What every icon takes. Each draws in the current text color. */
-export interface IconProps {
+export type IconProps = {
   /** Width and height in pixels. Unset, the icon keeps its own size, or the stylesheet sizes it when it has none. */
   size?: number | undefined;
   class?: JSX.ClassValue;
   testId?: string | undefined;
-}
+};

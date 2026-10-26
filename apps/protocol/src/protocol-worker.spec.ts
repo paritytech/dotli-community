@@ -46,13 +46,13 @@ type SpanOpen = typeof m.open;
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
-interface LogLine {
+type LogLine = {
   level: LogLevel;
   message: string;
-}
+};
 
 /** The light client and resolver the worker drives, with the levers a test pulls. */
-interface FakeLightClient {
+type FakeLightClient = {
   lightClient: LightClient;
   resolver: WorkerResolver;
   /** The light client dies. */
@@ -77,7 +77,7 @@ interface FakeLightClient {
   presyncDone: Promise<void>;
   /** How many times the worker started warming People. */
   peopleWarms: number;
-}
+};
 
 function fakeLightClient(
   options: {
@@ -178,7 +178,7 @@ function fakeLightClient(
 }
 
 /** A tab's protocol iframe, linked to the worker over its own port. */
-interface Tab {
+type Tab = {
   transport: ProtocolTransport;
   /** The worker's status as the tab hears it, subscribed on connect as an iframe does. */
   status: StatusRecording;
@@ -188,7 +188,7 @@ interface Tab {
   closes: () => number;
   /** The tab's end of the port closes without its transport saying goodbye, as when the renderer crashes. */
   crash: () => void;
-}
+};
 
 const openPorts = new Set<MessagePort>();
 const tabs = new Set<ProtocolTransport>();
@@ -225,7 +225,7 @@ async function endPresync(presync: Presync, failure?: Error): Promise<void> {
   );
 }
 
-interface Worker {
+type Worker = {
   /** A tab's iframe connects, telling the worker its page load. */
   connect: (resolutionId?: string) => Tab;
   /**
@@ -249,7 +249,7 @@ interface Worker {
   /** Settles once the worker has logged `message`. */
   untilLog: (message: string) => Promise<void>;
   open: Mock<SpanOpen>;
-}
+};
 
 /**
  * The worker's end of a port, spying on each buffer it posts before the transfer detaches it, and calling `received`
@@ -299,14 +299,14 @@ function spiedPort(
 }
 
 /** A tab's port that reached the worker, before its iframe speaks. */
-interface Attached {
+type Attached = {
   /** The iframe speaks through a bare transport, as the specs drive it. */
   speak: (resolutionId?: string) => Tab;
   /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
   link: () => SharedWorkerLink;
   /** Settles once the worker handled the next message from this tab. */
   nextReceived: () => Promise<void>;
-}
+};
 
 /**
  * Starts a worker on a fake scope, as the browser does when the first tab names it. Settles once the worker has acted

@@ -38,9 +38,9 @@ const EXTENSIONS = [
 ];
 const TRANSACTION = `0x${'cd'.repeat(120)}` as const;
 
-interface CreateRefusal {
+type CreateRefusal = {
   error: CallErrorValue<HostCreateTransactionError>;
-}
+};
 type CreateAnswer = { ok: `0x${string}` } | CreateRefusal;
 
 /** The payload papi hands a creator once its fillers filled every extension. */

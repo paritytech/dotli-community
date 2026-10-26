@@ -7,10 +7,10 @@ const PRELOAD_TIMEOUT_MS = 2000;
 const PRELOAD_STEP = 'idle_preload';
 
 /** The idle callbacks a browser may offer, the page's own by default. */
-export interface IdleScheduler {
+export type IdleScheduler = {
   requestIdleCallback?: ((run: () => void, options: { timeout: number }) => number) | undefined;
   cancelIdleCallback?: ((handle: number) => void) | undefined;
-}
+};
 
 /**
  * Run `run` once the browser is idle, or after `timeoutMs` where it cannot say. Returns the cancel function.

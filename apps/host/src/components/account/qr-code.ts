@@ -4,7 +4,7 @@
 import { loadQrCode } from '../../lazy.js';
 import { wholeModuleSide } from './qr-size.js';
 
-export interface QrDrawOptions {
+export type QrDrawOptions = {
   /**
    * The side the layout allows in px, quiet zone included. The code is drawn at the largest whole-pixel module size
    * within it.
@@ -14,7 +14,7 @@ export interface QrDrawOptions {
   margin: number;
   errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
   color: { dark: string; light: string };
-}
+};
 
 /** Draws `payload` as a QR code onto `canvas`. Once `signal` aborts the code is off show, so drawing it is wasted. */
 export type DrawQr = (

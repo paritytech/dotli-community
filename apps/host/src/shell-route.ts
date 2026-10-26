@@ -25,22 +25,22 @@ const RESERVED_HOST_PARAMS = [
 
 export type ShellLocation = Pick<Location, 'hostname' | 'pathname' | 'search' | 'hash'>;
 
-export interface RouteOptions {
+export type RouteOptions = {
   /** The shell is served from localhost, the only place a product id override is read. */
   localhost: boolean;
   /** The page runs inside another frame. */
   framed: boolean;
   /** Reads the localhost URL to proxy. Only debug builds give one. */
   localhostProxy: ((location: ShellLocation) => string | null) | undefined;
-}
+};
 
 /** A target the shell renders by URL rather than by name. */
-export interface LocalTarget {
+export type LocalTarget = {
   kind: 'preview' | 'localhost';
   url: string;
   host: string;
   productId: string | undefined;
-}
+};
 
 export type ShellRoute =
   | {
@@ -133,13 +133,13 @@ export function localTargetPath(target: LocalTarget): string {
     : `/${target.host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(target.productId)}`;
 }
 
-export interface LandingDeps {
+export type LandingDeps = {
   location: Pick<Location, 'protocol' | 'port' | 'pathname' | 'search' | 'origin' | 'replace'>;
   /** The local root the shell is served under, or `null` when deployed. */
   localRoot: string | null;
   /** The service workers registered on this origin. */
   workers: () => Promise<readonly { unregister: () => Promise<boolean> }[]>;
-}
+};
 
 /**
  * The server answers the bare host's root with the landing page, so the shell gets a URL with no product only from a

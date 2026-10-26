@@ -5,7 +5,7 @@
 // text, so the rules are read here and matched in their ASCII form, as a URL gives a hostname.
 
 /** The registrable domains the Public Suffix List draws. */
-export interface PublicSuffixList {
+export type PublicSuffixList = {
   /**
    * The hostname's public suffix plus one label, lowercase.
    *
@@ -13,7 +13,7 @@ export interface PublicSuffixList {
    * public suffix itself.
    */
   registrable(hostname: string): string | null;
-}
+};
 
 // A WHATWG URL reads a hostname whose last label is a number as an IPv4 address.
 const NUMBER_LABEL = /^(?:\d+|0x[\da-f]*)$/;

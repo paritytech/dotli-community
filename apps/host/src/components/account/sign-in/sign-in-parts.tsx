@@ -9,7 +9,7 @@ import type { DrawQr } from '../qr-code.js';
 import { ApprovingScreen, PairingScreen, StatusScreen, type HeadingLevel, type SignInParts } from './SignInViews.js';
 
 /** What every pairing view needs from the place that shows it. */
-export interface SignInPartsProps {
+export type SignInPartsProps = {
   /** The page the sign-in is for, null for a sign-in of its own. */
   host: string | null;
   /** The product's own words for why it asks. */
@@ -28,7 +28,7 @@ export interface SignInPartsProps {
   holdFocus?: (() => void) | undefined;
   /** Without one, the `qrcode` chunk draws the code. */
   drawQr?: DrawQr | undefined;
-}
+};
 
 /**
  * The screen for a view of the pairing. Each call builds the screen anew, so call it again for each new screen, where

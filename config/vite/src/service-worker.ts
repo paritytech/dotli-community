@@ -8,14 +8,14 @@ import type { Plugin, PluginOption } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { appBuildOptions } from './build-options.ts';
 
-export interface ServiceWorkerOptions {
+export type ServiceWorkerOptions = {
   /** The worker source's folder, relative to the app root. */
   srcDir: string;
   /** The worker source, such as `app-sw.ts`, served as `app-sw.js`. */
   filename: string;
   /** Plugins the worker's own build needs. Called once, since a plugin instance serves one build. */
   plugins?: () => PluginOption[];
-}
+};
 
 // The PWA plugin's inner build sets only target, minify and sourcemap, so the shared minify chain is added here.
 const buildOptions: Plugin = {

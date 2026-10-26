@@ -37,7 +37,7 @@ export type ResponderState =
   | { kind: 'no-opener' }
   | { kind: 'answered' };
 
-export interface Responder<R> {
+export type Responder<R> = {
   state(): ResponderState;
   subscribe(listener: (state: ResponderState) => void): () => void;
   /**
@@ -57,7 +57,7 @@ export interface Responder<R> {
    * arrived. It never settles when none comes.
    */
   payload(): Promise<string>;
-}
+};
 
 /** The round's result, with the token the site keeps when it gets one. */
 export function resultMessage<R>(round: string, result: R, siteToken: string | undefined): ResultMessage<R> {
@@ -74,7 +74,7 @@ export function cancelledMessage(round: string): CancelledMessage {
   return { type: 'dotli:s:cancelled', round };
 }
 
-export interface ResponderDeps {
+export type ResponderDeps = {
   /** `window.opener`, null when no page opened this window or the link to it was cut. */
   opener: WindowHandle | null;
   /** The party of a hello's origin, or why it has none. */
@@ -82,7 +82,7 @@ export interface ResponderDeps {
   listen: (handler: (event: MessageEventLike) => void) => () => void;
   /** The page coming back from the back-forward cache. */
   onPageRestore: (listener: () => void) => () => void;
-}
+};
 
 export function createResponder<R>({
   opener,

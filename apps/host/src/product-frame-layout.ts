@@ -8,39 +8,39 @@ import { registerStoreStateReset } from '@dotli/shared';
 import { productIframeBox } from './product-iframe-box.js';
 import { getTopbarState } from './state/topbar.js';
 
-export interface TopbarLayout {
+export type TopbarLayout = {
   /** The frame keeps clear of the bar. Otherwise it takes the full height and the bar floats over it. */
   offset: boolean;
-}
+};
 
 /** In px. */
-export interface DockInset {
+export type DockInset = {
   right: number;
   bottom: number;
-}
+};
 
 export type DockSource = 'debug' | 'sandbox-checker';
 
 /** Where the frame sits, before it becomes inline style. */
-export interface FrameBox {
+export type FrameBox = {
   /** The frame starts below the bar. Otherwise it takes the full safe height. */
   belowBar: boolean;
   /** In px, reserved at the right edge by chat and the docks there. */
   right: number;
   /** In px, reserved at the bottom edge by the docks there. */
   bottom: number;
-}
+};
 
 /** Writes a box onto the frame. */
 export type ApplyFrameBox = (frame: HTMLIFrameElement, box: FrameBox) => void;
 
-interface LayoutState {
+type LayoutState = {
   frame: HTMLIFrameElement | null;
   apply: ApplyFrameBox;
   topbarOffset: boolean;
   chatWidth: number;
   docks: Partial<Record<DockSource, DockInset>>;
-}
+};
 
 function initialState(): LayoutState {
   return {

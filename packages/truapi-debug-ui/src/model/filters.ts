@@ -5,7 +5,7 @@ import type { StoredEvent } from './event-store.js';
 
 export type DirectionFilter = 'both' | 'incoming' | 'outgoing';
 
-export interface FilterState {
+export type FilterState = {
   direction: DirectionFilter;
   /** `undefined` means no product filter. A `null` key matches events with `productId: undefined`. */
   product: string | null | undefined;
@@ -15,7 +15,7 @@ export interface FilterState {
   excludeQuery: string;
   showTruapi: boolean;
   showSystem: boolean;
-}
+};
 
 export function initialFilterState(): FilterState {
   return {
@@ -28,11 +28,11 @@ export function initialFilterState(): FilterState {
   };
 }
 
-export interface CompiledQuery {
+export type CompiledQuery = {
   /** Takes a lowercased haystack. Null when the query imposes no constraint. */
   test: ((haystack: string) => boolean) | null;
   invalid: boolean;
-}
+};
 
 const compiled = new Map<string, CompiledQuery>();
 

@@ -9,6 +9,7 @@ import type { RecordedWireMessage } from '@dotli/transport/testing';
 import { RECORDER_BUNDLE_PATH } from './wire-bundles.js';
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- augmenting Window needs declaration merging
   interface Window {
     /** What the recorder kept, in the host page's top window. */
     __dotliProtocolMessages?: RecordedWireMessage[];
@@ -16,20 +17,20 @@ declare global {
 }
 
 /** What a recorded message must be. `body` matches when each of its fields does, at any depth. */
-export interface MessageMatch {
+export type MessageMatch = {
   /** Any section when unset. */
   section?: string;
   method: string;
   /** The message's kind, such as `receive` or `interrupt`. */
   tag: string;
   body?: Record<string, unknown>;
-}
+};
 
 /** A recorded message, and what it carries as the page decoded it. */
-export interface MatchedMessage {
+export type MatchedMessage = {
   recorded: RecordedWireMessage;
   body: unknown;
-}
+};
 
 /**
  * Call before the first navigation. The page runs the built recorder in every frame, and it records only in the top

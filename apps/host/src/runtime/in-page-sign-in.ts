@@ -11,20 +11,20 @@ import { reportLocalWalletFailure } from './wallet-failure.js';
 import type { WalletSwitchOutcome } from './wallet-switch.js';
 
 /** The recovery phrase import of a page that pairs in place. */
-export interface InPagePhrase {
+export type InPagePhrase = {
   /** The phrase's entropy, or null for anything that is not a recovery phrase. */
   toEntropy(phrase: string): Uint8Array | null;
   /** Uses the wallet in every app on the domain and reloads. A failure is reported there and answered as `failed`. */
   useLocalWallet(entropy: Uint8Array): Promise<WalletSwitchOutcome>;
-}
+};
 
-export interface InPageSignInDeps {
+export type InPageSignInDeps = {
   /** Loaded the first time the page asks for a phrase, so a page that never asks loads none of it. */
   inPagePhrase: () => Promise<InPagePhrase>;
   modal: AuthModalPort;
   /** Asks the core to log in. */
   login: (reason?: string) => void;
-}
+};
 
 export function createInPageSignIn(deps: InPageSignInDeps): SignInRoute {
   const { modal } = deps;

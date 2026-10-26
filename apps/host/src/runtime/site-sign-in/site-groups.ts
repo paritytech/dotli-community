@@ -7,13 +7,13 @@
 import { createAsyncTaskPool } from '@dotli/shared';
 import { parsePublicSuffixList, type PublicSuffixList } from './public-suffix-list.js';
 
-export interface SiteGroups {
+export type SiteGroups = {
   /**
    * The ASCII hostname's registrable domain, or null when it has none. Rejects when the list cannot be loaded, and the
    * next call loads it again.
    */
   registrable(hostname: string): Promise<string | null>;
-}
+};
 
 /** The registrable domains of the list at `listUrl`, fetched as text on the first call. */
 export function createSiteGroups(deps: { listUrl: string; fetch: typeof fetch }): SiteGroups {

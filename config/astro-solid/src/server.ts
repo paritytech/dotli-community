@@ -13,12 +13,12 @@ import type { RendererContext } from './types.js';
 type Props = Record<string, unknown>;
 type Manifest = NonNullable<NonNullable<Parameters<typeof renderToStream>[1]>['manifest']>;
 
-interface Metadata {
+type Metadata = {
   hydrate?: string;
   astroStaticSlot?: boolean;
   renderStrategy?: 'default' | 'probe';
   onProbeError?: () => void;
-}
+};
 
 const slotName = (str: string): string => str.trim().replace(/[-_]([a-z])/g, (_, w: string) => w.toUpperCase());
 

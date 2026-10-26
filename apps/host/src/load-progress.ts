@@ -31,21 +31,21 @@ const CHAIN_BYTES_DEBUG_MS = 1000;
 const CHAIN_BYTES_DEBUG_MAX = 300;
 const SPEED_WINDOW_MS = 3_000;
 
-export interface ContentProgressFacts {
+export type ContentProgressFacts = {
   bytesFetched: number;
   totalBytes: number | null;
-}
+};
 
 /** Where the load's reports come from: the protocol frame and the sandbox's content fetch. Each returns its unsubscribe. */
-export interface LoadEvents {
+export type LoadEvents = {
   onChainSync: (listener: (event: ChainSyncEvent) => void) => () => void;
   onChainDetail: (listener: (event: ChainDetail) => void) => () => void;
   onNetBytes: (listener: (event: { received: number }) => void) => () => void;
   onContentProgress: (listener: (event: ContentProgressFacts) => void) => () => void;
-}
+};
 
 /** The loading screen this load drives. The page's, unless a spec passes one, since the page's draws on animation frames. */
-export interface LoadingScreen {
+export type LoadingScreen = {
   initPhases: (phases: LoadingPhase[]) => void;
   setLoadingDomain: (domain: string) => void;
   advancePhase: (index: number) => void;
@@ -56,18 +56,18 @@ export interface LoadingScreen {
   /** Replaces any previous listener. */
   onProgressStall: (listener: () => void) => void;
   stopStatusTick: () => void;
-}
+};
 
 /** The part of the resolution trace that hears the load's reports. */
-export interface LoadTrace {
+export type LoadTrace = {
   chainSync: (event: ChainSyncEvent) => void;
   chainDetail: (event: ChainDetail) => void;
   bytes: (received: number) => void;
   content: (fetched: number, total: number | null) => void;
   warningShown: () => void;
-}
+};
 
-export interface LoadProgressOptions {
+export type LoadProgressOptions = {
   label: string;
   backend: Backend;
   /** The debug panel's flow for this page load. */
@@ -75,16 +75,16 @@ export interface LoadProgressOptions {
   events: LoadEvents;
   trace: LoadTrace;
   loading?: LoadingScreen | undefined;
-}
+};
 
-export interface LoadProgress {
+export type LoadProgress = {
   /** A resolver milestone. One the bar has no band for leaves it where it is. */
   resolvePhase: (phase: ResolvePhase) => void;
   /** The name is resolved, so the bar holds until the download starts. */
   nameResolved: () => void;
   /** The last band, entered just before the sandbox takes over. */
   contentFetch: () => void;
-}
+};
 
 // Bands follow where load time goes: Asset Hub sync and the content fetch own most of the bar. Connecting takes no
 // time, so it shares the Syncing band.

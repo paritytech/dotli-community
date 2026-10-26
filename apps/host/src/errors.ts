@@ -64,7 +64,7 @@ export type ErrorKind =
   | 'sandbox-silent'
   | 'unknown';
 
-export interface ErrorDescription {
+export type ErrorDescription = {
   kind: ErrorKind;
   title: string;
   message: string;
@@ -73,7 +73,7 @@ export interface ErrorDescription {
   tips: readonly string[];
   /** Purge the protocol iframe's worker caches on reload, for failures a plain reload would boot straight back into. */
   resetProtocol?: boolean;
-}
+};
 
 const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
 

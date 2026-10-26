@@ -37,13 +37,13 @@ function withRecentLabel(labels: string[], label: string): string[] {
 }
 
 /** The recently visited names, over one shared store. */
-export interface RecentLabels {
+export type RecentLabels = {
   /** An absent shared key is seeded from the mirror, so an upgrading device keeps its list. */
   load: () => Promise<string[]>;
   /** Only call this after a successful resolution. */
   record: (label: string) => Promise<void>;
   forget: (label: string) => Promise<void>;
-}
+};
 
 /** A closed set, so the metric's `reason` tag stays bounded. */
 type SharedFailure = 'read' | 'write' | 'migrate';
@@ -54,10 +54,10 @@ function reportSharedFailure(err: unknown, reason: SharedFailure, message: strin
 }
 
 /** This origin's copy of the list, kept for when the shared store is unreachable. */
-export interface RecentMirror {
+export type RecentMirror = {
   read: () => string[];
   write: (labels: string[]) => void;
-}
+};
 
 /** This origin's copy of the list in `storage`, kept for when the shared store is unreachable. */
 export function storageMirror(storage: Pick<Storage, 'getItem' | 'setItem'>): RecentMirror {
@@ -156,10 +156,10 @@ export function createLazyRecentLabels(
 const pageRecentLabels: () => RecentLabels = createLazyRecentLabels(getSharedChannel);
 
 /** A window's own view and its top-level one. */
-export interface FrameView {
+export type FrameView = {
   self: unknown;
   top: unknown;
-}
+};
 
 /**
  * The list a landing island shows when it is handed none: the page's own, or none on a page inside another frame.

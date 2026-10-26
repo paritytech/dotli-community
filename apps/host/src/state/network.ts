@@ -5,23 +5,23 @@ import { createSyncStore, registerStoreStateReset, type ReadableStore } from '@d
 import { networkMonitor, type ChainStatus, type NetworkMonitor, type TransferState } from './network-monitor.js';
 import { describeLiveNetwork, type LiveVerdict } from '../network-verdict.js';
 
-export interface NetworkState {
+export type NetworkState = {
   chains: ChainStatus[];
   transfer: TransferState;
   /** When `chains` was read, so a countdown adds the time since to each `sinceLast`. */
   readAt: number;
   /** Over `chains`, worked out once per update, as the capsule's health judges it. */
   verdict: LiveVerdict;
-}
+};
 
 /** What the store reads from the network monitor. */
 export type NetworkFeed = Pick<NetworkMonitor, 'subscribe' | 'getNetworkStatus' | 'getTransfer'>;
 
-export interface NetworkStore {
+export type NetworkStore = {
   store: ReadableStore<NetworkState>;
   /** Follows `monitor` until the returned stop, so a reader that mounts later reads a current store. */
   start: (monitor: NetworkFeed) => () => void;
-}
+};
 
 function snapshot(from: NetworkFeed): NetworkState {
   const chains = from.getNetworkStatus();

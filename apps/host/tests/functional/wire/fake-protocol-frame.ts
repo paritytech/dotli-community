@@ -35,7 +35,7 @@ export type FakeResolve =
   | { kind: 'error'; message: string; name?: string; delayMs?: number }
   | { kind: 'fatal'; message: string };
 
-export interface FakeProtocolOptions {
+export type FakeProtocolOptions = {
   /** Unset, a resolution is never answered. */
   resolve?: FakeResolve;
   /** Ends the frame's status as a boot that cannot start, with this message, so the frame is never ready. */
@@ -46,9 +46,10 @@ export interface FakeProtocolOptions {
   modes?: Record<string, BlockMode>;
   /** What `resolve.rootManifest` answers. None published by default. */
   rootManifest?: ManifestResult<RootManifest>;
-}
+};
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- augmenting Window needs declaration merging
   interface Window {
     /** The fake's controls, in the protocol frame. */
     __fakeProtocol?: FakeProtocolControl;
@@ -56,13 +57,13 @@ declare global {
 }
 
 /** What a test reads and steers in the fake, through `window.__fakeProtocol` in the protocol frame. */
-export interface FakeProtocolControl {
+export type FakeProtocolControl = {
   /** `bitswap_v1_get` asks per CID, counted as they arrive. */
   gets: Record<string, number>;
   setMode: (cid: string, mode: BlockMode) => void;
   /** Answers every held ask for `cid` and serves the later ones. */
   release: (cid: string) => void;
-}
+};
 
 function runFakeProtocol(options: FakeProtocolOptions): void {
   const blocks = options.blocks ?? {};

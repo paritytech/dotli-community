@@ -14,7 +14,7 @@ import { phoneOutcomeNotice } from './phone-outcome-notice.js';
 export type PhoneLeg = 'request' | 'response';
 
 /** How a waited request ended, and what the user saw of it. */
-export interface PhoneEnd {
+export type PhoneEnd = {
   method: PhoneMethod;
   outcome: PhoneOutcome;
   /** Whether the user sent the wait to the background before it ended. */
@@ -23,7 +23,7 @@ export interface PhoneEnd {
   title: string;
   /** The app's label as the user sees it, with its TLD. */
   app: string;
-}
+};
 
 /** Counts a waited request once and tells the user how it ended. A toast that fails is reported, never thrown. */
 export function reportPhoneEnd(end: PhoneEnd, notify: ShowNotification): void {

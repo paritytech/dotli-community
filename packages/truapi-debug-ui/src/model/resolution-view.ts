@@ -8,14 +8,14 @@ import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 
 /** `endMs` is null while the chain is still in the phase. */
-export interface ResolutionBlock {
+export type ResolutionBlock = {
   phase: string;
   startMs: number;
   endMs: number | null;
   reason: string | null;
-}
+};
 
-export interface ResolutionRow {
+export type ResolutionRow = {
   role: ChainRole;
   label: string;
   blocks: ResolutionBlock[];
@@ -26,11 +26,11 @@ export interface ResolutionRow {
   warpAt: number | null;
   warpTarget: number | null;
   dbCache: 'hit' | 'miss' | null;
-}
+};
 
 export type CacheResult = 'hit' | 'miss' | 'skipped' | null;
 
-export interface ResolutionSummary {
+export type ResolutionSummary = {
   backend: 'smoldot' | 'rpc-gateway' | null;
   outcome: 'running' | 'resolved' | 'empty' | 'failed';
   failureReason: string | null;
@@ -46,26 +46,26 @@ export interface ResolutionSummary {
   firstByteMs: number | null;
   cidCache: CacheResult;
   archiveCache: CacheResult;
-}
+};
 
-export interface ResolutionModel {
+export type ResolutionModel = {
   flowId: string | null;
   startedAt: number;
   elapsedMs: number;
   rows: ResolutionRow[];
   summary: ResolutionSummary;
-}
+};
 
 const KEPT_LAYERS = new Set(['boot', 'resolve', 'render', 'chain', 'sandbox', 'failover']);
 
 /** Kept apart from the event store, whose ring buffer evicts a busy load's early phases first. */
-export interface ResolutionRecorder {
+export type ResolutionRecorder = {
   record(ev: DotliDebugEvent): void;
   clear(): void;
   /** Oldest first. The same array for the recorder's lifetime, trimmed in place, so do not keep it. */
   events(): readonly DotliDebugEvent[];
   version(): number;
-}
+};
 
 const RECORDER_CAP = 4000;
 

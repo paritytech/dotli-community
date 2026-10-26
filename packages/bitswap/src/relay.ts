@@ -12,22 +12,22 @@ import { readDagTotal } from './dag-total.js';
 import { errorCode } from './errors.js';
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
-export interface ContentProgress {
+export type ContentProgress = {
   bytesFetched: number;
   totalBytes: number | null;
   bytesPerSecond: number;
-}
+};
 
 export type BlockOrigin = 'cache' | 'network';
 
-export interface BlockCache {
+export type BlockCache = {
   /** Must return a fresh copy, since the relay transfers the buffer to the sandbox and detaches it. */
   get: (cid: string) => Promise<Uint8Array | null>;
   put: (cid: string, bytes: Uint8Array) => Promise<void>;
   delete: (cid: string) => Promise<void>;
-}
+};
 
-export interface SandboxBlockRelayDeps {
+export type SandboxBlockRelayDeps = {
   /** Hands over only messages from a trusted sandbox origin. */
   channel: SandboxChannel;
   /** Fetches one block over the network. The signal aborts when the frame that asked goes away. */
@@ -42,24 +42,24 @@ export interface SandboxBlockRelayDeps {
   verify: (cid: string, bytes: Uint8Array) => Promise<boolean>;
   /** The clock the transfer speed is measured on. */
   now?: () => number;
-}
+};
 
-export interface SandboxBlockRelay {
+export type SandboxBlockRelay = {
   /** Hears the running total after each served block. Returns the unsubscribe. */
   onProgress(listener: (progress: ContentProgress) => void): () => void;
   /** Hears where each served block came from. Returns the unsubscribe. */
   onServed(listener: (from: BlockOrigin) => void): () => void;
   /** Stops answering new requests. Fetches already running still answer their frame. */
   stop(): void;
-}
+};
 
 /** `unknown` when the verifier could not run, which says nothing about the bytes. */
 type Verdict = { kind: 'match' } | { kind: 'mismatch' } | { kind: 'unknown'; cause: unknown };
 
-interface ServedBlock {
+type ServedBlock = {
   bytes: Uint8Array;
   from: BlockOrigin;
-}
+};
 
 /**
  * Spelled as `CONTENT_ERRORS.VERIFICATION`, which bitswap may not import. The sandbox branches on this name.

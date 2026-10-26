@@ -11,10 +11,10 @@ import { isValidDotName } from '@dotli/resolver';
 import type { ProductAccountId } from '@parity/truapi';
 
 /** An account as the window shows it: the product name and the index as the site wrote them. */
-export interface DisplayAccount {
+export type DisplayAccount = {
   product: string;
   index: string;
-}
+};
 
 const NUMBER_INDEX = /^(0|[1-9][0-9]{0,9})$/;
 const RAW_INDEX = /^0x[0-9a-fA-F]{64}$/;

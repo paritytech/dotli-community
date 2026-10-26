@@ -8,11 +8,11 @@ import type { RemoteChainProvider } from '@dotli/protocol';
 import { createFrameChainTransport } from './frame-transport.js';
 import { must } from '@dotli/shared/testing';
 
-interface RemoteConnection {
+type RemoteConnection = {
   onHalt: ((reason: RemoteChainHalt) => void) | undefined;
   send: Mock<JsonRpcConnection['send']>;
   disconnect: Mock<() => void>;
-}
+};
 
 const GENESIS = `0x${'ab'.repeat(32)}`;
 

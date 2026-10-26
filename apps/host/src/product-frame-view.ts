@@ -11,7 +11,7 @@ import { attachProductFrame } from './product-frame-layout.js';
 import { showProductTitle } from './product-title.js';
 
 /** The parts of the page the product frame shares. */
-export interface FramePage {
+export type FramePage = {
   body: () => Pick<HTMLElement, 'style'>;
   /** Where the product frame mounts. */
   container: () => Pick<HTMLElement, 'dataset' | 'replaceChildren'>;
@@ -19,7 +19,7 @@ export interface FramePage {
   clearScreen: () => void;
   /** Ends the loading screen. */
   hideLoading: () => void;
-}
+};
 
 /** The frame's surroundings: the layout, the tab title, the screens over it and, in checker builds, the panel. */
 export function createProductFrameView(page: FramePage): ProductFrameView {

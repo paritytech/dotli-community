@@ -9,20 +9,20 @@ import s from './TopbarReveal.module.css';
 const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 
 /** What the bar's auto-hide does for its ways back. */
-export interface RevealActions {
+export type RevealActions = {
   /** Hands over the reveal button, so focus on it counts as the bar's. Returns the release. */
   registerRevealButton: (el: HTMLElement) => () => void;
   reveal: () => void;
   revealAndFocus: () => void;
-}
+};
 
-export interface TopbarRevealProps {
+export type TopbarRevealProps = {
   /** The bar auto-hides, so its ways back show. */
   autoHide: Accessor<boolean>;
   /** The reveal shortcut, which the button advertises as the bar does. */
   shortcut: string;
   actions: RevealActions;
-}
+};
 
 /**
  * The auto-hiding topbar's ways back.

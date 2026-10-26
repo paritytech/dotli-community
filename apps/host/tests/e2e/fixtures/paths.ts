@@ -10,9 +10,9 @@ export const SESSION_FILE = resolve(AUTH_DIR, 'session.json');
 // Persists across runs so local runs reuse one test account instead of burning allowance on a new username.
 export const SIGNING_HOST_STATE_DIR = resolve(AUTH_DIR, 'signing-host');
 
-export interface PersistedSession {
+export type PersistedSession = {
   pid: number;
   username: string;
   network: string;
   basePath: string;
-}
+};

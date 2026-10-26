@@ -4,10 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import { checkReturnTo } from './site-return.js';
 
-interface FetchCall {
+type FetchCall = {
   input: RequestInfo | URL;
   init: RequestInit | undefined;
-}
+};
 
 /**
  * A fetch that answers every request with `respond()`, or rejects with the signal's reason once it is aborted, as the

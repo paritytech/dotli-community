@@ -14,10 +14,10 @@ import {
 import type { ManifestFacts } from './runtime/manifest-facts.js';
 import type { CachedManifests } from '@dotli/storage';
 
-export interface ProductManifests {
+export type ProductManifests = {
   root: ManifestResult<RootManifest>;
   app: ManifestResult<ExecutableManifest>;
-}
+};
 
 /** Re-validates cached text with the validator this host ships today. */
 export function fromCache(cached: CachedManifests): ProductManifests {

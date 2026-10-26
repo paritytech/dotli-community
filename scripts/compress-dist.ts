@@ -14,10 +14,10 @@ const DIST = process.env['DIST'] ?? 'dist';
 const COMPRESS_EXTENSIONS = new Set(['.js', '.wasm', '.json', '.css', '.html', '.scale', '.dat']);
 const MIN_SIZE = 1024;
 
-interface FileEntry {
+type FileEntry = {
   path: string;
   size: number;
-}
+};
 
 async function collectFiles(dir: string): Promise<FileEntry[]> {
   const entries = await readdir(dir, { withFileTypes: true });

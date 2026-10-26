@@ -13,10 +13,10 @@ export class TransportHandshakeTimeoutError extends Error {
 }
 
 /** The versions a side speaks: the library's own wire, and its schema's. */
-export interface TransportVersions {
+export type TransportVersions = {
   wire: number;
   schema: number;
-}
+};
 
 /**
  * The peer speaks another wire or schema version, so no call can cross. The message names each version that differs,

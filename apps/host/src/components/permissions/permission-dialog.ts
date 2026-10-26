@@ -23,7 +23,7 @@ const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
 /** `dismissed` stays apart from `denied` so a dismissal stores no denial. */
 export type PermissionDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
-export interface PermissionRequest {
+export type PermissionRequest = {
   /** The app's name as the user reads it. */
   app: string;
   permission: EnforceablePermissionName;
@@ -31,7 +31,7 @@ export interface PermissionRequest {
   allowOnce: boolean;
   /** Granting rebuilds the app's frame, so the dialog says the app reloads. */
   reloads: boolean;
-}
+};
 
 /** The dialog an app's request for a permission asks the user with. */
 export function permissionRequestDialog(request: PermissionRequest): ModalView<PermissionDecision> {

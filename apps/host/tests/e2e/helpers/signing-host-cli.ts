@@ -8,26 +8,26 @@ const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 // Pairing deeplinks carry the handshake secret. Scrub them from logs.
 const PAIRING_DEEPLINK = /polkadotapp:\/\/pair\?[^\s'"]+/g;
 
-export interface SigningHostConfig {
+export type SigningHostConfig = {
   binary: string;
   basePath: string;
   network: string;
   productId: string;
   /** The username base a managed account is created under. */
   session?: string | undefined;
-}
+};
 
-export interface SigningHostExit {
+export type SigningHostExit = {
   code: number | null;
   signal: NodeJS.Signals | null;
   error?: string;
-}
+};
 
-export interface SigningHostProcess {
+export type SigningHostProcess = {
   child: ChildProcess;
   completed: Promise<SigningHostExit>;
   output: () => string;
-}
+};
 
 // Preflight, so a missing binary fails with install guidance, not a spawn ENOENT buried in the pair retry loop.
 export function signingHostVersion(binary: string): string | null {

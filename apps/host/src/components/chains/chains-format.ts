@@ -15,11 +15,11 @@ export function needsCountdown(
   );
 }
 
-export interface NetworkStatusLine {
+export type NetworkStatusLine = {
   tone: StatusTone;
   title: string;
   detail: string | null;
-}
+};
 
 const UNSETTLED_TITLES: Record<'idle' | 'warn', string> = {
   idle: 'Syncing',
@@ -45,12 +45,12 @@ function inSync(chainCount: number): string {
 }
 
 /** The gateway has no peers and verifies nothing, so its captions say neither. */
-interface Captions {
+type Captions = {
   offline: string;
   ok: (chainCount: number) => string;
   slow: (names: readonly string[]) => string;
   starting: string;
-}
+};
 
 const LIGHT_CLIENT: Captions = {
   offline: 'No peers on any chain. Retrying.',

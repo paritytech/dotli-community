@@ -13,7 +13,7 @@ import type { ChatMessageActions } from './chat.js';
 import { visibilityWatcher, type WatchVisibility } from './visibility.js';
 import s from './CustomMessage.module.css';
 
-export interface CustomMessageProps {
+export type CustomMessageProps = {
   chat: Pick<ChatMessageActions, 'renderCustomMessage' | 'triggerRendererAction'>;
   /** Without one, the browser's IntersectionObserver. */
   watchVisibility?: WatchVisibility | undefined;
@@ -23,7 +23,7 @@ export interface CustomMessageProps {
   messageType: string;
   /** Stored product-defined payload, hex-encoded. */
   payload: HexString;
-}
+};
 
 export function CustomMessage(props: CustomMessageProps): JSX.Element {
   // A message's identity never changes for its row, so read it once.

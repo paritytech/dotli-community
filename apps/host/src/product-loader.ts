@@ -35,7 +35,7 @@ import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js'
 /** The sandbox's one report on the content it was handed. */
 export type ContentOutcome = 'loaded' | 'failed';
 
-export interface LoaderFrame {
+export type LoaderFrame = {
   /** Names the product before anything resolves, so a login clicked meanwhile boots its core rather than a second one. */
   setPageProduct: (product: { label: string }) => void;
   /** Mounts the product's sandbox on this content. Settles once the sandbox owns the download. */
@@ -48,25 +48,25 @@ export interface LoaderFrame {
   onContentProgress: LoadEvents['onContentProgress'];
   /** Hears each message the sandbox sends about its load. Returns its unsubscribe. */
   onSandboxHeard: (listener: () => void) => () => void;
-}
+};
 
 /** The CID cache for this network. Writes and checks wait for the page to be idle, so they never hold a render back. */
-export interface LoaderCidCache {
+export type LoaderCidCache = {
   get: (label: string) => Promise<{ cid: string; manifests: CachedManifests } | null>;
   /** Keeps the label's content for the next load. */
   storeLater: (label: string, cid: string, manifests: CachedManifests) => void;
   /** Checks a served copy against the network. `onScreen` is false when the copy was refused rather than rendered. */
   revalidateLater: (label: string, servedCid: string, onScreen: boolean) => void;
-}
+};
 
 /** The failure's screen, and the sighting that lets a failure a reload did not fix offer more. */
-export interface LoaderFailureScreen {
+export type LoaderFailureScreen = {
   show: (failure: LoadFailure) => void;
   /** The previous attempt's failure is behind the visitor. */
   forget: () => void;
-}
+};
 
-export interface ProductLoaderOptions {
+export type ProductLoaderOptions = {
   backend: Backend;
   skipCidCache: boolean;
   /** The debug panel's flow for this page load. */
@@ -86,12 +86,12 @@ export interface ProductLoaderOptions {
    * unsubscribe.
    */
   onProtocolVersionMismatch: (listener: (error: ProtocolVersionMismatchError) => void) => () => void;
-}
+};
 
-export interface ProductLoader {
+export type ProductLoader = {
   /** Loads the page's product. Repeating it for the same label waits for that load and does nothing more. */
   load: (label: string) => Promise<void>;
-}
+};
 
 export function createProductLoader(options: ProductLoaderOptions): ProductLoader {
   const loads = createAsyncTaskPool({ poolSize: 1 });

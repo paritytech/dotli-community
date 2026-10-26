@@ -42,7 +42,7 @@ export type ChainOutcome =
   | 'limit-reached'
   | 'error';
 
-export interface ChainAnnotations {
+export type ChainAnnotations = {
   kind: ChainKind;
   genesisHash?: string | undefined;
   followSubscriptionId?: string | undefined;
@@ -53,7 +53,7 @@ export interface ChainAnnotations {
   chainEventTag?: string | undefined;
   outcome?: ChainOutcome;
   errorMessage?: string | undefined;
-}
+};
 
 type ResultValue<T, E> = { success: true; value: T } | { success: false; value: E };
 

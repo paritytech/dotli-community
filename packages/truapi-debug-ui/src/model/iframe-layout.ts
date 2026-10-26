@@ -7,12 +7,12 @@ import type { DockPosition } from './dock-storage.js';
 
 const COLLAPSED_HEIGHT_PX = 32;
 
-export interface DockInsetInput {
+export type DockInsetInput = {
   collapsed: boolean;
   dock: DockPosition;
   width: number;
   height: number;
-}
+};
 
 /** The px the panel covers along the frame's right and bottom edges. */
 export function panelDockInset(input: DockInsetInput): {

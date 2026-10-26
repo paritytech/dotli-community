@@ -7,12 +7,12 @@
 const REDIAL_FIRST_MS = 1_000;
 const REDIAL_MAX_MS = 30_000;
 
-export interface RedialGate {
+export type RedialGate = {
   /** What the last dial reached halted. */
   noteHalt(): void;
   /** Whether a dial may go now, which shuts the gate for the next delay. */
   tryDial(): boolean;
-}
+};
 
 /**
  * The first redial after a halt goes at once, the next waits 1 s and each later one twice as long, up to 30 s. Only

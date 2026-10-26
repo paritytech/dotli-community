@@ -11,10 +11,10 @@ const CACHE_PREFIX = 'dotli:chat-capable:';
 const chatLog = log.child({ flow: 'chat' });
 
 /** Keeps the last answer per label for the next load. */
-export interface CapabilityCache {
+export type CapabilityCache = {
   get: (label: string) => boolean | null;
   set: (label: string, chat: boolean) => void;
-}
+};
 
 /** A cache in `storage`. */
 export function storageCapabilityCache(storage: Pick<SafeStorage, 'getItem' | 'setItem'>): CapabilityCache {

@@ -13,12 +13,12 @@ import { m, spans as S } from '@dotli/metrics';
 const STORE = 'cids';
 
 /** Raw record text as read from dotNS, `null` when the record is unset. */
-export interface CachedManifests {
+export type CachedManifests = {
   root: string | null;
   app: string | null;
-}
+};
 
-interface CidEntry {
+type CidEntry = {
   label: string;
   /** Absent on older entries, which read as a miss. The same name can differ per network. */
   network?: Network;
@@ -26,12 +26,12 @@ interface CidEntry {
   /** Absent on older entries, which read as a miss. */
   manifests?: CachedManifests;
   timestamp: number;
-}
+};
 
-export interface CachedCid {
+export type CachedCid = {
   cid: string;
   manifests: CachedManifests;
-}
+};
 
 export type CidCacheResult = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' } | { kind: 'error'; cause: unknown };
 

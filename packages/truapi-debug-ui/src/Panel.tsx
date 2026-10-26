@@ -70,14 +70,14 @@ function topRow(list: HTMLElement, scrollTop: number): HTMLElement | null {
   return rows[lo] as HTMLElement;
 }
 
-interface Snapshot {
+type Snapshot = {
   events: readonly StoredEvent[];
   dropped: number;
   /** Sorted, `undefined` last. */
   products: readonly (string | undefined)[];
   version: number;
   takenAt: number;
-}
+};
 
 function sortProducts(products: (string | undefined)[]): (string | undefined)[] {
   return products.sort((a, b) => {

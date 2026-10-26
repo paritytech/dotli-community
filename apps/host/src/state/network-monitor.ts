@@ -13,17 +13,17 @@ import { createListenerSet } from '@dotli/shared';
 
 export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
-export interface BlockBar {
+export type BlockBar = {
   readonly number: number;
   readonly health: BlockHealth;
   /** Since the previous block arrived. */
   readonly gapMs: number;
-}
+};
 
 /** How a chain counts toward the verdict. */
 export type ChainUse = 'unused' | 'pending' | 'live';
 
-export interface ChainStatus {
+export type ChainStatus = {
   /** The role of a known chain, the genesis hash of any other. */
   readonly key: string;
   /** Null for a chain outside the known roles. */
@@ -43,7 +43,7 @@ export interface ChainStatus {
   readonly state: ChainUse;
   /** Stalled, or down again after it was up. Overdue blocks are the verdict's to judge. */
   readonly alarm: boolean;
-}
+};
 
 // Only a memory ceiling. The panel renders as many as its width fits, and this must never decide that.
 const MAX_BARS = 120;
@@ -60,7 +60,7 @@ export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
 
 type PoolStatus = ChainActivity['status'];
 
-interface ChainState {
+type ChainState = {
   readonly key: string;
   readonly role: ChainRole | null;
   readonly label: string;
@@ -75,19 +75,19 @@ interface ChainState {
   following: boolean;
   /** The pool reported `connected` while something held the chain, since it was last released. */
   poolWasConnected: boolean;
-}
+};
 
 /** `stalled` comes from the watchdog, alongside the light client's lifecycle phase. */
 export type ChainPhase = 'connecting' | 'syncing' | 'ready' | 'stalled';
 
-export interface TransferState {
+export type TransferState = {
   /** Across every chain socket, over a short window. */
   readonly bytesPerSecond: number | null;
   /** Bytes of the product archive fetched so far. */
   readonly fetched: number | null;
   /** Known once the content phase starts, null on a load served from cache. */
   readonly total: number | null;
-}
+};
 
 export type ChainClock = Pick<
   ChainStatus,
@@ -95,7 +95,7 @@ export type ChainClock = Pick<
 >;
 
 /** The live chain state the network panel and the health verdict read. */
-export interface NetworkMonitor {
+export type NetworkMonitor = {
   /** From the host chain pool. A chain outside the known roles is listed only while something holds it. */
   recordChainActivity: (activity: ChainActivity) => void;
   /** Ignored for a chain nobody holds, so a late block cannot revive a released chain's history. */
@@ -110,12 +110,12 @@ export interface NetworkMonitor {
   /** Copies no bars, because the health judges on every notify, content chunks included. */
   getChainClocks: (now?: number) => ChainClock[];
   getNetworkStatus: () => ChainStatus[];
-}
+};
 
-export interface NetworkMonitorDeps {
+export type NetworkMonitorDeps = {
   /** Whether the protocol frame can serve a known chain on the active network and backend. */
   isConnectable: (genesisHash: string) => boolean;
-}
+};
 
 export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
   let known: Map<string, ChainState> | null = null;

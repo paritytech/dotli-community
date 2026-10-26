@@ -37,7 +37,7 @@ const PHRASE_FORM_FAILED: PairingView = {
   subtitle: 'Try again.',
 };
 
-export interface AuthModalProps {
+export type AuthModalProps = {
   state: Accessor<AuthModalState>;
   placement: AuthModalPlacement;
   /** The user closed it: Cancel, Escape, the scrim, or the sheet's close or swipe. */
@@ -58,7 +58,7 @@ export interface AuthModalProps {
   isMobile?: (() => boolean) | undefined;
   /** Read once. Without one, the phrase form's own chunk. */
   loadPhraseScreen?: (() => Promise<PhraseScreenModule>) | undefined;
-}
+};
 
 /**
  * The sign-in modal: each view of a sign-in, or the recovery phrase form on a page that pairs in place, as a prompt.

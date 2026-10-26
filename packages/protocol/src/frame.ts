@@ -50,15 +50,15 @@ export function backendOfFrameMode(mode: string): Backend | null {
 }
 
 /** What the frame is built with. A change rebuilds it. */
-export interface ProtocolFrameConfig {
+export type ProtocolFrameConfig = {
   backend: Backend;
   network: Network;
   /** Asks the frame to purge its IndexedDB caches first, forcing a cold start. */
   skipWorkerCache: boolean;
-}
+};
 
 /** How long each step of the frame's lifecycle may take. */
-export interface ProtocolFrameTimeouts {
+export type ProtocolFrameTimeouts = {
   /** A wait begun before the first config, so a page that never configures the frame fails its requests. */
   configureMs: number;
   /** The frame document loads. */
@@ -73,7 +73,7 @@ export interface ProtocolFrameTimeouts {
   maxRebuildMs: number;
   /** A frame ready this long has recovered, so losing it starts the waits over. */
   stableMs: number;
-}
+};
 
 export const DEFAULT_FRAME_TIMEOUTS: ProtocolFrameTimeouts = {
   configureMs: 30_000,
@@ -87,7 +87,7 @@ export const DEFAULT_FRAME_TIMEOUTS: ProtocolFrameTimeouts = {
 };
 
 /** The hidden iframe, as much of it as the frame uses. An `HTMLIFrameElement` is one. */
-export interface FrameElement {
+export type FrameElement = {
   src: string;
   tabIndex: number;
   readonly style: { cssText: string };
@@ -96,18 +96,18 @@ export interface FrameElement {
   addEventListener(type: 'load' | 'error', listener: () => void, options: { once: true }): void;
   removeEventListener(type: 'load' | 'error', listener: () => void): void;
   remove(): void;
-}
+};
 
 /** Builds and mounts the hidden frame's iframe, an `E`. The page's `document` in the browser. */
-export interface FrameDocument<E extends FrameElement> {
+export type FrameDocument<E extends FrameElement> = {
   createElement(tagName: 'iframe'): E;
   readonly body: { appendChild(node: E): E };
-}
+};
 
 /** Where the build serves the frame on its origin. */
 const PROTOCOL_PATH = '/p/';
 
-export interface ProtocolFrameDeps<E extends FrameElement> {
+export type ProtocolFrameDeps<E extends FrameElement> = {
   /** The protocol frame's origin. Messages from any other origin are ignored. */
   origin: string;
   document: FrameDocument<E>;
@@ -116,9 +116,9 @@ export interface ProtocolFrameDeps<E extends FrameElement> {
   timeouts?: Partial<ProtocolFrameTimeouts> | undefined;
   timers?: Timers | undefined;
   count?: typeof m.count | undefined;
-}
+};
 
-export interface ProtocolFrame {
+export type ProtocolFrame = {
   getStatus(): ProtocolStatus;
   /** Called on each change only. Does not start a frame. */
   subscribeStatus(listener: (status: ProtocolStatus) => void): () => void;
@@ -151,7 +151,7 @@ export interface ProtocolFrame {
    * while an app is open can come from a newer release, and only a reload fixes that.
    */
   onVersionMismatch(listener: (error: ProtocolVersionMismatchError) => void): () => void;
-}
+};
 
 /**
  * One iframe and the transport to it, which is built once the iframe loaded. Its first call starts the handshake, and a

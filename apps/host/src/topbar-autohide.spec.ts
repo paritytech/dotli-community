@@ -9,13 +9,13 @@ import { registerTopbarSurface } from './state/topbar-surfaces.js';
 import { createTopbarAutoHide, HIDE_DELAY_MS, type TopbarAutoHide } from './topbar-autohide.js';
 
 /** An element of the page: where it sits, and focus moving to it. */
-interface FakeElement {
+type FakeElement = {
   id: string;
   parent: FakeElement | null;
   contains: (other: unknown) => boolean;
   focus: () => void;
   blur: () => void;
-}
+};
 
 /** The page's focus and the events that move it. */
 const page = { document: new EventTarget(), window: new EventTarget(), active: null as FakeElement | null };
@@ -100,10 +100,10 @@ function setPhone(phone: boolean): void {
 let offset: boolean | null = null;
 
 /** A popover of the bar, as FloatingLayer registers it, open or not. */
-interface StandInSurface {
+type StandInSurface = {
   element: FakeElement;
   open: boolean;
-}
+};
 
 const disposers: (() => void)[] = [];
 

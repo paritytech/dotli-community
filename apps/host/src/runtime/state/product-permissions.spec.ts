@@ -32,7 +32,7 @@ function statuses(given: Record<string, 'ask' | 'granted' | 'denied'> = {}): str
   return ALL_PERMISSIONS.map(({ name }) => given[name] ?? 'ask');
 }
 
-interface FakeCore {
+type FakeCore = {
   stored: Map<string, PermissionAuthorizationStatus>;
   reads: number;
   writes: { name: string; status: PermissionAuthorizationStatus }[];
@@ -44,7 +44,7 @@ interface FakeCore {
   writeGate: Promise<void> | null;
   /** Resolves at the next read the core is asked for, with what the core held when asked. */
   nextRead: () => Promise<ReadonlyMap<string, PermissionAuthorizationStatus>>;
-}
+};
 
 const cleanups: (() => void)[] = [];
 

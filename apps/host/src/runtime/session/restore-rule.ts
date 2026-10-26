@@ -17,22 +17,22 @@ import { readWalletOrFailed, siteWallet, type WalletRead } from './site-wallet.j
 export type PresenceReader = 'load' | 'visible' | 'window';
 
 /** The stored sign-in as the rule reads and clears it. */
-export interface RestoreStore {
+export type RestoreStore = {
   /** The saved session, or why the store could not answer. Never rejects. */
   readSession(): Promise<SessionRead>;
   /** Clears the saved session and its cached account only while the session is still `blob`. */
   dropSessionIf(blob: string): Promise<boolean>;
   readWallet(): Promise<LocalWalletReadResult>;
-}
+};
 
-export interface RestoreRuleDeps {
+export type RestoreRuleDeps = {
   /** The signed-in flag. Never rejects, and reads unknown when it cannot be read. */
   presence: Pick<SessionPresence, 'read'>;
   store: RestoreStore;
-}
+};
 
 /** What the rule left of the stored sign-in. */
-export interface Reconciled {
+export type Reconciled = {
   /** The flag as last read. `absent` with something stored means the rule found it gone before and after the store. */
   presence: Presence;
   /** The saved session left to use, none once dropped. A failed read was not reconciled. */
@@ -45,7 +45,7 @@ export interface Reconciled {
    * counted as none left). It stays here once the store lost it, so a window can still end it on the phone.
    */
   dead: { blob: string; cleared: 'none' | 'dropped' | 'failed' } | null;
-}
+};
 
 async function dropSession(
   store: RestoreStore,

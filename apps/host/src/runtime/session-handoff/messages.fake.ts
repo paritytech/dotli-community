@@ -3,12 +3,12 @@
 
 import type { MessageEventLike, WindowHandle } from './messages.js';
 
-export interface FakeWindowHandle extends WindowHandle {
+export type FakeWindowHandle = {
   closed: boolean;
   readonly posted: { message: unknown; target: string }[];
   focused: number;
   closedByPage: number;
-}
+} & WindowHandle;
 
 /** A window or opener in memory: set `closed` to stage a window the user closed, and read what was posted to it. */
 export function createFakeWindowHandle(): FakeWindowHandle {
@@ -31,11 +31,11 @@ export function createFakeWindowHandle(): FakeWindowHandle {
   return handle;
 }
 
-export interface FakeMessageBus {
+export type FakeMessageBus = {
   listen: (handler: (event: MessageEventLike) => void) => () => void;
   post: (event: MessageEventLike) => void;
   readonly size: number;
-}
+};
 
 /** The page's `message` events in memory: `post` delivers one to every handler listening, and `size` counts them. */
 export function createFakeMessageBus(): FakeMessageBus {

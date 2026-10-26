@@ -10,41 +10,41 @@ import { decodePhoneOutcome, type PhoneOutcome } from './phone-outcome.js';
 import { reportUndecodablePhoneFrame, type PhoneLeg } from './phone-report.js';
 
 /** A phone-bound request in flight, with its V1 request body as `@parity/truapi` decodes it. */
-export interface PhoneRequest {
+export type PhoneRequest = {
   method: PhoneMethod;
   /** The unwrapped V1 value of the method's `Versioned...Request` codec. */
   body: unknown;
-}
+};
 
-export interface PhoneClaim {
+export type PhoneClaim = {
   request: PhoneRequest;
   /** Settles once with how the request ended. Never rejects. */
   ended: Promise<PhoneOutcome>;
-}
+};
 
-export interface PhoneRequestTap {
+export type PhoneRequestTap = {
   /** Each frame the product sent to the core. */
   fromProduct: (message: Uint8Array) => void;
   /** Each frame the core sent to the product. */
   fromCore: (message: Uint8Array) => void;
   /** Ends this connection's claims as `gone`. Idempotent. */
   close: () => void;
-}
+};
 
-export interface PhoneRequestTracker {
+export type PhoneRequestTracker = {
   connect: () => PhoneRequestTap;
   /** The oldest unclaimed in-flight request that `matches`, now claimed, or undefined. */
   claim: (matches: (request: PhoneRequest) => boolean) => PhoneClaim | undefined;
   /** Ends every claim as `gone`. Idempotent. */
   dispose: () => void;
-}
+};
 
-export interface PhoneRequestTrackerDeps {
+export type PhoneRequestTrackerDeps = {
   /** A tracked frame that would not decode. A response ends its claim as `undecodable`, which the claim counts. */
   reportUndecodable?: (method: PhoneMethod, error: unknown, leg: PhoneLeg) => void;
   /** Decodes a tracked frame in full. Every other frame is only peeked at. */
   decode?: typeof decodeWireMessage;
-}
+};
 
 const METHOD_AT = new Map<number, PhoneMethod>(
   (Object.keys(PHONE_METHODS) as PhoneMethod[]).map(method => {
@@ -53,12 +53,12 @@ const METHOD_AT = new Map<number, PhoneMethod>(
   }),
 );
 
-interface FrameHeader {
+type FrameHeader = {
   requestId: string;
   /** Undefined for a method that does not go to the phone. */
   method: PhoneMethod | undefined;
   messageType: number;
-}
+};
 
 const UTF8 = new TextDecoder();
 
@@ -90,12 +90,12 @@ function peekHeader(message: Uint8Array): FrameHeader | undefined {
   };
 }
 
-interface Tracked {
+type Tracked = {
   seq: number;
   request: PhoneRequest;
   /** Set once claimed, and settles the claim. */
   settle: ((outcome: PhoneOutcome) => void) | undefined;
-}
+};
 
 export function createPhoneRequestTracker({
   reportUndecodable = reportUndecodablePhoneFrame,

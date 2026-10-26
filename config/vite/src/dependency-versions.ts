@@ -9,10 +9,10 @@ import { findPackageJSON } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export interface PackageVersion {
+export type PackageVersion = {
   name: string;
   version: string;
-}
+};
 
 const WORKSPACE_ROOTS = ['apps', 'packages'];
 

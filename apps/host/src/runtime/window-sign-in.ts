@@ -13,7 +13,7 @@ import type { AuthModalPort, SignInRoute } from './sign-in-route.js';
 import type { WalletMode } from './state/wallet-mode.js';
 import { reportLocalWalletFailure, reportWalletFailure } from './wallet-failure.js';
 
-export interface WindowSignInDeps {
+export type WindowSignInDeps = {
   handoff: SessionHandoff;
   /** Writes the window's result into this page's copy. Rejects with the failed step as the cause. */
   applyResult: (result: SessionResult) => Promise<'applied' | 'reloading'>;
@@ -21,16 +21,16 @@ export interface WindowSignInDeps {
   elsewhere: () => boolean;
   walletMode: () => WalletMode;
   modal: AuthModalPort;
-}
+};
 
 /**
  * The window round on show: open from the click until its outcome is shown or its result written, then closed while
  * its blocked, refused or failed view is on show, whose Retry opens the window again with the round's intent.
  */
-interface WindowRound {
+type WindowRound = {
   readonly intent: SignInIntent;
   open: boolean;
-}
+};
 
 export function createWindowSignIn(deps: WindowSignInDeps): SignInRoute {
   const { handoff, modal } = deps;

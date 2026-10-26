@@ -22,7 +22,7 @@ export const CHAIN_SYNC_KINDS = [
 ] as const;
 export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
 
-export interface ChainSyncEvent {
+export type ChainSyncEvent = {
   chain: ChainRole;
   kind: ChainSyncKind;
   /** On `stalled` and `recovered`. */
@@ -37,22 +37,22 @@ export interface ChainSyncEvent {
   target?: number | undefined;
   /** On `warpSyncFinished`. */
   finalized?: number | undefined;
-}
+};
 
 /** `peerId` ships as-is, since it is a public node identity and never identifies the visitor. */
-export interface ChainPeer {
+export type ChainPeer = {
   peerId: string;
   roles: string;
   bestNumber: number;
-}
+};
 
 /** Telemetry-only facts, kept out of `ChainSyncEvent` so UI subscribers need not filter them. */
-export interface ChainDetail {
+export type ChainDetail = {
   chain: ChainRole;
   dbCache?: 'hit' | 'miss' | undefined;
   /** Peers held when the chain reported ready. */
   peers?: ChainPeer[] | undefined;
-}
+};
 
 // A string, so it cannot collide with polkadot-api's numeric ids.
 const PEERS_ID_PREFIX = '__dotli_peers__:';
@@ -61,35 +61,35 @@ const PEERS_ID_PREFIX = '__dotli_peers__:';
 // `system_peers` is legacy JSON-RPC, so smoldot warns once per chain, but the new API has no peer list.
 const MAX_PEERS_RECORDED = 25;
 
-export interface ParsedRpcMessage {
+export type ParsedRpcMessage = {
   id?: unknown;
   method?: unknown;
   result?: unknown;
   error?: unknown;
   params?: unknown;
-}
+};
 
-export interface ChainLifecycleWatch {
+export type ChainLifecycleWatch = {
   next(): Promise<ChainLifecycle | undefined>;
   close(): void;
-}
+};
 
-export interface ChainSyncTap {
+export type ChainSyncTap = {
   /** `true` means the frame was ours and must not reach polkadot-api. */
   intercept(parsed: ParsedRpcMessage): boolean;
   stop(): void;
-}
+};
 
 type DetailCallback = (detail: ChainDetail) => void;
 type SyncCallback = (event: ChainSyncEvent) => void;
 
-export interface ChainSyncReporterOptions {
+export type ChainSyncReporterOptions = {
   /** Ask a ready chain for its peer list. Off on a build without metrics, which has nowhere to send it. */
   askPeers: boolean;
-}
+};
 
 /** The sync milestones and chain facts of one light client, with the replay a late subscriber needs. */
-export interface ChainSyncReporter {
+export type ChainSyncReporter = {
   /** Replays past facts, since the database result is known during `connect`, before most subscribers attach. */
   onChainDetail: (cb: DetailCallback) => () => void;
   /** Replays the latest event per chain and kind, so a listener attaching mid-sync knows where each chain stands. */
@@ -106,7 +106,7 @@ export interface ChainSyncReporter {
     send: (message: string) => void,
     watchLifecycle: () => ChainLifecycleWatch,
   ) => ChainSyncTap | null;
-}
+};
 
 export function createChainSyncReporter(options: ChainSyncReporterOptions): ChainSyncReporter {
   // A throwing listener is a defect in its subscriber, so it is reported, and the other listeners still hear the event.

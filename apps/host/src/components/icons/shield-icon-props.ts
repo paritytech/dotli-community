@@ -4,6 +4,6 @@
 import type { IconProps } from '@dotli/ui/icons';
 
 /** The shields are drawn at the stroke their place asks for. */
-export interface ShieldIconProps extends IconProps {
+export type ShieldIconProps = {
   strokeWidth?: string | undefined;
-}
+} & IconProps;

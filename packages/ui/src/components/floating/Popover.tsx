@@ -8,13 +8,13 @@ import type { CloseReason } from './close-reason.js';
 import type { Placement } from './FloatingLayer.js';
 import { PopoverSurface } from './PopoverSurface.js';
 
-export interface PopoverApi {
+export type PopoverApi = {
   id: string;
   open: Accessor<boolean>;
   /** Whether this opening is a bottom sheet. */
   sheet: Accessor<boolean>;
   close: () => void;
-}
+};
 
 export type PopoverState = Anchored & PopoverApi;
 
@@ -31,7 +31,7 @@ export function usePopover(): PopoverApi {
 /** A press outside, a blur or focus moving away leaves focus where the user put it. */
 const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'sheet', 'trigger', 'programmatic']);
 
-export interface PopoverProps {
+export type PopoverProps = {
   id: string;
   title: string;
   /** Wired while given. */
@@ -45,7 +45,7 @@ export interface PopoverProps {
   preload?: (() => Promise<unknown>) | undefined;
   testId?: string | undefined;
   children: JSX.Element;
-}
+};
 
 /**
  * A non-modal panel opened from a button: anchored on wide screens, a bottom sheet on a phone.

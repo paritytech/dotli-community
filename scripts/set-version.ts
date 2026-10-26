@@ -66,11 +66,11 @@ function escapeRegExp(s: string): string {
 
 const rel = (p: string): string => relative(REPO_ROOT, p) || 'package.json';
 
-interface PkgVersion {
+type PkgVersion = {
   file: string;
   version: string;
   text: string;
-}
+};
 
 function readVersionedPackages(): PkgVersion[] {
   const result: PkgVersion[] = [];

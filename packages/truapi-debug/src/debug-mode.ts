@@ -6,18 +6,18 @@
 
 const DEBUG_MODE_KEY = 'dotli:truapi-debug';
 
-export interface DebugMode {
+export type DebugMode = {
   enabled: boolean;
   /** Chosen in this tab rather than by the build, so the panel starts expanded. */
   explicit: boolean;
-}
+};
 
 /** Where the choice lives. `window` is one. */
-export interface DebugModePage {
+export type DebugModePage = {
   readonly location: { readonly href: string };
   readonly history: { replaceState(data: unknown, unused: string, url: string): void };
   readonly sessionStorage: Pick<Storage, 'getItem' | 'setItem'>;
-}
+};
 
 /**
  * `?debug=true|off` wins and persists, stripped from the URL so the sandbox's strict validator never sees it. Then the

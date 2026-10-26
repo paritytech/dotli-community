@@ -54,7 +54,7 @@ function recordResolution(): {
   };
 }
 
-interface Options {
+type Options = {
   backend?: Backend;
   /** Contenthashes by name. */
   published?: Record<string, string>;
@@ -69,7 +69,7 @@ interface Options {
   silentSandbox?: boolean;
   /** A protocol frame refused this page's wire version before the load asked, so its listener hears it at once. */
   latchedMismatch?: ProtocolVersionMismatchError;
-}
+};
 
 function harness(options: Options = {}) {
   const failures: LoadFailure[] = [];

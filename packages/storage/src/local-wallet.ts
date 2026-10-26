@@ -10,27 +10,27 @@ const STORE = 'local_wallet';
 const RECORD_ID = 'wallet';
 const IV_BYTES = 12;
 
-export interface LocalWalletIdentity {
+export type LocalWalletIdentity = {
   identityAccountId: string;
   /** Null when the network holds no lite username for the account. */
   liteUsername: string | null;
-}
+};
 
-export interface LocalWallet {
+export type LocalWallet = {
   entropy: Uint8Array;
   /** The identity last read from the network, null until the first read. */
   identity: LocalWalletIdentity | null;
   /** Changes with every save and never with an identity update, so a forget can name the record it read. */
   version: Uint8Array;
-}
+};
 
-interface LocalWalletRecord {
+type LocalWalletRecord = {
   id: typeof RECORD_ID;
   key: CryptoKey;
   iv: Uint8Array<ArrayBuffer>;
   ciphertext: ArrayBuffer;
   identity: LocalWalletIdentity | null;
-}
+};
 
 /** The record exists but its key no longer opens it, so it can never be used again. */
 export class LocalWalletUnreadableError extends Error {

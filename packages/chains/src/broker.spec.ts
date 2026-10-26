@@ -1944,12 +1944,12 @@ describe('ChainBroker.halt', () => {
 });
 
 describe('upstream follow stop', () => {
-  interface Event {
+  type Event = {
     method?: string;
     id?: unknown;
     result?: unknown;
     params?: { subscription?: string; result?: { event?: string } };
-  }
+  };
 
   /**
    * A session that re-follows from inside the delivery of a `stop`, as papi's

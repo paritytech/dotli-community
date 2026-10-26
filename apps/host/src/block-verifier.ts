@@ -6,14 +6,14 @@
 
 import { createLazyLoad } from '@dotli/shared';
 
-interface Verifier {
+type Verifier = {
   blockMatchesCid: (cid: string, bytes: Uint8Array) => boolean | Promise<boolean>;
-}
+};
 
-export interface BlockVerifierDeps {
+export type BlockVerifierDeps = {
   load: () => Promise<Verifier>;
   report: (step: string, err: unknown) => void;
-}
+};
 
 /** Builds the relay's block check around a lazily loaded verifier. */
 export function createBlockVerifier({

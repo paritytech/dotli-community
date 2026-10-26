@@ -12,7 +12,7 @@ import * as S from './spans.js';
 export type Flow =
   'boot' | 'resolve' | 'content' | 'protocol' | 'wallet' | 'storage' | 'notifications' | 'pwa' | 'ui' | 'chat';
 
-export interface CaptureContext {
+export type CaptureContext = {
   flow: Flow;
   /**
    * The failing step in snake_case (`manifest_read`). Part of the issue fingerprint, so keep it
@@ -23,13 +23,13 @@ export interface CaptureContext {
   extra?: Record<string, unknown>;
   /** The error shows inside this span's trace. */
   span?: SpanHandle;
-}
+};
 
 /** Where captured failures go. `initSentry` binds the Sentry sink. */
-export interface CaptureSink {
+export type CaptureSink = {
   exception: (err: unknown, ctx: CaptureContext) => void;
   expected: (err: unknown, ctx: Pick<CaptureContext, 'flow' | 'step'>) => void;
-}
+};
 
 // Before `initSentry` Sentry has no client and drops events, so the unbound sink drops them too.
 const DROP: CaptureSink = {
@@ -76,7 +76,7 @@ export function recordExpected(err: unknown, ctx: Pick<CaptureContext, 'flow' | 
   });
 }
 
-export interface ExpectedReport extends Pick<CaptureContext, 'flow' | 'step'> {
+export type ExpectedReport = {
   /** The outcome metric the failure is counted under. */
   metric: string;
   /** Defaults to the error's class name, or `unknown` for a thrown non-error. */
@@ -84,7 +84,7 @@ export interface ExpectedReport extends Pick<CaptureContext, 'flow' | 'step'> {
   outcome?: MetricOutcome;
   /** Logged as a warning with the error. Leave it out when the failure needs no line in the log. */
   message?: string;
-}
+} & Pick<CaptureContext, 'flow' | 'step'>;
 
 /** Report an environment failure: an optional warning, its breadcrumb and one count of its outcome metric. */
 export function reportExpected(

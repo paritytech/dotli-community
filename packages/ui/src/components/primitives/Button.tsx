@@ -11,7 +11,7 @@ export type ButtonVariant = 'secondary' | 'primary' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 // Explicit props, not a rest spread: splitting the rest off pulls Solid's `omit` into the boot bundle.
-export interface ButtonProps {
+export type ButtonProps = {
   ref?: (el: HTMLButtonElement) => void;
   onClick?: (ev: MouseEvent) => void;
   id?: string;
@@ -32,7 +32,7 @@ export interface ButtonProps {
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;
-}
+};
 
 /**
  * Grows the button from the loading circle to the width of what replaced the spinner. Only this change animates, so
@@ -103,7 +103,7 @@ export function Button(props: ButtonProps): JSX.Element {
   );
 }
 
-export interface ButtonLinkProps {
+export type ButtonLinkProps = {
   href: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -112,7 +112,7 @@ export interface ButtonLinkProps {
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;
-}
+};
 
 /** A link drawn as a Button, for an action that navigates. Keep its attributes in step with Button. */
 export function ButtonLink(props: ButtonLinkProps): JSX.Element {

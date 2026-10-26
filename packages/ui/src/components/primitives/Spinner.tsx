@@ -4,10 +4,10 @@
 import type { JSX } from '@solidjs/web';
 import s from './Spinner.module.css';
 
-export interface SpinnerProps {
+export type SpinnerProps = {
   class?: string | undefined;
   testId?: string;
-}
+};
 
 export function Spinner(props: SpinnerProps): JSX.Element {
   return <div class={[s['spinner'], props.class]} data-testid={props.testId} />;

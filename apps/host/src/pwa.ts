@@ -13,35 +13,35 @@ import { loadWorkboxWindow } from './lazy.js';
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 /** The part of Workbox the shell uses. */
-export interface PwaWorkbox {
+export type PwaWorkbox = {
   addEventListener(type: 'controlling', listener: () => void): void;
   messageSkipWaiting(): void;
   register(options: { immediate: boolean }): Promise<PwaRegistration | undefined>;
-}
+};
 
 /** The part of the worker's registration the shell uses. */
-export interface PwaRegistration {
+export type PwaRegistration = {
   readonly active: object | null;
   readonly installing: PwaWorker | null;
   readonly waiting: object | null;
   addEventListener(type: 'updatefound', listener: () => void): void;
   update(): Promise<unknown>;
-}
+};
 
 /** The part of a service worker the shell uses. */
-export interface PwaWorker {
+export type PwaWorker = {
   readonly state: ServiceWorkerState;
   addEventListener(type: 'statechange', listener: () => void, options: { once: true }): void;
-}
+};
 
 /** What the update checks read from the page. */
-export interface PwaPage {
+export type PwaPage = {
   isOnline: () => boolean;
   visibility: VisibilitySource;
   every: (ms: number, run: () => void) => void;
-}
+};
 
-export interface PwaDeps {
+export type PwaDeps = {
   /** The dev server builds no worker, and a precache would serve stale modules over its live ones. */
   production: boolean;
   /** Null on the bare host, whose root the worker's fallback would answer with the shell rather than the landing page. */
@@ -53,7 +53,7 @@ export interface PwaDeps {
   showNotification: ShowNotification;
   reload: () => void;
   page: PwaPage;
-}
+};
 
 function pageDeps(): PwaDeps {
   return {

@@ -22,11 +22,11 @@ const failedMethods: Record<FrameRoute, CallName> = {
   chain: 'resolveDotName',
 };
 
-interface Row {
+type Row = {
   refusal: FrameRefusal;
   warned: unknown[][];
   counted: unknown[][];
-}
+};
 
 const failed = (route: FrameRoute): FrameRefusal => ({
   route,

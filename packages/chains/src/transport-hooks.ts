@@ -4,7 +4,7 @@
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 /** `onHalt` means the transport is gone for good. A self-recovering one, such as WebSocket, never halts. */
-export interface ChainTransportHooks {
+export type ChainTransportHooks = {
   onStatus: (status: ConnectionStatus) => void;
   onHalt: (error?: unknown) => void;
-}
+};

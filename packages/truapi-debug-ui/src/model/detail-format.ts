@@ -31,11 +31,11 @@ export function eventCountLabel(count: number): string {
   return `${String(count)} event${count === 1 ? '' : 's'}`;
 }
 
-interface SiblingPill {
+type SiblingPill = {
   seq: EventSeq;
   label: string;
   title: string;
-}
+};
 
 export function siblingPills(ev: StoredEvent, first: StoredEvent | undefined, siblings: StoredEvent[]): SiblingPill[] {
   return siblings.map(s => {
@@ -67,10 +67,10 @@ export function groupDuration(first: StoredEvent | undefined, group: readonly St
   return formatLatency(last.receivedAt - first.receivedAt);
 }
 
-export interface InlineSegment {
+export type InlineSegment = {
   code: boolean;
   text: string;
-}
+};
 
 /** Split text on backticked `identifiers` without a Markdown engine. A lone backtick stays literal. */
 function formatInlineCode(text: string): InlineSegment[] {
@@ -91,10 +91,10 @@ function formatInlineCode(text: string): InlineSegment[] {
 
 type ExplanationBlock = { kind: 'paragraph'; segments: InlineSegment[] } | { kind: 'list'; items: InlineSegment[][] };
 
-interface ExplanationDetail {
+type ExplanationDetail = {
   title: string;
   blocks: ExplanationBlock[];
-}
+};
 
 export function explanationDetail(ev: StoredSystemEvent): ExplanationDetail | undefined {
   const explanation = getSystemExplanation(ev.layer, ev.event);
@@ -116,16 +116,16 @@ function explanationBlock(paragraph: string): ExplanationBlock {
   return { kind: 'paragraph', segments: formatInlineCode(paragraph) };
 }
 
-interface ChainField {
+type ChainField = {
   name: string;
   value: string;
   code: boolean;
-}
+};
 
-export interface ChainDetail {
+export type ChainDetail = {
   summary: string | null;
   fields: ChainField[];
-}
+};
 
 /** The correlation keys buried in a `remote_chain_*` payload. Null for any other message. */
 export function chainDetail(tag: string, payload: unknown): ChainDetail | null {

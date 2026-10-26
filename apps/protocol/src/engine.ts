@@ -37,15 +37,15 @@ const methods = protocolSchema.sections;
 
 type ChainSink = Parameters<ProtocolHandler<typeof methods.chain.connect>>[2];
 
-export interface EngineScope {
+export type EngineScope = {
   /** Opens a chain connection for the subscription. Stopping it disconnects it, and a chain halt ends it cleanly. */
   connect: ProtocolHandler<typeof methods.chain.connect>;
   send: ProtocolHandler<typeof methods.chain.send>;
   /** Ends each connection's subscription cleanly and releases it. The scope stays usable. */
   close: () => void;
-}
+};
 
-export interface ProtocolEngine {
+export type ProtocolEngine = {
   /** A new tab's scope. The iframe modes serve one tab, the SharedWorker one per port. */
   openScope: () => EngineScope;
   warmup: ProtocolHandler<typeof methods.frame.warmup>;
@@ -55,9 +55,9 @@ export interface ProtocolEngine {
   resolveExecutableManifest: ProtocolHandler<typeof methods.resolve.executableManifest>;
   resolveRootManifest: ProtocolHandler<typeof methods.resolve.rootManifest>;
   cleanup: () => void;
-}
+};
 
-export interface EngineOptions {
+export type EngineOptions = {
   /**
    * The chains every scope connects to. The caller builds it, so the name resolver can read through the same
    * follows. `cleanup` releases its chains.
@@ -74,7 +74,7 @@ export interface EngineOptions {
   resolver?: EngineResolver;
   /** Caps each read's sync budget, for a tester who needs a timeout to show quickly. */
   syncBudgetCapMs?: number | undefined;
-}
+};
 
 export type EngineResolver = Pick<
   DotnsResolver,
@@ -84,11 +84,11 @@ export type EngineResolver = Pick<
 /** One scope's budget, which is one tab's. */
 export const MAX_CONNS = 10;
 
-interface Connection {
+type Connection = {
   readonly connectionId: string;
   readonly connection: StringJsonRpcConnection;
   readonly sink: ChainSink;
-}
+};
 
 function assertStr(value: string, name: string): void {
   if (value.length === 0) {
@@ -109,10 +109,10 @@ async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, C
 export type EngineMethods = Omit<ProtocolEngine, 'openScope' | 'cleanup'> & Pick<EngineScope, 'connect' | 'send'>;
 
 /** One engine method, and how its handler `H` is registered. */
-interface EngineMethod<H> {
+type EngineMethod<H> = {
   readonly method: AnyMethod;
   readonly serve: (serving: ProtocolServing, handler: H) => void;
-}
+};
 
 const requestMethod = <P, R, E extends DomainFailure>(
   method: Request<P, R, E>,

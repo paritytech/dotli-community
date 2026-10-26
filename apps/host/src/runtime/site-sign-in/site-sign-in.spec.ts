@@ -60,7 +60,7 @@ type Post =
   | { type: 'dotli:s:refused'; reason: string }
   | { type: 'dotli:s:cancelled' };
 
-interface HarnessOptions {
+type HarnessOptions = {
   /** The site's origin, {@link ORIGIN} by default. */
   origin?: string;
   siteToken?: string | null;
@@ -73,7 +73,7 @@ interface HarnessOptions {
   saveFails?: boolean;
   /** The main account the window's core reports, {@link MAIN} by default. */
   main?: MainAccount;
-}
+};
 
 /**
  * A site's sign-in over fakes: a responder that records what it posts and ends its round on its first terminal call, an

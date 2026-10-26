@@ -5,7 +5,7 @@
 
 import { toError } from './errors.js';
 
-export interface PendingReplies<Id, Value, Meta = undefined> {
+export type PendingReplies<Id, Value, Meta = undefined> = {
   /** Waits for the reply to `id`. `meta` is what the reply handler reads back with `meta(id)`. */
   wait(id: Id, meta?: Meta): Promise<Value>;
   /** What the wait on `id` carries, or `undefined` once nothing waits on it. */
@@ -18,13 +18,13 @@ export interface PendingReplies<Id, Value, Meta = undefined> {
   rejectAll(errorFor: (id: Id) => Error): void;
   /** The ids still waiting, oldest first. */
   ids(): Id[];
-}
+};
 
-interface Wait<Value, Meta> {
+type Wait<Value, Meta> = {
   resolve: (value: Value) => void;
   reject: (error: Error) => void;
   meta: Meta | undefined;
-}
+};
 
 /** A table of waits keyed by request id. A settled id leaves the table, so a late reply finds nothing. */
 export function createPendingReplies<Id, Value, Meta = undefined>(): PendingReplies<Id, Value, Meta> {

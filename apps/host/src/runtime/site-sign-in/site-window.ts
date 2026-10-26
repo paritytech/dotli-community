@@ -27,7 +27,7 @@ import type { SiteTxSigner } from './site-tx-signer.js';
 /** What the site's round decides for its window flow, which the caller completes with the window's own parts. */
 type SiteWindowFlowDeps = Pick<WindowFlowDeps, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>;
 
-export interface SiteWindowDeps {
+export type SiteWindowDeps = {
   request: SiteRequest;
   /** The vetted opener's origin, the site the round answers. */
   origin: string;
@@ -48,13 +48,13 @@ export interface SiteWindowDeps {
   now: () => number;
   randomToken: () => string;
   close: () => void;
-}
+};
 
-export interface SiteWindow {
+export type SiteWindow = {
   site: SiteRound;
   /** What the window shows: the site's view, or the window flow's while the site hands the window to it. */
   screen: ReadableStore<SignInScreen | SiteWindowScreen>;
-}
+};
 
 /**
  * What a site's transaction window runs on: a sign-in window's parts, with the chain, the transaction signer and the

@@ -45,7 +45,7 @@ export type WindowStep =
   | SiteListScreen;
 
 /** What every window screen needs from the window. */
-export interface WindowPartsProps {
+export type WindowPartsProps = {
   /** The page the window signs in for. */
   host: string | null;
   /** A step the user asked for that failed, said on the view it left. */
@@ -86,14 +86,14 @@ export interface WindowPartsProps {
   onRevoke: (token: string) => void;
   /** Reads the site list again after its read failed. */
   onSiteListRetry: () => void;
-}
+};
 
 /** The views that only say where the window stands. */
 type StatusView =
   | Extract<WindowView, 'connecting' | 'refused' | 'signing-out' | 'signed-out' | 'done-no-opener'>
   | RedirectScreen['view'];
 
-interface StatusCopy {
+type StatusCopy = {
   mark: StatusMark;
   title: string;
   body: string;
@@ -102,7 +102,7 @@ interface StatusCopy {
    * under way closes itself or says when it is done.
    */
   close?: string;
-}
+};
 
 const STATUS_COPY: Record<StatusView, StatusCopy> = {
   connecting: {

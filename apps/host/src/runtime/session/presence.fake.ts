@@ -3,10 +3,10 @@
 
 import type { Presence, SessionPresence } from './presence.js';
 
-export interface FakeSessionPresence extends SessionPresence {
+export type FakeSessionPresence = {
   state: Presence;
   readonly calls: ('read' | 'set' | 'clear' | 'renew')[];
-}
+} & SessionPresence;
 
 /** An in-memory presence: set the `state` to stage a read, and read `calls` to see what a flow did. */
 export function createFakeSessionPresence(state: Presence = 'absent'): FakeSessionPresence {

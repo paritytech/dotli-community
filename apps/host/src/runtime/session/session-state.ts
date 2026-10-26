@@ -31,15 +31,15 @@ function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
 }
 
 /** The auth store as its one writer sees it. */
-export interface AuthStateWriter {
+export type AuthStateWriter = {
   get(): DotliAuthState;
   set(next: DotliAuthState): void;
-}
+};
 
 /** What session state takes from the restore on load. */
 type LoadRestore = Pick<Restored, 'local' | 'session' | 'wallet' | 'presence'>;
 
-export interface SessionStateDeps {
+export type SessionStateDeps = {
   store: StoredSession;
   /**
    * What the restore rule left of the page's copy on load: the wallet the page boots on and the session. A session read
@@ -53,16 +53,16 @@ export interface SessionStateDeps {
   isLocalWallet: () => boolean;
   /** Whether the page offers to continue a sign-in made elsewhere, which its role decides. */
   offersResume: () => boolean;
-}
+};
 
 /** How pairing presents itself in the modal. */
-export interface PairingPresentation {
+export type PairingPresentation = {
   label: string;
   dotSuffix?: boolean | undefined;
   hostGlobal?: boolean | undefined;
-}
+};
 
-export interface SessionState {
+export type SessionState = {
   /**
    * The state the page's core itself reported last, as the page shows it. Null before any core reported and again once
    * the page's last core went. The saved copy never writes it, so a reader of it never takes the copy for the core.
@@ -96,7 +96,7 @@ export interface SessionState {
    * one.
    */
   reportFlag(presence: Presence): void;
-}
+};
 
 /** The states in which the page holds no sign-in of its own and its button offers one. */
 function showsSignedOut(tag: DotliAuthState['tag']): boolean {

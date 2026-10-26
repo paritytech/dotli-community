@@ -8,14 +8,14 @@ import type { LocalWalletIdentity } from '@dotli/protocol';
 import { m, spans as S } from '@dotli/metrics';
 import { errorName, log } from '@dotli/shared';
 
-export interface TruapiSessionUiState {
+export type TruapiSessionUiState = {
   connected: boolean;
   publicKey?: string;
   identityAccountId?: string;
   liteUsername?: string;
   fullUsername?: string;
   primaryUsername?: string;
-}
+};
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';

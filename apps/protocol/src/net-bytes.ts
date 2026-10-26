@@ -22,12 +22,12 @@ export function intervalTicker(intervalMs: number): Ticker {
   };
 }
 
-export interface ShareNetBytesOptions {
+export type ShareNetBytesOptions = {
   /** Hears a subscriber that throws, so the others still hear the tick. */
   report?: (error: unknown) => void;
   /** Hears the first read that throws on a tick after a good one, so a meter that stays broken is reported once. */
   reportRead?: (error: unknown) => void;
-}
+};
 
 function reportFailedRead(error: unknown): void {
   captureException(error, { flow: 'protocol', step: 'net_bytes_read' });

@@ -7,11 +7,11 @@ export const BACKENDS = ['smoldot-shared-worker', 'smoldot-direct', 'rpc-gateway
 
 export type Backend = (typeof BACKENDS)[number];
 
-export interface CacheSeed {
+export type CacheSeed = {
   skipCidCache: boolean;
   skipArchiveCache: boolean;
   skipWorkerCache: boolean;
-}
+};
 
 export const CACHE_ENABLED: CacheSeed = {
   skipCidCache: false,
@@ -31,10 +31,10 @@ export const SKIP_ARCHIVE_ONLY: CacheSeed = {
   skipWorkerCache: false,
 };
 
-export interface SettingsSeed {
+export type SettingsSeed = {
   backend: Backend;
   cacheSeed?: CacheSeed;
-}
+};
 
 /** `cacheSeed` writes only when the key is unset, so a mid-test change survives later navigations. */
 export async function seedSettings(context: BrowserContext, { backend, cacheSeed }: SettingsSeed): Promise<void> {

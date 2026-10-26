@@ -48,7 +48,7 @@ const LIFECYCLE_COLORS: Record<string, string> = {
   Stop: 'var(--td-health-bad)',
 };
 
-export interface SegmentEntry {
+export type SegmentEntry = {
   kind: 'segment';
   seqAnchor: EventSeq;
   memberSeqs: EventSeq[];
@@ -61,9 +61,9 @@ export interface SegmentEntry {
   /** The terminal event has not arrived yet. */
   pending: boolean;
   linkedRailIdx?: number | undefined;
-}
+};
 
-export interface RailEntry {
+export type RailEntry = {
   kind: 'rail';
   seqAnchor: EventSeq;
   memberSeqs: EventSeq[];
@@ -73,9 +73,9 @@ export interface RailEntry {
   color: string;
   label: string;
   pending: boolean;
-}
+};
 
-export interface TickEntry {
+export type TickEntry = {
   kind: 'tick';
   seq: EventSeq;
   y: number;
@@ -83,19 +83,19 @@ export interface TickEntry {
   variant: string;
   /** Null when the rail was evicted. */
   linkedRailIdx: number | null;
-}
+};
 
 export type TimelineEntry = SegmentEntry | RailEntry | TickEntry;
 
-export interface Layout {
+export type Layout = {
   entries: TimelineEntry[];
   laneCount: number;
   railCount: number;
   totalHeight: number;
   seqToEntryIdx: Map<EventSeq, number>;
-}
+};
 
-interface WorkingSegment {
+type WorkingSegment = {
   seqAnchor: EventSeq;
   memberSeqs: EventSeq[];
   topY: number;
@@ -107,12 +107,12 @@ interface WorkingSegment {
   linkedRailIdx?: number | undefined;
   startAt: number;
   endAt: number | null;
-}
+};
 
-export interface LayoutOptions {
+export type LayoutOptions = {
   seqToY: Map<EventSeq, number>;
   totalHeight: number;
-}
+};
 
 /** Shared across swimlanes so boxes at the same Y are the same moment. */
 export function computeGlobalYPositions(events: readonly StoredEvent[]): LayoutOptions {
@@ -122,13 +122,13 @@ export function computeGlobalYPositions(events: readonly StoredEvent[]): LayoutO
   return { seqToY, totalHeight };
 }
 
-export interface SwimlanePartition {
+export type SwimlanePartition = {
   /** `chain-<genesisHash>`, `system` or `other`. */
   key: string;
   header: string;
   color: string;
   events: StoredEvent[];
-}
+};
 
 /**
  * A chain gets its own lane only once followed, since a follow means the product actively uses it.

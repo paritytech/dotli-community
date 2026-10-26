@@ -8,11 +8,11 @@ import { createSyncStore, type ReadableStore } from '@dotli/shared';
 
 export type WalletMode = 'app' | 'local';
 
-export interface WalletModeState {
+export type WalletModeState = {
   mode: WalletMode;
   /** Why local mode could not start on this boot. */
   failure: string | null;
-}
+};
 
 const walletMode = createSyncStore<WalletModeState>('walletMode', { mode: 'app', failure: null });
 

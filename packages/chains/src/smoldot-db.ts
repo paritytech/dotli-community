@@ -23,10 +23,10 @@ const IDB_TIMEOUT_MS = 3_000;
  * The shape `setStorage` expects. `load` rejects when it cannot answer, since `null` would let a later
  * snapshot overwrite good state.
  */
-export interface SmoldotDb {
+export type SmoldotDb = {
   load(genesisHash: string): Promise<string | null>;
   save(genesisHash: string, blob: string): Promise<void>;
-}
+};
 
 function upgrade(db: IDBDatabase): void {
   for (const name of [STORE, LOADS_STORE]) {

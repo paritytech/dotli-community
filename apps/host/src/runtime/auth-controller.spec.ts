@@ -38,7 +38,7 @@ const LOGIN_CANCELLED: LoginOutcome = { kind: 'cancelled' };
 const CLOSED_MODAL: AuthModalState = { open: false, productLabel: null, reason: null, view: { kind: 'spinner' } };
 const getAuthModalState = authModalStore.get;
 
-interface Started {
+type Started = {
   controller: AuthController;
   auth: SyncStore<DotliAuthState>;
   coordinator: BlockingModalCoordinator;
@@ -50,7 +50,7 @@ interface Started {
   };
   /** Notified at each command asked and each change of the auth modal. */
   changes: Changes;
-}
+};
 
 const disposers: (() => void)[] = [];
 
@@ -756,7 +756,7 @@ describe('auth controller: auth states', () => {
   });
 });
 
-interface FakeHandoff extends SessionHandoff {
+type FakeHandoff = {
   readonly signIns: SignInIntent[];
   readonly signOuts: { notified: boolean }[];
   focuses: number;
@@ -764,7 +764,7 @@ interface FakeHandoff extends SessionHandoff {
   readonly cancels: PageCancelReason[];
   /** Ends the open round with `outcome`, on behalf of the window or the user. */
   end(outcome: SignInOutcome): void;
-}
+} & SessionHandoff;
 
 /** A handoff whose rounds end when the test says, recording what the page asked of it. */
 function fakeHandoff(): FakeHandoff {

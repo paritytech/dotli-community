@@ -9,7 +9,7 @@ import { holdForHandOff, SheetFrame, takeHandOff, type SheetFrameProps } from '.
 /** Matches `--dur-morph`. */
 export const SHEET_EXIT_MS = 460;
 
-export interface BottomSheetProps {
+export type BottomSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -19,7 +19,7 @@ export interface BottomSheetProps {
   /** For a menu in a sheet, the body is the `role="menu"` element with the menu's keys. */
   body?: SheetFrameProps['body'];
   children: JSX.Element;
-}
+};
 
 /** A modal bottom sheet. Popover and DropdownMenu render one in place of their anchored surface on a phone. */
 export function BottomSheet(props: BottomSheetProps): JSX.Element {

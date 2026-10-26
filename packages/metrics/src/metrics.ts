@@ -62,19 +62,19 @@ export type MetricAttributes = {
   owner?: string;
 } & Record<string, string>;
 
-interface MetricOptions {
+type MetricOptions = {
   unit?: string;
   attributes?: Record<string, string> | undefined;
-}
+};
 
-interface SentrySpan {
+type SentrySpan = {
   setAttributes: (attrs: Record<string, SpanValue>) => void;
   end: (endTime?: number) => void;
-}
+};
 
 export type SpanValue = string | number | boolean;
 
-interface SentryLike {
+type SentryLike = {
   startSpan: <T>(
     opts: { op: string; name: string },
     fn: (span: { setAttribute: (key: string, value: string) => void } | undefined) => T,
@@ -100,7 +100,7 @@ interface SentryLike {
     level?: string;
     data?: Record<string, unknown> | undefined;
   }) => void;
-}
+};
 
 // Bound by `initSentry`, or by a test's recorder.
 let bound: SentryLike | null = null;
@@ -250,21 +250,21 @@ export function getResolutionId(): string | null {
 }
 
 /** A span that outlives its call, for work that opens and closes on separate messages. */
-export interface SpanHandle {
+export type SpanHandle = {
   /** Ignored after `end`. */
   setAttributes: (attrs: Record<string, SpanValue>) => void;
   child: (name: string, opts?: OpenSpanOptions) => SpanHandle;
   /** Repeat calls are ignored, so a failure path can end a span the success path already ended. */
   end: (endTime?: number) => void;
-}
+};
 
-export interface OpenSpanOptions {
+export type OpenSpanOptions = {
   /** Epoch milliseconds, defaults to now. */
   startTime?: number;
   attributes?: Record<string, SpanValue>;
   /** Present the span as its own transaction in Sentry rather than a nested row. */
   root?: boolean;
-}
+};
 
 const NOOP_HANDLE: SpanHandle = {
   setAttributes: () => {

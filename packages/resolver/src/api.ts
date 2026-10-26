@@ -57,7 +57,7 @@ export class ApiStoppedError extends Error {
   }
 }
 
-export interface Api {
+export type Api = {
   whenReady(): Promise<void>;
   /** Keeps the best block pinned until `read` settles. Multi-call reads must go through here. */
   withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T>;
@@ -74,7 +74,7 @@ export interface Api {
   onStop(cb: () => void): () => void;
   /** Leaves the owning `SubstrateClient` alive. */
   destroy(): void;
-}
+};
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */
 export function createRawApi(

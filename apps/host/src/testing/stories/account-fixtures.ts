@@ -8,7 +8,7 @@ import { createSignal, flush } from 'solid-js';
 import type { AccountSession } from '../../components/account/account.js';
 import type { Account } from '../../components/account/account.js';
 
-interface AccountShape {
+type AccountShape = {
   loggedIn: boolean;
   session: AccountSession | undefined;
   connected: boolean;
@@ -17,7 +17,7 @@ interface AccountShape {
   signingOut: boolean;
   local: boolean;
   elsewhere: boolean;
-}
+};
 
 /** Boot has not read the saved session yet. */
 const RESTORING: AccountShape = {

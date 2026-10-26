@@ -13,7 +13,7 @@ import { reportWalletFailure } from '../wallet-failure.js';
 
 export type Presence = 'present' | 'absent' | 'unknown';
 
-export interface SessionPresence {
+export type SessionPresence = {
   /** Reads the flag, probing once per page whether it can be read when it is not there. */
   read(): Promise<Presence>;
   /** Settles once the flag is written, at once for the cookie and when the request ends for the dev store. */
@@ -23,13 +23,13 @@ export interface SessionPresence {
    * Extends the flag's lifetime only if it is set at that moment, so a sign-out elsewhere is not undone.
    */
   renew(): Promise<void>;
-}
+};
 
 /** The page's cookie string, injected so the logic runs without a DOM. */
-export interface CookieJar {
+export type CookieJar = {
   read(): string;
   write(cookie: string): void;
-}
+};
 
 const NAME = 'has_session';
 const PROBE_NAME = 'has_session_probe';
@@ -140,7 +140,7 @@ const unsharedPresence: SessionPresence = {
   renew: () => Promise.resolve(),
 };
 
-export interface PagePresenceDeps {
+export type PagePresenceDeps = {
   /** Whether the page shares the root domain's flag. A preview its preview host frames does not. */
   shared: () => boolean;
   /** Served from a local root such as `localhost`, where the flag lives in the dev HTTP store. */
@@ -148,7 +148,7 @@ export interface PagePresenceDeps {
   channel: () => SharedChannel;
   jar: CookieJar;
   domain?: string;
-}
+};
 
 /** Runs `call` in the caller's turn and answers with `fallback` for a throw or a rejection. */
 function settled<T>(call: () => Promise<T>, fallback: (error: unknown) => T): Promise<T> {
@@ -187,9 +187,9 @@ export function createPagePresence(deps: PagePresenceDeps): SessionPresence {
 }
 
 /** The browser's cookie change events, naming each cookie set or deleted. */
-export interface CookieChanges {
+export type CookieChanges = {
   subscribe(listener: (names: readonly string[]) => void): () => void;
-}
+};
 
 /**
  * Calls `listener` each time the flag cookie is set or deleted, so an open page hears a sign-in or a sign-out made

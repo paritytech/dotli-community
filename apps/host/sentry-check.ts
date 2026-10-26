@@ -9,16 +9,16 @@
 
 import { chromium, errors, type Browser, type BrowserContext, type Request } from '@playwright/test';
 
-interface Envelope {
+type Envelope = {
   body: string;
   status: number | null;
   req: Request;
-}
+};
 
-interface Warm {
+type Warm = {
   b: Browser;
   ctx: BrowserContext;
-}
+};
 
 type Json = Record<string, unknown>;
 

@@ -18,7 +18,7 @@ import type { SafeStorage } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import type { SettingsActions } from './settings-actions.js';
 
-export interface SettingsBootDeps {
+export type SettingsBootDeps = {
   /** The page's query string. */
   search: string;
   /** This origin's storage, which never throws. */
@@ -43,7 +43,7 @@ export interface SettingsBootDeps {
   notify: ShowNotification;
   /** Replaces the page's query string without a navigation. */
   replaceSearch: (query: string) => void;
-}
+};
 
 /**
  * Sets this page's settings and resolves them. The part before the first await sets this origin's settings and the

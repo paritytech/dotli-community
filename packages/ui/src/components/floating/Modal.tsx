@@ -11,7 +11,7 @@ import { ModalLayer } from './ModalLayer.js';
 import { SheetFrame } from './SheetFrame.js';
 import s from './Modal.module.css';
 
-export interface ModalProps {
+export type ModalProps = {
   open: boolean;
   /** `dismiss`: Escape or the scrim. `close`: the sheet head's close button or a swipe. */
   onOpenChange: (open: boolean, reason?: 'dismiss' | 'close') => void;
@@ -37,7 +37,7 @@ export interface ModalProps {
   /** Receives the frame. */
   frameRef?: (el: HTMLDivElement) => void;
   children: JSX.Element;
-}
+};
 
 /**
  * A card on wide screens and a bottom sheet on a phone, following the viewport while open. The children resolve

@@ -5,19 +5,19 @@
 // decodes messages.
 
 /** A message a window delivers, as much of it as the window provider reads. A `MessageEvent` is one. */
-export interface WindowMessage {
+export type WindowMessage = {
   readonly data: unknown;
   readonly origin: string;
   readonly source: unknown;
-}
+};
 
 /** Where a window provider hears messages. The page's `window` in the browser. */
-export interface MessageTarget {
+export type MessageTarget = {
   addEventListener(type: 'message', listener: (event: WindowMessage) => void): void;
   removeEventListener(type: 'message', listener: (event: WindowMessage) => void): void;
-}
+};
 
-export interface Provider {
+export type Provider = {
   /** Whether this context has a peer to talk to. A transport over a provider that has none closes at once. */
   isCorrectEnvironment(): boolean;
   /**
@@ -32,22 +32,22 @@ export interface Provider {
    */
   subscribe(callback: (message: Uint8Array) => void): () => void;
   dispose(): void;
-}
+};
 
-export interface WindowLike {
+export type WindowLike = {
   postMessage(message: ArrayBuffer, targetOrigin: string, transfer: Transferable[]): void;
-}
+};
 
 /** A message port, as much of it as the port provider uses. A `MessagePort` is one. */
-export interface PortLike {
+export type PortLike = {
   postMessage(message: ArrayBuffer, transfer: Transferable[]): void;
   addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
   removeEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
   start(): void;
   close(): void;
-}
+};
 
-export interface WindowProviderDeps {
+export type WindowProviderDeps = {
   listen: MessageTarget;
   peer: () => WindowLike | null;
   /**
@@ -62,16 +62,16 @@ export interface WindowProviderDeps {
    * that tries to speak the wire is seen. Other data from such an origin is not the wire and goes unreported.
    */
   onRefusedOrigin?: (origin: string) => void;
-}
+};
 
 /** A provider's listeners, which hear nothing once it is disposed. */
-export interface Listeners {
+export type Listeners = {
   deliver: (message: Uint8Array) => void;
   subscribe: (callback: (message: Uint8Array) => void) => () => void;
   /** Drops every listener. Returns false when already disposed. */
   dispose: () => boolean;
   disposed: () => boolean;
-}
+};
 
 export function createListeners(): Listeners {
   const listeners = new Set<(message: Uint8Array) => void>();
@@ -179,10 +179,10 @@ export function createWindowProvider(deps: WindowProviderDeps): Provider {
   };
 }
 
-interface PortProviderOptions {
+type PortProviderOptions = {
   /** Unset or true, `dispose` closes the port. False leaves the port open for its owner to close. */
   closeOnDispose?: boolean;
-}
+};
 
 /**
  * Starts the port, so it hears from the moment it is created and delivers only to listeners subscribed by then. It

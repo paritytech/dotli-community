@@ -10,7 +10,7 @@ export type HoldSlot = (promise: Promise<unknown>) => void;
 
 type BlockingModalTask<T> = (signal: AbortSignal, hold: HoldSlot) => Promise<T> | T;
 
-export interface BlockingModalScope {
+export type BlockingModalScope = {
   /**
    * Resolves with the task's value as soon as it returns. A promise the task holds keeps the slot, and the counts,
    * taken until it settles or the scope is disposed, so no other prompt covers what it shows. Rejects with an
@@ -18,22 +18,22 @@ export interface BlockingModalScope {
    */
   enqueue<T>(task: BlockingModalTask<T>): Promise<T>;
   dispose(reason?: string): void;
-}
+};
 
-export interface BlockingModalCoordinator {
+export type BlockingModalCoordinator = {
   createScope(): BlockingModalScope;
-}
+};
 
 /** Prompts queued behind the one on screen, and whether one is up. */
-export interface BlockingModalCounts {
+export type BlockingModalCounts = {
   waiting: number;
   active: boolean;
-}
+};
 
-export interface BlockingModalCoordinatorOptions {
+export type BlockingModalCoordinatorOptions = {
   /** Hears the counts after every change, so the page can show how busy the queue is. */
   report?: ((counts: BlockingModalCounts) => void) | undefined;
-}
+};
 
 function blockingModalAbortError(reason?: unknown): DOMException {
   return toAbortError(reason, BLOCKING_MODAL_DISPOSED);

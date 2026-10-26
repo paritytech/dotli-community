@@ -10,7 +10,7 @@ import type { EnforceablePermissionName } from './permissions.js';
 export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
 /** Each ask settles with the user's answer, and rejects with an AbortError once `signal` aborts. */
-export interface HostPrompts {
+export type HostPrompts = {
   askPermission: (
     label: string,
     permission: EnforceablePermissionName,
@@ -29,4 +29,4 @@ export interface HostPrompts {
     handoff?: (result: R) => ModalHandoff | undefined,
   ) => Promise<R>;
   notify: ShowNotification;
-}
+};

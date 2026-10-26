@@ -7,11 +7,11 @@
 export const REMEMBERED_ENDS = 1_024;
 
 /** The ids of the calls this side ended lately. */
-export interface RecentIds {
+export type RecentIds = {
   add(id: number): void;
   has(id: number): boolean;
   delete(id: number): void;
-}
+};
 
 export function createRecentIds(): RecentIds {
   // A set iterates in insertion order, so its first id is the oldest.

@@ -11,32 +11,32 @@ export type SandboxMessageType = SandboxToHostMessage['type'];
 export type SandboxMessageOf<T extends SandboxMessageType> = Extract<SandboxToHostMessage, { type: T }>;
 
 /** For a consumer that answers the frame or keeps state per frame. */
-export interface SandboxSender {
+export type SandboxSender = {
   origin: string;
   /** Null when the frame went away before its message was handled. */
   source: MessageEventSource | null;
-}
+};
 
-export interface SandboxChannel {
+export type SandboxChannel = {
   /** Returns the unsubscribe. */
   on<T extends SandboxMessageType>(
     type: T,
     handler: (message: SandboxMessageOf<T>, sender: SandboxSender) => void,
   ): () => void;
-}
+};
 
-export interface SandboxChannelOptions {
+export type SandboxChannelOptions = {
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   isTrustedOrigin: (origin: string) => boolean;
   /** Hears each sandbox message the channel drops for its origin. */
   onUntrusted?: (type: SandboxMessageType, origin: string) => void;
   /** Hears a handler that threw. Injected, since this package reports nothing itself. */
   report: (error: unknown, type: SandboxMessageType) => void;
-}
+};
 
-export interface StartedSandboxChannel extends SandboxChannel {
+export type StartedSandboxChannel = {
   stop(): void;
-}
+} & SandboxChannel;
 
 type AnyHandler = (message: SandboxToHostMessage, sender: SandboxSender) => void;
 

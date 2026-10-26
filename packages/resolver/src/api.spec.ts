@@ -18,12 +18,12 @@ import { ApiStoppedError, createRawApi } from './api.js';
 
 type StorageFn = (hash: string, type: string, key: string, childTrie: string | null) => Promise<string | null>;
 
-interface FakeFollow {
+type FakeFollow = {
   emit: (event: FollowEventWithoutRuntime) => void;
   stop: () => void;
   storage: Mock<StorageFn>;
   unpin: Mock<(hashes: string[]) => Promise<void>>;
-}
+};
 
 function fakeClient(): { client: SubstrateClient; follow: FakeFollow } {
   const follow: FakeFollow = {

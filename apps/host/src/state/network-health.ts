@@ -26,14 +26,14 @@ function disarm(): void {
 }
 
 /** What the health reads from the page around the chains. */
-export interface HealthPage {
+export type HealthPage = {
   isHidden: () => boolean;
   isOnline: () => boolean;
   /** Fires `visibilitychange`. */
   visibility: EventTarget;
   /** Fires `online` and `offline`. */
   connectivity: EventTarget;
-}
+};
 
 function browserHealthPage(): HealthPage {
   return {

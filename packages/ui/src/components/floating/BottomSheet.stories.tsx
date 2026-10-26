@@ -116,11 +116,11 @@ export const TabStaysInside: Story = {
 };
 
 /** What a hand-off left on both frames, read as `handOffSheet` returns, before any frame is drawn. */
-interface HandOffMarks {
+type HandOffMarks = {
   taken: boolean;
   leaving: { open: boolean; handoff: boolean };
   coming: { open: boolean; handoff: boolean };
-}
+};
 
 const marks = (id: string) => {
   const el = document.getElementById(id);

@@ -38,18 +38,18 @@ function archivePath(pathname: string, base: string): string | null {
 
 type ArchiveIndex = { p: string; o: number; l: number }[];
 
-interface PersistedArchive {
+type PersistedArchive = {
   packed: ArrayBuffer;
   index: ArchiveIndex;
   /** Absent in an archive a worker from the previous release kept. */
   directory?: string;
-}
+};
 
 /** The archive's files and the directory of the path its page is written at, replaced together by each handoff. */
-interface ServedArchive {
+type ServedArchive = {
   files: Record<string, ArrayBuffer>;
   directory: string;
-}
+};
 
 const ARCHIVE_DB_NAME = 'dotli-app-sw';
 const ARCHIVE_STORE = 'archive';
@@ -108,14 +108,14 @@ function reportArchiveFailure(clients: readonly Client[], stage: 'persist' | 're
 }
 
 /** What the worker needs from its global scope. A fake stands in for it in a spec. */
-export interface AppServiceWorkerDeps {
+export type AppServiceWorkerDeps = {
   scope: Pick<ServiceWorkerGlobalScope, 'addEventListener' | 'clients' | 'location' | 'skipWaiting'>;
   /** The origin's storage, which outlives the worker across idle restarts. */
   indexedDB: IDBFactory;
   fetch: typeof fetch;
   /** The dev server serves the sandbox's own modules under `src/`, `@` paths and `node_modules/`. */
   devServer: boolean;
-}
+};
 
 /** Serves the archive the page hands it, from this scope's events. Each call is a fresh worker start. */
 export function startAppServiceWorker({

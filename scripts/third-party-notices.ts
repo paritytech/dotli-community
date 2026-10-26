@@ -58,15 +58,15 @@ FSL-1.1-Apache-2.0) terms is used to build the application and is not redistribu
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (\`MPL-2.0\`), unmodified and with its license header.`;
 
-interface LockEntry {
+type LockEntry = {
   name?: string;
   license?: unknown;
   link?: boolean;
-}
+};
 
-interface Lockfile {
+type Lockfile = {
   packages: Record<string, LockEntry>;
-}
+};
 
 function sectionOf(license: unknown, path: string): string {
   if (typeof license !== 'string') {

@@ -19,13 +19,13 @@ import {
 
 const REQUEST_KEY = 'dotli:s:request';
 
-export interface WindowRequestDeps {
+export type WindowRequestDeps = {
   pathname: string;
   search: string;
   hash: string;
   storage: SafeStorage;
   replaceUrl: (url: string) => void;
-}
+};
 
 function keep(storage: SafeStorage, pathname: string, params: Record<string, unknown>): void {
   storage.setItem(REQUEST_KEY, JSON.stringify({ path: pathname, params }));
@@ -78,13 +78,13 @@ export function forgetWindowRequest(storage: SafeStorage): void {
   storage.removeItem(REQUEST_KEY);
 }
 
-export interface NewRequestDeps {
+export type NewRequestDeps = {
   pathname: string;
   listen: (handler: () => void) => () => void;
   hash: () => string;
   storage: SafeStorage;
   reload: () => void;
-}
+};
 
 /** Keeps and reloads for each new request a page puts in this window's fragment. Returns the stop function. */
 export function watchNewRequests(deps: NewRequestDeps): () => void {

@@ -5,10 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { memoryStorage } from '@dotli/shared/testing';
 import { isDebugModeOn, leaveDebugMode, resolveDebugMode, type DebugModePage } from './debug-mode.js';
 
-interface FakePage extends DebugModePage {
+type FakePage = {
   sessionStorage: Storage;
   replaceState: ReturnType<typeof vi.fn<(data: unknown, unused: string, url: string) => void>>;
-}
+} & DebugModePage;
 
 /** A page at `href` whose tab storage holds `entries`. */
 function page(href: string, entries: Record<string, string> = {}): FakePage {

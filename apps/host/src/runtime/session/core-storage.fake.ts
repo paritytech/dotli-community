@@ -5,7 +5,7 @@ import type { SharedStoreStatus } from '@dotli/protocol';
 import type { HostCoreStorage, SharedSessionStore } from './core-storage.js';
 
 /** An in-memory shared auth store with the protocol frame's failure modes. */
-export interface FakeSharedSessionStore extends SharedSessionStore {
+export type FakeSharedSessionStore = {
   readonly entries: Map<string, string>;
   /** Every key read, in order. */
   readonly reads: string[];
@@ -28,7 +28,7 @@ export interface FakeSharedSessionStore extends SharedSessionStore {
   /** Another tab writing a key. */
   changeFromOtherTab(key: string, value: string): void;
   statusListenerCount(): number;
-}
+} & SharedSessionStore;
 
 export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connecting'): FakeSharedSessionStore {
   const entries = new Map<string, string>();
@@ -125,15 +125,12 @@ export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connec
 }
 
 /** The page's copy as a login waits on it: a session a core stores, or a write of it that fails. */
-export interface FakeStoredSession extends Pick<
-  HostCoreStorage,
-  'readSession' | 'onStoredSessionChanged' | 'onSessionWriteFailed'
-> {
+export type FakeStoredSession = {
   /** A core storing `blob`, which tells every listener. */
   store(blob: string): void;
   /** A core's write of its session failing. */
   failWrite(error: Error): void;
-}
+} & Pick<HostCoreStorage, 'readSession' | 'onStoredSessionChanged' | 'onSessionWriteFailed'>;
 
 export function createFakeStoredSession(blob: string | null = null): FakeStoredSession {
   let stored = blob;

@@ -11,12 +11,12 @@ import { seedBackend } from '../fixtures/settings.js';
 /** A web container host, which the preview route accepts in every build. */
 export const PREVIEW_PRODUCT_ORIGIN = 'https://e2e-product.webcontainer-api.io';
 
-export interface PreviewProduct {
+export type PreviewProduct = {
   /** The shell page that shows the product. */
   shellUrl: string;
   /** Every URL the product frame loaded, in order. */
   documents: string[];
-}
+};
 
 /**
  * Serves a stub page for the product and counts its document loads. Seeds the gateway backend, whose protocol frame

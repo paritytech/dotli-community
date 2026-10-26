@@ -10,13 +10,13 @@ import { callFailure, fromTransportError } from './errors.js';
 import type { DomainFailure, ProtocolTransport, SubscriptionEnd } from './schema.js';
 
 /** What a subscriber hears: each value, then one end, unless it stops first. */
-export interface FrameSubscriber<V> {
+export type FrameSubscriber<V> = {
   receive(value: V): void;
   /** Null when the frame ended it cleanly, else why it ended, as the error host code sees. */
   end(error: Error | null): void;
   /** Hears the transport closing under it in place of `end`, for a subscriber that the frame's loss ends for good. */
   close?(): void;
-}
+};
 
 /**
  * The `interrupt` and `fail` listeners of a protocol subscription as one end. A failure of the library's ends it as

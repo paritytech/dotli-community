@@ -28,7 +28,7 @@ export type FeedEnds = Required<Pick<FrameSubscriber<unknown>, 'end' | 'close'>>
  */
 export type FeedOpen = (ends: FeedEnds) => () => void;
 
-export interface FeedKeeper {
+export type FeedKeeper = {
   /**
    * Holds the feed from now on, on the frame there is now and on each frame that boots after it, until `stop`. An
    * answer to an ask for a frame's transport that a later ask overtook is dropped.
@@ -36,12 +36,12 @@ export interface FeedKeeper {
   follow(): void;
   /** Unsubscribes the held feed, and drops a reopen that waits and an ask still out. */
   stop(): void;
-}
+};
 
 /** What a feed needs of the frame. */
-export interface FeedFrame<T> extends Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus'> {
+export type FeedFrame<T> = {
   transport(): Promise<T>;
-}
+} & Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus'>;
 
 /** A frame that is booting or up has a transport to hear. */
 function hasFrame(status: ProtocolStatus): boolean {

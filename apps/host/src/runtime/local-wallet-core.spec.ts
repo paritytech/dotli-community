@@ -61,10 +61,10 @@ class FakeSigningWorker {
   readonly role = 'signing';
 }
 
-interface FakeRuntime {
+type FakeRuntime = {
   activateLocalSession: ReturnType<typeof vi.fn<(secret: Uint8Array, name?: string) => Promise<void>>>;
   dispose: ReturnType<typeof vi.fn<() => void>>;
-}
+};
 
 function fakeRuntime(activate: () => Promise<void> = () => Promise.resolve()): FakeRuntime {
   return {

@@ -9,12 +9,12 @@
 import { base64urlnopad } from '@scure/base';
 import { asRecord, type SessionRequest } from '../session-handoff/session-protocol.js';
 
-export interface SiteRequest {
+export type SiteRequest = {
   round: string;
   siteToken: string | null;
   /** The site's group, which signs in once for every origin of the site's registrable domain. */
   groupToken: string | null;
-}
+};
 
 const LINE_BREAK = /[\r\n\u2028\u2029]/;
 const GROUP_TOKEN_MAX = 256;
@@ -76,10 +76,10 @@ function canonicalBytes(value: string, length: number): Uint8Array | null {
 }
 
 /** A redirect sign-in's return address and the site's temporary key, which the window seals its answer to. */
-export interface RedirectFields {
+export type RedirectFields = {
   returnTo: string;
   pub: Uint8Array;
-}
+};
 
 /**
  * The redirect fields in a sign-in request's `params`: both when both are valid, `none` when neither is sent, and

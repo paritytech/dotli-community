@@ -12,7 +12,7 @@ import { isRecord, stringsOf } from './json-shape.js';
  */
 const SNAPSHOT_HOLDER = 'snapshot';
 
-export interface FollowSnapshot {
+export type FollowSnapshot = {
   /** Records one upstream follow event, and returns the blocks it leaves no holder pinning. */
   record(event: unknown): string[];
   /** Pins for `holder` the blocks `event` announces: the finalized ones of `initialized`, and a `newBlock`. */
@@ -21,7 +21,7 @@ export interface FollowSnapshot {
   release(holder: string, hashes: readonly string[] | null): string[];
   /** The events that bring a joining `holder` up to date, with their blocks pinned for it. */
   replayFor(holder: string): Record<string, unknown>[];
-}
+};
 
 export function createFollowSnapshot(): FollowSnapshot {
   // The newest finalized block alone, the base a joining session's replay starts from.

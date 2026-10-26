@@ -5,11 +5,11 @@
 
 import { parseApiViolationMessage } from '@dotli/sandbox-wire';
 
-export interface ParsedViolation {
+export type ParsedViolation = {
   api: string;
   details: string;
   timestamp: number;
-}
+};
 
 const MIN_HEIGHT = 40;
 const MAX_VIEWPORT_SHARE = 0.8;

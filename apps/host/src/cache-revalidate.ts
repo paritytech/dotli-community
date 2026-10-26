@@ -11,7 +11,7 @@ import type { ShowNotification } from '@dotli/ui';
 import { compareCachedCid, judgeRedeploy } from './manifest-gate.js';
 import type { NameSource } from './name-source.js';
 
-export interface CacheRevalidationDeps {
+export type CacheRevalidationDeps = {
   names: Pick<NameSource, 'resolveProduct' | 'readManifests'>;
   /** The CID cache entry for this network. */
   cache: {
@@ -22,7 +22,7 @@ export interface CacheRevalidationDeps {
   notify: ShowNotification;
   /** Reloads onto the newer version. */
   reload: () => void;
-}
+};
 
 /** `onScreen` is false when the cached copy was refused rather than rendered, so an eviction has no page to reload. */
 export async function revalidateCachedCopy(

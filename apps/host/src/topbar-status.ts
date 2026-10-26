@@ -12,13 +12,13 @@ import { chatPanelStore, totalChatUnread } from './state/chat-panel.js';
 import { needsAction } from './state/topbar-signals.js';
 
 /** Counts the bar's own running transitions, so what is laid out against its box waits for the morph to end. */
-export interface MorphCount {
+export type MorphCount = {
   start: () => void;
   /** True when this ended the last running morph. An end with none running is ignored. */
   end: () => boolean;
   running: () => boolean;
   reset: () => void;
-}
+};
 
 /**
  * `transitionsRunning` answers whether any of the bar's transitions still run, or undefined where the engine cannot
@@ -51,10 +51,10 @@ export function createMorphCount(transitionsRunning: () => boolean | undefined):
 }
 
 /** Where the pill ends, in px from the viewport's inline end and top. */
-export interface PillBox {
+export type PillBox = {
   inlineEnd: number;
   bottom: number;
-}
+};
 
 /** Null for a bar that is not laid out, which has no box. */
 export function pillBox(rect: Pick<DOMRect, 'right' | 'bottom' | 'width'>, viewportWidth: number): PillBox | null {
@@ -90,14 +90,14 @@ export function createPillPlacement(
 }
 
 /** What the capsule shows of the page's state. */
-export interface CapsuleStatus {
+export type CapsuleStatus = {
   /** The tone of the page's network health. */
   tone: NetworkHealth;
   /** The capsule leads with the action dot. */
   action: boolean;
   /** The capsule's colour is not announced, so going offline is said in words. */
   announcement: string;
-}
+};
 
 export function capsuleStatus(health: NetworkHealth, action: boolean, online: boolean): CapsuleStatus {
   return { tone: health, action, announcement: online ? '' : 'You are offline' };
@@ -123,10 +123,10 @@ function morphing(): boolean {
 }
 
 /** The bar's own morph: a fold or reveal that resizes the row every frame until it ends. */
-export interface TopbarMorph {
+export type TopbarMorph = {
   running: () => boolean;
   onEnd: (listener: () => void) => () => void;
-}
+};
 
 export const topbarMorph: TopbarMorph = {
   running: morphing,

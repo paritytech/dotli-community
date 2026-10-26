@@ -49,14 +49,14 @@ function fakeChannel(): {
   };
 }
 
-interface Reply {
+type Reply = {
   type: string;
   id: string;
   ok: boolean;
   bytes?: Uint8Array;
   errorName?: string;
   code?: number;
-}
+};
 
 /** A sandbox frame that receives replies as `postMessage` delivers them: cloned, transferred buffers detached. */
 function fakeFrame(): {
@@ -76,10 +76,10 @@ function fakeFrame(): {
   };
 }
 
-interface Fetch {
+type Fetch = {
   cid: string;
   signal: AbortSignal;
-}
+};
 
 /** The network: answers each block with `answer`, or holds it until its signal aborts. */
 function fakeNetwork(answer: (cid: string) => Uint8Array | Error | 'hold' = () => BLOCK.slice()): {
@@ -104,11 +104,11 @@ function fakeNetwork(answer: (cid: string) => Uint8Array | Error | 'hold' = () =
   };
 }
 
-interface MemoryCache extends BlockCache {
+type MemoryCache = {
   blocks: Map<string, Uint8Array>;
   deleted: string[];
   writes: number;
-}
+} & BlockCache;
 
 function memoryCache(
   initial: [string, Uint8Array][] = [],

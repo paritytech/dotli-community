@@ -7,12 +7,12 @@ import { createDrags } from '../drag.js';
 import { handlesKey, stopAt, stopForKey } from './step-slider.js';
 import s from './StepSlider.module.css';
 
-export interface StepSliderStop {
+export type StepSliderStop = {
   label: string;
   testId?: string;
-}
+};
 
-export interface StepSliderProps {
+export type StepSliderProps = {
   /** The slider's accessible name. */
   label: string;
   /** In order from the start of the track. */
@@ -30,7 +30,7 @@ export interface StepSliderProps {
   marked?: boolean;
   class?: string | undefined;
   testId?: string;
-}
+};
 
 /** One of a few named stops on a track, committed by the pointer release, label press or key that picks it. */
 export function StepSlider(props: StepSliderProps): JSX.Element {

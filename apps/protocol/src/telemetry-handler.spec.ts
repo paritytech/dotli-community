@@ -15,13 +15,13 @@ const { frame } = protocolSchema.sections;
 
 type DbListener = (chain: SmoldotDbChain, outcome: SmoldotDbOutcome) => void;
 
-interface Sources {
+type Sources = {
   deps: TelemetryDeps;
   /** A database read the light client reports after the host subscribed. */
   readDb: (chain: SmoldotDbChain, outcome: SmoldotDbOutcome) => void;
   /** Resolves once every feed was stopped. */
   stopped: Promise<void>;
-}
+};
 
 /** Feeds that replay what they hold to each new listener, as the chain sync reporter does. */
 function sources(options: {

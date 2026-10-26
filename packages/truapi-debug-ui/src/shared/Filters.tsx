@@ -56,12 +56,12 @@ export function FilterCheck(props: {
   );
 }
 
-export interface FilterChip<T extends string> {
+export type FilterChip<T extends string> = {
   value: T;
   label: string;
   /** Drawn before the label. */
   icon?: ((props: IconProps) => JSX.Element) | undefined;
-}
+};
 
 /** Chips picking one value. Keyed by value, so a list that changes under traffic keeps its nodes and clicks land. */
 export function FilterChips<T extends string>(props: {

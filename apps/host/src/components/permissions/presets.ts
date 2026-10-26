@@ -8,13 +8,13 @@ import { ALL_PERMISSIONS, type EnforceablePermissionName, type PermissionStatus 
 
 export type PresetId = 'restricted' | 'secure' | 'trusted' | 'unlimited';
 
-export interface Preset {
+export type Preset = {
   id: PresetId;
   label: string;
   /** Who the preset is for, shown under the slider. */
   line: string;
   statuses: Readonly<Record<EnforceablePermissionName, PermissionStatus>>;
-}
+};
 
 function every(status: PermissionStatus): Record<EnforceablePermissionName, PermissionStatus> {
   return Object.fromEntries(ALL_PERMISSIONS.map(({ name }) => [name, status])) as Record<
@@ -79,11 +79,11 @@ export function distance(statuses: readonly PermissionStatus[], preset: Preset):
   );
 }
 
-export interface ShownPreset {
+export type ShownPreset = {
   preset: Preset;
   /** The statuses differ from the preset. */
   modified: boolean;
-}
+};
 
 /** The preset closest to `statuses`, in menu order, the safer one on a tie. */
 export function presetOf(statuses: readonly PermissionStatus[]): ShownPreset {

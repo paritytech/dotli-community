@@ -15,12 +15,12 @@ import { getContainerRenderer } from './container-renderer.ts';
 
 type Options = Pick<ViteSolidPluginOptions, 'include' | 'exclude' | 'compiler'>;
 
-interface ManifestSource {
+type ManifestSource = {
   command: string;
   /** Where the client build writes its manifest, the static site's output folder. */
   clientDir: string;
   base: string;
-}
+};
 
 const PACKAGE = '@config/astro-solid';
 

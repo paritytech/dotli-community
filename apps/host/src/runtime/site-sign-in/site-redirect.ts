@@ -19,14 +19,14 @@ export type RedirectVerdict =
       reason: 'unsupported_browser' | 'bad_key' | 'return_to_party' | 'return_to_not_listed' | 'well_known_unreachable';
     };
 
-export interface RedirectVettingDeps {
+export type RedirectVettingDeps = {
   /** The window's own origin. */
   self: string;
   /** Whether this browser can seal to the site's key. */
   probe: (pub: Uint8Array) => Promise<'ok' | 'unsupported' | 'bad_key'>;
   /** Whether the site's well-known file lists the return address. */
   checkReturnTo: (url: string) => Promise<ReturnVerdict>;
-}
+};
 
 /**
  * Vets a redirect sign-in: the browser can seal to the key, the return address is a site's, and the site lists it. A

@@ -29,25 +29,25 @@ import {
 import { setSettings } from './active-settings.js';
 import type { ParsedUrlSettings } from './url-settings.js';
 
-export interface Settings {
+export type Settings = {
   network: Network;
   backend: Backend;
   cache: CacheSettings;
-}
+};
 
 /** The backend and cache values the cross-subdomain store holds, unparsed. */
-export interface SharedSettings {
+export type SharedSettings = {
   backend: string | null;
   cache: string | null;
-}
+};
 
-export interface ResolvedSettings {
+export type ResolvedSettings = {
   settings: Settings;
   /** The shared light client was chosen and this browser cannot start it, so the light client per tab stands in. */
   sharedWorkerFallback: boolean;
-}
+};
 
-export interface SettingsSources {
+export type SettingsSources = {
   /** This origin's storage. */
   local: Pick<Storage, 'getItem'>;
   /** Null when the cross-subdomain store could not be read, or has not been yet. */
@@ -61,7 +61,7 @@ export interface SettingsSources {
    * apart.
    */
   preferLocal?: boolean;
-}
+};
 
 /** Resolves each setting from the link, then the cross-subdomain store, then this origin's storage, then the default. */
 export function resolveSettings({

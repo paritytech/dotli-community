@@ -17,11 +17,11 @@ const WELL_KNOWN_MAX_BYTES = 64 * 1024;
 
 export type ReturnVerdict = { ok: true } | { ok: false; reason: 'return_to_not_listed' | 'well_known_unreachable' };
 
-interface CheckReturnToDeps {
+type CheckReturnToDeps = {
   fetch: typeof fetch;
   /** Ends the read, which then counts as unreachable. */
   signal: AbortSignal;
-}
+};
 
 /** Reads the well-known file of `returnTo`'s origin and says whether it lists `returnTo`. Never throws. */
 export async function checkReturnTo(returnTo: string, deps: CheckReturnToDeps): Promise<ReturnVerdict> {

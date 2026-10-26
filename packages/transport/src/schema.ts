@@ -17,18 +17,18 @@ export function codec<T>(encode: (value: T) => Uint8Array, decode: (bytes: Uint8
 export type Variant<T> = { [K in keyof T]: { tag: K; value: T[K] } }[keyof T];
 
 /** What a request's sides send: its payload, then the answer. */
-export interface RequestTypes<P, R, E> {
+export type RequestTypes<P, R, E> = {
   request: P;
   response: ResultPayload<R, CallError<E>>;
-}
+};
 
 /** What a subscription's sides send: its start, its values, then its end, or the caller's stop. */
-export interface SubscriptionTypes<S, V, I> {
+export type SubscriptionTypes<S, V, I> = {
   start: S;
   receive: V;
   interrupt: I;
   stop: undefined;
-}
+};
 
 /** A request's message, one of what its sides send. */
 export type RequestMessage<P, R, E> = Variant<RequestTypes<P, R, E>>;
@@ -37,14 +37,14 @@ export type RequestMessage<P, R, E> = Variant<RequestTypes<P, R, E>>;
 export type SubscriptionMessage<S, V, I> = Variant<SubscriptionTypes<S, V, I>>;
 
 /** A method: the codec of what its sides send, and of the frames that carry it. */
-interface Method<M extends { tag: string }> {
+type Method<M extends { tag: string }> = {
   readonly message: Codec<M>;
   /** Decodes a message, refusing one that leaves bytes unread. */
   readonly wholeMessage: Decoder<M>;
   /** Reads only which leg a message is, so a message whose payload does not decode still tells its leg. */
   readonly leg: Decoder<{ tag: M['tag'] }>;
   readonly frame: Codec<Frame<M>>;
-}
+};
 
 /** A request method. `E` is its own error, `undefined` when it declares none. */
 export type Request<P, R, E> = Method<RequestMessage<P, R, E>>;
@@ -109,10 +109,10 @@ export function subscription<S, V, I>(def: {
 }
 
 /** Any method, as a schema holds it. What its sides send is told apart by tag, whatever its payload types. */
-export interface AnyMethod {
+export type AnyMethod = {
   readonly message: { readonly dec: (data: Uint8Array) => { tag: string } };
   readonly leg: (data: Uint8Array) => { tag: string };
-}
+};
 
 /** A schema's sections: section names to method names to methods. */
 export type Sections = Readonly<Record<string, Readonly<Record<string, AnyMethod>>>>;
@@ -121,19 +121,19 @@ export type Sections = Readonly<Record<string, Readonly<Record<string, AnyMethod
 export type MethodOf<T extends Sections> = { [K in keyof T]: T[K][keyof T[K]] }[keyof T];
 
 /** Where a method sits: its names and its wire ids. */
-export interface Address {
+export type Address = {
   section: string;
   method: string;
   sectionId: number;
   methodId: number;
-}
+};
 
 /** Whether a call names the method at `address`. */
 export const sameMethod = (address: Address, call: { sectionId: number; methodId: number }): boolean =>
   address.sectionId === call.sectionId && address.methodId === call.methodId;
 
 /** A checked schema, which places each of its methods. */
-export interface Schema<H, T extends Sections> {
+export type Schema<H, T extends Sections> = {
   readonly version: number;
   readonly hello: Codec<H>;
   readonly sections: T;
@@ -141,7 +141,7 @@ export interface Schema<H, T extends Sections> {
   readonly addressOf: (method: AnyMethod) => Address;
   /** The method at these wire ids, or undefined when the schema has none there. */
   readonly methodAt: (sectionId: number, methodId: number) => AnyMethod | undefined;
-}
+};
 
 // Ids are bytes on the wire.
 const MAX_IDS = 256;

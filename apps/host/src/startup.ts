@@ -91,13 +91,13 @@ function protocolFrameConfig(settings: Settings, pendingReset: boolean): Protoco
   };
 }
 
-export interface HostStartup {
+export type HostStartup = {
   settings: Settings;
   bridgeModule: BridgeModule;
-}
+};
 
 /** What the page is, and what only the shell has. The landing page renders no chrome and shows no debug panel. */
-export interface StartHostOptions {
+export type StartHostOptions = {
   /** What the page is to sign-in, chosen by its entry. */
   role: PageRole;
   /** The shell's debug bus. An option, so the landing page's first load does not carry the bus. */
@@ -109,7 +109,7 @@ export interface StartHostOptions {
    * network that differs from the saved one never wipes or reloads the page.
    */
   settings?: Settings;
-}
+};
 
 /** Boots the host's settings, shared mode and bridge, and starts the shell state when the page has one. */
 export async function startHost(bootFlowId: string, options: StartHostOptions): Promise<HostStartup> {

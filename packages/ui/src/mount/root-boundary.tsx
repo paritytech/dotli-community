@@ -5,13 +5,13 @@ import { Errored, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
 
-export interface RootBoundaryProps {
+export type RootBoundaryProps = {
   /** Tags the report, such as `island:AuthModal` or `popover:<id>`. */
   root: string;
   /** Stands in for what broke. Runs once, a microtask after the failure, so it may write stores or dispose the root. */
   onBroken?: (() => void) | undefined;
   children: JSX.Element;
-}
+};
 
 /**
  * Renders `children`, or nothing once they throw. The failure is reported once under `root`, since Solid may run the

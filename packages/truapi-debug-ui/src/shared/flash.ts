@@ -6,12 +6,12 @@ import { realTimers, type Timers } from '@dotli/shared';
 // A control shows an outcome for a moment, such as Copied. The outcome often lands in a promise after the control is
 // gone, so the timer has one owner that the control disposes, and a late outcome writes nothing.
 
-export interface Flash<T> {
+export type Flash<T> = {
   /** Shows `value` for the flash time, in place of any value showing. Does nothing once disposed. */
   show: (value: T) => void;
   /** Cancels the timer. Later shows do nothing. */
   dispose: () => void;
-}
+};
 
 export function createFlash<T>(options: {
   ms: number;

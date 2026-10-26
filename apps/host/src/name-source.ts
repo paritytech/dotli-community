@@ -12,28 +12,28 @@ import type { ProductManifests } from './manifest-gate.js';
 type PhaseCallback = (phase: ResolvePhase) => void;
 
 /** The protocol frame's resolver, which runs on the light client. */
-export interface RemoteResolver {
+export type RemoteResolver = {
   resolveDotName: (name: string, onPhase?: PhaseCallback) => Promise<string | null>;
   resolveRootManifest: (label: string) => Promise<ManifestResult<RootManifest>>;
   resolveExecutableManifest: (label: string, kind: 'app' | 'worker') => Promise<ManifestResult<ExecutableManifest>>;
-}
+};
 
 /** The gateway's resolver, which reads over the host's own Asset Hub connection. */
 export type RpcResolver = Pick<DotnsResolver, 'resolveDotName' | 'resolveRootManifest' | 'resolveExecutableManifest'>;
 
-export interface NameSourceDeps {
+export type NameSourceDeps = {
   backend: Backend;
   remote: RemoteResolver;
   /** Loads the gateway resolver ready to use. A rejected load is tried again by the next read. */
   loadRpc: () => Promise<RpcResolver>;
-}
+};
 
-export interface NameSource {
+export type NameSource = {
   /** The product's contenthash: its app subname's, else the base name's. */
   resolveProduct: (label: string, onPhase?: PhaseCallback) => Promise<string | null>;
   readManifests: (label: string) => Promise<ProductManifests>;
   readWorkerManifest: (label: string) => Promise<ManifestResult<ExecutableManifest>>;
-}
+};
 
 export function createNameSource(deps: NameSourceDeps): NameSource {
   const rpcResolver = createLazyLoad(deps.loadRpc);

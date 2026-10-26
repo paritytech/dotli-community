@@ -6,11 +6,11 @@
 import { toHex } from '@dotli/shared';
 
 /** A call's name and its top-level arguments, each rendered as text. */
-export interface DisplayCall {
+export type DisplayCall = {
   /** `<Pallet>.<call>`. */
   name: string;
   args: { name: string; value: string }[];
-}
+};
 
 /** What a value becomes inside JSON, so bigints, bytes and absent values keep their text form there too. */
 function jsonValue(value: unknown): unknown {

@@ -14,7 +14,7 @@ const SHOW_MS = 200;
 /** Grace after the pointer leaves both the trigger and the tooltip. */
 const HIDE_MS = 100;
 
-export interface TooltipProps {
+export type TooltipProps = {
   id: string;
   /** Wired while given. Must be focusable, and a button for Enter and Space to toggle. */
   trigger: HTMLElement | undefined;
@@ -22,7 +22,7 @@ export interface TooltipProps {
   placement?: Placement | undefined;
   width?: SurfaceWidth | undefined;
   children: JSX.Element;
-}
+};
 
 /**
  * Shows on mouse rest, keyboard focus or a tap, and never takes focus. A `manual` layer so it leaves open popovers

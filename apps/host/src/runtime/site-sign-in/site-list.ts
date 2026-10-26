@@ -10,26 +10,26 @@ import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import { reportWalletFailure } from '../wallet-failure.js';
 
 /** What the list shows of a site: never its keys, whose grant it is nor its group token. */
-export interface ListedSite {
+export type ListedSite = {
   token: string;
   origin: string;
   firstUsedAt: number;
   lastUsedAt: number;
   /** The registrable domain and every origin of the group sharing the grant, or null for a site of no group. */
   group: { registrable: string; origins: string[] } | null;
-}
+};
 
 /** The sites, newest use first, that the grants are being read, or that they could not be read. */
 export type SiteListScreen =
   { view: 'sites-loading' } | { view: 'sites'; sites: ListedSite[] } | { view: 'sites-failed' };
 
-export interface SiteList {
+export type SiteList = {
   screen: ReadableStore<SiteListScreen>;
   /** Forgets the site's grant and reads the list again. Never rejects: a failure is reported and counted. */
   revoke(token: string): Promise<void>;
   /** Reads the list again after a read failed. Never rejects. */
   retry(): Promise<void>;
-}
+};
 
 /** A grants store call that failed, a closed set so the issue's `reason` tag stays bounded. */
 type ListMiss = 'read' | 'forget';

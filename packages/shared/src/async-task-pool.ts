@@ -8,7 +8,7 @@ import { realTimers, type Timers } from './timers.js';
 
 const DEFAULT_POOL = 'default';
 
-export interface AsyncTaskPoolParams {
+export type AsyncTaskPoolParams = {
   /** How many tasks of one pool run at once. */
   poolSize: number;
   /** Extra attempts after a failure. */
@@ -22,24 +22,24 @@ export interface AsyncTaskPoolParams {
   retryIf?: (error: unknown) => boolean;
   /** The timers delays and retry waits run on. The page's own by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
-}
+};
 
-export interface AsyncTaskParams {
+export type AsyncTaskParams = {
   /** Tasks share capacity only with tasks of the same pool. */
   pool?: string;
   /** Aborting rejects the task with the signal's reason and frees its slot at once. */
   signal?: AbortSignal;
   /** The wait before the task is queued. `settle` counts it as pending meanwhile. */
   delay?: number;
-}
+};
 
-export interface AsyncTaskPool {
+export type AsyncTaskPool = {
   call<T>(fn: () => T | PromiseLike<T>, params?: AsyncTaskParams): Promise<T>;
   /** Resolves once the pool has nothing queued, running, delayed or waiting to retry. */
   settle(pool?: string): Promise<void>;
-}
+};
 
-interface Task {
+type Task = {
   readonly fn: () => unknown;
   readonly pool: string;
   readonly resolve: (value: unknown) => void;
@@ -49,7 +49,7 @@ interface Task {
   // The pending delay or retry wait.
   timer: unknown;
   onAbort: (() => void) | undefined;
-}
+};
 
 /** Runs tasks in named pools of bounded size, with retries and abort. */
 export function createAsyncTaskPool(params: AsyncTaskPoolParams): AsyncTaskPool {

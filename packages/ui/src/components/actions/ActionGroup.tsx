@@ -23,16 +23,16 @@ function inDocumentOrder(a: ActionEntry, b: ActionEntry): number {
 }
 
 /** A container animation that resizes the group's row every frame until it ends. */
-export interface ActionGroupMorph {
+export type ActionGroupMorph = {
   running: () => boolean;
   onEnd: (listener: () => void) => () => void;
-}
+};
 
 /** The ids of the More button and its menu, for a page that addresses them. */
-export interface MoreIds {
+export type MoreIds = {
   buttonId: string;
   menuId: string;
-}
+};
 
 /**
  * A row of actions. Items that do not fit move into More, lowest priority first, and come back as room frees up.

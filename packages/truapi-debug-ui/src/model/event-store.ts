@@ -10,7 +10,7 @@ import type { DotliDebugEvent, TruapiDebugMessageEvent } from '@dotli/truapi-deb
 /** Monotonic, assigned at insertion. */
 export type EventSeq = number;
 
-export interface StoredTruapiEvent {
+export type StoredTruapiEvent = {
   kind: 'truapi';
   seq: EventSeq;
   receivedAt: number;
@@ -19,9 +19,9 @@ export interface StoredTruapiEvent {
   requestId: string;
   tag: string;
   payload: unknown;
-}
+};
 
-export interface StoredSystemEvent {
+export type StoredSystemEvent = {
   kind: 'system';
   seq: EventSeq;
   receivedAt: number;
@@ -30,7 +30,7 @@ export interface StoredSystemEvent {
   event: string;
   flowId: string;
   payload: unknown;
-}
+};
 
 export type StoredEvent = StoredTruapiEvent | StoredSystemEvent;
 
@@ -52,9 +52,9 @@ function isResponseTag(tag: string): boolean {
   return tag.endsWith('_response');
 }
 
-export interface EventStoreConfig {
+export type EventStoreConfig = {
   capacity: number;
-}
+};
 
 type Listener = () => void;
 

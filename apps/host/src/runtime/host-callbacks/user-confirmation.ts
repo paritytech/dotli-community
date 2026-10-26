@@ -42,12 +42,12 @@ import { phoneReviewMatch } from '../phone-review-match.js';
 /** The prompts a confirmation asks through and tells its outcome on. */
 type ConfirmationPrompts = Pick<HostPrompts, 'confirmPreimage' | 'confirmReview' | 'notify'>;
 
-interface ConfirmationCopy {
+type ConfirmationCopy = {
   title: string;
   action: string;
   cancelAction?: string;
   icon?: ModalView<string>['icon'];
-}
+};
 
 type ConfirmationField = ModalField;
 

@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-interface UADataLike {
+type UADataLike = {
   mobile?: boolean;
-}
+};
 
 export function isMobileDevice(): boolean {
   const uaData = (navigator as Navigator & { userAgentData?: UADataLike }).userAgentData;
