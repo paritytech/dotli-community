@@ -5,7 +5,7 @@
 
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { errorName, log, named, withTimeout } from '@dotli/shared';
-import { formatAppVersion } from './manifest-facts.js';
+import { formatAppVersion } from './manifestFacts.js';
 import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
 import { getConnectedAssetHubRpcEndpoint } from '@dotli/chains';
 import {
@@ -19,9 +19,9 @@ import {
 } from '@dotli/config';
 import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from '@dotli/truapi-debug-ui';
 import { loadBridge, loadPolkadotApi } from '../lazy.js';
-import { pagePermissions } from './page-permissions.js';
+import { pagePermissions } from './pagePermissions.js';
 import { ALL_PERMISSIONS, type PermissionAuthorizations } from './permissions.js';
-import { dotliVersion } from './runtime-config.js';
+import { dotliVersion } from './runtimeConfig.js';
 import { getProductState } from './state/product.js';
 
 // Defined in the host's Astro config, so undefined in tests and other bundles.

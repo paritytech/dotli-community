@@ -7,19 +7,19 @@ import { expect, waitFor, within } from 'storybook/test';
 import { must } from '@dotli/shared/testing';
 import { byId } from '@dotli/ui/testing';
 import { expectBefore } from '@config/storybook/play';
-import { expectPhone, reachable, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { expectPhone, reachable, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   disconnect,
   resetStoryAccount,
   storyAccount,
   storyCallbacks,
   storyModalOpen,
-} from '../../testing/stories/account-fixtures.js';
+} from '../../testing/stories/accountFixtures.js';
 import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js';
-import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissions-fixtures.js';
-import { resetStorySettings, storySettings } from '../../testing/stories/settings-fixtures.js';
-import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/network-fixtures.js';
-import type { TopbarMorph } from '../../topbar-status.js';
+import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
+import { resetStorySettings, storySettings } from '../../testing/stories/settingsFixtures.js';
+import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
+import type { TopbarMorph } from '../../topbarStatus.js';
 import { NetworkItem } from '../chains/NetworkItem.js';
 import { PermissionsItem } from '../permissions/PermissionsItem.js';
 import { SettingsItem } from '../settings/SettingsItem.js';

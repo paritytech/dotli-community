@@ -18,8 +18,8 @@ client for Rust-core `chain.connect` requests.
 
 | Origin | Purpose | Triggered by |
 |---|---|---|
-| Protocol iframe (`localhost/p/`, production `paseo.li/p/`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `apps/host/src/runtime/host-callbacks/Chain.ts` |
+| Protocol iframe (`localhost/p/`, production `paseo.li/p/`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocolSharedWorker.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `apps/host/src/runtime/hostCallbacks/chain.ts` |
 
 Both origins construct smoldot through the singletons in
 `packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
@@ -54,7 +54,7 @@ Hub, Bulletin, and People chains.
 
 The protocol iframe parses a `?mode=` URL parameter (`apps/protocol/src/main.ts:318`) and dispatches at `main.ts:443-466`.
 
-- `?mode=shared-worker` opens a `SharedWorker` (`apps/protocol/src/protocol-shared-worker.ts`). Smoldot runs in the worker thread.
+- `?mode=shared-worker` opens a `SharedWorker` (`apps/protocol/src/protocolSharedWorker.ts`). Smoldot runs in the worker thread.
 - `?mode=direct` runs `initDirectMode()` (`main.ts:593`), which dynamic-imports the resolver and runs smoldot on the iframe main thread.
 - `?mode=rpc` runs `initRpcMode()` (`main.ts:658`). No smoldot. Chain calls go to a trusted WSS JSON-RPC endpoint.
 

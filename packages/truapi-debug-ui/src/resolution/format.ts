@@ -10,7 +10,7 @@ import type {
   ResolutionModel,
   ResolutionRow,
   ResolutionSummary,
-} from '../model/resolution-view.js';
+} from '../model/resolutionView.js';
 
 type FactTone = 'ok' | 'warn' | 'bad' | 'running' | 'dim';
 

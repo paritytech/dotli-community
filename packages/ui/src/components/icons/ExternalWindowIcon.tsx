@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from './icon-props.js';
+import type { IconProps } from './iconProps.js';
 
 /** A window with an arrow leaving it, for opening another window. */
 export function ExternalWindowIcon(props: IconProps): JSX.Element {

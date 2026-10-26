@@ -8,7 +8,7 @@ import { Button, type ButtonVariant } from '../../components/primitives/Button.j
 import { Callout, Well } from '../../components/primitives/Well.js';
 import { Field } from '../../components/primitives/Field.js';
 import { Modal } from '../../components/floating/Modal.js';
-import { useStore } from '../../components/use-store.js';
+import { useStore } from '../../components/useStore.js';
 import {
   modalsStore,
   settleModal,
@@ -17,7 +17,7 @@ import {
   type ModalEntry,
   type ModalView,
 } from '../../page/state/modals.js';
-import { closeAnswer, scrimAnswer } from './prompt-answer.js';
+import { closeAnswer, scrimAnswer } from './promptAnswer.js';
 import s from './PromptDialog.module.css';
 
 const BUTTON_VARIANT: Record<ModalButtonVariant, ButtonVariant> = {

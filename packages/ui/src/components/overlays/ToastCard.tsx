@@ -4,7 +4,7 @@
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissToast, removeToast, type ToastEntry } from '../../page/state/toasts.js';
-import { toastIcon } from './toast-icon.js';
+import { toastIcon } from './toastIcon.js';
 import { Button } from '../primitives/Button.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';

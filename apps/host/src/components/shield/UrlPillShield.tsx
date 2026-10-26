@@ -3,7 +3,7 @@
 
 import { Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ShieldState } from '../../state/url-pill.js';
+import type { ShieldState } from '../../state/urlPill.js';
 import { VerificationShield } from './VerificationShield.js';
 
 export type UrlPillShieldProps = {

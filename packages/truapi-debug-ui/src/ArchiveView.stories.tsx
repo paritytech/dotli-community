@@ -8,7 +8,7 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { fakeDebugPanelHost } from '@dotli/truapi-debug-ui/testing';
 import type { ArchiveLoader } from './host.js';
 import { ArchiveView, type ObjectUrls } from './ArchiveView.js';
-import { debugPanelStory } from './testing/stories/debug-panel-story.js';
+import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
 const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 

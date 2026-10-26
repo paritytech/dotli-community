@@ -7,12 +7,12 @@
 import './boot.js';
 import { startPwa } from './pwa.js';
 import { boot, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
-import { listenForSandboxStatus, onSandboxDone } from './loading-controller.js';
-import { showLocalhostPill, showProductPill } from './state/url-pill.js';
-import { armTopbarAutoHide, setProductContentShown } from './topbar-autohide.js';
+import { listenForSandboxStatus, onSandboxDone } from './loadingController.js';
+import { showLocalhostPill, showProductPill } from './state/urlPill.js';
+import { armTopbarAutoHide, setProductContentShown } from './topbarAutohide.js';
 import { loggedInStore } from './runtime/state/auth.js';
 import { loadBridge, loadDebugPanelHost } from './lazy.js';
-import type { ProductFrame } from './runtime/product-frame.js';
+import type { ProductFrame } from './runtime/productFrame.js';
 import { bitswapGet, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
 import { protocolClient } from '@dotli/protocol';
@@ -46,14 +46,14 @@ import {
 } from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
 import { loadResolve } from '@dotli/resolver';
-import { startShellState } from './shell-state.js';
-import { createProductLoader, type LoaderCidCache } from './product-loader.js';
-import { startSandboxContent } from './sandbox-content.js';
-import { startShieldAutoHide } from './shield-autohide.js';
-import { createNameSource, type NameSource, type RpcResolver } from './name-source.js';
-import { revalidateCachedCopy } from './cache-revalidate.js';
+import { startShellState } from './shellState.js';
+import { createProductLoader, type LoaderCidCache } from './productLoader.js';
+import { startSandboxContent } from './sandboxContent.js';
+import { startShieldAutoHide } from './shieldAutohide.js';
+import { createNameSource, type NameSource, type RpcResolver } from './nameSource.js';
+import { revalidateCachedCopy } from './cacheRevalidate.js';
 import { markContinuation } from './continuation.js';
-import { loadFailureScreen } from './load-failure-page.js';
+import { loadFailureScreen } from './loadFailurePage.js';
 import {
   leaveForLanding,
   localTargetPath,
@@ -61,18 +61,18 @@ import {
   readShellRoute,
   type LocalTarget,
   type ShellRoute,
-} from './shell-route.js';
-import { createBlockVerifier } from './block-verifier.js';
-import { shellPageRole, type PageRole } from './runtime/page-role.js';
-import { reportLazyMiss } from './lazy-miss.js';
-import { startDebugPanel } from './debug-panel.js';
-import { startMainThreadMonitor } from './main-thread-monitor.js';
-import { listenForSandboxDebugEvents } from './sandbox-debug-events.js';
-import { reportSandboxHandlerFailure } from './sandbox-handler.js';
-import { pageNotifications } from './page-notifications.js';
-import { recordRecentLabel } from './recent-labels.js';
+} from './shellRoute.js';
+import { createBlockVerifier } from './blockVerifier.js';
+import { shellPageRole, type PageRole } from './runtime/pageRole.js';
+import { reportLazyMiss } from './lazyMiss.js';
+import { startDebugPanel } from './debugPanel.js';
+import { startMainThreadMonitor } from './mainThreadMonitor.js';
+import { listenForSandboxDebugEvents } from './sandboxDebugEvents.js';
+import { reportSandboxHandlerFailure } from './sandboxHandler.js';
+import { pageNotifications } from './pageNotifications.js';
+import { recordRecentLabel } from './recentLabels.js';
 import { bindTopbar } from './topbar.js';
-import { bindUrlPill } from './url-pill.js';
+import { bindUrlPill } from './urlPill.js';
 
 /** Idle work still runs this long after it was asked for, so a busy page cannot starve it. */
 const IDLE_WORK_TIMEOUT_MS = 2_000;

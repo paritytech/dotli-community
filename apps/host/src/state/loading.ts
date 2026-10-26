@@ -9,7 +9,7 @@ export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
 /** A piece of the step line. The name being loaded is drawn with its TLD dimmed. */
 export type StepPart = string | { host: string; tld: string };
 
-/** Written only by `loading-controller.ts`. */
+/** Written only by `loadingController.ts`. */
 export type LoadingState = {
   /** 0 to 100, fractional. The shown number is rounded. */
   progress: number;

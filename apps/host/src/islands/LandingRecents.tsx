@@ -4,7 +4,7 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { landingRecentLabels, type RecentLabels } from '../recent-labels.js';
+import { landingRecentLabels, type RecentLabels } from '../recentLabels.js';
 import { RecentList } from '../components/landing/RecentList.js';
 import { useActiveTld, useRecents } from './landing.js';
 import { LandingPart } from './LandingPart.js';

@@ -7,7 +7,7 @@ import { focusables } from '../../page/focusables.js';
 import { focusInto } from '../focus.js';
 import { Spinner } from '../primitives/Spinner.js';
 import { AnchoredContent } from './AnchoredContent.js';
-import { RootBoundary } from '../../mount/root-boundary.js';
+import { RootBoundary } from '../../mount/rootBoundary.js';
 import type { Placement } from './FloatingLayer.js';
 import type { PopoverState } from './Popover.js';
 import s from './Popover.module.css';

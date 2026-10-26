@@ -5,7 +5,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { ModalFocusFallback, Overlays as PageOverlays, refuseModals, RootBoundary } from '@dotli/ui';
-import { productFrameFocus } from '../product-frame-layout.js';
+import { productFrameFocus } from '../productFrameLayout.js';
 
 /**
  * The page's toasts and dialogs. Its stores hold what boot queued before it hydrated, so that shows once it does. A

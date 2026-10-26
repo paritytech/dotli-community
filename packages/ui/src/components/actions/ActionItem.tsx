@@ -3,8 +3,8 @@
 
 import { useContext, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from '../icons/icon-props.js';
-import { ActionsContext, type ActionAlert } from './actions-context.js';
+import type { IconProps } from '../icons/iconProps.js';
+import { ActionsContext, type ActionAlert } from './actionsContext.js';
 import s from './ActionItem.module.css';
 
 export type ActionItemProps = {

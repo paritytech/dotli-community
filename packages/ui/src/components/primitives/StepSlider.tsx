@@ -4,7 +4,7 @@
 import { createSignal, For, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '../drag.js';
-import { handlesKey, stopAt, stopForKey } from './step-slider.js';
+import { handlesKey, stopAt, stopForKey } from './stepSliderStops.js';
 import s from './StepSlider.module.css';
 
 export type StepSliderStop = {

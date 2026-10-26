@@ -4,9 +4,9 @@
 import { describe, expect, it } from 'vitest';
 import { ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
 
-import { HOST_ERRORS } from './error-copy.js';
+import { HOST_ERRORS } from './errorCopy.js';
 import { describeError } from './errors.js';
-import { ManifestRejectedError } from './manifest-gate.js';
+import { ManifestRejectedError } from './manifestGate.js';
 
 /** An error as the protocol client rebuilds it from a failed response. */
 function crossedBoundary(message: string, name: string): Error {

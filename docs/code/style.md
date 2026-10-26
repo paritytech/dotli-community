@@ -626,6 +626,12 @@ parallel otherwise.
 A file holds one factory or one concept, and is named after its main export in camelCase (`createLoader.ts`). A feature
 folder may add `types.ts` and `constants.ts` for what several of its files share.
 
+- A camelCase module never shares its name with a PascalCase component in the same folder (`authModal.ts` beside
+  `AuthModal.tsx`), because a case-insensitive file system resolves an import of one to the other. Name the module
+  after its export instead.
+- Names that something outside the code depends on keep their form: package and app folders, package `exports` keys,
+  and a file whose name a URL or a tool loads by path, such as a service worker entry.
+
 ### Main export before its helpers
 
 Imports, types, constants, then the main export, then the private helpers it uses.

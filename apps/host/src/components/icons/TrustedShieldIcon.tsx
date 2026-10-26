@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { ShieldIconProps } from './shield-icon-props.js';
+import type { ShieldIconProps } from './shieldIconProps.js';
 
 /** A shield with an exclamation mark, for an app served by trusted providers. Unsized, the stylesheet sizes it. */
 export function TrustedShieldIcon(props: ShieldIconProps): JSX.Element {

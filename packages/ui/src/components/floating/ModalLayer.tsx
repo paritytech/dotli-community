@@ -4,8 +4,8 @@
 import { createEffect, onCleanup, untrack, useContext } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { containTab, focusLostOrInside, lockScroll } from '../focus.js';
-import { ModalFocusFallback } from './layer-context.js';
-import { hideLayer, showLayer, topLayer } from './modal-stack.js';
+import { ModalFocusFallback } from './layerContext.js';
+import { hideLayer, showLayer, topLayer } from './modalStack.js';
 import { handOffSheetOnPress } from './SheetFrame.js';
 import s from './ModalLayer.module.css';
 

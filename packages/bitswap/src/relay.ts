@@ -8,7 +8,7 @@ import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, reportListener, spans as S } from '@dotli/metrics';
 import { createListenerSet, errorName, log, named, serializeError } from '@dotli/shared';
 
-import { readDagTotal } from './dag-total.js';
+import { readDagTotal } from './dagTotal.js';
 import { errorCode } from './errors.js';
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */

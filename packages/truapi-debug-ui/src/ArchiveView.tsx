@@ -14,7 +14,7 @@ import {
   type ArchiveRead,
   type LoadedArchive,
   type Preview,
-} from './archive-preview.js';
+} from './archivePreview.js';
 import type { ArchiveLoader } from './host.js';
 import type { HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';

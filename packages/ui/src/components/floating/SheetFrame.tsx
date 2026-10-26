@@ -6,8 +6,8 @@ import type { JSX } from '@solidjs/web';
 import { createDrags } from '../drag.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
-import { InSheet } from './in-sheet.js';
-import { dragSheet } from './sheet-drag.js';
+import { InSheet } from './inSheet.js';
+import { dragSheet } from './sheetDrag.js';
 import s from './SheetFrame.module.css';
 
 /** `pending` while a sheet's chosen item runs, `taken` once a sheet opened in its place. */

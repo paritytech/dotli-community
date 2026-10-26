@@ -11,12 +11,12 @@ import { m, reportListener, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createListenerSet, errorMessage, log } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
-import { createSmoldotDb, type SmoldotDb } from './smoldot-db.js';
-import { attachChainSync, reportDbCache, type ChainLifecycleWatch, type ChainSyncTap } from './chain-sync.js';
-import type { ChainTransportHooks } from './transport-hooks.js';
+import { createSmoldotDb, type SmoldotDb } from './smoldotDb.js';
+import { attachChainSync, reportDbCache, type ChainLifecycleWatch, type ChainSyncTap } from './chainSync.js';
+import type { ChainTransportHooks } from './transportHooks.js';
 
 // Reached through `loadProvider` too, so a caller that loads the light client lazily keeps sync reporting off its boot path.
-export { enableSyncReporting, onChainDetail, onChainSync } from './chain-sync.js';
+export { enableSyncReporting, onChainDetail, onChainSync } from './chainSync.js';
 
 /** What the light client uses of a started truapi-provider. */
 export type LightClientEngine = {

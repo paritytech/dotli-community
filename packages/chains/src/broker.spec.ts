@@ -11,7 +11,7 @@ import type {
 import { bindLogSink } from '@dotli/shared';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { ChainBroker } from './broker.js';
-import { createChainPool } from './chain-pool.js';
+import { createChainPool } from './chainPool.js';
 
 /** The broker suites' manager: a pool that keeps its chains, with transports built without hooks. */
 function createManager(

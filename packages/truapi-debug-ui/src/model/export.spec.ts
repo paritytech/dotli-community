@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { EventStore } from './event-store.js';
+import { EventStore } from './eventStore.js';
 import { buildExport, exportFilename, type ExportMeta } from './export.js';
 import { initialFilterState } from './filters.js';
 

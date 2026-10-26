@@ -4,7 +4,7 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
-import { RootBoundary } from './root-boundary.js';
+import { RootBoundary } from './rootBoundary.js';
 
 function Throws(): JSX.Element {
   throw new Error('view broke');

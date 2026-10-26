@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { ShieldIconProps } from './shield-icon-props.js';
+import type { ShieldIconProps } from './shieldIconProps.js';
 
 /** A shield with a check mark, for an app verified in the browser. Unsized, the stylesheet sizes it. */
 export function VerifiedShieldIcon(props: ShieldIconProps): JSX.Element {

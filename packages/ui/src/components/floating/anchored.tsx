@@ -3,13 +3,13 @@
 
 import { createEffect, createSignal, onSettled, Show, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport } from '../../page/phone-viewport.js';
+import { isPhoneViewport } from '../../page/phoneViewport.js';
 import { preloadWhenIdle } from '../../page/idle.js';
 import { focusLostOrInside, focusTrigger } from '../focus.js';
-import { anchorName } from './anchor-name.js';
-import { RootBoundary } from '../../mount/root-boundary.js';
-import type { CloseReason } from './close-reason.js';
-import { AnchorBoundary } from './layer-context.js';
+import { anchorName } from './anchorName.js';
+import { RootBoundary } from '../../mount/rootBoundary.js';
+import type { CloseReason } from './closeReason.js';
+import { AnchorBoundary } from './layerContext.js';
 
 /** The open state Popover and DropdownMenu share. */
 export type Anchored = {

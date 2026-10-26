@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Defaults only: a product's layout and colors arrive as inline styles from chat/custom-styles.ts. */
+/* Defaults only: a product's layout and colors arrive as inline styles from chat/customStyles.ts. */
 
 .box {
   display: grid;

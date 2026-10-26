@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Component } from 'solid-js';
-import type { IconProps } from '../components/icons/icon-props.js';
+import type { IconProps } from '../components/icons/iconProps.js';
 import { pushToast, type ToastInput } from '../page/state/toasts.js';
-import type { StatusTone } from '../page/status-tone.js';
+import type { StatusTone } from '../page/statusTone.js';
 
 type NoticeTone = Exclude<StatusTone, 'quiet'>;
 

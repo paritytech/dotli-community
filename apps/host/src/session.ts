@@ -25,35 +25,35 @@ import {
   type SIGNED_OUT_RESULT,
   type SessionResult,
   type SignInIntent,
-} from './runtime/session-handoff/messages.js';
-import { openerParty, type OpenerParty } from './runtime/session-handoff/opener-rule.js';
-import type { PageRole } from './runtime/page-role.js';
-import { startPageResponder, type Responder } from './runtime/session-handoff/responder.js';
-import { answerSignIn, answerSignOut, type SignInRound } from './runtime/session-handoff/round-answer.js';
-import { routeOfPath, type SessionRequest } from './runtime/session-handoff/session-protocol.js';
-import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from './runtime/session-handoff/window-request.js';
-import { closeWindow } from './session-window-page.js';
-import { reportWalletFailure } from './runtime/wallet-failure.js';
+} from './runtime/sessionHandoff/messages.js';
+import { openerParty, type OpenerParty } from './runtime/sessionHandoff/openerRule.js';
+import type { PageRole } from './runtime/pageRole.js';
+import { startPageResponder, type Responder } from './runtime/sessionHandoff/responder.js';
+import { answerSignIn, answerSignOut, type SignInRound } from './runtime/sessionHandoff/roundAnswer.js';
+import { routeOfPath, type SessionRequest } from './runtime/sessionHandoff/sessionProtocol.js';
+import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from './runtime/sessionHandoff/windowRequest.js';
+import { closeWindow } from './sessionWindowPage.js';
+import { reportWalletFailure } from './runtime/walletFailure.js';
 import { loadRecoveryPhrase, type BridgeModule } from './lazy.js';
 import {
   createWindowFlow,
   responderScreen,
   type WindowFlow,
   type WindowFlowDeps,
-} from './runtime/session-handoff/window-flow.js';
-import { signOutInWindow, type WindowSignOutDeps } from './runtime/session-handoff/window-signout.js';
-import publicSuffixListUrl from './runtime/site-sign-in/public-suffix-list.dat?url';
-import { createSiteGroups } from './runtime/site-sign-in/site-groups.js';
-import { createSiteList } from './runtime/site-sign-in/site-list.js';
-import { createRedirectResponder } from './runtime/site-sign-in/redirect-responder.js';
-import { vetRedirect } from './runtime/site-sign-in/site-redirect.js';
-import { readRedirectFields, SITE_TOKEN_BYTES, type RedirectFields } from './runtime/site-sign-in/site-request.js';
-import { checkReturnTo } from './runtime/site-sign-in/site-return.js';
-import { sealProbe, sealRedirect } from './runtime/site-sign-in/site-seal.js';
-import { forgetsUnsentGrant } from './runtime/site-sign-in/site-round.js';
-import { openSiteSignIn, openSiteTransaction, type SiteWindowDeps } from './runtime/site-sign-in/site-window.js';
+} from './runtime/sessionHandoff/windowFlow.js';
+import { signOutInWindow, type WindowSignOutDeps } from './runtime/sessionHandoff/windowSignout.js';
+import publicSuffixListUrl from './runtime/siteSignIn/public-suffix-list.dat?url';
+import { createSiteGroups } from './runtime/siteSignIn/siteGroups.js';
+import { createSiteList } from './runtime/siteSignIn/siteList.js';
+import { createRedirectResponder } from './runtime/siteSignIn/redirectResponder.js';
+import { vetRedirect } from './runtime/siteSignIn/siteRedirect.js';
+import { readRedirectFields, SITE_TOKEN_BYTES, type RedirectFields } from './runtime/siteSignIn/siteRequest.js';
+import { checkReturnTo } from './runtime/siteSignIn/siteReturn.js';
+import { sealProbe, sealRedirect } from './runtime/siteSignIn/siteSeal.js';
+import { forgetsUnsentGrant } from './runtime/siteSignIn/siteRound.js';
+import { openSiteSignIn, openSiteTransaction, type SiteWindowDeps } from './runtime/siteSignIn/siteWindow.js';
 import { authStore } from './runtime/state/auth.js';
-import { windowSettings } from './session-settings.js';
+import { windowSettings } from './sessionSettings.js';
 import {
   setCloseIntent,
   setSiteIntents,
@@ -61,7 +61,7 @@ import {
   setWindowIntents,
   setWindowScreen,
   showWindowScreen,
-} from './state/session-window.js';
+} from './state/sessionWindow.js';
 import { reportBootFailure, startHost, startPage, type StartHostOptions } from './startup.js';
 
 /** The sign-in window restores and pairs, while the sign-out window ends the stored session on a core of its own. */

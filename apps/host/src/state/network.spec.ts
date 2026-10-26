@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReadableStore } from '@dotli/shared';
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
-import { createNetworkMonitor, type ChainPhase, type NetworkMonitor } from './network-monitor.js';
+import { createNetworkMonitor, type ChainPhase, type NetworkMonitor } from './networkMonitor.js';
 import { createNetworkStore, type NetworkState } from './network.js';
 
 /** Every chain is connectable, so only what the monitor hears decides what the store shows. */

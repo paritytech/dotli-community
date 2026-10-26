@@ -4,9 +4,9 @@
 import { createEffect, onCleanup, Show, untrack, useContext } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { containTab } from '../focus.js';
-import { anchorName } from './anchor-name.js';
-import type { CloseReason } from './close-reason.js';
-import { LayerTracker } from './layer-context.js';
+import { anchorName } from './anchorName.js';
+import type { CloseReason } from './closeReason.js';
+import { LayerTracker } from './layerContext.js';
 import { createPresence } from './presence.js';
 import s from './FloatingLayer.module.css';
 

@@ -238,7 +238,7 @@ Refresh the Public Suffix List the session window ships with each release. The s
 list's ICANN and private sections whole:
 
 ```bash
-node scripts/update-public-suffix-list.ts
+node scripts/updatePublicSuffixList.ts
 ```
 
 Local development uses wildcard subdomains:

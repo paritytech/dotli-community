@@ -3,9 +3,9 @@
 
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq, StoredEvent } from './model/event-store.js';
+import type { EventSeq, StoredEvent } from './model/eventStore.js';
 import type { TimelineLane } from './model/timeline.js';
-import { wireHoverTooltips } from './shared/hover-tooltip.js';
+import { wireHoverTooltips } from './shared/hoverTooltip.js';
 import { Pane } from './shared/Pane.js';
 import { Timeline } from './timeline/Timeline.js';
 import { usePanelWork } from './work.js';

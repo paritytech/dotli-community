@@ -6,9 +6,9 @@
 
 import { captureException } from '@dotli/metrics';
 import { createSyncStore, registerStoreStateReset, shallowEqual, type ReadableStore } from '@dotli/shared';
-import type { StatusTone } from '../status-tone.js';
+import type { StatusTone } from '../statusTone.js';
 import type { Component } from 'solid-js';
-import type { IconProps } from '../../components/icons/icon-props.js';
+import type { IconProps } from '../../components/icons/iconProps.js';
 
 export type ToastAction = {
   label: string;

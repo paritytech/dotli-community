@@ -11,8 +11,8 @@ import {
   givenSettings,
   resetStorySettings,
   storySettings,
-} from '../../testing/stories/settings-fixtures.js';
-import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+} from '../../testing/stories/settingsFixtures.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });

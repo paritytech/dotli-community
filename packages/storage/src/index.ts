@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { clearBlockCache, deleteCachedBlock, getCachedBlock, pruneBlockCache, putCachedBlock } from './block-cache.js';
+export { clearBlockCache, deleteCachedBlock, getCachedBlock, pruneBlockCache, putCachedBlock } from './blockCache.js';
 export {
   appendMessage,
   createRoom,
@@ -18,8 +18,8 @@ export {
 } from './chat.js';
 export { isExpectedDbError } from './db.js';
 export { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from './schema.js';
-export { createSiteGrantStore, siteGrants, type SiteGrant, type SiteGrantStore } from './site-grants.js';
-export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cid-cache.js';
+export { createSiteGrantStore, siteGrants, type SiteGrant, type SiteGrantStore } from './siteGrants.js';
+export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cidCache.js';
 export {
   createLocalWalletStore,
   forgetLocalWallet,
@@ -31,7 +31,7 @@ export {
   type LocalWallet,
   type LocalWalletIdentity,
   type LocalWalletStore,
-} from './local-wallet.js';
+} from './localWallet.js';
 export {
   allocateId,
   cancel,
@@ -40,4 +40,4 @@ export {
   removeStale,
   schedule,
   type ScheduledNotificationRecord,
-} from './scheduled-notifications.js';
+} from './scheduledNotifications.js';

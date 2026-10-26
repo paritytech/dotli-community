@@ -15,8 +15,8 @@ import {
   grab,
   panel,
   part,
-} from './testing/stories/debug-panel-fixtures.js';
-import { debugPanelStory } from './testing/stories/debug-panel-story.js';
+} from './testing/stories/debugPanelFixtures.js';
+import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
 const meta = {
   ...debugPanelStory,

@@ -5,7 +5,7 @@
 
 import type { ChainRole } from '@dotli/config';
 import type { ChainSummary } from './chain.js';
-import type { LiveVerdict } from '../../network-verdict.js';
+import type { LiveVerdict } from '../../networkVerdict.js';
 
 export type ChainView = {
   /** The role of a known chain, the genesis hash of any other. */

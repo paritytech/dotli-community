@@ -5,7 +5,7 @@
 
 import { errorMessage, toHex } from '@dotli/shared';
 
-import type { StoredEvent } from './event-store.js';
+import type { StoredEvent } from './eventStore.js';
 import type { FilterState } from './filters.js';
 import { isUint8ArrayLike } from './format.js';
 

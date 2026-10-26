@@ -14,9 +14,9 @@ import {
   type ProtocolStatus,
 } from './frame.js';
 import { createFrameRpc } from './rpc.js';
-import { createRemoteChains } from './remote-chain.js';
-import { createRemoteResolve } from './remote-resolve.js';
-import { createSharedStore } from './shared-store.js';
+import { createRemoteChains } from './remoteChain.js';
+import { createRemoteResolve } from './remoteResolve.js';
+import { createSharedStore } from './sharedStore.js';
 import { createFrameTelemetry } from './telemetry.js';
 
 /** The page's own facts, so a spec can place the page without a `window`. */

@@ -5,7 +5,7 @@ import { Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { TrustedShieldIcon } from '../icons/TrustedShieldIcon.js';
 import { VerifiedShieldIcon } from '../icons/VerifiedShieldIcon.js';
-import type { ShieldState } from '../../state/url-pill.js';
+import type { ShieldState } from '../../state/urlPill.js';
 import s from './VerificationContent.module.css';
 
 const SOURCES: readonly { state: ShieldState; title: string; description: string }[] = [

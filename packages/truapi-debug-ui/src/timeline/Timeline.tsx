@@ -5,7 +5,7 @@
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq } from '../model/event-store.js';
+import type { EventSeq } from '../model/eventStore.js';
 import type { TimelineLane } from '../model/timeline.js';
 import s from './Timeline.module.css';
 

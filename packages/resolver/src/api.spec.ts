@@ -13,7 +13,7 @@ import {
 } from '@polkadot-api/substrate-client';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { readMappingAddress, readMappingBytes } from './access-raw-storage.js';
+import { readMappingAddress, readMappingBytes } from './accessRawStorage.js';
 import { ApiStoppedError, createRawApi } from './api.js';
 
 type StorageFn = (hash: string, type: string, key: string, childTrie: string | null) => Promise<string | null>;

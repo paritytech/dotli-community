@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { Button } from '../primitives/Button.js';
-import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layer-context.js';
+import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layerContext.js';
 import { Popover } from './Popover.js';
 
 const onOther = fn().mockName('onOther');

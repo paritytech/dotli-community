@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import { AccountAvatar } from './AccountAvatar.js';
-import { sessionDisplayName, sessionInitials } from './account-names.js';
+import { sessionDisplayName, sessionInitials } from './accountNames.js';
 import { UserIcon } from '../icons/UserIcon.js';
 import type { Account } from './account.js';
 import s from './AuthButton.module.css';

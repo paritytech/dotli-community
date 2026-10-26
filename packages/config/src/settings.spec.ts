@@ -6,7 +6,7 @@ import { memoryStorage } from '@dotli/shared/testing';
 import { BACKEND_KEY, CACHE_KEY } from './mode.js';
 import { NETWORK_KEY } from './network.js';
 import { hasStoredSettings, resolveSettings, sharedSettingsOf, writeLocalSettings } from './settings.js';
-import { parseSettingsFromSearch } from './url-settings.js';
+import { parseSettingsFromSearch } from './urlSettings.js';
 
 const CACHE_OFF = JSON.stringify({ skipCidCache: true, skipArchiveCache: true, skipWorkerCache: false });
 const DEFAULT_CACHE = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };

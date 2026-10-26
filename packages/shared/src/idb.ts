@@ -3,7 +3,7 @@
 
 // IndexedDB's callbacks as promises, for every store dotli keeps in a browser database.
 
-import { withTimeout } from './with-timeout.js';
+import { withTimeout } from './withTimeout.js';
 
 /** Opens `name` at `version`, rejecting rather than hanging when an older tab blocks the upgrade. */
 export function openIdb(

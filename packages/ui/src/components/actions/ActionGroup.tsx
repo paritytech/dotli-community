@@ -3,8 +3,8 @@
 
 import { createEffect, createMemo, createSignal, createUniqueId, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { AnchorBoundary } from '../floating/layer-context.js';
-import { ActionsContext, type ActionBar, type ActionEntry } from './actions-context.js';
+import { AnchorBoundary } from '../floating/layerContext.js';
+import { ActionsContext, type ActionBar, type ActionEntry } from './actionsContext.js';
 import { fitActions, layoutParent } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import s from './ActionGroup.module.css';

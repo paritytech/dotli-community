@@ -49,7 +49,7 @@ flowchart LR
     Engine["Engine<br/>(engine.ts)"]
     IframePool[("Iframe chain pool<br/>direct + rpc modes")]
     Resolver["Resolver reads<br/>(Asset Hub, People)"]
-    Observe["Watched chains<br/>(light-client-service.ts)"]
+    Observe["Watched chains<br/>(lightClientService.ts)"]
   end
 
   subgraph Worker["SharedWorker (smoldot-shared-worker)"]
@@ -165,7 +165,7 @@ flowchart TB
 
 ## The RPC transport
 
-An RPC chain socket (`packages/chains/src/rpc-chain.ts`) is a stack:
+An RPC chain socket (`packages/chains/src/rpcChain.ts`) is a stack:
 
 ```mermaid
 flowchart TB
@@ -190,7 +190,7 @@ protocol iframe or the SharedWorker only. It does not reconnect underneath its
 users: when its stream ends, it halts.
 
 The host pool's transport on the smoldot backends (`createFrameChainTransport`
-in `apps/host/src/runtime/host-callbacks/frame-transport.ts`) wraps one remote
+in `apps/host/src/runtime/hostCallbacks/frameTransport.ts`) wraps one remote
 connection. It reports `connecting`, then `connected` as soon as the
 connection exists: the remote provider has no finer signal, and queues sends
 until the iframe accepts the connection. When the remote connection halts, it
@@ -369,7 +369,7 @@ connection limit) halts the connection with `'frame'`, and the status stays
 `ready`. So the next request takes a new lease at once, with no backoff.
 
 After `'chain'` a TrUAPI core connection takes its lease only through a chain
-gate per genesis hash (`apps/host/src/runtime/host-callbacks/redial-gate.ts`). A gate
+gate per genesis hash (`apps/host/src/runtime/hostCallbacks/redialGate.ts`). A gate
 is shared by every core connection to that chain, so concurrent connections
 dial once per window:
 
@@ -397,31 +397,31 @@ nothing hangs.
 | `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Wait for user demand, never redial on your own. A product's requests are demand, and take a new lease while the protocol status is not `failed` |
 
 Through the host pool the reason travels as a `ChainHaltError`
-(`packages/chains/src/chain-halted.ts`), and `haltReasonOf` reads it back.
+(`packages/chains/src/chainHalted.ts`), and `haltReasonOf` reads it back.
 Any other transport halt, such as a socket's, reads as `'chain'`.
 
 ## Where to look in the code
 
 | Piece | File |
 | --- | --- |
-| Pool | `packages/chains/src/chain-pool.ts` |
+| Pool | `packages/chains/src/chainPool.ts` |
 | Broker | `packages/chains/src/broker.ts` |
-| Watch guard | `packages/chains/src/watch-guard.ts` |
-| Halted-chain marker, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chain-halted.ts` |
+| Watch guard | `packages/chains/src/watchGuard.ts` |
+| Halted-chain marker, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chainHalted.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
-| RPC transport | `packages/chains/src/rpc-chain.ts` |
+| RPC transport | `packages/chains/src/rpcChain.ts` |
 | smoldot transport | `packages/chains/src/provider.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/resolve.ts` |
 | Host error page classification | `apps/host/src/errors.ts` |
-| Host pool, TrUAPI chain connections, `hostChainProvider` | `apps/host/src/runtime/host-callbacks/Chain.ts` |
-| Host pool's transport on the smoldot backends | `apps/host/src/runtime/host-callbacks/frame-transport.ts` |
-| Host pool's chain gates | `apps/host/src/runtime/host-callbacks/redial-gate.ts` |
+| Host pool, TrUAPI chain connections, `hostChainProvider` | `apps/host/src/runtime/hostCallbacks/chain.ts` |
+| Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/frameTransport.ts` |
+| Host pool's chain gates | `apps/host/src/runtime/hostCallbacks/redialGate.ts` |
 | Settings probe | `apps/host/src/runtime/diagnostics.ts` (`queryFinalizedBlock`) |
-| Network panel | `apps/host/src/state/network-monitor.ts`, `ChainPool.watch` in `packages/chains/src/chain-pool.ts`, `packages/chains/src/header-number.ts` |
+| Network panel | `apps/host/src/state/networkMonitor.ts`, `ChainPool.watch` in `packages/chains/src/chainPool.ts`, `packages/chains/src/headerNumber.ts` |
 | Bitswap | `packages/bitswap/src/client.ts`, `packages/bitswap/src/relay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/engine.ts` |
-| Watched chains | `apps/protocol/src/light-client-service.ts` (`observeChains`) |
-| SharedWorker ports and heartbeat | `apps/protocol/src/protocol-worker.ts` |
+| Watched chains | `apps/protocol/src/lightClientService.ts` (`observeChains`) |
+| SharedWorker ports and heartbeat | `apps/protocol/src/protocolWorker.ts` |
 
 ## Known limits
 

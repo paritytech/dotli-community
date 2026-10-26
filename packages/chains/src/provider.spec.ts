@@ -16,8 +16,8 @@ import {
   type LightClientEngine,
   type StartEngineOptions,
 } from './provider.js';
-import type { SmoldotDb } from './smoldot-db.js';
-import type { ChainTransportHooks } from './transport-hooks.js';
+import type { SmoldotDb } from './smoldotDb.js';
+import type { ChainTransportHooks } from './transportHooks.js';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 
 const waiting = new Set<() => void>();

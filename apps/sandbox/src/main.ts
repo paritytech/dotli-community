@@ -12,32 +12,32 @@ import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@d
 import { m, setResolutionId } from '@dotli/metrics';
 import { endpointHost } from '@dotli/shared';
 
-import { createDecryptIfNeeded } from './decrypt-prompt.js';
+import { createDecryptIfNeeded } from './decryptPrompt.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { createReloadOffer, listenForChunkFailures, showNotification, toastsStore } from '@dotli/ui';
 import { loadPageUi, loadSandboxChecker } from './lazy.js';
-import { hideFallbackScreen, showFallbackScreen } from './fallback-screen.js';
-import { createSandboxUi } from './sandbox-ui.js';
-import { showPasswordPrompt } from './show-password-prompt.js';
+import { hideFallbackScreen, showFallbackScreen } from './fallbackScreen.js';
+import { createSandboxUi } from './sandboxUi.js';
+import { showPasswordPrompt } from './showPasswordPrompt.js';
 import {
   askHostToRerender,
   dismissHostLoading,
   notifyLoadingDone,
   reportSandboxDebug,
   showStatus,
-} from './host-messages.js';
-import { withoutContractParams } from './contract-url.js';
-import { createBitswapBridge, hostOriginRule } from './bitswap-bridge.js';
-import { loadProduct, type BlockSource, type SandboxParams } from './load-product.js';
-import { purgeSandboxOriginState } from './origin-purge.js';
-import { runSandbox } from './sandbox-run.js';
+} from './hostMessages.js';
+import { withoutContractParams } from './contractUrl.js';
+import { createBitswapBridge, hostOriginRule } from './bitswapBridge.js';
+import { loadProduct, type BlockSource, type SandboxParams } from './loadProduct.js';
+import { purgeSandboxOriginState } from './originPurge.js';
+import { runSandbox } from './sandboxRun.js';
 import {
   listenForArchiveFailures,
   offerReloadNotice,
   registerAppServiceWorker,
   storeArchiveInSW,
   type AppServiceWorker,
-} from './service-worker.js';
+} from './serviceWorker.js';
 
 listenForChunkFailures({
   target: window,

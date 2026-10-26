@@ -5,11 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { memoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections, createChatStore, type ChatStore } from '../runtime/chat/store.js';
-import { labelToProductId } from '../runtime/runtime-config.js';
+import { labelToProductId } from '../runtime/runtimeConfig.js';
 import { setAuthState } from '../runtime/state/auth.js';
 import { setProductError, setProductLoaded } from '../runtime/state/product.js';
 import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
-import { chatPanelStore, startChatPanelState, openChatRoom, setChatPanelOpen } from '../state/chat-panel.js';
+import { chatPanelStore, startChatPanelState, openChatRoom, setChatPanelOpen } from '../state/chatPanel.js';
 import { useChatDock } from './chat.js';
 
 const LABEL = 'chatty';

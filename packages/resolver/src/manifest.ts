@@ -7,7 +7,7 @@ import { log } from '@dotli/shared';
 import { m, spans as S } from '@dotli/metrics';
 import type { DotnsContracts } from '@dotli/config';
 import { namehash } from './abi.js';
-import { readNestedMappingString } from './access-raw-storage.js';
+import { readNestedMappingString } from './accessRawStorage.js';
 import type { Api } from './api.js';
 import {
   toExecutableManifestResult,
@@ -17,7 +17,7 @@ import {
   type ManifestRecordResult,
   type ManifestResult,
   type RootManifest,
-} from './manifest-types.js';
+} from './manifestTypes.js';
 
 const ROOT_MANIFEST_KEY = 'manifest';
 const EXECUTABLE_MANIFEST_KEY = 'executable';
@@ -103,4 +103,4 @@ async function readManifestText<T>(
   return result;
 }
 
-export type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest-types.js';
+export type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifestTypes.js';

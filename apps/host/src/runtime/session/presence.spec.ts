@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { deferred } from '@dotli/shared';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import type { SharedChannel } from '../shared-mode.js';
+import type { SharedChannel } from '../sharedMode.js';
 import {
   createCookiePresence,
   createPagePresence,
@@ -15,7 +15,7 @@ import {
   type CookieJar,
   type SessionPresence,
 } from './presence.js';
-import { sharesFlag } from '../page-role.js';
+import { sharesFlag } from '../pageRole.js';
 
 const DOMAIN = 'dot.li';
 

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DotliDebugBus } from '@dotli/truapi-debug';
 import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
-import { setupTruapiDebugPanel } from '../src/truapi-debug-panel.js';
+import { setupTruapiDebugPanel } from '../src/truapiDebugPanel.js';
 import { PANEL_ID } from '../src/Panel.js';
 
 let bus: DotliDebugBus;

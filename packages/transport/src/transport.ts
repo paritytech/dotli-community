@@ -26,7 +26,7 @@ import {
   type TransportVersions,
 } from './errors.js';
 import type { Provider } from './provider.js';
-import { createRecentIds } from './recent-ids.js';
+import { createRecentIds } from './recentIds.js';
 import {
   SUBSCRIPTION_STOP,
   sameMethod,

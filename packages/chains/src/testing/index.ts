@@ -3,4 +3,4 @@
 
 // Fakes other packages' tests use. Shipped code cannot import this entry.
 
-export { FakeWebSocket } from './fake-websocket.js';
+export { FakeWebSocket } from './fakeWebsocket.js';

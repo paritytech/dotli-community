@@ -10,20 +10,20 @@
 
 import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { readStoredDock, writeStoredDock, type DockPosition } from './model/dock-storage.js';
+import { readStoredDock, writeStoredDock, type DockPosition } from './model/dockStorage.js';
 import {
   correlationKeyOf,
   firstNewIndex,
   type EventSeq,
   type EventStore,
   type StoredEvent,
-} from './model/event-store.js';
+} from './model/eventStore.js';
 import { buildExport, type ExportMeta } from './model/export.js';
 import { initialFilterState, type FilterState } from './model/filters.js';
-import { panelDockInset } from './model/iframe-layout.js';
-import { readStoredSection, writeStoredSection, type PanelSection } from './model/section-storage.js';
+import { panelDockInset } from './model/iframeLayout.js';
+import { readStoredSection, writeStoredSection, type PanelSection } from './model/sectionStorage.js';
 
-import type { ResolutionRecorder } from './model/resolution-view.js';
+import type { ResolutionRecorder } from './model/resolutionView.js';
 import { DiagnosticsView } from './Diagnostics.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';

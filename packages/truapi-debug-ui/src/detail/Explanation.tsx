@@ -3,8 +3,8 @@
 
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { explanationDetail, type InlineSegment } from '../model/detail-format.js';
-import type { StoredSystemEvent } from '../model/event-store.js';
+import { explanationDetail, type InlineSegment } from '../model/detailFormat.js';
+import type { StoredSystemEvent } from '../model/eventStore.js';
 import s from './Explanation.module.css';
 
 export function Explanation(props: { event: StoredSystemEvent }): JSX.Element {

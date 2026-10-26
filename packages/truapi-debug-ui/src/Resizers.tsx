@@ -6,8 +6,8 @@
 
 import { onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { DockPosition } from './model/dock-storage.js';
-import { clampPanelSize, clampSplit, panelSizeBounds, splitBounds, stepPanelSize } from './resize-clamp.js';
+import type { DockPosition } from './model/dockStorage.js';
+import { clampPanelSize, clampSplit, panelSizeBounds, splitBounds, stepPanelSize } from './resizeClamp.js';
 import { Resizer } from './shared/Resizer.js';
 import s from './Resizers.module.css';
 

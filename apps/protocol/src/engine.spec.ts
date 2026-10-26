@@ -23,7 +23,7 @@ import {
   type ProtocolEngine,
 } from './engine.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
-import { closeHostLinks, linkHost, record, type Recording } from './testing/host-link.js';
+import { closeHostLinks, linkHost, record, type Recording } from './testing/hostLink.js';
 
 const { chain, resolve } = protocolSchema.sections;
 

@@ -3,10 +3,10 @@
 
 import { children, createEffect, createSignal, isHydrating, onSettled, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport, watchPhoneViewport } from '../../page/phone-viewport.js';
-import type { IconProps } from '../icons/icon-props.js';
+import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
+import type { IconProps } from '../icons/iconProps.js';
 import { IconTile } from '../primitives/IconTile.js';
-import { InSheet } from './in-sheet.js';
+import { InSheet } from './inSheet.js';
 import { ModalLayer } from './ModalLayer.js';
 import { SheetFrame } from './SheetFrame.js';
 import s from './Modal.module.css';

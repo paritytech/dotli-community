@@ -8,11 +8,11 @@ import { chromium, expect, type Page } from '@playwright/test';
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from '../env.js';
 import { setupTest } from './helpers/context.js';
 import { isProtocolFrameUrl } from './helpers/frames.js';
-import { recordProtocolMessages, waitForProtocolMessage } from './helpers/wire-recorder.js';
-import { waitForResolutionOutcome } from '../product-frame.js';
+import { recordProtocolMessages, waitForProtocolMessage } from './helpers/wireRecorder.js';
+import { waitForResolutionOutcome } from '../productFrame.js';
 import { BACKENDS, seedSettings } from './fixtures/settings.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from './fixtures/permissions.js';
-import { test } from './helpers/shared-mode-reset.js';
+import { test } from './helpers/sharedModeReset.js';
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 

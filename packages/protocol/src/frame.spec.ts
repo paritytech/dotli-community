@@ -10,7 +10,7 @@ import { manualTimers, recordLog, type ManualTimers } from '@dotli/shared/testin
 import { domain, err, ok } from '@dotli/transport';
 import { recordMessage } from '@dotli/transport/testing';
 import type { RemoteChainHalt } from '@dotli/chains';
-import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
+import { SHARED_CORE_SESSION_KEY } from './authStorage.js';
 import { createProtocolClient } from './client.js';
 import {
   PROTOCOL_ERRORS,
@@ -28,8 +28,8 @@ import {
   type ProtocolStatus,
 } from './frame.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
-import type { SharedStoreStatus } from './shared-store.js';
-import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameDom, type FrameHost } from './testing/frame-host.js';
+import type { SharedStoreStatus } from './sharedStore.js';
+import { createFrameDom, createFrameHost, FRAME_CONFIG, type FrameDom, type FrameHost } from './testing/frameHost.js';
 
 const { resolve, storage, chain } = protocolSchema.sections;
 

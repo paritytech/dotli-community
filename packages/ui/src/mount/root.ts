@@ -3,7 +3,7 @@
 
 import { createComponent } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
-import { RootBoundary } from './root-boundary.js';
+import { RootBoundary } from './rootBoundary.js';
 
 export type MountRootOptions = {
   /** The container goes with the root, for one the caller made for it. */

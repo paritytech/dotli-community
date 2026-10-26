@@ -15,7 +15,7 @@ import {
   type CallError,
 } from '@dotli/transport';
 import { toError } from '@dotli/shared';
-import { callName, type CallName } from './method-policy.js';
+import { callName, type CallName } from './methodPolicy.js';
 import type { DomainFailure, FrameFailure, RemoteFailure } from './schema.js';
 
 export class ProtocolFatalError extends Error {

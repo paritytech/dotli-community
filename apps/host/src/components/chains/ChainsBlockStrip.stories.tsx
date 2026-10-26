@@ -4,14 +4,14 @@
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
-import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   chain,
   given,
   resetStoryNetwork,
   setProductLoaded,
   storyNetwork,
-} from '../../testing/stories/network-fixtures.js';
+} from '../../testing/stories/networkFixtures.js';
 import { byTestId } from '@dotli/ui/testing';
 import type { ChainView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';

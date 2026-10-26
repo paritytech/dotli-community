@@ -5,8 +5,8 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/network-fixtures.js';
-import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { NetworkItem } from './NetworkItem.js';
 
 const open = openSurface({ trigger: 'chains-button', surface: 'chains-popover' });

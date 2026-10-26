@@ -5,15 +5,15 @@ import { createMemo, merge, onCleanup, untrack, useContext, type Accessor } from
 import type { JSX } from '@solidjs/web';
 import { shallowEqual } from '@dotli/shared';
 import { Button, LayerTracker, Modal } from '@dotli/ui';
-import type { AuthModalState, AuthModalView, PairingView } from '../../state/auth-modal.js';
+import type { AuthModalState, AuthModalView, PairingView } from '../../state/authModal.js';
 import { isMobileDevice } from '../../device.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
-import { createPhraseFormLoad, type PhraseForm } from './phrase-form-load.js';
-import type { DrawQr } from './qr-code.js';
-import { SIGN_IN_CLOSE_ID, type SignInParts } from './sign-in/SignInViews.js';
-import { signInParts, type SignInPartsProps } from './sign-in/sign-in-parts.js';
-import { pairingPayload, sameSignInScreen } from './sign-in/same-screen.js';
-import { windowWaitParts, type WindowWaitPartsProps } from './sign-in/window-wait-parts.js';
+import { createPhraseFormLoad, type PhraseForm } from './phraseFormLoad.js';
+import type { DrawQr } from './qrCode.js';
+import { SIGN_IN_CLOSE_ID, type SignInParts } from './signIn/SignInViews.js';
+import { signInParts, type SignInPartsProps } from './signIn/signInParts.js';
+import { pairingPayload, sameSignInScreen } from './signIn/sameScreen.js';
+import { windowWaitParts, type WindowWaitPartsProps } from './signIn/windowWaitParts.js';
 
 /** Where the modal stands on a wide screen: in the middle of a page with no topbar, or hung from the topbar's end. */
 export type AuthModalPlacement = 'center' | 'topbar-end';

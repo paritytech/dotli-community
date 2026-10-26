@@ -4,7 +4,7 @@
 import { createContext, createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createAnchored, createContentPreload, createTriggerWiring, SurfaceSlot, type Anchored } from './anchored.js';
-import type { CloseReason } from './close-reason.js';
+import type { CloseReason } from './closeReason.js';
 import type { Placement } from './FloatingLayer.js';
 import { PopoverSurface } from './PopoverSurface.js';
 

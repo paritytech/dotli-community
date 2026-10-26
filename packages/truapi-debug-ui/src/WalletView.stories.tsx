@@ -7,7 +7,7 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { fakeDebugPanelHost } from '@dotli/truapi-debug-ui/testing';
 import type { WalletSwitch } from './host.js';
 import { WalletView } from './WalletView.js';
-import { debugPanelStory } from './testing/stories/debug-panel-story.js';
+import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
 const IDENTITY_ACCOUNT = `0x${'11'.repeat(32)}`;
 

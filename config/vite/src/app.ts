@@ -11,11 +11,11 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { loadEnv, mergeConfig, type Plugin, type PluginOption, type UserConfig } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
 import wasmPlugin from 'vite-plugin-wasm';
-import { buildInfo } from './build-info-plugin.ts';
-import { appBuildOptions, rolldownOptions } from './build-options.ts';
-import { cssModules } from './css-modules.ts';
-import { runtimeNetworkConfigScript } from './runtime-network-config-plugin.ts';
-import { provideSentryRelease, sentryUploadRelease } from './sentry-release.ts';
+import { buildInfo } from './buildInfoPlugin.ts';
+import { appBuildOptions, rolldownOptions } from './buildOptions.ts';
+import { cssModules } from './cssModules.ts';
+import { runtimeNetworkConfigScript } from './runtimeNetworkConfigPlugin.ts';
+import { provideSentryRelease, sentryUploadRelease } from './sentryRelease.ts';
 import { createLocalServing, PROTOCOL_PREFIX, type LocalServing, type Site } from './serving.ts';
 
 // Its CommonJS-style declarations make NodeNext see the module object, but at runtime the default export is the plugin.

@@ -6,7 +6,7 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from './host.js';
 import { DiagnosticsView } from './Diagnostics.js';
 import { PanelEffectsContext, type PanelEffects } from './effects.js';
-import { debugPanelStory } from './testing/stories/debug-panel-story.js';
+import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
 const ROWS: DiagnosticsRow[] = [
   ['Site', 'app.dot.li', true],

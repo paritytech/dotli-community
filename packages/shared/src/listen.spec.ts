@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { listen, onDocumentVisible, onPageReturn } from './listen.js';
-import { FakePage } from './testing/fake-page.js';
+import { FakePage } from './testing/fakePage.js';
 
 describe('listen', () => {
   it('As a developer, I listen and hear each event until I stop with the stop it gave me', () => {

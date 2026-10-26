@@ -8,7 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./fixed": "./src/fixed.ts",
-    "./local-roots": "./src/local-roots.ts",
+    "./local-roots": "./src/localRoots.ts",
     "./networks": "./src/networks.ts",
     "./package.json": "./package.json"
   },

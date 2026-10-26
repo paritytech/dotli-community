@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
-import { EventStore } from './event-store.js';
+import { EventStore } from './eventStore.js';
 import { compileQuery, initialFilterState, matches, type FilterState } from './filters.js';
 
 /** Two products, an event without a product and a host boot event. */

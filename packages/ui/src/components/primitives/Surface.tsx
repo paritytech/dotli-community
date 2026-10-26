@@ -4,8 +4,8 @@
 import { Show, useContext, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { DrawIcon } from '../icons/DrawIcon.js';
-import type { IconProps } from '../icons/icon-props.js';
-import { InSheet } from '../floating/in-sheet.js';
+import type { IconProps } from '../icons/iconProps.js';
+import { InSheet } from '../floating/inSheet.js';
 import s from './Surface.module.css';
 
 export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';

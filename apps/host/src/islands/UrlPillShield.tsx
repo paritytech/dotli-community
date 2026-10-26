@@ -6,8 +6,8 @@
 import type { JSX } from '@solidjs/web';
 import { LayerTracker, RootBoundary, useStore } from '@dotli/ui';
 import { UrlPillShield as Shield } from '../components/shield/UrlPillShield.js';
-import { registerTopbarSurface } from '../state/topbar-surfaces.js';
-import { pillShield, urlPillStore } from '../state/url-pill.js';
+import { registerTopbarSurface } from '../state/topbarSurfaces.js';
+import { pillShield, urlPillStore } from '../state/urlPill.js';
 
 /**
  * The URL pill's verification shield, bound to the url-pill store that bindUrlPill renders the rest of the pill from.

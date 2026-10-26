@@ -3,7 +3,7 @@
 
 // Every rail, tick and box is keyed by its stable seq, so the view updates a box in place as traffic streams in.
 
-import type { EventSeq, StoredEvent } from './event-store.js';
+import type { EventSeq, StoredEvent } from './eventStore.js';
 import {
   computeGlobalYPositions,
   computeLayout,
@@ -15,7 +15,7 @@ import {
   RAIL_COL_WIDTH,
   ROW_HEIGHT,
   type SegmentEntry,
-} from './timeline-layout.js';
+} from './timelineLayout.js';
 
 export type TimelineRail = {
   key: EventSeq;

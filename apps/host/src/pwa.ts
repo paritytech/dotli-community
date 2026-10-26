@@ -7,7 +7,7 @@ import { captureException, recordExpected } from '@dotli/metrics';
 import { onDocumentVisible, type VisibilitySource } from '@dotli/shared';
 import { showNotification, type ShowNotification } from '@dotli/ui';
 import { markContinuation } from './continuation.js';
-import { parseDotLabel } from './dot-label.js';
+import { parseDotLabel } from './dotLabel.js';
 import { loadWorkboxWindow } from './lazy.js';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;

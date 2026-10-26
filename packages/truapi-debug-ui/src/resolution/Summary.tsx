@@ -5,7 +5,7 @@
 
 import { createMemo, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel } from '../model/resolution-view.js';
+import type { ResolutionModel } from '../model/resolutionView.js';
 import { summaryFacts } from './format.js';
 import s from './Summary.module.css';
 

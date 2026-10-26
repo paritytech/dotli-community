@@ -13,7 +13,7 @@ import {
   sameBars,
   slideShift,
   slotOpacity,
-} from './chain-strip.js';
+} from './chainStrip.js';
 import s from './ChainGroup.module.css';
 
 /** Replay the instant shift that appended bars cause as a glide left, so a block arriving reads as an arrival. */

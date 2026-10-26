@@ -17,7 +17,7 @@ import {
 import { createProviderPair } from '@dotli/transport/testing';
 import { ProtocolFatalError, ProtocolVersionMismatchError } from './errors.js';
 import { createFakeFrame } from './frame.fake.js';
-import type { FrameStatusSink } from './frame-status.js';
+import type { FrameStatusSink } from './frameStatus.js';
 import { protocolSchema, type ProtocolTransport, type RemoteFailure, type SubscriptionEnd } from './schema.js';
 import { subscribe } from './subscription.js';
 

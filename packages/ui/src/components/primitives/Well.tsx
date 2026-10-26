@@ -4,7 +4,7 @@
 import { Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { DrawIcon } from '../icons/DrawIcon.js';
-import type { IconProps } from '../icons/icon-props.js';
+import type { IconProps } from '../icons/iconProps.js';
 import s from './Well.module.css';
 
 /**

@@ -30,5 +30,5 @@
     "allowJs": true,
     "checkJs": true
   },
-  "files": ["./vite-env.d.ts"]
+  "files": ["./viteEnv.d.ts"]
 }

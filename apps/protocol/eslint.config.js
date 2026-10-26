@@ -32,5 +32,5 @@ export default defineConfig([
     },
   },
   ...importBans([scopeBan]),
-  ...importBans([scopeBan, fixedConfigOnly], ['src/protocol-worker.ts', 'src/light-client-service.ts']),
+  ...importBans([scopeBan, fixedConfigOnly], ['src/protocolWorker.ts', 'src/lightClientService.ts']),
 ]);

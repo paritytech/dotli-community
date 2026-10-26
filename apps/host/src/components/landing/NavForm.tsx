@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { validateDotLabel, type DotLabelResult } from '@dotli/resolver';
 import { prefersReducedMotion } from '@dotli/ui';
 import { ArrowRightIcon } from '@dotli/ui/icons';
-import { dotUrl, typedName } from './dot-url.js';
+import { dotUrl, typedName } from './dotUrl.js';
 import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';
 import s from './NavForm.module.css';
 

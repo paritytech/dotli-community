@@ -27,16 +27,16 @@ export {
   type ActionAlert,
   type ActionBar,
   type ActionEntry,
-} from './components/actions/actions-context.js';
+} from './components/actions/actionsContext.js';
 export { PINNED } from './components/actions/fit.js';
-export { LayerTracker, ModalFocusFallback, type TrackedLayer } from './components/floating/layer-context.js';
-export { useStore } from './components/use-store.js';
+export { LayerTracker, ModalFocusFallback, type TrackedLayer } from './components/floating/layerContext.js';
+export { useStore } from './components/useStore.js';
 export { createDrags, type Drags } from './components/drag.js';
 export { focusLostOrInside, focusTrigger } from './components/focus.js';
 
 // Mounting a view inside an error boundary, and the overlays container.
-export { ensureOverlayRoot } from './mount/overlay-root.js';
-export { RootBoundary } from './mount/root-boundary.js';
+export { ensureOverlayRoot } from './mount/overlayRoot.js';
+export { RootBoundary } from './mount/rootBoundary.js';
 export { mountRoot, type MountRootOptions } from './mount/root.js';
 
 // The dialog and toast stores. The overlays render them, and the apps open dialogs and read the toasts.
@@ -56,15 +56,15 @@ export { toastsStore, type ToastEntry } from './page/state/toasts.js';
 // Page helpers.
 export { focusables } from './page/focusables.js';
 export { preloadWhenIdle, runWhenIdle, type IdleScheduler } from './page/idle.js';
-export { isPhoneViewport, watchPhoneViewport } from './page/phone-viewport.js';
-export { prefersReducedMotion } from './page/reduced-motion.js';
-export type { StatusTone } from './page/status-tone.js';
+export { isPhoneViewport, watchPhoneViewport } from './page/phoneViewport.js';
+export { prefersReducedMotion } from './page/reducedMotion.js';
+export type { StatusTone } from './page/statusTone.js';
 
 // The screens and overlays both apps show.
-export type { ErrorAction, ErrorPageContent, ErrorText } from './widgets/error-page/error-page.js';
-export { showError, showErrorPage, type ShowErrorPage } from './widgets/error-page/show-error-page.js';
-export { ErrorDetail, ErrorFrame, type ErrorFrameProps } from './widgets/error-page/ErrorFrame.js';
-export { clearScreen, pageContentStore, showScreen, type PageContent } from './widgets/page-screen.js';
-export { createReloadOffer, listenForChunkFailures, type ChunkFailureDeps } from './widgets/chunk-failures.js';
+export type { ErrorAction, ErrorPageContent, ErrorText } from './widgets/errorPage/arrangeErrorActions.js';
+export { showError, showErrorPage, type ShowErrorPage } from './widgets/errorPage/showErrorPage.js';
+export { ErrorDetail, ErrorFrame, type ErrorFrameProps } from './widgets/errorPage/ErrorFrame.js';
+export { clearScreen, pageContentStore, showScreen, type PageContent } from './widgets/pageScreen.js';
+export { createReloadOffer, listenForChunkFailures, type ChunkFailureDeps } from './widgets/chunkFailures.js';
 export { showNotification, type NotificationParams, type ShowNotification } from './widgets/notification.js';
 export { Overlays } from './widgets/overlays/Overlays.js';

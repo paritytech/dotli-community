@@ -8,9 +8,9 @@ import { formatRate, formatSize } from '@dotli/shared';
 import { InfoIcon } from '@dotli/ui/icons';
 import { Accordion, Callout, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainGroup } from './ChainGroup.js';
-import type { NetworkHealth } from './network-health.js';
+import type { NetworkHealth } from './networkHealth.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeNetworkStatus, needsCountdown } from './chains-format.js';
+import { describeNetworkStatus, needsCountdown } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
 const PENDING_TICK_MS = 250;

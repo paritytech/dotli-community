@@ -8,10 +8,10 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { reportListener } from '@dotli/metrics';
 import { log } from '@dotli/shared';
-import { chainHaltedError, jsonRpcError } from './chain-halted.js';
-import { createFollowSnapshot, type FollowSnapshot } from './follow-snapshot.js';
-import { isRecord, stringsOf } from './json-shape.js';
-import { TERMINAL_WATCH_EVENTS } from './watch-guard.js';
+import { chainHaltedError, jsonRpcError } from './chainHalted.js';
+import { createFollowSnapshot, type FollowSnapshot } from './followSnapshot.js';
+import { isRecord, stringsOf } from './jsonShape.js';
+import { TERMINAL_WATCH_EVENTS } from './watchGuard.js';
 
 /** `connectRemote`'s connection, typed as strings to match the postMessage wire. */
 export type StringJsonRpcConnection = {

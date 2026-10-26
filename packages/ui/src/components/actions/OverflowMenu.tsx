@@ -8,8 +8,8 @@ import { ChevronRightIcon } from '../icons/ChevronRightIcon.js';
 import { DrawIcon } from '../icons/DrawIcon.js';
 import { MoreIcon } from '../icons/MoreIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
-import type { StatusTone } from '../../page/status-tone.js';
-import type { ActionAlert, ActionEntry } from './actions-context.js';
+import type { StatusTone } from '../../page/statusTone.js';
+import type { ActionAlert, ActionEntry } from './actionsContext.js';
 import { moreLabel, worstTone } from './alerts.js';
 import s from './OverflowMenu.module.css';
 

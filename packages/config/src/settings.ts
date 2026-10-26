@@ -26,8 +26,8 @@ import {
   isValidNetwork,
   type Network,
 } from './network.js';
-import { setSettings } from './active-settings.js';
-import type { ParsedUrlSettings } from './url-settings.js';
+import { setSettings } from './activeSettings.js';
+import type { ParsedUrlSettings } from './urlSettings.js';
 
 export type Settings = {
   network: Network;

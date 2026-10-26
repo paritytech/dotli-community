@@ -6,8 +6,8 @@
 
 import { createEffect, createSignal, flush, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel, ResolutionRecorder } from './model/resolution-view.js';
-import { wireHoverTooltips } from './shared/hover-tooltip.js';
+import type { ResolutionModel, ResolutionRecorder } from './model/resolutionView.js';
+import { wireHoverTooltips } from './shared/hoverTooltip.js';
 import { Chart } from './resolution/Chart.js';
 import { Button } from './shared/Button.js';
 import { EmptyState } from './shared/EmptyState.js';

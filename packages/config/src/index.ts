@@ -13,7 +13,7 @@ export {
   isSandboxOrigin,
   type SiteId,
 } from './config.js';
-export { hostPlace, isSiteOrigin, localRootOf } from './host-place.js';
+export { hostPlace, isSiteOrigin, localRootOf } from './hostPlace.js';
 export {
   BACKEND_KEY,
   BACKEND_LABELS,
@@ -53,7 +53,7 @@ export {
   type FixedServicesConfig,
   type Network,
 } from './network.js';
-export { setSettings, subscribeSettings } from './active-settings.js';
+export { setSettings, subscribeSettings } from './activeSettings.js';
 export {
   getSettings,
   hasStoredSettings,
@@ -67,4 +67,4 @@ export {
   type SharedSettings,
 } from './settings.js';
 export { TIMEOUTS } from './timeouts.js';
-export { parseSettingsFromSearch, writeSettingsToSearch, type ParsedUrlSettings } from './url-settings.js';
+export { parseSettingsFromSearch, writeSettingsToSearch, type ParsedUrlSettings } from './urlSettings.js';

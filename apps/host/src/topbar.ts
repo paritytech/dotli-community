@@ -3,10 +3,10 @@
 
 // The topbar's static markup comes from Topbar.astro. This binds it to the topbar and network health stores.
 
-import { networkHealthStore } from './state/network-health.js';
+import { networkHealthStore } from './state/networkHealth.js';
 import { topbarStore } from './state/topbar.js';
-import { registerTopbarElement, revealTopbar, scheduleTopbarHide, TOPBAR_REVEAL_SHORTCUT } from './topbar-autohide.js';
-import { bindTopbarStatus } from './topbar-status.js';
+import { registerTopbarElement, revealTopbar, scheduleTopbarHide, TOPBAR_REVEAL_SHORTCUT } from './topbarAutohide.js';
+import { bindTopbarStatus } from './topbarStatus.js';
 
 export function bindTopbar(bar: HTMLElement): void {
   registerTopbarElement(bar);

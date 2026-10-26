@@ -4,7 +4,7 @@
 // Every icon is a Solid component that draws an svg in the current text color. This entry carries no stylesheet, so
 // importing an icon brings no component CSS with it.
 
-export type { IconProps } from './components/icons/icon-props.js';
+export type { IconProps } from './components/icons/iconProps.js';
 export { AlertTriangleIcon } from './components/icons/AlertTriangleIcon.js';
 export { ArrowRightIcon } from './components/icons/ArrowRightIcon.js';
 export { BanIcon } from './components/icons/BanIcon.js';

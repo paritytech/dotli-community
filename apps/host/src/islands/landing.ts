@@ -3,7 +3,7 @@
 
 import { createSignal, onSettled, untrack, type Accessor } from 'solid-js';
 import { getActiveTldSuffix, subscribeSettings } from '@dotli/config';
-import type { RecentLabels } from '../recent-labels.js';
+import type { RecentLabels } from '../recentLabels.js';
 
 /**
  * The TLD the visitor's network registers names under. The visitor's network decides it, so the browser reads it once

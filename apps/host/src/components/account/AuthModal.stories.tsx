@@ -8,14 +8,14 @@ import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
 import { isPhoneViewport, LayerTracker, Popover, type TrackedLayer } from '@dotli/ui';
 import { expectBefore } from '@config/storybook/play';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   connect,
   disconnect,
   resetStoryAccount,
   storyAccount,
   storyCallbacks,
-} from '../../testing/stories/account-fixtures.js';
+} from '../../testing/stories/accountFixtures.js';
 import {
   CLOSED_MODAL,
   modalCallbacks,
@@ -23,11 +23,11 @@ import {
   resetStoryModal,
   showModal,
   storyModal,
-} from '../../testing/stories/auth-modal-fixtures.js';
+} from '../../testing/stories/authModalFixtures.js';
 import { AuthButton } from './AuthButton.js';
-import type { AuthModalState, AuthModalView } from '../../state/auth-modal.js';
+import type { AuthModalState, AuthModalView } from '../../state/authModal.js';
 import { AuthModal } from './AuthModal.js';
-import type { DrawQr } from './qr-code.js';
+import type { DrawQr } from './qrCode.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 
 const open = openSurface({ surface: 'auth-modal-backdrop' });

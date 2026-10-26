@@ -14,7 +14,7 @@
     },
     "build:prod": {
       "dependsOn": ["transit"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*", "$TURBO_ROOT$/scripts/compress-dist.ts"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env*", "$TURBO_ROOT$/scripts/compressDist.ts"],
       "outputs": ["dist/**"],
       "env": ["SENTRY_AUTH_TOKEN"]
     },

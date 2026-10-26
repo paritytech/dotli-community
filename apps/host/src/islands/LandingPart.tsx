@@ -4,7 +4,7 @@
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
-import { showBrokenPage } from '../broken-page.js';
+import { showBrokenPage } from '../brokenPage.js';
 
 /**
  * Wraps each landing island. The page is nothing but these, so one failing breaks the whole page. A full-page screen

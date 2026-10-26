@@ -3,7 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { ActionGroup, type MoreIds } from '@dotli/ui';
-import type { TopbarMorph } from '../../topbar-status.js';
+import type { TopbarMorph } from '../../topbarStatus.js';
 
 /** The topbar's More, which the page's tests and stories address. */
 export const TOPBAR_MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };

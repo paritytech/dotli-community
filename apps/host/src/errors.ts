@@ -6,9 +6,9 @@ import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } fro
 
 import { endpointHost, errorMessage, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
-import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
-import { ManifestRejectedError } from './manifest-gate.js';
-import { SandboxSilentError } from './sandbox-watch.js';
+import { ERROR_TITLES, HOST_ERRORS } from './errorCopy.js';
+import { ManifestRejectedError } from './manifestGate.js';
+import { SandboxSilentError } from './sandboxWatch.js';
 
 // Annotated, so renaming the resolver's error fails to compile here. Only the name survives postMessage.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
@@ -21,7 +21,7 @@ export {
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   TRY_ANYWAY_BTN_LABEL,
-} from './error-copy.js';
+} from './errorCopy.js';
 
 /** The first entry, since the gateway backend dials the list in order. */
 function assethubHost(): string | undefined {

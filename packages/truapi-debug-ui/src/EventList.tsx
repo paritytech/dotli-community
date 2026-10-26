@@ -6,7 +6,7 @@
 
 import { createEffect, createMemo, createSignal, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { formatLatency } from './model/detail-format.js';
+import { formatLatency } from './model/detailFormat.js';
 import {
   correlationKeyOf,
   type EventSeq,
@@ -14,11 +14,11 @@ import {
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-} from './model/event-store.js';
+} from './model/eventStore.js';
 import { OpenCallTracker, pendingKeyOf, SLOW_AFTER_MS } from './model/pending.js';
-import { systemRowData, truapiRowData } from './model/row-format.js';
+import { systemRowData, truapiRowData } from './model/rowFormat.js';
 
-import type { KeyedSignals } from './keyed-signals.js';
+import type { KeyedSignals } from './keyedSignals.js';
 import { DirectionArrow } from './shared/DirectionArrow.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { IdBadge } from './shared/IdBadge.js';

@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
-import type { DotliAuthState } from '../runtime/session/auth-state.js';
-import type { TruapiSessionUiState } from '../runtime/session/session-state.js';
+import type { DotliAuthState } from '../runtime/session/authState.js';
+import type { TruapiSessionUiState } from '../runtime/session/sessionState.js';
 import type { Account } from '../components/account/account.js';
 import { useAccount } from './account.js';
 

@@ -10,52 +10,52 @@ import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, onPageReturn } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
-import { hostPrompts } from '../page-prompts.js';
+import { hostPrompts } from '../pagePrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
-import { pageNotifications } from '../page-notifications.js';
-import { productFrameContainer, productFrameView } from '../product-frame-view.js';
-import { recordBestBlock, recordChainActivity } from '../state/network-monitor.js';
-import { createBridge } from './create-bridge.js';
-import { createCoreAuthCommands, type AuthCommands } from './core-login.js';
-import { createCoreRuntimeBoot } from './core-runtime.js';
-import { hostChainProvider, watchHostChains } from './host-callbacks/chain.js';
-import { pagePermissions, productPermissions } from './page-permissions.js';
-import { forgetsSiteGrants, pageRole } from './page-role.js';
-import { coreStorage, onStoredSessionChanged, signInFlag, type SessionRead } from './session/core-storage.js';
-import { createHostCallbacks, promptAsks } from './host-callbacks/handlers.js';
-import { LANDING_PRODUCT } from './page-core.js';
-import { windowAsks } from './host-callbacks/window-asks.js';
+import { pageNotifications } from '../pageNotifications.js';
+import { productFrameContainer, productFrameView } from '../productFrameView.js';
+import { recordBestBlock, recordChainActivity } from '../state/networkMonitor.js';
+import { createBridge } from './createBridge.js';
+import { createCoreAuthCommands, type AuthCommands } from './coreLogin.js';
+import { createCoreRuntimeBoot } from './coreRuntime.js';
+import { hostChainProvider, watchHostChains } from './hostCallbacks/chain.js';
+import { pagePermissions, productPermissions } from './pagePermissions.js';
+import { forgetsSiteGrants, pageRole } from './pageRole.js';
+import { coreStorage, onStoredSessionChanged, signInFlag, type SessionRead } from './session/coreStorage.js';
+import { createHostCallbacks, promptAsks } from './hostCallbacks/handlers.js';
+import { LANDING_PRODUCT } from './pageCore.js';
+import { windowAsks } from './hostCallbacks/windowAsks.js';
 import { onSessionFlagChange, sessionPresence } from './session/presence.js';
-import { onLocalWalletChange } from './session/wallet-changes.js';
-import { watchPresence } from './session/presence-watch.js';
-import { reconcilePage } from './session/restore-rule.js';
-import { createSessionLease } from './session/session-lease.js';
-import { sessionState } from './session/session-state.js';
-import { siteWallet } from './session/site-wallet.js';
-import { createMainAccountSource, type MainAccountSource } from './site-sign-in/main-account.js';
-import { createSiteChain } from './site-sign-in/site-chain.js';
-import { createSiteAccountReader } from './site-sign-in/site-account-reader.js';
-import { createSiteTxSigner } from './site-sign-in/site-tx-signer.js';
-import { createPageSignOut } from './sign-out.js';
-import { pageSignInHandoff } from './session-handoff/opener.js';
-import { applySessionResult } from './session-handoff/apply-result.js';
-import type { SessionResult } from './session-handoff/messages.js';
-import type { WindowFlowDeps } from './session-handoff/window-flow.js';
-import type { WindowSignOutDeps } from './session-handoff/window-signout.js';
+import { onLocalWalletChange } from './session/walletChanges.js';
+import { watchPresence } from './session/presenceWatch.js';
+import { reconcilePage } from './session/restoreRule.js';
+import { createSessionLease } from './session/sessionLease.js';
+import { sessionState } from './session/sessionState.js';
+import { siteWallet } from './session/siteWallet.js';
+import { createMainAccountSource, type MainAccountSource } from './siteSignIn/mainAccount.js';
+import { createSiteChain } from './siteSignIn/siteChain.js';
+import { createSiteAccountReader } from './siteSignIn/siteAccountReader.js';
+import { createSiteTxSigner } from './siteSignIn/siteTxSigner.js';
+import { createPageSignOut } from './signOut.js';
+import { pageSignInHandoff } from './sessionHandoff/opener.js';
+import { applySessionResult } from './sessionHandoff/applyResult.js';
+import type { SessionResult } from './sessionHandoff/messages.js';
+import type { WindowFlowDeps } from './sessionHandoff/windowFlow.js';
+import type { WindowSignOutDeps } from './sessionHandoff/windowSignout.js';
 import { authStore } from './state/auth.js';
-import { setSigningOut } from './state/sign-out.js';
-import { getWalletMode } from './state/wallet-mode.js';
-import { readWalletBoot, restoreOnBoot, serveSites } from './wallet-boot.js';
-import { walletSwitch } from './wallet-switch.js';
+import { setSigningOut } from './state/signOut.js';
+import { getWalletMode } from './state/walletMode.js';
+import { readWalletBoot, restoreOnBoot, serveSites } from './walletBoot.js';
+import { walletSwitch } from './walletSwitch.js';
 
 // Already in this chunk for leaving local mode, so a page with no sign-in window takes it from here for a phrase.
-export { walletSwitch } from './wallet-switch.js';
+export { walletSwitch } from './walletSwitch.js';
 
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
-export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/chain.js';
+export { hostAssetHubProvider, hostChainProvider } from './hostCallbacks/chain.js';
 
 // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
-export { preloadWireDescriber } from './core-connection.js';
+export { preloadWireDescriber } from './coreConnection.js';
 
 // One load serves the frame and every core.
 const hostRuntime = createLazyLoad(async () => {

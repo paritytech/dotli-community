@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { sleep } from './sleep.js';
-import { manualTimers } from './testing/manual-timers.js';
+import { manualTimers } from './testing/manualTimers.js';
 import type { Timers } from './timers.js';
 
 /** Manual timers that count the timers still waiting, so a spec sees whether a wait left one behind. */

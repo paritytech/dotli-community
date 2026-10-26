@@ -3,7 +3,7 @@
 
 // A product publishes one manifest per kind under `<kind>.<base>.<tld>`.
 
-import type { ExecutableKind } from './manifest-types.js';
+import type { ExecutableKind } from './manifestTypes.js';
 
 const EXECUTABLE_KINDS: readonly string[] = ['app', 'widget', 'worker'] satisfies readonly ExecutableKind[];
 

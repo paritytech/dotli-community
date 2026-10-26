@@ -5,7 +5,7 @@ import { createEffect, onCleanup } from 'solid-js';
 import type { ChatStore } from '../runtime/chat/store.js';
 import { productStore } from '../runtime/state/product.js';
 import { useStore } from '@dotli/ui';
-import { setChatWidth } from '../product-frame-layout.js';
+import { setChatWidth } from '../productFrameLayout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';
 import type { ChatDockProps } from '../components/chat/ChatDock.js';
 import {
@@ -22,7 +22,7 @@ import {
   setChatPanelElement,
   setChatPanelOpen,
   setChatPanelWidth,
-} from '../state/chat-panel.js';
+} from '../state/chatPanel.js';
 
 /** The open panel's view of `chat`, read only while the panel body lives. */
 function openFeed(chat: ChatStore): ChatFeed {

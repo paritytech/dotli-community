@@ -14,7 +14,7 @@ import {
 } from '@dotli/shared';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import type { Component } from 'solid-js';
-import type { IconProps } from '../../components/icons/icon-props.js';
+import type { IconProps } from '../../components/icons/iconProps.js';
 
 /**
  * `danger` rejects the request and is drawn destructive. `cancel` backs out of a prompt that is not a

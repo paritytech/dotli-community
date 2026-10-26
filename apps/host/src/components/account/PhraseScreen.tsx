@@ -4,7 +4,7 @@
 import { createSignal, Show, untrack } from 'solid-js';
 import { AlertTriangleIcon } from '@dotli/ui/icons';
 import { Callout } from '@dotli/ui';
-import { answerParts, Title, type HeadingLevel, type SignInParts } from './sign-in/SignInViews.js';
+import { answerParts, Title, type HeadingLevel, type SignInParts } from './signIn/SignInViews.js';
 import s from './PhraseScreen.module.css';
 
 const INVALID_PHRASE = 'Not a valid recovery phrase';

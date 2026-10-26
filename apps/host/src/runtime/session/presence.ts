@@ -7,9 +7,9 @@
 import { BASE_DOMAIN, isLocalhost } from '@dotli/config';
 import { recordExpected, reportExpected, spans as S } from '@dotli/metrics';
 import { listen, noop } from '@dotli/shared';
-import { pageRole, sharesFlag } from '../page-role.js';
-import { getSharedChannel, type SharedChannel } from '../shared-mode.js';
-import { reportWalletFailure } from '../wallet-failure.js';
+import { pageRole, sharesFlag } from '../pageRole.js';
+import { getSharedChannel, type SharedChannel } from '../sharedMode.js';
+import { reportWalletFailure } from '../walletFailure.js';
 
 export type Presence = 'present' | 'absent' | 'unknown';
 

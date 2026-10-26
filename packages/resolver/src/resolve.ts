@@ -12,14 +12,14 @@ import { m, reportListener, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createStatusCell, log, toHex, withTimeout } from '@dotli/shared';
 
 import { namehash, decodeIpfsContenthashResult } from './abi.js';
-import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
-import type { PhaseCallback, ResolvePhase } from './access-raw-storage.js';
+import { readMappingBytes, readMappingAddress } from './accessRawStorage.js';
+import type { PhaseCallback, ResolvePhase } from './accessRawStorage.js';
 import { createRawApi, type Api } from './api.js';
 import { ContenthashDecodeError, NetworkSyncTimeoutError, UnsupportedContenthashCodecError } from './errors.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
 
-export type { PhaseCallback, ResolvePhase } from './access-raw-storage.js';
+export type { PhaseCallback, ResolvePhase } from './accessRawStorage.js';
 
 const PEOPLE_CHAIN = 'People Paseo';
 /** Upper bound on the background People-chain warm for legacy-account auth. */

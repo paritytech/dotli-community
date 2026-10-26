@@ -5,7 +5,7 @@ import { createSignal, For, onCleanup, onSettled, Show, type Accessor } from 'so
 import type { JSX } from '@solidjs/web';
 import { CloseIcon } from '@dotli/ui/icons';
 import { Row, SectionLabel, Well } from '@dotli/ui';
-import { dotUrl } from './dot-url.js';
+import { dotUrl } from './dotUrl.js';
 import s from './RecentList.module.css';
 
 // Touch has no hover, so a long press on a row reveals its remove button instead of navigating.

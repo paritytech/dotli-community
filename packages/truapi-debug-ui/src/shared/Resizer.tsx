@@ -7,7 +7,7 @@
 import { onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { createDrags } from '@dotli/ui';
-import { keyDelta, type DividerSize } from '../resize-clamp.js';
+import { keyDelta, type DividerSize } from '../resizeClamp.js';
 import s from './Resizer.module.css';
 
 export function Resizer(props: {

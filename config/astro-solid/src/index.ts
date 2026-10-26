@@ -11,7 +11,7 @@ import solid, { type Options as ViteSolidPluginOptions } from '@solidjs/vite-plu
 import type { AstroIntegration } from 'astro';
 import type { Plugin, PluginOption } from 'vite';
 import { crawlFrameworkPkgs } from 'vitefu';
-import { getContainerRenderer } from './container-renderer.ts';
+import { getContainerRenderer } from './containerRenderer.ts';
 
 type Options = Pick<ViteSolidPluginOptions, 'include' | 'exclude' | 'compiler'>;
 

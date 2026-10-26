@@ -4,11 +4,11 @@
 import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
-import { HISTORY_SLOTS } from './chain-strip.js';
+import { HISTORY_SLOTS } from './chainStrip.js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   bars,
   chain,
@@ -21,8 +21,8 @@ import {
   storyNetwork,
   VERDICTS,
   waitingOn,
-} from '../../testing/stories/network-fixtures.js';
-import type { LiveVerdict } from '../../network-verdict.js';
+} from '../../testing/stories/networkFixtures.js';
+import type { LiveVerdict } from '../../networkVerdict.js';
 import type { ChainView, TransferView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';
 

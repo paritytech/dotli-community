@@ -5,12 +5,12 @@
 // panel's work per frame, click and tick.
 
 import { createContext, useContext } from 'solid-js';
-import { buildResolution } from './model/resolution-view.js';
+import { buildResolution } from './model/resolutionView.js';
 import { buildTimeline } from './model/timeline.js';
 import { formatPending } from './model/pending.js';
 import { matches } from './model/filters.js';
-import { rowSelection } from './model/row-format.js';
-import { createKeyedSignals } from './keyed-signals.js';
+import { rowSelection } from './model/rowFormat.js';
+import { createKeyedSignals } from './keyedSignals.js';
 
 export type PanelWork = {
   matches: typeof matches;

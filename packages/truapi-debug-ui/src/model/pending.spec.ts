@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { nth } from '@dotli/shared/testing';
-import { EventStore, type StoredEvent } from './event-store.js';
+import { EventStore, type StoredEvent } from './eventStore.js';
 import { OpenCallTracker } from './pending.js';
 
 function insert(

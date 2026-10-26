@@ -9,12 +9,12 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { memorySharedChannel, type MemorySharedChannel } from '../../src/runtime/shared-mode.fake.js';
+import { memorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
 import { setAuthState } from '../../src/runtime/state/auth.js';
-import { createRecentLabels, type RecentLabels } from '../../src/recent-labels.js';
+import { createRecentLabels, type RecentLabels } from '../../src/recentLabels.js';
 import { mountLandingPage } from '../helpers/landing.js';
 import { appears, byId, query } from '@dotli/ui/testing';
-import { setPageUrl } from '../happy-dom.js';
+import { setPageUrl } from '../happyDom.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);

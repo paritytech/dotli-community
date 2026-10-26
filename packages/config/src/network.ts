@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { activeSettings } from './active-settings.js';
+import { activeSettings } from './activeSettings.js';
 
 export const NetworkName = {
   PASEO: 'paseo-next-v2',

@@ -5,7 +5,7 @@ import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { UserIcon } from '../icons/UserIcon.js';
 import type { AccountSession } from './account.js';
-import { sessionInitials } from './account-names.js';
+import { sessionInitials } from './accountNames.js';
 import s from './AccountAvatar.module.css';
 
 /**

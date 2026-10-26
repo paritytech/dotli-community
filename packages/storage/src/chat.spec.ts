@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { type ChatRecords, createChatRecords } from './chat.js';
 import { memoryIdb, type MemoryIdb } from './testing/index.js';
-import { abortAtCommit } from './testing/abort-at-commit.js';
+import { abortAtCommit } from './testing/abortAtCommit.js';
 
 // Each test gets a fresh database, so no test sees another's records.
 let idb: MemoryIdb;

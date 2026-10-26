@@ -6,7 +6,7 @@
 import { m, spans as S } from '@dotli/metrics';
 import { errorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { failureReason, type AnyMethod, type Request } from '@dotli/transport';
-import { callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
+import { callName, policyOf, type CallName, type MethodPolicy } from './methodPolicy.js';
 import { ProtocolRequestError, callFailure, fromTransportError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
 import type { DomainFailure, ProtocolTransport } from './schema.js';

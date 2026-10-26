@@ -35,16 +35,16 @@ import {
 } from '@dotli/protocol';
 import { createTransport, createWindowProvider } from '@dotli/transport';
 
-import { connectSharedWorker, registerWorkerRelay } from './shared-worker-link.js';
-import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
+import { connectSharedWorker, registerWorkerRelay } from './sharedWorkerLink.js';
+import { readSessionTuning, resolveBudgetCapMs } from './sessionTuning.js';
 import { createEngine, serveEngineScope, type ProtocolEngine } from './engine.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
-import { createSharedStoreHandler, serveLocalWallet, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
-import { createRefusalReporter, reportRefusals } from './refusal-report.js';
-import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
-import { purgeWorkerCaches } from './worker-caches.js';
-import { createFrameBoot } from './frame-boot.js';
-import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
+import { createSharedStoreHandler, serveLocalWallet, SHARED_AUTH_CHANNEL } from './sharedStoreHandler.js';
+import { createRefusalReporter, reportRefusals } from './refusalReport.js';
+import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './netBytes.js';
+import { purgeWorkerCaches } from './workerCaches.js';
+import { createFrameBoot } from './frameBoot.js';
+import { createTelemetryHandler, lightClientDb } from './telemetryHandler.js';
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
 // invisible to resource timing, so the speed readout needs this.
@@ -187,7 +187,7 @@ async function init(): Promise<void> {
 
 async function initSharedWorkerMode(network: Network): Promise<void> {
   // Vite only rewrites a literal `new URL` argument, so the network travels in the worker name, not a query param.
-  const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
+  const worker = new SharedWorker(new URL('./protocolSharedWorker.ts', import.meta.url), {
     type: 'module',
     name: `dotli-protocol-${network}`,
   });

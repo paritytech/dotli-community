@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { hostPlace, localRootOf } from './host-place.js';
+import { hostPlace, localRootOf } from './hostPlace.js';
 
 // BASE_DOMAIN never defaults silently, because the cross-origin allowlist (shared auth, protocol iframe, SITE_ID) is
 // keyed on it. A local root falls back to "dot.li" to match production, any other unparsable hostname aborts boot.

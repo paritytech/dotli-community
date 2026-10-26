@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSyncStore, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
-import { networkMonitor, type ChainStatus, type NetworkMonitor, type TransferState } from './network-monitor.js';
-import { describeLiveNetwork, type LiveVerdict } from '../network-verdict.js';
+import { networkMonitor, type ChainStatus, type NetworkMonitor, type TransferState } from './networkMonitor.js';
+import { describeLiveNetwork, type LiveVerdict } from '../networkVerdict.js';
 
 export type NetworkState = {
   chains: ChainStatus[];

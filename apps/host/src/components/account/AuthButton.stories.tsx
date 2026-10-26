@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
 import { byId, byTestId } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   calls,
   connect,
@@ -20,7 +20,7 @@ import {
   storyCallbacks,
   storyModalOpen,
   unreachable,
-} from '../../testing/stories/account-fixtures.js';
+} from '../../testing/stories/accountFixtures.js';
 import type { AccountSession } from './account.js';
 import { AuthButton } from './AuthButton.js';
 

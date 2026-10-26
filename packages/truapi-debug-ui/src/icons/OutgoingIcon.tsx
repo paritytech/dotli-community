@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from './icon-props.js';
+import type { IconProps } from './iconProps.js';
 
 /** A solid triangle pointing right, for a message that went to the product. */
 export function OutgoingIcon(props: IconProps): JSX.Element {

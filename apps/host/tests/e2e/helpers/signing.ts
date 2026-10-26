@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type Frame, type Locator } from '@playwright/test';
-import { entryText } from './run-test.js';
+import { entryText } from './runTest.js';
 
 type PageLike = Page | Frame;
 

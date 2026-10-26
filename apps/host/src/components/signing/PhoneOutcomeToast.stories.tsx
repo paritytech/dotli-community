@@ -5,8 +5,8 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { Overlays, showNotification, type NotificationParams } from '@dotli/ui';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import type { PhoneOutcome } from '../../runtime/phone-outcome.js';
-import { phoneOutcomeNotice } from '../../runtime/phone-outcome-notice.js';
+import type { PhoneOutcome } from '../../runtime/phoneOutcome.js';
+import { phoneOutcomeNotice } from '../../runtime/phoneOutcomeNotice.js';
 
 const APP = 'dotli.dot';
 

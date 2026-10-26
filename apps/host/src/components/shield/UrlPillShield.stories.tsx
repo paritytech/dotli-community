@@ -3,8 +3,8 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
-import { TopbarFrame } from '../../testing/stories/topbar-frame.js';
-import { noProductPill, productPill, setShield, storyShield } from '../../testing/stories/shield-fixtures.js';
+import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
+import { noProductPill, productPill, setShield, storyShield } from '../../testing/stories/shieldFixtures.js';
 import { UrlPillShield } from './UrlPillShield.js';
 
 const shield = (): HTMLElement | null => document.getElementById('verification-shield');

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { StoredEvent } from './event-store.js';
+import type { StoredEvent } from './eventStore.js';
 
 export type DirectionFilter = 'both' | 'incoming' | 'outgoing';
 

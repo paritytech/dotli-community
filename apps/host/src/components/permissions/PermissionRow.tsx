@@ -3,7 +3,7 @@
 
 import { dynamic, type JSX } from '@solidjs/web';
 import { Row, SegmentedControl, type SegmentOption } from '@dotli/ui';
-import { permissionIcon } from './permission-icons.js';
+import { permissionIcon } from './permissionIcons.js';
 import type { EnforceablePermissionName, PermissionStatus } from '../../runtime/permissions.js';
 import type { PermissionEntry } from './permissions.js';
 import s from './PermissionRow.module.css';

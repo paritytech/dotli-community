@@ -31,7 +31,7 @@ import {
   resolvePhaseCodec,
   rootManifestCodec,
   telemetryEventCodec,
-} from './codec-values.js';
+} from './codecValues.js';
 
 type ExecutableKind = ExecutableManifest['kind'];
 

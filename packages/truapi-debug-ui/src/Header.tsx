@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { DockPosition } from './model/dock-storage.js';
-import type { PanelSection } from './model/section-storage.js';
+import type { DockPosition } from './model/dockStorage.js';
+import type { PanelSection } from './model/sectionStorage.js';
 import { Button } from './shared/Button.js';
 import { SectionTabs } from './SectionTabs.js';
 import { ChevronDownIcon } from './icons/ChevronDownIcon.js';

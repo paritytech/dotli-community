@@ -7,13 +7,13 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { manualTimers, type ManualTimers } from '@dotli/shared/testing';
 import { ok } from '@dotli/transport';
-import { SHARED_CORE_SESSION_KEY } from './auth-storage.js';
+import { SHARED_CORE_SESSION_KEY } from './authStorage.js';
 import { PROTOCOL_ERRORS, ProtocolFatalError, ProtocolHandshakeTimeoutError } from './errors.js';
 import type { ProtocolStatus } from './frame.js';
 import { protocolSchema } from './schema.js';
-import type { SharedStoreStatus } from './shared-store.js';
+import type { SharedStoreStatus } from './sharedStore.js';
 import { getProtocolOrigin } from './client.js';
-import { createFrameHost, FRAME_CONFIG, FRAME_ORIGIN, type FakeIframe, type FrameHost } from './testing/frame-host.js';
+import { createFrameHost, FRAME_CONFIG, FRAME_ORIGIN, type FakeIframe, type FrameHost } from './testing/frameHost.js';
 
 const { storage } = protocolSchema.sections;
 

@@ -11,7 +11,7 @@ import { loadChainsContent } from '../../lazy.js';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import type { NetworkView } from './chains.js';
 import type { ChainsContentProps } from './ChainsContent.js';
-import { healthWord } from './network-health.js';
+import { healthWord } from './networkHealth.js';
 import s from './NetworkItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.

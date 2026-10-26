@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
-import type { RecentLabels } from '../recent-labels.js';
+import type { RecentLabels } from '../recentLabels.js';
 import { useActiveTld, useRecents } from './landing.js';
 
 /**

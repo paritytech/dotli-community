@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { type ResolvePhase } from './access-raw-storage.js';
+export { type ResolvePhase } from './accessRawStorage.js';
 export {
   isValidDotLabel,
   isValidDotName,
@@ -9,8 +9,8 @@ export {
   validateDotLabel,
   validateDotName,
   type DotLabelResult,
-} from './dot-label.js';
-export { dotNsUrl } from './dotns-url.js';
+} from './dotLabel.js';
+export { dotNsUrl } from './dotnsUrl.js';
 export { type ResolverErrorName } from './errors.js';
 export { isExecutableKind } from './executables.js';
 // From the schema module, not `./manifest.js`, which would drag the chain-storage code onto the eager path.
@@ -21,7 +21,7 @@ export {
   type ExecutableManifest,
   type ManifestResult,
   type RootManifest,
-} from './manifest-types.js';
+} from './manifestTypes.js';
 export {
   createDotnsResolver,
   type ChainClient,

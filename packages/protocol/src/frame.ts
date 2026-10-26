@@ -24,7 +24,7 @@ import { createTransport, createWindowProvider, type MessageTarget, type WindowL
 import { PROTOCOL_ERRORS, ProtocolVersionMismatchError, fromTransportError } from './errors.js';
 import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscription.js';
-import { createWireReport } from './wire-issues.js';
+import { createWireReport } from './wireIssues.js';
 
 /**
  * Where the protocol frame stands. `idle` before anything asked for it. `booting` while it loads. `listening` once it

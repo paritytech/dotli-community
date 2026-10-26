@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { Button } from '../../components/primitives/Button.js';
-import { ModalFocusFallback } from '../../components/floating/layer-context.js';
+import { ModalFocusFallback } from '../../components/floating/layerContext.js';
 import { openModal, type ModalHandoff, type ModalOutcome, type ModalView } from '../../page/state/modals.js';
 import { ModalOutlet } from './ModalOutlet.js';
 

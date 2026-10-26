@@ -72,7 +72,7 @@ jobs:
           check_eager() {
             local label=$1 dist=$2 max=$3 page=${4:-index.html}
             local json gz
-            if ! json=$(node scripts/eager-path-size.ts "$dist" "$page"); then
+            if ! json=$(node scripts/eagerPathSize.ts "$dist" "$page"); then
               echo "::warning::${label}: could not measure the eager path of ${dist}/${page}"
               echo "- \`${label}\`: could not measure the eager path of \`${dist}/${page}\`" >> /tmp/budget-warnings.md
               return
@@ -179,7 +179,7 @@ jobs:
                 br_pct=$(awk "BEGIN {printf \"%.0f\", (1 - $br/$raw) * 100}")
                 ;;
             esac
-          done < <(node scripts/bundle-sizes.ts compare "$BASELINE_FILE" host sandbox)
+          done < <(node scripts/bundleSizes.ts compare "$BASELINE_FILE" host sandbox)
 
           {
             echo "## Bundle Size Report"
@@ -268,7 +268,7 @@ jobs:
 
       - name: Generate baseline sizes
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: node scripts/bundle-sizes.ts baseline host sandbox > /tmp/bundle-baseline.json
+        run: node scripts/bundleSizes.ts baseline host sandbox > /tmp/bundle-baseline.json
 
       - name: Upload baseline artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

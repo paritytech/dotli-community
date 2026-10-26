@@ -11,14 +11,14 @@ import {
   importPhraseInPage,
   isValidPhrase,
   retryLogin,
-} from '../runtime/auth-controller.js';
+} from '../runtime/authController.js';
 import { LayerTracker, ModalFocusFallback, RootBoundary, useStore } from '@dotli/ui';
-import { productFrameFocus } from '../product-frame-layout.js';
+import { productFrameFocus } from '../productFrameLayout.js';
 import { AuthModal as Modal, type AuthModalPlacement } from '../components/account/AuthModal.js';
-import { authModalStore, getAuthModalTrigger } from '../state/auth-modal.js';
-import { registerTopbarSurface } from '../state/topbar-surfaces.js';
-import { revealTopbar } from '../topbar-autohide.js';
-import { closeWhenOpen, useRevealWhileOpen } from './auth-modal.js';
+import { authModalStore, getAuthModalTrigger } from '../state/authModal.js';
+import { registerTopbarSurface } from '../state/topbarSurfaces.js';
+import { revealTopbar } from '../topbarAutohide.js';
+import { closeWhenOpen, useRevealWhileOpen } from './useRevealWhileOpen.js';
 
 /**
  * The sign-in modal, bound to the state the auth controller writes from boot, so a sign-in started before hydration

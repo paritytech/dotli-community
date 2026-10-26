@@ -7,7 +7,7 @@ import { createSyncStore } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ThemePref } from '../runtime/state/theme.js';
 import type { SavedSettings } from '../components/settings/settings.js';
-import { openSettings, registerSettingsOpener } from '../settings-intent.js';
+import { openSettings, registerSettingsOpener } from '../settingsIntent.js';
 import { useSettingsPanel } from './settings.js';
 
 const SAVED: SavedSettings = {

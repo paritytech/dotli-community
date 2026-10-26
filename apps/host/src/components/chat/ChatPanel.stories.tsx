@@ -6,7 +6,7 @@ import type { ChatMessageContent } from '@parity/truapi';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { query } from '@dotli/ui/testing';
-import { type ChatStage, chatStage } from '../../testing/stories/chat-fixtures.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { ChatPanel } from './ChatPanel.js';
 
 /** The story's chat with the panel open, fresh for each. */

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { EventStore } from './model/event-store.js';
-import { createResolutionRecorder, type ResolutionRecorder } from './model/resolution-view.js';
+import { EventStore } from './model/eventStore.js';
+import { createResolutionRecorder, type ResolutionRecorder } from './model/resolutionView.js';
 import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
 
 /** What the panel shows, fed from the bus. */

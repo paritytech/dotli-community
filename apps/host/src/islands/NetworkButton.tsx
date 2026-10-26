@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import { productStore } from '../runtime/state/product.js';
 import { NetworkItem } from '../components/chains/NetworkItem.js';
 import { networkStore } from '../state/network.js';
-import { networkHealthStore } from '../state/network-health.js';
+import { networkHealthStore } from '../state/networkHealth.js';
 import { settingsStore } from '../state/settings.js';
 import { useNetworkPanel } from './network.js';
 

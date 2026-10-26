@@ -5,10 +5,10 @@
 
 import type { JSX } from '@solidjs/web';
 import { LayerTracker, ModalFocusFallback, RootBoundary } from '@dotli/ui';
-import { productFrameFocus } from '../product-frame-layout.js';
+import { productFrameFocus } from '../productFrameLayout.js';
 import { TopbarActions as Actions } from '../components/topbar/TopbarActions.js';
-import { registerTopbarSurface } from '../state/topbar-surfaces.js';
-import { topbarActionRoom, topbarMorph } from '../topbar-status.js';
+import { registerTopbarSurface } from '../state/topbarSurfaces.js';
+import { topbarActionRoom, topbarMorph } from '../topbarStatus.js';
 import { AccountButton } from './AccountButton.js';
 import { NetworkButton } from './NetworkButton.js';
 import { PermissionsButton } from './PermissionsButton.js';

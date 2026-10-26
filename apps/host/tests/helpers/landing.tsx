@@ -6,7 +6,7 @@ import { render } from '@solidjs/web';
 import { LandingAuth } from '../../src/islands/LandingAuth.js';
 import { LandingNav } from '../../src/islands/LandingNav.js';
 import { LandingRecents } from '../../src/islands/LandingRecents.js';
-import type { RecentLabels } from '../../src/recent-labels.js';
+import type { RecentLabels } from '../../src/recentLabels.js';
 
 /**
  * Renders the landing page's islands into the slots src/components/Landing.astro gives them, in a fresh `#app-view`.

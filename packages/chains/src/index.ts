@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
-export { chainBytesReceived, installByteMeter } from './byte-meter.js';
+export { chainBytesReceived, installByteMeter } from './byteMeter.js';
 export {
   CHAIN_HALTED_ERROR_DATA,
   chainHaltedError,
@@ -10,14 +10,14 @@ export {
   haltReasonOf,
   jsonRpcError,
   type RemoteChainHalt,
-} from './chain-halted.js';
+} from './chainHalted.js';
 export {
   createChainPool,
   type ChainActivity,
   type ChainPool,
   type ChainPoolWatcher,
   type LeaseProvider,
-} from './chain-pool.js';
+} from './chainPool.js';
 export {
   enableSyncReporting,
   onChainDetail,
@@ -26,8 +26,8 @@ export {
   type ChainPeer,
   type ChainSyncEvent,
   type ChainSyncKind,
-} from './chain-sync.js';
-export { SMOLDOT_DB_NAME } from './smoldot-db.js';
+} from './chainSync.js';
+export { SMOLDOT_DB_NAME } from './smoldotDb.js';
 export {
   createLightClient,
   lightClientDeps,
@@ -38,6 +38,6 @@ export {
   type SmoldotDbChain,
   type SmoldotDbOutcome,
 } from './provider.js';
-export { createCoreRpcChainProvider, getConnectedAssetHubRpcEndpoint, isCoreRpcChainSupported } from './rpc-chain.js';
-export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
+export { createCoreRpcChainProvider, getConnectedAssetHubRpcEndpoint, isCoreRpcChainSupported } from './rpcChain.js';
+export { type ChainTransportHooks, type ConnectionStatus } from './transportHooks.js';
 export { loadProvider } from './lazy.js';

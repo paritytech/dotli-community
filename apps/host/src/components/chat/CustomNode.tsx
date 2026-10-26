@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Product strings land as JSX text and every style comes from the closed mapping in custom-styles.ts.
+// Product strings land as JSX text and every style comes from the closed mapping in customStyles.ts.
 // Nodes match by tag and children by position, so an updated tree keeps a focused field's caret and text.
 
 import { createEffect, createUniqueId, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { RendererNode } from '@parity/truapi';
 import { InlineActionButton, type InlineActionButtonVariant } from './InlineActionButton.js';
-import { boxStyle, columnStyle, modifierStyle, rowStyle, textStyle } from './custom-styles.js';
-import { createEchoHold } from './echo-hold.js';
+import { boxStyle, columnStyle, modifierStyle, rowStyle, textStyle } from './customStyles.js';
+import { createEchoHold } from './echoHold.js';
 import s from './CustomNode.module.css';
 
 /** Reports a user gesture inside a rendered tree back to the product. */

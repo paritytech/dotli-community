@@ -4,7 +4,7 @@
 // smoldot-direct runs smoldot in the protocol iframe, smoldot-shared-worker in a SharedWorker that tabs share.
 // rpc-gateway uses a trusted JSON-RPC node and an IPFS gateway, with no smoldot.
 
-import { activeSettings } from './active-settings.js';
+import { activeSettings } from './activeSettings.js';
 
 export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
 

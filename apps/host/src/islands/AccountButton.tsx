@@ -3,15 +3,15 @@
 
 import type { JSX } from '@solidjs/web';
 import { authStore, loggedInStore } from '../runtime/state/auth.js';
-import { logout, startLogin } from '../runtime/auth-controller.js';
-import { sessionElsewhereStore } from '../runtime/state/session-elsewhere.js';
-import { signingOutStore } from '../runtime/state/sign-out.js';
-import { walletModeStore } from '../runtime/state/wallet-mode.js';
+import { logout, startLogin } from '../runtime/authController.js';
+import { sessionElsewhereStore } from '../runtime/state/sessionElsewhere.js';
+import { signingOutStore } from '../runtime/state/signOut.js';
+import { walletModeStore } from '../runtime/state/walletMode.js';
 import { getProtocolOrigin } from '@dotli/protocol';
-import { routeUrl } from '../runtime/session-handoff/session-protocol.js';
+import { routeUrl } from '../runtime/sessionHandoff/sessionProtocol.js';
 import { useStore } from '@dotli/ui';
 import { AccountItem } from '../components/account/AuthButton.js';
-import { authModalStore, setAuthModalTrigger } from '../state/auth-modal.js';
+import { authModalStore, setAuthModalTrigger } from '../state/authModal.js';
 import { useAccount } from './account.js';
 
 /** The account button bound to the session, as the topbar and the landing page's corner show it. */

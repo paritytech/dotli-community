@@ -5,7 +5,7 @@
 
 import { For, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from '../icons/icon-props.js';
+import type { IconProps } from '../icons/iconProps.js';
 import { Bar } from './Bar.js';
 import s from './Filters.module.css';
 

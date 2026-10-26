@@ -7,7 +7,7 @@
   "sideEffects": false,
   "exports": {
     "./preview": "./src/preview.tsx",
-    "./page-frame": "./src/page-frame.tsx",
+    "./page-frame": "./src/pageFrame.tsx",
     "./play": "./src/play.ts",
     "./vitest": "./src/vitest.ts",
     "./package.json": "./package.json"

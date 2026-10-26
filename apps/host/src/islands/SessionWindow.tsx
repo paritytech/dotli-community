@@ -6,7 +6,7 @@
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
-import { showBrokenPage } from '../broken-page.js';
+import { showBrokenPage } from '../brokenPage.js';
 import { SessionWindow as Content } from '../components/account/SessionWindow.js';
 import {
   closeIntent,
@@ -14,7 +14,7 @@ import {
   siteIntents,
   siteListIntents,
   windowIntents,
-} from '../state/session-window.js';
+} from '../state/sessionWindow.js';
 
 /**
  * The session window's content, bound to the view its entry writes. The page is nothing but this, so a failure breaks

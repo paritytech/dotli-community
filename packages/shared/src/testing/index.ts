@@ -3,12 +3,12 @@
 
 // Test-only helpers, apart from the barrel so no browser bundle reaches them.
 
-export { resetAllStoresForTests } from '../sync-store.js';
-export { FakePage } from './fake-page.js';
-export { manualTimers, type ManualTimers } from './manual-timers.js';
-export { memoryStorage } from './memory-storage.js';
+export { resetAllStoresForTests } from '../syncStore.js';
+export { FakePage } from './fakePage.js';
+export { manualTimers, type ManualTimers } from './manualTimers.js';
+export { memoryStorage } from './memoryStorage.js';
 export { must } from './must.js';
 export { nth } from './nth.js';
-export { recordLog, type LogLine } from './record-log.js';
+export { recordLog, type LogLine } from './recordLog.js';
 // Functional tests wait on the page through it. It reads the DOM, so only they call it.
-export { untilDom } from './until-dom.dom.js';
+export { untilDom } from './untilDom.dom.js';

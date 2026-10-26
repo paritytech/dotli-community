@@ -13,7 +13,7 @@ import {
   getActiveServicesConfig,
 } from './network.js';
 import { getSettings } from './settings.js';
-import { setSettings } from './active-settings.js';
+import { setSettings } from './activeSettings.js';
 
 const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
 

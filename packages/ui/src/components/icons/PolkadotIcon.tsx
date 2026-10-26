@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from './icon-props.js';
+import type { IconProps } from './iconProps.js';
 
 /** The Polkadot mark as six dots, for the Polkadot App. */
 export function PolkadotIcon(props: IconProps): JSX.Element {

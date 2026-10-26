@@ -4,7 +4,7 @@
 import { createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DiagnosticsSource, PackageVersion } from './host.js';
-import { createDiagnosticsSharer } from './share-diagnostics.js';
+import { createDiagnosticsSharer } from './shareDiagnostics.js';
 import { Button } from './shared/Button.js';
 import { Code } from './shared/Code.js';
 import { Column, Columns } from './shared/Columns.js';

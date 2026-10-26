@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from './icon-props.js';
+import type { IconProps } from './iconProps.js';
 
 /** A chevron pointing down, for a control that folds a panel away. */
 export function ChevronDownIcon(props: IconProps): JSX.Element {

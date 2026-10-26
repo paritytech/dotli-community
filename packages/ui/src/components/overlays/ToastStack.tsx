@@ -4,10 +4,10 @@
 import { createEffect, createMemo, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissAllToasts, setToastsExpanded, showToasts, toastsStore } from '../../page/state/toasts.js';
-import { useStore } from '../use-store.js';
+import { useStore } from '../useStore.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { ToastCard } from './ToastCard.js';
-import { pileDepths, scrollsToNewest, visibleToasts } from './toast-pile.js';
+import { pileDepths, scrollsToNewest, visibleToasts } from './toastPile.js';
 import s from './ToastStack.module.css';
 
 export function ToastStack(): JSX.Element {
