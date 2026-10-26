@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A third-party site that opens a session window as a site does: its request in the window URL's fragment, a hello for
-// each ready the window says, and the window's last reply marked on its output by its type and reason. It speaks the
-// wire protocol itself, as a site does, with nothing of dot.li's own pages. `?route=sign` asks for a transaction on the
-// network's Asset Hub with the call in the request, and any other route signs in.
+// each ready the window says, and the window's last reply marked on its output by its type and reason, and by its
+// result for a result. It speaks the wire protocol itself, as a site does, with nothing of dot.li's own pages.
+// `?route=sign` asks for a transaction on the network's Asset Hub with the call and an account in the request, and any
+// other route signs in with neither.
 
 import { isValidNetwork, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config/networks';
 import { PROTOCOL_VERSION, requestUrl } from '../../../src/runtime/session-handoff/session-protocol.js';
@@ -26,8 +27,6 @@ if (button === null || output === null) {
 
 const route = query.get('route') === 'sign' ? 'sign' : 'auth';
 const round = crypto.randomUUID();
-// Letters and digits only, as a site's nonce must be.
-const nonce = crypto.randomUUID().replaceAll('-', '');
 // The window takes any hex of two or more bytes before it decodes it, which these rounds never reach.
 const call = '0x000000';
 let opened: Window | null = null;
@@ -43,19 +42,25 @@ window.addEventListener('message', event => {
   }
   output.dataset['type'] = String(data['type']);
   output.dataset['reason'] = String(data['reason']);
+  if (data['type'] === 'dotli:s:result') {
+    output.dataset['result'] = JSON.stringify(data['result']);
+  }
 });
 
 button.addEventListener('click', () => {
-  const routeParams =
+  // A sign-in names no account. `account=none` leaves the account out of a transaction, as a site that forgot it would.
+  const params =
     route === 'sign'
-      ? { v: PROTOCOL_VERSION, net, round, chain: NETWORK_NAME_TO_SERVICES_CONFIG[net].assethub.genesis, call }
-      : { v: PROTOCOL_VERSION, net, round, nonce };
-  // `account=none` leaves the account out, as a site that forgot it would.
-  const params = {
-    ...routeParams,
-    ...(query.get('account') === 'none'
-      ? {}
-      : { account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0` }),
-  };
+      ? {
+          v: PROTOCOL_VERSION,
+          net,
+          round,
+          chain: NETWORK_NAME_TO_SERVICES_CONFIG[net].assethub.genesis,
+          call,
+          ...(query.get('account') === 'none'
+            ? {}
+            : { account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0` }),
+        }
+      : { v: PROTOCOL_VERSION, net, round };
   opened = window.open(requestUrl(windowOrigin, route, params), '_blank');
 });

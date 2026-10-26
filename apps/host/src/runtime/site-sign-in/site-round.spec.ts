@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad } from '@scure/base';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
@@ -34,20 +33,15 @@ import {
   type SiteScreen,
 } from './site-round.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
-import { displayAccount } from './site-account.js';
 import type { SiteGroups } from './site-groups.js';
 
 const ORIGIN = 'https://my-site.com';
 const SELF = 'https://dot.li';
 const NOW = Date.parse('2026-10-23T15:00:00.000Z');
-const STATEMENT = 'Optional statement from the site.';
 const METRIC = 'test.site_round';
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
 const OWNER = toHex(blake2b(fromHex(MAIN_KEY), 32));
-
-/** The account the site names, which the round never reads. */
-const ACCOUNT: ProductAccountId = { dotNsIdentifier: 'myapp.dot', derivationIndex: { tag: 'Index', value: 0 } };
 
 const TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(1));
 const NEW_TOKEN = base64urlnopad.encode(new Uint8Array(32).fill(2));
@@ -100,8 +94,6 @@ interface ActionRun {
 interface HarnessOptions {
   /** The site's origin, {@link ORIGIN} by default. */
   origin?: string;
-  /** The account the site names, {@link ACCOUNT} by default. */
-  account?: ProductAccountId;
   /** The window's own origin, {@link SELF} by default. */
   self?: string;
   siteToken?: string | null;
@@ -249,8 +241,6 @@ async function harness(options: HarnessOptions = {}) {
   const flow = createSiteRound({
     request: {
       round: 'r1',
-      account: options.account ?? ACCOUNT,
-      statement: STATEMENT,
       siteToken: options.siteToken ?? null,
       groupToken: options.groupToken ?? null,
     },
@@ -351,15 +341,15 @@ async function consentAndStore(flow: SiteRound, h: Harness) {
 }
 
 describe('site round', () => {
-  it('As a site, I ask for my account and the consent names it', async () => {
-    // Given a round for a site that names an account
+  it('As a site of no group, I ask to sign in and the consent names my origin alone', async () => {
+    // Given a round for a site of no group
     const h = await harness();
 
     // When the round shows its consent
     await h.until('consent');
 
-    // Then the consent carries that account as the window writes it
-    expect(h.flow.screen.get()).toMatchObject({ view: 'consent', account: displayAccount(ACCOUNT) });
+    // Then the consent carries the site's origin and no group
+    expect(h.flow.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, group: null });
   });
 
   it('As a user on a new site, I consent and the action runs for my main account, and the site gets its result and a token', async () => {
@@ -379,27 +369,11 @@ describe('site round', () => {
     ]);
     expect(h.screens).toEqual([
       { view: 'site-signing', origin: ORIGIN, route: 'sign' },
-      { view: 'consent', origin: ORIGIN, statement: STATEMENT, group: null, account: displayAccount(ACCOUNT) },
+      { view: 'consent', origin: ORIGIN, group: null },
       { view: 'window' },
       { view: 'site-signing', origin: ORIGIN, route: 'sign' },
     ]);
     expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'new' }]);
-  });
-
-  it('As a site, I name my account and the round runs its action for it', async () => {
-    // Given a site that names an account by a raw index
-    const account: ProductAccountId = {
-      dotNsIdentifier: 'myapp.dot',
-      derivationIndex: { tag: 'Raw', value: `0x${'7'.repeat(64)}` },
-    };
-    const h = await harness({ account });
-
-    // When the user consents and the window flow says a sign-in is stored
-    await consentAndStore(h.flow, h);
-    await h.closed;
-
-    // Then the action ran for exactly that account
-    expect(h.runs.map(run => run.input.account)).toEqual([account]);
   });
 
   it('As a site that got its result, I hear nothing more when the window flow closes the window', async () => {
@@ -575,10 +549,10 @@ describe('site round', () => {
     h.windowFlow().stored();
     await h.closed;
 
-    // Then no consent showed, the action ran for the account the site named, the site got no new token and the grant's
-    // last use moved on
+    // Then no consent showed, the action ran for the main account, the site got no new token and the grant's last use
+    // moved on
     expect(h.views()).not.toContain('consent');
-    expect(h.runs.map(run => run.input.account)).toEqual([ACCOUNT]);
+    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
     expect(resultOf(h.posts).site_token).toBeUndefined();
     expect(await h.stored.list()).toEqual([grantOf({ lastUsedAt: NOW })]);
     expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'granted', reason: 'known' }]);
@@ -744,16 +718,16 @@ describe('site round', () => {
 
   it('As a site the action refuses, I am refused with its reason and the main store keeps no grant', async () => {
     // Given an action that refuses the site
-    const h = await harness({ failures: [new SiteRoundRefusal('no_username')] });
+    const h = await harness({ failures: [new SiteRoundRefusal('bad_request')] });
 
     // When the round reaches the action
     await consentAndStore(h.flow, h);
     await h.closed;
 
     // Then the site is refused with the action's reason, nothing was kept and nothing was reported
-    expect(h.posts).toEqual([{ type: 'dotli:s:refused', reason: 'no_username' }]);
+    expect(h.posts).toEqual([{ type: 'dotli:s:refused', reason: 'bad_request' }]);
     expect(await h.stored.list()).toEqual([]);
-    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'no_username' }]);
+    expect(h.metrics.counted(METRIC)).toEqual([{ outcome: 'refused', reason: 'bad_request' }]);
     expect(h.errors).toEqual([]);
   });
 
@@ -943,16 +917,10 @@ describe('site round of a group', () => {
     await consentAndStore(h.flow, h);
     await h.closed;
 
-    // Then the consent named the group's registrable domain, the action ran for the account the site named, and the
-    // site got a new token for a grant of the group
-    expect(h.screens).toContainEqual({
-      view: 'consent',
-      origin: ORIGIN,
-      statement: STATEMENT,
-      group: 'my-site.com',
-      account: displayAccount(ACCOUNT),
-    });
-    expect(h.runs.map(run => run.input.account)).toEqual([ACCOUNT]);
+    // Then the consent named the group's registrable domain, the action ran for the main account, and the site got a
+    // new token for a grant of the group
+    expect(h.screens).toContainEqual({ view: 'consent', origin: ORIGIN, group: 'my-site.com' });
+    expect(h.runs.map(run => run.input.main)).toEqual([MAIN]);
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
     expect(await h.stored.list()).toEqual([
       {
@@ -1021,13 +989,7 @@ describe('site round of a group', () => {
 
       // Then the consent named the site's own registrable domain, and the site got a new token for a grant apart from
       // the other
-      expect(h.screens).toContainEqual({
-        view: 'consent',
-        origin,
-        statement: STATEMENT,
-        group: registrable,
-        account: displayAccount(ACCOUNT),
-      });
+      expect(h.screens).toContainEqual({ view: 'consent', origin, group: registrable });
       expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
       expect((await h.stored.list()).map(grant => grant.group?.registrable).sort()).toEqual(
         [grantRegistrable, registrable].sort(),
@@ -1141,13 +1103,7 @@ describe('site round of a group', () => {
 
     // Then the old grant is gone, the consent named the group, and the site got a new token for this account's grant
     expect(forgotten).toBeNull();
-    expect(h.screens).toContainEqual({
-      view: 'consent',
-      origin: ORIGIN,
-      statement: STATEMENT,
-      group: 'my-site.com',
-      account: displayAccount(ACCOUNT),
-    });
+    expect(h.screens).toContainEqual({ view: 'consent', origin: ORIGIN, group: 'my-site.com' });
     expect(resultOf(h.posts).site_token).toBe(NEW_TOKEN);
     expect((await h.stored.list()).map(grant => ({ token: grant.token, owner: grant.owner }))).toEqual([
       { token: NEW_TOKEN, owner: OWNER },

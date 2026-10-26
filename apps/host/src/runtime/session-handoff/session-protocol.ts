@@ -13,8 +13,8 @@ import { SESSION_SEGMENT } from './session-segment.js';
 export const PROTOCOL_VERSION = 1;
 
 /**
- * A session window's route. `manage` lists the signed-in sites and carries no request. `sign` signs and submits a
- * site's transaction.
+ * A session window's route. `manage` lists the signed-in sites and carries no request. `sign` signs a site's
+ * transaction.
  */
 export type SessionRoute = 'auth' | 'signout' | 'manage' | 'sign';
 
@@ -108,7 +108,6 @@ export type RefusalReason =
   | 'unsupported_version'
   | 'unknown_network'
   | 'declined'
-  | 'no_username'
   /** The wallet does not support or allow the transaction. */
   | 'transaction_invalid';
 

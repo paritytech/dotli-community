@@ -8,7 +8,7 @@
 // pages.
 
 import { base64urlnopad, utf8 } from '@scure/base';
-import { isValidNetwork, NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config/networks';
+import { isValidNetwork } from '@dotli/config/networks';
 import { PROTOCOL_VERSION, requestUrl } from '../../../src/runtime/session-handoff/session-protocol.js';
 
 const X25519 = { name: 'X25519' } as const;
@@ -85,8 +85,6 @@ async function signIn(): Promise<void> {
     throw new Error(`the site fixture needs the window's origin in ?window, got ${JSON.stringify(windowOrigin)}`);
   }
   const round = crypto.randomUUID();
-  // Letters and digits only, as a site's nonce must be.
-  const nonce = crypto.randomUUID().replaceAll('-', '');
   const pair = await crypto.subtle.generateKey(X25519, true, ['deriveBits']);
   const pub = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
   const privateKey = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
@@ -96,8 +94,6 @@ async function signIn(): Promise<void> {
     v: PROTOCOL_VERSION,
     net,
     round,
-    nonce,
-    account: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[net].dotns.TLD}/0`,
     return_to: `${location.origin}${RETURN_PATH}`,
     pub: base64urlnopad.encode(pub),
   };

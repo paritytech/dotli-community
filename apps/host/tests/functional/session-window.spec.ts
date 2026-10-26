@@ -489,7 +489,8 @@ test.describe('Signing a site in', () => {
     await page.goto(await serveSiteOpener(page));
     const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
     await expect(sessionWindow(window)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
-    await expect(window.getByTestId('session-window-title')).toHaveText(SITE_ORIGIN);
+    await expect(window.getByTestId('session-window-title')).toHaveText('Sign in with Polkadot');
+    await expect(window.getByTestId('session-window-site')).toHaveText(SITE_ORIGIN);
 
     // When the user cancels on the consent screen
     await Promise.all([untilClosed(window), window.getByTestId('session-window-decline').click()]);
@@ -499,12 +500,34 @@ test.describe('Signing a site in', () => {
     await expect(siteReply(page)).toHaveAttribute('data-type', 'dotli:s:refused');
     await expect(siteReply(page)).toHaveAttribute('data-reason', 'declined');
   });
+
+  test('As a site, I open the sign-in window of a user with a local wallet, the user continues and I get their username and nothing else', async ({
+    page,
+    context,
+  }) => {
+    // Given a user signed in with a local wallet, and a site's page whose sign-in window shows the consent screen
+    await signInOnProduct(page);
+    const site = await context.newPage();
+    await site.goto(await serveSiteOpener(site));
+    const window = await openSessionWindow(site, () => site.getByTestId('opener-sign-in').click());
+    await expect(sessionWindow(window)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
+
+    // When the user presses the consent button
+    await Promise.all([untilClosed(window), window.getByTestId('session-window-consent-button').click()]);
+
+    // Then the window closed and the site got a result that holds the username only
+    expect(window.isClosed()).toBe(true);
+    await expect(siteReply(site)).toHaveAttribute('data-type', 'dotli:s:result');
+    await expect(siteReply(site)).toHaveAttribute('data-result', /./);
+    const result = (await siteReply(site).getAttribute('data-result')) ?? '';
+    expect(Object.keys(JSON.parse(result) as Record<string, unknown>)).toEqual(['username']);
+  });
 });
 
 test.describe('Refusing a site request', () => {
-  test('As a site, I leave out the account and the window refuses my request', async ({ page }) => {
-    // Given a site's page whose request names no account
-    await page.goto(await serveSiteOpener(page, { account: 'none' }));
+  test('As a site, I leave out the account on a transaction and the window refuses my request', async ({ page }) => {
+    // Given a site's page whose transaction request names no account
+    await page.goto(await serveSiteOpener(page, { route: 'sign', account: 'none' }));
 
     // When the site opens the sign-in window
     const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
@@ -524,7 +547,8 @@ test.describe('Signing a site in by redirect', () => {
     await page.goto(await serveSiteRedirect(page));
     await page.getByTestId('opener-sign-in').click();
     await expect(sessionWindow(page)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
-    await expect(page.getByTestId('session-window-title')).toHaveText(SITE_ORIGIN);
+    await expect(page.getByTestId('session-window-title')).toHaveText('Sign in with Polkadot');
+    await expect(page.getByTestId('session-window-site')).toHaveText(SITE_ORIGIN);
 
     // When the user cancels on the consent screen
     await page.getByTestId('session-window-decline').click();
@@ -558,7 +582,8 @@ test.describe("Signing a site's transaction", () => {
     await page.goto(await serveSiteOpener(page, { route: 'sign' }));
     const window = await openSessionWindow(page, () => page.getByTestId('opener-sign-in').click());
     await expect(sessionWindow(window)).toHaveAttribute('data-view', 'consent', { timeout: TIMEOUT_MS });
-    await expect(window.getByTestId('session-window-title')).toHaveText(SITE_ORIGIN);
+    await expect(window.getByTestId('session-window-title')).toHaveText('Sign in with Polkadot');
+    await expect(window.getByTestId('session-window-site')).toHaveText(SITE_ORIGIN);
 
     // When the user cancels on the consent screen
     await Promise.all([untilClosed(window), window.getByTestId('session-window-decline').click()]);

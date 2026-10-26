@@ -3,12 +3,11 @@
 
 // A site's round in the session window, whatever the site asked for. It asks the user's consent unless the site's token
 // names a grant of this origin, or of the site's group, has the reused window flow sign in or resume a sign-in, runs the
-// route's action for the main account with the product account the site names, keeps the grant and answers the site
-// once. The main account comes from the window core's own report, never the saved copy, and the window flow tells the
-// round only that a sign-in is stored. The round hands the account to the action and never sends it, so nothing of the
-// session itself, nor of a local wallet, reaches the site.
+// route's action for the main account, keeps the grant and answers the site once. The main account comes from the
+// window core's own report, never the saved copy, and the window flow tells the round only that a sign-in is stored.
+// The round hands the main account to the action and never sends it, so nothing of the session itself, nor of a local
+// wallet, reaches the site.
 
-import type { ProductAccountId } from '@parity/truapi';
 import { m, reportExpected, type MetricOutcome } from '@dotli/metrics';
 import { createAsyncTaskPool, createSyncStore, deferred, log, shallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
@@ -17,17 +16,14 @@ import type { Responder } from '../session-handoff/responder.js';
 import type { RefusalReason } from '../session-handoff/session-protocol.js';
 import { reportWalletFailure } from '../wallet-failure.js';
 import { MainAccountError, type MainAccount } from './main-account.js';
-import { displayAccount, type DisplayAccount } from './site-account.js';
+import type { DisplayAccount } from './site-account.js';
 import type { DisplayCall } from './site-call.js';
 import type { SiteGroups } from './site-groups.js';
 
 /** What the round needs of a site's request, whatever its route. */
 export interface SiteRoundRequest {
   round: string;
-  /** The product account the site names, which every signature of the round uses. */
-  account: ProductAccountId;
   siteToken: string | null;
-  statement: string | null;
   /** The site's group token, or null for a site of no group. */
   groupToken: string | null;
 }
@@ -47,7 +43,7 @@ export class SiteRoundRefusal extends Error {
 }
 
 /** The step of a round that failed, a closed set so the metric's `reason` tag stays bounded. */
-export type SiteStep = 'main_account' | 'account' | 'sign' | 'chain' | 'build' | 'grant' | 'action';
+export type SiteStep = 'main_account' | 'account' | 'chain' | 'build' | 'grant' | 'action';
 
 /** A step of the round that failed, shown with Try again when `retry` holds. */
 export class SiteRoundFailure extends Error {
@@ -131,11 +127,8 @@ export type SiteScreen =
   | {
       view: 'consent';
       origin: string;
-      statement: string | null;
       /** The registrable domain of the site's group, or null for a site of no group. */
       group: string | null;
-      /** The product account the site named, which the sign-in is for. */
-      account: DisplayAccount;
     }
   | { view: 'site-failed'; origin: string; route: 'auth' | 'sign'; retry: boolean }
   | { view: 'window' }
@@ -147,14 +140,13 @@ export interface SiteAction<R> {
   /** The outcome a result counts with. */
   outcome(result: R): MetricOutcome;
   /**
-   * Runs the route for `main` with `account`, the product account the site names, and resolves with the site's
-   * result. It rejects with a {@link SiteRoundRefusal}, a {@link SiteRoundRejected} or a {@link SiteRoundFailure} to
-   * end or fail the round. `confirmed` resolves on the user's confirm on the view shown last, and rejects once another
-   * view shows or the round ends. `signal` aborts once the round ends, so the action stops what it still runs.
+   * Runs the route for `main` and resolves with the site's result. It rejects with a {@link SiteRoundRefusal}, a
+   * {@link SiteRoundRejected} or a {@link SiteRoundFailure} to end or fail the round. `confirmed` resolves on the user's
+   * confirm on the view shown last, and rejects once another view shows or the round ends. `signal` aborts once the
+   * round ends, so the action stops what it still runs.
    */
   run(input: {
     main: MainAccount;
-    account: ProductAccountId;
     show: (screen: SiteActionScreen) => void;
     confirmed: () => Promise<void>;
     signal: AbortSignal;
@@ -388,13 +380,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   };
 
   const showConsent = (): void => {
-    show({
-      view: 'consent',
-      origin,
-      statement: request.statement,
-      group: group?.registrable ?? null,
-      account: displayAccount(request.account),
-    });
+    show({ view: 'consent', origin, group: group?.registrable ?? null });
   };
 
   /** Forgets the grant of `token`. A failure is reported and the round goes on. */
@@ -455,7 +441,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
   const runAction = async (main: MainAccount): Promise<void> => {
     show(working);
     const grant = known;
-    const result = await action.run({ main, account: request.account, show, confirmed, signal: ended.signal });
+    const result = await action.run({ main, show, confirmed, signal: ended.signal });
     if (ended.signal.aborted) {
       return;
     }

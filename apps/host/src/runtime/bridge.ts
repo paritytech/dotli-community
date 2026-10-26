@@ -34,7 +34,7 @@ import { sessionState } from './session/session-state.js';
 import { siteWallet } from './session/site-wallet.js';
 import { createMainAccountSource, type MainAccountSource } from './site-sign-in/main-account.js';
 import { createSiteChain } from './site-sign-in/site-chain.js';
-import { createSiteSigner } from './site-sign-in/site-signer.js';
+import { createSiteAccountReader } from './site-sign-in/site-account-reader.js';
 import { createSiteTxSigner } from './site-sign-in/site-tx-signer.js';
 import { createPageSignOut } from './sign-out.js';
 import { pageSignInHandoff } from './session-handoff/opener.js';
@@ -117,17 +117,19 @@ export const { initBridge, setPageProduct, startProductFrame } = bridge;
 let servingSite = false;
 
 /**
- * The session window serves a site's round: its core runs under the product id of the account the site names, with
- * dot.li's own pairing, and boots on a stored local wallet. Called before anything boots a core. Once per page, so a
- * second call does nothing.
+ * The session window serves a site's round, with dot.li's own pairing, and boots on a stored local wallet. With an
+ * `account`, a transaction's, its core runs under that account's product id. With null, a sign-in's, its core runs as
+ * dot.li's own product. Called before anything boots a core. Once per page, so a second call does nothing.
  */
-export function serveSite(account: ProductAccountId): void {
+export function serveSite(account: ProductAccountId | null): void {
   if (servingSite) {
     return;
   }
   servingSite = true;
-  // dot.li's own pairing, as the site never names the window's product.
-  setPageProduct({ ...LANDING_PRODUCT, label: account.dotNsIdentifier, productId: account.dotNsIdentifier });
+  if (account !== null) {
+    // dot.li's own pairing, as the site never names the window's product.
+    setPageProduct({ ...LANDING_PRODUCT, label: account.dotNsIdentifier, productId: account.dotNsIdentifier });
+  }
   serveSites();
 }
 
@@ -140,8 +142,8 @@ export const mainAccount: MainAccountSource = createMainAccountSource({
   coreReport: sessionState.coreReport,
 });
 
-/** Signs a site's assertion on the page's own core, for the session window. */
-export const siteSigner = createSiteSigner({ acquire: () => bridge.core.acquire() });
+/** Reads the key of the account a site names on the page's own core, for the session window. */
+export const siteAccountReader = createSiteAccountReader({ acquire: () => bridge.core.acquire() });
 
 /** Signs a site's transaction as the account the site names on the page's own core, for the session window. */
 export const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acquire() });

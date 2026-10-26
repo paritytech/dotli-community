@@ -13,7 +13,7 @@ import { PROTOCOL_VERSION, type RefusalReason, type SessionRequest } from './ses
 
 export type Round =
   | { kind: 'first'; request: WindowRequest }
-  | { kind: 'third'; request: SiteRequest; net: Network }
+  | { kind: 'third'; request: SiteRequest }
   | { kind: 'third-sign'; request: SiteSignRequest }
   | { kind: 'refuse'; reason: RefusalReason };
 
@@ -38,6 +38,6 @@ export function dispatchRound(request: SessionRequest, party: 'first' | 'third',
     const parsed = parseSiteSignRequest(request, net);
     return parsed === null ? { kind: 'refuse', reason: 'bad_request' } : { kind: 'third-sign', request: parsed };
   }
-  const parsed = parseSiteRequest(request, net);
-  return parsed === null ? { kind: 'refuse', reason: 'bad_request' } : { kind: 'third', request: parsed, net };
+  const parsed = parseSiteRequest(request);
+  return parsed === null ? { kind: 'refuse', reason: 'bad_request' } : { kind: 'third', request: parsed };
 }

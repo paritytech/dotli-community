@@ -289,12 +289,8 @@ function phraseParts(form: PhraseForm, props: WindowPartsProps): SignInParts {
 }
 
 /** What a site gets once the user consents. */
-function siteGets(account: DisplayAccount): string[] {
-  return [
-    'Your username',
-    `The address of your ${account.product} account ${account.index}`,
-    'The right to ask you to sign transactions, each confirmed again',
-  ];
+function siteGets(): string[] {
+  return ['Your username', 'The right to ask you to sign transactions, each confirmed again'];
 }
 
 /** The way out of a site's round, which tells the site the user left. */
@@ -310,27 +306,18 @@ function siteCancel(props: WindowPartsProps): SignInAction {
 }
 
 /**
- * A site asks to sign in: its full origin heads the view, then the registrable domain its group covers when it has one,
- * then what it gets, and its own words when it sent any, shown as text and never as markup.
+ * A site asks to sign in: the Sign in with Polkadot header, then the site's full origin and the registrable domain its
+ * group covers when it has one, then what the site gets, then Continue and Cancel.
  */
-function consentParts(
-  origin: string,
-  statement: string | null,
-  group: string | null,
-  account: DisplayAccount,
-  props: WindowPartsProps,
-): SignInParts {
+function consentParts(origin: string, group: string | null, props: WindowPartsProps): SignInParts {
   const parts = StatusScreen({
-    title: origin,
+    title: 'Sign in with Polkadot',
     body: (
       <>
-        <div data-testid="session-window-account">
-          Account: {account.product}/{account.index}
-        </div>
+        <div data-testid="session-window-site">{origin}</div>
         {group === null ? null : (
-          <div data-testid="session-window-group">for every site of {group} that shares this sign-in</div>
+          <div data-testid="session-window-group">and every site of {group} that shares this sign-in</div>
         )}
-        <div>wants you to sign in with Polkadot</div>
       </>
     ),
     actions: [
@@ -359,25 +346,20 @@ function consentParts(
     content: (
       <>
         {parts.content}
-        <div role="list" data-testid="session-window-site-gets">
-          <Stack>
-            <For each={siteGets(account)}>
-              {line => (
-                <div role="listitem">
-                  <Callout icon={CheckIcon}>{line}</Callout>
-                </div>
-              )}
-            </For>
-          </Stack>
-        </div>
-        <Show when={statement}>
-          {said => (
+        <Stack>
+          <SectionLabel as="h2" text="This site gets" />
+          <div role="list" data-testid="session-window-site-gets">
             <Stack>
-              <SectionLabel as="h2" text="The site says" />
-              <Well testId="session-window-statement">{said()}</Well>
+              <For each={siteGets()}>
+                {line => (
+                  <div role="listitem">
+                    <Callout icon={CheckIcon}>{line}</Callout>
+                  </div>
+                )}
+              </For>
             </Stack>
-          )}
-        </Show>
+          </div>
+        </Stack>
       </>
     ),
   };
@@ -390,7 +372,7 @@ type SiteRoute = Extract<WindowStep, { view: 'site-failed' }>['route'];
 function siteSigningParts(origin: string, route: SiteRoute, props: WindowPartsProps): SignInParts {
   return StatusScreen({
     mark: 'spinner',
-    title: route === 'auth' ? 'Approve the sign-in in Polkadot App' : 'Preparing the transaction',
+    title: route === 'auth' ? 'Signing in' : 'Preparing the transaction',
     body: origin,
     actions: [siteCancel(props)],
     testId: 'session-window-status',
@@ -610,7 +592,7 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
     case 'phrase':
       return phraseParts(step.form, props);
     case 'consent':
-      return consentParts(step.origin, step.statement, step.group, step.account, props);
+      return consentParts(step.origin, step.group, props);
     case 'site-signing':
       return siteSigningParts(step.origin, step.route, props);
     case 'site-review':

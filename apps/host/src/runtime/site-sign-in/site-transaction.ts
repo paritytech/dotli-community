@@ -22,7 +22,7 @@ import {
   type SiteRoundDeps,
 } from './site-round.js';
 import type { SiteSignRequest } from './site-sign-request.js';
-import { SiteSignRejectedError, type SiteSigner } from './site-signer.js';
+import { SiteAccountRejectedError, type SiteAccountReader } from './site-account-reader.js';
 import { SiteTxError, type SiteTxSigner } from './site-tx-signer.js';
 
 /** What the site gets for its transaction: the signed transaction, in lowercase `0x` hex. */
@@ -36,7 +36,7 @@ export type SiteTransactionDeps = Omit<SiteRoundDeps<SiteTransactionResult>, 'ac
   call: Uint8Array;
   chain: SiteChain;
   txSigner: SiteTxSigner;
-  signer: Pick<SiteSigner, 'account'>;
+  accountReader: Pick<SiteAccountReader, 'account'>;
 };
 
 async function openChain(chain: SiteChain, genesis: string): Promise<SiteChainSession> {
@@ -88,27 +88,29 @@ function buildFailure(error: unknown): Error {
 /** Has the account the site names sign the site's call, and returns the signed transaction without sending it. */
 export function siteTransactionAction(deps: {
   origin: string;
+  /** The product account the site names, which signs the call. */
+  account: ProductAccountId;
   /** The genesis of the Asset Hub the site asked for. */
   genesis: string;
   call: Uint8Array;
   chain: SiteChain;
   txSigner: SiteTxSigner;
-  signer: Pick<SiteSigner, 'account'>;
+  accountReader: Pick<SiteAccountReader, 'account'>;
 }): SiteAction<SiteTransactionResult> {
-  const { origin, genesis, call, chain, txSigner, signer } = deps;
+  const { origin, account, genesis, call, chain, txSigner, accountReader } = deps;
   // The named account's key once read for a main account, which a Retry within the round for that main account uses
   // rather than asking the phone again. Another main account derives another key.
   let readKey: { owner: string; key: Uint8Array } | null = null;
 
-  const siteKey = async (main: MainAccount, account: ProductAccountId): Promise<Uint8Array> => {
+  const siteKey = async (main: MainAccount): Promise<Uint8Array> => {
     if (readKey?.owner === main.owner) {
       return readKey.key;
     }
     let key: Uint8Array;
     try {
-      key = await signer.account(account);
+      key = await accountReader.account(account);
     } catch (error) {
-      if (error instanceof SiteSignRejectedError) {
+      if (error instanceof SiteAccountRejectedError) {
         throw new SiteRoundRejected(error);
       }
       throw new SiteRoundFailure('account', true, 'The site account could not be read', error);
@@ -120,7 +122,7 @@ export function siteTransactionAction(deps: {
   return {
     route: 'sign',
     outcome: () => 'signed',
-    async run({ main, account, show, confirmed, signal }) {
+    async run({ main, show, confirmed, signal }) {
       const session = await openChain(chain, genesis);
       let closed = false;
       // Once only, since a round that ends closes the session at once and the run closes it again as it ends.
@@ -138,7 +140,7 @@ export function siteTransactionAction(deps: {
         // Decoded before the key, so a call that cannot be shown costs no approval on the phone.
         const decoded = await decode(session, call);
         // The account's key fills the nonce.
-        const publicKey = await siteKey(main, account);
+        const publicKey = await siteKey(main);
         show({ view: 'site-review', origin, call: decoded.display, account: displayAccount(account) });
         await confirmed();
         // The extensions fill before the phone is asked, so Approve shows only once it is.
@@ -164,23 +166,18 @@ export function siteTransactionAction(deps: {
 
 /** A site's transaction in the session window: the site's round with the transaction as its action. */
 export function createSiteTransaction(deps: SiteTransactionDeps): SiteRound {
-  const { request, call, chain, txSigner, signer, ...round } = deps;
+  const { request, call, chain, txSigner, accountReader, ...round } = deps;
   return createSiteRound({
     ...round,
-    request: {
-      round: request.round,
-      account: request.account,
-      siteToken: request.siteToken,
-      groupToken: request.groupToken,
-      statement: null,
-    },
+    request: { round: request.round, siteToken: request.siteToken, groupToken: request.groupToken },
     action: siteTransactionAction({
       origin: deps.origin,
+      account: request.account,
       genesis: request.chain,
       call,
       chain,
       txSigner,
-      signer,
+      accountReader,
     }),
     metric: S.SITE_TRANSACTION,
   });

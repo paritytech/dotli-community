@@ -22,12 +22,10 @@ import { ownerSignInFlag } from '../session/sign-in-flag.js';
 import { createFakePageEvents } from '../../testing/page-events.js';
 import { MainAccountError, mainAccountOf, type MainAccount } from './main-account.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
-import { displayAccount } from './site-account.js';
-import { encodeSs58 } from './site-assertion.js';
 import type { DisplayCall } from './site-call.js';
 import type { SiteChain } from './site-chain.js';
 import type { SiteSignRequest } from './site-sign-request.js';
-import type { SiteSigner } from './site-signer.js';
+import type { SiteAccountReader } from './site-account-reader.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowDeps } from './site-window.js';
 
 const SELF = 'https://dot.li';
@@ -50,7 +48,6 @@ const WALLET_ENTROPY = new Uint8Array(16).fill(0x5c);
 const WALLET_ACCOUNT = '5LocalWalletIdentityAccountOfTheMainStore';
 
 const SITE_KEY = new Uint8Array(32).fill(0x22);
-const SIGNATURE = `0x${'11'.repeat(64)}`;
 const TOKEN = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE';
 /** A token the site kept from an earlier round, which names no grant this store keeps. */
 const OLD_TOKEN = 'AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI';
@@ -65,9 +62,9 @@ const SIGNED_TX = `0x${'5e'.repeat(80)}`;
 
 /**
  * A session window over fakes for a site's round: the opener and its messages, a main store that holds a paired
- * session and a local wallet, the window's auth state, the main account its core reports through `mainAccount`, an
- * in-memory grants store and a signer that signs at once, with the window's real responder and real window flow. The
- * site said hello, so the window is vetted.
+ * session and a local wallet, the window's auth state, the main account its core reports through `mainAccount` and an
+ * in-memory grants store, with the window's real responder and real window flow. The site said hello, so the window is
+ * vetted.
  */
 function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.resolve(MAIN)) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
@@ -92,18 +89,10 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     logout: () => Promise.reject(new Error('The window signed out')),
     cancelLogin: () => undefined,
   };
-  const signer: SiteSigner = {
-    sign: (_origin, text) => {
-      text(SITE_KEY);
-      return Promise.resolve({ publicKey: SITE_KEY, signature: SIGNATURE });
-    },
-    account: () => Promise.resolve(SITE_KEY),
-  };
   const closed = deferred<undefined>();
   const deps: Omit<SiteWindowDeps, 'request'> = {
     origin: ORIGIN,
     self: SELF,
-    net: NET,
     responder,
     createWindowFlow: flow =>
       createWindowFlow({
@@ -133,7 +122,6 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     groups: {
       registrable: () => Promise.reject(new Error('The window loaded the suffix list for a site of no group')),
     },
-    signer,
     mainAccount,
     now: () => NOW,
     randomToken: () => TOKEN,
@@ -184,17 +172,7 @@ function watchWindow({ site, screen }: SiteWindow) {
  */
 function harness(mainAccount?: SiteWindowDeps['mainAccount']) {
   const parts = windowParts(mainAccount);
-  const window = openSiteSignIn({
-    ...parts.deps,
-    request: {
-      round: 'r1',
-      nonce: '8f2c1a9e0b7d4e6f',
-      account: ACCOUNT,
-      statement: null,
-      siteToken: null,
-      groupToken: null,
-    },
-  });
+  const window = openSiteSignIn({ ...parts.deps, request: { round: 'r1', siteToken: null, groupToken: null } });
   return { ...parts, ...watchWindow(window) };
 }
 
@@ -218,10 +196,15 @@ function fakeChain() {
   return { chain, decoded };
 }
 
+/** An account reader that reads the site account at once. */
+const ACCOUNT_READER: SiteAccountReader = {
+  account: () => Promise.resolve(SITE_KEY),
+};
+
 /**
- * A site's transaction window over the window's parts and a chain that builds it, for a request that carries `call`
- * or leaves it to a payload. `asked` resolves once the window asked for the payload. With `grantRead`, the request
- * carries an old token whose read waits for it.
+ * A site's transaction window over the window's parts, a chain that builds it and an account reader that reads the site account,
+ * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
+ * With `grantRead`, the request carries an old token whose read waits for it.
  */
 function transactionHarness(call: string | null, { grantRead }: { grantRead?: Promise<void> } = {}) {
   const parts = windowParts();
@@ -254,6 +237,7 @@ function transactionHarness(call: string | null, { grantRead }: { grantRead?: Pr
       },
     },
     chain,
+    accountReader: ACCOUNT_READER,
     txSigner: { creator: () => () => Promise.reject(new Error('The fake chain signs no transaction')) },
   });
   return { ...parts, decoded, asked: asked.promise, opening };
@@ -269,7 +253,7 @@ describe('site sign-in window', () => {
     await h.site.consent();
     await h.closed;
 
-    // Then the site got its result, and no message it got carries any of them
+    // Then the site got its one result, the main account's username alone, and no message it got carries any of them
     // A byte array writes as its hex, since JSON would write it as an object of indices.
     const sent = h
       .posted()
@@ -279,13 +263,14 @@ describe('site sign-in window', () => {
     const secrets = [
       MAIN_BLOB,
       'a'.repeat(64),
-      encodeSs58(fromHex(MAIN_KEY), NETWORK.ss58Prefix),
       hex.encode(WALLET_ENTROPY),
       WALLET_ACCOUNT,
       toHex(blake2b(fromHex(MAIN_KEY), 32)),
     ];
-    expect(sent.filter(message => message.includes('dotli:s:result'))).toHaveLength(1);
-    expect(sent.join('\n')).toContain(toHex(SITE_KEY));
+    const results = h.posted().filter(message => (message as { type: string }).type === 'dotli:s:result');
+    expect(results).toEqual([
+      { type: 'dotli:s:result', round: 'r1', result: { username: MAIN.username }, site_token: TOKEN },
+    ]);
     for (const message of sent) {
       for (const secret of secrets) {
         expect(message).not.toContain(secret);
@@ -345,26 +330,13 @@ describe('site group window', () => {
       openSiteSignIn({
         ...parts.deps,
         groups: { registrable: hostname => Promise.resolve(suffixes.registrable(hostname)) },
-        request: {
-          round: 'r1',
-          nonce: '8f2c1a9e0b7d4e6f',
-          account: ACCOUNT,
-          statement: null,
-          siteToken: null,
-          groupToken: 'my group',
-        },
+        request: { round: 'r1', siteToken: null, groupToken: 'my group' },
       }),
     );
     await w.until('consent');
 
     // Then the consent names the site's origin and its group's registrable domain
-    expect(w.screen.get()).toEqual({
-      view: 'consent',
-      origin: ORIGIN,
-      statement: null,
-      group: 'my-site.com',
-      account: displayAccount(ACCOUNT),
-    });
+    expect(w.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, group: 'my-site.com' });
   });
 });
 
