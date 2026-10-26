@@ -105,15 +105,18 @@ describe('routeFor', () => {
     expect(route.site).toBe('protocol');
   });
 
-  it("As a user, I open /__session on localhost and get the host build's session page", () => {
+  it("As a user, I open the session windows on localhost and get the host build's session window", () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
 
-    // When the session path is routed on localhost
-    const route = serving.routeFor('localhost', '/__session');
+    // When the session paths are routed on localhost
+    const routes = [serving.routeFor('localhost', '/s/auth'), serving.routeFor('localhost', '/s/signout')];
 
-    // Then the bare host build serves it
-    expect(route).toEqual({ site: 'host', bare: true });
+    // Then the bare host build serves both
+    expect(routes).toEqual([
+      { site: 'host', bare: true },
+      { site: 'host', bare: true },
+    ]);
   });
 
   it('As a user on an old shell, I open host.localhost for its frame and get the protocol build for one more release', () => {
@@ -263,17 +266,58 @@ describe('headerPolicy', () => {
     expect(policies).toEqual(['isolated', 'plain']);
   });
 
-  it('As a user, I open the sign-in window on the bare host and no page may frame it', () => {
+  it('As a user, I open the session windows on the bare host and no page may frame them', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
-    const bare = serving.routeFor('localhost', '/__session');
-    const shell = serving.routeFor('browse.localhost', '/__session');
+    const bare = serving.routeFor('localhost', '/s/auth');
+    const shell = serving.routeFor('browse.localhost', '/s/auth');
 
-    // When the session path's policy is read on both hosts
-    const policies = [headerPolicy(bare, '/__session'), headerPolicy(shell, '/__session')];
+    // When each session path's policy is read on both hosts
+    const policies = [
+      headerPolicy(bare, '/s/auth'),
+      headerPolicy(bare, '/s/signout'),
+      headerPolicy(shell, '/s/auth'),
+      headerPolicy(shell, '/s/signout'),
+    ];
 
-    // Then only the bare host's session page is unframed
-    expect(policies).toEqual(['unframed', 'plain']);
+    // Then only the bare host's session windows are unframed
+    expect(policies).toEqual(['unframed', 'unframed', 'plain', 'plain']);
+  });
+
+  it('As a user, I open a percent-encoded session path on the bare host and no page may frame it', () => {
+    // Given a server for both local roots and the bare host's route
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/s/%61uth');
+
+    // When the policy of the encoded path is read
+    const policy = headerPolicy(bare, '/s/%61uth');
+
+    // Then it is unframed like the plain path
+    expect(policy).toBe('unframed');
+  });
+
+  it('As a visitor, I send a malformed escape under the session segment and it is not treated as a session window', () => {
+    // Given a server for both local roots and the bare host's route
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/s/%E0%A4%A');
+
+    // When its policy is read
+    const policy = headerPolicy(bare, '/s/%E0%A4%A');
+
+    // Then it is not unframed
+    expect(policy).toBe('plain');
+  });
+
+  it('As a page, I ask the bare host for a path near the session windows and it is not treated as one', () => {
+    // Given a server for both local roots and the bare host's route
+    const serving = createLocalServing(ROOTS);
+    const bare = serving.routeFor('localhost', '/s/auth');
+
+    // When the policy of a trailing slash, another session segment path and the old path is read
+    const policies = ['/s/auth/', '/s/other', '/__session'].map(path => headerPolicy(bare, path));
+
+    // Then none of them is unframed
+    expect(policies).toEqual(['plain', 'plain', 'plain']);
   });
 
   it('As a product host, my assets carry no COEP', () => {
@@ -436,31 +480,76 @@ describe('resolveFile', () => {
     expect(resolved).toEqual({ file: join(DIR, 'docs/index.html'), pathname: '/docs/' });
   });
 
-  it('As a user, I open /__session on the bare host and get the session page', () => {
+  it('As a user, I open /s/auth and /s/signout on the bare host and get the session window', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
     const disk = build('landing.html', 'index.html', 'session.html');
 
-    // When the session path is resolved on the bare host
-    const resolved = resolveFile(DIR, serving.routeFor('localhost', '/__session'), '/__session', disk.isFile);
+    // When each session path is resolved on the bare host
+    const resolved = ['/s/auth', '/s/signout'].map(path =>
+      resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile),
+    );
 
-    // Then the session page is served
-    expect(resolved).toEqual({ file: join(DIR, 'session.html'), pathname: '/__session' });
+    // Then the session window is served for both
+    expect(resolved).toEqual([
+      { file: join(DIR, 'session.html'), pathname: '/s/auth' },
+      { file: join(DIR, 'session.html'), pathname: '/s/signout' },
+    ]);
   });
 
-  it('As a user on a build without the session page, I open the sign-in window and get a 404, not the shell', () => {
+  it('As a visitor, I open a path near the session windows on the bare host and get the shell, not the session window', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
-    const disk = build('landing.html', 'index.html');
+    const disk = build('landing.html', 'index.html', 'session.html');
 
-    // When the session path is resolved on the bare host
-    const resolved = resolveFile(DIR, serving.routeFor('localhost', '/__session'), '/__session', disk.isFile);
+    // When a trailing slash, another session segment path and the old path are resolved on the bare host
+    const resolved = ['/s/auth/', '/s/other', '/__session'].map(
+      path => resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile)?.file,
+    );
+
+    // Then the shell answers each of them
+    expect(resolved).toEqual([join(DIR, 'index.html'), join(DIR, 'index.html'), join(DIR, 'index.html')]);
+  });
+
+  it('As a visitor, I send a malformed escape under the session segment on the bare host and get a 404, not the session window', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html', 'session.html');
+
+    // When the malformed path is resolved on the bare host
+    const path = '/s/%E0%A4%A';
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile);
 
     // Then no file is served
     expect(resolved).toBeUndefined();
   });
 
-  it('As a page framing the sign-in window, I ask for its built file and get a 404 on any host', () => {
+  it('As a user, I open a percent-encoded session path on the bare host and get the session window', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html', 'session.html');
+
+    // When the encoded session path is resolved on the bare host
+    const path = '/s/%61uth';
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', path), path, disk.isFile);
+
+    // Then the session window is served
+    expect(resolved).toEqual({ file: join(DIR, 'session.html'), pathname: '/s/auth' });
+  });
+
+  it('As a user on a build without the session window, I open the session window and get a 404, not the shell', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+    const disk = build('landing.html', 'index.html');
+
+    // When the session path is resolved on the bare host
+    const resolved = resolveFile(DIR, serving.routeFor('localhost', '/s/auth'), '/s/auth', disk.isFile);
+
+    // Then no file is served
+    expect(resolved).toBeUndefined();
+  });
+
+  it('As a page framing the session window, I ask for its built file and get a 404 on any host', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
     const disk = build('landing.html', 'index.html', 'session.html');
@@ -491,16 +580,19 @@ describe('the table against nginx', () => {
     expect(headers).toEqual(nginx);
   });
 
-  it('As an operator, I run a Node server and the sign-in window carries the headers nginx sends', () => {
-    // Given the headers nginx sends with the sign-in window
-    const nginx = nginxHeaders('nginx/snippets/dotli-session-page.conf');
+  it.each(['/s/auth', '/s/signout'])(
+    'As an operator, I run a Node server and the session window at %s carries the headers nginx sends',
+    location => {
+      // Given the headers nginx sends with that location of the session window
+      const nginx = nginxHeaders('nginx/snippets/dotli-session-page.conf', location);
 
-    // When the Node server's unframed headers are built
-    const headers = policyHeaders('unframed', NGINX_ANCESTORS);
+      // When the Node server's unframed headers are built
+      const headers = policyHeaders('unframed', NGINX_ANCESTORS);
 
-    // Then
-    expect(headers).toEqual(nginx);
-  });
+      // Then they match nginx
+      expect(headers).toEqual(nginx);
+    },
+  );
 
   it('As an operator, I run a Node server and a sandbox page carries the isolation headers nginx sends', () => {
     // Given the headers nginx sends with a sandbox page
@@ -548,12 +640,26 @@ describe('the table against nginx', () => {
 });
 
 describe('devHeaders', () => {
-  it('As a developer, I open the sign-in window on the dev server and no page may frame it', () => {
+  it('As a developer, I open the session window on the dev server and no page may frame it', () => {
     // Given a server for both local roots
     const serving = createLocalServing(ROOTS);
 
-    // When the dev server's headers for the session path are built
-    const headers = serving.devHeaders('localhost', '/__session');
+    // When the dev server's headers for each session path are built
+    const headers = [serving.devHeaders('localhost', '/s/auth'), serving.devHeaders('localhost', '/s/signout')];
+
+    // Then no page may frame either
+    expect(headers).toEqual([
+      { 'Content-Security-Policy': "frame-ancestors 'none'" },
+      { 'Content-Security-Policy': "frame-ancestors 'none'" },
+    ]);
+  });
+
+  it('As a developer, I open a percent-encoded session path on the dev server and no page may frame it', () => {
+    // Given a server for both local roots
+    const serving = createLocalServing(ROOTS);
+
+    // When the dev server's headers for the encoded session path are built
+    const headers = serving.devHeaders('localhost', '/s/%61uth');
 
     // Then no page may frame it
     expect(headers).toEqual({ 'Content-Security-Policy': "frame-ancestors 'none'" });

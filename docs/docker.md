@@ -117,10 +117,10 @@ while believing otherwise.
 
 dotli needs three hostnames: an apex, `*.app.<domain>` for sandboxes, and
 `*.<domain>` for the shell. The apex also serves the protocol iframe under
-`/__protocol/` and the sign-in window at `/__session`. The container serves them
-as `localhost`, `*.app.localhost` and `*.localhost`. `host.localhost` still
-answers with the protocol build for one more release, so a shell cached by the
-previous release finds its frame.
+`/__protocol/` and the session window at `/s/auth` and `/s/signout`. The
+container serves them as `localhost`, `*.app.localhost` and `*.localhost`.
+`host.localhost` still answers with the protocol build for one more release, so
+a shell cached by the previous release finds its frame.
 
 This needs no code changes and no DNS setup: the flat `*.localhost` shape is
 already special-cased in `getProtocolOrigin` (`packages/protocol/src/client.ts`),

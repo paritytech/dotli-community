@@ -89,9 +89,12 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   opener on an origin its rule allows, and replies to that origin alone. Once it knows its opener, it decides from the
   main store, never from the opener: it offers Continue for a stored wallet or paired session, pairs on its own core, or
   takes a recovery phrase when asked for one. A step that fails leaves a failure with Try again.
-- The sign-out window applies the restore rule to the main store and tells its opener it has read. Unless the page tells
+- The sign-out window applies the restore rule to the main store and sends its vetted opener an empty result once it has
+  read. Its steps never wait on the opener, so a read made before the vetting goes out with it. Unless the page tells
   the phone itself, it ends the session it found on a core of its own, which holds it in memory only and so never
   touches the main store or the flag.
+- Each window keeps the request its URL fragment carried in the tab's session storage, so a reload answers the same
+  round, and reloads when a page puts a new request in its fragment.
 - Every product signs in and out through the sign-in window, opened in the click's own turn, since a product's copy may
   not be the main store. The landing page, whose copy is the main store, and a preview, whose opener policy cuts the
   link to any window, pair in place. The window's result is written into the page's copy, where its cores and session
@@ -168,17 +171,19 @@ flowchart LR
   window -- "result into the page's copy" --> bridge
 ```
 
-A sign-in round between a page and the window:
+A round between a page and the sign-in or sign-out window, on version 1 of the wire protocol. The page puts its request,
+with a fresh round, in the window URL's fragment, and a window that speaks no version the page knows ends the round as
+refused:
 
 ```mermaid
 sequenceDiagram
   participant P as page
-  participant W as sign-in window
-  P->>W: open in the click's turn
-  W->>P: ready, to any origin
-  P->>W: hello with a fresh round, to the root origin
+  participant W as session window
+  P->>W: open in the click's turn, the request in the fragment
+  W->>P: ready with the versions it speaks, to any origin
+  P->>W: hello with v 1 and the round from the request, to the root origin
   W->>W: vet the opener, decide from the main store
-  W->>P: result to the vetted origin, or refused with only the round
+  W->>P: result to the vetted origin, or refused with the round and a reason
   P->>P: on focus or visible, a closed window ends the round as cancelled
 ```
 
@@ -186,7 +191,7 @@ sequenceDiagram
 
 - The shell page. Dev server on port 4001.
 - The landing page, served for the bare host's root.
-- The sign-in window, served for the bare host's `/__session`.
+- The session window, served for the bare host's `/s/auth` and `/s/signout`.
 - `npm run dev`, `build`, `build:prod`, `typecheck`, `lint`.
 - `npm test`: unit specs. `test:functional`, `test:e2e`, `test:e2e:local` and `test:perf*` run Playwright suites. A
   functional run needs the build the root `build:test` script makes, as CI does. It turns metrics on and gives Sentry a

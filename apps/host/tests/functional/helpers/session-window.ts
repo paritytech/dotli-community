@@ -42,12 +42,14 @@ export async function openWalletTab(page: Page): Promise<void> {
 
 /**
  * Opens the sign-in window at its recovery phrase view from the debug panel's wallet tab, which asks for the phrase in
- * the window's URL and in its hello. `page` was loaded with `?debug=true`, so its panel shows.
+ * the window's request. `page` was loaded with `?debug=true`, so its panel shows.
  */
 export async function openPhraseWindow(page: Page): Promise<Page> {
   await openWalletTab(page);
   const window = await openSessionWindow(page, () => page.getByTestId('td-wallet-import').click());
-  await expect(window).toHaveURL(/[?&]intent=phrase(&|$)/);
+  // The window reads its request and takes it out of the fragment.
+  await expect.poll(() => new URL(window.url()).pathname, { timeout: TIMEOUT_MS }).toBe('/s/auth');
+  await expect.poll(() => new URL(window.url()).hash, { timeout: TIMEOUT_MS }).toBe('');
   return window;
 }
 

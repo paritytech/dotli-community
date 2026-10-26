@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The postMessage payloads of a sign-in window round and of a sign-out window, the window URL and the page's listener
- * for them. Parsers accept exactly the documented shapes and return null for anything else.
+ * dot.li's own session window requests and result, and the window channel seam both sides talk through. Parsers accept
+ * exactly the documented shapes and return null for anything else.
  */
 
 import type { Network } from '@dotli/config';
+import { isValidNetwork } from '@dotli/config/networks';
 import { isLocalWalletEntropy, isLocalWalletIdentity, type LocalWalletIdentity } from '@dotli/protocol';
 import { listen } from '@dotli/shared';
-import { SESSION_WINDOW_PATH } from '../../shell-route.js';
+import { asRecord, PROTOCOL_VERSION, requestUrl, type SessionRoute } from './session-protocol.js';
 
 /**
  * What a round asks the window for. `resume` takes a sign-in the page knows exists elsewhere, which the window sends at
@@ -24,25 +25,6 @@ function isSignInIntent(value: unknown): value is SignInIntent {
 export interface SessionResult {
   session: { blob: string; uiState: string | null } | null;
   localWallet: { entropy: Uint8Array; identity: LocalWalletIdentity | null } | null;
-}
-
-/**
- * A message the window sends its opener. `signed-out-read` is the sign-out window telling its opener it has read what
- * it ends, so the opener may clear its own copy. It carries nothing.
- */
-export type WindowMessage =
-  | { type: 'dotli:session:ready' }
-  | { type: 'dotli:session:signed-out-read' }
-  | { type: 'dotli:session:result'; round: string; result: SessionResult }
-  | { type: 'dotli:session:refused'; round: string };
-
-/** The sign-out window's word to its opener that it has read what it ends. */
-export const SIGNED_OUT_READ: WindowMessage = { type: 'dotli:session:signed-out-read' };
-
-export interface OpenerMessage {
-  type: 'dotli:session:hello';
-  round: string;
-  intent: SignInIntent;
 }
 
 /** The part of a `Window` either side talks to. */
@@ -62,12 +44,6 @@ export interface MessageEventLike {
 /** Hears the page's own `message` events until the returned stop. */
 export function listenToMessages(handler: (event: MessageEventLike) => void): () => void {
   return listen(window, 'message', handler);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function isSession(value: unknown): value is SessionResult['session'] {
@@ -94,7 +70,8 @@ function isLocalWallet(value: unknown): value is SessionResult['localWallet'] {
   return r['identity'] === null || isLocalWalletIdentity(r['identity']);
 }
 
-function parseResult(value: unknown): SessionResult | null {
+/** The window's result as a page reads it, or null when `value` is not one. */
+export function parseSessionResult(value: unknown): SessionResult | null {
   const r = asRecord(value);
   if (r === null || !isSession(r['session']) || !isLocalWallet(r['localWallet'])) {
     return null;
@@ -102,71 +79,38 @@ function parseResult(value: unknown): SessionResult | null {
   return { session: r['session'], localWallet: r['localWallet'] };
 }
 
-/** The window's message to the opener, or null when `data` is not one. */
-export function parseWindowMessage(data: unknown): WindowMessage | null {
-  const r = asRecord(data);
-  if (r === null) {
+/** What a first-party window reads from its request URL. */
+export type WindowRequest =
+  | { route: 'auth'; net: Network; round: string; intent: SignInIntent }
+  | { route: 'signout'; net: Network; round: string; notified: boolean };
+
+/** What `/s/signout` sends as its result, since it ends a session and has none to hand over. */
+export const SIGNED_OUT_RESULT: Readonly<Record<string, never>> = {};
+
+/** The sign-in window's request URL on `origin`. */
+export function signInWindowUrl(intent: SignInIntent, net: Network, round: string, origin: string): string {
+  return requestUrl(origin, 'auth', { v: PROTOCOL_VERSION, net, round, intent });
+}
+
+/** The sign-out window's request URL on `origin`. `notified` says the page already told the phone. */
+export function signOutWindowUrl(notified: boolean, net: Network, round: string, origin: string): string {
+  return requestUrl(origin, 'signout', { v: PROTOCOL_VERSION, net, round, ...(notified ? { notified } : {}) });
+}
+
+/** The request `params` make for `route`, or null when they break the contract. Unknown fields are ignored. */
+export function parseWindowRequest(
+  route: SessionRoute,
+  params: Readonly<Record<string, unknown>>,
+): WindowRequest | null {
+  const { v, net, round, intent, notified } = params;
+  if (v !== PROTOCOL_VERSION || typeof net !== 'string' || !isValidNetwork(net)) {
     return null;
   }
-  const type = r['type'];
-  if (type === 'dotli:session:ready' || type === 'dotli:session:signed-out-read') {
-    return { type };
-  }
-  const round = r['round'];
-  if (typeof round !== 'string') {
+  if (typeof round !== 'string' || round === '') {
     return null;
   }
-  if (type === 'dotli:session:refused') {
-    return { type, round };
+  if (route === 'signout') {
+    return { route, net, round, notified: notified === true };
   }
-  if (type === 'dotli:session:result') {
-    const result = parseResult(r['result']);
-    return result ? { type, round, result } : null;
-  }
-  return null;
-}
-
-/** The opener's message to the window, or null when `data` is not one. */
-export function parseOpenerMessage(data: unknown): OpenerMessage | null {
-  const r = asRecord(data);
-  const round = r?.['round'];
-  if (r?.['type'] !== 'dotli:session:hello' || typeof round !== 'string') {
-    return null;
-  }
-  const intent = r['intent'];
-  return isSignInIntent(intent) ? { type: 'dotli:session:hello', round, intent } : null;
-}
-
-/** The session window's URL on `origin`, the root origin the protocol frame uses. */
-function windowUrl(query: URLSearchParams, origin: string): string {
-  return `${origin}${SESSION_WINDOW_PATH}?${query}`;
-}
-
-/** The sign-in window's URL on `origin`. */
-export function signInWindowUrl(intent: SignInIntent, net: Network, origin: string): string {
-  return windowUrl(new URLSearchParams({ intent, net }), origin);
-}
-
-/** The sign-out window's URL on `origin`. `notified` says the page already told the phone. */
-export function signOutWindowUrl(notified: boolean, net: Network, origin: string): string {
-  const query = new URLSearchParams({ intent: 'signout', net });
-  if (notified) {
-    query.set('notified', '1');
-  }
-  return windowUrl(query, origin);
-}
-
-/**
- * The sign-in intent the window's URL names, which only a window with no opener goes by, since no hello reaches it. It
- * only picks the first view, so a URL that names anything else signs in, `resume` included, as nobody waits to take
- * what it would send.
- */
-export function windowUrlIntent(search: string): SignInIntent {
-  return new URLSearchParams(search).get('intent') === 'phrase' ? 'phrase' : 'signin';
-}
-
-/** What a sign-out window's URL says, or null for a window that signs in. */
-export function windowUrlSignOut(search: string): { notified: boolean } | null {
-  const query = new URLSearchParams(search);
-  return query.get('intent') === 'signout' ? { notified: query.get('notified') === '1' } : null;
+  return isSignInIntent(intent) ? { route, net, round, intent } : null;
 }

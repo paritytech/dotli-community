@@ -4,13 +4,16 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
-import { SESSION_PATH, isProtocolPath, requestHostname, type LocalServing } from './serving.ts';
+import { isProtocolPath, isSessionPath, requestHostname, type LocalServing } from './serving.ts';
 
 /** The pages the bare host answers with other than the shell, by their Astro routes. */
 export interface FallbackPages {
   /** The bare host's root. */
   landing: string;
-  /** `/__session`, the sign-in window, which Astro cannot route since it skips pages named with an underscore. */
+  /**
+   * The session window, which the bare host's `/s/auth` and `/s/signout` answer with. It is one built file,
+   * `session.html`, that only these paths may serve.
+   */
   session: string;
 }
 
@@ -26,9 +29,9 @@ export interface PageRequest {
 export type FallbackAction = { kind: 'pass' } | { kind: 'rewrite'; url: string } | { kind: 'not-found' };
 
 /**
- * Routes page loads: the bare host's root to `landing` and its `/__session` to `session`, and any other path that
- * names no public file to the shell page. A malformed escape names no file, so it is a 404. `routeFor` tells the bare
- * host from the others.
+ * Routes page loads: the bare host's root to `landing`, its `/s/auth` and `/s/signout` to `session`, and any other path
+ * that names no public file to the shell page. A malformed escape names no file, so it is a 404. `routeFor` tells the
+ * bare host from the others.
  */
 export function fallbackFor(
   req: PageRequest,
@@ -46,18 +49,18 @@ export function fallbackFor(
   if (isProtocolPath(path)) {
     return { kind: 'pass' };
   }
-  const bare = routeFor(req.hostname, path).bare;
-  if (bare && path === SESSION_PATH) {
-    return { kind: 'rewrite', url: withQuery(pages.session) };
-  }
+  const route = routeFor(req.hostname, path);
   if (path === '/') {
-    return bare ? { kind: 'rewrite', url: withQuery(pages.landing) } : { kind: 'pass' };
+    return route.bare ? { kind: 'rewrite', url: withQuery(pages.landing) } : { kind: 'pass' };
   }
   let decoded: string;
   try {
     decoded = decodeURIComponent(path);
   } catch {
     return { kind: 'not-found' };
+  }
+  if (isSessionPath(route, path)) {
+    return { kind: 'rewrite', url: withQuery(pages.session) };
   }
   return isPublicFile(decoded) ? { kind: 'pass' } : { kind: 'rewrite', url: withQuery('/') };
 }

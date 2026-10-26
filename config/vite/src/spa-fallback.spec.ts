@@ -103,28 +103,59 @@ describe('fallbackFor', () => {
     expect(action).toEqual({ kind: 'pass' });
   });
 
-  it('As a user, I open /__session on the bare host and get the session page with my query kept', () => {
-    // Given a server for both local roots and a page load of the sign-in window on the bare host with a query
+  it('As a user, I open /s/auth and /s/signout on the bare host and get the session window with my query kept', () => {
+    // Given a server for both local roots and page loads of both session paths on the bare host with a query
     const { routeFor } = createLocalServing(ROOTS);
-    const req = pageLoad('/__session?intent=signin&net=previewnet', 'localhost');
+    const requests = [pageLoad('/s/auth?debug=1', 'localhost'), pageLoad('/s/signout?debug=1', 'localhost')];
 
-    // When the fallback decides
-    const action = fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor);
+    // When the fallback decides for each
+    const actions = requests.map(req => fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor));
 
-    // Then it rewrites to the session page with the query
-    expect(action).toEqual({ kind: 'rewrite', url: '/session?intent=signin&net=previewnet' });
+    // Then it rewrites both to the session window with the query
+    expect(actions).toEqual([
+      { kind: 'rewrite', url: '/session?debug=1' },
+      { kind: 'rewrite', url: '/session?debug=1' },
+    ]);
   });
 
-  it('As a user on local.host, I open /__session on the bare local.host and get the session page', () => {
-    // Given a server for both local roots and a page load of the sign-in window on the bare local.host
+  it('As a user, I open a percent-encoded /s/auth on the bare host and get the session window like the built server does', () => {
+    // Given a server for both local roots and a page load of /s/%61uth on the bare host
     const { routeFor } = createLocalServing(ROOTS);
-    const req = pageLoad('/__session?intent=signin', 'local.host');
+    const req = pageLoad('/s/%61uth', 'localhost');
 
     // When the fallback decides
     const action = fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor);
 
-    // Then it rewrites to the session page
-    expect(action).toEqual({ kind: 'rewrite', url: '/session?intent=signin' });
+    // Then it rewrites to the session window
+    expect(action).toEqual({ kind: 'rewrite', url: '/session' });
+  });
+
+  it('As a visitor, I open a path near the session windows on the bare host and get the shell, not the session window', () => {
+    // Given page loads on the bare host of a trailing slash, another path under the segment and the old path
+    const { routeFor } = createLocalServing(ROOTS);
+    const requests = ['/s/auth/', '/s/other', '/__session'].map(path => pageLoad(path, 'localhost'));
+
+    // When the fallback decides for each
+    const actions = requests.map(req => fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor));
+
+    // Then it rewrites each to the shell
+    expect(actions).toEqual([
+      { kind: 'rewrite', url: '/' },
+      { kind: 'rewrite', url: '/' },
+      { kind: 'rewrite', url: '/' },
+    ]);
+  });
+
+  it('As a user on local.host, I open /s/auth on the bare local.host and get the session window', () => {
+    // Given a server for both local roots and a page load of the session window on the bare local.host
+    const { routeFor } = createLocalServing(ROOTS);
+    const req = pageLoad('/s/auth?debug=1', 'local.host');
+
+    // When the fallback decides
+    const action = fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor);
+
+    // Then it rewrites to the session window
+    expect(action).toEqual({ kind: 'rewrite', url: '/session?debug=1' });
   });
 
   it('As a visitor on local.host, I open a product subdomain of it and get the shell, not the landing page', () => {
@@ -139,15 +170,18 @@ describe('fallbackFor', () => {
     expect(action).toEqual({ kind: 'pass' });
   });
 
-  it('As a visitor, I follow /__session on a product host and get the shell, as only the bare host has it', () => {
-    // Given a server for both local roots and a page load of the sign-in window path on a product host
+  it('As a visitor, I follow /s/auth and /s/signout on a product host and get the shell, as only the bare host has them', () => {
+    // Given a server for both local roots and page loads of both session paths on a product host
     const { routeFor } = createLocalServing(ROOTS);
-    const req = pageLoad('/__session?intent=signin');
+    const requests = [pageLoad('/s/auth?debug=1'), pageLoad('/s/signout?debug=1')];
 
-    // When the fallback decides
-    const action = fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor);
+    // When the fallback decides for each
+    const actions = requests.map(req => fallbackFor(req, PAGES, publicDir().isPublicFile, routeFor));
 
-    // Then it rewrites to the shell with the query
-    expect(action).toEqual({ kind: 'rewrite', url: '/?intent=signin' });
+    // Then it rewrites both to the shell with the query
+    expect(actions).toEqual([
+      { kind: 'rewrite', url: '/?debug=1' },
+      { kind: 'rewrite', url: '/?debug=1' },
+    ]);
   });
 });

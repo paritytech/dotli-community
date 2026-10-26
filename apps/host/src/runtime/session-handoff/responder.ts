@@ -1,22 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The sign-in window's side of a round. The window learns who opened it only when the opener speaks, and the browser
-// vouches for the speaker, so a hello counts only from this window's opener, on an origin the opener rule allows. The
-// window answers that origin alone, with the round its hello named.
+// The session window's side of a round, for a sign-in and a sign-out window alike. The window learns who opened it
+// only when the opener speaks, and the browser vouches for the speaker, so a hello counts only from this window's
+// opener, for the round and protocol version of the window's own request, on an origin the opener rule allows. The
+// window answers that origin alone.
 
 import { m, spans as S } from '@dotli/metrics';
 import { createSyncStore, listen, log } from '@dotli/shared';
 import { sessionOpenerVerdict, type SessionOpenerVerdict } from './opener-rule.js';
-import {
-  listenToMessages,
-  parseOpenerMessage,
-  type MessageEventLike,
-  type SessionResult,
-  type SignInIntent,
-  type WindowHandle,
-  type WindowMessage,
-} from './messages.js';
+import { listenToMessages, type MessageEventLike, type WindowHandle } from './messages.js';
+import { parseHello, PROTOCOL_VERSION, READY, type PageMessage } from './session-protocol.js';
 
 /**
  * Where the window stands with its opener. `connecting` waits for a vetted hello, as at the start and once restored
@@ -24,19 +18,19 @@ import {
  */
 export type ResponderState =
   | { kind: 'connecting' }
-  | { kind: 'vetted'; origin: string; round: string; intent: SignInIntent }
+  | { kind: 'vetted'; origin: string }
   | { kind: 'refused' }
   | { kind: 'no-opener' }
   | { kind: 'answered' };
 
-export interface Responder {
+export interface Responder<R> {
   state(): ResponderState;
   subscribe(listener: (state: ResponderState) => void): () => void;
   /**
    * Sends the result to the vetted opener, once. A window waiting to be vetted again sends it on that vetting. Without
    * an opener there is nobody to send it to.
    */
-  send(result: SessionResult): void;
+  send(result: R): void;
 }
 
 export interface ResponderDeps {
@@ -49,31 +43,41 @@ export interface ResponderDeps {
   onPageRestore: (listener: () => void) => () => void;
 }
 
-/** Ready carries nothing and goes to any origin, since the window cannot know its opener's before the hello. */
-const READY: WindowMessage = { type: 'dotli:session:ready' };
-
-export function createResponder({ opener, self, listen, onPageRestore }: ResponderDeps): Responder {
+export function createResponder<R>({
+  opener,
+  self,
+  round,
+  listen,
+  onPageRestore,
+}: ResponderDeps & { round: string }): Responder<R> {
   const store = createSyncStore<ResponderState>('sessionResponder', {
     kind: opener === null ? 'no-opener' : 'connecting',
   });
   // A result finished while the window waits to be vetted again, which goes out with that vetting.
-  let held: SessionResult | null = null;
+  let held: { result: R } | null = null;
 
-  const post = (message: WindowMessage, target: string): void => {
+  const post = (message: PageMessage, target: string): void => {
     opener?.postMessage(message, target);
   };
 
-  const answer = (origin: string, round: string, result: SessionResult): void => {
-    post({ type: 'dotli:session:result', round, result }, origin);
+  // Ready names only the versions the window speaks and goes to any origin, since the window cannot know its opener's
+  // before the hello.
+  const sayReady = (): void => {
+    post(READY, '*');
+  };
+
+  const answer = (origin: string, result: R): void => {
+    post({ type: 'dotli:s:result', round, result }, origin);
     store.set({ kind: 'answered' });
   };
 
-  const refuse = (origin: string, round: string, reason: Exclude<SessionOpenerVerdict, 'allowed'>): void => {
+  const refuse = (origin: string, reason: Exclude<SessionOpenerVerdict, 'allowed'>): void => {
     store.set({ kind: 'refused' });
-    // Only the round, which the opener already knows, so a refused page learns nothing about the main store.
-    post({ type: 'dotli:session:refused', round }, '*');
+    // The round, which the opener already knows, and a fixed reason, so a refused page learns nothing about the main
+    // store.
+    post({ type: 'dotli:s:refused', round, reason: 'origin_not_allowed' }, origin);
     // The origin is the opener's to choose, so it goes to the log line and only the verdict to the count.
-    log.warn(`[dot.li] Sign-in window refused its opener (${reason}): ${origin}`);
+    log.warn(`[dot.li] Session window refused its opener (${reason}): ${origin}`);
     m.count(S.SESSION_WINDOW_REFUSED, { outcome: 'refused', reason });
   };
 
@@ -82,41 +86,41 @@ export function createResponder({ opener, self, listen, onPageRestore }: Respond
     if (event.source !== opener || store.get().kind !== 'connecting') {
       return;
     }
-    const hello = parseOpenerMessage(event.data);
-    if (hello === null) {
+    const hello = parseHello(event.data);
+    if (hello?.v !== PROTOCOL_VERSION || hello.round !== round) {
       return;
     }
     const verdict = sessionOpenerVerdict(event.origin, self);
     if (verdict !== 'allowed') {
-      refuse(event.origin, hello.round, verdict);
+      refuse(event.origin, verdict);
       return;
     }
-    log.event('sign-in window vetted its opener', { flow: 'wallet', intent: hello.intent });
+    log.event('session window vetted its opener', { flow: 'wallet' });
     if (held !== null) {
-      const result = held;
+      const { result } = held;
       held = null;
-      answer(event.origin, hello.round, result);
+      answer(event.origin, result);
       return;
     }
-    store.set({ kind: 'vetted', origin: event.origin, round: hello.round, intent: hello.intent });
+    store.set({ kind: 'vetted', origin: event.origin });
   };
 
   // The opener keeps a round open while the window it opened is, so a restored window says ready again and is vetted
-  // anew with the round the opener still holds.
+  // anew with its request's round, which the opener still holds.
   const restore = (): void => {
     const kind = store.get().kind;
     if (kind !== 'vetted' && kind !== 'connecting') {
       return;
     }
-    log.event('sign-in window restored, saying ready again', { flow: 'wallet' });
+    log.event('session window restored, saying ready again', { flow: 'wallet' });
     store.set({ kind: 'connecting' });
-    post(READY, '*');
+    sayReady();
   };
 
   if (opener !== null) {
     listen(onMessage);
     onPageRestore(restore);
-    post(READY, '*');
+    sayReady();
   }
 
   return {
@@ -128,9 +132,9 @@ export function createResponder({ opener, self, listen, onPageRestore }: Respond
     send(result) {
       const state = store.get();
       if (state.kind === 'vetted') {
-        answer(state.origin, state.round, result);
+        answer(state.origin, result);
       } else if (state.kind === 'connecting') {
-        held = result;
+        held = { result };
       }
     },
   };
@@ -144,12 +148,13 @@ function listenToPageRestore(listener: () => void): () => void {
   });
 }
 
-/** The window's responder over its own page, which posts ready to its opener at once. */
-export function startPageResponder(): Responder {
-  return createResponder({
+/** The responder for `round` over the window's own page, which posts ready to its opener at once. */
+export function startPageResponder<R>(round: string): Responder<R> {
+  return createResponder<R>({
     // Typed `any` by the DOM library.
     opener: window.opener as WindowHandle | null,
     self: window.location.origin,
+    round,
     listen: listenToMessages,
     onPageRestore: listenToPageRestore,
   });

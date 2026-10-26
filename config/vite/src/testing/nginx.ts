@@ -11,11 +11,24 @@ const REPO = join(import.meta.dirname, '../../../..');
 /**
  * The headers an nginx file sends, following its snippet includes. `file` is relative to the repo root. `default_type`
  * counts as the Content-Type. An `add_header` it cannot read fails the spec, so a value written another way cannot drift
- * unseen.
+ * unseen. With `location`, only that exact-match location block counts, so two blocks in one file are held apart.
  */
-export function nginxHeaders(file: string): Record<string, string> {
+export function nginxHeaders(file: string, location?: string): Record<string, string> {
   const headers: Record<string, string> = {};
+  let inLocation = location === undefined;
   for (const line of readFileSync(join(REPO, file), 'utf8').split('\n')) {
+    if (location !== undefined) {
+      if (line.trim() === `location = ${location} {`) {
+        inLocation = true;
+        continue;
+      }
+      if (inLocation && line.trim() === '}') {
+        break;
+      }
+    }
+    if (!inLocation) {
+      continue;
+    }
     const include = /^\s*include \/etc\/nginx\/snippets\/(\S+);/.exec(line);
     if (include?.[1] !== undefined) {
       Object.assign(headers, nginxHeaders(`nginx/snippets/${include[1]}`));

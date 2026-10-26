@@ -6,11 +6,12 @@
 // copy is the main store here: a stale copy is made by deleting the signed-in flag under a stored sign-in, and the
 // window's Continue is reached from the opener fixture page, since a signed-in dotli page never opens the window. The
 // recovery phrase signs in, as pairing needs a phone, and the window takes it only as the debug panel asks for it: at
-// the phrase intent in the window's URL.
+// the phrase intent in the window's request.
 
 import { expect, type APIRequestContext, type Frame, type Page } from '@playwright/test';
 import { DOMAIN, NETWORK, PORT, TIMEOUT_MS } from '../env.js';
 import { getProductFrame } from '../product-frame.js';
+import { requestUrl } from '../../src/runtime/session-handoff/session-protocol.js';
 import { seedSettings } from './fixtures/settings.js';
 import { isProtocolFrameUrl, ROOT_ORIGIN, waitForFrame } from './helpers/frames.js';
 import {
@@ -34,7 +35,12 @@ import {
 const LANDING_URL = `${ROOT_ORIGIN}/`;
 const PRODUCT_URL = `http://browse.localhost:${PORT}/`;
 /** The window opened on its own at its recovery phrase view, as the debug panel's wallet tab asks for it. */
-const PHRASE_WINDOW_URL = `${ROOT_ORIGIN}/__session?intent=phrase&net=${NETWORK}`;
+const PHRASE_WINDOW_URL = requestUrl(ROOT_ORIGIN, 'auth', {
+  v: 1,
+  net: NETWORK,
+  round: crypto.randomUUID(),
+  intent: 'phrase',
+});
 /** An origin the window serves: a product host on the root domain. */
 const OPENER_ORIGIN = `http://opener.localhost:${PORT}`;
 /** An origin the window refuses, as a product's own sandbox. */
@@ -428,7 +434,7 @@ test.describe('Signing in through the window fails', () => {
     // Then the window shows refused and the opener heard refused
     await expect(sessionWindow(window)).toHaveAttribute('data-view', 'refused', { timeout: TIMEOUT_MS });
     await expect(openerOutcome(page)).toHaveAttribute('data-outcome', 'refused');
-    await expect(openerOutcome(page)).toHaveAttribute('data-reply', 'round type');
+    await expect(openerOutcome(page)).toHaveAttribute('data-reply', 'reason round type');
   });
 });
 

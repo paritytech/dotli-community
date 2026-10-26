@@ -63,6 +63,28 @@ describe('readShellRoute', () => {
     expect(route).toEqual({ kind: 'landing' });
   });
 
+  it('As a visitor on the bare host, I open a path under the session segment in any spelling and get no product', () => {
+    // Given paths under the session segment, bare, with a slash, deeper, uppercased and with .dot
+    const paths = ['/s', '/s/', '/s/anything', '/S/x', '/s.dot/x'];
+
+    // When each is read on the bare host
+    const routes = paths.map(path => readShellRoute(at(`https://example.li${path}`), RELEASE));
+
+    // Then none of them names a product
+    expect(routes).toEqual(paths.map(() => ({ kind: 'landing' })));
+  });
+
+  it('As a visitor, I open the product named s on its own host and get it', () => {
+    // Given the product host of the name the session segment reserves on the bare host
+    const location = at('http://s.localhost:5173/s/auth');
+
+    // When it is read
+    const route = readShellRoute(location, RELEASE);
+
+    // Then the product is reached through its host
+    expect(route).toEqual({ kind: 'product', label: 's', base: '' });
+  });
+
   it('As a visitor on a sandbox host or the bare host, I am given no product, so the shell can send me to the landing page', () => {
     // When
     const sandbox = readShellRoute(at('http://bafy.app.localhost:5173/'), RELEASE);

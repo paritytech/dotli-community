@@ -44,13 +44,14 @@ interface Stored {
 }
 
 interface HarnessOptions {
-  /** The intent the opener's hello names before the flow starts. Without it the window still waits for one. */
-  vetted?: SignInIntent;
+  /** The request's intent, `signin` by default. */
+  intent?: SignInIntent;
+  /** Whether the opener is vetted before the flow starts. Without it the window still waits for its hello. */
+  vetted?: boolean;
   /** Whether a page opened the window, false for a window no page opened. */
   opener?: boolean;
   stored?: Stored;
   auth?: DotliAuthState;
-  urlIntent?: SignInIntent;
   /** The phrase check's loader, by default one that has it at once. */
   loadPhrase?: WindowFlowDeps['loadPhrase'];
 }
@@ -65,18 +66,19 @@ function harness(options: HarnessOptions = {}) {
   const opener = options.opener === false ? null : createFakeWindowHandle();
   const messages = createFakeMessageBus();
   const restores = createFakePageEvents();
-  const responder = createResponder({
+  const responder = createResponder<SessionResult>({
     opener,
     self: SELF,
+    round: 'r1',
     listen: messages.listen,
     onPageRestore: restores.subscribe,
   });
-  /** The opener's hello for `round`, from a page or, refused, from a product. */
-  const hello = (intent: SignInIntent, origin = PAGE, round = 'r1'): void => {
-    messages.post({ data: { type: 'dotli:session:hello', round, intent }, origin, source: opener });
+  /** The opener's hello for the request's round, from a page or, refused, from a product. */
+  const hello = (origin = PAGE): void => {
+    messages.post({ data: { type: 'dotli:s:hello', v: 1, round: 'r1' }, origin, source: opener });
   };
-  if (options.vetted !== undefined) {
-    hello(options.vetted);
+  if (options.vetted === true) {
+    hello();
   }
   const presence = createFakeSessionPresence('present');
   const auth = createSyncStore<DotliAuthState>('testAuth', options.auth ?? { tag: 'Disconnected' }, {
@@ -180,7 +182,7 @@ function harness(options: HarnessOptions = {}) {
       },
     },
     loadPhrase: options.loadPhrase ?? (() => Promise.resolve(PHRASE_CHECK)),
-    urlIntent: options.urlIntent ?? 'signin',
+    intent: options.intent ?? 'signin',
     close: () => {
       calls.push('close');
       closed.resolve(undefined);
@@ -205,26 +207,20 @@ function harness(options: HarnessOptions = {}) {
     closed: closed.promise,
     metrics,
     errors,
-    /** The opener vetted for round `r1`. */
-    vet: (intent: SignInIntent = 'signin') => {
-      hello(intent);
-    },
-    /** The opener vetted for another round, which a window restored after its opener started a new one sees. */
-    vetRound: (round: string) => {
-      hello('signin', PAGE, round);
+    /** The opener vetted for the request's round. */
+    vet: () => {
+      hello();
     },
     /** A product's page saying hello, which the window refuses. */
     refuse: () => {
-      hello('signin', 'https://x.app.dot.li');
+      hello('https://x.app.dot.li');
     },
     /** The window's page coming back from the back-forward cache. */
     restore: restores.fire,
     /** The results my opener got. */
     sent: () =>
       (opener?.posted ?? []).flatMap(({ message }) =>
-        (message as { type: string }).type === 'dotli:session:result'
-          ? [(message as { result: SessionResult }).result]
-          : [],
+        (message as { type: string }).type === 'dotli:s:result' ? [(message as { result: SessionResult }).result] : [],
       ),
     /** The core writing the session it paired through the window's flag keeper. */
     storeSession: (blob: string) =>
@@ -681,7 +677,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window whose Back failed, I press Back and am told so with Retry', async () => {
     // Given a window on the phrase view over a store that cannot be read
-    const { flow, failures } = harness({ vetted: 'phrase' });
+    const { flow, failures } = harness({ intent: 'phrase', vetted: true });
     await untilView(flow, 'phrase');
     failures.read = new Error('store down');
 
@@ -716,7 +712,8 @@ describe('session window flow', () => {
   it('As a user in the sign-in window, I import a phrase and it replaces the wallet, keeps the paired session and sends both', async () => {
     // Given a phrase window over a paired session and a local wallet
     const { flow, sent, presence, main, calls, closed } = harness({
-      vetted: 'phrase',
+      intent: 'phrase',
+      vetted: true,
       stored: { session: BLOB, uiState: UI_STATE, wallet: { entropy: ENTROPY, identity: IDENTITY } },
     });
     await untilView(flow, 'phrase');
@@ -745,7 +742,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window whose wallet could not be saved, I see the form say so and the failure is reported and the cookie deleted', async () => {
     // Given a phrase window whose wallet save fails
-    const { flow, sent, presence, failures, metrics, errors } = harness({ vetted: 'phrase' });
+    const { flow, sent, presence, failures, metrics, errors } = harness({ intent: 'phrase', vetted: true });
     await untilView(flow, 'phrase');
     failures.save = new Error('quota');
 
@@ -763,7 +760,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window whose store cannot be read after my phrase wallet saved, I see the failed view and the form is not told the save failed', async () => {
     // Given a phrase window over a store that cannot be read, which nothing reads before the wallet saves
-    const { flow, sent, failures, metrics } = harness({ vetted: 'phrase' });
+    const { flow, sent, failures, metrics } = harness({ intent: 'phrase', vetted: true });
     await untilView(flow, 'phrase');
     failures.read = new Error('store down');
 
@@ -778,7 +775,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window whose store could not be read after my phrase wallet saved, I press Try again and see the phrase form', async () => {
     // Given a phrase window on the failed view, as the store could not be read after the wallet saved
-    const { flow, sent, failures } = harness({ vetted: 'phrase' });
+    const { flow, sent, failures } = harness({ intent: 'phrase', vetted: true });
     await untilView(flow, 'phrase');
     failures.read = new Error('store down');
     await flow.importPhrase(PHRASE);
@@ -795,7 +792,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window, I enter a phrase that is not one and it is reported and touches nothing', async () => {
     // Given a phrase window
-    const { flow, sent, presence, calls, metrics } = harness({ vetted: 'phrase' });
+    const { flow, sent, presence, calls, metrics } = harness({ intent: 'phrase', vetted: true });
     await untilView(flow, 'phrase');
 
     // When the user imports a phrase that is not one
@@ -814,7 +811,8 @@ describe('session window flow', () => {
     const called = deferred<undefined>();
     const check = deferred<PhraseCheck>();
     const { flow } = harness({
-      vetted: 'phrase',
+      intent: 'phrase',
+      vetted: true,
       loadPhrase: () => {
         called.resolve(undefined);
         return check.promise;
@@ -839,7 +837,8 @@ describe('session window flow', () => {
     // Given a phrase check that fails to load once
     let loads = 0;
     const { flow, metrics } = harness({
-      vetted: 'phrase',
+      intent: 'phrase',
+      vetted: true,
       loadPhrase: () => {
         loads += 1;
         return loads === 1 ? Promise.reject(new Error('chunk missing')) : Promise.resolve(PHRASE_CHECK);
@@ -865,7 +864,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window opened for a phrase with nothing stored, I press Back and pairing starts', async () => {
     // Given a phrase window over an empty store
-    const { flow, calls } = harness({ vetted: 'phrase' });
+    const { flow, calls } = harness({ intent: 'phrase', vetted: true });
     await untilView(flow, 'phrase');
 
     // When the user presses Back
@@ -878,7 +877,7 @@ describe('session window flow', () => {
 
   it('As a user in the sign-in window opened for a phrase with a stored session, I press Back and am offered Continue', async () => {
     // Given a phrase window over a stored session
-    const { flow } = harness({ vetted: 'phrase', stored: { session: BLOB } });
+    const { flow } = harness({ intent: 'phrase', vetted: true, stored: { session: BLOB } });
     await untilView(flow, 'phrase');
 
     // When the user presses Back
@@ -907,15 +906,36 @@ describe('session window flow', () => {
     expect(calls).toEqual(['login']);
   });
 
-  it('As a user in a sign-in window with no opener whose URL asks for a phrase, I open it and see the phrase view first', async () => {
-    // Given a window with no opener whose URL asks for a phrase
-    const { flow, calls } = harness({ opener: false, urlIntent: 'phrase' });
+  it('As a user in a sign-in window with no opener whose request asks for a phrase, I open it and see the phrase view first', async () => {
+    // Given a window with no opener whose request asks for a phrase
+    const { flow, calls } = harness({ opener: false, intent: 'phrase' });
 
     // When the flow settles
     await flow.settled();
 
     // Then the phrase view shows and no login starts
     expect(flow.screen.get().view).toBe('phrase');
+    expect(calls).toEqual([]);
+  });
+
+  it('As a user who opens a resume window with no opener, I wait for nobody and am offered what is stored, as a sign-in window offers it', async () => {
+    // Given a window with no opener whose request asks to resume, over a stored session
+    const { flow, sent, calls } = harness({
+      opener: false,
+      intent: 'resume',
+      stored: { session: BLOB, uiState: UI_STATE },
+    });
+
+    // When the flow settles
+    await flow.settled();
+
+    // Then Continue offers the stored account and nothing is sent
+    expect(flow.screen.get().view).toBe('continue');
+    expect(offerOn(flow)).toEqual({
+      wallet: 'paired',
+      account: { publicKey: '0x01', liteUsername: 'alice.01' },
+    });
+    expect(sent()).toEqual([]);
     expect(calls).toEqual([]);
   });
 
@@ -958,19 +978,19 @@ describe('session window flow', () => {
     expect(pairing.calls).toEqual(['login']);
   });
 
-  it('As a user pairing in a restored sign-in window, I return to it and a new round joins the login under way while Retry starts one only after it answered', async () => {
+  it('As a user pairing in a restored sign-in window, I return to it and its round carries on the login under way while Retry starts one only after it answered', async () => {
     // Given a window pairing, its code on show
-    const { flow, vet, vetRound, restore, auth, calls, answerLogin } = harness();
+    const { flow, vet, restore, auth, calls, answerLogin } = harness();
     vet();
     await untilView(flow, 'pairing');
     auth.set(PAIRING);
 
-    // When it is restored and its opener vets a new round
+    // When it is restored and its opener vets the request's round again
     restore();
-    vetRound('r2');
+    vet();
     await flow.settled();
 
-    // Then the round pairs on the login under way, whose code stays
+    // Then the round carries on with the login under way, whose code stays
     expect(calls).toEqual(['login']);
     expect(flow.screen.get().pairing).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
 
@@ -980,29 +1000,28 @@ describe('session window flow', () => {
     await untilPairing(flow, 'error');
     await flow.retry();
 
-    // Then the joined round started no login of its own, and Retry started the one more
+    // Then the vetting again started no login of its own, and Retry started the one more
     expect(calls).toEqual(['login', 'login']);
     expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
   });
 
-  it('As a user in a restored sign-in window whose new round failed to decide while my code is on show, I press Retry and the code stays', async () => {
-    // Given a window pairing with its code on show, restored into a new round whose read of the store fails
-    const { flow, vet, vetRound, restore, auth, calls, failures } = harness();
+  it('As a user pairing in a restored sign-in window whose store cannot be read, I return to it and my code stays with nothing decided again', async () => {
+    // Given a window pairing with its code on show, restored while its read of the store fails
+    const { flow, vet, restore, auth, calls, failures, metrics } = harness();
     vet();
     await untilView(flow, 'pairing');
     auth.set(PAIRING);
     failures.read = new Error('frame down');
     restore();
-    vetRound('r2');
-    await untilView(flow, 'failed');
 
-    // When the store answers again and Retry is pressed
-    failures.read = null;
-    await flow.retry();
+    // When its opener vets the request's round again
+    vet();
+    await flow.settled();
 
-    // Then the login under way still shows its code, and no second login started
+    // Then the login under way still shows its code, no step read the store and no second login started
     expect(flow.screen.get().view).toBe('pairing');
     expect(flow.screen.get().pairing).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
+    expect(metrics.counted('session_window.flow')).toEqual([]);
     expect(calls).toEqual(['login']);
   });
 
@@ -1221,7 +1240,10 @@ describe('session window flow', () => {
   describe('resuming a sign-in made elsewhere', () => {
     it('As a user in a sign-in window a page asked to resume, I am not offered Continue and the stored session is sent at once after the flag landed', async () => {
       // Given a window over a stored session with its views and flag writes recorded
-      const { flow, sent, vet, presence, calls, closed } = harness({ stored: { session: BLOB, uiState: UI_STATE } });
+      const { flow, sent, vet, presence, calls, closed } = harness({
+        intent: 'resume',
+        stored: { session: BLOB, uiState: UI_STATE },
+      });
       const views: WindowView[] = [];
       flow.screen.subscribe(() => {
         views.push(flow.screen.get().view);
@@ -1233,8 +1255,8 @@ describe('session window flow', () => {
         return Promise.resolve();
       };
 
-      // When a page asks it to resume
-      vet('resume');
+      // When the page that asked it to resume is vetted
+      vet();
       await closed;
 
       // Then the session is sent after the flag, with no Continue on show
@@ -1248,11 +1270,12 @@ describe('session window flow', () => {
     it('As a user in a sign-in window a page asked to resume, I am not offered Continue and a stored local wallet is sent with the paired session', async () => {
       // Given a window over a paired session and a local wallet
       const { sent, vet, closed } = harness({
+        intent: 'resume',
         stored: { session: BLOB, uiState: UI_STATE, wallet: { entropy: ENTROPY, identity: IDENTITY } },
       });
 
-      // When a page asks it to resume
-      vet('resume');
+      // When the page that asked it to resume is vetted
+      vet();
       await closed;
 
       // Then the session and the wallet are sent together
@@ -1263,10 +1286,10 @@ describe('session window flow', () => {
 
     it('As a user in a sign-in window asked to resume over an empty store, I fall back to signing in and the stale flag is dropped', async () => {
       // Given a window over an empty store
-      const { flow, sent, vet, presence, calls } = harness();
+      const { flow, sent, vet, presence, calls } = harness({ intent: 'resume' });
 
-      // When a page asks it to resume
-      vet('resume');
+      // When the page that asked it to resume is vetted
+      vet();
       await untilView(flow, 'pairing');
 
       // Then nothing is sent, the flag drops and pairing starts for the page
@@ -1278,9 +1301,12 @@ describe('session window flow', () => {
 
     it('As a user in a sign-in window whose resume failed, I am told so and Retry sends the stored sign-in', async () => {
       // Given a resume that failed on a store that could not be read
-      const { flow, sent, vet, failures, closed } = harness({ stored: { session: BLOB, uiState: UI_STATE } });
+      const { flow, sent, vet, failures, closed } = harness({
+        intent: 'resume',
+        stored: { session: BLOB, uiState: UI_STATE },
+      });
       failures.read = new Error('frame unavailable');
-      vet('resume');
+      vet();
       await untilView(flow, 'failed');
 
       // When the store recovers and the user presses Retry

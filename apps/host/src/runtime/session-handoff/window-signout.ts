@@ -5,9 +5,10 @@
 // main store still holds is dead, while a local wallet stays for that page to forget. The window applies the restore
 // rule to the main store, which clears only what it read while the flag is still gone, so a sign-in made elsewhere
 // since stays. It tells the page it has read, then ends the session the rule found dead on a core of its own when the
-// page could not tell the phone. It needs no handshake. The core sends the phone its message in a task of its own
-// after its disconnect answers, so a window that told the phone stays open, saying the user is signed out, and the user
-// closes it. Any other window closes itself.
+// page could not tell the phone. Its steps never wait on the opener: the read goes out once the opener is vetted, and a
+// window that closes before then drops it. The core sends the phone its message in a task of its own after its
+// disconnect answers, so a window that told the phone stays open, saying the user is signed out, and the user closes
+// it. Any other window closes itself.
 
 import { m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
@@ -15,7 +16,7 @@ import type { Reconciled } from '../session/restore-rule.js';
 import { reportWalletFailure } from '../wallet-failure.js';
 
 export interface WindowSignOutDeps {
-  /** Whether the page told the phone itself, as the window's URL says. */
+  /** Whether the page told the phone itself, as the window's request says. */
   notified: boolean;
   /**
    * The restore rule on the main store, run once for the window. Its answer holds the dead session even once the store
@@ -28,7 +29,8 @@ export interface WindowSignOutDeps {
    */
   endSession: (blob: string) => Promise<void>;
   /**
-   * Tells the page that opened the window it has read what it ends, so the page may clear its own copy. Never throws.
+   * Tells the page that opened the window it has read what it ends, so the page may clear its own copy, now or once
+   * the page is vetted. Never throws.
    */
   read: () => void;
   close: () => void;

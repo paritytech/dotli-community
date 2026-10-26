@@ -160,9 +160,11 @@ jobs:
           f=$(curl -fsS -H 'Host: localhost' http://127.0.0.1:5199/__protocol/ | grep -o 'assets/[^"]*\.js' | head -1)
           test "$f" = "$p" \
             || { echo "::error::localhost/__protocol/ did not answer the protocol build ($f, expected $p)"; exit 1; }
-          # The sign-in window is the bare host's session page, not the shell.
-          curl -fsS -H 'Host: localhost' http://127.0.0.1:5199/__session | grep -q 'data-session-window' \
-            || { echo "::error::localhost/__session is not the session page"; exit 1; }
+          # The session window is the bare host's session page, not the shell, on each of its paths.
+          for s in /s/auth /s/signout; do
+            curl -fsS -H 'Host: localhost' "http://127.0.0.1:5199$s" | grep -q 'data-session-window' \
+              || { echo "::error::localhost$s is not the session page"; exit 1; }
+          done
           curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/host-sw.js | grep -q 'precache' \
             || { echo "::error::browse.localhost/host-sw.js is not the host worker"; exit 1; }
           curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/dotli-network.js | grep -q '"label":"smoke"' \

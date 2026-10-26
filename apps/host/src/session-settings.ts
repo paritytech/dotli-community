@@ -1,23 +1,25 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The sign-in window's settings. The network is the opener's, for this window alone, and the rest is this origin's own.
-// The window stores none of them, so a round never displaces the landing page's saved choice, and none of them is a
-// reason to wipe or reload, which would end the round.
+// A session window's settings. The network is the one its request names, already validated, for this window alone, and
+// the rest is this origin's own. The window stores none of them, so a round never displaces the landing page's saved
+// choice, and none of them is a reason to wipe or reload.
 
-import { parseSettingsFromSearch, resolveSettings, type Settings } from '@dotli/config';
+import { resolveSettings, type Network, type ParsedUrlSettings, type Settings } from '@dotli/config';
 
-/**
- * The window's settings, resolved with `net` as the link's only setting. Reads `net` and never
- * `network`, the landing page's parameter, since an old worker can send this URL to the landing page with its query
- * kept.
- */
+/** The window's settings, resolved with the request's validated `net` as the only setting it brings. */
 export function windowSettings(
-  search: string,
+  net: Network,
   local: Pick<Storage, 'getItem'>,
   sharedWorkerAvailable: boolean,
 ): Settings {
-  const net = new URLSearchParams(search).get('net');
-  const url = parseSettingsFromSearch(new URLSearchParams(net === null ? {} : { network: net }));
+  // The request carries no other setting, so the rest falls through to this origin's.
+  const url: ParsedUrlSettings = {
+    network: net,
+    backend: null,
+    skipArchiveCache: null,
+    skipCidCache: null,
+    skipWorkerCache: null,
+  };
   return resolveSettings({ local, shared: null, url, sharedWorkerAvailable }).settings;
 }

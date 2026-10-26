@@ -36,15 +36,11 @@ const handoff = createSessionHandoff({
   presence: { clear: () => Promise.resolve() },
 });
 
-// What the window posted last, as the keys it carried, so a test sees that a refusal carries nothing but its round.
+// What the window posted last, as the keys it carried, so a test sees that a refusal carries only its round and a
+// reason.
 listenToMessages(event => {
   const data = event.data as Record<string, unknown> | null;
-  if (
-    event.origin !== windowOrigin ||
-    typeof data !== 'object' ||
-    data === null ||
-    data['type'] === 'dotli:session:ready'
-  ) {
+  if (event.origin !== windowOrigin || typeof data !== 'object' || data === null || data['type'] === 'dotli:s:ready') {
     return;
   }
   output.dataset['reply'] = Object.keys(data).sort().join(' ');

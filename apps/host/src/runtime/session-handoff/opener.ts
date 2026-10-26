@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The page's side of the sign-in window: it opens the window from the click, answers the window's `ready` and takes
-// the window's reply. The browser vouches for who speaks, so a reply counts only from the window this page opened, on
-// the root origin, for the round this page started. A sign-out opens the sign-out window and drops the signed-in flag
-// in the click's turn, and answers that window's read to whoever asks.
+// The page's side of the session window: it opens the window from the click at a request with a fresh round, answers
+// each `ready` that speaks protocol version 1 with a hello for that round, and takes the window's result or refusal.
+// The browser vouches for who speaks, so a message counts only from the window this page opened, on the root origin,
+// and a result or refusal only for the round this page started. A sign-out opens the sign-out window and drops the
+// signed-in flag in the click's turn, and answers that window's read to whoever asks.
 
 import { getNetwork, type Network } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
@@ -14,16 +15,15 @@ import { signInSurface, type PageRole } from '../page-role.js';
 import { sessionPresence, type SessionPresence } from '../session/presence.js';
 import {
   listenToMessages,
-  parseWindowMessage,
+  parseSessionResult,
   signInWindowUrl,
   signOutWindowUrl,
   type MessageEventLike,
-  type OpenerMessage,
   type SessionResult,
   type SignInIntent,
   type WindowHandle,
-  type WindowMessage,
 } from './messages.js';
+import { parsePageMessage, PROTOCOL_VERSION, type HelloMessage, type PageMessage } from './session-protocol.js';
 
 export type SignInOutcome =
   { kind: 'result'; result: SessionResult } | { kind: 'blocked' } | { kind: 'cancelled' } | { kind: 'refused' };
@@ -78,6 +78,12 @@ type CancelReason = 'closed' | 'signed_out' | PageCancelReason;
 /** What the page waits for on its open window: a sign-in round's outcome, or a sign-out window's read. */
 type WindowWait = { readonly kind: 'signin' } | { readonly kind: 'signout'; readonly read: Promise<void> };
 
+/**
+ * The window's last word on a round: its result, not yet read as any one kind, or a refusal. A window that speaks no
+ * version this page knows refuses it too, as it can never answer this page.
+ */
+type WindowWord = { readonly kind: 'result'; readonly result: unknown } | { readonly kind: 'refused' };
+
 /** The one window the page has open. */
 type OpenWindow = WindowWait & {
   readonly handle: WindowHandle;
@@ -111,14 +117,14 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
    */
   const watchWindow = (
     handle: WindowHandle,
-    onMessage: (message: WindowMessage) => void,
+    onMessage: (message: PageMessage) => void,
     onClosed: () => void,
   ): (() => void) => {
     const stopListening = deps.listen(event => {
       if (event.source !== handle || event.origin !== deps.windowOrigin) {
         return;
       }
-      const message = parseWindowMessage(event.data);
+      const message = parsePageMessage(event.data);
       if (message !== null) {
         onMessage(message);
       }
@@ -135,18 +141,19 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
   };
 
   /**
-   * Opens the window in place of the one open, which ends, and makes it the open one until it settles, once: with the
-   * window's word, or with the reason it ended without one. Some pop-up blockers hand back a window that is already
-   * closed instead of none.
+   * Opens the window at the request `urlFor` builds for a fresh round, in place of the one open, which ends, and makes
+   * it the open one until it settles, once: with what `hear` makes of the window's word for that round, or with the
+   * reason it ended without one. Some pop-up blockers hand back a window that is already closed instead of none.
    */
   const open = <Word>(
     wait: WindowWait,
-    url: string,
+    urlFor: (round: string) => string,
     settle: (ended: { word: Word } | { reason: CancelReason }) => void,
-    hear: (message: WindowMessage, handle: WindowHandle) => Word | null,
+    hear: (word: WindowWord) => Word | null,
   ): WindowHandle | null => {
     current?.end('page');
-    const handle = deps.open(url, WINDOW_NAME);
+    const round = deps.randomId();
+    const handle = deps.open(urlFor(round), WINDOW_NAME);
     if (handle === null || handle.closed) {
       return null;
     }
@@ -166,13 +173,30 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
       },
     };
     current = opened;
+    const take = (windowWord: WindowWord): void => {
+      const word = hear(windowWord);
+      if (word !== null) {
+        finish({ word });
+      }
+    };
     const stop = watchWindow(
       handle,
       message => {
-        const word = hear(message, handle);
-        if (word !== null) {
-          finish({ word });
+        if (message.type === 'dotli:s:ready') {
+          if (!message.versions.includes(PROTOCOL_VERSION)) {
+            log.event('session window speaks no known protocol version', { flow: 'wallet' });
+            take({ kind: 'refused' });
+            return;
+          }
+          // A reloaded or restored window says ready again and gets the same round.
+          const hello: HelloMessage = { type: 'dotli:s:hello', v: PROTOCOL_VERSION, round };
+          handle.postMessage(hello, deps.windowOrigin);
+          return;
         }
+        if (message.round !== round) {
+          return;
+        }
+        take(message.type === 'dotli:s:result' ? { kind: 'result', result: message.result } : { kind: 'refused' });
       },
       () => {
         finish({ reason: 'closed' });
@@ -189,30 +213,23 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
         m.count(S.SESSION_WINDOW_SIGNIN, { outcome: 'busy', reason: intent });
         return Promise.resolve({ kind: 'cancelled' });
       }
-      const id = deps.randomId();
       const outcome = deferred<SignInOutcome>();
       const handle = open<SignInOutcome>(
         { kind: 'signin' },
-        signInWindowUrl(intent, deps.network(), deps.windowOrigin),
+        round => signInWindowUrl(intent, deps.network(), round, deps.windowOrigin),
         ended => {
           const settled: SignInOutcome = 'word' in ended ? ended.word : { kind: 'cancelled' };
           log.event('sign-in window round ended', { flow: 'wallet', outcome: settled.kind });
           m.count(S.SESSION_WINDOW_ROUND, roundTags(ended));
           outcome.resolve(settled);
         },
-        (message, window) => {
-          // A reloaded or restored window says ready again and gets the same round.
-          if (message.type === 'dotli:session:ready') {
-            const hello: OpenerMessage = { type: 'dotli:session:hello', round: id, intent };
-            window.postMessage(hello, deps.windowOrigin);
-            return null;
+        word => {
+          if (word.kind === 'refused') {
+            return { kind: 'refused' };
           }
-          if (message.type === 'dotli:session:signed-out-read' || message.round !== id) {
-            return null;
-          }
-          return message.type === 'dotli:session:result'
-            ? { kind: 'result', result: message.result }
-            : { kind: 'refused' };
+          // A result that is no sign-in leaves the round open, as a malformed message would.
+          const result = parseSessionResult(word.result);
+          return result === null ? null : { kind: 'result', result };
         },
       );
       if (handle === null) {
@@ -228,17 +245,18 @@ export function createSessionHandoff(deps: HandoffDeps): SessionHandoff {
         current.handle.focus();
         return;
       }
-      // The sign-out window takes the sign-in window's name, so a round left open would answer its `ready`.
+      // A new window takes the shared window name, so a round left open would answer the new window's `ready`.
       current?.end('signed_out');
       const read = deferred<undefined>();
       // A blocked window never becomes `current`, so its read is the settled one `signOutRead` gives.
       const handle = open<true>(
         { kind: 'signout', read: read.promise },
-        signOutWindowUrl(notified, deps.network(), deps.windowOrigin),
+        round => signOutWindowUrl(notified, deps.network(), round, deps.windowOrigin),
         () => {
           read.resolve(undefined);
         },
-        message => (message.type === 'dotli:session:signed-out-read' ? true : null),
+        // The sign-out window's result says it has read what it ends, and its refusal that it never will.
+        () => true,
       );
       m.count(S.SESSION_WINDOW_SIGNOUT, {
         outcome: handle === null ? 'blocked' : 'opened',

@@ -19,7 +19,7 @@ function contents(storage: Storage): Record<string, string | null> {
 }
 
 describe('windowSettings', () => {
-  it('As a user in the sign-in window, I open it on net and the network is never saved', () => {
+  it("As a user in the sign-in window, I open it on the request's network and the network is never saved", () => {
     // Given this origin saved another network, a backend and a cache choice
     const local = memoryStorage({
       [NETWORK_KEY]: 'paseo-next-v2',
@@ -28,10 +28,10 @@ describe('windowSettings', () => {
     });
     const before = contents(local);
 
-    // When the window opens on net
-    const settings = windowSettings('?intent=signin&net=previewnet', local, true);
+    // When the window opens on the request's network
+    const settings = windowSettings('previewnet', local, true);
 
-    // Then the network is the link's for this window alone, the rest is this origin's, and nothing was written
+    // Then the network is the request's for this window alone, the rest is this origin's, and nothing was written
     expect(settings).toEqual({
       network: 'previewnet',
       backend: 'rpc-gateway',
@@ -40,39 +40,15 @@ describe('windowSettings', () => {
     expect(contents(local)).toEqual(before);
   });
 
-  it('As a user in the sign-in window, I open it with a network name no build knows and it falls back to the stored one', () => {
-    // Given a stored network
-    const local = memoryStorage({ [NETWORK_KEY]: 'previewnet' });
-
-    // When the window opens with an unknown net
-    const settings = windowSettings('?intent=signin&net=nowhere', local, true);
-
-    // Then the stored network is kept
-    expect(settings.network).toBe('previewnet');
-  });
-
-  it("As a user in the sign-in window, I open it and only net is read, not the landing page's network parameter", () => {
-    // Given a stored network
-    const local = memoryStorage({ [NETWORK_KEY]: 'paseo-next-v2' });
-
-    // When the window opens with the landing page's network parameter
-    const settings = windowSettings('?intent=signin&network=previewnet', local, true);
-
-    // Then the stored network is kept
-    expect(settings.network).toBe('paseo-next-v2');
-  });
-
-  it("As a user in the sign-in window on a fresh origin, I open it and it runs on net, else on the build's first network", () => {
+  it("As a user in the sign-in window on a fresh origin, I open it and it runs on the request's network", () => {
     // Given an origin with nothing stored
     const local = memoryStorage();
 
-    // When the window opens with and without net
-    const withNet = windowSettings('?intent=signin&net=previewnet', local, true);
-    const withoutNet = windowSettings('?intent=signin', local, true);
+    // When the window opens on a request's network
+    const settings = windowSettings('previewnet', local, true);
 
-    // Then it runs on net, else on the first network
-    expect(withNet.network).toBe('previewnet');
-    expect(withoutNet.network).toBe('paseo-next-v2');
+    // Then it runs on that network
+    expect(settings.network).toBe('previewnet');
   });
 
   it('As a user in the sign-in window in a browser without SharedWorker, I open it and the light client runs per tab over a stored shared one', () => {
@@ -80,7 +56,7 @@ describe('windowSettings', () => {
     const local = memoryStorage({ [NETWORK_KEY]: 'paseo-next-v2', [BACKEND_KEY]: 'smoldot-shared-worker' });
 
     // When the window opens where SharedWorker is missing
-    const settings = windowSettings('?intent=signin', local, false);
+    const settings = windowSettings('paseo-next-v2', local, false);
 
     // Then the light client runs per tab
     expect(settings.backend).toBe('smoldot-direct');

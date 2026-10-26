@@ -3,7 +3,7 @@
 
 // What the sign-in window shows and does once it knows its opener. It decides from the main store, never from the
 // opener, offers what is stored or pairs, and sends what the store holds, at once for a page that resumes a sign-in it
-// knows exists. The opener picks only which of these the window starts with. Every sign-in it stores or clears, its
+// knows exists. The request picks only which of these the window starts with. Every sign-in it stores or clears, its
 // core's included, goes through the window's one flag keeper, which raises the flag first and drops it once the store
 // holds none, so a pairing given up leaves no flag. The window runs no sign-in modal: it pairs on its core itself and
 // shows how far the pairing got.
@@ -46,7 +46,7 @@ export interface PhraseCheck {
 }
 
 export interface WindowFlowDeps {
-  responder: Responder;
+  responder: Responder<SessionResult>;
   /** The page's one flag keeper, so the flow's flag writes and the store writes stay in order. */
   signIns: SignInFlag;
   auth: ReadableStore<DotliAuthState>;
@@ -58,8 +58,12 @@ export interface WindowFlowDeps {
     forget: () => Promise<void>;
   };
   loadPhrase: () => Promise<PhraseCheck>;
-  /** What the window's URL asks for, which a window with no opener goes by, since no hello names it. */
-  urlIntent: SignInIntent;
+  /**
+   * What the window's request asks for. A vetted round goes by it as it is. A window with no opener only picks its
+   * first view from it, so anything but `phrase` signs in, `resume` included, as nobody waits to take what it would
+   * send.
+   */
+  intent: SignInIntent;
   close: () => void;
 }
 
@@ -72,10 +76,10 @@ type StepName = 'decide' | 'continue' | 'another' | 'phrase' | 'back' | 'pairing
 type StepFailure = 'view' | 'step';
 
 /**
- * The flow's phase in a round: `waiting` for a vetted hello, `open` once the flow decided for a round (null with no
- * opener) and its intent, and `ended` once it delivered, after which nothing may change the store.
+ * The flow's phase in its round: `waiting` for a vetted hello, `open` once the flow decided with its intent, and
+ * `ended` once it delivered, after which nothing may change the store.
  */
-type Phase = { kind: 'waiting' } | { kind: 'open'; round: string | null; intent: SignInIntent } | { kind: 'ended' };
+type Phase = { kind: 'waiting' } | { kind: 'open'; intent: SignInIntent } | { kind: 'ended' };
 
 const STEPS = 'session_window';
 
@@ -445,16 +449,16 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
       case 'connecting':
         return;
       case 'vetted':
-        // A window restored from the back-forward cache is vetted again for the round it decided, which changes
-        // nothing.
-        if (phase.kind === 'ended' || (phase.kind === 'open' && phase.round === state.round)) {
+        // Only the first vetting opens the phase. A window restored from the back-forward cache is vetted again with
+        // its own request's round, which changes nothing.
+        if (phase.kind !== 'waiting') {
           return;
         }
-        phase = { kind: 'open', round: state.round, intent: state.intent };
+        phase = { kind: 'open', intent: deps.intent };
         change({ pageHost: new URL(state.origin).host });
         break;
       case 'no-opener':
-        phase = { kind: 'open', round: null, intent: deps.urlIntent };
+        phase = { kind: 'open', intent: deps.intent === 'phrase' ? 'phrase' : 'signin' };
         break;
     }
     const { intent } = phase;

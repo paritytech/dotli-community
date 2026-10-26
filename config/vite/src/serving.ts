@@ -41,11 +41,27 @@ export function pathInBuild(route: Route, pathname: string): string {
   return route.site === 'protocol' && isProtocolPath(pathname) ? pathname.slice(PROTOCOL_PREFIX.length) : pathname;
 }
 
-/** The sign-in window's path on the bare host, which serves the window at that exact path only. */
-export const SESSION_PATH = '/__session';
+/** The session windows' paths on the bare host, which serve the session window at these exact paths only. */
+const SESSION_PATHS: ReadonlySet<string> = new Set(['/s/auth', '/s/signout']);
 const SESSION_FILE = 'session.html';
-/** The window's built file, which only its path may serve, since that path is what refuses framing. */
+/** The session window's built file, which only its paths may serve, since those paths are what refuse framing. */
 const SESSION_FILE_PATH = `/${SESSION_FILE}`;
+
+/**
+ * Whether `pathname` is one of the session windows' paths on the bare host. The decoded path decides, so an encoded
+ * spelling keeps the frame refusal. A malformed escape is not one.
+ */
+export function isSessionPath(route: Route, pathname: string): boolean {
+  if (!route.bare) {
+    return false;
+  }
+  try {
+    return SESSION_PATHS.has(decodeURIComponent(pathname));
+  } catch {
+    // A malformed escape names no file.
+    return false;
+  }
+}
 
 /** The file that answers `/`. */
 export function rootPage(route: Route): string {
@@ -54,8 +70,8 @@ export function rootPage(route: Route): string {
 
 /**
  * `isolated` is a cross-origin isolated or embeddable page. `worker-coep` is a bare-host asset, whose worker script
- * must carry COEP itself or the isolated /__preview page cannot start it. `unframed` is the sign-in window, which no
- * page may frame and which sends no opener policy, since that would cut its link to the page that opened it.
+ * must carry COEP itself or the isolated /__preview page cannot start it. `unframed` is a session window, which no page
+ * may frame and which sends no opener policy, since that would cut its link to the page that opened it.
  */
 export type HeaderPolicy = 'isolated' | 'worker-coep' | 'unframed' | 'plain';
 
@@ -67,7 +83,7 @@ export function headerPolicy(route: Route, pathname: string): HeaderPolicy {
   if (route.site !== 'host' || (route.bare && pathname === '/__preview')) {
     return 'isolated';
   }
-  if (route.bare && pathname === SESSION_PATH) {
+  if (isSessionPath(route, pathname)) {
     return 'unframed';
   }
   return route.bare && pathname.startsWith('/assets/') ? 'worker-coep' : 'plain';
@@ -143,8 +159,8 @@ function isFileOnDisk(path: string): boolean {
 
 /**
  * The file that answers `pathname` from the build in `dir`, the first of: the root page at `/`, the file itself, a
- * folder's index on the bare host, then the shell. On the bare host `/__session` answers with the sign-in window's
- * page, which the host build never serves under its own file name. A missing asset, worker, session page or version
+ * folder's index on the bare host, then the shell. On the bare host each of the session paths answers with the session
+ * page, which the host build never serves under its own file name. A missing asset, worker, session window or version
  * file is a 404 instead. `undefined` is a 404.
  */
 export function resolveFile(
@@ -165,7 +181,7 @@ export function resolveFile(
     const file = join(dir, page);
     return isFile(file) ? { file, pathname: `/${page}` } : undefined;
   }
-  if (route.bare && decoded === SESSION_PATH) {
+  if (isSessionPath(route, pathname)) {
     const file = join(dir, SESSION_FILE);
     return isFile(file) ? { file, pathname: decoded } : undefined;
   }
@@ -223,7 +239,7 @@ export interface LocalServing {
   readonly responseHeaders: (filePath: string, pathname: string, policy: HeaderPolicy) => Record<string, string>;
   /**
    * What a dev server adds to its own headers for a request: the isolated headers on the routes this table isolates,
-   * and the frame refusal on the sign-in window. Server-wide, COEP would break the localhost dev servers, which ship no
+   * and the frame refusal on the session windows. Server-wide, COEP would break the localhost dev servers, which ship no
    * CORP.
    */
   readonly devHeaders: (hostname: string, pathname: string) => Record<string, string>;
