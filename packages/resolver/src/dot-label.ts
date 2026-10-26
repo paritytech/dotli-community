@@ -16,6 +16,9 @@ const SUBNAME_SANDBOX_PREFIX = 'sn--';
 /** The longest label a DNS name can carry. */
 const MAX_LABEL_LENGTH = 63;
 
+/** The shortest label registered under the TLD. */
+const MIN_REGISTERED_LABEL_LENGTH = 2;
+
 /** The longest name a DNS hostname can carry. */
 const MAX_NAME_LENGTH = 253;
 
@@ -26,6 +29,7 @@ export type DotLabelResult =
       reason:
         | 'empty'
         | 'too-long'
+        | 'too-short'
         | 'uppercase'
         | 'leading-hyphen'
         | 'trailing-hyphen'
@@ -35,7 +39,8 @@ export type DotLabelResult =
         | 'reserved';
     };
 
-export function validateDotLabel(label: string): DotLabelResult {
+/** Every label rule apart from the minimum length. */
+function validateLabelShape(label: string): DotLabelResult {
   if (label.length === 0) {
     return { ok: false, reason: 'empty' };
   }
@@ -68,22 +73,35 @@ export function validateDotLabel(label: string): DotLabelResult {
   return { ok: true };
 }
 
+/** Validates a label registered under the TLD, which has a minimum length that a subname's labels do not. */
+export function validateDotLabel(label: string): DotLabelResult {
+  if (label.length > 0 && label.length < MIN_REGISTERED_LABEL_LENGTH) {
+    return { ok: false, reason: 'too-short' };
+  }
+  return validateLabelShape(label);
+}
+
 export function isValidDotLabel(label: string): boolean {
   return validateDotLabel(label).ok;
 }
 
-/** A dotNS name: one label, or a subname whose labels are each valid, such as `pr16.my-app`. */
+/**
+ * A dotNS name: one label, or a subname whose labels are each valid, such as `pr16.my-app`. The last label is the
+ * registered one.
+ */
 export function validateDotName(name: string): DotLabelResult {
   if (name.length > MAX_NAME_LENGTH) {
     return { ok: false, reason: 'too-long' };
   }
-  for (const label of name.split('.')) {
-    const result = validateDotLabel(label);
+  const labels = name.split('.');
+  const registered = labels.pop() ?? '';
+  for (const label of labels) {
+    const result = validateLabelShape(label);
     if (!result.ok) {
       return result;
     }
   }
-  return { ok: true };
+  return validateDotLabel(registered);
 }
 
 export function isValidDotName(name: string): boolean {

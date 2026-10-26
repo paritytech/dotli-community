@@ -26,9 +26,10 @@ every caller checks a name against.
 - The naming rules are small pure helpers with no chain access. The URL helpers read the active network's TLD to tell a
   product host from a website.
 - A label is lowercase ASCII letters, digits and inner hyphens, and never starts with `xn--`, since a punycode label can
-  spell a name in letters that only look like another name's.
-- A name is one label or a subname of several. A wildcard certificate covers one label, so a subname's sandbox label is
-  `sn--` and a hash of the name. No label may start with `sn--`, so a registered label never takes a subname's origin.
+  spell a name in letters that only look like another name's. A registered label has at least 2 characters.
+- A name is one label or a subname of several. The labels of a subname below its registered label have no minimum
+  length. A wildcard certificate covers one label, so a subname's sandbox label is `sn--` and a hash of the name. No
+  label may start with `sn--`, so a registered label never takes a subname's origin.
 - The resolver is heavy, so it loads through a lazy loader. The entry is pure re-exports, so the bundler drops what a
   caller does not take.
 

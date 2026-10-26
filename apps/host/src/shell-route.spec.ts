@@ -63,9 +63,9 @@ describe('readShellRoute', () => {
     expect(route).toEqual({ kind: 'landing' });
   });
 
-  it('As a visitor on the bare host, I open a path under the session segment in any spelling and get no product', () => {
-    // Given paths under the session segment, bare, with a slash, deeper, uppercased and with .dot
-    const paths = ['/s', '/s/', '/s/anything', '/S/x', '/s.dot/x'];
+  it('As a visitor on the bare host, I open a one-letter path in any spelling and get no product', () => {
+    // Given one-letter paths, bare, with a slash, deeper, uppercased and with .dot
+    const paths = ['/s', '/s/', '/s/anything', '/S/x', '/s.dot/x', '/p', '/p/', '/p/x', '/P/x', '/p.dot/x'];
 
     // When each is read on the bare host
     const routes = paths.map(path => readShellRoute(at(`https://example.li${path}`), RELEASE));
@@ -74,15 +74,26 @@ describe('readShellRoute', () => {
     expect(routes).toEqual(paths.map(() => ({ kind: 'landing' })));
   });
 
-  it('As a visitor, I open the product named s on its own host and get it', () => {
-    // Given the product host of the name the session segment reserves on the bare host
-    const location = at('http://s.localhost:5173/s/auth');
+  it('As a visitor, I open a one-letter host and get no product', () => {
+    // Given hosts of one-letter labels
+    const locations = [at('http://s.localhost:5173/s/auth'), at('http://p.localhost:5173/')];
+
+    // When each is read
+    const routes = locations.map(location => readShellRoute(location, RELEASE));
+
+    // Then none of them names a product
+    expect(routes).toEqual([{ kind: 'landing' }, { kind: 'landing' }]);
+  });
+
+  it('As a visitor on the bare host, I open a subname with a one-letter label by path and get it', () => {
+    // Given a link to a subname whose first label is one letter
+    const location = at('https://example.li/a.my-app/x');
 
     // When it is read
     const route = readShellRoute(location, RELEASE);
 
-    // Then the product is reached through its host
-    expect(route).toEqual({ kind: 'product', label: 's', base: '' });
+    // Then the subname is the product
+    expect(route).toEqual({ kind: 'product', label: 'a.my-app', base: '/a.my-app' });
   });
 
   it('As a visitor on a sandbox host or the bare host, I am given no product, so the shell can send me to the landing page', () => {

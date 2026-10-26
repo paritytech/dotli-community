@@ -9,7 +9,6 @@ import { dotNsUrl, isValidDotName } from '@dotli/resolver';
 import { log } from '@dotli/shared';
 import { parseDotLabel } from './dot-label.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
-import { SESSION_SEGMENT } from './runtime/session-handoff/session-segment.js';
 
 const DOTLI_PRODUCT_ID_PARAM = 'dotliProductId';
 
@@ -77,8 +76,8 @@ export function readShellRoute(location: ShellLocation, options: RouteOptions): 
 
 /**
  * A link to a product on the bare host: `/<name>` or `/<name>.dot`, then the product's own path. The only way to a
- * subname, whose host a wildcard certificate does not cover. The session segment names no product here, so a product
- * of that name is reached through its own host.
+ * subname, whose host a wildcard certificate does not cover. A one-letter segment names no product, since no
+ * registered name is that short.
  */
 function readPathProduct(pathname: string): ShellRoute | null {
   const segment = /^\/([^/]+)/.exec(pathname)?.[1];
@@ -87,9 +86,6 @@ function readPathProduct(pathname: string): ShellRoute | null {
   }
   // Lowercased as the browser lowercases a hostname, so both spellings of a link reach the same name.
   const label = segment.replace(/\.dot$/i, '').toLowerCase();
-  if (label === SESSION_SEGMENT) {
-    return null;
-  }
   return isValidDotName(label) ? { kind: 'product', label, base: `/${segment}` } : null;
 }
 

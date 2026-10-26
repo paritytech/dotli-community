@@ -64,6 +64,11 @@ describe('parseRecentLabels', () => {
     expect(parseRecentLabels('not-json')).toEqual([]);
     expect(parseRecentLabels('{"foo":"bar"}')).toEqual([]);
   });
+
+  it('As a landing page, I drop a stored name too short to be registered', () => {
+    // When / Then the one-letter name is left out and the rest keep their order
+    expect(parseRecentLabels('["p","explore"]')).toEqual(['explore']);
+  });
 });
 
 describe('recent labels across subdomains', () => {
@@ -143,13 +148,13 @@ describe('recent labels across subdomains', () => {
 
   it('As a visitor, I come back to a name and it moves to the front without a duplicate', async () => {
     // Given
-    channel.store.set(KEY, '["a","b","c"]');
+    channel.store.set(KEY, '["alpha","beta","gamma"]');
 
     // When
-    await createRecentLabels(channel, mirror).record('c');
+    await createRecentLabels(channel, mirror).record('gamma');
 
     // Then
-    expect(sharedList()).toEqual(['c', 'a', 'b']);
+    expect(sharedList()).toEqual(['gamma', 'alpha', 'beta']);
   });
 
   it("As a visitor, I resolve a label that can't be a .dot name and it is never recorded", async () => {
@@ -175,28 +180,28 @@ describe('recent labels across subdomains', () => {
 
   it('As a visitor, I remove two names in quick succession and both stay removed', async () => {
     // Given
-    channel.store.set(KEY, '["a","b","c"]');
+    channel.store.set(KEY, '["alpha","beta","gamma"]');
     const recents = createRecentLabels(channel, mirror);
 
     // When
-    await Promise.all([recents.forget('a'), recents.forget('b')]);
+    await Promise.all([recents.forget('alpha'), recents.forget('beta')]);
 
     // Then
-    expect(sharedList()).toEqual(['c']);
-    expect(mirrorList()).toEqual(['c']);
+    expect(sharedList()).toEqual(['gamma']);
+    expect(mirrorList()).toEqual(['gamma']);
   });
 
   it('As a visitor, I resolve a name while removing another and both changes stay', async () => {
     // Given
-    channel.store.set(KEY, '["a","b"]');
+    channel.store.set(KEY, '["alpha","beta"]');
     const recents = createRecentLabels(channel, mirror);
 
     // When: the record and the remove overlap
-    await Promise.all([recents.record('c'), recents.forget('a')]);
+    await Promise.all([recents.record('gamma'), recents.forget('alpha')]);
 
     // Then
-    expect(sharedList()).toEqual(['c', 'b']);
-    expect(mirrorList()).toEqual(['c', 'b']);
+    expect(sharedList()).toEqual(['gamma', 'beta']);
+    expect(mirrorList()).toEqual(['gamma', 'beta']);
   });
 
   it('As a visitor whose shared store cannot be read, I resolve a name, the mirror moves on and the failure is warned', async () => {
