@@ -124,7 +124,7 @@ describe('site account', () => {
     // When the account is read
     const error: unknown = await reader.account(ACCOUNT).catch((caught: unknown) => caught);
 
-    // Then it fails as a site sign-in call
+    // Then it fails as an account read
     expect(error).toBeInstanceOf(SiteAccountReadError);
   });
 });
