@@ -9,172 +9,464 @@ description: >-
 
 # Architecture
 
-The mandatory first step for any non-trivial change, and the orchestrator of the full lifecycle from a freeform prompt:
-frame, size, place, design, plan, implement, review, fix and rule extraction. You do not pick a package, an app or a
-file path yourself before step 3. This skill routes you through the steps in order. Skipping it is how code lands in the
-wrong package and how files nobody asked for get invented.
+The mandatory first step for any non-trivial change. It runs the whole lifecycle from a freeform prompt: frame, size,
+place, design, plan, implement, review, fix and rule extraction. Skipping it is how code lands in the wrong package and
+how files nobody asked for get invented.
 
-**Letter and spirit:** entering this skill and then deciding freehand anyway is a violation. Run the steps.
+- **Trivial or not** (docs/code/glossary.md § Change size). A trivial edit skips this skill. Everything else is
+  non-trivial and runs the full flow. If you are unsure, it is non-trivial.
+- **Letter and spirit.** Entering this skill and then deciding freehand anyway is a violation. Run the steps in order,
+  and pick no package, app or file path before step 3.
 
-**Trivial or non-trivial** (docs/code/glossary.md § Change size): a trivial edit skips this skill. Everything else is
-non-trivial and runs the full flow below. If you are unsure, it is non-trivial.
+## Who runs this skill
 
-## Orchestration order
+The `architect` agent (`.claude/agents/architect.md`) runs the steps, so that its context holds one change alone. Side
+questions and other work stay in the main session, out of the change's context.
+
+**The main session** never runs the steps and does no framing, reading or exploring first. If
+`docs/_plans/project-agent.md` exists, a change is already running: route the request by the rules of `CLAUDE.md` §
+Project agent. Otherwise:
+
+1. Dispatch `Agent` with `subagent_type: "architect"` in the background. Pass no `model` and no `effort`, so it runs on
+   the session's own. Its prompt is the owner's request verbatim, as `OWNER: <text>`, plus the paths of any file the
+   owner attached.
+2. Write `docs/_plans/project-agent.md`: the agent ID from the dispatch result, the date, and the request in one line.
+3. Tell the owner in one line that the change runs in the project agent, then stop.
+
+**The `architect` agent** runs every step from the frame to `DONE`, in one context. That context holds the frame, the
+probe, the design decisions and the rejected options, and step 6 rules on findings with it.
+
+- Each "ask the owner", "stop" or "owner approves" in this skill is a message with the matching tag of its agent
+  definition.
+- A gate ends the agent's turn, never its run. The owner's answer wakes the same agent. Neither the main session nor the
+  agent stops it, replaces it or hands the plan to a new session or agent.
+- "Written for an empty session" is about the subagents it dispatches, not about the agent itself.
+- A fork of `architect` inherits this skill and still never runs it (see "Subagents").
+
+## The lifecycle
 
 ```mermaid
 flowchart TD
     Trivial{"Trivial edit as<br/>docs/code/glossary.md defines it?"}
     Direct["Write the edit directly,<br/>no skill run"]
-    Frame{"Step 1: one sentence in the vocabulary<br/>of one package or app?"}
-    Storm["Event storming with the owner<br/>(docs/abstract/event-storming.md)"]
-    Probe["Step 2: size probe<br/>(docs/abstract/simple-vs-easy.md)<br/>measure radius, judge braid"]
-    ProbeGate{"Radius contradicts the frame,<br/>or the change adds braid?"}
-    ProbeStop["STOP: report radius and braid,<br/>2 or 3 options with costs,<br/>owner decides"]
-    Place["Step 3: place it<br/>(docs/code/placement.md)"]
-    HomeGate{"A home found?"}
+    Frame["Step 1: frame the change in one sentence<br/>(event storming when it does not fit)"]
+    Probe{"Step 2: size probe.<br/>Radius contradicts the frame,<br/>or the change adds braid?"}
+    ProbeStop{"STOP: 2 or 3 options with costs,<br/>owner decides"}
+    Place{"Step 3: a home found<br/>in docs/code/placement.md?"}
     Ask["STOP and ask the owner"]
-    Brainstorm["Step 4: superpowers:brainstorming<br/>writes the design to docs/_plans"]
-    DocReviewDesign["document-review<br/>on the design"]
-    Approve{"Owner approves the design?"}
-    Plan["Step 5: superpowers:writing-plans<br/>writes the plan to docs/_plans"]
-    DocReviewPlan["document-review<br/>on the plan"]
-    PlanReview["Plan review pass<br/>(fresh context, one at a time)"]
-    PlanGate{"Gaps found?"}
-    CapGate{"4 passes already run?"}
-    Surface["STOP: remaining findings go to the owner<br/>with your read on each"]
-    CapDecide{"Owner decides:<br/>fix, accept or rethink the plan?"}
-    PlanFix["Revise the plan<br/>(superpowers:writing-plans)"]
-    CapFix["Revise the plan<br/>(superpowers:writing-plans),<br/>no fifth pass"]
-    AmendedGate{"An amendment the owner<br/>approved at ReApprove?"}
-    PlanApprove{"Owner approves the plan?"}
-    Implement["Step 6: superpowers:subagent-driven-development<br/>on the current branch"]
-    DevGate{"Discovery invalidates the plan?"}
-    Amend["HARD STOP: 2 or 3 options,<br/>amend the plan<br/>(superpowers:writing-plans)"]
-    ReApprove{"Owner approves the amendment?"}
+    Design["Step 4: superpowers:brainstorming,<br/>then document-review"]
+    DesignOK{"Owner approves the design?"}
+    Plan["Step 5: superpowers:writing-plans,<br/>then document-review"]
+
+    subgraph PlanLoop["Plan review, at most 3 passes"]
+        Pass["Fresh review pass.<br/>Pass 1 the whole plan,<br/>later passes the revision"]
+        PassGate{"Blocking or major findings?"}
+        Revise["Revise the plan.<br/>A large design divergence<br/>stops for the owner"]
+    end
+
+    CapStop{"STOP: owner decides<br/>fix, accept or rethink"}
+    PlanOK{"Owner approves the plan?"}
+
+    subgraph BatchLoop["Step 6, for each batch"]
+        Implement["Implement the batch's tasks"]
+        DevGate{"A discovery breaks the plan<br/>beyond a ruling?"}
+        BatchReview["Fresh batch review"]
+        BatchGate{"Findings open?"}
+        BatchFix["Next fix round"]
+        More{"More batches?"}
+    end
+
+    BatchStop{"STOP: owner decides<br/>amend the plan or accept"}
+    Amend["HARD STOP: owner picks one of<br/>2 or 3 options, amend the plan"]
     PreSweep["Fix the collected minor findings<br/>in one sweep"]
-    Review["Step 7: reviewer skill<br/>writes docs/_reviews"]
-    IssuesGate{"Blocking or major findings?"}
-    MinorGate{"Minor findings?"}
-    MinorSweep["Fix the step 7 minor findings<br/>in one sweep"]
-    DocsOnly{"Did this sweep of step 7 minor findings<br/>change only docs or comments?"}
-    Extract["Step 9: rule extraction<br/>(docs/code/rule-extraction.md)"]
+
+    subgraph ReviewLoop["Steps 7 and 8, at most 7 reviewer runs"]
+        Review["reviewer run"]
+        ReviewGate{"Findings?"}
+        Beyond{"A fix beyond a ruling?"}
+        Fix["Fix all findings of the run<br/>in one fresh dispatch"]
+        MinorOnly{"Only minor findings?"}
+        DocsOnly{"The sweep changed<br/>only docs or comments?"}
+        Scoped["Scoped re-review<br/>of the sweep's diff"]
+        ScopedGate{"Findings?"}
+    end
+
+    ReviewStop{"STOP: owner decides<br/>fix once or accept"}
+    Extract["Step 9: rule extraction"]
     Done["Done. Finishing the branch<br/>is a separate step the owner starts"]
 
     Trivial -- yes --> Direct
     Trivial -- no --> Frame
-    Frame -- no --> Storm
-    Frame -- yes --> Probe
-    Storm --> Probe
-    Probe --> ProbeGate
-    ProbeGate -- yes --> ProbeStop
-    ProbeGate -- no --> Place
-    ProbeStop --> Place
-    Place --> HomeGate
-    HomeGate -- no --> Ask
-    HomeGate -- yes --> Brainstorm
+    Frame --> Probe
+    Probe -- no --> Place
+    Probe -- yes --> ProbeStop
+    ProbeStop -- "go on, as framed or staged" --> Place
+    ProbeStop -- "decomplect first" --> Frame
+    Place -- no --> Ask
     Ask --> Place
-    Brainstorm --> DocReviewDesign
-    DocReviewDesign --> Approve
-    Approve -- "no, revise" --> Brainstorm
-    Approve -- yes --> Plan
-    Plan --> DocReviewPlan
-    DocReviewPlan --> PlanReview
-    PlanReview --> PlanGate
-    PlanGate -- yes --> CapGate
-    CapGate -- no --> PlanFix
-    CapGate -- "yes, cap" --> Surface
-    Surface --> CapDecide
-    CapDecide -- fix --> CapFix
-    CapFix --> AmendedGate
-    CapDecide -- accept --> Implement
-    CapDecide -- rethink --> Plan
-    PlanFix --> PlanReview
-    PlanGate -- no --> AmendedGate
-    AmendedGate -- yes --> Implement
-    AmendedGate -- no --> PlanApprove
-    PlanApprove -- "no, revise" --> Plan
-    PlanApprove -- yes --> Implement
+    Place -- yes --> Design
+    Design --> DesignOK
+    DesignOK -- "no, revise" --> Design
+    DesignOK -- yes --> Plan
+    Plan --> Pass
+    Pass --> PassGate
+    PassGate -- "yes, under the cap" --> Revise
+    Revise --> Pass
+    PassGate -- "no, minor ones applied" --> PlanOK
+    PassGate -- "yes, at pass 3" --> CapStop
+    CapStop -- "fix, no fourth pass" --> PlanOK
+    CapStop -- accept --> Implement
+    CapStop -- rethink --> Plan
+    PlanOK -- "no, revise" --> Plan
+    PlanOK -- yes --> Implement
     Implement --> DevGate
-    DevGate -- "yes, hard stop" --> Amend
-    DevGate -- no --> PreSweep
-    Amend --> ReApprove
-    ReApprove -- "no, revise" --> Amend
-    ReApprove -- yes --> PlanReview
+    DevGate -- yes --> Amend
+    DevGate -- no --> BatchReview
+    BatchReview --> BatchGate
+    BatchGate -- "yes, under round 5" --> BatchFix
+    BatchFix --> BatchReview
+    BatchGate -- "yes, after round 5" --> BatchStop
+    BatchStop -- amend --> Amend
+    BatchStop -- accept --> More
+    BatchGate -- no --> More
+    More -- yes --> Implement
+    More -- no --> PreSweep
+    Amend --> Pass
     PreSweep --> Review
-    Review --> IssuesGate
-    IssuesGate -- yes --> Amend
-    IssuesGate -- no --> MinorGate
-    MinorGate -- yes --> MinorSweep
-    MinorGate -- no --> Extract
-    MinorSweep --> DocsOnly
+    Review --> ReviewGate
+    ReviewGate -- no --> Extract
+    ReviewGate -- "yes, under the cap" --> Beyond
+    ReviewGate -- "yes, at run 7" --> ReviewStop
+    ReviewStop --> Extract
+    Beyond -- yes --> Amend
+    Beyond -- no --> Fix
+    Fix --> MinorOnly
+    MinorOnly -- no --> Review
+    MinorOnly -- yes --> DocsOnly
     DocsOnly -- yes --> Extract
-    DocsOnly -- no --> Review
+    DocsOnly -- no --> Scoped
+    Scoped --> ScopedGate
+    ScopedGate -- no --> Extract
+    ScopedGate -- "minor only" --> Fix
+    ScopedGate -- "blocking or major" --> Review
     Extract --> Done
 ```
 
-This is the full lifecycle from a single freeform prompt. On a non-trivial change you never reach implementation until
-`superpowers:brainstorming` has presented a design, the owner approved it, `superpowers:writing-plans` produced the plan
-in `docs/_plans/`, a fresh-context review pass came back clean (retry on findings, hard cap four passes), and the owner
-approved the plan. Implementation is delegated to `superpowers:subagent-driven-development`. Review is the project
-`reviewer` skill. The `Amend` node is shared by two loops: a plan-invalidating discovery during step 6 and a blocking or
-major finding from the step 7 review, fixed in step 8, are the same move. Stop, present options, amend the plan,
-re-approve, review the plan again, implement again. Every plan change, initial or amendment, passes the same approval
-gate, so the loop is not autonomous. The generic process (clarify, design, plan, execute) is delegated to superpowers.
-This skill adds the dotli frame and the review and fix gates.
+Implementation never starts until the owner approved a design, the plan in `docs/_plans/` cleared a fresh-context
+review, and the owner approved the plan. Superpowers owns the generic process (clarify, design, plan, execute). This
+skill does not re-implement it. It adds the dotli frame and the review and fix gates, and delegates the rest.
 
-## The steps
+The `Amend` node is shared by three paths: a discovery in step 6 that breaks the plan, open batch findings the owner
+sends to an amendment, and a step 7 finding whose fix goes beyond a ruling. Each is the same move: stop, present
+options, amend the plan, review it, re-approve, implement. Every plan change passes the same approval gate, so the loop
+is not autonomous.
 
-1. **Frame.** State the change in one sentence in the vocabulary of one package or app. If that is not possible (two
-   vocabularies, or the actor, trigger or resulting state is unclear), run event storming with the owner before going on
-   (docs/abstract/event-storming.md § For Claude). Do not guess the package.
-2. **Size.** The frame is not an estimate. The sentence describes the concern, and the cost lives in the braid that
-   concern is already caught in. Run the probe (docs/abstract/simple-vs-easy.md § The probe) before brainstorming spends
-   effort on an unmeasured change. Measure the blast radius with LSP `findReferences` and count files and layers, where
-   a layer is one package, one app or one `config/*` package (docs/code/glossary.md § Scope). Never guess the count.
-   Judge whether the change adds braid: a flag or branch on a shared path, a value threaded through callers that only
-   forward it, a field on a shared type. Report both in the three lines the probe defines
-   (docs/abstract/simple-vs-easy.md § For Claude). If the radius contradicts the frame or the change adds braid, stop
-   and give the owner 2 or 3 options with costs, even when the diff would be tiny, because that cell is the one nothing
-   downstream catches. A stop is a report, not a refusal. The owner decides whether to stage it, decomplect first or
-   accept it.
-3. **Place.** Use `docs/code/placement.md`: (docs/code/placement.md § Which package or app) for the package or app,
-   (docs/code/placement.md § Inside the host) and (docs/code/placement.md § Inside a package) for the folder and file,
-   (docs/code/placement.md § Cut rules) for flow against building block, app against `@dotli/ui`, and lazy loading. If
-   nothing fits, stop and ask the owner (docs/code/placement.md § No home found). Never invent a package or a file to
-   resolve it.
-4. **Design.** `superpowers:brainstorming` writes `docs/_plans/<topic>-design.md`, then `document-review` refines it,
-   then the owner approves it (see "Design and plan").
-5. **Plan.** `superpowers:writing-plans` writes `docs/_plans/<topic>-plan.md` in RFC 2119 wording (MUST, SHOULD, MAY),
-   then `document-review` refines it. Then sequential fresh-context plan review passes check it against the real repo on
-   seven criteria (see "Reviewing the plan from an empty session"). The gate clears on one clean pass. At four passes
-   the remaining findings go to the owner. After a clean pass the owner approves a first or rethought plan before
-   step 6. The plan also MUST copy design values (copy, px, tokens) verbatim, split its files by responsibility, walk
-   the failure paths of each layer it touches, and pass the `## Architecture` gate of `AGENTS.md` (see "The Architecture
-   gate").
-6. **Implement.** Only after the design is approved, the plan review cleared and the owner approved the plan.
-   `superpowers:subagent-driven-development` runs on the current branch, in the main checkout. Tasks that touch disjoint
-   files run in parallel, overriding that skill's default, and commits are made one at a time. A discovery that
-   invalidates the plan is a hard stop: 2 or 3 amendment options, owner approval, plan review again, then resume. The
-   briefs carry the gate and the bans in "Implementing and handling plan deviations".
-7. **Review.** When implementation completes, invoke the project `reviewer` skill. It audits the diff against
-   `docs/claude/*-checklist.md` and the plan's scope, and writes `docs/_reviews/<topic>-review.md`. It is mandatory and
-   replaces the generic superpowers final review. It runs at least once on every non-trivial change, and again after
-   each blocking or major fix loop.
-8. **Fix.** Every finding is fixed, minor included. Nothing is parked as a follow-up. The order is in "Reviewing and
-   fixing".
-9. **Rule extraction.** When the owner corrected something in a way that generalises, propose a rule one at a time, and
-   on approval add it to its owner doc and a checklist row (see "Closing the loop").
+## Step 1: Frame
 
-## When a request breaks a convention
+State the change in one sentence in the vocabulary of one package or app. If you cannot (two vocabularies, or the actor,
+trigger or resulting state is unclear), run event storming with the owner first (docs/abstract/event-storming.md § For
+Claude). Do not guess the package.
 
-When the owner asks for something that breaks an existing convention in the repo, name the convention and show its
-precedent before complying, then ask. Do not just comply. Check first whether the current placement or pattern matches a
-convention, for example a shared Vite plugin in `config/vite` (docs/code/placement.md § Cut rules).
+## Step 2: Size
 
-## The Architecture gate
+The frame is not an estimate. The sentence describes the concern, and the cost lives in the braid that concern is
+already caught in. Run the probe (docs/abstract/simple-vs-easy.md § The probe) before brainstorming spends effort on the
+change:
 
-The `## Architecture` section of `AGENTS.md` is a gate, not a nicety (AGENTS.md § Architecture). The plan review checks
-it, and every implementer and per-task reviewer brief states it outright:
+- Measure the blast radius with LSP `findReferences`. Count files and layers, where a layer is one package, one app or
+  one `config/*` package (docs/code/glossary.md § Scope). Never guess the count.
+- Judge whether the change adds braid: a flag or branch on a shared path, a value threaded through callers that only
+  forward it, a field on a shared type.
+- Report both in the three lines the probe defines (docs/abstract/simple-vs-easy.md § For Claude).
+
+If the radius contradicts the frame or the change adds braid, stop and give the owner 2 or 3 options with costs. Do it
+even when the diff would be tiny, because nothing downstream catches this case. A stop is a report, not a refusal. The
+owner decides whether to stage the change, decomplect first or accept it.
+
+## Step 3: Place
+
+Place the change with `docs/code/placement.md`:
+
+- § Which package or app, for the package or app.
+- § Inside the host and § Inside a package, for the folder and file.
+- § Cut rules, for flow against building block, app against `@dotli/ui`, and lazy loading.
+
+If nothing fits, stop and ask the owner (docs/code/placement.md § No home found). Never invent a package or a file to
+resolve it.
+
+## Step 4: Design
+
+Invoke `superpowers:brainstorming`. It clarifies requirements one question at a time, proposes approaches and presents a
+design. Write the design to `docs/_plans/<topic>-design.md`, not under docs/superpowers/.
+
+Run `document-review` on the design before presenting it for approval. The design is the one artifact with no gate of
+its own downstream: step 5 reviews the plan, and `reviewer` reviews the code. A vague design, a hypothetical feature or
+an unmade decision spreads into everything built from it. No implementation code is written until the owner approves the
+design.
+
+## Step 5: Plan
+
+Invoke `superpowers:writing-plans` to turn the approved design into the plan. Override two of its defaults:
+
+- Write the plan to `docs/_plans/<topic>-plan.md`, not under docs/superpowers/. `reviewer` diffs the implementation
+  against that path.
+- Skip its execution handoff. The method is already `superpowers:subagent-driven-development`, controlled by this agent.
+  The plan gate asks only for approval and never offers a native run or a separate session.
+
+Then run `document-review` on the plan. This author-side pass cuts vague language and dead weight while you still have
+the context that produced them. The plan review that follows asks a different question: a fresh session checks the plan
+against the real repo. A clean `document-review` does not clear the plan review.
+
+### What the design and the plan carry
+
+Superpowers cannot know the dotli context. Without it the design is generically reasonable and architecturally wrong.
+Brainstorming and planning both carry it:
+
+- **Placement is fixed.** The package, app and files from step 3 are settled. Design within them, and never re-pick the
+  package or invent files.
+- **The Architecture gate** (see "Shared rules"), and the import rules each package's `eslint.config.js` sets,
+  summarised in (docs/code/placement.md § Layer map).
+- **The vocabulary of the package or app.** Names follow its `README.md` and the `## Glossary` of `AGENTS.md`. One
+  concept, one name, no synonyms.
+- **Written for an empty session.** The reader is a fresh agent with no brainstorming transcript, no memory of what was
+  rejected and no idea which file you just looked at. The plan states the problem, the placement and why, the
+  repo-relative path of every file touched, the exact symbols, the public surfaces added or used, the commands to run,
+  and the constraints that came out of discussion. References to the session ("as discussed", "the approach we picked",
+  "the file above", "the current implementation") are defects. Name the thing. Link the design for background, but the
+  plan must be executable without it.
+- **RFC 2119 levels** (`docs/RFC/2119.md`). Every instruction carries an explicit, capitalised strength (MUST, MUST NOT,
+  SHOULD, SHOULD NOT, MAY), so a fresh implementer can tell a hard constraint from a preference from a free choice.
+  Carry the standard note: _the key words MUST, MUST NOT, SHOULD, SHOULD NOT, MAY are to be interpreted as described in
+  RFC 2119_.
+- **The `reviewer` contract.** Every file touched, the packages and apps, `must_not_touch` and `out_of_scope`, the
+  public surfaces used, and the verification approach. Scope creep is only detectable if scope was written down.
+- **Design values verbatim.** Copy, px values and tokens come straight from the design source. Never paraphrase a
+  layout.
+- **Files split by responsibility.** Name each file by the one responsibility it holds, so no task produces a module
+  that later has to be split.
+- **Failure paths walked.** For each layer the plan touches, walk what happens when it fails, before any task is
+  dispatched.
+- **A Context entry per task.** Planning already found what each task needs to read, so write it down. Under the task's
+  files, a `**Context:**` block lists:
+  - **Read**: each file the implementer MUST read, the symbols in it that matter, and why. Name symbols, not line
+    numbers, since earlier tasks shift lines.
+  - **Precedent**: an existing module, fake or spec that shows the pattern to follow, when one exists.
+  - **Rules**: the sections that bind the task, as `(<doc> § <heading>)`. Never "follow AGENTS.md".
+  - **Skip** (MAY): code that looks related and is not, with one line on why.
+
+  The entry is part of the task text, so the brief carries it to the implementer and the batch reviewer.
+
+- **Review batches.** Head each batch `Batch <n>: <responsibility>` and list its tasks under it. "Review batches" sets
+  their size and order.
+- **Tests** follow (docs/code/placement.md § Inside a package) for where they live and (AGENTS.md § Code style, Tests:)
+  for how they behave, not the generic examples in the superpowers skills.
+
+### Plan review
+
+Dispatch each pass as a fresh subagent. Its inputs are the plan path, the approved design path and the criteria below.
+Never review the plan yourself: you know what you meant, so you read the gaps as filled. That blindness is the reason
+for the gate.
+
+Passes run one at a time, each on the plan as the previous one left it. A parallel pass would audit text that is being
+rewritten.
+
+Each pass checks `docs/_plans/<topic>-plan.md` against the actual repo:
+
+1. **Self-contained?** Could a fresh session execute it with no other context? Flag every reference to the session,
+   every unnamed file or symbol, and every step whose input comes from nowhere. Flag every task whose Context entry is
+   missing or leaves out a file or symbol its steps depend on.
+2. **Unambiguous?** Does every instruction state its RFC 2119 level? Flag prose whose strength has to be guessed.
+3. **Real?** Do the named paths, symbols, public surfaces and commands exist? A plan that references an imagined export
+   fails at task 1.
+4. **Complete?** Does executing every task in order produce the stated outcome, with no missing wiring, registration or
+   test? Are `must_not_touch`, `out_of_scope` and the verification commands stated? Are the failure paths of each layer
+   walked? Is every task in exactly one review batch, sized and ordered as "Review batches" sets?
+5. **Architecturally sound?** The Architecture gate (AGENTS.md § Architecture), placement against
+   `docs/code/placement.md`, files split by responsibility, and the vocabulary of the package or app.
+6. **Sized honestly?** Compare the plan's file list against the step 2 probe and the frame. Flag a file or layer count
+   that contradicts the frame. Flag braid the design never named, such as a new flag on a shared path or a parameter
+   threaded through callers that don't use it. Step 2 measured the radius from the frame, and here it is enumerated
+   (docs/abstract/simple-vs-easy.md § The classification).
+7. **Faithful to the approved design?** A plan can be self-contained, real, complete and sound while solving a different
+   problem. Flag every divergence: a dropped requirement, an added one, a swapped approach, a design value (copy, px,
+   tokens) not copied verbatim.
+
+**Scope of a pass.** Pass 1 audits the whole plan against every criterion. A later pass is scoped like a batch
+re-review, because a full audit costs ten minutes and finds new nits in text that already passed. Before revising, copy
+the plan to the scratchpad as `<topic>-plan.pass-<n>.md`. The next pass gets that copy and the previous pass's findings
+as written. It checks that each finding is fixed and audits the changed text against every criterion. It reads an
+unchanged section only where a change reaches into it.
+
+**Cost of a pass.** The time of a pass is model turns, not tools. The brief asks the reviewer to check the plan's named
+paths, symbols, exports and scripts in a few batched commands, never one lookup per name.
+
+A pass returns "no gaps" or findings. The brief asks for a severity on each finding and gives these definitions:
+
+- **Blocking**: a task executed as written fails or builds the wrong thing. An imagined path, symbol, export or command,
+  a commit that leaves typecheck or tests failing, missing wiring, a step whose input comes from nowhere, or a
+  divergence from the design (criterion 7).
+- **Major**: the plan executes but breaks the Architecture gate or the placement, sizes the change dishonestly, leaves a
+  failure path or a requirement without a test, or has a Context entry that leaves out a file or symbol its steps depend
+  on. Prose whose strength cannot be told from its context is major too.
+- **Minor**: everything else. Wording, a missing RFC 2119 word on an instruction whose strength is plain, the phrasing
+  of a comment or commit message the plan dictates, a pointer one LSP lookup resolves, ordering or formatting.
+
+A finding the reviewer leaves untagged is major. The controller never lowers a tag the reviewer gave.
+
+**The loop.** Up to the cap it needs no owner.
+
+1. Blocking or major findings: revise the plan through `superpowers:writing-plans`, applying that pass's minor findings
+   too. Then run the next pass, scoped to the revision.
+2. No findings, or only minor ones: apply the minor ones directly, and the gate is clear. A minor fix never starts
+   another pass.
+3. **Cap: three passes.** Reviewers always find something, and the cap keeps the gate from becoming a polish loop. If
+   pass 3 still has blocking or major findings, stop. Give them to the owner with your read on each. The owner decides:
+   - **Fix**: revise the plan through `superpowers:writing-plans`, then go to plan approval. There is no fourth pass.
+   - **Accept**: this counts as the plan approval. Record the findings and the owner's words in the plan, then
+     implement.
+   - **Rethink**: the rethought plan starts a new pass count.
+
+A plan the owner sends back at the approval gate, a rethought plan and an amendment each start a new pass count too. A
+pass over an amendment's changed sections counts like any other.
+
+**A divergence from the design (criterion 7).**
+
+- **Light**: something the design did not know forces it, such as a seam that does not exist or a constraint found in
+  the repo, and the fix is obvious within the approved intent. Record the divergence and its cause in the plan, and keep
+  going.
+- **Anything more**: it changes what gets built, which requirement is met or which approach is taken. That is a hard
+  stop. Tell the owner what in the design no longer holds and why. Offer ways out (revise the design, revise the plan
+  back toward the design, accept the divergence), and wait for the answer.
+- When unsure, it is the second.
+
+After the gate clears, the owner approves the plan, whether it is a first, revised, rethought or amended one.
+
+## Step 6: Implement
+
+Run `superpowers:subagent-driven-development` on the current branch, in the main checkout, never in a copy of the repo.
+State any setup choice that changes where the owner sees the work in one line before starting. This agent, which wrote
+the plan, is its controller.
+
+### Briefs
+
+Every implementer and batch reviewer brief states the Architecture gate outright. It also carries the dotli context:
+placement is fixed, the vocabulary holds, and tests follow their owner docs.
+
+Every implementer brief also says, in words:
+
+- No size, perf or measuring builds: no bundle-size comparisons, no production builds to inspect output, no perf suites.
+- No slow Playwright suite before a commit. Commit after the fast checks, and run that suite on its own.
+- No sleeps or fixed timeouts. Start a server a task needs once, up front, and wait on a readiness signal.
+- Start from the task's Context entry. Read outside it only for a need you can name, and list each such read under
+  "Context misses" in the report, with that need.
+- Resolve a stale entry, such as a moved file or a renamed symbol, with one LSP lookup. If that fails, report
+  `NEEDS_CONTEXT` instead of searching the repo.
+
+The controller copies each context miss to the ledger, and passes it on to every later task that touches the same files.
+
+### Review batches
+
+Batches replace the per-task review of `superpowers:subagent-driven-development`. No task is reviewed on its own.
+
+- A batch is a run of consecutive tasks that share one responsibility or one layer. It holds at most four tasks, so one
+  review stays readable. A task whose interface later tasks build on SHOULD close its batch, so its review clears before
+  they start.
+- Batches run one after another. Inside a batch, tasks that touch disjoint files run in parallel, which that skill never
+  does by default. Commits are made one at a time.
+- After the last task of a batch commits, one fresh reviewer gets that skill's task reviewer template, the brief and
+  report of every task in the batch, and the global constraints. It also gets one review package, from the head before
+  the batch's first task to the head after its last. The brief names by hash any commit in that range that no task of
+  this change made, such as one by the owner or the main session.
+- Batch reviews send back only blocking and major findings. Minor ones are collected for step 8.
+- The fix loop runs per batch, up to five rounds. Rounds 1 to 3 resume the implementer of the task a finding points at,
+  and rounds 4 and 5 dispatch a fresh one. A finding across tasks goes to a fresh implementer with the briefs of those
+  tasks. The re-review covers only the fix diff.
+- Findings still open after round 5 are not parked, unlike that skill's breaker. They go to the owner with your read on
+  each, and the owner amends the plan or accepts them. Record an accepted finding in the ledger with the owner's words.
+
+### Ruling or hard stop
+
+The plan is a contract. When implementation shows it is wrong, do not improvise.
+
+`superpowers:subagent-driven-development` lets the controller rule on any conflict and keep going. Here the controller
+rules alone only when the fix stays inside the approved design and the plan's file list: no new file, package or public
+surface, and no requirement dropped or added. It records each ruling in the ledger and names it in `DONE`.
+
+Anything beyond a ruling is a hard stop. The usual triggers:
+
+- An implementer reports that the plan itself is wrong.
+- A discovery breaks a plan assumption: a seam does not exist, the placed file cannot hold the logic, or a new
+  constraint surfaces.
+- The real blast radius overruns the plan's, as files or layers the plan never listed keep turning out to be mandatory.
+  That is the failure step 2 exists to catch, arriving late. A wrong estimate is not a reason to keep typing.
+
+On a hard stop:
+
+1. Do not deviate silently or patch around the problem.
+2. Tell the owner, and offer 2 or 3 concrete amendment options with trade-offs.
+3. On the owner's choice, amend `docs/_plans/<topic>-plan.md` through `superpowers:writing-plans`. Keep it the same
+   document.
+4. Review the plan again. An amendment that changes scope, placement or approach gets a pass over the whole plan. One
+   that only corrects details, such as a renamed symbol, a corrected path or an added test, gets a pass over the changed
+   sections.
+5. The owner approves the amendment after its review clears, so the owner approves the text that gets implemented.
+6. Resume `superpowers:subagent-driven-development` from the affected task.
+
+## Reviewing and fixing
+
+### Step 7: Review
+
+After the last task and the minor sweep, dispatch a fresh subagent that runs the project `reviewer` skill. This agent
+wrote the plan and ruled on the findings, so it never reviews the result itself.
+
+`reviewer` cites `docs/claude/*-checklist.md` and diffs the implementation against the plan's scope, `must_not_touch`
+and `out_of_scope`. That is why it replaces the generic superpowers final review rather than running beside it. Its
+brief names by hash any commit on the branch that this change did not make. It writes `docs/_reviews/<topic>-review.md`
+(the same `<topic>` as the plan) and returns blocking, major and minor counts.
+
+It runs at least once on every non-trivial change, whatever the sweep touched, and again after each fix of its blocking
+or major findings. A sweep of minor findings gets the scoped re-review in step 8.
+
+**Cap: seven runs**, counted across the whole lifecycle. If run 7 still has findings, stop. Give them to the owner with
+your read on each. The owner decides: fix them in one fresh dispatch with no eighth run, or accept them.
+
+### Step 8: Fix
+
+Every finding is fixed in this branch, minor included. Nothing is parked as a follow-up or handed to the owner as a
+list. The one exception is the open findings at a cap, which only the owner can accept. Severity only orders the work:
+
+1. The minor findings collected from batch reviews are fixed in one sweep after the last task. That sweep always goes on
+   to step 7.
+2. A blocking or major step 7 finding whose fix goes beyond a ruling goes through the hard stop steps in "Ruling or hard
+   stop". Once the amendment is implemented, step 7 runs again.
+3. Other blocking and major step 7 findings are fixed together with that run's minor findings in one fresh dispatch.
+   Then step 7 runs again.
+4. A step 7 run with only minor findings gets one sweep. A sweep that changes only docs or comments gets no re-review.
+   Any other sweep gets a scoped re-review, not a full step 7 run, because a full run takes ten minutes to re-audit a
+   branch that already passed. A fresh reviewer gets the minor findings and the sweep's diff. It checks that each
+   finding is fixed and that the diff breaks no checklist row it touches. A blocking or major finding sends the branch
+   back to a full step 7 run. Minor ones get one more sweep and re-review the same way. A scoped re-review counts toward
+   the seven-run cap.
+
+A blocking or major fix still gets a full run, never a scoped one. Such a fix can open a hole outside its own diff, and
+only a fresh audit of the whole branch finds it.
+
+The lifecycle ends at a step 7 run with no findings, a docs-only sweep, a clean scoped re-review, or the owner's
+decision at the step 7 cap. Step 9 follows. Finishing the branch (merge or PR) is a separate step the owner starts.
+
+## Step 9: Rule extraction
+
+When the owner corrected you in a way that generalises beyond this task ("X always goes in Y", "we don't do Z"), run
+(docs/code/rule-extraction.md § Procedure) before finishing. Propose one rule at a time. On approval, add it to its
+owner doc and a checklist row (docs/code/rule-extraction.md § Where rules land). Skip silently if the owner made no
+substantive correction. A correction that is not captured is one the next session repeats.
+
+## Shared rules
+
+### The Architecture gate
+
+The `## Architecture` section of `AGENTS.md` is a gate, not a nicety. The plan review checks it, and every implementer
+and batch reviewer brief states it outright:
 
 - each layer owns one responsibility a reader can name from its module
 - the interfaces between layers are small and explicit
@@ -183,262 +475,131 @@ it, and every implementer and per-task reviewer brief states it outright:
 
 Where a fix would add a special case, move the responsibility to the layer that owns it.
 
-## Design and plan
+### A request that breaks a convention
 
-For a non-trivial change the plan precedes the implementation. It is not a write-up produced afterwards. Do not write
-implementation code until the owner has approved a design. The generic clarify, design, approve and plan process is
-owned by superpowers, a declared project dependency in `.claude/settings.json` `enabledPlugins`. This skill does not
-re-implement it. It injects the dotli frame and delegates.
+When the owner asks for something that breaks a convention of the repo, do not just comply. Name the convention, show
+its precedent, then ask. Check first whether the current placement or pattern matches a convention, for example a shared
+Vite plugin in `config/vite` (docs/code/placement.md § Cut rules).
 
-**1. Invoke `superpowers:brainstorming`.** It clarifies requirements one question at a time, proposes approaches,
-presents a design, and gates on owner approval before any implementation. Override its default location: write the
-design to `docs/_plans/<topic>-design.md`, not under docs/superpowers/. Then invoke `document-review` on that design
-before presenting it at the approval gate. The design is the one artifact with no downstream gate of its own (step 5
-reviews the plan, `reviewer` reviews the code), so a design that is vague, carries hypothetical features or leaves a
-decision unmade spreads into everything built from it. Present the refined design for approval.
+### Subagents
 
-**2. Invoke `superpowers:writing-plans`.** It turns the approved design into the implementation plan. Override its
-default location: write the plan to `docs/_plans/<topic>-plan.md`, not under docs/superpowers/. That is the path
-`reviewer` diffs the implementation against. Then invoke `document-review` on the plan before step 5. This is the
-author-side pass. It cuts vague language and dead weight while you still have the context that produced them. The step 5
-fresh-context gate that follows checks the plan against the real repo. Two passes, two questions, in that order.
+Every subagent this lifecycle dispatches is one of two kinds. The seat decides which, never the moment of dispatch.
 
-**3. Carry this dotli context into both delegated skills.** Superpowers cannot know it, and without it the design is
-generically reasonable and architecturally wrong.
+- **Fresh**: `Agent` with a named type, such as `general-purpose` or `Explore`. It starts empty and knows only its brief
+  and the `CLAUDE.md` files every session loads.
+- **Fork**: `Agent` with `subagent_type: "fork"`. It inherits this whole conversation, including this skill and the step
+  in progress, and runs on the session model.
 
-- **Placement is a fixed input.** The package, app and files from step 3 are settled. Brainstorming and planning design
-  within that placement. They do not re-pick the package or invent files.
-- **Honour the Architecture gate** (see "The Architecture gate") and the import rules each package's `eslint.config.js`
-  sets, summarised in (docs/code/placement.md § Layer map).
-- **Use the vocabulary of the package or app.** Naming follows its `README.md` and the `## Glossary` of `AGENTS.md`. One
-  concept, one name. Don't let the design coin synonyms.
-- **Write the plan for an empty session.** The reader is a fresh agent with no conversation history: no brainstorming
-  transcript, no memory of what was rejected, no idea which file you were just looking at. Everything the implementation
-  depends on is written in the plan: the problem, the placement decision and why, the repo-relative path of every file
-  touched, the exact symbols involved, the public surfaces added or used, the commands to run, and the constraints that
-  came out of discussion. References to the session ("as discussed", "the approach we picked", "the file above", "the
-  current implementation") are defects. Name the thing. Link to `docs/_plans/<topic>-design.md` for background, but the
-  plan must be executable without opening it.
-- **State requirement levels in RFC 2119 words** (`docs/RFC/2119.md`). Every instruction carries an explicit,
-  capitalised strength (MUST, MUST NOT, SHOULD, SHOULD NOT, MAY), so a fresh implementer can tell a hard constraint from
-  a preference from a free choice without asking. Carry the standard note into the plan: _the key words MUST, MUST NOT,
-  SHOULD, SHOULD NOT, MAY are to be interpreted as described in RFC 2119_.
-- **The plan satisfies the `reviewer` contract.** It names every file it touches, the packages and apps, what is
-  `must_not_touch` and `out_of_scope`, the public surfaces used, and the verification approach. Scope creep is only
-  detectable if scope was written down.
-- **Copy design values verbatim.** Copy, px values and tokens come straight from the design source. Never paraphrase a
-  layout.
-- **Split files by responsibility.** Name each file in the plan by the one responsibility it holds, so no task produces
-  a module that later has to be split.
-- **Walk the failure paths.** For each layer the plan touches, walk what happens when it fails, before any task is
-  dispatched.
-- **Tests** follow (docs/code/placement.md § Inside a package) for where they live and (AGENTS.md § Code style, Tests:)
-  for how they behave, not the generic examples in the superpowers skills.
+A seat is fresh when its value comes from not knowing this session: it is a gate, or it executes a plan written for an
+empty session. A seat MAY be a fork only when it does work this agent would otherwise do inline, before the plan is
+written, and only this agent reads its output. A seat missing from the table is fresh.
 
-**Without superpowers.** If superpowers is unavailable (a teammate or CI without the plugin), run the same substeps
-inline: clarify with `AskUserQuestion` one question at a time, write `docs/_plans/<topic>-design.md`, run
-`document-review` on it and stop for approval, then write `docs/_plans/<topic>-plan.md`, run `document-review` on it,
-and implement the plan task by task, applying the same dotli context. The plan review runs on `Agent`, not on
-superpowers, so it applies either way. The dependency is declared so this fallback is rarely needed, not because the
-gate is optional.
+| Seat                                                                                                                   | Kind                                                                                                                   | Inputs                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Steps 1 to 5, until the plan is written: a side investigation, such as call sites of a symbol or how a module recovers | Fork or inline                                                                                                         | One question and the answer format                                                                                          |
+| `document-review` of the design or the plan                                                                            | Inline                                                                                                                 | None                                                                                                                        |
+| Step 5: a plan review pass                                                                                             | Fresh                                                                                                                  | The plan path, the design path, the seven criteria, the severities. From pass 2, the previous pass's plan copy and findings |
+| Step 6: an implementer                                                                                                 | Fresh                                                                                                                  | The `superpowers:subagent-driven-development` dispatch, plus the rules in "Briefs"                                          |
+| Step 6: a fix round                                                                                                    | Resume the implementer of the finding's task in rounds 1 to 3. Fresh in rounds 4 and 5, and for a finding across tasks | The open findings, and for a fresh one the briefs of the tasks they point at                                                |
+| Step 6: a batch review or re-review                                                                                    | Fresh                                                                                                                  | The brief and report paths of each task in the batch, the review package path, the global constraints                       |
+| Step 6: a question the controller needs answered to rule on a conflict                                                 | Inline or fresh `Explore`                                                                                              | One question                                                                                                                |
+| Step 7: the `reviewer` skill                                                                                           | Fresh                                                                                                                  | The branch and the plan path                                                                                                |
+| Step 8: a fix of step 7 findings or a minor sweep                                                                      | Fresh                                                                                                                  | The findings as a file                                                                                                      |
+| Step 8: a scoped re-review of a minor sweep                                                                            | Fresh                                                                                                                  | The minor findings as a file, the sweep's diff range                                                                        |
+| Step 9: rule extraction                                                                                                | Inline                                                                                                                 | None                                                                                                                        |
 
-## Reviewing the plan from an empty session
+Forks stop where the plan review starts. From then on every seat is a gate or an executor of the plan. A fork knows what
+the plan meant, reads its gaps as filled, and so hides the defects those seats exist to find. A fork in step 6 also
+inherits the controller's ledger, todos and wave state, and can start acting as the controller.
 
-A plan goes downstream only once a review pass comes back clean: pass 1, findings, fix, pass 2, and so on, up to a hard
-cap of four. One clean pass is enough. Passes are sequential, never parallel: each reviews the plan as revised by the
-previous one. Otherwise the second reviewer audits a document that no longer exists and its findings arrive against
-stale text.
+**Fork rules.**
 
-Every pass runs in fresh context. Dispatch it as its own subagent (`Agent`) whose inputs are the plan path, the approved
-design path (`docs/_plans/<topic>-design.md`) and the criteria below. Never review the plan yourself in the authoring
-context: you know what you meant, so you read the gaps as filled. That blindness is the whole reason for the gate.
+- The brief opens with: "You are a fork of the architecture session, not its controller. Your one job: <question>."
+  Without this line a fork reads the inherited skill as its own and carries on with the lifecycle.
+- A fork is read-only. It MUST NOT edit a file, write the design or the plan, commit, ask the owner, dispatch a subagent
+  or invoke a skill.
+- It answers in at most 30 lines, or writes a longer answer to a scratchpad file and returns the path.
+- Forks run in parallel only when their questions are independent.
 
-Each pass answers, against `docs/_plans/<topic>-plan.md` and the actual repo:
+**Fresh rules.**
 
-1. **Self-contained?** Could a fresh session execute this with no other context? Flag every reference to the session
-   ("as discussed", "the current approach"), every unnamed file or symbol, every step whose input comes from nowhere.
-2. **Unambiguous?** Does every instruction state its requirement level in RFC 2119 terms (`docs/RFC/2119.md`)? Flag
-   prose whose strength has to be guessed. An implementer never infers whether a step is mandatory, recommended or
-   optional.
-3. **Real?** Do the named paths, symbols, public surfaces and commands exist? A plan that references an imagined export
-   fails at task 1.
-4. **Complete?** Does executing every task in order produce the stated outcome, with no missing wiring, registration or
-   test? Are `must_not_touch`, `out_of_scope` and the verification commands stated? Are the failure paths of each layer
-   it touches walked?
-5. **Architecturally sound?** The Architecture gate (AGENTS.md § Architecture), placement against
-   `docs/code/placement.md`, files split by responsibility, and the vocabulary of the package or app.
-6. **Sized honestly?** The plan enumerates every file it touches, so compare that list against the step 2 probe and
-   against the one-sentence frame. Flag a plan whose file or layer count contradicts the frame it came from, and flag a
-   plan that quietly adds braid the design never named (a new flag on a shared path, a parameter threaded through
-   callers that have no use for it). This is the second net under the probe: at step 2 the radius was measured from the
-   frame, here it is enumerated (docs/abstract/simple-vs-easy.md § The classification).
-7. **Faithful to the approved design?** The plan implements `docs/_plans/<topic>-design.md`, the design the owner
-   approved. A plan can be self-contained, real, complete and sound while quietly solving a different problem. Flag
-   every divergence: a dropped requirement, an added one, a swapped approach, a design value (copy, px, tokens) not
-   copied verbatim.
+- The brief carries paths, the seat's template and the inputs the table names, never this agent's verdicts. "I think it
+  is fine", an answer to one of the seat's own criteria, or a hint about what to ignore anchors the seat on the author's
+  reading.
+- Every fresh dispatch names its model, as `superpowers:subagent-driven-development` § Model Selection sets it.
 
-Pass 1 covers every criterion. A later pass must not copy the one before. Shift the emphasis (for example pass 1 on
-executability and self-containment, pass 2 on architecture, scope and design fidelity), so consecutive reviewers don't
-share one blind spot. Each returns findings or "no gaps".
+No seat dispatches a subagent, fresh or fork. Only the controller dispatches.
 
-**Handling a design divergence (criterion 7).** Judge how much steering it takes:
+### Without superpowers
 
-- **Light.** The departure is forced by something the design did not know (a seam that does not exist, a constraint
-  found in the repo) and the fix is obvious within the approved intent. Justify it in the plan: record the divergence
-  and its cause, and keep going. No owner round trip.
-- **Anything more.** The departure changes what gets built, which requirement is met or which approach is taken. That is
-  a hard stop. Present the divergence to the owner, name what in the design no longer holds and why, and offer concrete
-  ways to resolve it (revise the design, revise the plan back toward the design, accept the divergence). Wait for the
-  answer.
+Superpowers is a declared project dependency (`.claude/settings.json` `enabledPlugins`), so this fallback is rarely
+needed. The dependency is declared for that reason, not because the gates are optional. If a teammate or CI runs without
+the plugin, run the same substeps inline:
 
-If you are unsure which side it falls on, it is the second.
+1. Clarify with the owner one question at a time.
+2. Write `docs/_plans/<topic>-design.md`, run `document-review` on it, and stop for approval.
+3. Write `docs/_plans/<topic>-plan.md` and run `document-review` on it.
+4. Implement it batch by batch with a fresh implementer per task, applying the same dotli context.
 
-The loop:
-
-1. Run one pass. It returns findings or "no gaps".
-2. Findings: revise `docs/_plans/<topic>-plan.md` through `superpowers:writing-plans`, then go to 1 with the next pass
-   (a fresh reviewer, a new emphasis, reading the revised plan).
-3. No findings: the gate is clear, whether that was pass 1 or pass 3.
-4. **Hard cap: four passes.** If pass 4 still returns findings, stop reviewing. Give the outstanding findings to the
-   owner with your read on each and let them decide (fix, accept, or rethink the plan). Reviewers always find something,
-   and the cap stops the gate from becoming an endless polish loop.
-   - **Fix.** The plan is revised through `superpowers:writing-plans` and goes to the owner for plan approval, then to
-     implementation. An amended plan skips that approval, since it was approved once at the re-approval gate. There is
-     no fifth pass.
-   - **Rethink.** The rethought plan starts a new pass count.
-
-The last pass must come back clean. A plan still collecting findings on its final review has not been reviewed, only
-edited. The one exception is the cap. Up to that point the loop is not owner-gated (unlike design approval).
-
-**Amendments re-enter the gate, scoped to what changed.** An amendment that changes scope, placement or approach gets a
-full pass over the whole plan. An amendment that only corrects details inside a reviewed plan (a renamed symbol, a
-corrected path, an added test) gets a pass over the changed sections. Either way: a clean pass, or fix and go again.
-
-## Implementing and handling plan deviations
-
-Once the plan is approved, implement it through `superpowers:subagent-driven-development` on the current branch, in the
-main checkout, never in a copy of the repo. State any setup choice that changes where the owner sees the work in one
-line before starting. Tasks that touch disjoint files run in parallel. This overrides the default of
-`superpowers:subagent-driven-development`, which never dispatches two implementers at once. Commits are made one at a
-time.
-
-Every implementer and per-task reviewer brief states the Architecture gate outright (see "The Architecture gate") and
-carries the dotli context from "Design and plan": placement is fixed, the vocabulary holds, tests follow their owner
-docs. Every implementer brief also forbids, in words:
-
-- size, perf and measuring builds (bundle-size comparisons, production builds to inspect output, perf suites)
-- running the slow Playwright suite before a commit. Commit after the fast checks and run that suite on its own.
-- sleeps or fixed timeouts. Start a server a task needs once, up front, and wait on a readiness signal.
-
-Per-task reviews send back only blocking and major findings. Minor ones are collected for the sweep in step 8.
-
-**The plan is a contract. When implementation shows it is wrong, do not improvise.** Superpowers' execution skills only
-escalate open-endedly ("stop and ask the human" on a blocked status). dotli requires a sharper move. Trigger a hard stop
-when an implementer reports the plan itself is wrong, when a discovery invalidates a plan assumption (a seam does not
-exist, the placed file cannot hold the logic, a new constraint surfaces), or when the real blast radius overruns the
-plan's: files or layers the plan never listed keep turning out to be mandatory. The last is the failure the step 2 probe
-exists to catch, arriving late. An estimate that was wrong is a plan-invalidating discovery, not a reason to keep
-typing. On trigger:
-
-1. **Hard stop.** Do not silently deviate from the approved plan or patch around the problem.
-2. **Tell the owner and present 2 or 3 concrete amendment options** with trade-offs.
-3. On the owner's choice, **amend `docs/_plans/<topic>-plan.md`** through `superpowers:writing-plans`. Keep it the same
-   plan document.
-4. **Re-approval gate.** An amendment is a plan change and passes the same approval gate as the first plan. Present the
-   amended plan and wait for approval. This is its only approval. After its clean review pass it goes straight to
-   implementation.
-5. **Review the plan again** before resuming, over the whole plan if the amendment changed scope, placement or approach,
-   over the changed sections if it only corrected details.
-6. **Resume** `superpowers:subagent-driven-development` from the affected task.
-
-## Reviewing and fixing
-
-**Step 7, review (mandatory).** When all plan tasks complete and the minor sweep is done, invoke the project `reviewer`
-skill. It runs at least once on every non-trivial change, whatever that sweep touched, and again after each blocking or
-major fix loop. It is rule-aware: it cites `docs/claude/*-checklist.md` and diffs the implementation against the plan's
-`must_not_touch`, `out_of_scope` and scope. That is why it replaces superpowers' generic final review rather than
-running beside it. It writes `docs/_reviews/<topic>-review.md` (the same `<topic>` as the plan) and returns blocking,
-major and minor counts.
-
-**Step 8, fix.** Every finding is fixed, minor included. Nothing is parked as a follow-up and no known issue is handed
-to the owner as a list. Severity only orders the work. The order:
-
-1. Per-task reviews during step 6 send back only blocking and major findings, and minor ones are collected.
-2. All collected minor findings are fixed in one sweep after the last task, before step 7.
-3. Blocking and major findings from step 7 go through the amend, approve and plan review loop (see "Implementing and
-   handling plan deviations"), are implemented, and then step 7 runs again. Minor findings from step 7 are fixed in one
-   sweep the same way.
-4. A sweep of step 7 minor findings that changes only docs or comments gets no re-review. Any other sweep of step 7
-   minor findings goes back to step 7. The sweep before step 7 always goes on to step 7.
-
-The lifecycle ends at a step 7 review with no findings, or after a sweep of step 7 minor findings that changed only docs
-or comments, followed by step 9. Finishing the branch (merge or PR) stays a separate step the owner starts.
-
-## Closing the loop
-
-**Step 9, rule extraction.** When the owner corrected you during planning or implementation in a way that generalises
-beyond this task ("X always goes in Y", "we don't do Z"), run this procedure before finishing
-(docs/code/rule-extraction.md § Procedure). Propose one rule at a time, and on approval add it to its owner doc and a
-checklist row (docs/code/rule-extraction.md § Where rules land). Skip silently if the owner made no substantive
-correction. A correction that is not captured is one the next session repeats.
+The plan review, the batch reviews and step 7 run on `Agent`, not on superpowers, so they apply either way. Without the
+task reviewer template, a batch review is briefed with the text of the batch's tasks and the Architecture gate.
 
 ## Red flags
 
 You are skipping the process when you see any of these.
 
-- **Writing the plan after the code is written.** The plan is a contract you build to, not a summary of what you built.
-  On a non-trivial change the design is approved and the plan lands in `docs/_plans/` before the first implementation
-  edit.
-- **Editing implementation files on a non-trivial change before the design was approved.** Stop, run
-  `superpowers:brainstorming`, get approval, then `superpowers:writing-plans`.
-- **Re-implementing clarify, design or plan prose inside this skill.** That process is delegated to superpowers. This
-  skill only injects the dotli frame.
+- **Code before an approved design, or a plan written after the code.** The plan is a contract you build to, not a
+  summary of what you built. It lands in `docs/_plans/` before the first implementation edit.
+- **Re-implementing clarify, design or plan prose inside this skill.** Superpowers owns that process.
 - **Restating a list or definition that a doc owns** (the trivial criteria, the peer files, the placement rules, the
-  import rules). Cite the doc. Copied lists drift silently when the doc changes. This skill orchestrates and routes, and
-  `docs/code/placement.md` and `docs/code/glossary.md` define.
-- **Letting a delegated skill re-pick the package, invent a file or write to docs/superpowers/.** Placement is fixed at
-  step 3 and the design and plan go to `docs/_plans/`.
-- **Handing a plan to implementation without a clean review pass.** Every plan gets at least one fresh-context pass, and
-  a pass that returned findings does not count until the fixed plan clears one. Reviewing it yourself in the authoring
-  context does not count.
-- **Firing several plan review passes at once.** A later pass then reviews a document an earlier one is invalidating.
-  Pass, fix, pass.
-- **A plan that only makes sense to someone who was in this conversation.** The implementer is a fresh session. Name
-  every file, symbol, public surface and command.
+  import rules). Cite the doc. Copied lists drift silently when the doc changes.
+- **A delegated skill that re-picks the package, invents a file or writes to docs/superpowers/.**
+- **A plan handed to implementation without a clean review pass.** A pass with blocking or major findings counts only
+  once the fixed plan clears one. Reviewing it yourself does not count.
+- **Several plan review passes at once.** Pass, fix, pass.
+- **Running past a cap**: a fourth plan pass, a sixth fix round on a batch, an eighth `reviewer` run. Past the cap, the
+  owner decides.
+- **Another plan pass after minor findings only.** Apply them, and the gate is clear.
+- **A later plan pass that audits the whole plan again.** It reviews the revision and the previous pass's findings.
+- **`document-review` used as the plan review, or the reverse.**
+- **A design presented for approval straight out of brainstorming.** Run `document-review` first. Approval is an owner
+  decision, not a quality check.
+- **A plan that only makes sense to someone who was in this conversation.** Name every file, symbol, public surface and
+  command.
 - **A plan that paraphrases a design value, names one file for several responsibilities or skips a failure path.** Each
   costs a full implement, review and fix cycle later.
-- **Improvising around a plan-invalidating discovery.** Hard stop, present 2 or 3 options, amend the plan, re-approve.
-- **A plan that quietly solves a different problem than the approved design.** Criterion 7. Light steering is justified
-  in the plan. Anything that changes what gets built stops for the owner.
-- **Polishing the plan through pass 5, 6, 7.** The cap is four. Past it, give the remaining findings to the owner.
-- **Running `document-review` as a step 5 pass, or a step 5 pass as document refinement.** `document-review` edits the
-  document from inside the authoring context. A step 5 pass is a fresh session checking the plan against the real repo.
-  A clean `document-review` does not clear the step 5 gate.
-- **Presenting a design for approval straight out of brainstorming.** Run `document-review` on it first. The approval
-  gate is an owner decision, not a quality check.
-- **A brief without the Architecture gate or without the bans in words.** Every implementer and per-task reviewer brief
-  states the gate, and every implementer brief forbids measuring builds, the slow suite before commit, and sleeps.
-- **Finishing implementation without running `reviewer`.** Review is the mandatory step 7 gate. The generic superpowers
-  final review does not replace it.
-- **Parking a finding as a follow-up, or asking the owner whether to fix a minor one.** Every finding is fixed in this
-  branch (step 8).
-- **Looping on review fixes without re-approving the amended plan.** Blocking and major findings amend the plan, and
-  every plan change passes approval again.
-- **Treating the one-sentence frame as an estimate.** The sentence describes the concern, and the cost is the braid it
-  sits in. Step 2 measures the radius with `findReferences` before brainstorming spends effort on it.
-- **"It's only a small diff."** Diff size is the easy axis and reports nothing about braid
-  (docs/abstract/simple-vs-easy.md § The classification). A three-line flag on a shared path is the most expensive cell,
-  and the one no downstream gate catches.
+- **A task without a Context entry, or one that says "read the package".** Every implementer then rebuilds what planning
+  already knew.
+- **A plan that quietly solves a different problem than the approved design.** Light steering is recorded in the plan.
+  Anything that changes what gets built stops for the owner.
+- **Stopping the agent at the plan gate, or handing the plan to a new session or agent.** The agent that wrote the plan
+  runs step 6. Its context is the reason it exists.
+- **A fork from the plan review on, a fork brief without the not-the-controller line, or a fork that edits, asks or
+  dispatches.**
+- **A fresh brief that carries this agent's verdict.** Paths and the seat's inputs, nothing more.
+- **A brief without the Architecture gate, or an implementer brief without the bans in words.**
+- **A per-task review, or a batch review before the batch's last task committed.**
+- **Improvising around a plan-invalidating discovery, or a ruling that adds a file, package or public surface or changes
+  a requirement.** That is an amendment.
+- **Amending the plan for a plain code bug.** A step 7 finding amends the plan only when its fix goes beyond a ruling.
+- **Finishing without running `reviewer`.** The generic superpowers final review does not replace it.
+- **A full `reviewer` run after a minor-only sweep, or a scoped re-review after a blocking or major fix.**
+- **Parking a finding as a follow-up, or asking the owner whether to fix a minor one.** Only the owner accepts an open
+  finding, and only at a cap.
+- **Treating the one-sentence frame as an estimate.** The cost is the braid it sits in. Measure the radius with
+  `findReferences` before brainstorming.
+- **"It's only a small diff."** Diff size is the easy axis and says nothing about braid (docs/abstract/simple-vs-easy.md
+  § The classification). A three-line flag on a shared path is the most expensive case, and the one no downstream gate
+  catches.
 - **"Most of those files are just call-site updates."** That is the evidence for complecting, not a reason to discount
   the count. It belongs in front of the owner before the first edit.
 - **Discovering the real radius at file 60.** It was measurable in seconds at file 0. Late discovery is a hard stop and
-  a plan amendment.
-- **Complying with a request that breaks a convention without naming the convention.** Name it, show the precedent and
-  ask first.
-- About to type a path in `apps/`, `packages/` or `config/` without having read `docs/code/placement.md`.
-- Inventing a package or a file because nothing fits. That is the signal to stop and ask, not to name it.
-- "It's obvious where this goes" on a change across several files or with a new abstraction. Frame and place it anyway.
-  Placements that feel obvious are where layer leaks start.
+  an amendment.
+- **Complying with a request that breaks a convention without naming the convention.**
+- **Typing a path in `apps/`, `packages/` or `config/` without having read `docs/code/placement.md`.**
+- **Inventing a package or a file because nothing fits.** That is the signal to stop and ask.
+- **"It's obvious where this goes"** on a change across several files or with a new abstraction. Frame and place it
+  anyway. Placements that feel obvious are where layer leaks start.
 
 ## See also
 
@@ -450,6 +611,6 @@ You are skipping the process when you see any of these.
 - `docs/code/rule-extraction.md`: turning a correction into a durable rule.
 - `docs/RFC/2119.md`: MUST, SHOULD and MAY, the requirement levels plans are written in.
 - `AGENTS.md`: the Architecture gate and the code style rules.
-- `document-review` skill: the author-side refinement pass over a design or plan, run before the step 5 gate, not
+- `document-review` skill: the author-side refinement pass over a design or plan, run before the plan review, not
   instead of it.
 - `reviewer` skill: audits the implementation against the plan and the checklists.

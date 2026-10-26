@@ -14,12 +14,18 @@ paths, type imports, the strict type and promise rules, test-only imports in shi
 in unit specs. The typecheck catches dot access to CSS module classes. Don't re-raise them. The reviewer is the layer
 above the linter: semantics, data flow and naming.
 
+## Compatibility
+
+- **major** (AGENTS.md § Project): A runtime API newer than the browser floor in shipped code.
+
 ## Errors and logging
 
 - **major** (AGENTS.md § Code style, TypeScript:): A `catch` that drops the error, with neither a rethrow with
   `{ cause }` nor `captureException`, `log.error` and an outcome metric.
 - **major** (AGENTS.md § Code style, TypeScript:): `log.warn` for progress or status. It is for real failures, and
   progress breadcrumbs use `log.event`.
+- **major** (AGENTS.md § Code style, TypeScript:): A free-standing wrapper that makes a dependency safe to call, where
+  the object the page builds should carry the guarantee.
 
 ## Metrics
 
@@ -71,6 +77,8 @@ above the linter: semantics, data flow and naming.
   separator, or a spec citation in a comment.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "On-chain" where "network" or "remote" fits.
 - **minor** (AGENTS.md § Code style, Comments and docs:): A comment that claims a relation to other code.
+- **minor** (AGENTS.md § Code style, Comments and docs:): An interface method whose JSDoc does not state its contract,
+  such as whether and with what it rejects.
 - **minor** (AGENTS.md § Code style, Comments and docs:): "Solid-free" instead of "imports no Solid".
 - **minor** (AGENTS.md § Code style, Comments and docs:): An example in a doc or rule that names a specific file,
   component or past incident instead of a general shape.
@@ -91,9 +99,12 @@ above the linter: semantics, data flow and naming.
 - **major** (AGENTS.md § Code style, Tests:): A sleep, `waitForTimeout` or other fixed delay instead of waiting on a
   signal.
 - **major** (AGENTS.md § Code style, Tests:): A committed test that exercises a third-party SDK's own setup.
-- **minor** (AGENTS.md § Code style, Tests:): A test not named as a user story, `As a <role>, I <action> and <outcome>`.
+- **minor** (AGENTS.md § Code style, Tests:): A test not named as a user story, `As a <role>, I <action> and <outcome>`,
+  the role with an optional `who …` clause.
 - **minor** (AGENTS.md § Code style, Tests:): A test body without `// Given`, `// When` and `// Then`, or descriptive
   markers cut to bare ones.
+- **minor** (AGENTS.md § Code style, Tests:): A test whose call under test sits outside `// When`, or whose
+  `// Then` does more than assert.
 
 When you cite a rule, quote `file:line`, state it in one line with its doc and section, and suggest the fix in one or
 two sentences. Group findings by theme and end with the blocking, major and minor counts.
