@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { trustedLocalRoots } from './localRoots.js';
+import { getTrustedLocalRoots } from './localRoots.js';
 
-describe('trustedLocalRoots', () => {
+describe('getTrustedLocalRoots', () => {
   it('As a developer, I run a development build and either local root stands for the root domain', () => {
     // Given a development build
     const dev = true;
 
     // When the trusted roots are read
-    const roots = trustedLocalRoots(dev);
+    const roots = getTrustedLocalRoots(dev);
 
     // Then both local roots are trusted
     expect(roots).toEqual(['localhost', 'local.host']);
@@ -21,7 +21,7 @@ describe('trustedLocalRoots', () => {
     const dev = false;
 
     // When the trusted roots are read
-    const roots = trustedLocalRoots(dev);
+    const roots = getTrustedLocalRoots(dev);
 
     // Then only localhost is trusted
     expect(roots).toEqual(['localhost']);

@@ -340,14 +340,14 @@ details, and timestamp for each call.
 ## Network configuration
 
 A build offers the networks listed in the required `VITE_NETWORKS` env var, set at deploy time (see
-`packages/config/src/network.ts`). The first entry is the default returned by `defaultNetwork()`.
+`packages/config/src/getEnabledNetworks.ts`). The first entry is the default returned by `getDefaultNetwork()`.
 
 - **dotNS Registry**: `0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc`
 - **dotNS ContentResolver**: `0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64`
 - **Bulletin Chain RPC**: `wss://paseo-bulletin-next-rpc.polkadot.io` (WebSocket)
 - **IPFS gateway**: `https://paseo-bulletin-next-ipfs.polkadot.io`
 
-All addresses, endpoints, and selector labels live in `packages/config/src/network.ts`
+All addresses, endpoints, and selector labels live in `packages/config/src/networkServices.ts`
 (`NETWORK_NAME_TO_SERVICES_CONFIG`).
 
 ### Prebuilt bundles

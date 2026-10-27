@@ -3,8 +3,6 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { NetworkName } from '@dotli/config';
-
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from './contractParams.js';
 import { SandboxContractError } from './sandboxContractError.js';
 import { validateSandboxParams } from './validateSandboxParams.js';
@@ -22,7 +20,7 @@ function buildSearch(overrides: Record<string, string | null> = {}): URLSearchPa
   const base: Record<string, string> = {
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'smoldot-direct',
-    [SANDBOX_CONTRACT_PARAMS.network]: NetworkName.PASEO,
+    [SANDBOX_CONTRACT_PARAMS.network]: 'paseo-next-v2',
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
@@ -62,7 +60,7 @@ describe('validateSandboxParams: v3 cid contract', () => {
     // Then the validator surfaces every required value back to the caller.
     expect(params.cid).toBe(VALID_CID);
     expect(params.backend).toBe('smoldot-direct');
-    expect(params.network).toBe(NetworkName.PASEO);
+    expect(params.network).toBe('paseo-next-v2');
   });
 
   it.each<MissingParamRow>([

@@ -4,7 +4,7 @@
 import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { hex } from '@scure/base';
-import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
@@ -38,7 +38,7 @@ import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowDe
 
 const SELF = 'https://dot.li';
 const ORIGIN = 'https://my-site.com';
-const NET = NetworkName.PASEO;
+const NET = 'paseo-next-v2';
 const NETWORK = NETWORK_NAME_TO_SERVICES_CONFIG[NET];
 const ACCOUNT: ProductAccountId = {
   dotNsIdentifier: `myapp.${NETWORK.dotns.TLD}`,

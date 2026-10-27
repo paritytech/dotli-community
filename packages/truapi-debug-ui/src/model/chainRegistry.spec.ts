@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { formatChainDisplay } from './chainRegistry.js';
 
 describe('formatChainDisplay', () => {
   it("As a dotli developer reading the debug panel, I see Paseo's chains named after Paseo", () => {
     // Given
-    const paseo = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
+    const paseo = NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'];
 
     // When
     const names = [paseo.relay, paseo.assethub, paseo.bulletin, paseo.people].map(chain =>
@@ -21,7 +21,7 @@ describe('formatChainDisplay', () => {
 
   it("As a dotli developer reading the debug panel, I see Previewnet's chains named after Previewnet, not Paseo", () => {
     // Given
-    const previewnet = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PREVIEWNET];
+    const previewnet = NETWORK_NAME_TO_SERVICES_CONFIG.previewnet;
 
     // When
     const names = [previewnet.relay, previewnet.assethub, previewnet.bulletin, previewnet.people].map(chain =>

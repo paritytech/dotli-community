@@ -17,7 +17,7 @@ import {
   type ProductAccountId,
 } from '@parity/truapi';
 import { ACCOUNT_GET_ACCOUNT } from '@parity/truapi/wire-table';
-import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { fromHex, toHex } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
 import { makeProvider } from '../pageCore.fake.js';
@@ -25,7 +25,7 @@ import { createSiteAccountReader, SiteAccountReadError, SiteAccountRejectedError
 
 /** The account the site names, of a product other than the core's own. */
 const ACCOUNT: ProductAccountId = {
-  dotNsIdentifier: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO].dotns.TLD}`,
+  dotNsIdentifier: `myapp.${NETWORK_NAME_TO_SERVICES_CONFIG['paseo-next-v2'].dotns.TLD}`,
   derivationIndex: { tag: 'Index', value: 3 },
 };
 const PRODUCT_ID = 'dotli-product';

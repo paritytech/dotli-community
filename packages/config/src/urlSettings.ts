@@ -5,19 +5,11 @@
 // Default-valued axes are stripped, so a clean URL means every axis at default.
 // Param names are inlined because they are the public URL contract.
 
-import { defaultNetwork, isValidNetwork, type Network } from './network.js';
-import { DEFAULT_CACHE, defaultBackend, parseBackend, type Backend } from './mode.js';
-import type { Settings } from './settings.js';
-
-const URL_PARAM_NAMES = {
-  network: 'network',
-  backend: 'chainBackend',
-  skipArchiveCache: 'skipArchiveCache',
-  skipCidCache: 'skipCidCache',
-  skipWorkerCache: 'skipWorkerCache',
-} as const;
-
-const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
+import { getDefaultBackend, parseBackend, type Backend } from './backend.js';
+import { DEFAULT_CACHE } from './cacheSettings.js';
+import { getDefaultNetwork } from './getEnabledNetworks.js';
+import { isValidNetwork, type Network } from './networkNames.js';
+import type { Settings } from './resolveSettings.js';
 
 /** Per-axis URL parse: `null` for absent or invalid, so callers can `?? fallback`. */
 export type ParsedUrlSettings = {
@@ -28,12 +20,29 @@ export type ParsedUrlSettings = {
   skipWorkerCache: boolean | null;
 };
 
-function parseBoolean(raw: string | null): boolean | null {
-  if (raw === null || !VALID_BOOLEAN_FLAGS.has(raw)) {
-    return null;
-  }
-  return raw === '1';
-}
+type AxisParams = {
+  search: URLSearchParams;
+  key: string;
+  /** The value to write, or null to drop the axis. */
+  desired: string | null;
+};
+
+type BooleanAxisParams = {
+  search: URLSearchParams;
+  key: string;
+  current: boolean;
+  defaultValue: boolean;
+};
+
+const URL_PARAM_NAMES = {
+  network: 'network',
+  backend: 'chainBackend',
+  skipArchiveCache: 'skipArchiveCache',
+  skipCidCache: 'skipCidCache',
+  skipWorkerCache: 'skipWorkerCache',
+} as const;
+
+const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
 /** The link's settings as written. `resolveSettings` applies what this browser can run. */
 export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSettings {
@@ -50,32 +59,56 @@ export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSetti
 /** Canonicalize `search` in place to mirror `settings`, dropping default-valued axes. Returns true if mutated. */
 export function writeSettingsToSearch(settings: Settings, search: URLSearchParams): boolean {
   const before = search.toString();
-  applyAxis(search, URL_PARAM_NAMES.network, settings.network === defaultNetwork() ? null : settings.network);
-  applyAxis(search, URL_PARAM_NAMES.backend, settings.backend === defaultBackend() ? null : settings.backend);
-  applyBooleanAxis(
+  applyAxis({
     search,
-    URL_PARAM_NAMES.skipArchiveCache,
-    settings.cache.skipArchiveCache,
-    DEFAULT_CACHE.skipArchiveCache,
-  );
-  applyBooleanAxis(search, URL_PARAM_NAMES.skipCidCache, settings.cache.skipCidCache, DEFAULT_CACHE.skipCidCache);
-  applyBooleanAxis(
+    key: URL_PARAM_NAMES.network,
+    desired: settings.network === getDefaultNetwork() ? null : settings.network,
+  });
+  applyAxis({
     search,
-    URL_PARAM_NAMES.skipWorkerCache,
-    settings.cache.skipWorkerCache,
-    DEFAULT_CACHE.skipWorkerCache,
-  );
+    key: URL_PARAM_NAMES.backend,
+    desired: settings.backend === getDefaultBackend() ? null : settings.backend,
+  });
+  applyBooleanAxis({
+    search,
+    key: URL_PARAM_NAMES.skipArchiveCache,
+    current: settings.cache.skipArchiveCache,
+    defaultValue: DEFAULT_CACHE.skipArchiveCache,
+  });
+  applyBooleanAxis({
+    search,
+    key: URL_PARAM_NAMES.skipCidCache,
+    current: settings.cache.skipCidCache,
+    defaultValue: DEFAULT_CACHE.skipCidCache,
+  });
+  applyBooleanAxis({
+    search,
+    key: URL_PARAM_NAMES.skipWorkerCache,
+    current: settings.cache.skipWorkerCache,
+    defaultValue: DEFAULT_CACHE.skipWorkerCache,
+  });
   return search.toString() !== before;
 }
 
-function applyAxis(search: URLSearchParams, key: string, desired: string | null): void {
-  if (desired === null) {
-    search.delete(key);
-  } else {
-    search.set(key, desired);
+function parseBoolean(raw: string | null): boolean | null {
+  if (raw === null || !VALID_BOOLEAN_FLAGS.has(raw)) {
+    return null;
   }
+  return raw === '1';
 }
 
-function applyBooleanAxis(search: URLSearchParams, key: string, current: boolean, defaultValue: boolean): void {
-  applyAxis(search, key, current === defaultValue ? null : current ? '1' : '0');
+function applyAxis({ search, key, desired }: AxisParams): void {
+  if (desired === null) {
+    search.delete(key);
+    return;
+  }
+  search.set(key, desired);
+}
+
+function applyBooleanAxis({ search, key, current, defaultValue }: BooleanAxisParams): void {
+  if (current === defaultValue) {
+    applyAxis({ search, key, desired: null });
+    return;
+  }
+  applyAxis({ search, key, desired: current ? '1' : '0' });
 }

@@ -6,7 +6,7 @@
 
 import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcProvider } from 'polkadot-api';
-import { DEBUG, chainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
+import { DEBUG, getChainRoleForGenesis, getActiveSupportedGenesisHashes, type ChainRole } from '@dotli/config/fixed';
 import { m, reportListener, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createListenerSet, getErrorMessage, log } from '@dotli/shared';
 import init, { ChainProviderBuilder, setLogLevel, type Connection } from '@parity/truapi-provider';
@@ -160,7 +160,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
   }
 
   function markDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
-    const chain = chainRoleForGenesis(genesisHash);
+    const chain = getChainRoleForGenesis(genesisHash);
     // First read wins, since only the chain's first add consumes the store. People is left out, as nothing the page
     // waits on depends on it.
     if (chain === null || chain === 'people' || dbOutcomes.has(chain)) {
@@ -267,7 +267,7 @@ export function createLightClient(deps: LightClientDeps): LightClient {
           }
           queued.length = 0;
           // After the flush, so the sync request cannot jump ahead of a caller's.
-          const chain = chainRoleForGenesis(key);
+          const chain = getChainRoleForGenesis(key);
           state.sync =
             chain === null
               ? null

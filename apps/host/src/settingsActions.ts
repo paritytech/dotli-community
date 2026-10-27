@@ -17,7 +17,7 @@ import {
   type SafeStorage,
 } from '@dotli/shared';
 import { markContinuation, type Continuation } from './continuation.js';
-import { sharedSettingsOf, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
+import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { SHARED_AUTH_KEY_PREFIX, SHARED_MODE_KEY_PREFIX } from '@dotli/protocol';
 import { SMOLDOT_DB_NAME } from '@dotli/chains';
 import { clearCidCache, clearBlockCache, SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
@@ -144,7 +144,7 @@ export function createSettingsActions(deps: SettingsActionsDeps): SettingsAction
 /** Stores `settings` on this origin and for the other subdomains, so the next boot reads them. */
 function saveSettings(settings: Settings): void {
   writeLocalSettings(settings, pageLocalStorage);
-  void writeSharedSettings(sharedSettingsOf(settings));
+  void writeSharedSettings(getSharedSettings(settings));
 }
 
 /** This page's, which reloads it. */

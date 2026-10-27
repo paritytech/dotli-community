@@ -4,4 +4,6 @@
 // The network table and its names. It reads no page state at load, so Node tooling imports it where the bare entry
 // cannot load.
 
-export { isValidNetwork, NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName, type Network } from './network.js';
+export type { Network } from './networkNames.js';
+export { NETWORK_NAMES, isValidNetwork } from './networkNames.js';
+export { NETWORK_NAME_TO_SERVICES_CONFIG } from './networkServices.js';

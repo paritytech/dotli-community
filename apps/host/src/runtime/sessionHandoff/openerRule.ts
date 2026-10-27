@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { hostPlace, localRootOf } from '@dotli/config';
+import { getHostPlace, getLocalRoot } from '@dotli/config';
 import { LOOPBACK_ROOT } from '@dotli/config/local-roots';
 
 /** Why the window judged an opener as it did, a closed set so a count can carry it whatever the opener sent. */
@@ -20,9 +20,9 @@ export function sessionOpenerVerdict(opener: string, self: string): SessionOpene
     return 'malformed';
   }
   const host = openerUrl.hostname;
-  const root = localRootOf(selfUrl.hostname);
+  const root = getLocalRoot(selfUrl.hostname);
   // An opener under another local root is another site, as one off every local root is.
-  if (localRootOf(host) !== root) {
+  if (getLocalRoot(host) !== root) {
     return root === null ? 'localhost' : 'foreign';
   }
   const local = root !== null;
@@ -32,7 +32,7 @@ export function sessionOpenerVerdict(opener: string, self: string): SessionOpene
   if (openerUrl.port !== (local ? selfUrl.port : '')) {
     return 'port';
   }
-  const place = hostPlace(host, root ?? selfUrl.hostname);
+  const place = getHostPlace(host, root ?? selfUrl.hostname);
   return place === 'site' ? 'allowed' : place;
 }
 
@@ -73,7 +73,7 @@ export function openerParty(opener: string, self: string): OpenerParty {
   if (hostname === LOOPBACK_ROOT && (protocol === 'http:' || protocol === 'https:') && opener !== self) {
     return { party: 'third' };
   }
-  if (protocol === 'https:' && hostPlace(hostname, localRootOf(selfHost) ?? selfHost) === 'foreign') {
+  if (protocol === 'https:' && getHostPlace(hostname, getLocalRoot(selfHost) ?? selfHost) === 'foreign') {
     return { party: 'third' };
   }
   return { party: null, verdict };

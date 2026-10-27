@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, onTestFinished } from 'vitest';
-import { NetworkName, getSettings, setSettings } from '@dotli/config';
+import { getSettings, setSettings } from '@dotli/config';
 import { dotNsUrl } from './dotnsUrl.js';
 
 describe('parseDotNsDomain', () => {
@@ -288,7 +288,7 @@ describe('isDotDomain', () => {
 describe('dotNS TLD per network', () => {
   it('As a user on Paseo, I open a .dot name and get a regular website', () => {
     // Given
-    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
+    onTestFinished(setSettings({ ...getSettings(), network: 'paseo-next-v2' }));
 
     // When
     const isProduct = dotNsUrl.isDotDomain('mytestapp.dot');
@@ -299,7 +299,7 @@ describe('dotNS TLD per network', () => {
 
   it('As a user on Paseo, the gateway host paseo.li is not a product', () => {
     // Given
-    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PASEO }));
+    onTestFinished(setSettings({ ...getSettings(), network: 'paseo-next-v2' }));
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain('mytestapp.paseo.li');
@@ -310,7 +310,7 @@ describe('dotNS TLD per network', () => {
 
   it('As a user on previewnet, a .testnet name is a product and a .paseo name is not', () => {
     // Given
-    onTestFinished(setSettings({ ...getSettings(), network: NetworkName.PREVIEWNET }));
+    onTestFinished(setSettings({ ...getSettings(), network: 'previewnet' }));
 
     // When
     const test = dotNsUrl.isDotDomain('mytestapp.testnet');

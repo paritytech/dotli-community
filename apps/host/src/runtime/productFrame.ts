@@ -7,7 +7,7 @@
 
 import { createMessagePortProvider, type WireProvider as Provider } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
-import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, localRootOf } from '@dotli/config';
+import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
 import { sandboxLabel } from '@dotli/resolver';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
@@ -653,7 +653,7 @@ function sandboxUrl(product: Extract<FrameProduct, { mode: 'subdomain' }>, locat
 }
 
 function appOrigin(label: string, location: PageLocation): string {
-  const root = localRootOf(location.hostname);
+  const root = getLocalRoot(location.hostname);
   if (root !== null) {
     const port = import.meta.env.DEV ? DEV_SANDBOX_PORT : location.port;
     return `${location.protocol}//${sandboxLabel(label)}.app.${root}:${port}`;

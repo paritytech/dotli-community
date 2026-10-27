@@ -14,7 +14,7 @@
 
 // Must stay the first import: it starts Sentry before any other module evaluates.
 import './boot.js';
-import { defaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Network } from '@dotli/config';
+import { getDefaultNetwork, getEnabledNetworks, isSharedWorkerAvailable, type Network } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import { createDeferred, listen, log, pageLocalStorage, pageSessionStorage, createRandomId } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
@@ -77,7 +77,7 @@ function windowHostOptions(
 
 /** The network a window boots on: its request's when this deployment runs it, else the default. */
 function bootNetwork(request: SessionRequest, enabled: readonly Network[]): Network {
-  return enabled.find(net => net === request.net) ?? defaultNetwork();
+  return enabled.find(net => net === request.net) ?? getDefaultNetwork();
 }
 
 /** The party of a hello's origin, dot.li's own page or a site, or why it has none. */

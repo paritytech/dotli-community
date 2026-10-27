@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { BASE_DOMAIN, localRootOf } from '@dotli/config';
+import { BASE_DOMAIN, getLocalRoot } from '@dotli/config';
 
 /** Where the page is served from, which decides the form of a name's address. */
 export type PageLocation = Pick<Location, 'hostname' | 'protocol' | 'port'>;
 
 export function dotUrl(label: string, page: PageLocation = window.location): string {
-  const root = localRootOf(page.hostname);
+  const root = getLocalRoot(page.hostname);
   if (root !== null) {
     return `${page.protocol}//${label}.${root}:${page.port}`;
   }

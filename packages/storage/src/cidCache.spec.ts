@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { NetworkName } from '@dotli/config';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { type CidCache, createCidCache } from './cidCache.js';
@@ -18,7 +17,7 @@ beforeEach(() => {
   cache = createCidCache(idb);
 });
 
-const PASEO = NetworkName.PASEO;
+const PASEO = 'paseo-next-v2';
 
 const NO_MANIFESTS = { root: null, app: null };
 const ROOT = '{"$v":1,"displayName":"DOOM","description":"","icon":{"cid":"bafk","format":"png"}}';
@@ -88,7 +87,7 @@ describe('CID IndexedDB round-trip', () => {
 
   it('As the resolver, I read an entry cached on another network as a miss, so that network resolves the name itself', async () => {
     // Given
-    await cache.setCachedCid('doom', NetworkName.PREVIEWNET, 'bafy-doom', { root: ROOT, app: APP });
+    await cache.setCachedCid('doom', 'previewnet', 'bafy-doom', { root: ROOT, app: APP });
 
     // When / Then
     expect(await cache.getCachedCidResult('doom', PASEO)).toEqual({ kind: 'miss' });

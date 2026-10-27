@@ -75,13 +75,13 @@ stops the container rather than starting with the override silently dropped.
 
 ## Config schema
 
-`RuntimeNetworkConfig` in `packages/config/src/network.ts` is the source of
-truth. Two top-level keys, both optional:
+`RuntimeNetworkConfig` in `packages/config/src/readRuntimeNetworkConfig.ts` is the source of
+truth. Three top-level keys, all optional:
 
 | Key | Effect |
 |---|---|
 | `enabled` | Networks offered in the Settings selector. Replaces `VITE_NETWORKS`. First entry is the default. |
-| `networks` | Per-network patches, keyed by `NetworkName`, merged over the built-in entry. |
+| `networks` | Per-network patches, keyed by a name in `NETWORK_NAMES`, merged over the built-in entry. |
 | `baseDomain` | Explicit base domain, for hosts with more than two segments. See below. |
 
 Only **endpoints** are overridable, per network:
@@ -101,7 +101,7 @@ move.
 
 Two more rules:
 
-**Patches existing networks, no new names**, so `NetworkName` stays a closed
+**Patches existing networks, no new names**, so `Network` stays a closed
 union. Use `label` to say what a repointed network really is.
 
 **Arrays replace, they do not concatenate.** `{"rpcs":["ws://localhost:9944"]}`
@@ -211,9 +211,11 @@ independently, so neither alone turns it on:
   tag on opt-in rather than stripping it on opt-out, so the default is safe by
   construction: a default build's HTML is byte-identical to one from before
   runtime config existed.
-- `RUNTIME_CONFIG_ENABLED` in `network.ts` gates the reader. In a default build
-  the minifier folds the guard and `readRuntimeConfig()` compiles to
-  `return null`, so the global read is absent rather than merely bypassed.
+- `RUNTIME_CONFIG_ENABLED` in `readRuntimeNetworkConfig.ts` gates both readers,
+  `readRuntimeNetworkConfig()` and `readRuntimeGlobal()`, each of which checks
+  it before it reads the global. In a default build the minifier folds the
+  guard and each reader compiles to returning `null` (or `undefined` for `readRuntimeGlobal()`), so the global read is
+  absent rather than merely bypassed.
 
 Inside the image the global **is** live and writable from the page. That is
 acceptable for a local dev container. Whoever runs it already controls

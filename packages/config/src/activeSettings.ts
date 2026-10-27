@@ -6,7 +6,7 @@
 // boot sets them. A settings change reloads the page, so nothing sets them after boot.
 
 import { createSyncStore } from '@dotli/shared';
-import type { Settings } from './settings.js';
+import type { Settings } from './resolveSettings.js';
 
 const store = createSyncStore<Settings | null>({ name: 'active-settings', initial: null });
 

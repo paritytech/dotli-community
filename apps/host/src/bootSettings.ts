@@ -8,7 +8,7 @@ import {
   parseSettingsFromSearch,
   resolveSettings,
   setSettings,
-  sharedSettingsOf,
+  getSharedSettings,
   writeLocalSettings,
   writeSettingsToSearch,
   type Settings,
@@ -78,7 +78,7 @@ export async function bootSettings(deps: SettingsBootDeps): Promise<Settings> {
     deps.configureFrame(next);
   }
   if (shared !== null) {
-    deps.writeShared(sharedSettingsOf(next));
+    deps.writeShared(getSharedSettings(next));
   }
 
   if (writeSettingsToSearch(next, search)) {

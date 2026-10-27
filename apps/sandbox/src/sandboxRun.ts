@@ -4,7 +4,7 @@
 // The sandbox's run: read the host's contract from the URL once, then load the product, and again on each retry the
 // visitor asks for, up to a limit. Every failure is reported and shown.
 
-import { localRootOf } from '@dotli/config';
+import { getLocalRoot } from '@dotli/config';
 import { SandboxContractError, validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, getErrorMessage, describeGatewayUnreachable, log, setErrorName } from '@dotli/shared';
@@ -51,7 +51,7 @@ const contentLog = log.createChild({ flow: 'content' });
 
 /** Only confirms a `<label>.app.<root>` origin, since the CID arrives on the host contract. */
 function isAppSubdomain(hostname: string, baseDomain: string): boolean {
-  return hostname.endsWith(`.app.${localRootOf(hostname) ?? baseDomain}`);
+  return hostname.endsWith(`.app.${getLocalRoot(hostname) ?? baseDomain}`);
 }
 
 function dependencyOf(backend: SandboxParams['backend']): string {

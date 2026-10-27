@@ -7,7 +7,7 @@
 import type { ChainLifecycle } from '@parity/truapi-provider';
 import { m, reportListener } from '@dotli/metrics';
 import { createListenerSet, getErrorMessage, log } from '@dotli/shared';
-import { chainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
+import { getChainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
 export const CHAIN_SYNC_KINDS = [
@@ -132,7 +132,7 @@ export function createChainSyncReporter(options: ChainSyncReporterOptions): Chai
 
   function reportDbCache(genesisHash: string, warm: boolean): void {
     // A custom relay reports as `relay`, since the provider's one catalog cannot tell them apart.
-    const chain = chainRoleForGenesis(genesisHash);
+    const chain = getChainRoleForGenesis(genesisHash);
     if (chain === null) {
       return;
     }

@@ -3,13 +3,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { createMemoryStorage } from '@dotli/shared/testing';
-import { BACKEND_KEY, CACHE_KEY } from './mode.js';
-import { NETWORK_KEY } from './network.js';
-import { hasStoredSettings, resolveSettings, sharedSettingsOf, writeLocalSettings } from './settings.js';
+import { BACKEND_KEY } from './backend.js';
+import { CACHE_KEY, DEFAULT_CACHE } from './cacheSettings.js';
+import { NETWORK_KEY } from './networkNames.js';
+import { resolveSettings } from './resolveSettings.js';
 import { parseSettingsFromSearch } from './urlSettings.js';
 
 const CACHE_OFF = JSON.stringify({ skipCidCache: true, skipArchiveCache: true, skipWorkerCache: false });
-const DEFAULT_CACHE = { skipCidCache: false, skipArchiveCache: false, skipWorkerCache: false };
 
 describe('resolveSettings', () => {
   it('As a first-time visitor, I get the default network, the per-tab light client and every cache on', () => {
@@ -31,7 +31,7 @@ describe('resolveSettings', () => {
     expect(settings).toMatchObject({ network: 'previewnet', backend: 'rpc-gateway' });
   });
 
-  it('As a visitor on a new subdomain, the backend and caches I chose elsewhere win over this origin', () => {
+  it('As a visitor on a new subdomain, I open it and the backend and caches I chose elsewhere win over this origin', () => {
     // Given
     const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'smoldot-direct' } });
     const shared = { backend: 'rpc-gateway', cache: CACHE_OFF };
@@ -56,7 +56,7 @@ describe('resolveSettings', () => {
     expect(settings.backend).toBe('rpc-gateway');
   });
 
-  it('As a parallel test worker on localhost, this origin keeps its own choice over the shared one', () => {
+  it("As a parallel test worker on localhost, I resolve the settings and keep this origin's choice over the shared one", () => {
     // Given
     const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'smoldot-direct' } });
 
@@ -73,7 +73,7 @@ describe('resolveSettings', () => {
     expect(settings.cache.skipCidCache).toBe(true);
   });
 
-  it('As a visitor following a shared link, the link wins over both stores', () => {
+  it('As a visitor, I follow a shared link and its settings win over both stores', () => {
     // Given
     const local = createMemoryStorage({ entries: { [NETWORK_KEY]: 'paseo-next-v2' } });
     const url = parseSettingsFromSearch(new URLSearchParams('network=previewnet&chainBackend=rpc-gateway'));
@@ -101,7 +101,7 @@ describe('resolveSettings', () => {
     expect(settings.network).toBe('paseo-next-v2');
   });
 
-  it('As a visitor from an old build, the backend my old mode key names is the one I get', () => {
+  it('As a visitor from an old build, I return and get the backend my old mode key names', () => {
     // Given
     const local = createMemoryStorage({ entries: { 'dotli:mode': 'gateway' } });
 
@@ -112,7 +112,7 @@ describe('resolveSettings', () => {
     expect(settings.backend).toBe('rpc-gateway');
   });
 
-  it('As a visitor whose browser lacks SharedWorker, a link naming the shared light client runs me per tab', () => {
+  it('As a visitor whose browser lacks SharedWorker, I follow a link naming the shared light client and run per tab', () => {
     // Given
     const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'rpc-gateway' } });
     const url = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
@@ -124,7 +124,7 @@ describe('resolveSettings', () => {
     expect(settings.backend).toBe('smoldot-direct');
   });
 
-  it('As a visitor whose stored cache settings are malformed, every cache is on', () => {
+  it('As a visitor whose stored cache settings are malformed, I return and every cache is on', () => {
     // Given
     const local = createMemoryStorage({ entries: { [CACHE_KEY]: '{"skipCidCache":' } });
 
@@ -135,7 +135,7 @@ describe('resolveSettings', () => {
     expect(settings.cache).toEqual(DEFAULT_CACHE);
   });
 
-  it('As a first visit on a localhost origin, I get the default backend whatever the shared store holds', () => {
+  it('As a first-time visitor on a localhost origin, I get the default backend whatever the shared store holds', () => {
     // When
     const { settings } = resolveSettings({
       local: createMemoryStorage(),
@@ -148,7 +148,7 @@ describe('resolveSettings', () => {
     expect(settings.backend).toBe('smoldot-direct');
   });
 
-  it('As a visitor following a shared link, the cache switches in the link win over both stores', () => {
+  it('As a visitor, I follow a shared link and its cache switches win over both stores', () => {
     // Given
     const local = createMemoryStorage({ entries: { [CACHE_KEY]: CACHE_OFF } });
     const url = parseSettingsFromSearch(new URLSearchParams('skipCidCache=0&skipWorkerCache=1'));
@@ -165,7 +165,7 @@ describe('resolveSettings', () => {
     expect(settings.cache).toEqual({ skipCidCache: false, skipArchiveCache: true, skipWorkerCache: true });
   });
 
-  it('As a visitor following a link to a network this build does not know, the link names no network and I get the stored one', () => {
+  it('As a visitor, I follow a link to a network this build does not know and get the stored one', () => {
     // Given
     const local = createMemoryStorage({ entries: { [NETWORK_KEY]: 'previewnet' } });
     const url = parseSettingsFromSearch(new URLSearchParams('network=kusama'));
@@ -183,7 +183,7 @@ describe('resolveSettings', () => {
     expect(settings.network).toBe('previewnet');
   });
 
-  it('As a visitor with a valid backend and a stale old mode key, the backend I chose wins', () => {
+  it('As a visitor with a valid backend and a stale old mode key, I return and the backend I chose wins', () => {
     // Given
     const local = createMemoryStorage({ entries: { [BACKEND_KEY]: 'smoldot-direct', 'dotli:mode': 'gateway' } });
 
@@ -206,41 +206,5 @@ describe('resolveSettings', () => {
     // Then
     expect(fellBack).toMatchObject({ settings: { backend: 'smoldot-direct' }, sharedWorkerFallback: true });
     expect(kept).toMatchObject({ settings: { backend: 'smoldot-direct' }, sharedWorkerFallback: false });
-  });
-});
-
-describe('writeLocalSettings', () => {
-  it('As a visitor from an old build, my settings are stored under the current keys and the old key is gone', () => {
-    // Given
-    const local = createMemoryStorage({ entries: { 'dotli:mode': 'gateway' } });
-    const { settings } = resolveSettings({ local, shared: null, sharedWorkerAvailable: true });
-
-    // When
-    writeLocalSettings(settings, local);
-
-    // Then
-    expect(local.getItem(NETWORK_KEY)).toBe('paseo-next-v2');
-    expect(local.getItem(BACKEND_KEY)).toBe('rpc-gateway');
-    expect(local.getItem(CACHE_KEY)).toBe(JSON.stringify(DEFAULT_CACHE));
-    expect(local.getItem('dotli:mode')).toBeNull();
-    expect(local.length).toBe(3);
-  });
-});
-
-describe('sharedSettingsOf', () => {
-  it('As a visitor, the network I use stays on this origin and only the backend and caches are shared', () => {
-    // When
-    const shared = sharedSettingsOf({ network: 'previewnet', backend: 'rpc-gateway', cache: DEFAULT_CACHE });
-
-    // Then
-    expect(shared).toEqual({ backend: 'rpc-gateway', cache: JSON.stringify(DEFAULT_CACHE) });
-  });
-});
-
-describe('hasStoredSettings', () => {
-  it('As a first-time visitor, I hold no stored settings, and a returning one does', () => {
-    // When / Then
-    expect(hasStoredSettings(createMemoryStorage())).toBe(false);
-    expect(hasStoredSettings(createMemoryStorage({ entries: { [CACHE_KEY]: CACHE_OFF } }))).toBe(true);
   });
 });

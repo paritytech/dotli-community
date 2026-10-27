@@ -14,6 +14,6 @@ export const LOCAL_ROOTS: readonly string[] = [LOOPBACK_ROOT, 'local.host'];
  * The local roots a page of this build takes for the root domain. `local.host` is a public name that reaches this
  * machine only while its owner points it here, so only a development build trusts it.
  */
-export function trustedLocalRoots(dev: boolean): readonly string[] {
+export function getTrustedLocalRoots(dev: boolean): readonly string[] {
   return dev ? LOCAL_ROOTS : [LOOPBACK_ROOT];
 }

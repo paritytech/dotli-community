@@ -5,7 +5,7 @@ import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { base64urlnopad, hex } from '@scure/base';
 import type { TxCreator } from 'polkadot-api';
-import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '@dotli/config';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
   hashBlake2b,
@@ -37,7 +37,7 @@ import { SiteTxError } from './siteTxSigner.js';
 
 const SELF = 'https://dot.li';
 const ORIGIN = 'https://my-site.com';
-const NET = NetworkName.PASEO;
+const NET = 'paseo-next-v2';
 const NETWORK = NETWORK_NAME_TO_SERVICES_CONFIG[NET];
 const ACCOUNT: ProductAccountId = {
   dotNsIdentifier: `myapp.${NETWORK.dotns.TLD}`,

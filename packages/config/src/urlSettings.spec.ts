@@ -3,10 +3,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseSettingsFromSearch, writeSettingsToSearch } from './urlSettings.js';
-import { NetworkName } from './network.js';
 
 describe('parseSettingsFromSearch', () => {
-  it('As a visitor, I open a URL with no or invalid settings and none of them apply', () => {
+  it('As a visitor, I open a URL with no settings and none of them apply', () => {
     // When
     const empty = parseSettingsFromSearch(new URLSearchParams());
 
@@ -18,7 +17,9 @@ describe('parseSettingsFromSearch', () => {
       skipCidCache: null,
       skipWorkerCache: null,
     });
+  });
 
+  it('As a visitor, I open a URL with invalid settings and none of them apply', () => {
     // When
     const invalid = parseSettingsFromSearch(new URLSearchParams('network=bogus&chainBackend=nope&skipCidCache=true'));
 
@@ -32,12 +33,12 @@ describe('parseSettingsFromSearch', () => {
     // When
     const parsed = parseSettingsFromSearch(
       new URLSearchParams(
-        `network=${NetworkName.PASEO}&chainBackend=rpc-gateway&skipArchiveCache=0&skipCidCache=1&skipWorkerCache=1`,
+        `network=paseo-next-v2&chainBackend=rpc-gateway&skipArchiveCache=0&skipCidCache=1&skipWorkerCache=1`,
       ),
     );
 
     // Then
-    expect(parsed.network).toBe(NetworkName.PASEO);
+    expect(parsed.network).toBe('paseo-next-v2');
     expect(parsed.backend).toBe('rpc-gateway');
     expect(parsed.skipArchiveCache).toBe(false);
     expect(parsed.skipCidCache).toBe(true);
@@ -61,7 +62,7 @@ describe('writeSettingsToSearch against the smoldot-direct default', () => {
     // When
     writeSettingsToSearch(
       {
-        network: NetworkName.PREVIEWNET,
+        network: 'previewnet',
         backend: 'smoldot-shared-worker',
         cache: {
           skipCidCache: true,
@@ -85,7 +86,7 @@ describe('writeSettingsToSearch', () => {
     // When
     const changed = writeSettingsToSearch(
       {
-        network: NetworkName.PASEO,
+        network: 'paseo-next-v2',
         backend: 'smoldot-direct',
         cache: {
           skipCidCache: false,
@@ -112,7 +113,7 @@ describe('writeSettingsToSearch', () => {
     // When
     writeSettingsToSearch(
       {
-        network: NetworkName.PREVIEWNET,
+        network: 'previewnet',
         backend: 'smoldot-direct',
         cache: {
           skipCidCache: true,
@@ -124,7 +125,7 @@ describe('writeSettingsToSearch', () => {
     );
 
     // Then
-    expect(search.get('network')).toBe(NetworkName.PREVIEWNET);
+    expect(search.get('network')).toBe('previewnet');
     expect(search.get('chainBackend')).toBeNull();
     expect(search.get('skipCidCache')).toBe('1');
     expect(search.get('skipArchiveCache')).toBeNull();

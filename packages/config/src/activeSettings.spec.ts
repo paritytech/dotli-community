@@ -3,22 +3,22 @@
 
 import { describe, expect, it } from 'vitest';
 import { activeSettings, setSettings, subscribeSettings } from './activeSettings.js';
-import { NetworkName } from './network.js';
+import type { Network } from './networkNames.js';
 import { getSettings } from './settings.js';
 
 describe('subscribeSettings', () => {
   it('As a reader of the settings, I hear when boot sets them and when they are put back', () => {
     // Given
-    const heard: (NetworkName | undefined)[] = [];
+    const heard: (Network | undefined)[] = [];
     const unsubscribe = subscribeSettings(() => heard.push(activeSettings()?.network));
 
     // When
-    const restore = setSettings({ ...getSettings(), network: NetworkName.PREVIEWNET });
+    const restore = setSettings({ ...getSettings(), network: 'previewnet' });
     restore();
     unsubscribe();
-    setSettings({ ...getSettings(), network: NetworkName.PASEO })();
+    setSettings({ ...getSettings(), network: 'paseo-next-v2' })();
 
     // Then
-    expect(heard).toEqual([NetworkName.PREVIEWNET, undefined]);
+    expect(heard).toEqual(['previewnet', undefined]);
   });
 });

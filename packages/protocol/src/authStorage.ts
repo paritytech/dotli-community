@@ -59,5 +59,5 @@ export function isValidSharedModeKey(key: string): boolean {
  * build of kind `dev` trusts, which stands for the root domain.
  */
 export function isSharedAuthOriginAllowed(origin: string, dev: boolean = import.meta.env.DEV): boolean {
-  return isSiteOrigin(origin, BASE_DOMAIN, dev);
+  return isSiteOrigin(origin, BASE_DOMAIN, { dev });
 }

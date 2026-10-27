@@ -6,7 +6,7 @@
 // The sandbox origin is keyed on the dotNS label, not the CID, so all versions of a product share an origin.
 // A new required param bumps SANDBOX_SCHEMA_VERSION, so a stale host can't feed a fresh sandbox.
 
-import { NetworkName, isValidNetwork, parseBackend, type Backend, type Network } from '@dotli/config';
+import { NETWORK_NAMES, isValidNetwork, parseBackend, type Backend, type Network } from '@dotli/config';
 
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from './contractParams.js';
 import { SandboxContractError } from './sandboxContractError.js';
@@ -82,9 +82,7 @@ export function validateSandboxParams(search: URLSearchParams): SandboxParams {
   }
   if (!isValidNetwork(network)) {
     throw new SandboxContractError(
-      `Unknown network "${network}". Expected one of: ${Object.values(NetworkName)
-        .map(n => `"${n}"`)
-        .join(', ')}.`,
+      `Unknown network "${network}". Expected one of: ${NETWORK_NAMES.map(n => `"${n}"`).join(', ')}.`,
     );
   }
 
