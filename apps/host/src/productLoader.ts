@@ -420,9 +420,9 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     }
     rendered(manifests);
 
-    m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, 'millisecond', {
-      outcome: 'ok',
-      chain_backend: backend,
+    m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, {
+      unit: 'millisecond',
+      attributes: { outcome: 'ok', chain_backend: backend },
     });
     performance.mark('dotli:main:end');
     log.event('Sandbox mounted', {

@@ -243,9 +243,9 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   const record = (outcome: 'ok' | 'error' | 'timeout'): number => {
     waiting = false;
     const waitMs = performance.now() - startedAt;
-    m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
-      outcome,
-      ...(reason !== undefined ? { reason } : {}),
+    m.distribution(S.PROTOCOL_SW_READY, waitMs, {
+      unit: 'millisecond',
+      attributes: { outcome, ...(reason !== undefined ? { reason } : {}) },
     });
     return waitMs;
   };

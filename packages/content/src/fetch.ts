@@ -49,7 +49,7 @@ async function fetchViaBitswapRpc(
 
   // The host's relay checked every block. Re-hashing the root ties the walk to the CID this sandbox was given.
   const result = await readViaBitswap(rootCid, rootVerifyingBlockSource(rootCid, tracedSource), onStatus);
-  m.distribution(S.CONTENT_BITSWAP_BLOCKS, blockCount, 'none');
+  m.distribution(S.CONTENT_BITSWAP_BLOCKS, blockCount, { unit: 'none' });
   return result;
 }
 
@@ -208,10 +208,10 @@ export async function readArchiveFiles(
 
 function measureContentSize(result: FetchResult): void {
   if (result.type === 'single') {
-    m.distribution(S.CONTENT_SIZE, result.content.length, 'byte');
+    m.distribution(S.CONTENT_SIZE, result.content.length, { unit: 'byte' });
   } else {
     const totalSize = Object.values(result.files).reduce((sum, buf) => sum + buf.length, 0);
-    m.distribution(S.CONTENT_SIZE, totalSize, 'byte');
+    m.distribution(S.CONTENT_SIZE, totalSize, { unit: 'byte' });
   }
 }
 

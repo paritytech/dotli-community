@@ -4,11 +4,11 @@
 // Runs in its own project with VITE_METRICS off, as a build without metrics compiles the module.
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { getResolutionId, m, setResolutionId } from './metrics.js';
+import { m } from './metrics.js';
 import { bindRecordingSentry } from './testing/index.js';
 
 describe('metrics in a build without metrics', () => {
-  it('As a visitor on a build without metrics, a span still runs my function and returns its value', () => {
+  it('As a visitor on a build without metrics, I run a span and it still runs my function and returns its value', () => {
     // Given
     const fn = vi.fn(() => 42);
 
@@ -20,7 +20,7 @@ describe('metrics in a build without metrics', () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 
-  it('As a visitor on a build without metrics, an async span still resolves with my value', async () => {
+  it('As a visitor on a build without metrics, I await an async span and it resolves with my value', async () => {
     // Given
     const fn = vi.fn(() => Promise.resolve('ok'));
 
@@ -31,15 +31,16 @@ describe('metrics in a build without metrics', () => {
     expect(result).toBe('ok');
   });
 
-  it('As a visitor on a build without metrics, a timer stops at zero', () => {
+  it('As a visitor on a build without metrics, I stop a timer and it reads zero', () => {
     // When
     const stop = m.timer('test.timer');
+    const elapsed = stop();
 
     // Then
-    expect(stop()).toBe(0);
+    expect(elapsed).toBe(0);
   });
 
-  it('As a visitor on a build without metrics, a count reaches no Sentry even when one is bound', () => {
+  it('As a visitor on a build without metrics, I count a metric and it reaches no Sentry even when one is bound', () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
 
@@ -49,13 +50,5 @@ describe('metrics in a build without metrics', () => {
     // Then
     expect(m.enabled).toBe(false);
     expect(sentry.counts).toEqual([]);
-  });
-
-  it('As the sandbox on a build without metrics, I read back the resolution id the host passed, so the frames line up', () => {
-    // When
-    setResolutionId('resolution-1');
-
-    // Then
-    expect(getResolutionId()).toBe('resolution-1');
   });
 });

@@ -41,7 +41,7 @@ type CallTrail = {
 /** Measured on `now`, a monotonic clock apart from the budget timers, which a spec moves by hand. */
 function startCallTrail(policy: MethodPolicy, now: () => number): CallTrail {
   const { name: method, budgetMs, timed, trailed } = policy;
-  const stop = timed ? m.timer(S.PROTOCOL_REQUEST, now) : (): number => 0;
+  const stop = timed ? m.timer(S.PROTOCOL_REQUEST, { now }) : (): number => 0;
   const sentAt = now();
   if (trailed) {
     log.event(`${method} sent`, { flow: 'protocol', ...(budgetMs === null ? {} : { timeout_ms: budgetMs }) });

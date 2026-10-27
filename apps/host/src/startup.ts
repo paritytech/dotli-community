@@ -67,9 +67,7 @@ export function startPage(options: { desktopOffer?: boolean } = {}): void {
       for (const entry of list.getEntries()) {
         if (entry.name.endsWith('.wasm')) {
           const name = entry.name.split('/').pop() ?? 'unknown';
-          m.distribution(S.WASM_LOAD, entry.duration, 'millisecond', {
-            module: name,
-          });
+          m.distribution(S.WASM_LOAD, entry.duration, { unit: 'millisecond', attributes: { module: name } });
         }
       }
     });

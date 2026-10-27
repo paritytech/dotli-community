@@ -79,18 +79,18 @@ async function readManifestText<T>(
     raw = await readNestedMappingString(api, dotns.DOTNS_CONTENT_RESOLVER, node, key, textRecordsSlot);
   } catch (err) {
     const ms = performance.now() - t0;
-    m.distribution(S.RESOLVE_MANIFEST_READ, ms, 'millisecond', {
-      kind: metricKind,
-      outcome: 'error',
+    m.distribution(S.RESOLVE_MANIFEST_READ, ms, {
+      unit: 'millisecond',
+      attributes: { kind: metricKind, outcome: 'error' },
     });
     log.warn(`[dot.li manifest] ${metricKind} manifest read failed (${String(Math.round(ms))}ms)`, err);
     throw err;
   }
   const result = judge(raw);
   const ms = performance.now() - t0;
-  m.distribution(S.RESOLVE_MANIFEST_READ, ms, 'millisecond', {
-    kind: metricKind,
-    outcome: result.kind,
+  m.distribution(S.RESOLVE_MANIFEST_READ, ms, {
+    unit: 'millisecond',
+    attributes: { kind: metricKind, outcome: result.kind },
   });
   // The owner controls the text and it can be large, so only its size goes in the trail.
   log.event('Manifest read', {

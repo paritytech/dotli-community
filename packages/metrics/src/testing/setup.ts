@@ -4,6 +4,6 @@
 // A Vitest setup file. Tests run with metrics on, so a recorder nobody reads stays bound under every file and a test
 // that binds its own restores to it.
 
-import { bindRecordingSentry } from './index.js';
+import { bindRecordingSentry } from './bindRecordingSentry.js';
 
 bindRecordingSentry();

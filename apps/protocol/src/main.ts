@@ -183,7 +183,7 @@ async function init(): Promise<void> {
     if (initOutcome === 'ok') {
       m.measure(S.PROTOCOL_INIT, initMs);
     }
-    m.distribution(S.PROTOCOL_INIT, initMs, 'millisecond', { outcome: initOutcome });
+    m.distribution(S.PROTOCOL_INIT, initMs, { unit: 'millisecond', attributes: { outcome: initOutcome } });
   }
 }
 

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { m } from '../metrics.js';
-import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { bindRecordingSentry } from './index.js';
 
 describe('bindRecordingSentry', () => {
   it('As a dotli developer, I read back every metric, measurement and tag the page reported', () => {
@@ -13,7 +13,7 @@ describe('bindRecordingSentry', () => {
     // When
     m.count('test.loaded', { outcome: 'error', reason: 'TypeError' });
     m.count('test.other');
-    m.distribution('test.latency', 12, 'millisecond', { outcome: 'ok' });
+    m.distribution('test.latency', 12, { unit: 'millisecond', attributes: { outcome: 'ok' } });
     m.gauge('test.depth', 3);
     m.measure('test.paint', 40);
     m.tag('mode', 'shared');

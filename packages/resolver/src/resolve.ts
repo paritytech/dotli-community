@@ -208,7 +208,7 @@ export function createDotnsResolver(deps: DotnsResolverDeps): DotnsResolver {
         if (outcome === 'ok') {
           m.measure(S.SMOLDOT_PRESYNC, totalMs);
         }
-        m.distribution(S.SMOLDOT_PRESYNC, totalMs, 'millisecond', { outcome });
+        m.distribution(S.SMOLDOT_PRESYNC, totalMs, { unit: 'millisecond', attributes: { outcome } });
       }
     }
   }
