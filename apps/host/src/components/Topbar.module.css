@@ -3,6 +3,14 @@
 
 /* One element morphs between the open pill and the collapsed status capsule (data-hidden). */
 
+/* The open pill's cap. Registered so it computes to px, which the action group reads as its room, and stays put while
+   the max-width it sets morphs. */
+@property --topbar-max-width {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* The row is centred in the bar at its full width, so while the bar morphs its edges open and close around content
    that holds still. */
 .topbar {
@@ -14,7 +22,8 @@
   justify-content: center;
   box-sizing: border-box;
   width: fit-content;
-  max-width: calc(95vw - var(--safe-left) - var(--safe-right));
+  --topbar-max-width: calc(95vw - var(--safe-left) - var(--safe-right));
+  max-width: var(--topbar-max-width);
   height: var(--h-bar);
   margin: 0;
   padding: 0;
@@ -48,25 +57,25 @@
     height: var(--sp-2);
     box-shadow: var(--chrome-shadow-capsule);
   }
-  /* Without interpolate-size, as in Safari, a width can't animate to fit-content. There the width stays fit-content and
-     a grid track animates instead, since a fractional fr track sizes to that fraction of the row beyond the capsule. */
+  /* Without interpolate-size, as in Safari, a width can't animate to fit-content. There the width always follows the
+     content and the cap animates instead. The cap opens towards 95vw, past the content, so it opens linearly, or it
+     reaches the content at once. */
   @supports not (interpolate-size: allow-keywords) {
     .topbar {
-      display: grid;
-      grid-template-columns: var(--capsule-width) 1fr;
       transition:
-        grid-template-columns var(--dur-morph) var(--ease-out),
+        max-width var(--dur-morph) linear,
         height var(--dur-morph) var(--ease-out),
         top var(--dur-morph) var(--ease-out),
         box-shadow var(--dur);
     }
     .topbar[data-hidden] {
       width: fit-content;
-      grid-template-columns: var(--capsule-width) 0fr;
-    }
-    .row {
-      grid-column: 1 / -1;
-      justify-self: center;
+      max-width: var(--capsule-width);
+      transition:
+        max-width var(--dur-morph) var(--ease-out),
+        height var(--dur-morph) var(--ease-out),
+        top var(--dur-morph) var(--ease-out),
+        box-shadow var(--dur);
     }
   }
 }

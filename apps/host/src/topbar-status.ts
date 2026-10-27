@@ -210,8 +210,8 @@ export function bindTopbarStatus(bar: HTMLElement, health: ReadableStore<Network
 }
 
 /**
- * The pill's max width less the rest of its row, the group's layout parent. Nothing in the row shrinks, so that holds
- * while the pill morphs and items never pop in and out during a reveal.
+ * The open pill's max width less the rest of its row, the group's layout parent. Neither changes while the pill morphs,
+ * even where the morph animates the pill's own max-width, so items never pop in and out during a reveal.
  */
 export function topbarActionRoom(group: HTMLElement, row: HTMLElement | null): number | undefined {
   if (isPhoneViewport()) {
@@ -222,7 +222,7 @@ export function topbarActionRoom(group: HTMLElement, row: HTMLElement | null): n
     return undefined;
   }
   return actionRoom(
-    Number.parseFloat(getComputedStyle(bar).maxWidth),
+    Number.parseFloat(getComputedStyle(bar).getPropertyValue('--topbar-max-width')),
     row.scrollWidth,
     group.getBoundingClientRect().width,
   );

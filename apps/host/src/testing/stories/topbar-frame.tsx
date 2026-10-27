@@ -31,7 +31,8 @@ export function TopbarFrame(props: { children?: JSX.Element; center?: boolean; m
         'justify-content': props.center === true ? 'center' : 'flex-end',
         gap: '8px',
         padding: '0 12px',
-        'max-width': props.maxWidth === undefined ? undefined : `${String(props.maxWidth)}px`,
+        '--topbar-max-width': props.maxWidth === undefined ? undefined : `${String(props.maxWidth)}px`,
+        'max-width': props.maxWidth === undefined ? undefined : 'var(--topbar-max-width)',
       }}
     >
       {props.children}
