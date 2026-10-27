@@ -56,9 +56,12 @@ export function createFakeFrame(
     builds += 1;
     const { left, right } = createProviderPair();
     const hello = { resolutionId: null };
-    const serving = createTransport(protocolSchema, right, { handshake: 'respond', hello });
+    const serving = createTransport({ schema: protocolSchema, provider: right, handshake: 'respond', hello });
     serve(serving);
-    return { host: createTransport(protocolSchema, left, { handshake: 'offer', hello, timers }), serving };
+    return {
+      host: createTransport({ schema: protocolSchema, provider: left, handshake: 'offer', hello, timers }),
+      serving,
+    };
   };
 
   /** Builds a frame for a status that is up if there is none, and connects it once it listens. */

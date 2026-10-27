@@ -250,7 +250,9 @@ export function createFrameDom(
   const servedOn = (target: FakeIframe): { serving: ProtocolTransport; status: FrameStatus | null } => {
     let entry = served.get(target);
     if (entry === undefined) {
-      const serving = createTransport(protocolSchema, providerOn(target), {
+      const serving = createTransport({
+        schema: protocolSchema,
+        provider: providerOn(target),
         handshake: 'respond',
         hello: { resolutionId: null },
       });
@@ -284,7 +286,7 @@ export function createFrameDom(
     stranger: () => elsewhere.appendChild(new FakeIframe(toHost)),
     serve: (target = iframe()) => servedOn(target).serving,
     serveNewer(target = iframe()) {
-      createTransport(newerSchema, providerOn(target), { handshake: 'respond', hello: undefined });
+      createTransport({ schema: newerSchema, provider: providerOn(target), handshake: 'respond', hello: undefined });
     },
     status,
     retryHandshake,

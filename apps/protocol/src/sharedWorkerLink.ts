@@ -101,14 +101,18 @@ export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => v
     ended = end;
     ends.emit(end);
   };
-  transport.subscribe(protocolSchema.sections.frame.status, undefined, {
-    receive: onReady,
-    // A failure of the transport's own ends the status as the worker's end, as truapi's `CallError` carries it.
-    ...endListeners((outcome: FrameStatusEnd) => {
-      finish({ kind: 'interrupt', outcome });
-    }),
-    close: error => {
-      finish({ kind: 'close', error });
+  transport.subscribe({
+    method: protocolSchema.sections.frame.status,
+    start: undefined,
+    listeners: {
+      receive: onReady,
+      // A failure of the transport's own ends the status as the worker's end, as truapi's `CallError` carries it.
+      ...endListeners((outcome: FrameStatusEnd) => {
+        finish({ kind: 'interrupt', outcome });
+      }),
+      close: error => {
+        finish({ kind: 'close', error });
+      },
     },
   });
   return {
@@ -143,27 +147,31 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
     log.error('[dot.li protocol] Worker heartbeat failed', error);
     m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
   };
-  const unsubscribeBeats = transport.subscribe(protocolSchema.sections.frame.beat, undefined, {
-    receive: () => {
-      void transport.request(protocolSchema.sections.frame.heartbeat, undefined).then(
-        outcome => {
-          if (!outcome.success) {
-            failed(failureOf(protocolSchema.sections.frame.heartbeat, outcome.value));
-          }
-        },
-        (error: unknown) => {
-          failed(toError(error));
-        },
-      );
-    },
-    interrupt: () => {
-      answering = false;
-    },
-    fail: () => {
-      answering = false;
-    },
-    close: () => {
-      answering = false;
+  const unsubscribeBeats = transport.subscribe({
+    method: protocolSchema.sections.frame.beat,
+    start: undefined,
+    listeners: {
+      receive: () => {
+        void transport.request(protocolSchema.sections.frame.heartbeat, undefined).then(
+          outcome => {
+            if (!outcome.success) {
+              failed(failureOf(protocolSchema.sections.frame.heartbeat, outcome.value));
+            }
+          },
+          (error: unknown) => {
+            failed(toError(error));
+          },
+        );
+      },
+      interrupt: () => {
+        answering = false;
+      },
+      fail: () => {
+        answering = false;
+      },
+      close: () => {
+        answering = false;
+      },
     },
   });
   status.onEnd(stop);
@@ -194,7 +202,9 @@ export function connectSharedWorker(deps: SharedWorkerLinkDeps): SharedWorkerLin
   // A port delivers every message, so one handshake is enough. The ready wait is its one deadline, so a worker that
   // never answers counts as a ready timeout, and one whose script loads slowly fails no sooner than one that never
   // synced.
-  const transport = createTransport(protocolSchema, createPortProvider(worker.port), {
+  const transport = createTransport({
+    schema: protocolSchema,
+    provider: createPortProvider({ port: worker.port }),
     handshake: 'offer',
     hello: { resolutionId: deps.resolutionId },
     timers,
@@ -288,15 +298,19 @@ function relaySubscription<S, V, E>(
   method: Subscription<S, V, SubscriptionEnd<E>>,
 ): SubscriptionHandler<S, V, SubscriptionEnd<E>, ProtocolHello> {
   return (start, _context, sink) =>
-    worker.subscribe(method, start, {
-      receive: value => {
-        sink.send(value);
-      },
-      ...endListeners<E>(outcome => {
-        sink.interrupt(outcome);
-      }),
-      close: error => {
-        sink.interrupt(err(hostFailure(fromTransportError(error))));
+    worker.subscribe({
+      method,
+      start,
+      listeners: {
+        receive: value => {
+          sink.send(value);
+        },
+        ...endListeners<E>(outcome => {
+          sink.interrupt(outcome);
+        }),
+        close: error => {
+          sink.interrupt(err(hostFailure(fromTransportError(error))));
+        },
       },
     });
 }

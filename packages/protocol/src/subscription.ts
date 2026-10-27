@@ -4,7 +4,7 @@
 // A subscription to the frame as the host's layers hold it. Whether the frame ended it or the transport closed under
 // it, its one end is heard in one place, as the error host code sees, unless the subscriber tells the two apart.
 
-import { err, type SubscribeOptions, type Subscription as Method, type SubscriptionListeners } from '@dotli/transport';
+import { err, type SubscribeParams, type Subscription as Method, type SubscriptionListeners } from '@dotli/transport';
 import { callName } from './methodPolicy.js';
 import { callFailure, fromTransportError } from './errors.js';
 import type { DomainFailure, ProtocolTransport, SubscriptionEnd } from './schema.js';
@@ -39,13 +39,13 @@ export function subscribe<S, V, I extends SubscriptionEnd<DomainFailure>>(
   method: Method<S, V, I>,
   start: NoInfer<S>,
   listeners: FrameSubscriber<NoInfer<V>>,
-  options: SubscribeOptions = {},
+  options: Pick<SubscribeParams<S, V, I>, 'signal'> = {},
 ): () => void {
   const name = callName(method);
-  return transport.subscribe(
+  return transport.subscribe({
     method,
     start,
-    {
+    listeners: {
       receive: value => {
         listeners.receive(value);
       },
@@ -60,6 +60,6 @@ export function subscribe<S, V, I extends SubscriptionEnd<DomainFailure>>(
         }
       },
     },
-    options,
-  );
+    signal: options.signal,
+  });
 }

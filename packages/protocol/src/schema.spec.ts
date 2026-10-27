@@ -23,7 +23,7 @@ import {
 import {
   FrameRefusedError,
   createProviderPair,
-  messagesOf,
+  readMessages,
   readFrame,
   recordMessage,
   type RecordedWireMessage,
@@ -87,7 +87,7 @@ function requestCase<P, R, E>(
         calls: outcomes.length,
         check(recorded) {
           expect(outcomes).toEqual(sample.responses);
-          expect(messagesOf(protocolSchema, method, recorded)).toEqual(
+          expect(readMessages({ schema: protocolSchema, method, recorded })).toEqual(
             sample.responses.flatMap(response => [
               { tag: 'request', value: sample.request },
               { tag: 'response', value: response },
@@ -110,12 +110,16 @@ function heardUntilEnd<S, V, E>(
 ): Promise<{ values: V[]; end: SubscriptionEnd<E> }> {
   const values: V[] = [];
   return new Promise((settle, fail) => {
-    transport.subscribe(method, start, {
-      receive: value => values.push(value),
-      ...endListeners<E>(end => {
-        settle({ values, end });
-      }),
-      close: fail,
+    transport.subscribe({
+      method,
+      start,
+      listeners: {
+        receive: value => values.push(value),
+        ...endListeners<E>(end => {
+          settle({ values, end });
+        }),
+        close: fail,
+      },
     });
   });
 }
@@ -156,7 +160,7 @@ function subscriptionCase<S, V, E>(
         calls: heard.length,
         check(recorded) {
           expect(heard).toEqual(sample.interrupts.map(end => ({ values: sample.values, end })));
-          expect(messagesOf(protocolSchema, method, recorded)).toEqual(
+          expect(readMessages({ schema: protocolSchema, method, recorded })).toEqual(
             sample.interrupts.flatMap(end => [
               { tag: 'start', value: sample.start },
               ...sample.values.map(value => ({ tag: 'receive', value })),
@@ -318,13 +322,20 @@ const ACCEPTER_HELLO = { resolutionId: null };
 function protocolRig() {
   const { left, right, delivered } = createProviderPair();
   const issues: TransportIssue[] = [];
-  const opener = createTransport(protocolSchema, left, {
+  const opener = createTransport({
+    schema: protocolSchema,
+    provider: left,
     handshake: 'offer',
     hello: OPENER_HELLO,
     timers: createManualTimers(),
     onIssue: issue => issues.push(issue),
   });
-  const accepter = createTransport(protocolSchema, right, { handshake: 'respond', hello: ACCEPTER_HELLO });
+  const accepter = createTransport({
+    schema: protocolSchema,
+    provider: right,
+    handshake: 'respond',
+    hello: ACCEPTER_HELLO,
+  });
   return { opener, accepter, delivered, issues };
 }
 
@@ -480,7 +491,9 @@ describe('protocolSchema', () => {
     // Then
     expect(answer).toEqual(ok('owner of app'));
     const recorded = delivered.flatMap(data => recordMessage(protocolSchema, data) ?? []);
-    const request = messagesOf(protocolSchema, resolve.owner, recorded).find(message => message.tag === 'request');
+    const request = readMessages({ schema: protocolSchema, method: resolve.owner, recorded }).find(
+      message => message.tag === 'request',
+    );
     expect(request?.value).toEqual({ label: 'app' });
   });
 

@@ -37,12 +37,16 @@ export function linkHost(): HostLink {
   const onIssue = (issue: TransportIssue): void => {
     issues.push(issue);
   };
-  const serving = createTransport(protocolSchema, right, {
+  const serving = createTransport({
+    schema: protocolSchema,
+    provider: right,
     handshake: 'respond',
     hello: { resolutionId: null },
     onIssue,
   });
-  const host = createTransport(protocolSchema, left, {
+  const host = createTransport({
+    schema: protocolSchema,
+    provider: left,
     handshake: 'offer',
     hello: { resolutionId: null },
     onIssue,
@@ -102,18 +106,22 @@ export function record<S, V, I>(
   const events: V[] = [];
   const waiters: { count: number; resolve: () => void }[] = [];
   const ended = createDeferred<EndOf<I>>();
-  const unsubscribe = transport.subscribe(method, start, {
-    receive: value => {
-      events.push(value);
-      for (const waiter of [...waiters]) {
-        if (events.length >= waiter.count) {
-          waiters.splice(waiters.indexOf(waiter), 1);
-          waiter.resolve();
+  const unsubscribe = transport.subscribe({
+    method,
+    start,
+    listeners: {
+      receive: value => {
+        events.push(value);
+        for (const waiter of [...waiters]) {
+          if (events.length >= waiter.count) {
+            waiters.splice(waiters.indexOf(waiter), 1);
+            waiter.resolve();
+          }
         }
-      }
+      },
+      ...endListeners<I>(ended.resolve),
+      close: ended.resolve,
     },
-    ...endListeners<I>(ended.resolve),
-    close: ended.resolve,
   });
   return {
     events,

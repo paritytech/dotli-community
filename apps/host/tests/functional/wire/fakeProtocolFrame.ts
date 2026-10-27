@@ -120,11 +120,12 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
   };
   window.__fakeProtocol = control;
 
-  const serving = createTransport(
-    protocolSchema,
-    createWindowProvider({ listen: window, peer: () => window.parent, origin: () => true }),
-    { handshake: 'respond', hello: { resolutionId: null } },
-  );
+  const serving = createTransport({
+    schema: protocolSchema,
+    provider: createWindowProvider({ listen: window, peer: () => window.parent, origin: () => true }),
+    handshake: 'respond',
+    hello: { resolutionId: null },
+  });
 
   serving.handleSubscription(frame.status, status.handler);
   if (options.initFailed === undefined) {

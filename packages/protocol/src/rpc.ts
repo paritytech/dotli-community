@@ -5,7 +5,7 @@
 
 import { m, spans as S } from '@dotli/metrics';
 import { getErrorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
-import { failureReason, type AnyMethod, type Request } from '@dotli/transport';
+import { getFailureReason, type AnyMethod, type Request } from '@dotli/transport';
 import { callName, policyOf, type CallName, type MethodPolicy } from './methodPolicy.js';
 import { ProtocolRequestError, callFailure, fromTransportError } from './errors.js';
 import type { ProtocolFrame } from './frame.js';
@@ -61,7 +61,7 @@ function startCallTrail(policy: MethodPolicy, now: () => number): CallTrail {
         log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
           flow: 'protocol',
           ms: Math.round(now() - sentAt),
-          ...(error !== undefined ? { error: failureReason(error).slice(0, 200) } : {}),
+          ...(error !== undefined ? { error: getFailureReason(error).slice(0, 200) } : {}),
         });
       }
     },

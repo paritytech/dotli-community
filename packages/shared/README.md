@@ -74,6 +74,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Origin wipe: `wipeOriginStores(stores, { keepDatabases?, signal? })` (which keeps the databases it is told to),
   `OriginWipeError`, `OriginStores`, `OriginWipePart`.
 - Byte counts as people read them: `formatSize`, `formatRate`.
+- Types: `Branded<Value, Name>`, a `Value` the compiler tells apart from others of its base type, made only by the
+  constructor that casts to it.
 - Encoding and timing: `areBytesEqual(left, right)`, `hashBlake2b(data, outputBytes)`, `toHex`, `fromHex`,
   `formatDuration(start, { now? })`, `formatElapsed(start, { now? })`,
   `withTimeout({ work, ms, timeoutError, timers?, signal? })`, `sleep(ms, { signal?, timers? })`, `createRandomId()`,
@@ -83,9 +85,9 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
-- `resetAllStoresForTests`, `createMemoryStorage({ entries? })`, `must`, `nth`, `createManualTimers({ start? })` with
-  `ManualTimers` (timers a spec moves by hand, whose `countPending()` counts the timers still pending),
-  `createFakePage()` with `FakePage` (a page with a document and a window, each firing the events the browser fires on
-  it, `pagehide` included), `recordLog` with `LogLine` (the `LogEntry` of each line the shared log writes until a test
-  ends, at one level if asked).
+- `resetAllStoresForTests`, `createMemoryStorage({ entries? })`, `must`, `nth`, `catchError(run)` (what `run` threw, or
+  undefined when it returned), `createManualTimers({ start? })` with `ManualTimers` (timers a spec moves by hand, whose
+  `countPending()` counts the timers still pending), `createFakePage()` with `FakePage` (a page with a document and a
+  window, each firing the events the browser fires on it, `pagehide` included), `recordLog` with `LogLine` (the
+  `LogEntry` of each line the shared log writes until a test ends, at one level if asked).
 - `waitForDom` waits on the page for functional tests. It reads the DOM, so only they call it.

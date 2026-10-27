@@ -474,9 +474,11 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   function onConnect(port: WorkerPort): void {
     reached = true;
     // The worker closes the port itself, after a release has had its chance to reach a frozen tab.
-    const provider = createPortProvider(port, { closeOnDispose: false });
+    const provider = createPortProvider({ port, closeOnDispose: false });
     // A tab's hello names its page load, which each request span carries. The worker's own names none.
-    const transport = createTransport(protocolSchema, provider, {
+    const transport = createTransport({
+      schema: protocolSchema,
+      provider,
       handshake: 'respond',
       hello: { resolutionId: null },
       onIssue: wire.onIssue,

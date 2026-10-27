@@ -10,7 +10,7 @@ import {
   TransportUnsupportedProtocolVersionError,
   domain,
   hostFailure,
-  reasonParts,
+  parseReason,
   type AnyMethod,
   type CallError,
 } from '@dotli/transport';
@@ -134,7 +134,7 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
       return domainFailure(error.value, method);
     case 'HostFailure': {
       // A handler's failure crosses with its name, so its name survives.
-      const { name, message } = reasonParts(error.value.reason);
+      const { name, message } = parseReason(error.value.reason);
       return new ProtocolRequestError(message, name, method);
     }
     case 'Cancelled':

@@ -275,24 +275,22 @@ export function createProtocolFrame<E extends FrameElement>(deps: ProtocolFrameD
 
   /** The transport to the slot's iframe, which has loaded. */
   function openTransport(kept: FrameSlot<E>): ProtocolTransport {
-    return createTransport(
-      protocolSchema,
-      createWindowProvider({
+    return createTransport({
+      schema: protocolSchema,
+      provider: createWindowProvider({
         listen: messages,
         peer: () => kept.iframe?.contentWindow ?? null,
         origin,
         // The provider drops what is not bytes before the transport sees it, so this is its only count.
         onNotBytes: wire.onNotBytes,
       }),
+      handshake: 'offer',
       // The frame reads the resolution id from its URL, which it needs before any handshake.
-      {
-        handshake: 'offer',
-        hello: { resolutionId: null },
-        timers,
-        timeoutMs: timeouts.handshakeMs,
-        onIssue: wire.onIssue,
-      },
-    );
+      hello: { resolutionId: null },
+      timers,
+      timeoutMs: timeouts.handshakeMs,
+      onIssue: wire.onIssue,
+    });
   }
 
   /** Hears the frame's status. It is the first call on the transport, so it starts the handshake. */

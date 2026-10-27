@@ -96,7 +96,9 @@ afterEach(() => {
 function fakeWorker(): FakeWorker {
   const channel = new MessageChannel();
   channels.add(channel);
-  const serving = createTransport(protocolSchema, createPortProvider(channel.port1), {
+  const serving = createTransport({
+    schema: protocolSchema,
+    provider: createPortProvider({ port: channel.port1 }),
     handshake: 'respond',
     hello: { resolutionId: null },
   });

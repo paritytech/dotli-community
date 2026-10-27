@@ -155,17 +155,19 @@ describe('the wire report', () => {
       removeEventListener: (_type, listener) => listeners.delete(listener),
     };
     const parent: WindowLike = { postMessage: () => undefined };
-    createTransport(
-      protocolSchema,
-      createWindowProvider({
+    createTransport({
+      schema: protocolSchema,
+      provider: createWindowProvider({
         listen: page,
         peer: () => parent,
         origin: isSharedAuthOriginAllowed,
         onNotBytes: report.onNotBytes,
         onRefusedOrigin: report.onRefusedOrigin,
       }),
-      { handshake: 'respond', hello: { resolutionId: null }, onIssue: report.onIssue },
-    );
+      handshake: 'respond',
+      hello: { resolutionId: null },
+      onIssue: report.onIssue,
+    });
     const deliver = (data: unknown, origin: string, source: unknown): void => {
       for (const listener of [...listeners]) {
         listener({ data, origin, source });

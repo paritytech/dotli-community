@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export { areBytesEqual } from './areBytesEqual.js';
+export type { Branded } from './branded.js';
 export type { AsyncTaskPool } from './createAsyncTaskPool.js';
 export { createAsyncTaskPool } from './createAsyncTaskPool.js';
 export { createDeferred } from './createDeferred.js';

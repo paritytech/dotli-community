@@ -84,9 +84,9 @@ const wire = createWireReport('frame', { count: m.count });
 
 // The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
 // speaks only when spoken to. The host's hello names no page load, which this frame reads from its URL.
-const serving = createTransport(
-  protocolSchema,
-  createWindowProvider({
+const serving = createTransport({
+  schema: protocolSchema,
+  provider: createWindowProvider({
     listen: window,
     peer: () => window.parent,
     // The shared-auth allowlist guards every method served here, the shared stores and the wallet included, so sandboxed
@@ -96,8 +96,10 @@ const serving = createTransport(
     onNotBytes: wire.onNotBytes,
     onRefusedOrigin: wire.onRefusedOrigin,
   }),
-  { handshake: 'respond', hello: { resolutionId: null }, onIssue: wire.onIssue },
-);
+  handshake: 'respond',
+  hello: { resolutionId: null },
+  onIssue: wire.onIssue,
+});
 serving.handleSubscription(protocolSchema.sections.frame.status, boot.frameStatus);
 serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.telemetry);
 

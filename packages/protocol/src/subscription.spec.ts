@@ -169,11 +169,15 @@ describe('subscribe', () => {
   it('As the host, a subscription to a frame of a later release ends with the version mismatch my reload screen knows', async () => {
     // Given a frame that speaks a wire version the host cannot
     const { left, right } = createProviderPair();
-    createTransport(defineSchema({ version: 255, hello: _void, sections: {} }), right, {
+    createTransport({
+      schema: defineSchema({ version: 255, hello: _void, sections: {} }),
+      provider: right,
       handshake: 'respond',
       hello: undefined,
     });
-    const transport = createTransport(protocolSchema, left, {
+    const transport = createTransport({
+      schema: protocolSchema,
+      provider: left,
       handshake: 'offer',
       hello: { resolutionId: null },
       timers,
