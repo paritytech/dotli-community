@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { DotliDebugBusEvent, DotliDebugEvent } from '@dotli/truapi-debug';
+import type { DebugBusEvent, DotliDebugEvent } from '@dotli/truapi-debug';
 
 export type MainThreadMonitorBus = {
   emit: (event: DotliDebugEvent) => void;
   /** Sees the bus's events without taking the panel's boot replay. */
-  watch: (callback: (event: DotliDebugBusEvent) => void) => () => void;
+  watch: (callback: (event: DebugBusEvent) => void) => () => void;
 };
 
 /** Event-loop stalls and a heartbeat for the debug panel, until the bridge handshakes or MAX_MONITOR_MS passes. */

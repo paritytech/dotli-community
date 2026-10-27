@@ -7,7 +7,7 @@
 import { getSettings, type Backend } from '@dotli/config';
 import { reportExpected, spans as S } from '@dotli/metrics';
 import { pageSessionStorage, type SafeStorage } from '@dotli/shared';
-import { emitDotliDebugEvent } from '@dotli/truapi-debug';
+import { debugBus } from '@dotli/truapi-debug';
 import { showErrorPage } from '@dotli/ui';
 import { markContinuation } from './continuation.js';
 import { trustedProviderHosts } from './errors.js';
@@ -78,7 +78,7 @@ export const loadFailureScreen: LoaderFailureScreen = {
       resetProtocolOnReload,
       sightings: sessionErrorSightings,
       trustedProviderHosts,
-      emit: emitDotliDebugEvent,
+      emit: debugBus.emit,
     });
   },
   forget: sessionErrorSightings.forget,

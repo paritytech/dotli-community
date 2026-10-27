@@ -7,8 +7,8 @@
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expect, fn, waitFor } from 'storybook/test';
-import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
-import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
+import type { DebugBus, DebugBusEvent } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost, type FakeDebugPanelHost } from '../../host.fake.js';
 import type { KeyedSignals } from '../../keyedSignals.js';
 import { setupTruapiDebugPanel } from '../../truapiDebugPanel.js';
@@ -35,7 +35,7 @@ export type TruapiInput = {
 };
 
 export type DebugPanelStory = {
-  bus: DotliDebugBus;
+  bus: DebugBus;
   /** The host page the panel reads, which a play sets. */
   host: FakeDebugPanelHost;
   effects: {
@@ -117,7 +117,7 @@ export function debugPanelBeforeEach(context: { parameters: Record<string, unkno
   const options = (context.parameters['debugPanel'] ?? {}) as DebugPanelParameters;
   localStorage.removeItem('truapi-debug:section');
   localStorage.removeItem('truapi-debug:dock');
-  const bus = createDotliDebugBus();
+  const bus = createDebugBus();
   bus.enableBuffering();
   const calls: WorkCalls = { matches: 0, formatPending: 0, rowSelection: 0, buildTimeline: 0, buildResolution: 0 };
   const keyedMaps: KeyedSignals<unknown, unknown>[] = [];
@@ -156,7 +156,7 @@ export function debugPanelBeforeEach(context: { parameters: Record<string, unkno
       });
     },
     system: (layer, event, flowId, payload = {}) => {
-      bus.emit({ layer, event, flowId, timestamp: Date.now(), payload } as unknown as DotliDebugBusEvent);
+      bus.emit({ layer, event, flowId, timestamp: Date.now(), payload } as unknown as DebugBusEvent);
     },
   };
   current = story;

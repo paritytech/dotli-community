@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { waitForDom } from '@dotli/shared/testing';
-import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { setupTruapiDebugPanel } from '../src/truapiDebugPanel.js';
 import { PANEL_ID } from '../src/Panel.js';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
@@ -61,7 +61,7 @@ describe('late render errors', () => {
     // Given
     const panelView = lateView(PANEL_ID);
     const { host } = fakeDebugPanelHost();
-    const bus = createDotliDebugBus();
+    const bus = createDebugBus();
     bus.enableBuffering();
     const dispose = setupTruapiDebugPanel({ host, bus, view: panelView });
     await waitForDom(() => document.getElementById(PANEL_ID) !== null);

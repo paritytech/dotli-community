@@ -16,7 +16,7 @@ import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { ExecutableManifest, ManifestResult, ResolvePhase } from '@dotli/resolver';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
-import { enableDotliDebugBuffering, watchDotliDebugEvents, type DotliDebugEvent } from '@dotli/truapi-debug';
+import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
 import { clearScreen } from '@dotli/ui';
 import { beginAttempt } from '../../src/journey.js';
 import type { LoadFailure } from '../../src/loadFailure.js';
@@ -193,9 +193,9 @@ describe('createProductLoader', () => {
     localStorage.clear();
     sessionStorage.clear();
     resetAllStoresForTests();
-    enableDotliDebugBuffering();
+    debugBus.enableBuffering();
     undo.push(
-      watchDotliDebugEvents(event => {
+      debugBus.watch(event => {
         if ('layer' in event) {
           debug.push(event);
         }

@@ -7,7 +7,7 @@ import { decodeWireMessage, type WireProvider } from '@parity/truapi';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { reportListener } from '@dotli/metrics';
 import { createLazyLoad, createListenerSet, noop } from '@dotli/shared';
-import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
+import { debugBus } from '@dotli/truapi-debug';
 import { loadWireDescriber } from '../lazy.js';
 import { reportLazyMiss } from '../lazyMiss.js';
 import type { CoreConnection } from './pageCore.js';
@@ -44,7 +44,7 @@ export function preloadWireDescriber(): ReturnType<typeof loadWireDescriber> {
 }
 
 function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: string, message: Uint8Array): void {
-  if (!hasDotliDebugListeners()) {
+  if (!debugBus.hasListeners()) {
     return;
   }
   const decoded = decodeWireMessage(message);
@@ -56,7 +56,7 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
   // Off the transport path: a panel listener that throws becomes a rejection the page reports, and delivery goes on.
   void preloadWireDescriber().then(
     ({ describeWireFrame }) => {
-      emitDotliDebugEvent({
+      debugBus.emit({
         kind: 'truapi',
         direction,
         productId,

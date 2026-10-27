@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { bindCaptureSink } from '@dotli/metrics';
-import { enableDotliDebugBuffering, onDotliDebugEvent, type DotliDebugBusEvent } from '@dotli/truapi-debug';
+import { debugBus, type DebugBusEvent } from '@dotli/truapi-debug';
 import { createWireDescriber, preloadWireDescriber, ownCoreConnection } from './coreConnection.js';
 import type { CoreConnection } from './pageCore.js';
 import type * as WireDescribe from './debugWireDescribe.js';
@@ -18,10 +18,10 @@ afterEach(() => {
 });
 
 /** The debug panel open, as the host enables the bus before the panel subscribes. */
-function openDebugPanel(): DotliDebugBusEvent[] {
-  enableDotliDebugBuffering();
-  const events: DotliDebugBusEvent[] = [];
-  stopListening = onDotliDebugEvent(event => {
+function openDebugPanel(): DebugBusEvent[] {
+  debugBus.enableBuffering();
+  const events: DebugBusEvent[] = [];
+  stopListening = debugBus.subscribe(event => {
     events.push(event);
   });
   return events;

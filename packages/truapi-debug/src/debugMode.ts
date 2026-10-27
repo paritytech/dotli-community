@@ -7,6 +7,7 @@
 const DEBUG_MODE_KEY = 'dotli:truapi-debug';
 
 export type DebugMode = {
+  /** Whether the debug panel loads on this page. */
   enabled: boolean;
   /** Chosen in this tab rather than by the build, so the panel starts expanded. */
   explicit: boolean;
@@ -14,8 +15,11 @@ export type DebugMode = {
 
 /** Where the choice lives. `window` is one. */
 export type DebugModePage = {
+  /** The page URL, read for the `debug` param. */
   readonly location: { readonly href: string };
+  /** Replaces the current URL without a navigation. `replaceState` may throw. */
   readonly history: { replaceState(data: unknown, unused: string, url: string): void };
+  /** The tab's storage, which holds the choice. Any access may throw, as in Safari private mode. */
   readonly sessionStorage: Pick<Storage, 'getItem' | 'setItem'>;
 };
 
@@ -57,7 +61,7 @@ export function isDebugModeOn(page: Pick<DebugModePage, 'sessionStorage'>): bool
   try {
     return page.sessionStorage.getItem(DEBUG_MODE_KEY) === '1';
   } catch {
-    // sessionStorage unavailable, as in Safari private mode.
+    // sessionStorage may be unavailable, as in Safari private mode, so debug mode reads as off.
     return false;
   }
 }

@@ -9,7 +9,7 @@ import { CONTENT_ERRORS, type ArchiveFiles, type fetchArchive, type FetchResult 
 import type { validateSandboxParams } from '@dotli/sandbox-wire';
 import { getErrorName, log } from '@dotli/shared';
 
-export type SandboxParams = Extract<ReturnType<typeof validateSandboxParams>, { ok: true }>['params'];
+export type SandboxParams = ReturnType<typeof validateSandboxParams>;
 
 /**
  * Named alike in Sentry and in the host's `failedStep`. `verify` is never entered: a content mismatch is attributed to

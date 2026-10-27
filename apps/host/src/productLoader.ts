@@ -20,7 +20,7 @@ import {
   serializeError,
 } from '@dotli/shared';
 import type { CachedManifests } from '@dotli/storage';
-import { emitDotliDebugEvent } from '@dotli/truapi-debug';
+import { debugBus } from '@dotli/truapi-debug';
 import { readChatCapability } from './chatCapability.js';
 import { describeError } from './errors.js';
 import { beginAttempt, endJourney } from './journey.js';
@@ -202,7 +202,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     });
     trace.finish('error', { reason: getErrorMessage(err), errorKind: error.kind });
     log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'boot',
       event: 'failed',
       flowId,
@@ -279,7 +279,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     enterStep('content');
   };
   const ready = (path: 'fast' | 'slow'): void => {
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'boot',
       event: 'ready',
       flowId,
@@ -292,7 +292,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     enterStep('cid_cache_read');
     const cached = options.skipCidCache ? null : await cidCache.get(label);
     const cachedCid = cached?.cid ?? null;
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'boot',
       event: 'cid_cache_checked',
       flowId,
@@ -352,7 +352,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
 
     const resolveFlowId = createRandomId();
     const resolveSource: 'smoldot' | 'rpc-gateway' = backend !== 'rpc-gateway' ? 'smoldot' : 'rpc-gateway';
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'resolve',
       event: 'started',
       flowId: resolveFlowId,
@@ -363,7 +363,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend });
     const cid = await names.resolveProduct(label, phase => {
       progress.resolvePhase(phase);
-      emitDotliDebugEvent({
+      debugBus.emit({
         layer: 'resolve',
         event: 'phase',
         flowId: resolveFlowId,
@@ -372,7 +372,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
       });
     });
 
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'resolve',
       event: 'completed',
       flowId: resolveFlowId,

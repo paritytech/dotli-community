@@ -7,7 +7,7 @@
 import type { Backend, ChainRole } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent, ChainSyncKind } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
-import { emitDotliDebugEvent } from '@dotli/truapi-debug';
+import { debugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingPhase } from './loadingController.js';
 import { log } from '@dotli/shared';
 import { productStore } from './runtime/state/product.js';
@@ -143,7 +143,7 @@ export function startLoadProgress(options: LoadProgressOptions): LoadProgress {
   options.events.onChainDetail(event => {
     trace.chainDetail(event);
     if (event.dbCache !== undefined) {
-      emitDotliDebugEvent({
+      debugBus.emit({
         layer: 'chain',
         event: 'dbcache',
         flowId: options.flowId,
@@ -278,7 +278,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
       const changed = peersByRole.get(role) !== event.peers;
       peersByRole.set(role, event.peers);
       if (changed) {
-        emitDotliDebugEvent({
+        debugBus.emit({
           layer: 'chain',
           event: 'peers',
           flowId,
@@ -310,7 +310,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
             ...(event.reason === undefined ? {} : { reason: event.reason }),
           });
         }
-        emitDotliDebugEvent({
+        debugBus.emit({
           layer: 'chain',
           event: 'phase',
           flowId,
@@ -411,7 +411,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
     lastBytesDebugAt = at;
     lastBytesDebugTotal = received;
     bytesDebugSamples++;
-    emitDotliDebugEvent({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
+    debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
   };
   const stopBytesDebugOnLoad = productStore.subscribe(() => {
     if (productStore.get().status !== 'loaded') {

@@ -4,7 +4,7 @@
 // Entry of the lazily loaded debug panel, imported by the host only in debug mode.
 
 import { flush } from 'solid-js';
-import { onDotliDebugEvent, type DotliDebugBus } from '@dotli/truapi-debug';
+import { debugBus, type DebugBus } from '@dotli/truapi-debug';
 import { mountRoot } from '@dotli/ui';
 import { Panel, PANEL_ID } from './Panel.js';
 import { pageEffects, type PanelEffects } from './effects.js';
@@ -29,7 +29,7 @@ export type SetupOptions = {
   /** Without them, the page's own clipboard and download. */
   effects?: PanelEffects;
   /** Without one, the page's bus. */
-  bus?: Pick<DotliDebugBus, 'on'>;
+  bus?: Pick<DebugBus, 'subscribe'>;
 };
 
 /**
@@ -48,7 +48,7 @@ export function setupTruapiDebugPanel(options: SetupOptions): () => void {
   document.body.appendChild(container);
 
   const { store, resolution, unsubscribe } = createPanelFeed({
-    bus: options.bus ?? { on: onDotliDebugEvent },
+    bus: options.bus ?? debugBus,
     capacity: options.capacity ?? DEFAULT_CAPACITY,
   });
 

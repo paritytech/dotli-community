@@ -2,28 +2,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
-import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
+import type { DebugBus, DebugBusEvent } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { createPanelFeed } from './feed.js';
 
 /** A bus buffering for a panel that has not loaded yet, as the host's entry leaves it. */
-function bufferingBus(): DotliDebugBus {
-  const bus = createDotliDebugBus();
+function bufferingBus(): DebugBus {
+  const bus = createDebugBus();
   bus.enableBuffering();
   return bus;
 }
 
-function system(bus: DotliDebugBus, layer: string, event: string, flowId: string): void {
+function system(bus: DebugBus, layer: string, event: string, flowId: string): void {
   bus.emit({
     layer,
     event,
     flowId,
     timestamp: 0,
     payload: { chainBackend: 'smoldot' },
-  } as unknown as DotliDebugBusEvent);
+  } as unknown as DebugBusEvent);
 }
 
-function truapi(bus: DotliDebugBus, tag: string, requestId: string): void {
+function truapi(bus: DebugBus, tag: string, requestId: string): void {
   bus.emit({ kind: 'truapi', direction: 'outgoing', productId: 'app.dot', requestId, payload: { tag, value: {} } });
 }
 

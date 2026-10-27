@@ -5,7 +5,7 @@
 // visitor asks for, up to a limit. Every failure is reported and shown.
 
 import { localRootOf } from '@dotli/config';
-import { validateSandboxParams } from '@dotli/sandbox-wire';
+import { SandboxContractError, validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, getErrorMessage, describeGatewayUnreachable, log, setErrorName } from '@dotli/shared';
 
@@ -80,8 +80,13 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
   };
 
   /** Reported, since a URL this sandbox cannot use is the host's fault, never the visitor's. */
-  const failContract = (step: ContractStep, title: string, reason: string): void => {
-    const err = setErrorName(new Error(`${title}: ${reason}`), 'SandboxContractError');
+  const failContract = (
+    step: ContractStep,
+    title: string,
+    reason: string,
+    { cause }: { cause?: unknown } = {},
+  ): void => {
+    const err = setErrorName(new Error(`${title}: ${reason}`, { cause }), 'SandboxContractError');
     captureException(err, { flow: 'content', step, tags: { surface: 'sandbox_main' } });
     fail(step, title, reason);
   };
@@ -108,22 +113,27 @@ export function runSandbox(page: SandboxPage, deps: SandboxRunDeps): Promise<voi
   }
   // The sandbox cannot read the host's localStorage, so every setting arrives in the URL. A missing or invalid value
   // is a hard error, never a silent default. Extra keys are the user's own and pass through.
-  const parsed = validateSandboxParams(url.searchParams);
-  if (!parsed.ok) {
-    if (parsed.recoverable === true) {
+  let params: SandboxParams;
+  try {
+    params = validateSandboxParams(url.searchParams);
+  } catch (error) {
+    if (!(error instanceof SandboxContractError)) {
+      throw error;
+    }
+    const { message: reason, recoverable } = error;
+    if (recoverable) {
       // A reload of this window boots without the contract params, which were stripped after the last load. The host
       // can render it again with the params it last sent, and if it does not in time, the load fails.
-      contentLog.event('Asking the host to re-render the sandbox', { reason: parsed.reason });
+      contentLog.event('Asking the host to re-render the sandbox', { reason });
       deps.askRerender();
       setTimeout(() => {
-        failContract('contract_rerender', 'Invalid sandbox URL', parsed.reason);
+        failContract('contract_rerender', 'Invalid sandbox URL', reason, { cause: error });
       }, deps.recoverTimeoutMs);
     } else {
-      failContract('contract_params', 'Invalid sandbox URL', parsed.reason);
+      failContract('contract_params', 'Invalid sandbox URL', reason, { cause: error });
     }
     return Promise.resolve();
   }
-  const { params } = parsed;
   deps.configure(params);
   const dependency = dependencyOf(params.backend);
 

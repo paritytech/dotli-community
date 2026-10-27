@@ -22,9 +22,9 @@ flowchart LR
 
 - The host and the sandbox are separate origins that can run different releases for a while after a deploy, so the
   formats are additive. A change may add an optional field or a new message type, never rename or retype one.
-- The sandbox cannot read the host's settings, so the host passes every decision as a URL param. The validator rejects
-  any value it does not recognize instead of defaulting, and an absent required param is marked recoverable so the host
-  can render the frame again.
+- The sandbox cannot read the host's settings, so the host passes every decision as a URL param. The validator throws a
+  typed contract error for any value it does not recognize instead of defaulting, and marks an absent required param
+  recoverable so the host can render the frame again.
 - A new required param bumps `SANDBOX_SCHEMA_VERSION`, so a stale host cannot feed a fresh sandbox. An explicit version
   must match.
 - Any frame or extension can post to a window, so each side parses what it receives and drops what does not parse.
@@ -36,11 +36,12 @@ flowchart LR
 
 ### `@dotli/sandbox-wire`
 
-- Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`.
+- Param contract: `SANDBOX_SCHEMA_VERSION`, `SANDBOX_CONTRACT_PARAMS`, `validateSandboxParams`, which returns the parsed
+  params or throws `SandboxContractError` with the reason as its message and a `recoverable` flag.
 - Messages: `parseHostToSandboxMessage`, `postToHost`, `parseApiViolationMessage`, `ApiViolationMessage`,
   `SandboxToHostMessage` (each member named through `SandboxMessageOf`), `HostToSandboxMessage`, `BitswapResultMessage`.
-- Channel: `startSandboxChannel`, `SandboxChannel`, `StartedSandboxChannel`, `SandboxChannelOptions`, `SandboxSender`,
-  `SandboxMessageType`, `SandboxMessageOf`.
+- Channel: `startSandboxChannel`, its derived `StartedSandboxChannel`, `SandboxChannel` (the started channel without
+  `stop`), `SandboxSender`, `SandboxMessageType`, `SandboxMessageOf`.
 
 ### `@dotli/sandbox-wire/contract-params`
 

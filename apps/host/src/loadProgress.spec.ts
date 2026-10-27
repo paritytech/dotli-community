@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Backend } from '@dotli/config';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { enableDotliDebugBuffering, watchDotliDebugEvents, type DotliDebugEvent } from '@dotli/truapi-debug';
+import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { createSyncStore } from '@dotli/shared';
 import type { PageContent } from '@dotli/ui';
@@ -89,7 +89,7 @@ function setup(backend: Backend): {
   const flowId = `flow-${String(++flows)}`;
   const debug: DotliDebugEvent[] = [];
   onTestFinished(
-    watchDotliDebugEvents(event => {
+    debugBus.watch(event => {
       if ('layer' in event && event.flowId === flowId) {
         debug.push(event);
       }
@@ -115,7 +115,7 @@ describe('startLoadProgress', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetAllStoresForTests();
-    enableDotliDebugBuffering();
+    debugBus.enableBuffering();
   });
 
   afterEach(() => {

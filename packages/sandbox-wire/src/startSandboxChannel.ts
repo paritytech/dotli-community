@@ -12,21 +12,21 @@ export type SandboxMessageOf<T extends SandboxMessageType> = Extract<SandboxToHo
 
 /** For a consumer that answers the frame or keeps state per frame. */
 export type SandboxSender = {
+  /** The frame's origin, already checked as trusted. */
   origin: string;
   /** Null when the frame went away before its message was handled. */
   source: MessageEventSource | null;
 };
 
-export type SandboxChannel = {
-  /** Returns the unsubscribe. */
-  on<T extends SandboxMessageType>(
-    type: T,
-    handler: (message: SandboxMessageOf<T>, sender: SandboxSender) => void,
-  ): () => void;
-};
+export type StartedSandboxChannel = ReturnType<typeof startSandboxChannel>;
 
-export type SandboxChannelOptions = {
+/** The started channel without `stop`, for a consumer that listens but does not own the channel. */
+export type SandboxChannel = Omit<StartedSandboxChannel, 'stop'>;
+
+type Params = {
+  /** The window the channel listens on for `message` events. */
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>;
+  /** Decides whether an origin may speak for a sandbox frame. */
   isTrustedOrigin: (origin: string) => boolean;
   /** Hears each sandbox message the channel drops for its origin. */
   onUntrusted?: (type: SandboxMessageType, origin: string) => void;
@@ -34,21 +34,18 @@ export type SandboxChannelOptions = {
   report: (error: unknown, type: SandboxMessageType) => void;
 };
 
-export type StartedSandboxChannel = {
-  stop(): void;
-} & SandboxChannel;
-
 type AnyHandler = (message: SandboxToHostMessage, sender: SandboxSender) => void;
 
-export function startSandboxChannel({
-  target,
-  isTrustedOrigin,
-  onUntrusted,
-  report,
-}: SandboxChannelOptions): StartedSandboxChannel {
+/**
+ * Starts listening to sandbox messages on `target` and returns the channel.
+ * The channel hands each trusted, well-formed message to the handlers registered for its type. `stop` removes the
+ * window listener and drops every handler, and is safe to call again. It never throws: a handler that throws goes to
+ * `report` and the rest still run.
+ */
+export function startSandboxChannel({ target, isTrustedOrigin, onUntrusted, report }: Params) {
   const handlers = new Map<SandboxMessageType, Set<AnyHandler>>();
 
-  const onMessage = (event: MessageEvent): void => {
+  function handleMessage(event: MessageEvent): void {
     // The parse is a cheap shape check that comes first, since this listener sees all postMessage traffic.
     const message = parseSandboxToHostMessage(event.data);
     if (message === null) {
@@ -68,11 +65,16 @@ export function startSandboxChannel({
         report(error, message.type);
       }
     }
-  };
-  target.addEventListener('message', onMessage);
+  }
+
+  target.addEventListener('message', handleMessage);
 
   return {
-    on(type, handler) {
+    /** Hands each trusted message of `type` to `handler` until the returned unsubscribe runs. Never throws. */
+    on<T extends SandboxMessageType>(
+      type: T,
+      handler: (message: SandboxMessageOf<T>, sender: SandboxSender) => void,
+    ): () => void {
       let forType = handlers.get(type);
       if (forType === undefined) {
         forType = new Set();
@@ -85,8 +87,9 @@ export function startSandboxChannel({
         forType.delete(stored);
       };
     },
-    stop() {
-      target.removeEventListener('message', onMessage);
+    /** Stops listening to the window and drops every handler. Safe to call again. */
+    stop(): void {
+      target.removeEventListener('message', handleMessage);
       handlers.clear();
     },
   };

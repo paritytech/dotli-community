@@ -127,7 +127,10 @@ describe('runSandbox contract', () => {
     // Then
     expect(sandbox.failures).toMatchObject([{ step: 'contract_params', title: 'Invalid sandbox URL' }]);
     expect(captured).toMatchObject([
-      { err: { name: 'SandboxContractError' }, ctx: { flow: 'content', step: 'contract_params' } },
+      {
+        err: { name: 'SandboxContractError', cause: { name: 'SandboxContractError', recoverable: false } },
+        ctx: { flow: 'content', step: 'contract_params' },
+      },
     ]);
     expect(sandbox.loads).toEqual([]);
   });
@@ -195,7 +198,9 @@ describe('runSandbox contract', () => {
     expect(sandbox.events).toEqual(['ask rerender', 'failed contract_rerender']);
     expect(failuresBeforeTheWait).toBe(0);
     expect(sandbox.failures).toMatchObject([{ step: 'contract_rerender', title: 'Invalid sandbox URL' }]);
-    expect(captured).toMatchObject([{ ctx: { step: 'contract_rerender' } }]);
+    expect(captured).toMatchObject([
+      { err: { cause: { name: 'SandboxContractError', recoverable: true } }, ctx: { step: 'contract_rerender' } },
+    ]);
   });
 
   it("As the sandbox, I apply the contract's settings before the first load", async () => {

@@ -3,7 +3,7 @@
 
 import { EventStore } from './model/eventStore.js';
 import { createResolutionRecorder, type ResolutionRecorder } from './model/resolutionView.js';
-import type { DotliDebugBus, DotliDebugBusEvent } from '@dotli/truapi-debug';
+import type { DebugBus, DebugBusEvent } from '@dotli/truapi-debug';
 
 /** What the panel shows, fed from the bus. */
 export type PanelFeed = {
@@ -13,7 +13,7 @@ export type PanelFeed = {
   unsubscribe: () => void;
 };
 
-function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBusEvent, { kind: 'truapi' }> {
+function isTruapiDebugEvent(ev: DebugBusEvent): ev is Extract<DebugBusEvent, { kind: 'truapi' }> {
   return 'kind' in ev;
 }
 
@@ -21,10 +21,10 @@ function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBus
  * Subscribes to `bus` at once, so the buffered boot replay is in the store before the panel mounts rather than a frame
  * later.
  */
-export function createPanelFeed(options: { bus: Pick<DotliDebugBus, 'on'>; capacity: number }): PanelFeed {
+export function createPanelFeed(options: { bus: Pick<DebugBus, 'subscribe'>; capacity: number }): PanelFeed {
   const store = new EventStore({ capacity: options.capacity });
   const resolution = createResolutionRecorder();
-  const unsubscribe = options.bus.on(ev => {
+  const unsubscribe = options.bus.subscribe(ev => {
     if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
     } else {

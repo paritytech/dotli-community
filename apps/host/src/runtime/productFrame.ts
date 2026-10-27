@@ -12,7 +12,7 @@ import { sandboxLabel } from '@dotli/resolver';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log, noop, createRandomId, sleep } from '@dotli/shared';
-import { emitDotliDebugEvent } from '@dotli/truapi-debug';
+import { debugBus } from '@dotli/truapi-debug';
 import { chatConnections } from './chat/chatStore.js';
 import { ownCoreConnection } from './coreConnection.js';
 import { ERRORS } from './errors.js';
@@ -295,7 +295,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     // Keep the product on screen while its replacement connects, which can take seconds.
     const previous = mounted;
     if (product.mode === 'iframe') {
-      emitDotliDebugEvent({
+      debugBus.emit({
         layer: 'render',
         event: 'iframe_begin',
         flowId: renderFlowId,
@@ -313,7 +313,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     }
     const iframeUrl =
       product.mode === 'iframe' ? new URL(product.url, page.location().href) : sandboxUrl(product, page.location());
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'bridge',
       event: 'setup_begin',
       flowId: bridgeFlowId,
@@ -321,7 +321,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       payload: { label: product.label, productId },
     });
     if (product.mode === 'subdomain') {
-      emitDotliDebugEvent({
+      debugBus.emit({
         layer: 'render',
         event: 'iframe_begin',
         flowId: renderFlowId,
@@ -353,7 +353,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
       stopSetup();
       return;
     }
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'bridge',
       event: 'setup_ready',
       flowId: bridgeFlowId,
@@ -367,7 +367,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     host.iframe.addEventListener(
       'load',
       () => {
-        emitDotliDebugEvent({
+        debugBus.emit({
           layer: 'bridge',
           event: 'iframe_load',
           flowId: bridgeFlowId,
@@ -399,7 +399,7 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
         ...manifestFactsOf(product),
       });
     }
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'render',
       event: 'iframe_ready',
       flowId: renderFlowId,
@@ -690,7 +690,7 @@ function pipeProviders(
     product.subscribe(message => {
       if (!sawInbound) {
         sawInbound = true;
-        emitDotliDebugEvent({
+        debugBus.emit({
           layer: 'bridge',
           event: 'first_inbound',
           flowId: args.flowId,
@@ -703,7 +703,7 @@ function pipeProviders(
     core.subscribe(message => {
       if (!sawOutbound) {
         sawOutbound = true;
-        emitDotliDebugEvent({
+        debugBus.emit({
           layer: 'bridge',
           event: 'first_outbound',
           flowId: args.flowId,

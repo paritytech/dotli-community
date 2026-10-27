@@ -5,13 +5,13 @@
 // does is in the Panel stories beside it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DotliDebugBus } from '@dotli/truapi-debug';
-import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
+import type { DebugBus } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
 import { setupTruapiDebugPanel } from '../src/truapiDebugPanel.js';
 import { PANEL_ID } from '../src/Panel.js';
 
-let bus: DotliDebugBus;
+let bus: DebugBus;
 let disposers: (() => void)[] = [];
 
 beforeEach(() => {
@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   document.body.replaceChildren();
   localStorage.clear();
-  bus = createDotliDebugBus();
+  bus = createDebugBus();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableBuffering();
 });

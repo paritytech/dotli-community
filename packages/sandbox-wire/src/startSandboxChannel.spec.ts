@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { BASE_DOMAIN, isSandboxOrigin } from '@dotli/config';
 
-import { startSandboxChannel, type SandboxMessageType, type StartedSandboxChannel } from './sandboxChannel.js';
+import { startSandboxChannel, type SandboxMessageType, type StartedSandboxChannel } from './startSandboxChannel.js';
 
 const SANDBOX = `https://doom.app.${BASE_DOMAIN}`;
 
@@ -61,7 +61,7 @@ describe('sandbox channel', () => {
     expect(heard).toEqual([[{ type: 'dotli:bitswap-get', id: 'r-1', cid: 'bafyX' }, SANDBOX, sandboxFrame]]);
   });
 
-  it('As the host, a sandbox message handler that throws does not keep the next handler from hearing the message, and the failure is reported with its type', () => {
+  it('As the host, I hand a sandbox message to every handler of its type and report the one that throws with that type', () => {
     // Given two handlers for one type, the first throwing
     const failure = new Error('handler broke');
     const reported: [unknown, SandboxMessageType][] = [];

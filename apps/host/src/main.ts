@@ -38,12 +38,7 @@ import {
   LOCAL_ROOT,
 } from '@dotli/config';
 import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
-import {
-  emitDotliDebugEvent,
-  enableDotliDebugBuffering,
-  resolveDebugMode,
-  watchDotliDebugEvents,
-} from '@dotli/truapi-debug';
+import { debugBus, resolveDebugMode } from '@dotli/truapi-debug';
 import { loadTruapiDebugMount } from '@dotli/truapi-debug-ui';
 import { loadResolve } from '@dotli/resolver';
 import { startShellState } from './shellState.js';
@@ -106,7 +101,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
   // The panel's heavy chunk loads only on opt-in. Otherwise the bus stays off and every emit returns early.
   const debugMode = resolveDebugMode(window, DEBUG);
   if (debugMode.enabled) {
-    enableDotliDebugBuffering();
+    debugBus.enableBuffering();
     // The describer reports its own failed load, and the boot reports the bridge's.
     void loadBridge()
       .then(bridge => bridge.preloadWireDescriber())
@@ -130,13 +125,13 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
 
   const flowId = createRandomId();
   if (debugMode.enabled) {
-    startMainThreadMonitor(flowId, { emit: emitDotliDebugEvent, watch: watchDotliDebugEvents });
-    listenForSandboxDebugEvents(sandboxChannel, emitDotliDebugEvent);
+    startMainThreadMonitor(flowId, { emit: debugBus.emit, watch: debugBus.watch });
+    listenForSandboxDebugEvents(sandboxChannel, debugBus.emit);
   }
 
   const startup = await startHost(flowId, {
     role,
-    emitDotliDebugEvent,
+    emitDotliDebugEvent: debugBus.emit,
     startShellState: () => {
       startShellState();
       // Drawn from this origin's settings and the link's, set just before and with no await since, so the URL bar
@@ -152,7 +147,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
 
 /** Tells the debug panel which route the page took, with the path as the settings left it. */
 function announceRoute(route: Exclude<ShellRoute, { kind: 'nested' }>, flowId: string): void {
-  emitDotliDebugEvent({
+  debugBus.emit({
     layer: 'boot',
     event: 'url_parsed',
     flowId,
@@ -192,7 +187,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
   history.replaceState(null, '', localTargetPath(target));
   performance.mark('dotli:main:end');
   if (proxied) {
-    emitDotliDebugEvent({
+    debugBus.emit({
       layer: 'boot',
       event: 'ready',
       flowId: shell.flowId,
@@ -298,7 +293,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
     idle: callback => {
       runWhenIdle(callback, IDLE_WORK_TIMEOUT_MS);
     },
-    emit: emitDotliDebugEvent,
+    emit: debugBus.emit,
     flowId: shell.flowId,
   });
   return relay;
