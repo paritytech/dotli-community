@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { type ChatRecords, createChatRecords } from './chat.js';
-import { memoryIdb, type MemoryIdb } from './testing/index.js';
+import { createMemoryIdb, type MemoryIdb } from './testing/index.js';
 import { abortAtCommit } from './testing/abortAtCommit.js';
 
 // Each test gets a fresh database, so no test sees another's records.
@@ -11,17 +11,16 @@ let idb: MemoryIdb;
 let chat: ChatRecords;
 
 beforeEach(() => {
-  idb = memoryIdb();
-  chat = createChatRecords(idb);
+  idb = createMemoryIdb();
+  chat = createChatRecords({ idb });
 });
 
-const textContent = (text: string): unknown => ({
-  tag: 'Text',
-  value: { text },
-});
+function createTextContent(text: string): unknown {
+  return { tag: 'Text', value: { text } };
+}
 
 describe('chat rooms', () => {
-  it('As a product, creating a room reports New then Exists', async () => {
+  it('As a product, I create a room twice and am told New then Exists', async () => {
     // Given
     const room = {
       productId: 'roomstatus.dot',
@@ -30,9 +29,13 @@ describe('chat rooms', () => {
       icon: '',
     };
 
-    // When / Then
-    expect(await chat.createRoom(room)).toBe('New');
-    expect(await chat.createRoom(room)).toBe('Exists');
+    // When
+    const first = await chat.createRoom(room);
+    const second = await chat.createRoom(room);
+
+    // Then
+    expect(first).toBe('New');
+    expect(second).toBe('Exists');
   });
 
   it('As a product, I set a room footer and it outlives a re-creation of the room', async () => {
@@ -41,7 +44,7 @@ describe('chat rooms', () => {
     await chat.createRoom(room);
 
     // When
-    const found = await chat.setRoomFooter('footer.dot', 'main', 'Empty');
+    const found = await chat.setRoomFooter({ productId: 'footer.dot', roomId: 'main', footer: 'Empty' });
     await chat.createRoom({ ...room, name: 'Renamed' });
 
     // Then
@@ -53,14 +56,14 @@ describe('chat rooms', () => {
 
   it('As a product, I set a footer on a room I never created and nothing is stored', async () => {
     // When
-    const found = await chat.setRoomFooter('footer.dot', 'missing', 'Empty');
+    const found = await chat.setRoomFooter({ productId: 'footer.dot', roomId: 'missing', footer: 'Empty' });
 
     // Then
     expect(found).toBe(false);
     expect(await chat.listRooms('footer.dot')).toEqual([]);
   });
 
-  it('As a host, rooms are scoped per product', async () => {
+  it("As a host, I list one product's rooms and get none of another's", async () => {
     // Given
     await chat.createRoom({ productId: 'a.dot', roomId: 'r', name: 'A', icon: '' });
     await chat.createRoom({ productId: 'b.dot', roomId: 'r', name: 'B', icon: '' });
@@ -75,6 +78,7 @@ describe('chat rooms', () => {
 
   it('As a product, I create a room the browser cannot store and the creation rejects rather than hangs', async () => {
     // Given an icon structured clone refuses, so the put inside the transaction throws and aborts it
+    // The field's type allows only a string, which structured clone never refuses.
     const room = { productId: 'abort.dot', roomId: 'main', name: 'Main', icon: (() => '') as unknown as string };
 
     // When
@@ -87,7 +91,7 @@ describe('chat rooms', () => {
 });
 
 describe('chat messages', () => {
-  it('As a host, messages come back in insertion order per room', async () => {
+  it("As a host, I list a room's messages and get them in insertion order", async () => {
     // Given
     const base = {
       productId: 'order.dot',
@@ -98,20 +102,20 @@ describe('chat messages', () => {
       ...base,
       roomId: 'main',
       messageId: 'm1',
-      content: textContent('first'),
+      content: createTextContent('first'),
     });
     await chat.appendMessage({
       ...base,
       roomId: 'other',
       messageId: 'm2',
-      content: textContent('elsewhere'),
+      content: createTextContent('elsewhere'),
     });
     await chat.appendMessage({
       ...base,
       roomId: 'main',
       messageId: 'm3',
       author: 'user',
-      content: textContent('second'),
+      content: createTextContent('second'),
     });
 
     // When
@@ -122,29 +126,29 @@ describe('chat messages', () => {
     expect(messages[1]?.author).toBe('user');
   });
 
-  it('As a host, the message list caps at the latest `limit` entries', async () => {
+  it('As a host, I list messages with a limit and get the latest `limit` entries', async () => {
     // Given
-    for (let i = 0; i < 5; i++) {
+    for (let index = 0; index < 5; index++) {
       await chat.appendMessage({
         productId: 'cap.dot',
         roomId: 'main',
-        messageId: `m${String(i)}`,
+        messageId: `m${String(index)}`,
         author: 'product',
-        content: textContent(String(i)),
-        timestamp: i,
+        content: createTextContent(String(index)),
+        timestamp: index,
       });
     }
 
     // When
-    const messages = await chat.listMessages('cap.dot', 'main', 2);
+    const messages = await chat.listMessages('cap.dot', 'main', { limit: 2 });
 
     // Then
     expect(messages.map(m => m.messageId)).toEqual(['m3', 'm4']);
   });
 
-  it('As a product, a message the browser refuses at commit fails to send and is not listed', async () => {
+  it('As a product, I send a message the browser refuses at commit and it fails and is not listed', async () => {
     // Given a database that refuses every commit, as a full quota does
-    const refusing = createChatRecords(memoryIdb({ onTransaction: abortAtCommit }));
+    const refusing = createChatRecords({ idb: createMemoryIdb({ onTransaction: abortAtCommit }) });
 
     // When
     const sent = refusing.appendMessage({
@@ -152,7 +156,7 @@ describe('chat messages', () => {
       roomId: 'main',
       messageId: 'm1',
       author: 'user',
-      content: textContent('kept?'),
+      content: createTextContent('kept?'),
       timestamp: 1,
     });
 
@@ -163,7 +167,7 @@ describe('chat messages', () => {
 });
 
 describe('chat bots', () => {
-  it('As a product, registering a bot reports New then Exists', async () => {
+  it('As a product, I register a bot twice and am told New then Exists', async () => {
     // Given
     const bot = {
       productId: 'botstatus.dot',
@@ -172,12 +176,16 @@ describe('chat bots', () => {
       icon: '',
     };
 
-    // When / Then
-    expect(await chat.registerBot(bot)).toBe('New');
-    expect(await chat.registerBot(bot)).toBe('Exists');
+    // When
+    const first = await chat.registerBot(bot);
+    const second = await chat.registerBot(bot);
+
+    // Then
+    expect(first).toBe('New');
+    expect(second).toBe('Exists');
   });
 
-  it('As a product, re-registering refreshes the stored name and icon', async () => {
+  it('As a product, I register a bot again and its stored name and icon are refreshed', async () => {
     // Given
     await chat.registerBot({
       productId: 'refresh.dot',
@@ -185,14 +193,14 @@ describe('chat bots', () => {
       name: 'Echo',
       icon: '',
     });
+
+    // When
     await chat.registerBot({
       productId: 'refresh.dot',
       botId: 'echo',
       name: 'Echo v2',
       icon: 'https://example.com/icon.png',
     });
-
-    // When
     const bots = await chat.listBots('refresh.dot');
 
     // Then
@@ -201,7 +209,7 @@ describe('chat bots', () => {
     expect(bots[0]?.icon).toBe('https://example.com/icon.png');
   });
 
-  it('As a host, bots are scoped per product', async () => {
+  it("As a host, I list one product's bots and get none of another's", async () => {
     // Given
     await chat.registerBot({ productId: 'a.dot', botId: 'b', name: 'A', icon: '' });
     await chat.registerBot({ productId: 'b.dot', botId: 'b', name: 'B', icon: '' });

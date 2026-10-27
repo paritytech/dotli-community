@@ -31,6 +31,7 @@ export { getErrorMessage } from './getErrorMessage.js';
 export { getErrorName } from './getErrorName.js';
 export { hashBlake2b } from './hashBlake2b.js';
 export { fromHex, toHex } from './hex.js';
+export { IdbOpenBlockedError } from './idbOpenBlockedError.js';
 export { isRecord } from './isRecord.js';
 export { isShallowEqual } from './isShallowEqual.js';
 export { isStringArray } from './isStringArray.js';

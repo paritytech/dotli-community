@@ -14,11 +14,13 @@ user signed in to and scheduled notifications.
 ## Design
 
 - Each schema holds its database's name, version and upgrade. A database opens on its first read.
-- Each connection is made from a `DotliIdb` port with `connect` and `keyRange`. Stores take the port as an optional
-  argument, so tests pass an in-memory database. Each store defaults to its own database: the wallet and the site grants
-  to theirs, the others to the page's.
+- Each connection is made from a `DotliIdb` port with `connect` and `keyRange`. Each store is one object, built once for
+  the page by its factory, which takes the port as an optional `idb` param, so tests pass an in-memory database. Each
+  store defaults to its own database: the wallet and the site grants to theirs, the others to the page's.
 - The stores write through the shared IndexedDB helper, so a write resolves once it commits, and a blocked upgrade or an
   aborted commit rejects instead of hanging.
+- Only this package writes its databases, under the schema version the upgrade enforces, so a store reads a record back
+  as the shape it wrote, through one typed read.
 - A cache reporter counts every failure of a cache as one outcome metric. Expected ones (`isExpectedDbError`, such as a
   closing connection or a blocked upgrade, and a full quota) leave a breadcrumb. Others are logged and go to Sentry once
   per action.
@@ -27,7 +29,7 @@ user signed in to and scheduled notifications.
   so reads run side by side. It marks its block used afterwards, in one bookkeeping write with the reads around it, and
   a prune writes those marks before it ranks blocks.
 - The CID cache maps a label to its CID and raw manifest text for instant repeat visits. A hit is validated by today's
-  validator.
+  validator. A read that fails is reported and reads as a miss.
 - The local wallet stores root entropy encrypted under a key this origin can use but not export. A load also gives the
   record's version, its IV, which every save draws fresh and an identity update keeps. A forget that names a version
   reads and deletes in one transaction, so a wallet saved since, even from the same phrase, stays.
@@ -45,23 +47,28 @@ user signed in to and scheduled notifications.
 ### `@dotli/storage`
 
 - Schema: `WALLET_DB_NAME` (the wallet's own database, which a wipe of the origin the frame shares with the landing page
-  keeps), `SITE_GRANTS_DB_NAME` (the grants' own database, kept the same way), `isExpectedDbError`.
-- Block cache: `getCachedBlock`, `putCachedBlock`, `deleteCachedBlock`, `pruneBlockCache`, `clearBlockCache`.
-- CID cache: `getCachedCid`, `setCachedCid`, `evictCachedCid`, `clearCidCache`. The last two resolve to whether they
-  worked.
-- Local wallet, in its own database apart from the page's: `createLocalWalletStore`, `saveLocalWallet` (entropy and the
-  identity or null), `loadLocalWallet`, `forgetLocalWallet`, `forgetLocalWalletIf` (only while the record is still the
-  version a load gave, resolving whether it did), `updateLocalWalletIdentity`, `LocalWalletUnreadableError`.
+  keeps) and `SITE_GRANTS_DB_NAME` (the grants' own database, kept the same way).
+- Errors: `isExpectedDbError`, whether an error is a closing connection or a blocked open, which are not faults.
+- Block cache: `blockCache` (`get`, `put`, `remove`, `prune`, `clear`).
+- CID cache: `cidCache` (`get`, `set`, `evict`, `clear`), and the `CachedManifests` type. The last two resolve to
+  whether they worked.
+- Local wallet, in its own database apart from the page's: `createLocalWalletStore`, `localWallet` (`save` with the
+  entropy and the identity or null, `load`, `forget`, `forgetIf` only while the record is still the version a load gave,
+  resolving whether it did, and `updateIdentity`), the `LocalWallet`, `LocalWalletIdentity` and `LocalWalletStore` types
+  and `LocalWalletUnreadableError`.
 - Site grants, in their own database apart from the page's: `createSiteGrantStore`, `siteGrants` (`read`, `save`,
   `saveGroup` returning the group's one grant, `touch`, `list` newest use first, `forget`, `forgetAll`), and the
   `SiteGrant` and `SiteGrantStore` types.
-- Chat: `createRoom`, `setRoomFooter`, `listRooms`, `appendMessage`, `listMessages`, `latestMessageTimestamps`,
-  `registerBot`, `listBots`, and the `ChatRoomFooter` type.
-- Scheduled notifications: `schedule`, `cancel`, `listAll`, `removeById`, `removeStale`, `allocateId`.
+- Chat: `chat` (`createRoom`, `setRoomFooter`, `listRooms`, `appendMessage`, `listMessages`,
+  `getLatestMessageTimestamps`, `registerBot`, `listBots`), and the `ChatRoomFooter`, `ChatRoomRecord`, `ChatBotRecord`
+  and `ChatMessageRecord` types.
+- Scheduled notifications: `scheduledNotifications` (`schedule`, `cancel`, `listAll`, `removeById`, `removeStale`,
+  `allocateId`), and the `ScheduledNotificationRecord` type.
 
 ### `@dotli/storage/testing`
 
-- `memoryIdb`: a fresh in-memory IndexedDB (fake-indexeddb) a store reads and writes in place of the page's own. Its
-  `onTransaction` option sees each transaction as it opens, so a test can watch a commit or make one fail.
-- `memoryWalletIdb`: the same for the wallet database.
-- `memorySiteGrantsIdb`: the same for the site grants database.
+- `createMemoryIdb`: a fresh in-memory IndexedDB (fake-indexeddb) a store reads and writes in place of the page's own.
+  Its `onTransaction` param sees each transaction as it opens, so a test can watch a commit or make one fail.
+- `createMemoryWalletIdb`: the same for the wallet database.
+- `createMemorySiteGrantsIdb`: the same for the site grants database.
+- The `MemoryIdb` type: the port such a database implements, plus its `factory`.

@@ -6,7 +6,7 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred, waitForStatus } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
-import { memorySiteGrantsIdb } from '@dotli/storage/testing';
+import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import { createSiteList, type SiteListScreen } from './siteList.js';
 
 function grantOf(token: string, origin: string, lastUsedAt: number): SiteGrant {
@@ -36,7 +36,7 @@ type HarnessOptions = {
 async function harness(options: HarnessOptions = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
-  const stored = createSiteGrantStore(memorySiteGrantsIdb());
+  const stored = createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
   for (const grant of options.grants ?? []) {
     await stored.save(grant);
   }

@@ -66,7 +66,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
   returns it), `getEndpointHost`, `describeGatewayUnreachable`.
 - Storage: `createSafeStorage(open)`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`, and `ListableStorage`,
   which adds `keys` and is what `createSafeStorage` returns.
-- IndexedDB: `openIdb({ factory, name, version, upgrade })`, `waitForIdbRequest(request)`,
+- IndexedDB: `openIdb({ factory, name, version, upgrade })` (rejects with `IdbOpenBlockedError`, which carries the
+  `databaseName`, when an older tab blocks the upgrade), `waitForIdbRequest(request)`,
   `runIdbTransaction({ db, stores, mode, body })`, `deleteIdb(factory, name, { timeoutMs?, signal?, timers? })`.
 - Events: `listen({ target, type, handler })`, `listenForDocumentVisible(visibility, handler)` and
   `listenForPageReturn({ visibility, target, handler })` (focus or turning visible), each returning its stop, and

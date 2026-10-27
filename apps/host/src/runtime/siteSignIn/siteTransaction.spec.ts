@@ -19,7 +19,7 @@ import {
 } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant } from '@dotli/storage';
-import { memorySiteGrantsIdb } from '@dotli/storage/testing';
+import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import { createFakeMessageBus, createFakeWindowHandle } from '../sessionHandoff/messages.fake.js';
 import { openerParty } from '../sessionHandoff/openerRule.js';
 import { createResponder, type Responder, type ResponderState } from '../sessionHandoff/responder.js';
@@ -296,7 +296,7 @@ async function roundOver(
 ) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
-  const grants = createSiteGrantStore(memorySiteGrantsIdb());
+  const grants = createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
   for (const grant of options.grants ?? []) {
     await grants.save(grant);
   }

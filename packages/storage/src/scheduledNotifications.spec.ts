@@ -7,26 +7,26 @@ import {
   type ScheduledNotificationRecord,
   type ScheduledNotifications,
 } from './scheduledNotifications.js';
-import { memoryIdb, type MemoryIdb } from './testing/index.js';
+import { createMemoryIdb, type MemoryIdb } from './testing/index.js';
 
 // Each test gets a fresh database, so no test sees another's records.
 let idb: MemoryIdb;
 let queue: ScheduledNotifications;
 
 beforeEach(() => {
-  idb = memoryIdb();
-  queue = createScheduledNotifications(idb);
+  idb = createMemoryIdb();
+  queue = createScheduledNotifications({ idb });
 });
 
-async function recordsOf(productId: string): Promise<ScheduledNotificationRecord[]> {
-  return (await queue.listAll()).filter(r => r.productId === productId);
+async function listRecordsOf(productId: string): Promise<ScheduledNotificationRecord[]> {
+  return (await queue.listAll()).filter(record => record.productId === productId);
 }
 
-function future(ms: number): number {
+function getTimeFromNow(ms: number): number {
   return Date.now() + ms;
 }
 
-function past(ms: number): number {
+function getTimeAgo(ms: number): number {
   return Date.now() - ms;
 }
 
@@ -35,61 +35,60 @@ describe('schedule', () => {
     // Given a product with no scheduled notifications
 
     // When the dapp schedules two
-    const a = await queue.schedule({
+    const first = await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'first',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
-    const b = await queue.schedule({
+    const second = await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'second',
       deeplink: null,
-      scheduledAt: future(120_000),
+      scheduledAt: getTimeFromNow(120_000),
     });
 
     // Then the ids increment from 1
-    expect(a).toEqual({ ok: true, id: 1 });
-    expect(b).toEqual({ ok: true, id: 2 });
+    expect(first).toEqual({ ok: true, id: 1 });
+    expect(second).toEqual({ ok: true, id: 2 });
   });
 
-  it('As a dapp, my notification ids are counted independently per product', async () => {
+  it('As a dapp, I schedule for two products and each counts its ids from 1', async () => {
     // Given two distinct products
 
     // When each schedules its first notification
-    const a = await queue.schedule({
+    const acme = await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'x',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
-    const b = await queue.schedule({
+    const bravo = await queue.schedule({
       productId: 'bravo.dot',
       title: 'Bravo',
       text: 'y',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
 
     // Then both start at id 1
-    expect(a).toEqual({ ok: true, id: 1 });
-    expect(b).toEqual({ ok: true, id: 1 });
+    expect(acme).toEqual({ ok: true, id: 1 });
+    expect(bravo).toEqual({ ok: true, id: 1 });
   });
 
   it('As a dapp, I hit ScheduleLimitReached on the 21st pending notification for one product', async () => {
     // Given a product already at the per-product cap of 20
-    for (let i = 0; i < 20; i += 1) {
-      const r = await queue.schedule({
+    for (let index = 0; index < 20; index += 1) {
+      await queue.schedule({
         productId: 'acme.dot',
         title: 'Acme',
-        text: `n=${String(i)}`,
+        text: `n=${String(index)}`,
         deeplink: null,
-        scheduledAt: future(60_000 + i),
+        scheduledAt: getTimeFromNow(60_000 + index),
       });
-      expect(r.ok).toBe(true);
     }
 
     // When it schedules one more
@@ -98,22 +97,22 @@ describe('schedule', () => {
       title: 'Acme',
       text: 'overflow',
       deeplink: null,
-      scheduledAt: future(120_000),
+      scheduledAt: getTimeFromNow(120_000),
     });
 
     // Then the schedule is rejected with ScheduleLimitReached
     expect(overflow).toEqual({ ok: false, error: 'ScheduleLimitReached' });
   });
 
-  it('As a dapp, one product reaching the cap does not block another product', async () => {
+  it('As a dapp, I schedule for one product while another is at the cap and get its own id 1', async () => {
     // Given acme is at the cap of 20
-    for (let i = 0; i < 20; i += 1) {
+    for (let index = 0; index < 20; index += 1) {
       await queue.schedule({
         productId: 'acme.dot',
         title: 'Acme',
-        text: `n=${String(i)}`,
+        text: `n=${String(index)}`,
         deeplink: null,
-        scheduledAt: future(60_000 + i),
+        scheduledAt: getTimeFromNow(60_000 + index),
       });
     }
 
@@ -123,23 +122,22 @@ describe('schedule', () => {
       title: 'Bravo',
       text: 'ok',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
 
     // Then it succeeds at its own id 1
     expect(bravo).toEqual({ ok: true, id: 1 });
   });
 
-  it('As a dapp, a cancelled notification does not free its id for reuse', async () => {
+  it('As a dapp, I schedule again after a cancel and get a new id, not the cancelled one', async () => {
     // Given a scheduled notification that is then cancelled
-    const first = await queue.schedule({
+    await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'a',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
-    expect(first).toEqual({ ok: true, id: 1 });
     await queue.cancel('acme.dot', 1);
 
     // When the dapp schedules again
@@ -148,7 +146,7 @@ describe('schedule', () => {
       title: 'Acme',
       text: 'b',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
 
     // Then the new id is 2, not the reclaimed 1
@@ -164,7 +162,7 @@ describe('cancel', () => {
       title: 'Acme',
       text: 'x',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
 
     // When the dapp cancels it
@@ -172,17 +170,17 @@ describe('cancel', () => {
 
     // Then cancel reports success and the queue is empty
     expect(removed).toBe(true);
-    expect(await recordsOf('acme.dot')).toEqual([]);
+    expect(await listRecordsOf('acme.dot')).toEqual([]);
   });
 
-  it('As a dapp, cancelling the same notification twice is idempotent', async () => {
+  it('As a dapp, I cancel the same notification twice and the second is a no-op', async () => {
     // Given one pending notification
     await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'x',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
 
     // When the dapp cancels it twice
@@ -201,7 +199,7 @@ describe('cancel', () => {
       title: 'Acme',
       text: 'x',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
 
     // When a different product tries to cancel id 1
@@ -209,7 +207,7 @@ describe('cancel', () => {
 
     // Then nothing is removed and acme's notification survives
     expect(removed).toBe(false);
-    expect(await recordsOf('acme.dot')).toHaveLength(1);
+    expect(await listRecordsOf('acme.dot')).toHaveLength(1);
   });
 });
 
@@ -222,27 +220,27 @@ describe('allocateId', () => {
 
     // Then it gets id 1 and nothing is queued
     expect(id).toBe(1);
-    expect(await recordsOf('acme.dot')).toEqual([]);
+    expect(await listRecordsOf('acme.dot')).toEqual([]);
   });
 
-  it('As the immediate-fire path, allocateId and schedule share one monotonic counter', async () => {
-    // Given an immediate allocation took id 1
-    const a = await queue.allocateId('acme.dot');
-    expect(a).toBe(1);
+  it('As the immediate-fire path, I allocate ids around a schedule and all share one monotonic counter', async () => {
+    // Given an immediate allocation
+    const allocated = await queue.allocateId('acme.dot');
 
     // When a scheduled notification and another allocation follow
-    const b = await queue.schedule({
+    const scheduled = await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'x',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
-    const c = await queue.allocateId('acme.dot');
+    const allocatedAgain = await queue.allocateId('acme.dot');
 
     // Then ids stay monotonic across both paths
-    expect(b).toEqual({ ok: true, id: 2 });
-    expect(c).toBe(3);
+    expect(allocated).toBe(1);
+    expect(scheduled).toEqual({ ok: true, id: 2 });
+    expect(allocatedAgain).toBe(3);
   });
 });
 
@@ -254,21 +252,21 @@ describe('removeById', () => {
       title: 'Acme',
       text: 'x',
       deeplink: null,
-      scheduledAt: future(60_000),
+      scheduledAt: getTimeFromNow(60_000),
     });
-    const [rec] = await recordsOf('acme.dot');
-    if (rec === undefined) {
+    const [record] = await listRecordsOf('acme.dot');
+    if (record === undefined) {
       throw new Error('expected the scheduled record');
     }
 
     // When removing it by hostId twice
-    const first = await queue.removeById(rec.hostId);
-    const second = await queue.removeById(rec.hostId);
+    const first = await queue.removeById(record.hostId);
+    const second = await queue.removeById(record.hostId);
 
     // Then the first reports it existed and the second does not
     expect(first).toBe(true);
     expect(second).toBe(false);
-    expect(await recordsOf('acme.dot')).toEqual([]);
+    expect(await listRecordsOf('acme.dot')).toEqual([]);
   });
 });
 
@@ -281,14 +279,14 @@ describe('removeStale', () => {
       title: 'Acme',
       text: 'old',
       deeplink: null,
-      scheduledAt: past(dayMs + 60_000),
+      scheduledAt: getTimeAgo(dayMs + 60_000),
     });
     await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'fresh',
       deeplink: null,
-      scheduledAt: past(60_000),
+      scheduledAt: getTimeAgo(60_000),
     });
 
     // When pruning stale records
@@ -296,18 +294,18 @@ describe('removeStale', () => {
 
     // Then only the stale one is gone
     expect(removed).toBe(1);
-    const remaining = await recordsOf('acme.dot');
-    expect(remaining.map((r: ScheduledNotificationRecord) => r.text)).toEqual(['fresh']);
+    const remaining = await listRecordsOf('acme.dot');
+    expect(remaining.map(record => record.text)).toEqual(['fresh']);
   });
 
-  it('As the scheduler, removeStale reports 0 when nothing is stale', async () => {
+  it('As the scheduler, I remove stale records when none is stale and am told 0', async () => {
     // Given a single fresh record
     await queue.schedule({
       productId: 'acme.dot',
       title: 'Acme',
       text: 'fresh',
       deeplink: null,
-      scheduledAt: past(60_000),
+      scheduledAt: getTimeAgo(60_000),
     });
 
     // When pruning stale records
@@ -319,7 +317,7 @@ describe('removeStale', () => {
 });
 
 describe('a database connection that is closed', () => {
-  it('As the scheduler, schedule rejects rather than hanging', async () => {
+  it('As the scheduler, I schedule on a closed connection and the call rejects rather than hangs', async () => {
     // Given the cached connection has closed, as it does under an unloading page
     (await idb.connect()).close();
 

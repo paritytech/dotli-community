@@ -4,16 +4,7 @@
 // Any tab on the product origin fires a past-due record. The atomic IDB delete claims it, while the
 // Web Lock only avoids redundant work. A hidden tab lags by an offset so a visible sibling wins the lock.
 
-import {
-  schedule as dbSchedule,
-  cancel as dbCancel,
-  allocateId,
-  listAll,
-  removeById,
-  removeStale,
-  isExpectedDbError,
-  type ScheduledNotificationRecord,
-} from '@dotli/storage';
+import { scheduledNotifications, isExpectedDbError, type ScheduledNotificationRecord } from '@dotli/storage';
 import { captureException, recordExpected } from '@dotli/metrics';
 import { createAsyncTaskPool, log, listenForDocumentVisible, type VisibilitySource } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
@@ -39,14 +30,7 @@ type ScheduleRequest = {
   scheduledAt: number | null;
 };
 
-export type ScheduledNotificationStore = {
-  schedule: typeof dbSchedule;
-  cancel: typeof dbCancel;
-  allocateId: typeof allocateId;
-  listAll: typeof listAll;
-  removeById: typeof removeById;
-  removeStale: (now: number) => Promise<number>;
-};
+export type ScheduledNotificationStore = typeof scheduledNotifications;
 
 export type ScheduledNotificationsDeps = {
   store: ScheduledNotificationStore;
@@ -319,7 +303,7 @@ export function createScheduledNotifications({
 /** The page's scheduler, over the dotli database, the browser's locks and channels, and this document. */
 export function createPageScheduledNotifications(show: ShowNotification): ScheduledNotifications {
   return createScheduledNotifications({
-    store: { schedule: dbSchedule, cancel: dbCancel, allocateId, listAll, removeById, removeStale },
+    store: scheduledNotifications,
     show,
     locks: 'locks' in navigator ? navigator.locks : undefined,
     openChannel: name => (typeof BroadcastChannel === 'function' ? new BroadcastChannel(name) : null),

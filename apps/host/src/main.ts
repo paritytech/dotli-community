@@ -16,16 +16,7 @@ import type { ProductFrame } from './runtime/productFrame.js';
 import { bitswapGet, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
 import { protocolClient } from '@dotli/protocol';
-import {
-  deleteCachedBlock,
-  evictCachedCid,
-  getCachedBlock,
-  getCachedCid,
-  pruneBlockCache,
-  putCachedBlock,
-  setCachedCid,
-  type CachedManifests,
-} from '@dotli/storage';
+import { blockCache as pageBlockCache, cidCache, type CachedManifests } from '@dotli/storage';
 import { runWhenIdle, showNotification } from '@dotli/ui';
 import { formatElapsed, log, createRandomId } from '@dotli/shared';
 import {
@@ -244,9 +235,9 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
  */
 function pageCidCache(names: NameSource): LoaderCidCache {
   const set = (label: string, cid: string, manifests: CachedManifests): Promise<void> =>
-    setCachedCid(label, getNetwork(), cid, manifests);
+    cidCache.set({ label, network: getNetwork(), cid, manifests });
   return {
-    get: label => getCachedCid(label, getNetwork()),
+    get: label => cidCache.get(label, getNetwork()),
     storeLater: (label, cid, manifests) => {
       runWhenIdle(() => {
         void set(label, cid, manifests);
@@ -256,7 +247,7 @@ function pageCidCache(names: NameSource): LoaderCidCache {
       runWhenIdle(() => {
         void revalidateCachedCopy(label, servedCid, onScreen, {
           names,
-          cache: { set, evict: evictCachedCid },
+          cache: { set, evict: cidCache.evict },
           notify: showNotification,
           reload: () => {
             markContinuation('app_update');
@@ -271,7 +262,9 @@ function pageCidCache(names: NameSource): LoaderCidCache {
 /** Relays the sandbox's blocks through this window, from the block cache while it is on, and counts where they came from. */
 function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBlockRelay {
   listenForSandboxStatus(shell.sandboxChannel);
-  const blockCache = skipArchiveCache ? null : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
+  const blockCache = skipArchiveCache
+    ? null
+    : { get: pageBlockCache.get, put: pageBlockCache.put, delete: pageBlockCache.remove };
   const relay = createSandboxBlockRelay({
     channel: shell.sandboxChannel,
     blocks: bitswapGet,
@@ -288,7 +281,7 @@ function startProductContent(shell: Shell, skipArchiveCache: boolean): SandboxBl
     cached: blockCache !== null,
     onSandboxDone,
     prune: () => {
-      void pruneBlockCache(BLOCK_CACHE_MAX_BYTES);
+      void pageBlockCache.prune(BLOCK_CACHE_MAX_BYTES);
     },
     idle: callback => {
       runWhenIdle(callback, IDLE_WORK_TIMEOUT_MS);

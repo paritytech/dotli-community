@@ -7,7 +7,7 @@ import { SITE_ID } from '@dotli/config';
 import { bindCaptureSink } from '@dotli/metrics';
 import { protocolSchema, type LocalWalletRead } from '@dotli/protocol';
 import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
-import { memoryWalletIdb } from '@dotli/storage/testing';
+import { createMemoryWalletIdb } from '@dotli/storage/testing';
 import { err, hostFailure, ok, unsupported } from '@dotli/transport';
 import {
   createSharedStoreHandler,
@@ -346,7 +346,7 @@ const IDENTITY = { identityAccountId: `0x${'22'.repeat(32)}`, liteUsername: 'bob
 let store: LocalWalletStore;
 
 beforeEach(() => {
-  store = createLocalWalletStore(memoryWalletIdb());
+  store = createLocalWalletStore({ idb: createMemoryWalletIdb() });
 });
 
 /** The version a wallet read answered with, empty for an answer that holds no wallet. */
@@ -413,13 +413,13 @@ describe('the local wallet', () => {
   it('As a host page, I cache the identity and read it back with the entropy', async () => {
     // Given
     const { host } = served();
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
 
     // When
     await host.request(wallet.identity, { siteId: SITE_ID, identity: IDENTITY });
 
     // Then
-    expect(await store.loadLocalWallet()).toMatchObject({ entropy: ENTROPY, identity: IDENTITY });
+    expect(await store.load()).toMatchObject({ entropy: ENTROPY, identity: IDENTITY });
     expect(await host.request(wallet.read, { siteId: SITE_ID })).toMatchObject(
       ok({ tag: 'ok', value: { entropy: ENTROPY, identity: IDENTITY } }),
     );
@@ -428,19 +428,19 @@ describe('the local wallet', () => {
   it('As a host page switching back to Polkadot App, I forget the wallet for every app', async () => {
     // Given
     const { host } = served();
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
 
     // When
     await host.request(wallet.forget, { siteId: SITE_ID });
 
     // Then
-    expect(await store.loadLocalWallet()).toBeNull();
+    expect(await store.load()).toBeNull();
   });
 
   it('As a page dropping a dead wallet, I forget the wallet I read', async () => {
     // Given a stored wallet the page read
     const { host } = served();
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
     const read = await host.request(wallet.read, { siteId: SITE_ID });
 
     // When the page forgets it if it is still the record it read
@@ -448,22 +448,22 @@ describe('the local wallet', () => {
 
     // Then it is forgotten
     expect(forgot).toEqual(ok(true));
-    expect(await store.loadLocalWallet()).toBeNull();
+    expect(await store.load()).toBeNull();
   });
 
   it('As a page dropping a dead wallet, I keep the same phrase imported again since', async () => {
     // Given my read of the dead wallet, then another tab's import of the same phrase
     const { host } = served();
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
     const read = await host.request(wallet.read, { siteId: SITE_ID });
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
 
     // When the page forgets it if it is still the record it read
     const forgot = await host.request(wallet.forgetIf, { siteId: SITE_ID, version: versionOf(read) });
 
     // Then nothing is forgotten and the wallet stays
     expect(forgot).toEqual(ok(false));
-    expect(await store.loadLocalWallet()).toMatchObject({ entropy: ENTROPY, identity: null });
+    expect(await store.load()).toMatchObject({ entropy: ENTROPY, identity: null });
   });
 
   it('As a host page in another tab, I am told each time a save or a forget changed the wallet record, and only then', async () => {
@@ -488,7 +488,7 @@ describe('the local wallet', () => {
   it('As a page on another root domain, I am refused the wallet', async () => {
     // Given
     const { host } = served();
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
 
     // When
     const read = host.request(wallet.read, { siteId: 'evil.li' });
@@ -506,15 +506,15 @@ describe('the local wallet', () => {
 
     // Then
     await expect(save).resolves.toEqual(err(hostFailure('Error: Invalid local wallet entropy')));
-    expect(await store.loadLocalWallet()).toBeNull();
+    expect(await store.load()).toBeNull();
   });
 
   it('As a host page, I read an undecryptable wallet as unreadable and it is gone afterwards', async () => {
     // Given
-    await store.saveLocalWallet(ENTROPY, null);
+    await store.save(ENTROPY, null);
     const unreadable: LocalWalletStore = {
       ...store,
-      loadLocalWallet: () => Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'))),
+      load: () => Promise.reject(new LocalWalletUnreadableError(new Error('wrong key'))),
     };
     const { host } = served(unreadable);
 
@@ -523,6 +523,6 @@ describe('the local wallet', () => {
 
     // Then
     expect(result).toEqual(ok({ tag: 'unreadable', value: undefined }));
-    expect(await store.loadLocalWallet()).toBeNull();
+    expect(await store.load()).toBeNull();
   });
 });

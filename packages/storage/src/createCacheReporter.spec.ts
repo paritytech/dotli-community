@@ -4,8 +4,8 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createCacheReporter } from './cacheReporter.js';
-import { memoryIdb } from './testing/index.js';
+import { createCacheReporter } from './createCacheReporter.js';
+import { createMemoryIdb } from './testing/index.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 
@@ -16,11 +16,11 @@ beforeEach(() => {
 });
 
 describe('cache failure reporter', () => {
-  it('As an operator, each cache reporter reports its own first fault of an action, whatever another has reported', () => {
+  it('As an operator, I get the first fault of an action from each cache reporter, whatever another has reported', () => {
     // Given two reporters for the same cache, and a fault the first has already reported
     const failure = new Error('disk gone');
-    const first = createCacheReporter('cid_cache', '[test]');
-    const second = createCacheReporter('cid_cache', '[test]');
+    const first = createCacheReporter({ cache: 'cid_cache', tag: '[test]' });
+    const second = createCacheReporter({ cache: 'cid_cache', tag: '[test]' });
     first('read', failure);
 
     // When both meet the same fault again
@@ -36,10 +36,10 @@ describe('cache failure reporter', () => {
     });
   });
 
-  it('As an operator, a connection closing under an unloading page leaves a breadcrumb, not an issue', async () => {
+  it('As an operator, I see a connection closing under an unloading page as a breadcrumb, not an issue', async () => {
     // Given the failure a closed connection gives
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const idb = memoryIdb();
+    const idb = createMemoryIdb();
     const db = await idb.connect();
     db.close();
     const failure: unknown = (() => {
@@ -50,7 +50,7 @@ describe('cache failure reporter', () => {
         return error;
       }
     })();
-    const report = createCacheReporter('cid_cache', '[test]');
+    const report = createCacheReporter({ cache: 'cid_cache', tag: '[test]' });
 
     // When
     report('write', failure);
@@ -66,7 +66,7 @@ describe('cache failure reporter', () => {
   it('As an operator, I count every cache storage failure with its reason, though only the first is captured', () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const report = createCacheReporter('block_cache', '[test]');
+    const report = createCacheReporter({ cache: 'block_cache', tag: '[test]' });
     const failure = new Error('disk gone');
 
     // When
@@ -81,10 +81,10 @@ describe('cache failure reporter', () => {
     expect(captures.exception).toHaveBeenCalledTimes(1);
   });
 
-  it('As an operator, a write refused for a full quota is counted and leaves a breadcrumb, not an issue', () => {
+  it('As an operator, I count a write refused for a full quota and see a breadcrumb, not an issue', () => {
     // Given
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
-    const report = createCacheReporter('block_cache', '[test]');
+    const report = createCacheReporter({ cache: 'block_cache', tag: '[test]' });
     const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
 
     // When

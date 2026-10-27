@@ -5,6 +5,7 @@
 // The host's scheduler coordinates which tab fires.
 
 import { pageIdb, type DotliIdb } from './db.js';
+import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { runIdbTransaction } from '@dotli/shared';
 
 /** Drop scheduled notifications older than this many ms past `scheduledAt`. */
@@ -42,12 +43,23 @@ type CounterEntry = {
   next: number;
 };
 
-/** The scheduled notification queue over `idb`, the page's own by default. */
-export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
-  /**
-   * One transaction for cap check, counter bump and insert, so sibling tabs cannot duplicate ids or overshoot the cap.
-   */
-  async function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
+type Params = {
+  /** The database the queue lives in. */
+  idb?: DotliIdb;
+};
+
+type RemoveStaleParams = {
+  /** How long past its `scheduledAt` a notification is kept. */
+  maxAgeMs?: number;
+};
+
+/**
+ * The scheduled notification queue over `idb`, the page's own by default. Every member rejects when the database
+ * fails.
+ */
+export function createScheduledNotifications({ idb = pageIdb }: Params = {}) {
+  // One transaction for cap check, counter bump and insert, so sibling tabs cannot duplicate ids or overshoot the cap.
+  async function schedule(request: ScheduleRequest): Promise<ScheduleResult> {
     const db = await idb.connect();
     // An object, since the compiler cannot see the body assign the result before it is read after the transaction.
     const outcome: { result: ScheduleResult | null } = { result: null };
@@ -56,42 +68,42 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
         db,
         stores: [RECORD_STORE, COUNTER_STORE],
         mode: 'readwrite',
-        body: tx => {
-          const records = tx.objectStore(RECORD_STORE);
-          const counters = tx.objectStore(COUNTER_STORE);
-          const countReq = records.index(BY_PRODUCT_ID).count(idb.keyRange().only(req.productId));
-          countReq.onsuccess = () => {
-            if (countReq.result >= SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP) {
+        body: transaction => {
+          const records = transaction.objectStore(RECORD_STORE);
+          const counters = transaction.objectStore(COUNTER_STORE);
+          const countRequest = records.index(BY_PRODUCT_ID).count(idb.keyRange().only(request.productId));
+          countRequest.onsuccess = () => {
+            if (countRequest.result >= SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP) {
               outcome.result = { ok: false, error: 'ScheduleLimitReached' };
-              tx.abort();
+              transaction.abort();
               return;
             }
-            const counterReq = counters.get(req.productId);
-            counterReq.onsuccess = () => {
-              const current = counterReq.result as CounterEntry | undefined;
+            const counterRequest = counters.get(request.productId);
+            counterRequest.onsuccess = () => {
+              const current = unsafe_readStoredRecord<CounterEntry | undefined>(counterRequest.result);
               const next = (current?.next ?? 0) + 1;
-              counters.put({ productId: req.productId, next } satisfies CounterEntry);
-              const insertReq = records.add({
+              counters.put({ productId: request.productId, next } satisfies CounterEntry);
+              const insertRequest = records.add({
                 perProductId: next,
-                productId: req.productId,
-                title: req.title,
-                text: req.text,
-                deeplink: req.deeplink,
-                scheduledAt: req.scheduledAt,
+                productId: request.productId,
+                title: request.title,
+                text: request.text,
+                deeplink: request.deeplink,
+                scheduledAt: request.scheduledAt,
               });
-              insertReq.onsuccess = () => {
+              insertRequest.onsuccess = () => {
                 outcome.result = { ok: true, id: next };
               };
             };
           };
         },
       });
-    } catch (err: unknown) {
+    } catch (error: unknown) {
       // The cap aborts the transaction on purpose.
       if (outcome.result?.ok === false) {
         return outcome.result;
       }
-      throw err;
+      throw error;
     }
     if (outcome.result === null) {
       throw new Error('schedule tx completed without a result');
@@ -99,7 +111,6 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
     return outcome.result;
   }
 
-  /** Bump the counter without a record, so an immediate notification still gets a monotonic id. */
   async function allocateId(productId: string): Promise<number> {
     const db = await idb.connect();
     let allocated = 0;
@@ -107,11 +118,11 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
       db,
       stores: COUNTER_STORE,
       mode: 'readwrite',
-      body: tx => {
-        const counters = tx.objectStore(COUNTER_STORE);
-        const get = counters.get(productId);
-        get.onsuccess = () => {
-          const current = get.result as CounterEntry | undefined;
+      body: transaction => {
+        const counters = transaction.objectStore(COUNTER_STORE);
+        const request = counters.get(productId);
+        request.onsuccess = () => {
+          const current = unsafe_readStoredRecord<CounterEntry | undefined>(request.result);
           allocated = (current?.next ?? 0) + 1;
           counters.put({ productId, next: allocated } satisfies CounterEntry);
         };
@@ -120,7 +131,6 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
     return allocated;
   }
 
-  /** Idempotent. Resolves `false` when the notification already fired or never existed. */
   async function cancel(productId: string, perProductId: number): Promise<boolean> {
     const db = await idb.connect();
     let deleted = false;
@@ -128,16 +138,16 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
       db,
       stores: RECORD_STORE,
       mode: 'readwrite',
-      body: tx => {
-        const byProduct = tx.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
-        const cursorReq = byProduct.openCursor(idb.keyRange().only(productId));
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
+      body: transaction => {
+        const byProduct = transaction.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
+        const cursorRequest = byProduct.openCursor(idb.keyRange().only(productId));
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
           if (!cursor) {
             return;
           }
-          const rec = cursor.value as ScheduledNotificationRecord;
-          if (rec.perProductId === perProductId) {
+          const record = unsafe_readStoredRecord<ScheduledNotificationRecord>(cursor.value);
+          if (record.perProductId === perProductId) {
             cursor.delete();
             deleted = true;
             return;
@@ -156,11 +166,11 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
       db,
       stores: RECORD_STORE,
       mode: 'readwrite',
-      body: tx => {
-        const records = tx.objectStore(RECORD_STORE);
-        const getReq = records.get(hostId);
-        getReq.onsuccess = () => {
-          if (getReq.result !== undefined) {
+      body: transaction => {
+        const records = transaction.objectStore(RECORD_STORE);
+        const request = records.get(hostId);
+        request.onsuccess = () => {
+          if (request.result !== undefined) {
             records.delete(hostId);
             existed = true;
           }
@@ -179,14 +189,14 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
       db,
       stores: RECORD_STORE,
       mode: 'readonly',
-      body: tx => {
-        const cursorReq = open(tx.objectStore(RECORD_STORE));
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
+      body: transaction => {
+        const cursorRequest = open(transaction.objectStore(RECORD_STORE));
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
           if (!cursor) {
             return;
           }
-          out.push(cursor.value as ScheduledNotificationRecord);
+          out.push(unsafe_readStoredRecord<ScheduledNotificationRecord>(cursor.value));
           cursor.continue();
         };
       },
@@ -198,7 +208,10 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
     return collect(store => store.openCursor());
   }
 
-  async function removeStale(now: number, maxAgeMs: number = SCHEDULED_NOTIFICATIONS_MAX_AGE_MS): Promise<number> {
+  async function removeStale(
+    now: number,
+    { maxAgeMs = SCHEDULED_NOTIFICATIONS_MAX_AGE_MS }: RemoveStaleParams = {},
+  ): Promise<number> {
     const cutoff = now - maxAgeMs;
     const db = await idb.connect();
     let removed = 0;
@@ -206,11 +219,11 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
       db,
       stores: RECORD_STORE,
       mode: 'readwrite',
-      body: tx => {
-        const idx = tx.objectStore(RECORD_STORE).index('byScheduledAt');
-        const cursorReq = idx.openCursor(idb.keyRange().upperBound(cutoff, true));
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
+      body: transaction => {
+        const byScheduledAt = transaction.objectStore(RECORD_STORE).index('byScheduledAt');
+        const cursorRequest = byScheduledAt.openCursor(idb.keyRange().upperBound(cutoff, true));
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
           if (!cursor) {
             return;
           }
@@ -223,10 +236,23 @@ export function createScheduledNotifications(idb: DotliIdb = pageIdb) {
     return removed;
   }
 
-  return { schedule, allocateId, cancel, removeById, listAll, removeStale };
+  return {
+    /** Queues the notification, or resolves `ScheduleLimitReached` when the product already has its cap pending. */
+    schedule,
+    /** Bump the counter without a record, so an immediate notification still gets a monotonic id. */
+    allocateId,
+    /** Idempotent. Resolves `false` when the notification already fired or never existed. */
+    cancel,
+    /** Removes the record with `hostId`, resolving whether it was there. */
+    removeById,
+    /** Every queued notification, in host id order. */
+    listAll,
+    /** Removes the notifications more than `maxAgeMs` past their `scheduledAt` at `now`, resolving how many. */
+    removeStale,
+  };
 }
 
 export type ScheduledNotifications = ReturnType<typeof createScheduledNotifications>;
 
-export const { schedule, allocateId, cancel, removeById, listAll, removeStale }: ScheduledNotifications =
-  createScheduledNotifications();
+/** The page's scheduled notification queue. */
+export const scheduledNotifications = createScheduledNotifications();

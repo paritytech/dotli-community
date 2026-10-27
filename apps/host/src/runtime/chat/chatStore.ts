@@ -3,30 +3,21 @@
 
 // The page's chat store over IndexedDB.
 
-import {
-  appendMessage,
-  createRoom,
-  latestMessageTimestamps,
-  listBots,
-  listMessages,
-  listRooms,
-  registerBot,
-  setRoomFooter,
-} from '@dotli/storage';
+import { chat } from '@dotli/storage';
 import { createChatConnections, createChatStore } from './store.js';
 
 export const chatConnections = createChatConnections();
 
 export const chatStore = createChatStore({
   repo: {
-    createRoom,
-    setRoomFooter,
-    registerBot,
-    appendMessage,
-    listRooms,
-    listBots,
-    latestMessageTimestamps,
-    listMessages: (productId, roomId) => listMessages(productId, roomId),
+    createRoom: chat.createRoom,
+    setRoomFooter: (productId, roomId, footer) => chat.setRoomFooter({ productId, roomId, footer }),
+    registerBot: chat.registerBot,
+    appendMessage: chat.appendMessage,
+    listRooms: chat.listRooms,
+    listBots: chat.listBots,
+    latestMessageTimestamps: chat.getLatestMessageTimestamps,
+    listMessages: (productId, roomId) => chat.listMessages(productId, roomId),
   },
   connections: chatConnections,
 });

@@ -411,7 +411,7 @@ export function createSiteRound<R>(deps: SiteRoundDeps<R>): SiteRound {
     if (grant !== null) {
       try {
         // A known grant answers the request's group and the main account, so this origin may join it.
-        await (group === null ? grants.touch(grant.token, at) : grants.touch(grant.token, at, origin));
+        await (group === null ? grants.touch(grant.token, at) : grants.touch(grant.token, at, { origin }));
       } catch (error) {
         reportGrantMiss(error, 'grant_touch');
       }

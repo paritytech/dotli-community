@@ -4,8 +4,9 @@
 // Host-side cache of bitswap blocks, since the credentialless sandbox loses its storage on every reload.
 // No hash checks here, the relay verifies each block. Bookkeeping sits apart so touch and prune skip the bytes.
 
-import { createCacheReporter } from './cacheReporter.js';
+import { createCacheReporter } from './createCacheReporter.js';
 import { pageIdb, type DotliIdb } from './db.js';
+import { unsafe_readStoredRecord } from './unsafe_readStoredRecord.js';
 import { createAsyncTaskPool, waitForIdbRequest, runIdbTransaction, realTimers, type Timers } from '@dotli/shared';
 
 const BLOCKS = 'blocks';
@@ -24,15 +25,18 @@ type BlockMeta = {
   lastUsed: number;
 };
 
-// Module scope is the page, so each action's fault is captured once per page.
-const reportFailure = createCacheReporter('block_cache', '[dot.li block-cache]');
+type Params = {
+  /** The database the blocks live in. */
+  idb?: DotliIdb;
+  /** The clock that marks a block used. */
+  timers?: Pick<Timers, 'now'>;
+};
 
-function meta(cid: string, size: number, lastUsed: number): BlockMeta {
-  return { cid, size, lastUsed };
-}
+// Module scope is the page, so each action's fault is captured once per page.
+const reportFailure = createCacheReporter({ cache: 'block_cache', tag: '[dot.li block-cache]' });
 
 /** The block cache over `idb` and the clock in `timers`, the page's own by default. */
-export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, 'now'> = realTimers) {
+export function createBlockCache({ idb = pageIdb, timers = realTimers }: Params = {}) {
   // A read that wrote its own touch would take a write lock, and write locks on one store run one at a time. So a read
   // leaves its touch here, and the touches waiting go out together.
   const pendingTouches = new Map<string, number>();
@@ -52,13 +56,13 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
         db,
         stores: META,
         mode: 'readwrite',
-        body: tx => {
-          const store = tx.objectStore(META);
+        body: transaction => {
+          const store = transaction.objectStore(META);
           for (const [cid, lastUsed] of touches) {
-            const request = store.get(cid) as IDBRequest<BlockMeta | undefined>;
+            const request = store.get(cid);
             // A block deleted or cleared meanwhile stays gone, and a newer write keeps its later time.
             request.onsuccess = () => {
-              const row = request.result;
+              const row = unsafe_readStoredRecord<BlockMeta | undefined>(request.result);
               if (row !== undefined && row.lastUsed < lastUsed) {
                 store.put({ ...row, lastUsed } satisfies BlockMeta);
               }
@@ -66,8 +70,8 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
           }
         },
       });
-    } catch (err) {
-      reportFailure('touch', err);
+    } catch (error) {
+      reportFailure('touch', error);
     }
   }
 
@@ -80,15 +84,15 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
     }
   }
 
-  /** Resolves `null` on a miss or a storage failure. */
-  async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
+  async function get(cid: string): Promise<Uint8Array | null> {
     let entry: BlockEntry | undefined;
     try {
       const db = await idb.connect();
-      entry = (await waitForIdbRequest(db.transaction(BLOCKS, 'readonly').objectStore(BLOCKS).get(cid))) as
-        BlockEntry | undefined;
-    } catch (err) {
-      reportFailure('read', err);
+      entry = unsafe_readStoredRecord<BlockEntry | undefined>(
+        await waitForIdbRequest(db.transaction(BLOCKS, 'readonly').objectStore(BLOCKS).get(cid)),
+      );
+    } catch (error) {
+      reportFailure('read', error);
       return null;
     }
     // Corrupt or from a future schema.
@@ -99,8 +103,7 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
     return entry.bytes;
   }
 
-  /** Best-effort, a failure is reported here and never reaches the caller. */
-  async function putCachedBlock(cid: string, bytes: Uint8Array): Promise<void> {
+  async function put(cid: string, bytes: Uint8Array): Promise<void> {
     try {
       const db = await idb.connect();
       const entry: BlockEntry = { cid, bytes };
@@ -108,55 +111,53 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
         db,
         stores: [BLOCKS, META],
         mode: 'readwrite',
-        body: tx => {
-          tx.objectStore(BLOCKS).put(entry);
-          tx.objectStore(META).put(meta(cid, bytes.byteLength, timers.now()));
+        body: transaction => {
+          transaction.objectStore(BLOCKS).put(entry);
+          transaction.objectStore(META).put(createBlockMeta({ cid, size: bytes.byteLength, lastUsed: timers.now() }));
         },
       });
-    } catch (err) {
-      reportFailure('write', err);
+    } catch (error) {
+      reportFailure('write', error);
     }
   }
 
-  /** Best-effort, a failure is reported here and never reaches the caller. */
-  async function deleteCachedBlock(cid: string): Promise<void> {
+  async function remove(cid: string): Promise<void> {
     try {
       const db = await idb.connect();
       await runIdbTransaction({
         db,
         stores: [BLOCKS, META],
         mode: 'readwrite',
-        body: tx => {
-          tx.objectStore(BLOCKS).delete(cid);
-          tx.objectStore(META).delete(cid);
+        body: transaction => {
+          transaction.objectStore(BLOCKS).delete(cid);
+          transaction.objectStore(META).delete(cid);
         },
       });
-    } catch (err) {
-      reportFailure('delete', err);
+    } catch (error) {
+      reportFailure('delete', error);
     }
   }
 
-  /** Resolves false when the clear failed, after reporting it, so the caller does not report it again. */
-  async function clearBlockCache(): Promise<boolean> {
+  async function clear(): Promise<boolean> {
     try {
       const db = await idb.connect();
       await runIdbTransaction({
         db,
         stores: [BLOCKS, META],
         mode: 'readwrite',
-        body: tx => {
-          tx.objectStore(BLOCKS).clear();
-          tx.objectStore(META).clear();
+        body: transaction => {
+          transaction.objectStore(BLOCKS).clear();
+          transaction.objectStore(META).clear();
         },
       });
       return true;
-    } catch (err) {
-      reportFailure('clear', err);
+    } catch (error) {
+      reportFailure('clear', error);
       return false;
     }
   }
 
-  async function prune(maxBytes: number): Promise<number> {
+  async function pruneEntries(maxBytes: number): Promise<number> {
     try {
       const db = await idb.connect();
       let evicted = 0;
@@ -164,16 +165,16 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
         db,
         stores: [BLOCKS, META],
         mode: 'readwrite',
-        body: tx => {
-          const blocks = tx.objectStore(BLOCKS);
-          const cursorRequest = tx.objectStore(META).index(BY_LAST_USED).openCursor(null, 'prev');
+        body: transaction => {
+          const blocks = transaction.objectStore(BLOCKS);
+          const cursorRequest = transaction.objectStore(META).index(BY_LAST_USED).openCursor(null, 'prev');
           let kept = 0;
           cursorRequest.onsuccess = () => {
             const cursor = cursorRequest.result;
             if (cursor === null) {
               return;
             }
-            const entry = cursor.value as BlockMeta;
+            const entry = unsafe_readStoredRecord<BlockMeta>(cursor.value);
             kept += entry.size;
             if (kept > maxBytes) {
               blocks.delete(entry.cid);
@@ -185,27 +186,41 @@ export function createBlockCache(idb: DotliIdb = pageIdb, timers: Pick<Timers, '
         },
       });
       return evicted;
-    } catch (err) {
-      reportFailure('prune', err);
+    } catch (error) {
+      reportFailure('prune', error);
       return 0;
     }
   }
 
-  /** Drop the least recently used blocks down to `maxBytes`. Resolves the number dropped. */
-  function pruneBlockCache(maxBytes: number): Promise<number> {
+  function prune(maxBytes: number): Promise<number> {
     return bookkeeping.call(
       async () => {
         await flushTouches();
-        return prune(maxBytes);
+        return pruneEntries(maxBytes);
       },
       { pool: BOOKKEEPING },
     );
   }
 
-  return { getCachedBlock, putCachedBlock, deleteCachedBlock, clearBlockCache, pruneBlockCache };
+  return {
+    /** Resolves `null` on a miss or a storage failure. */
+    get,
+    /** Best-effort, a failure is reported here and never reaches the caller. */
+    put,
+    /** Best-effort, a failure is reported here and never reaches the caller. */
+    remove,
+    /** Resolves false when the clear failed, after reporting it, so the caller does not report it again. */
+    clear,
+    /** Drop the least recently used blocks down to `maxBytes`. Never rejects, a failure is reported here and resolves 0. */
+    prune,
+  };
 }
 
 export type BlockCache = ReturnType<typeof createBlockCache>;
 
-export const { getCachedBlock, putCachedBlock, deleteCachedBlock, clearBlockCache, pruneBlockCache }: BlockCache =
-  createBlockCache();
+/** The page's block cache. */
+export const blockCache = createBlockCache();
+
+function createBlockMeta({ cid, size, lastUsed }: BlockMeta): BlockMeta {
+  return { cid, size, lastUsed };
+}

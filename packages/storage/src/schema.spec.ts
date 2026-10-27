@@ -12,7 +12,7 @@ function openCurrent(factory: IDBFactory): Promise<IDBDatabase> {
 }
 
 describe('the database open', () => {
-  it('As a dotli user, opening the database hands the app the current schema', async () => {
+  it('As a dotli user, I open the database and get the current schema', async () => {
     // Given a browser that has never opened the database
     const factory = new IDBFactory();
 

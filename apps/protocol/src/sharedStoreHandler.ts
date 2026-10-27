@@ -20,15 +20,7 @@ import {
   type ProtocolServing,
   type SubscriptionEnd,
 } from '@dotli/protocol';
-import {
-  forgetLocalWallet,
-  forgetLocalWalletIf,
-  loadLocalWallet,
-  LocalWalletUnreadableError,
-  saveLocalWallet,
-  updateLocalWalletIdentity,
-  type LocalWalletStore,
-} from '@dotli/storage';
+import { localWallet, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
 import { ok, type Failure, type ResultPayload, type Sink } from '@dotli/transport';
 
 /**
@@ -229,14 +221,6 @@ export function createSharedStoreHandler(serving: ProtocolServing, deps: SharedS
 
 const { wallet } = protocolSchema.sections;
 
-const pageWallet: LocalWalletStore = {
-  forgetLocalWallet,
-  forgetLocalWalletIf,
-  loadLocalWallet,
-  saveLocalWallet,
-  updateLocalWalletIdentity,
-};
-
 function assertEntropy(value: Uint8Array): void {
   if (!isLocalWalletEntropy(value)) {
     throw new Error('Invalid local wallet entropy');
@@ -246,7 +230,7 @@ function assertEntropy(value: Uint8Array): void {
 /** An undecryptable record can never be used again, so it is deleted and reported to the caller. */
 async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
   try {
-    const wallet = await store.loadLocalWallet();
+    const wallet = await store.load();
     return wallet === null
       ? { tag: 'none', value: undefined }
       : { tag: 'ok', value: { entropy: wallet.entropy, identity: wallet.identity, version: wallet.version } };
@@ -254,7 +238,7 @@ async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
     if (!(error instanceof LocalWalletUnreadableError)) {
       throw error;
     }
-    await store.forgetLocalWallet();
+    await store.forget();
     return { tag: 'unreadable', value: undefined };
   }
 }
@@ -267,30 +251,30 @@ async function read(store: LocalWalletStore): Promise<LocalWalletRead> {
 export function serveLocalWallet(
   serving: ProtocolServing,
   changed: (siteId: string) => void,
-  store: LocalWalletStore = pageWallet,
+  store: LocalWalletStore = localWallet,
 ): void {
   serving.handleRequest(wallet.read, payload => whenAdmitted(payload, () => read(store)));
   serving.handleRequest(wallet.save, payload =>
     whenAdmitted(payload, async (): Promise<undefined> => {
       assertEntropy(payload.entropy);
-      await store.saveLocalWallet(payload.entropy, payload.identity);
+      await store.save(payload.entropy, payload.identity);
       changed(payload.siteId);
     }),
   );
   serving.handleRequest(wallet.identity, payload =>
     whenAdmitted(payload, async (): Promise<undefined> => {
-      await store.updateLocalWalletIdentity(payload.identity);
+      await store.updateIdentity(payload.identity);
     }),
   );
   serving.handleRequest(wallet.forget, payload =>
     whenAdmitted(payload, async (): Promise<undefined> => {
-      await store.forgetLocalWallet();
+      await store.forget();
       changed(payload.siteId);
     }),
   );
   serving.handleRequest(wallet.forgetIf, payload =>
     whenAdmitted(payload, async () => {
-      const forgot = await store.forgetLocalWalletIf(payload.version);
+      const forgot = await store.forgetIf(payload.version);
       if (forgot) {
         changed(payload.siteId);
       }

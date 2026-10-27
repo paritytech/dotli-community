@@ -16,7 +16,7 @@ import {
 } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
-import { memorySiteGrantsIdb } from '@dotli/storage/testing';
+import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { ResponderState } from '../sessionHandoff/responder.js';
 import type { MainAccount } from './mainAccount.js';
 import type { SiteRequest } from './siteRequest.js';
@@ -120,7 +120,7 @@ async function harness(options: HarnessOptions = {}) {
       end({ type: 'dotli:s:cancelled' }, { kind: 'answered' });
     },
   };
-  const stored = options.store ?? createSiteGrantStore(memorySiteGrantsIdb());
+  const stored = options.store ?? createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
   for (const grant of options.grants ?? []) {
     await stored.save(grant);
   }
@@ -313,7 +313,7 @@ describe('site sign-in action', () => {
 describe('site sign-in of a group', () => {
   it('As a user signing in to two origins of a group, I give both one grant token', async () => {
     // Given a sign-in of one origin of the group the user consented to, whose token the other origin keeps
-    const store = createSiteGrantStore(memorySiteGrantsIdb());
+    const store = createSiteGrantStore({ idb: createMemorySiteGrantsIdb() });
     const first = await harness({ store, groupToken: 'my group' });
     await consentAndStore(first.flow, first);
     await first.closed;

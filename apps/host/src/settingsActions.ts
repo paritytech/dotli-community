@@ -20,7 +20,7 @@ import { markContinuation, type Continuation } from './continuation.js';
 import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { SHARED_AUTH_KEY_PREFIX, SHARED_MODE_KEY_PREFIX } from '@dotli/protocol';
 import { SMOLDOT_DB_NAME } from '@dotli/chains';
-import { clearCidCache, clearBlockCache, SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
+import { blockCache, cidCache, SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
 import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
 import { schedulePendingReset, type PendingResetTarget } from './runtime/pendingReset.js';
@@ -149,8 +149,8 @@ function saveSettings(settings: Settings): void {
 
 /** This page's, which reloads it. */
 export const pageSettingsActions: SettingsActions = createSettingsActions({
-  clearCidCache,
-  clearBlockCache,
+  clearCidCache: cidCache.clear,
+  clearBlockCache: blockCache.clear,
   wipeOrigin: wipeOriginState,
   schedulePendingReset,
   reload: reason => {

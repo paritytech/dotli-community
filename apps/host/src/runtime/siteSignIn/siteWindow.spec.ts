@@ -18,7 +18,7 @@ import {
 } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
-import { memorySiteGrantsIdb } from '@dotli/storage/testing';
+import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { AuthCommands } from '../coreLogin.js';
 import { createFakeMessageBus, createFakeWindowHandle } from '../sessionHandoff/messages.fake.js';
 import { openerParty } from '../sessionHandoff/openerRule.js';
@@ -126,7 +126,7 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
         loadPhrase: () => Promise.reject(new Error('The window loaded the phrase check')),
         ...flow,
       }),
-    grants: createSiteGrantStore(memorySiteGrantsIdb()),
+    grants: createSiteGrantStore({ idb: createMemorySiteGrantsIdb() }),
     groups: {
       registrable: () => Promise.reject(new Error('The window loaded the suffix list for a site of no group')),
     },

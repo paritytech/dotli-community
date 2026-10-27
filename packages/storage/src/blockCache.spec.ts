@@ -6,7 +6,7 @@ import { createDeferred } from '@dotli/shared';
 import { createManualTimers } from '@dotli/shared/testing';
 import { type BlockCache, createBlockCache } from './blockCache.js';
 import { abortAtCommit } from './testing/abortAtCommit.js';
-import { memoryIdb, type MemoryIdb } from './testing/index.js';
+import { createMemoryIdb, type MemoryIdb } from './testing/index.js';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 
@@ -15,143 +15,143 @@ let idb: MemoryIdb;
 let cache: BlockCache;
 
 beforeEach(() => {
-  idb = memoryIdb();
-  cache = createBlockCache(idb);
+  idb = createMemoryIdb();
+  cache = createBlockCache({ idb });
 });
 
 /** A write of the bookkeeping alone, which is what a batch of touches is. */
-function isTouchWrite(tx: IDBTransaction): boolean {
-  return tx.mode === 'readwrite' && Array.from(tx.objectStoreNames).join() === 'block_meta';
+function isTouchWrite(transaction: IDBTransaction): boolean {
+  return transaction.mode === 'readwrite' && Array.from(transaction.objectStoreNames).join() === 'block_meta';
 }
 
 describe('block cache', () => {
-  it('As a user, a block the host fetched before comes back on the next load', async () => {
+  it('As a user, I load a block the host fetched before and it comes back', async () => {
     // Given
-    await cache.putCachedBlock('bafyA', new Uint8Array([1, 2, 3]));
+    await cache.put('bafyA', new Uint8Array([1, 2, 3]));
 
     // When
-    const bytes = await cache.getCachedBlock('bafyA');
+    const bytes = await cache.get('bafyA');
 
     // Then
     expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
   });
 
-  it('As a user, a block the host never fetched is a miss rather than an error', async () => {
+  it('As a user, I read a block the host never fetched and get a miss rather than an error', async () => {
     // When
-    const bytes = await cache.getCachedBlock('bafyNever');
+    const bytes = await cache.get('bafyNever');
 
     // Then
     expect(bytes).toBeNull();
   });
 
-  it('As a user, a block the relay found corrupted is gone once deleted', async () => {
+  it('As a user, I delete a block the relay found corrupted and it is gone', async () => {
     // Given
-    await cache.putCachedBlock('bafyBad', new Uint8Array([9]));
+    await cache.put('bafyBad', new Uint8Array([9]));
 
     // When
-    await cache.deleteCachedBlock('bafyBad');
+    await cache.remove('bafyBad');
 
     // Then
-    expect(await cache.getCachedBlock('bafyBad')).toBeNull();
+    expect(await cache.get('bafyBad')).toBeNull();
   });
 
-  it('As a user whose cache outgrew its limit, the blocks I used longest ago go first', async () => {
+  it('As a user whose cache outgrew its limit, I prune it and the blocks I used longest ago go first', async () => {
     // Given three 3-byte blocks stored in order, and the oldest read again last
     const clock = createManualTimers({ start: 1_000 });
-    const timed = createBlockCache(idb, clock);
-    await timed.putCachedBlock('bafyOld', new Uint8Array(3));
+    const timed = createBlockCache({ idb, timers: clock });
+    await timed.put('bafyOld', new Uint8Array(3));
     await clock.advance(1_000);
-    await timed.putCachedBlock('bafyStale', new Uint8Array(3));
+    await timed.put('bafyStale', new Uint8Array(3));
     await clock.advance(1_000);
-    await timed.putCachedBlock('bafyRecent', new Uint8Array(3));
+    await timed.put('bafyRecent', new Uint8Array(3));
     await clock.advance(1_000);
-    await timed.getCachedBlock('bafyOld');
+    await timed.get('bafyOld');
 
     // When the cache is pruned to room for two of them
-    const evicted = await timed.pruneBlockCache(6);
+    const evicted = await timed.prune(6);
 
     // Then only the one nobody used since it was stored is dropped
     expect(evicted).toBe(1);
-    expect(await timed.getCachedBlock('bafyStale')).toBeNull();
-    expect(await timed.getCachedBlock('bafyOld')).not.toBeNull();
-    expect(await timed.getCachedBlock('bafyRecent')).not.toBeNull();
+    expect(await timed.get('bafyStale')).toBeNull();
+    expect(await timed.get('bafyOld')).not.toBeNull();
+    expect(await timed.get('bafyRecent')).not.toBeNull();
   });
 
-  it('As a user who turns the archive cache off, nothing the host kept survives', async () => {
+  it('As a user, I turn the archive cache off and nothing the host kept survives', async () => {
     // Given
-    await cache.putCachedBlock('bafyA', new Uint8Array([1]));
-    await cache.putCachedBlock('bafyB', new Uint8Array([2]));
+    await cache.put('bafyA', new Uint8Array([1]));
+    await cache.put('bafyB', new Uint8Array([2]));
 
     // When
-    const cleared = await cache.clearBlockCache();
+    const cleared = await cache.clear();
 
     // Then
     expect(cleared).toBe(true);
-    expect(await cache.getCachedBlock('bafyA')).toBeNull();
-    expect(await cache.getCachedBlock('bafyB')).toBeNull();
+    expect(await cache.get('bafyA')).toBeNull();
+    expect(await cache.get('bafyB')).toBeNull();
   });
 
-  it('As a user, a malformed cache entry is a miss rather than a hang', async () => {
+  it('As a user, I read a malformed cache entry and get a miss rather than a hang', async () => {
     // Given a `blocks` record whose `bytes` field isn't a `Uint8Array`, with
     // a matching `block_meta` row so the entry otherwise looks valid. It is
     // the shape a corrupted write or a future schema change could leave behind
     const db = await idb.connect();
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(['blocks', 'block_meta'], 'readwrite');
-      tx.objectStore('blocks').put({
+      const transaction = db.transaction(['blocks', 'block_meta'], 'readwrite');
+      transaction.objectStore('blocks').put({
         cid: 'bafyMalformed',
         bytes: 'not-bytes',
       });
-      tx.objectStore('block_meta').put({
+      transaction.objectStore('block_meta').put({
         cid: 'bafyMalformed',
         size: 9,
         lastUsed: Date.now(),
       });
-      tx.oncomplete = () => {
+      transaction.oncomplete = () => {
         resolve();
       };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('setup transaction failed'));
+      transaction.onerror = () => {
+        reject(transaction.error ?? new Error('setup transaction failed'));
       };
     });
 
     // When
-    const bytes = await cache.getCachedBlock('bafyMalformed');
+    const bytes = await cache.get('bafyMalformed');
 
     // Then
     expect(bytes).toBeNull();
   });
 
-  it('As a user opening a cached product, my block reads are answered while another read of the cache is still running', async () => {
+  it('As a user opening a cached product, I read a block and am answered while another read of the cache is still running', async () => {
     // Given a cached block, and a long read of the block store already running
-    await cache.putCachedBlock('bafyA', new Uint8Array([1]));
+    await cache.put('bafyA', new Uint8Array([1]));
     const db = await idb.connect();
     const events: string[] = [];
     const longRead = new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('blocks', 'readonly');
-      const store = tx.objectStore('blocks');
+      const transaction = db.transaction('blocks', 'readonly');
+      const store = transaction.objectStore('blocks');
       let left = 100;
-      const next = (): void => {
+      function readAgain(): void {
         const request = store.get('bafyA');
         request.onsuccess = () => {
           left -= 1;
           if (left > 0) {
-            next();
+            readAgain();
           }
         };
-      };
-      next();
-      tx.oncomplete = () => {
+      }
+      readAgain();
+      transaction.oncomplete = () => {
         events.push('long read done');
         resolve();
       };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('long read failed'));
+      transaction.onerror = () => {
+        reject(transaction.error ?? new Error('long read failed'));
       };
     });
 
     // When
-    const bytes = await cache.getCachedBlock('bafyA');
+    const bytes = await cache.get('bafyA');
     events.push('block read');
     await longRead;
 
@@ -160,108 +160,109 @@ describe('block cache', () => {
     expect(events).toEqual(['block read', 'long read done']);
   });
 
-  it('As a user opening a cached product, the blocks I read are marked used in fewer writes than reads', async () => {
+  it('As a user opening a cached product, I read ten blocks at once and they are marked used in fewer writes than reads', async () => {
     // Given ten cached blocks, and a count of the writes that mark blocks used
     let touchWrites = 0;
-    const counted = createBlockCache(
-      memoryIdb({
-        onTransaction: tx => {
-          if (isTouchWrite(tx)) {
+    const counted = createBlockCache({
+      idb: createMemoryIdb({
+        onTransaction: transaction => {
+          if (isTouchWrite(transaction)) {
             touchWrites += 1;
           }
         },
       }),
-    );
-    const cids = Array.from({ length: 10 }, (_, i) => `bafy${String(i)}`);
+    });
+    const cids = Array.from({ length: 10 }, (_, index) => `bafy${String(index)}`);
     for (const cid of cids) {
-      await counted.putCachedBlock(cid, new Uint8Array([1]));
+      await counted.put(cid, new Uint8Array([1]));
     }
 
     // When the product reads them all at once, and the visit ends with a prune that keeps everything
-    await Promise.all(cids.map(cid => counted.getCachedBlock(cid)));
-    await counted.pruneBlockCache(Number.MAX_SAFE_INTEGER);
+    await Promise.all(cids.map(cid => counted.get(cid)));
+    await counted.prune(Number.MAX_SAFE_INTEGER);
 
     // Then
     expect(touchWrites).toBeGreaterThan(0);
     expect(touchWrites).toBeLessThan(cids.length);
   });
 
-  it('As a user, the blocks I read stay marked used on my next visit, even when this visit never pruned', async () => {
+  it('As a user, I read a block and it stays marked used on my next visit, even when this visit never pruned', async () => {
     // Given three 3-byte blocks stored in order, and a signal for the write that marks a block used
     const touched = createDeferred<undefined>();
-    const watched = memoryIdb({
-      onTransaction: tx => {
-        if (isTouchWrite(tx)) {
-          tx.addEventListener('complete', () => {
+    const watched = createMemoryIdb({
+      onTransaction: transaction => {
+        if (isTouchWrite(transaction)) {
+          transaction.addEventListener('complete', () => {
             touched.resolve(undefined);
           });
         }
       },
     });
     const clock = createManualTimers({ start: 1_000 });
-    const visit = createBlockCache(watched, clock);
-    await visit.putCachedBlock('bafyOld', new Uint8Array(3));
+    const visit = createBlockCache({ idb: watched, timers: clock });
+    await visit.put('bafyOld', new Uint8Array(3));
     await clock.advance(1_000);
-    await visit.putCachedBlock('bafyStale', new Uint8Array(3));
+    await visit.put('bafyStale', new Uint8Array(3));
     await clock.advance(1_000);
-    await visit.putCachedBlock('bafyRecent', new Uint8Array(3));
+    await visit.put('bafyRecent', new Uint8Array(3));
 
-    // When I read the oldest again, and that mark is written
+    // When I read the oldest again, that mark is written, and the next visit prunes
     await clock.advance(1_000);
-    await visit.getCachedBlock('bafyOld');
+    await visit.get('bafyOld');
     await touched.promise;
+    const nextVisit = createBlockCache({ idb: watched, timers: clock });
+    const evicted = await nextVisit.prune(6);
 
-    // Then the next visit's prune drops only the block nobody used since it was stored
-    const nextVisit = createBlockCache(watched, clock);
-    expect(await nextVisit.pruneBlockCache(6)).toBe(1);
-    expect(await nextVisit.getCachedBlock('bafyStale')).toBeNull();
-    expect(await nextVisit.getCachedBlock('bafyOld')).not.toBeNull();
+    // Then the prune drops only the block nobody used since it was stored
+    expect(evicted).toBe(1);
+    expect(await nextVisit.get('bafyStale')).toBeNull();
+    expect(await nextVisit.get('bafyOld')).not.toBeNull();
   });
 
-  it('As a user, a block the relay deletes right after reading it leaves nothing that crowds out the blocks I keep', async () => {
+  it('As a user, I keep my blocks when the relay deletes one right after reading it, as it leaves nothing that crowds them out', async () => {
     // Given two 3-byte blocks, the older one fetched twice at once
     const clock = createManualTimers({ start: 1_000 });
-    const timed = createBlockCache(idb, clock);
-    await timed.putCachedBlock('bafyBad', new Uint8Array(3));
+    const timed = createBlockCache({ idb, timers: clock });
+    await timed.put('bafyBad', new Uint8Array(3));
     await clock.advance(1_000);
-    await timed.putCachedBlock('bafyGood', new Uint8Array(3));
+    await timed.put('bafyGood', new Uint8Array(3));
     await clock.advance(1_000);
-    const fetches = [timed.getCachedBlock('bafyBad'), timed.getCachedBlock('bafyBad')];
+    const fetches = [timed.get('bafyBad'), timed.get('bafyBad')];
 
     // When the relay deletes it as corrupt once the first fetch returns, and the cache is pruned to room for one block
     // The first fetch's mark is still being written then, so the other fetch's mark goes out after the delete.
     await Promise.race(fetches);
-    await timed.deleteCachedBlock('bafyBad');
+    await timed.remove('bafyBad');
     await Promise.all(fetches);
-    const evicted = await timed.pruneBlockCache(3);
+    const evicted = await timed.prune(3);
 
     // Then the block I keep stays
     expect(evicted).toBe(0);
-    expect(await timed.getCachedBlock('bafyGood')).toEqual(new Uint8Array(3));
+    expect(await timed.get('bafyGood')).toEqual(new Uint8Array(3));
   });
 });
 
 describe('block cache touch failures', () => {
-  it('As an operator, a touch the browser refuses at commit is counted, and the block is still served', async () => {
+  it('As an operator, I count a touch the browser refuses at commit, and the block is still served', async () => {
     // Given a block cached a while ago, and a database that refuses every write that marks a block used
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     const clock = createManualTimers({ start: 1_000 });
-    const refusing = createBlockCache(
-      memoryIdb({
-        onTransaction: tx => {
-          if (isTouchWrite(tx)) {
-            abortAtCommit(tx);
+    const refusing = createBlockCache({
+      idb: createMemoryIdb({
+        onTransaction: transaction => {
+          if (isTouchWrite(transaction)) {
+            abortAtCommit(transaction);
           }
         },
       }),
-      clock,
-    );
-    await refusing.putCachedBlock('bafyA', new Uint8Array([1, 2, 3]));
+      timers: clock,
+    });
+    await refusing.put('bafyA', new Uint8Array([1, 2, 3]));
     await clock.advance(1_000);
 
     // When I read it, and a prune that keeps everything drains the bookkeeping
-    const bytes = await refusing.getCachedBlock('bafyA');
-    await refusing.pruneBlockCache(Number.MAX_SAFE_INTEGER);
+    const bytes = await refusing.get('bafyA');
+    await refusing.prune(Number.MAX_SAFE_INTEGER);
 
     // Then the refused mark is counted, and the read still had the bytes
     expect(sentry.counted(S.CACHE_STORAGE)).toContainEqual(
@@ -286,7 +287,7 @@ describe('block cache failure reporting', () => {
     (await idb.connect()).close();
 
     // When
-    const cleared = await cache.clearBlockCache();
+    const cleared = await cache.clear();
 
     // Then the clear says it failed, after a breadcrumb rather than an issue
     expect(cleared).toBe(false);

@@ -3,6 +3,7 @@
 
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
+import { IdbOpenBlockedError } from './idbOpenBlockedError.js';
 import { openIdb } from './openIdb.js';
 
 const STORE = 'items';
@@ -45,5 +46,32 @@ describe('openIdb', () => {
 
     // Then no leftover connection holds it up
     expect(upgrade).toBe('upgraded');
+  });
+
+  it("As a caller blocked by another tab, I get IdbOpenBlockedError with the database's name", async () => {
+    // Given an older tab that holds the database open at version 1
+    const factory = new IDBFactory();
+    const olderTab = await openIdb({
+      factory,
+      name: 'held',
+      version: 1,
+      upgrade: created => {
+        created.createObjectStore(STORE);
+      },
+    });
+
+    // When this tab opens version 2
+    const failure = await openIdb({ factory, name: 'held', version: 2, upgrade: () => {} }).catch(
+      (error: unknown) => error,
+    );
+    olderTab.close();
+
+    // Then it fails with the typed error naming the database
+    expect(failure).toBeInstanceOf(IdbOpenBlockedError);
+    expect(failure).toMatchObject({
+      name: 'IdbOpenBlockedError',
+      databaseName: 'held',
+      message: 'Failed to open held DB: blocked by another tab',
+    });
   });
 });

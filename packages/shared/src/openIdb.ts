@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { IdbOpenBlockedError } from './idbOpenBlockedError.js';
+
 type Params = {
   factory: IDBFactory;
   name: string;
@@ -32,7 +34,7 @@ export function openIdb({ factory, name, version, upgrade }: Params): Promise<ID
     // A tab on an older schema blocks the upgrade, and blocked fires neither onsuccess nor onerror.
     request.onblocked = () => {
       abandoned = true;
-      reject(new Error(`Failed to open ${name} DB: blocked by another tab`));
+      reject(new IdbOpenBlockedError(name));
     };
   });
 }

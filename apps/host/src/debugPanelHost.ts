@@ -7,7 +7,7 @@
 import { bitswapGet } from '@dotli/bitswap';
 import { getBackend, type Backend } from '@dotli/config';
 import { readArchiveFiles } from '@dotli/content';
-import { getCachedBlock } from '@dotli/storage';
+import { blockCache } from '@dotli/storage';
 import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
 import { setDockInset } from './productFrameLayout.js';
 import { getTopbarState } from './state/topbar.js';
@@ -22,7 +22,7 @@ import { walletModeStore } from './runtime/state/walletMode.js';
 type BlockSource = (cid: string) => Promise<Uint8Array>;
 
 /** As the sandbox relay serves blocks: from the block cache, else over bitswap. */
-const relayBlock: BlockSource = async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid);
+const relayBlock: BlockSource = async cid => (await blockCache.get(cid)) ?? bitswapGet(cid);
 
 /** The Archive tab reads what the sandbox was served: blocks on the light client, the gateway on rpc-gateway. */
 export function archiveTransport(
