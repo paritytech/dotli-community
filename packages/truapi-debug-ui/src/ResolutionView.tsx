@@ -6,22 +6,18 @@
 
 import { createEffect, createSignal, flush, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel, ResolutionRecorder } from './model/resolutionView.js';
-import { wireHoverTooltips } from './shared/hoverTooltip.js';
+import type { ResolutionModel } from './model/buildResolution.js';
+import type { ResolutionRecorder } from './model/createResolutionRecorder.js';
+import { wireHoverTooltips } from './shared/wireHoverTooltips.js';
 import { Chart } from './resolution/Chart.js';
 import { Button } from './shared/Button.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { Pane } from './shared/Pane.js';
 import { Summary } from './resolution/Summary.js';
-import { usePanelWork } from './work.js';
+import { usePanelWork } from './panelWork.js';
 import s from './ResolutionView.module.css';
 
 const RESOLUTION_TICK_MS = 500;
-
-/** Every empty model looks the same on screen, whenever it was built. */
-function drawnKey(model: ResolutionModel): string {
-  return model.flowId === null ? '' : JSON.stringify(model);
-}
 
 export function ResolutionView(props: {
   active: boolean;
@@ -40,15 +36,15 @@ export function ResolutionView(props: {
     ownedWrite: true,
   });
   let drawn: string | null = null;
-  const draw = (): void => {
+  function draw(): void {
     const next = buildResolution(recorder.events(), Date.now());
-    const key = drawnKey(next);
+    const key = getDrawnKey(next);
     if (key === drawn) {
       return;
     }
     drawn = key;
     setModel(next);
-  };
+  }
 
   // The compute reads nothing that moves with traffic, since the effect re-runs on every compute change.
   createEffect(
@@ -86,9 +82,9 @@ export function ResolutionView(props: {
     },
   );
 
-  let unwireTooltips: (() => void) | undefined;
+  let disposeTooltips: (() => void) | undefined;
   onCleanup(() => {
-    unwireTooltips?.();
+    disposeTooltips?.();
   });
 
   return (
@@ -98,12 +94,12 @@ export function ResolutionView(props: {
       hidden={!props.active}
       padded
       class={s['res']}
-      ref={el => {
-        unwireTooltips = wireHoverTooltips(
-          el,
-          untrack(() => props.tooltip),
-          untrack(() => props.panel),
-        );
+      ref={element => {
+        disposeTooltips = wireHoverTooltips({
+          root: element,
+          tooltip: untrack(() => props.tooltip),
+          panel: untrack(() => props.panel),
+        });
       }}
     >
       <div class={s['actions']}>
@@ -112,22 +108,27 @@ export function ResolutionView(props: {
         </Button>
       </div>
       <Show when={model()}>
-        {m => (
+        {shown => (
           <Show
-            when={m().flowId !== null}
+            when={shown().flowId !== null}
             fallback={
               <EmptyState testId="td-res-empty">
                 No page load recorded yet. Reload the page with the panel open.
               </EmptyState>
             }
           >
-            <Summary model={m()} />
-            <Show when={m().summary.backend !== 'rpc-gateway'}>
-              <Chart model={m()} />
+            <Summary model={shown()} />
+            <Show when={shown().summary.backend !== 'rpc-gateway'}>
+              <Chart model={shown()} />
             </Show>
           </Show>
         )}
       </Show>
     </Pane>
   );
+}
+
+/** Every empty model looks the same on screen, whenever it was built. */
+function getDrawnKey(model: ResolutionModel): string {
+  return model.flowId === null ? '' : JSON.stringify(model);
 }

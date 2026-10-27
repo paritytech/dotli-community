@@ -3,11 +3,11 @@
 
 import { createSignal, flush, onCleanup, Show, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { exportFilename } from './model/export.js';
-import { PanelEffectsContext } from './effects.js';
+import { formatExportFilename } from './model/formatExportFilename.js';
+import { PanelEffectsContext } from './panelEffects.js';
 import { Announce } from './shared/Announce.js';
-import { COPY_STATUS, copyText, type CopyOutcome } from './shared/copy.js';
-import { createFlash } from './shared/flash.js';
+import { copyText, formatCopyStatus, type CopyOutcome } from './shared/copyText.js';
+import { createFlash } from './shared/createFlash.js';
 import { Button } from './shared/Button.js';
 import { CheckIcon } from './icons/CheckIcon.js';
 import { CloseIcon } from './icons/CloseIcon.js';
@@ -28,7 +28,7 @@ export function EventControls(props: {
   const [copyOutcome, setCopyOutcome] = createSignal<CopyOutcome | null>(null);
   const [copyBusy, setCopyBusy] = createSignal(false);
   const copyFlash = createFlash<CopyOutcome>({
-    ms: COPY_FLASH_MS,
+    durationMs: COPY_FLASH_MS,
     onChange: outcome => {
       flush(() => {
         setCopyOutcome(outcome);
@@ -37,22 +37,18 @@ export function EventControls(props: {
     },
   });
   onCleanup(copyFlash.dispose);
-  const copyStatus = (): string => {
-    const outcome = copyOutcome();
-    return outcome === null ? '' : COPY_STATUS[outcome];
-  };
 
   const effects = useContext(PanelEffectsContext);
 
-  const exportDownload = (): void => {
-    effects.download(exportFilename(new Date()), props.exportJson());
-  };
+  function downloadExport(): void {
+    effects.download(formatExportFilename(new Date()), props.exportJson());
+  }
 
-  const copyToClipboard = (): void => {
+  function copyToClipboard(): void {
     // Synchronous, so a rapid second click cannot start another write.
     flush(() => setCopyBusy(true));
     void copyText(effects.writeClipboard, props.exportJson()).then(copyFlash.show);
-  };
+  }
 
   return (
     <div class={s['controls']} data-testid="td-event-controls">
@@ -65,7 +61,7 @@ export function EventControls(props: {
       <Button testId="td-clear" onClick={props.onClear}>
         Clear
       </Button>
-      <Button testId="td-export" icon title="Download as JSON" label="Download as JSON" onClick={exportDownload}>
+      <Button testId="td-export" icon title="Download as JSON" label="Download as JSON" onClick={downloadExport}>
         <ExportIcon />
       </Button>
       <Button
@@ -77,12 +73,19 @@ export function EventControls(props: {
         onClick={copyToClipboard}
       >
         <Show when={copyOutcome()} fallback={<CopyIcon />}>
-          {outcome =>
-            outcome() === 'copied' ? <CheckIcon testId="td-copy-done" /> : <CloseIcon testId="td-copy-failed" />
-          }
+          {outcome => renderCopyIcon(outcome())}
         </Show>
       </Button>
-      <Announce testId="td-copy-status">{copyStatus()}</Announce>
+      <Announce testId="td-copy-status">{formatCopyStatus(copyOutcome())}</Announce>
     </div>
   );
+}
+
+function renderCopyIcon(outcome: CopyOutcome): JSX.Element {
+  switch (outcome) {
+    case 'copied':
+      return <CheckIcon testId="td-copy-done" />;
+    case 'failed':
+      return <CloseIcon testId="td-copy-failed" />;
+  }
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { DockPosition } from './model/dockStorage.js';
-import type { PanelSection } from './model/sectionStorage.js';
+import type { DockPosition } from './model/createDockStorage.js';
+import type { PanelSection } from './model/createSectionStorage.js';
 import { Button } from './shared/Button.js';
 import { SectionTabs } from './SectionTabs.js';
 import { ChevronDownIcon } from './icons/ChevronDownIcon.js';
@@ -26,7 +26,7 @@ export function Header(props: {
   onToggleDock: () => void;
   onToggleCollapse: () => void;
 }): JSX.Element {
-  const dockLabel = (): string => (props.dock === 'right' ? 'Dock to bottom' : 'Dock to right');
+  const dockLabel = (): string => getDockLabel(props.dock);
   const collapseLabel = (): string => (props.collapsed ? 'Expand' : 'Collapse');
 
   return (
@@ -41,7 +41,7 @@ export function Header(props: {
         label={dockLabel()}
         onClick={props.onToggleDock}
       >
-        {props.dock === 'right' ? <DockBottomIcon /> : <DockRightIcon />}
+        {renderDockIcon(props.dock)}
       </Button>
       <Button
         testId="td-collapse"
@@ -58,4 +58,23 @@ export function Header(props: {
       </Button>
     </div>
   );
+}
+
+/** The dock toggle names the dock it moves the panel to. */
+function getDockLabel(dock: DockPosition): string {
+  switch (dock) {
+    case 'right':
+      return 'Dock to bottom';
+    case 'bottom':
+      return 'Dock to right';
+  }
+}
+
+function renderDockIcon(dock: DockPosition): JSX.Element {
+  switch (dock) {
+    case 'right':
+      return <DockBottomIcon />;
+    case 'bottom':
+      return <DockRightIcon />;
+  }
 }

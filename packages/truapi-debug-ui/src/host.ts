@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the debug panel reads of the host page and asks of it. The host builds it from its own stores and layers, so
-// the panel imports none of them.
+// What the debug panel reads of the host page and asks of it, so the panel imports none of the page's stores or
+// layers.
 
 import type { ReadableStore } from '@dotli/shared';
 import type { ArchiveFiles } from '@dotli/content';

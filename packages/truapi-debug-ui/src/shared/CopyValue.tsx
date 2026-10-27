@@ -3,10 +3,10 @@
 
 import { createSignal, onCleanup, untrack, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { PanelEffectsContext } from '../effects.js';
+import { PanelEffectsContext } from '../panelEffects.js';
 import { Announce } from './Announce.js';
-import { COPY_STATUS, copyText, type CopyOutcome } from './copy.js';
-import { createFlash } from './flash.js';
+import { copyText, formatCopyStatus, type CopyOutcome } from './copyText.js';
+import { createFlash } from './createFlash.js';
 import s from './CopyValue.module.css';
 
 const FLASH_MS = 1000;
@@ -19,22 +19,21 @@ export function CopyValue(props: { label: string; value: string }): JSX.Element 
   const effects = useContext(PanelEffectsContext);
   const [outcome, setOutcome] = createSignal<CopyOutcome | null>(null);
   const flash = createFlash<CopyOutcome>({
-    ms: FLASH_MS,
+    durationMs: FLASH_MS,
     onChange: next => {
       setOutcome(next);
     },
   });
   onCleanup(flash.dispose);
-  const status = (): string => {
-    const current = outcome();
-    return current === null ? '' : COPY_STATUS[current];
-  };
-  const copy = (): void => {
+  function getStatus(): string {
+    return formatCopyStatus(outcome());
+  }
+  function copy(): void {
     void copyText(
       effects.writeClipboard,
       untrack(() => props.value),
     ).then(flash.show);
-  };
+  }
   return (
     <>
       <button
@@ -45,9 +44,9 @@ export function CopyValue(props: { label: string; value: string }): JSX.Element 
         data-copy-failed={outcome() === 'failed' ? '' : undefined}
         onClick={copy}
       >
-        <code class={s['code']}>{status() === '' ? props.value : status()}</code>
+        <code class={s['code']}>{getStatus() === '' ? props.value : getStatus()}</code>
       </button>
-      <Announce>{status()}</Announce>
+      <Announce>{getStatus()}</Announce>
     </>
   );
 }

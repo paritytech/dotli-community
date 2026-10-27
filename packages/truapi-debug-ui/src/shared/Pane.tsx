@@ -18,7 +18,7 @@ export function Pane(props: {
   /** Draws no focus ring, for a view that answers keys and shows its own selection. */
   ownFocus?: boolean;
   class?: string | undefined;
-  ref?: (el: HTMLDivElement) => void;
+  ref?: (element: HTMLDivElement) => void;
   children: JSX.Element;
 }): JSX.Element {
   return (
@@ -29,8 +29,8 @@ export function Pane(props: {
       aria-label={props.label}
       hidden={props.hidden}
       tabindex="0"
-      ref={el => {
-        props.ref?.(el);
+      ref={element => {
+        props.ref?.(element);
       }}
     >
       {props.children}

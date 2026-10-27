@@ -5,11 +5,11 @@
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq } from '../model/eventStore.js';
-import type { TimelineLane } from '../model/timeline.js';
+import type { EventSeq } from '../model/storedEvent.js';
+import type { TimelineLane } from '../model/buildTimeline.js';
 import s from './Timeline.module.css';
 
-export type TimelineSelect = (seq: EventSeq, el: Element) => void;
+export type TimelineSelect = (seq: EventSeq, element: Element) => void;
 
 export function Timeline(props: {
   lanes: readonly TimelineLane[];
@@ -113,13 +113,13 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
                   }}
                 />
                 <Show when={box().connector}>
-                  {c => (
+                  {connector => (
                     <line
                       class={s['connector']}
-                      x1={c().x1}
-                      y1={c().y}
-                      x2={c().x2}
-                      y2={c().y}
+                      x1={connector().x1}
+                      y1={connector().y}
+                      x2={connector().x2}
+                      y2={connector().y}
                       style={{ stroke: box().color }}
                     />
                   )}

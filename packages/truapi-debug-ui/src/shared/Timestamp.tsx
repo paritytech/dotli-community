@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { formatTime } from '../model/detailFormat.js';
+import { formatTime } from '../model/formatTime.js';
 import s from './Timestamp.module.css';
 
 /** When an event arrived, to the millisecond. */

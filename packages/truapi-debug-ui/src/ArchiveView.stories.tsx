@@ -10,10 +10,6 @@ import type { ArchiveLoader } from './host.js';
 import { ArchiveView, type ObjectUrls } from './ArchiveView.js';
 import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
-const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
-
-const loads = (files: Record<string, Uint8Array>) => fn<ArchiveLoader>(() => Promise.resolve(files));
-
 /** The host page, its stores reset after each story. */
 const page = fakeDebugPanelHost();
 
@@ -24,7 +20,7 @@ const meta = {
   parameters: { ...debugPanelStory.parameters, docs: { story: { inline: false, height: '320px' } } },
   args: {
     active: true,
-    load: loads({ 'index.html': enc('<h1>hi</h1>'), 'assets/app.js': enc('run()') }),
+    load: fakeArchiveLoader({ 'index.html': encodeText('<h1>hi</h1>'), 'assets/app.js': encodeText('run()') }),
     product: page.product,
   },
   render: args => (
@@ -38,6 +34,14 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+function encodeText(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
+function fakeArchiveLoader(files: Record<string, Uint8Array>) {
+  return fn<ArchiveLoader>(() => Promise.resolve(files));
+}
 
 /** As a developer using the debug panel, I select a text file in the archive and read its content. */
 export const TextFile: Story = {
@@ -58,7 +62,7 @@ export const TextFile: Story = {
 /** As a developer using the debug panel, I preview an image from the archive and its preview is freed when I pick another file. */
 export const ImagePreviewFreed: Story = {
   args: {
-    load: loads({ 'logo.png': new Uint8Array([0x89, 0x50]), 'a.txt': enc('a') }),
+    load: fakeArchiveLoader({ 'logo.png': new Uint8Array([0x89, 0x50]), 'a.txt': encodeText('a') }),
     objectUrls: {
       create: fn<ObjectUrls['create']>(() => 'blob:preview'),
       revoke: fn<ObjectUrls['revoke']>(),
@@ -81,7 +85,7 @@ export const ImagePreviewFreed: Story = {
   },
 };
 
-/** As a developer using the debug panel, I am told why the archive read failed. */
+/** As a developer using the debug panel, I open an archive that fails to read and I am told why. */
 export const ReadFails: Story = {
   args: { load: fn<ArchiveLoader>(() => Promise.reject(new Error('gateway 504'))) },
   play: async ({ canvas, step }) => {
@@ -104,7 +108,7 @@ export const LocalProduct: Story = {
   },
 };
 
-// The panel shows and hides the tab, so this owner does.
+// This owner shows and hides the tab, as the tab's parent would.
 /** As a developer using the debug panel, I show the archive tab repeatedly and it reads the archive only once. */
 export const ReadOnceWhenShown: Story = {
   render: args => {

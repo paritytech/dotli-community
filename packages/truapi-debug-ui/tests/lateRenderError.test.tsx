@@ -4,7 +4,7 @@
 // A panel that throws while rendering after it mounted must dispose itself and leave the page, not stay frozen.
 
 import { bindCaptureSink } from '@dotli/metrics';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createSignal, flush, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { waitForDom } from '@dotli/shared/testing';
@@ -17,23 +17,23 @@ const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
 /** What the stand-in view did, and how to make it throw later. */
-const view = {
-  breakLater: null as (() => void) | null,
+const view: { breakLater: (() => void) | null; disposed: number } = {
+  breakLater: null,
   disposed: 0,
 };
 
 /** A stand-in view that can be made to throw later. */
-function lateView(id: string): () => JSX.Element {
+function createLateView(id: string): () => JSX.Element {
   return () => {
     const [late, setLate] = createSignal(false, { ownedWrite: true });
     view.breakLater = () => setLate(true);
     onCleanup(() => {
       view.disposed += 1;
     });
-    const el = document.createElement('div');
-    el.id = id;
+    const element = document.createElement('div');
+    element.id = id;
     return [
-      el,
+      element,
       // eslint-disable-next-line solid/reactivity -- a function child is tracked by the renderer, which is the point: it throws on change.
       (): null => {
         if (late()) {
@@ -57,17 +57,17 @@ afterEach(() => {
 });
 
 describe('late render errors', () => {
-  it('As a dotli developer, a debug panel that throws after it mounted is disposed once, stops listening to the bus, leaves the page and can be set up again', async () => {
+  it('As a dotli developer, I mount a debug panel that throws later and it is disposed once, stops listening to the bus, leaves the page and can be set up again', async () => {
     // Given
-    const panelView = lateView(PANEL_ID);
+    const panelView = createLateView(PANEL_ID);
     const { host } = fakeDebugPanelHost();
     const bus = createDebugBus();
     bus.enableBuffering();
     const dispose = setupTruapiDebugPanel({ host, bus, view: panelView });
     await waitForDom(() => document.getElementById(PANEL_ID) !== null);
     const panel = document.getElementById(PANEL_ID);
-    expect(panel?.isConnected).toBe(true);
-    expect(bus.hasListeners()).toBe(true);
+    const connectedOnMount = panel?.isConnected;
+    const listeningOnMount = bus.hasListeners();
 
     // When
     view.breakLater?.();
@@ -75,6 +75,8 @@ describe('late render errors', () => {
     await waitForDom(() => panel?.isConnected === false);
 
     // Then
+    expect(connectedOnMount).toBe(true);
+    expect(listeningOnMount).toBe(true);
     expect(panel?.isConnected).toBe(false);
     expect(document.body.childElementCount).toBe(0);
     expect(view.disposed).toBe(1);
@@ -83,11 +85,10 @@ describe('late render errors', () => {
 
     // When
     dispose();
-    const again = setupTruapiDebugPanel({ host, bus, view: panelView });
+    onTestFinished(setupTruapiDebugPanel({ host, bus, view: panelView }));
 
     // Then
     expect(view.disposed).toBe(1);
     expect(document.getElementById(PANEL_ID)?.isConnected).toBe(true);
-    again();
   });
 });

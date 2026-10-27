@@ -5,16 +5,21 @@ import type { JSX } from '@solidjs/web';
 import { Bar } from './shared/Bar.js';
 import { Tabs, type TabOption } from './shared/Tabs.js';
 
+/** How the TrUAPI tab shows the captured events. */
+export type PanelView = (typeof PANEL_VIEWS)[number];
+
 export const VIEW_TABS_ID = 'td-view-tab';
 export const VIEW_PANEL_ID = 'td-view-panel';
 
-/** How the TrUAPI tab shows the captured events. */
-export type PanelView = 'list' | 'timeline';
+/** Every view, in display order. */
+const PANEL_VIEWS = ['list', 'timeline'] as const;
 
-const VIEWS: readonly TabOption<PanelView>[] = [
-  { value: 'list', label: 'List' },
-  { value: 'timeline', label: 'Timeline' },
-];
+const VIEW_LABELS: Record<PanelView, string> = {
+  list: 'List',
+  timeline: 'Timeline',
+};
+
+const VIEWS: readonly TabOption<PanelView>[] = PANEL_VIEWS.map(view => ({ value: view, label: VIEW_LABELS[view] }));
 
 export function ViewTabs(props: {
   view: PanelView;

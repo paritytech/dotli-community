@@ -52,14 +52,18 @@ export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDeb
     archive: () => Promise.resolve({}),
     contentInsets: { top: '0px', bottom: '0px' },
     topbarPresent: topbarPresent.get,
-    reportDockInset: inset => {
-      dockReports.push(inset);
-      dockInset.set(inset);
-    },
-    leaveDebugMode: () => {
-      leaves += 1;
-    },
+    reportDockInset,
+    leaveDebugMode,
     ...parts,
   };
   return { host, product, auth, walletMode, topbarPresent, dockInset, dockReports, leaveRequests: () => leaves };
+
+  function reportDockInset(inset: DockInset): void {
+    dockReports.push(inset);
+    dockInset.set(inset);
+  }
+
+  function leaveDebugMode(): void {
+    leaves += 1;
+  }
 }

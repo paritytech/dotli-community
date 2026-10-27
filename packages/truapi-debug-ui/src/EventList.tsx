@@ -6,35 +6,28 @@
 
 import { createEffect, createMemo, createSignal, flush, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { formatLatency } from './model/detailFormat.js';
-import {
-  correlationKeyOf,
-  type EventSeq,
-  type EventStore,
-  type StoredEvent,
-  type StoredSystemEvent,
-  type StoredTruapiEvent,
-} from './model/eventStore.js';
-import { OpenCallTracker, pendingKeyOf, SLOW_AFTER_MS } from './model/pending.js';
-import { systemRowData, truapiRowData } from './model/rowFormat.js';
+import { formatMemberDelta } from './model/formatMemberDelta.js';
+import type { EventStore } from './model/createEventStore.js';
+import { createOpenCallTracker, SLOW_AFTER_MS } from './model/createOpenCallTracker.js';
+import { getCorrelationKey } from './model/getCorrelationKey.js';
+import type { EventSeq, StoredEvent, StoredSystemEvent, StoredTruapiEvent } from './model/storedEvent.js';
+import { getPendingKey } from './model/getPendingKey.js';
+import { formatProductId } from './model/formatProductId.js';
+import { toSystemRowData } from './model/toSystemRowData.js';
+import { toTruapiRowData } from './model/toTruapiRowData.js';
 
-import type { KeyedSignals } from './keyedSignals.js';
+import type { KeyedSignals } from './createKeyedSignals.js';
 import { DirectionArrow } from './shared/DirectionArrow.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { IdBadge } from './shared/IdBadge.js';
-import { itemClass, itemListClass } from './shared/ItemList.js';
+import { ITEM_CLASS, ITEM_LIST_CLASS } from './shared/ItemList.js';
 import { LayerBadge } from './shared/LayerBadge.js';
 import { Latency } from './shared/Latency.js';
 import { MethodTag } from './shared/MethodTag.js';
 import { PendingIcon } from './icons/PendingIcon.js';
 import { Timestamp } from './shared/Timestamp.js';
-import { usePanelWork, type PanelWork } from './work.js';
+import { usePanelWork, type PanelWork } from './panelWork.js';
 import s from './EventList.module.css';
-
-/** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
-const PENDING_TICK_MS = 1000;
-
-const rowId = (seq: EventSeq): string => `td-row-${String(seq)}`;
 
 export type Selection = {
   seq: EventSeq;
@@ -49,8 +42,31 @@ type RowContext = {
   selectedKey: KeyedSignals<string, true>;
   /** Ms waited by each call still open, by pending key. */
   waiting: KeyedSignals<string, number>;
-  work: Pick<PanelWork, 'formatPending' | 'rowSelection'>;
+  work: Pick<PanelWork, 'formatPending' | 'getRowSelection'>;
 };
+
+type RenderRowParams = {
+  event: StoredEvent;
+  store: EventStore;
+  context: RowContext;
+};
+
+type RenderCellsParams = {
+  event: StoredEvent;
+  /** The offset from the group's anchor, or `null` for the anchor itself. */
+  latency: string | null;
+  context: RowContext;
+};
+
+type MoveMarkParams<Key> = {
+  /** The key that held the mark, or `null` when none did. */
+  from: Key | null;
+  /** The key that takes the mark, or `null` to leave it on none. */
+  to: Key | null;
+};
+
+/** Pending badges tick on a clock, since a stalled host is exactly one that emits no events. */
+const PENDING_TICK_MS = 1000;
 
 export function EventList(props: {
   events: readonly StoredEvent[];
@@ -62,7 +78,7 @@ export function EventList(props: {
   active: boolean;
   collapsed: boolean;
   onSelect: (seq: EventSeq) => void;
-  listRef: (el: HTMLDivElement) => void;
+  listRef: (element: HTMLDivElement) => void;
 }): JSX.Element {
   let list: HTMLDivElement | undefined;
   const work = usePanelWork();
@@ -72,29 +88,13 @@ export function EventList(props: {
   const selectedKey = work.createKeyedSignals<string, true>();
   createEffect(
     () => props.selection,
-    (selection, prev = null) => {
-      if (prev?.seq !== selection?.seq) {
-        if (prev !== null) {
-          selectedSeq.write(prev.seq, undefined);
-        }
-        if (selection !== null) {
-          selectedSeq.write(selection.seq, true);
-        }
-      }
-      const prevKey = prev?.key ?? null;
-      const nextKey = selection?.key ?? null;
-      if (prevKey !== nextKey) {
-        if (prevKey !== null) {
-          selectedKey.write(prevKey, undefined);
-        }
-        if (nextKey !== null) {
-          selectedKey.write(nextKey, true);
-        }
-      }
+    (selection, previous = null) => {
+      moveMark(selectedSeq, { from: previous?.seq ?? null, to: selection?.seq ?? null });
+      moveMark(selectedKey, { from: previous?.key ?? null, to: selection?.key ?? null });
     },
   );
 
-  const tracker = new OpenCallTracker();
+  const tracker = createOpenCallTracker();
   const [tickedAt, setTickedAt] = createSignal(0);
   createEffect(
     () => props.active && !props.collapsed,
@@ -103,7 +103,7 @@ export function EventList(props: {
         return;
       }
       const tick = setInterval(() => {
-        if (tracker.open.size > 0) {
+        if (tracker.open().size > 0) {
           flush(() => setTickedAt(Date.now()));
         }
       }, PENDING_TICK_MS);
@@ -132,7 +132,7 @@ export function EventList(props: {
         return;
       }
       tracker.update(input.events);
-      const open = tracker.open;
+      const open = tracker.open();
       if (!wasLive || input.tick !== clockAt) {
         wasLive = true;
         clockAt = input.tick;
@@ -146,85 +146,105 @@ export function EventList(props: {
         }
         return;
       }
-      for (const key of tracker.changedKeys) {
+      for (const key of tracker.changedKeys()) {
         const since = open.get(key);
         waiting.write(key, since === undefined ? undefined : input.now - since);
       }
     },
   );
 
-  const ctx: RowContext = { selectedSeq, selectedKey, waiting, work };
+  const context: RowContext = { selectedSeq, selectedKey, waiting, work };
 
   // A selection a filter hides, or the ring evicted, has no option to point at.
   const activeRow = createMemo<string | undefined>(() => {
     const selected = props.selection;
-    return selected !== null && props.events.some(ev => ev.seq === selected.seq) ? rowId(selected.seq) : undefined;
+    return selected !== null && props.events.some(e => e.seq === selected.seq) ? getRowId(selected.seq) : undefined;
   });
 
-  const rowFor = (seq: EventSeq): HTMLElement | null =>
+  const findRow = (seq: EventSeq): HTMLElement | null =>
     list?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`) ?? null;
 
   return (
     <div
-      class={[itemListClass, s['list']]}
+      class={[ITEM_LIST_CLASS, s['list']]}
       data-testid="td-list"
       hidden={!props.active}
       role="listbox"
       aria-label="Events"
       aria-activedescendant={activeRow()}
       tabindex="0"
-      ref={el => {
-        list = el;
-        props.listRef(el);
+      ref={element => {
+        list = element;
+        props.listRef(element);
       }}
-      onClick={e => {
-        const row = (e.target as HTMLElement).closest<HTMLElement>('[data-seq]');
-        const seqAttr = row?.dataset['seq'];
-        if (seqAttr === undefined) {
+      onClick={event => {
+        if (!(event.target instanceof Element)) {
+          return;
+        }
+        const row = event.target.closest<HTMLElement>('[data-seq]');
+        const seqAttribute = row?.dataset['seq'];
+        if (seqAttribute === undefined) {
           return;
         }
         // Otherwise arrow keys after a click scroll the page instead of stepping rows.
         list?.focus({ preventScroll: true });
-        props.onSelect(Number(seqAttr));
+        props.onSelect(Number(seqAttribute));
       }}
-      onKeyDown={e => {
-        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
+      onKeyDown={event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
           return;
         }
         const events = props.events;
         if (events.length === 0) {
           return;
         }
-        e.preventDefault();
+        event.preventDefault();
         const selected = props.selection;
-        const currentIdx = selected === null ? -1 : events.findIndex(ev => ev.seq === selected.seq);
-        let nextIdx: number;
-        if (e.key === 'ArrowDown') {
-          nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, events.length - 1);
+        const currentIndex = selected === null ? -1 : events.findIndex(e => e.seq === selected.seq);
+        let nextIndex: number;
+        if (event.key === 'ArrowDown') {
+          nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, events.length - 1);
         } else {
-          nextIdx = currentIdx < 0 ? events.length - 1 : Math.max(currentIdx - 1, 0);
+          nextIndex = currentIndex < 0 ? events.length - 1 : Math.max(currentIndex - 1, 0);
         }
-        const nextSeq = events[nextIdx]?.seq;
-        if (nextIdx === currentIdx || nextSeq === undefined) {
+        const nextSeq = events[nextIndex]?.seq;
+        if (nextIndex === currentIndex || nextSeq === undefined) {
           return;
         }
         props.onSelect(nextSeq);
-        rowFor(nextSeq)?.scrollIntoView({ block: 'nearest' });
+        findRow(nextSeq)?.scrollIntoView({ block: 'nearest' });
       }}
     >
       <For
         each={props.events}
-        keyed={ev => ev.seq}
+        keyed={e => e.seq}
         fallback={
           <div role="option" aria-disabled="true" aria-selected="false">
             <EmptyState testId="td-empty">No events match the current filter.</EmptyState>
           </div>
         }
       >
-        {ev => renderRow(untrack(ev), props.store, ctx)}
+        {event => renderRow({ event: untrack(event), store: props.store, context })}
       </For>
     </div>
   );
+}
+
+function getRowId(seq: EventSeq): string {
+  return `td-row-${String(seq)}`;
+}
+
+/** Clears the mark on `from` and sets it on `to`, touching nothing when they are the same key. */
+function moveMark<Key>(marks: KeyedSignals<Key, true>, { from, to }: MoveMarkParams<Key>): void {
+  if (from === to) {
+    return;
+  }
+  if (from !== null) {
+    marks.write(from, undefined);
+  }
+  if (to !== null) {
+    marks.write(to, true);
+  }
 }
 
 /**
@@ -233,49 +253,53 @@ export function EventList(props: {
  * A helper, not a component, because dev builds wrap each component instance and the list would track one
  * source per row (HUGE_FAN_IN at capacity).
  */
-function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Element {
-  const key = correlationKeyOf(ev);
+function renderRow({ event, store, context }: RenderRowParams): JSX.Element {
+  const key = getCorrelationKey(event);
   // The anchor is captured at insert time, so a row drawn after the group head was evicted keeps its latency.
-  const anchor = store.anchorOf(ev);
-  const latency = anchor !== undefined ? `+${formatLatency(ev.receivedAt - anchor.receivedAt)}` : null;
+  const latency = formatMemberDelta(event, store.anchorOf(event));
 
   const selection = (): string | undefined =>
-    ctx.work.rowSelection(ctx.selectedSeq.read(ev.seq) === true, ctx.selectedKey.read(key) === true);
+    context.work.getRowSelection(context.selectedSeq.read(event.seq) === true, context.selectedKey.read(key) === true);
 
   return (
     <div
-      class={[itemClass, s['row']]}
+      class={[ITEM_CLASS, s['row']]}
       data-testid="td-row"
       data-selection={selection()}
-      data-system={ev.kind === 'system' ? '' : undefined}
-      data-seq={String(ev.seq)}
-      id={rowId(ev.seq)}
+      data-system={event.kind === 'system' ? '' : undefined}
+      data-seq={String(event.seq)}
+      id={getRowId(event.seq)}
       role="option"
-      aria-selected={ctx.selectedSeq.read(ev.seq) === true ? 'true' : 'false'}
+      aria-selected={context.selectedSeq.read(event.seq) === true ? 'true' : 'false'}
     >
-      <Timestamp at={ev.receivedAt} />
-      {ev.kind === 'truapi' ? (
-        <TruapiCells event={ev} latency={latency} ctx={ctx} />
-      ) : (
-        <SystemCells event={ev} latency={latency} />
-      )}
+      <Timestamp at={event.receivedAt} />
+      {renderCells({ event, latency, context })}
     </div>
   );
 }
 
-function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; ctx: RowContext }): JSX.Element {
-  const ev = untrack(() => props.event);
-  const ctx = untrack(() => props.ctx);
-  const data = truapiRowData(ev, pendingKeyOf(ev));
+function renderCells({ event, latency, context }: RenderCellsParams): JSX.Element {
+  switch (event.kind) {
+    case 'truapi':
+      return <TruapiCells event={event} latency={latency} context={context} />;
+    case 'system':
+      return <SystemCells event={event} latency={latency} />;
+  }
+}
+
+function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; context: RowContext }): JSX.Element {
+  const event = untrack(() => props.event);
+  const context = untrack(() => props.context);
+  const data = toTruapiRowData(event, getPendingKey(event));
   const pendingKey = data.pendingKey;
-  const waiting = (): number | undefined => (pendingKey === null ? undefined : ctx.waiting.read(pendingKey));
+  const waiting = (): number | undefined => (pendingKey === null ? undefined : context.waiting.read(pendingKey));
 
   return (
     <>
       <DirectionArrow direction={data.direction} />
       {data.productId === undefined ? (
         <span class={s['product']} data-testid="td-product" data-anon="">
-          (no id)
+          {formatProductId(undefined)}
         </span>
       ) : (
         <span class={s['product']} data-testid="td-product" title={data.productId}>
@@ -294,7 +318,7 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
             data-pending-key={pendingKey ?? ''}
           >
             <PendingIcon size={10} />
-            {`${ctx.work.formatPending(waiting() ?? 0)} pending`}
+            {`${context.work.formatPending(waiting() ?? 0)} pending`}
           </span>
         </Show>
         {data.summary !== '' ? (
@@ -308,7 +332,7 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
 }
 
 function SystemCells(props: { event: StoredSystemEvent; latency: string | null }): JSX.Element {
-  const data = systemRowData(untrack(() => props.event));
+  const data = toSystemRowData(untrack(() => props.event));
   return (
     <>
       <LayerBadge layer={data.layer} title={`source: ${data.source}`} />

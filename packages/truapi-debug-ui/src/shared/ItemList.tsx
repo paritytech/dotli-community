@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The panel's lists of rows to pick from: the TrUAPI events and the archive's files.
+// The panel's lists of rows to pick from.
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './ItemList.module.css';
 
-/** The list's own classes, for the event list, which draws its rows with a helper to stay fast at capacity. */
-export const itemListClass = s['items'];
-export const itemClass = s['item'];
+/** The list's own classes, for a list that draws its rows without these components. */
+export const ITEM_LIST_CLASS = s['items'];
+export const ITEM_CLASS = s['item'];
 
 export function ItemList(props: { children: JSX.Element }): JSX.Element {
   return <ul class={s['items']}>{props.children}</ul>;

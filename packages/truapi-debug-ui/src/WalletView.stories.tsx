@@ -34,9 +34,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** A local wallet is active for the page in this story. */
-const localWallet = (): void => {
+function setLocalWallet(): void {
   page.walletMode.set({ mode: 'local', failure: null });
-};
+}
 
 /** As a developer using the debug panel, I use a recovery phrase and the page's sign-in opens for it. */
 export const PhraseOpensSignIn: Story = {
@@ -70,7 +70,7 @@ export const ExplainsAndWarns: Story = {
 export const UsePolkadotAppSignsOut: Story = {
   tags: ['!autodocs'],
   beforeEach: () => {
-    localWallet();
+    setLocalWallet();
     page.auth.set({
       tag: 'Connected',
       session: { identityAccountId: IDENTITY_ACCOUNT, liteUsername: 'alice.42' },
@@ -93,7 +93,7 @@ export const UsePolkadotAppSignsOut: Story = {
 /** As a developer using the debug panel, I replace my local wallet and the page's sign-in opens for the new phrase. */
 export const ReplaceOpensSignIn: Story = {
   tags: ['!autodocs'],
-  beforeEach: localWallet,
+  beforeEach: setLocalWallet,
   play: async ({ canvas, userEvent, step }) => {
     await step('When I replace my wallet', async () => {
       await userEvent.click(canvas.getByRole('button', { name: 'Replace' }));
@@ -105,7 +105,7 @@ export const ReplaceOpensSignIn: Story = {
   },
 };
 
-/** As a developer using the debug panel, I see why my local wallet could not start. */
+/** As a developer using the debug panel, I open the Wallet tab after my local wallet failed and I see why it could not start. */
 export const LocalWalletFailed: Story = {
   beforeEach: () => {
     page.walletMode.set({ mode: 'app', failure: 'Local wallet could not be decrypted and was forgotten' });

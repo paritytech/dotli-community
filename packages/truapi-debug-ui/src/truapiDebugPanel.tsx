@@ -1,21 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Entry of the lazily loaded debug panel, imported by the host only in debug mode.
+// Entry of the lazily loaded debug panel, loaded only in debug mode.
 
 import { flush } from 'solid-js';
 import { debugBus, type DebugBus } from '@dotli/truapi-debug';
 import { mountRoot } from '@dotli/ui';
 import { Panel, PANEL_ID } from './Panel.js';
-import { pageEffects, type PanelEffects } from './effects.js';
-import { createPanelFeed } from './feed.js';
+import { pageEffects, type PanelEffects } from './panelEffects.js';
+import { createPanelFeed } from './createPanelFeed.js';
 import type { DebugPanelHost } from './host.js';
-import { PanelWorkContext, panelWork, type PanelWork } from './work.js';
+import { PanelWorkContext, panelWork, type PanelWork } from './panelWork.js';
 
-const ROOT = 'truapi-debug';
-const DEFAULT_CAPACITY = 2000;
-
-export type SetupOptions = {
+export type SetupParams = {
   /** What the panel reads of the host page and asks of it. */
   host: DebugPanelHost;
   /** Retained events before the oldest are evicted. */
@@ -32,12 +29,24 @@ export type SetupOptions = {
   bus?: Pick<DebugBus, 'subscribe'>;
 };
 
+const ROOT = 'truapi-debug';
+const DEFAULT_CAPACITY = 2000;
+
 /**
  * Install the debug panel, returning a dispose that also gives the product iframe its full size back.
  *
- * A second call before disposing is a no-op.
+ * A second call before disposing is a no-op, and its dispose does nothing. A panel that fails to render is torn down,
+ * not thrown.
  */
-export function setupTruapiDebugPanel(options: SetupOptions): () => void {
+export function setupTruapiDebugPanel({
+  host,
+  capacity = DEFAULT_CAPACITY,
+  startCollapsed = false,
+  work = panelWork,
+  view: View = Panel,
+  effects = pageEffects,
+  bus = debugBus,
+}: SetupParams): () => void {
   if (document.getElementById(PANEL_ID) !== null) {
     return () => {
       /* already mounted, the owner disposes the original handle */
@@ -47,35 +56,27 @@ export function setupTruapiDebugPanel(options: SetupOptions): () => void {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
-  const { store, resolution, unsubscribe } = createPanelFeed({
-    bus: options.bus ?? debugBus,
-    capacity: options.capacity ?? DEFAULT_CAPACITY,
-  });
+  const { store, resolution, dispose: disposeFeed } = createPanelFeed({ bus, capacity });
 
-  const View = options.view ?? Panel;
   const disposeView = mountRoot({
     name: ROOT,
     container,
     view: () => (
-      <PanelWorkContext value={options.work ?? panelWork}>
-        <View
-          store={store}
-          resolution={resolution}
-          startCollapsed={options.startCollapsed ?? false}
-          host={options.host}
-          effects={options.effects ?? pageEffects}
-        />
+      <PanelWorkContext value={work}>
+        <View store={store} resolution={resolution} startCollapsed={startCollapsed} host={host} effects={effects} />
       </PanelWorkContext>
     ),
     // A render error, even a late one, tears the panel down rather than leave it frozen with timers running.
     removeContainer: true,
-    onBroken: unsubscribe,
+    onBroken: disposeFeed,
   });
   // Callers expect the panel, its layout and the iframe fit in place on return.
   flush();
 
-  return () => {
-    unsubscribe();
+  return dispose;
+
+  function dispose(): void {
+    disposeFeed();
     disposeView();
-  };
+  }
 }
