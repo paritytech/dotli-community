@@ -11,6 +11,9 @@ trustless, small on boot and fast on repeat visits.
 A debug-only feature, such as signing in with a recovery phrase, appears only in the debug panel, never in user-facing
 UI.
 
+A request to Polkadot App goes out only after the user confirmed that action in dot.li. While the phone is asked, dot.li
+shows a screen that tells the user to open Polkadot App.
+
 The browser floor is ES2022 and Safari 17.4. Shipped code uses no runtime API newer than that.
 
 ## Glossary

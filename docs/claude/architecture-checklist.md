@@ -27,6 +27,8 @@ rule, flag it and propose a row.
   items.
 - **blocking** (AGENTS.md § Project): Code that trusts a server's or gateway's answer without proof, which puts a server
   in the trust path.
+- **major** (AGENTS.md § Project): A request sent to Polkadot App before the user confirmed that action in dot.li, or a
+  wait on the phone with no screen that tells the user to open Polkadot App.
 - **blocking** (AGENTS.md § Architecture): A call across layers that is not safe to repeat or overlap, or does the work
   more than once.
 - **blocking** (AGENTS.md § Architecture): A layer that waits to be asked before recovering from its own failures, or
