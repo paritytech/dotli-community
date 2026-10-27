@@ -26,7 +26,7 @@
   color: var(--chrome-text);
   font-family: var(--font-sans);
   transform: translateX(-50%);
-  /* Animates width to fit-content where supported, elsewhere it snaps. */
+  /* Animates width to fit-content where supported. */
   interpolate-size: allow-keywords;
   /* No overshoot, or the row inside lurches as a spring settles. */
   transition:
@@ -39,13 +39,35 @@
 @media (min-width: 561px) {
   /* Clip, not hidden: a hidden overflow scrolls the strip away when a clipped control takes focus. */
   .topbar {
+    --capsule-width: 120px;
     overflow: clip;
   }
   .topbar[data-hidden] {
     top: calc(var(--sp-1) + var(--safe-top));
-    width: 120px;
+    width: var(--capsule-width);
     height: var(--sp-2);
     box-shadow: var(--chrome-shadow-capsule);
+  }
+  /* Without interpolate-size, as in Safari, a width can't animate to fit-content. There the width stays fit-content and
+     a grid track animates instead, since a fractional fr track sizes to that fraction of the row beyond the capsule. */
+  @supports not (interpolate-size: allow-keywords) {
+    .topbar {
+      display: grid;
+      grid-template-columns: var(--capsule-width) 1fr;
+      transition:
+        grid-template-columns var(--dur-morph) var(--ease-out),
+        height var(--dur-morph) var(--ease-out),
+        top var(--dur-morph) var(--ease-out),
+        box-shadow var(--dur);
+    }
+    .topbar[data-hidden] {
+      width: fit-content;
+      grid-template-columns: var(--capsule-width) 0fr;
+    }
+    .row {
+      grid-column: 1 / -1;
+      justify-self: center;
+    }
   }
 }
 .row {
