@@ -9,7 +9,7 @@
 import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
 import { fetchBitswapBlock } from '@dotli/bitswap';
 import { captureException, m, spans as S } from '@dotli/metrics';
-import { protocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
+import { getProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
 import {
   createAsyncTaskPool,
   formatDuration,
@@ -118,7 +118,7 @@ export function createProductLoader(options: ProductLoaderOptions): ProductLoade
 
 async function loadProduct(label: string, options: ProductLoaderOptions): Promise<void> {
   const { backend, names, frame, cidCache, flowId, startedAt } = options;
-  const protocol = protocolClient();
+  const protocol = getProtocolClient();
   const attempt = beginAttempt(label);
   log.event('Route: app', { flow: 'boot', label, attempt: attempt.attemptNumber, entry: attempt.entry });
   // On every event, so errors and the resolution span join into journeys without a second id.
@@ -159,9 +159,9 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     trace.step(next);
   };
   const events: LoadEvents = {
-    onChainSync: protocol.onProtocolChainSync,
-    onChainDetail: protocol.onProtocolChainDetail,
-    onNetBytes: protocol.onProtocolNetBytes,
+    onChainSync: protocol.telemetry.subscribeChainSync,
+    onChainDetail: protocol.telemetry.subscribeChainDetail,
+    onNetBytes: protocol.telemetry.subscribeNetBytes,
     onContentProgress: frame.onContentProgress,
   };
   const progress = startLoadProgress({ label, backend, flowId, events, trace });
@@ -173,9 +173,9 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
   const smoldotDbCacheTags = (): Record<string, string> => {
     const inapplicable = cidCacheResult === 'hit' || backend === 'rpc-gateway';
     return {
-      smoldotdb_relay_cache: inapplicable ? 'n/a' : protocol.getSmoldotDbOutcome('relay'),
-      smoldotdb_hub_cache: inapplicable ? 'n/a' : protocol.getSmoldotDbOutcome('assethub'),
-      smoldotdb_bulletin_cache: inapplicable ? 'n/a' : protocol.getSmoldotDbOutcome('bulletin'),
+      smoldotdb_relay_cache: inapplicable ? 'n/a' : protocol.telemetry.getSmoldotDbOutcome('relay'),
+      smoldotdb_hub_cache: inapplicable ? 'n/a' : protocol.telemetry.getSmoldotDbOutcome('assethub'),
+      smoldotdb_bulletin_cache: inapplicable ? 'n/a' : protocol.telemetry.getSmoldotDbOutcome('bulletin'),
     };
   };
 

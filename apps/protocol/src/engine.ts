@@ -7,14 +7,14 @@
 import type { ChainPool, StringJsonRpcConnection } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import {
-  budgetOf,
+  getBudget,
   type DomainFailure,
   type ProtocolHandler,
   type ProtocolHello,
   protocolSchema,
   type ProtocolServing,
   type RemoteFailure,
-  remoteEnd,
+  toRemoteEnd,
   type SubscriptionEnd,
 } from '@dotli/protocol';
 import type { DotnsResolver } from '@dotli/resolver';
@@ -101,7 +101,7 @@ async function answerRead<T>(read: () => Promise<T>): Promise<ResultPayload<T, C
   try {
     return ok(await read());
   } catch (error) {
-    return err(remoteEnd(toError(error)));
+    return err(toRemoteEnd(toError(error)));
   }
 }
 
@@ -294,7 +294,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
    * arrives, less a grace for the typed error to cross back before the host gives up.
    */
   function syncOptions(method: AnyMethod): { syncTimeoutMs?: number } {
-    const budgetMs = budgetOf(method);
+    const budgetMs = getBudget(method);
     if (budgetMs === null) {
       return {};
     }
@@ -336,7 +336,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
             sink.interrupt(ok());
           },
           (error: unknown) => {
-            sink.interrupt(err(remoteEnd(toError(error))));
+            sink.interrupt(err(toRemoteEnd(toError(error))));
           },
         );
       // A read cannot be called off, and the transport drops what it sends once the host has stopped listening.

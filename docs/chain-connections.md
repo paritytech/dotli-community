@@ -41,7 +41,7 @@ flowchart LR
     Panel["Network panel<br/>(network-monitor)"]
     Probe["Settings probe"]
     Bitswap["Bitswap<br/>(Bulletin content)"]
-    Client["Protocol client<br/>createRemoteChainProvider"]
+    Client["Protocol client<br/>chains.createProvider"]
     HostPool[("Host chain pool")]
   end
 
@@ -88,7 +88,7 @@ In simple terms:
 - **The host pool's transport follows the backend.** In `rpc-gateway` it is
   the host page's own RPC socket. On the smoldot backends it is one remote
   connection per chain to the **protocol iframe** over `postMessage`
-  (`createFrameChainTransport`, through `createRemoteChainProvider`), which
+  (`createFrameChainTransport`, through `chains.createProvider`), which
   becomes one lease in the iframe's pool, next to the resolver's.
 - **Bitswap** keeps its own remote connection to the iframe: `@dotli/bitswap`
   cannot import the host pool. On the smoldot backends that lands on the same

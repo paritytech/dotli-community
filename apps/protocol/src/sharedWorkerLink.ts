@@ -10,8 +10,8 @@
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
-  endListeners,
-  failureOf,
+  createEndListeners,
+  getFailure,
   fromTransportError,
   ProtocolInitFailedError,
   protocolSchema,
@@ -66,7 +66,7 @@ export function workerEndError(end: WorkerEnd): Error {
   }
   return end.outcome.success
     ? new Error(PROTOCOL_APP_ERRORS.WORKER_STATUS_ENDED)
-    : failureOf(protocolSchema.sections.frame.status, end.outcome.value);
+    : getFailure(protocolSchema.sections.frame.status, end.outcome.value);
 }
 
 export type SharedWorkerLinkDeps = {
@@ -107,7 +107,7 @@ export function watchWorkerStatus(transport: ProtocolTransport, onReady: () => v
     listeners: {
       receive: onReady,
       // A failure of the transport's own ends the status as the worker's end, as truapi's `CallError` carries it.
-      ...endListeners((outcome: FrameStatusEnd) => {
+      ...createEndListeners((outcome: FrameStatusEnd) => {
         finish({ kind: 'interrupt', outcome });
       }),
       close: error => {
@@ -155,7 +155,7 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
         void transport.request(protocolSchema.sections.frame.heartbeat, undefined).then(
           outcome => {
             if (!outcome.success) {
-              failed(failureOf(protocolSchema.sections.frame.heartbeat, outcome.value));
+              failed(getFailure(protocolSchema.sections.frame.heartbeat, outcome.value));
             }
           },
           (error: unknown) => {
@@ -305,7 +305,7 @@ function relaySubscription<S, V, E>(
         receive: value => {
           sink.send(value);
         },
-        ...endListeners<E>(outcome => {
+        ...createEndListeners<E>(outcome => {
           sink.interrupt(outcome);
         }),
         close: error => {

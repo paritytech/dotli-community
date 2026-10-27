@@ -3,7 +3,7 @@
 
 import type { AnyMethod } from '@dotli/transport';
 import { describe, expect, it } from 'vitest';
-import { callName, callNameAt, policyOf } from './methodPolicy.js';
+import { getCallName, getCallNameAt, getPolicy } from './methodPolicy.js';
 import { protocolSchema } from './schema.js';
 
 describe('method policy', () => {
@@ -14,11 +14,11 @@ describe('method policy', () => {
     );
 
     // When
-    const names = methods.map(callName);
+    const names = methods.map(getCallName);
 
     // Then
     expect(new Set(names).size).toBe(methods.length);
-    expect(callName(protocolSchema.sections.resolve.owner)).toBe('resolveOwner');
+    expect(getCallName(protocolSchema.sections.resolve.owner)).toBe('resolveOwner');
   });
 
   it('As a dotli operator, I read a call the transport names by strings under its flat name, and any other by its place', () => {
@@ -32,7 +32,7 @@ describe('method policy', () => {
     ] as const;
 
     // When
-    const names = named.map(([section, method]) => callNameAt(section, method));
+    const names = named.map(([section, method]) => getCallNameAt(section, method));
 
     // Then
     expect(names).toEqual(['resolveOwner', 'chainConnect', 'resolve.constructor', 'toString.owner', 'notes.read']);
@@ -49,7 +49,7 @@ describe('method policy', () => {
       storage.authRead,
       wallet.read,
       frame.warmup,
-    ].map(policyOf);
+    ].map(getPolicy);
 
     // Then
     expect(owner).toMatchObject({ trailed: true, timed: true, whenListening: false, budgetMs: 90_000 });

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
-  failureOf,
+  getFailure,
   protocolSchema,
   ProtocolFatalError,
   ProtocolInitFailedError,
@@ -197,7 +197,7 @@ describe('connectSharedWorker', () => {
     const linked = link(worker);
 
     // When
-    worker.status.ready();
+    worker.status.markReady();
 
     // Then the link resolves with a transport that reaches the worker
     await linked.ready;
@@ -278,7 +278,7 @@ describe('connectSharedWorker', () => {
       case: 'is ready',
       outcome: { outcome: 'ok' },
       act: (worker: FakeWorker): Promise<void> => {
-        worker.status.ready();
+        worker.status.markReady();
         return Promise.resolve();
       },
     },
@@ -361,7 +361,7 @@ describe('connectSharedWorker', () => {
     );
     const worker = fakeWorker();
     const linked = link(worker);
-    worker.status.ready();
+    worker.status.markReady();
     await linked.ready;
 
     // When
@@ -381,7 +381,7 @@ describe('connectSharedWorker', () => {
     const first = worker.nextHeartbeat();
     worker.beatTab();
     await first;
-    worker.status.ready();
+    worker.status.markReady();
     await linked.ready;
     const second = worker.nextHeartbeat();
     worker.beatTab();
@@ -405,7 +405,7 @@ describe('connectSharedWorker', () => {
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const worker = fakeWorker();
     const linked = link(worker);
-    worker.status.ready();
+    worker.status.markReady();
     await linked.ready;
     const { transport } = linked;
     await worker.beatsHeard;
@@ -432,7 +432,7 @@ describe('connectSharedWorker', () => {
     const page = createFakePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
-    worker.status.ready();
+    worker.status.markReady();
     await linked.ready;
     const { transport } = linked;
 
@@ -448,7 +448,7 @@ describe('connectSharedWorker', () => {
     const page = createFakePage();
     const worker = fakeWorker();
     const linked = link(worker, { page });
-    worker.status.ready();
+    worker.status.markReady();
     await linked.ready;
     const { transport } = linked;
 
@@ -473,7 +473,7 @@ describe('connectSharedWorker', () => {
     );
     const worker = fakeWorker();
     const linked = link(worker);
-    worker.status.ready();
+    worker.status.markReady();
     await linked.ready;
     const { transport } = linked;
     await worker.beatsHeard;
@@ -535,7 +535,7 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
     heard.resolve(undefined);
     return stop;
   });
-  workerStatus.ready();
+  workerStatus.markReady();
   const status = createFrameStatus();
   iframe.serving.handleSubscription(frame.status, status.handler);
   // The iframe's link holds the one status subscription to the worker and shares it with the relay.
@@ -550,7 +550,7 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
       },
     },
   );
-  status.ready();
+  status.markReady();
   return {
     host: iframe.host,
     worker,
@@ -853,7 +853,7 @@ describe('the worker relay', () => {
     const ended = await status.ended;
     const failure: CallError<FrameFailure> = domain({ tag: 'versionMismatch', value: mismatch.message });
     expect(ended).toEqual(err(failure));
-    expect(failureOf(frame.status, failure)).toBeInstanceOf(ProtocolVersionMismatchError);
+    expect(getFailure(frame.status, failure)).toBeInstanceOf(ProtocolVersionMismatchError);
     await expect(owner).resolves.toEqual(
       err(hostFailure(`TransportUnsupportedProtocolVersionError: ${mismatch.message}`)),
     );

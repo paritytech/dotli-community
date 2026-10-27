@@ -6,7 +6,7 @@
 // flag, which a cookie cannot carry there since Chromium rejects `Domain=localhost`.
 
 import { SITE_ID, isLocalhost, BACKEND_KEY, CACHE_KEY, type SharedSettings } from '@dotli/config';
-import { getProtocolOrigin, protocolClient } from '@dotli/protocol';
+import { getProtocolClient, getProtocolOrigin } from '@dotli/protocol';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { getErrorName, log } from '@dotli/shared';
 
@@ -55,9 +55,9 @@ function devHttpChannel(): SharedChannel {
 
 function iframeChannel(): SharedChannel {
   return {
-    read: key => protocolClient().readSharedModeStorage(SITE_ID, key),
-    write: (key, value) => protocolClient().writeSharedModeStorage(SITE_ID, key, value),
-    clear: key => protocolClient().clearSharedModeStorage(SITE_ID, key),
+    read: key => getProtocolClient().sharedMode.read(SITE_ID, key),
+    write: (key, value) => getProtocolClient().sharedMode.write({ siteId: SITE_ID, key, value }),
+    clear: key => getProtocolClient().sharedMode.clear(SITE_ID, key),
   };
 }
 

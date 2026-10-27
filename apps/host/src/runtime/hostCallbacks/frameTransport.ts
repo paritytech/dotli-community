@@ -6,7 +6,7 @@
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks } from '@dotli/chains';
 import { ChainHaltError } from '@dotli/chains';
-import { protocolClient, type RemoteChainProvider } from '@dotli/protocol';
+import { getProtocolClient, type RemoteChainProvider } from '@dotli/protocol';
 
 /** Opens remote connections to one chain through the protocol frame, or null for a chain it cannot serve. */
 export type RemoteChainFactory = (genesisHash: string) => RemoteChainProvider | null;
@@ -15,7 +15,7 @@ export type RemoteChainFactory = (genesisHash: string) => RemoteChainProvider | 
 export function createFrameChainTransport(
   genesisHash: string,
   hooks: ChainTransportHooks,
-  remoteChain: RemoteChainFactory = genesisHash => protocolClient().createRemoteChainProvider(genesisHash),
+  remoteChain: RemoteChainFactory = genesisHash => getProtocolClient().chains.createProvider(genesisHash),
 ): JsonRpcProvider | null {
   const remote = remoteChain(genesisHash);
   if (remote === null) {

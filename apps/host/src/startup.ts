@@ -9,7 +9,7 @@ import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
 import { createReloadOffer, listenForChunkFailures, refuseModals, showError, showNotification } from '@dotli/ui';
-import { protocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
+import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktopOffer.js';
 import { pageStandIns, reportIslandErrors } from './islandErrors.js';
@@ -120,7 +120,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
   const protocolPendingReset = takePendingReset('protocol');
 
   const configureFrame = (settings: Settings): void => {
-    protocolClient().configureProtocolFrame(protocolFrameConfig(settings, protocolPendingReset));
+    getProtocolClient().frame.configure(protocolFrameConfig(settings, protocolPendingReset));
   };
   // Before the first await this sets this origin's settings and the link's and boots the frame on them. A URL-driven
   // wipe reloads, so nothing below runs.
@@ -180,13 +180,13 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
 
   // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting. The boot configured the frame.
   // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
-  protocolClient()
-    .ensureProtocolFrame()
+  getProtocolClient()
+    .frame.ensureReady()
     .catch((err: unknown) => {
       recordExpected(err, { flow: 'protocol', step: 'frame_prewarm' });
     });
-  protocolClient()
-    .warmupProtocol()
+  getProtocolClient()
+    .resolve.warmup()
     .catch((err: unknown) => {
       recordExpected(err, { flow: 'protocol', step: 'warmup' });
     });

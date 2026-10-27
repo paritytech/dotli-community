@@ -14,11 +14,6 @@ type Sections = ProtocolSchema['sections'];
 /** A method's place as `<section>.<method>`. */
 type Path = { [T in keyof Sections]: `${T}.${Extract<keyof Sections[T], string>}` }[keyof Sections];
 
-const DEFAULT_BUDGET_MS = 30_000;
-
-/** How long a name resolution may take to answer. */
-const RESOLVE_BUDGET_MS = 90_000;
-
 type Policy<N extends string> = {
   /** The method's name in metrics, the trail and errors. */
   name: N;
@@ -32,60 +27,53 @@ type Policy<N extends string> = {
   whenListening: boolean;
 };
 
-function policy<N extends string>(name: N, options: Partial<Omit<Policy<N>, 'name'>> = {}): Policy<N> {
-  return { name, budgetMs: DEFAULT_BUDGET_MS, trailed: false, timed: true, whenListening: false, ...options };
-}
-
-const store = { whenListening: true } as const;
-const step = { trailed: true, budgetMs: RESOLVE_BUDGET_MS } as const;
-
-const POLICIES = {
-  'frame.status': policy('frameStatus'),
-  'frame.heartbeat': policy('heartbeat'),
-  'frame.beat': policy('beat'),
-  // A smoldot panic rejects it through the frame's status, and the user can abandon it from "Change settings".
-  'frame.warmup': policy('warmup', { trailed: true, budgetMs: null }),
-  'frame.telemetry': policy('telemetry'),
-  'resolve.owner': policy('resolveOwner', step),
-  'resolve.executableManifest': policy('resolveExecutableManifest', step),
-  'resolve.rootManifest': policy('resolveRootManifest', step),
-  'resolve.dotName': policy('resolveDotName', step),
-  'storage.authRead': policy('authStorageRead', store),
-  'storage.authWrite': policy('authStorageWrite', store),
-  'storage.authClear': policy('authStorageClear', store),
-  'storage.authChanges': policy('sharedAuthChanges', store),
-  'storage.modeRead': policy('modeStorageRead', store),
-  'storage.modeWrite': policy('modeStorageWrite', store),
-  'storage.modeClear': policy('modeStorageClear', store),
-  'storage.authClearIf': policy('authStorageClearIf', store),
-  // Boot waits on it, so a protocol frame that does not load or answer must not hold the page for the default budget.
-  'wallet.read': policy('localWalletRead', { ...store, budgetMs: 5_000 }),
-  'wallet.save': policy('localWalletSave', store),
-  'wallet.identity': policy('localWalletIdentity', store),
-  'wallet.forget': policy('localWalletForget', store),
-  'wallet.forgetIf': policy('localWalletForgetIf', store),
-  'chain.send': policy('chainSend', { timed: false }),
-  'chain.connect': policy('chainConnect', { trailed: true }),
-} satisfies Record<Path, Policy<string>>;
-
 /** A method's name in metrics, the trail and errors. */
 export type CallName = (typeof POLICIES)[Path]['name'];
 
 /** What the host knows of a method. */
 export type MethodPolicy = Policy<CallName>;
 
-const isPath = (path: string): path is Path => Object.hasOwn(POLICIES, path);
+const DEFAULT_BUDGET_MS = 30_000;
 
-/** The policy of the method at `section` and `method`, or undefined for a place the protocol lacks. */
-function policyAt(section: string, method: string): MethodPolicy | undefined {
-  const path = `${section}.${method}`;
-  return isPath(path) ? POLICIES[path] : undefined;
-}
+/** How long a name resolution may take to answer. */
+const RESOLVE_BUDGET_MS = 90_000;
+
+const STORE_OPTIONS = { whenListening: true } as const;
+const RESOLVE_STEP_OPTIONS = { trailed: true, budgetMs: RESOLVE_BUDGET_MS } as const;
+
+const POLICIES = {
+  'frame.status': definePolicy('frameStatus'),
+  'frame.heartbeat': definePolicy('heartbeat'),
+  'frame.beat': definePolicy('beat'),
+  // A smoldot panic rejects it through the frame's status, and the user can abandon it from "Change settings".
+  'frame.warmup': definePolicy('warmup', { trailed: true, budgetMs: null }),
+  'frame.telemetry': definePolicy('telemetry'),
+  'resolve.owner': definePolicy('resolveOwner', RESOLVE_STEP_OPTIONS),
+  'resolve.executableManifest': definePolicy('resolveExecutableManifest', RESOLVE_STEP_OPTIONS),
+  'resolve.rootManifest': definePolicy('resolveRootManifest', RESOLVE_STEP_OPTIONS),
+  'resolve.dotName': definePolicy('resolveDotName', RESOLVE_STEP_OPTIONS),
+  'storage.authRead': definePolicy('authStorageRead', STORE_OPTIONS),
+  'storage.authWrite': definePolicy('authStorageWrite', STORE_OPTIONS),
+  'storage.authClear': definePolicy('authStorageClear', STORE_OPTIONS),
+  'storage.authChanges': definePolicy('sharedAuthChanges', STORE_OPTIONS),
+  'storage.modeRead': definePolicy('modeStorageRead', STORE_OPTIONS),
+  'storage.modeWrite': definePolicy('modeStorageWrite', STORE_OPTIONS),
+  'storage.modeClear': definePolicy('modeStorageClear', STORE_OPTIONS),
+  'storage.authClearIf': definePolicy('authStorageClearIf', STORE_OPTIONS),
+  // Boot waits on it, so a protocol frame that does not load or answer must not hold the page for the default budget.
+  'wallet.read': definePolicy('localWalletRead', { ...STORE_OPTIONS, budgetMs: 5_000 }),
+  'wallet.save': definePolicy('localWalletSave', STORE_OPTIONS),
+  'wallet.identity': definePolicy('localWalletIdentity', STORE_OPTIONS),
+  'wallet.forget': definePolicy('localWalletForget', STORE_OPTIONS),
+  'wallet.forgetIf': definePolicy('localWalletForgetIf', STORE_OPTIONS),
+  'chain.send': definePolicy('chainSend', { timed: false }),
+  'chain.connect': definePolicy('chainConnect', { trailed: true }),
+} satisfies Record<Path, Policy<string>>;
 
 /** What the host knows of a protocol method. Throws for a method of another schema. */
-export function policyOf(method: AnyMethod): MethodPolicy {
+export function getPolicy(method: AnyMethod): MethodPolicy {
   const address = protocolSchema.addressOf(method);
-  const known = policyAt(address.section, address.method);
+  const known = getPolicyAt(address.section, address.method);
   if (known === undefined) {
     throw new Error('The method is not one of the protocol');
   }
@@ -93,12 +81,30 @@ export function policyOf(method: AnyMethod): MethodPolicy {
 }
 
 /** The name of a protocol method. */
-export const callName = (method: AnyMethod): CallName => policyOf(method).name;
+export function getCallName(method: AnyMethod): CallName {
+  return getPolicy(method).name;
+}
 
 /** How long the host waits on `method`, or null for one it waits on without a timer. */
-export const budgetOf = (method: AnyMethod): number | null => policyOf(method).budgetMs;
+export function getBudget(method: AnyMethod): number | null {
+  return getPolicy(method).budgetMs;
+}
 
 /** The name of the method at `section` and `method`, or its place for one the schema lacks. */
-export function callNameAt(section: string, method: string): string {
-  return policyAt(section, method)?.name ?? `${section}.${method}`;
+export function getCallNameAt(section: string, method: string): string {
+  return getPolicyAt(section, method)?.name ?? `${section}.${method}`;
+}
+
+function definePolicy<N extends string>(name: N, options: Partial<Omit<Policy<N>, 'name'>> = {}): Policy<N> {
+  return { name, budgetMs: DEFAULT_BUDGET_MS, trailed: false, timed: true, whenListening: false, ...options };
+}
+
+function isPath(path: string): path is Path {
+  return Object.hasOwn(POLICIES, path);
+}
+
+/** The policy of the method at `section` and `method`, or undefined for a place the protocol lacks. */
+function getPolicyAt(section: string, method: string): MethodPolicy | undefined {
+  const path = `${section}.${method}`;
+  return isPath(path) ? POLICIES[path] : undefined;
 }

@@ -23,6 +23,7 @@ import {
   type Transport,
 } from '@dotli/transport';
 import type { ExecutableManifest, RootManifest } from '@dotli/resolver';
+import { isRecord } from '@dotli/shared';
 import {
   executableManifestCodec,
   manifestResultCodec,
@@ -55,10 +56,10 @@ export type LocalWalletIdentity = CodecType<typeof localWalletIdentity>;
 
 /** Whether `value` has the identity's shape, for one that reached the host without the codec. */
 export function isLocalWalletIdentity(value: unknown): value is LocalWalletIdentity {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return false;
   }
-  const { identityAccountId, liteUsername } = value as Record<string, unknown>;
+  const { identityAccountId, liteUsername } = value;
   return typeof identityAccountId === 'string' && (liteUsername === null || typeof liteUsername === 'string');
 }
 

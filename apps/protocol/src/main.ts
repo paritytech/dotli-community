@@ -26,7 +26,7 @@ import {
 } from '@dotli/config';
 
 import {
-  backendOfFrameMode,
+  getBackendOfFrameMode,
   createWireReport,
   isSharedAuthOriginAllowed,
   ProtocolFatalError,
@@ -80,7 +80,7 @@ function adoptResolutionId(): void {
 }
 
 // What this frame's provider and transport drop, each counted once, whichever of them drops it.
-const wire = createWireReport('frame', { count: m.count });
+const wire = createWireReport({ side: 'frame', count: m.count });
 
 // The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
 // speaks only when spoken to. The host's hello names no page load, which this frame reads from its URL.
@@ -128,7 +128,7 @@ async function init(): Promise<void> {
     return;
   }
   // An unknown mode errors instead of silently going auth-only.
-  const backend = backendOfFrameMode(mode);
+  const backend = getBackendOfFrameMode(mode);
   if (backend === null) {
     failInit(`Unknown protocol mode: "${mode}"`);
     return;

@@ -10,12 +10,12 @@ import type * as Resolver from '@dotli/resolver';
 import { getActiveFixedServicesConfig, isValidNetwork, type Network } from '@dotli/config/fixed';
 import { captureException, m, spans as S, type SpanHandle } from '@dotli/metrics';
 import {
-  callName,
+  getCallName,
   createFrameStatus,
   createWireReport,
-  failureOf,
-  frameStatusEnd,
-  policyOf,
+  getFailure,
+  toFrameStatusEnd,
+  getPolicy,
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
@@ -160,7 +160,7 @@ function traced<P, R, E extends DomainFailure>(
   method: Request<P, R, E>,
   handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
 ): RequestHandler<P, R, E, ProtocolHello> {
-  const { name, timed } = policyOf(method);
+  const { name, timed } = getPolicy(method);
   if (!timed) {
     return handler;
   }
@@ -168,7 +168,7 @@ function traced<P, R, E extends DomainFailure>(
     const span = openRequestSpan(openSpan, name, context.hello.resolutionId);
     try {
       const answer = await handler(payload, context);
-      endSpan(span, answer.success ? undefined : failureOf(method, answer.value));
+      endSpan(span, answer.success ? undefined : getFailure(method, answer.value));
       return answer;
     } catch (error) {
       endSpan(span, toError(error));
@@ -184,7 +184,7 @@ function tracedSubscription<S, V, E extends DomainFailure>(
   answers: (value: NoInfer<V>) => boolean,
   handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<SubscriptionEnd<E>>, ProtocolHello>,
 ): SubscriptionHandler<S, V, SubscriptionEnd<E>, ProtocolHello> {
-  const name = callName(method);
+  const name = getCallName(method);
   return (start, context, sink) => {
     const span = openRequestSpan(openSpan, name, context.hello.resolutionId);
     let open = true;
@@ -203,7 +203,7 @@ function tracedSubscription<S, V, E extends DomainFailure>(
         }
       },
       interrupt: outcome => {
-        settle(outcome.success ? undefined : failureOf(method, outcome.value));
+        settle(outcome.success ? undefined : getFailure(method, outcome.value));
         sink.interrupt(outcome);
       },
     };
@@ -226,7 +226,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
   const openSpan = deps.openSpan ?? m.open;
   const sessions = new Set<PortSession>();
   // What each port's transport cannot handle itself, counted as the worker's.
-  const wire = createWireReport('worker', { count: m.count });
+  const wire = createWireReport({ side: 'worker', count: m.count });
   // A frozen page's port queues what it is sent until the page thaws, and a port closed right after a post may drop
   // it. So a released port stays open until the beat after its tab speaks again, or until the worker closes. Each maps
   // to its close.
@@ -274,7 +274,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
     if (!sessions.delete(session)) {
       return;
     }
-    const end = frameStatusEnd(reason);
+    const end = toFrameStatusEnd(reason);
     for (const sink of [...session.statuses]) {
       sink.interrupt(err(end));
     }
@@ -543,7 +543,7 @@ export function startProtocolWorker(deps: ProtocolWorkerDeps): void {
       }
       swEvent('Pre-sync complete', { ms: Math.round(performance.now() - t0) });
       phase = { name: 'ready' };
-      status.ready();
+      status.markReady();
 
       // Legacy-account auth reads People, which otherwise races its warp sync on a cold start. Resolution does not
       // need People, so this must not gate ready.

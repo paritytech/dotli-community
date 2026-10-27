@@ -4,7 +4,7 @@
 // The page's one client, so every block fetch on the page shares its Bulletin connection and its same-CID wait.
 
 import { getActiveServicesConfig } from '@dotli/config';
-import { protocolClient } from '@dotli/protocol';
+import { getProtocolClient } from '@dotli/protocol';
 
 import { createBitswapClient, type BitswapClient } from './createBitswapClient.js';
 
@@ -17,7 +17,7 @@ let pageClient: BitswapClient | null = null;
  */
 export function fetchBitswapBlock(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
   pageClient ??= createBitswapClient({
-    provider: () => protocolClient().createRemoteChainProvider(getActiveServicesConfig().bulletin.genesis),
+    provider: () => getProtocolClient().chains.createProvider(getActiveServicesConfig().bulletin.genesis),
   });
   return pageClient.get(cid, signal);
 }

@@ -4,7 +4,7 @@
 // This site's local wallet, which the protocol frame keeps in the shared store under this site's id.
 
 import { SITE_ID } from '@dotli/config';
-import { protocolClient, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
+import { getProtocolClient, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
 
 /** A wallet read, or why the frame could not answer it. */
 export type WalletRead = LocalWalletReadResult | { status: 'failed'; error: unknown };
@@ -24,11 +24,11 @@ export type SiteWallet = {
 
 /** This site's local wallet in the shared store. Each call reaches the protocol frame when made. */
 export const siteWallet: SiteWallet = {
-  read: () => protocolClient().readSharedLocalWallet(SITE_ID),
-  save: (entropy, identity) => protocolClient().saveSharedLocalWallet(SITE_ID, entropy, identity),
-  updateIdentity: identity => protocolClient().updateSharedLocalWalletIdentity(SITE_ID, identity),
-  forget: () => protocolClient().forgetSharedLocalWallet(SITE_ID),
-  forgetIf: version => protocolClient().forgetSharedLocalWalletIf(SITE_ID, version),
+  read: () => getProtocolClient().sharedWallet.read(SITE_ID),
+  save: (entropy, identity) => getProtocolClient().sharedWallet.save({ siteId: SITE_ID, entropy, identity }),
+  updateIdentity: identity => getProtocolClient().sharedWallet.updateIdentity(SITE_ID, identity),
+  forget: () => getProtocolClient().sharedWallet.forget(SITE_ID),
+  forgetIf: version => getProtocolClient().sharedWallet.forgetIf(SITE_ID, version),
 };
 
 /** The wallet read, or the failure of a read that rejected or threw. Never rejects. */

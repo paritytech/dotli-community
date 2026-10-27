@@ -5,7 +5,7 @@
 // relay.
 
 import { SITE_ID } from '@dotli/config';
-import { protocolClient, type SharedAuthChange } from '@dotli/protocol';
+import { getProtocolClient, type SharedAuthChange } from '@dotli/protocol';
 
 type SubscribeChanges = (listener: (change: SharedAuthChange) => void) => () => void;
 
@@ -20,5 +20,5 @@ export function onLocalWalletChangeOf(subscribe: SubscribeChanges, siteId: strin
 
 /** Calls `listener` each time another tab changes this site's local wallet. Returns the unsubscribe. */
 export function onLocalWalletChange(listener: () => void): () => void {
-  return onLocalWalletChangeOf(next => protocolClient().subscribeSharedAuthStorage(next), SITE_ID, listener);
+  return onLocalWalletChangeOf(next => getProtocolClient().sharedAuth.subscribe(next), SITE_ID, listener);
 }

@@ -6,9 +6,9 @@
 
 import { spans as S, type m } from '@dotli/metrics';
 import {
-  callName,
+  getCallName,
   type CallName,
-  failureOf,
+  getFailure,
   isSharedModeRequestMethod,
   protocolSchema,
   type ProtocolServing,
@@ -57,7 +57,7 @@ function routeOf(method: AnyMethod): FrameRoute {
  */
 export function reportRefusals(serving: ProtocolServing, report: (refusal: FrameRefusal) => void): ProtocolServing {
   const refused = (method: AnyMethod, error: Error): void => {
-    report({ route: routeOf(method), method: callName(method), error });
+    report({ route: routeOf(method), method: getCallName(method), error });
   };
   return {
     handleRequest(method, handler) {
@@ -65,7 +65,7 @@ export function reportRefusals(serving: ProtocolServing, report: (refusal: Frame
         try {
           const answer = await handler(payload, context);
           if (!answer.success) {
-            refused(method, failureOf(method, answer.value));
+            refused(method, getFailure(method, answer.value));
           }
           return answer;
         } catch (error) {
@@ -81,7 +81,7 @@ export function reportRefusals(serving: ProtocolServing, report: (refusal: Frame
           ...sink,
           interrupt: outcome => {
             if (!outcome.success) {
-              refused(method, failureOf(method, outcome.value));
+              refused(method, getFailure(method, outcome.value));
             }
             sink.interrupt(outcome);
           },

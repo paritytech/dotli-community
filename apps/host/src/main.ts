@@ -15,7 +15,7 @@ import { loadBridge, loadDebugPanelHost } from './lazy.js';
 import type { ProductFrame } from './runtime/productFrame.js';
 import { fetchBitswapBlock, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
-import { protocolClient } from '@dotli/protocol';
+import { getProtocolClient } from '@dotli/protocol';
 import { blockCache as pageBlockCache, cidCache, type CachedManifests } from '@dotli/storage';
 import { runWhenIdle, showNotification } from '@dotli/ui';
 import { formatElapsed, log, createRandomId } from '@dotli/shared';
@@ -190,7 +190,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
 
 async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product' }>, shell: Shell): Promise<void> {
   const { settings, bridgeModule } = shell.startup;
-  const protocol = protocolClient();
+  const protocol = getProtocolClient();
   boot.step = 'resolve_setup';
 
   pageNotifications().init({ label });
@@ -198,9 +198,9 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
   const names = createNameSource({
     backend: settings.backend,
     remote: {
-      resolveDotName: protocol.resolveDotNameRemote,
-      resolveRootManifest: protocol.resolveRootManifestRemote,
-      resolveExecutableManifest: protocol.resolveExecutableManifestRemote,
+      resolveDotName: protocol.resolve.resolveDotName,
+      resolveRootManifest: protocol.resolve.resolveRootManifest,
+      resolveExecutableManifest: protocol.resolve.resolveExecutableManifest,
     },
     loadRpc: loadRpcResolver,
   });
@@ -224,7 +224,7 @@ async function openProduct({ label, base }: Extract<ShellRoute, { kind: 'product
     cidCache: pageCidCache(names),
     recents: { record: recordRecentLabel },
     failureScreen: loadFailureScreen,
-    onProtocolVersionMismatch: protocol.onProtocolVersionMismatch,
+    onProtocolVersionMismatch: protocol.frame.subscribeVersionMismatch,
   });
   await loader.load(label);
 }

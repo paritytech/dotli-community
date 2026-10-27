@@ -15,7 +15,7 @@ import {
   type CallError,
 } from '@dotli/transport';
 import { toError } from '@dotli/shared';
-import { callName, type CallName } from './methodPolicy.js';
+import { getCallName, type CallName } from './methodPolicy.js';
 import type { DomainFailure, FrameFailure, RemoteFailure } from './schema.js';
 
 export class ProtocolFatalError extends Error {
@@ -154,8 +154,8 @@ export function callFailure(error: CallError<DomainFailure>, method: CallName, s
  * The failure of a call of `method` as the error the protocol's own code sees, for a frame that waits on or relays
  * another frame's calls.
  */
-export function failureOf<E extends DomainFailure>(method: AnyMethod, error: CallError<E>): Error {
-  return callFailure(error, callName(method));
+export function getFailure<E extends DomainFailure>(method: AnyMethod, error: CallError<E>): Error {
+  return callFailure(error, getCallName(method));
 }
 
 /**
@@ -163,7 +163,7 @@ export function failureOf<E extends DomainFailure>(method: AnyMethod, error: Cal
  * the host tells them apart, and as the error's own failure for any other. A transport's own closing error counts as
  * the protocol's.
  */
-export function frameStatusEnd(closing: Error): CallError<FrameFailure> {
+export function toFrameStatusEnd(closing: Error): CallError<FrameFailure> {
   const error = fromTransportError(closing);
   if (error instanceof ProtocolFatalError) {
     return domain({ tag: 'fatal', value: error.message });
@@ -184,7 +184,7 @@ export function frameStatusEnd(closing: Error): CallError<FrameFailure> {
  * How a resolver or chain error ends a call: typed for the two the host's error screen tells apart by name, and as the
  * handler's own failure for any other.
  */
-export function remoteEnd(error: Error): CallError<RemoteFailure> {
+export function toRemoteEnd(error: Error): CallError<RemoteFailure> {
   switch (error.name) {
     case 'NetworkSyncTimeoutError':
       return domain({ tag: 'syncTimeout', value: error.message });

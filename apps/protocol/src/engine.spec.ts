@@ -11,7 +11,7 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
-import { budgetOf, protocolSchema, type ProtocolTransport, type RemoteFailure } from '@dotli/protocol';
+import { getBudget, protocolSchema, type ProtocolTransport, type RemoteFailure } from '@dotli/protocol';
 import { domain, err, hostFailure, ok, type Failure, type MethodTypes, type ResultPayload } from '@dotli/transport';
 import {
   createEngine,
@@ -324,7 +324,7 @@ describe('createEngine name reads', () => {
     [
       'leaves the budget to its method, less the delivery grace',
       undefined,
-      (budgetOf(protocolSchema.sections.resolve.dotName) ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+      (getBudget(protocolSchema.sections.resolve.dotName) ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
     ],
   ])('As a tester, a resolve budget cap %s', async (_case, syncBudgetCapMs, expected) => {
     // Given
@@ -374,9 +374,9 @@ describe('createEngine name reads', () => {
     const grace = TIMEOUTS.RESPONSE_DELIVERY_GRACE;
     expect(owner).toEqual(ok('0xowner'));
     expect(seen).toEqual([
-      ['owner', { syncTimeoutMs: must(budgetOf(resolve.owner), 'owner budget') - grace }],
-      ['executableManifest', { syncTimeoutMs: must(budgetOf(resolve.executableManifest), 'budget') - grace }],
-      ['rootManifest', { syncTimeoutMs: must(budgetOf(resolve.rootManifest), 'root budget') - grace }],
+      ['owner', { syncTimeoutMs: must(getBudget(resolve.owner), 'owner budget') - grace }],
+      ['executableManifest', { syncTimeoutMs: must(getBudget(resolve.executableManifest), 'budget') - grace }],
+      ['rootManifest', { syncTimeoutMs: must(getBudget(resolve.rootManifest), 'root budget') - grace }],
     ]);
   });
 

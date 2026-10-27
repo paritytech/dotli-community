@@ -12,7 +12,7 @@ import {
   ProtocolFatalError,
   ProtocolInitFailedError,
   protocolSchema,
-  remoteEnd,
+  toRemoteEnd,
   type RemoteFailure,
   type SubscriptionEnd,
 } from '@dotli/protocol';
@@ -129,7 +129,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
 
   serving.handleSubscription(frame.status, status.handler);
   if (options.initFailed === undefined) {
-    status.ready();
+    status.markReady();
   } else {
     status.fail(new ProtocolInitFailedError(options.initFailed));
   }
@@ -153,7 +153,7 @@ function runFakeProtocol(options: FakeProtocolOptions): void {
         return stopNothing;
       case 'error': {
         const timer = setTimeout(() => {
-          sink.interrupt(err(remoteEnd(setErrorName(new Error(resolution.message), resolution.name ?? 'Error'))));
+          sink.interrupt(err(toRemoteEnd(setErrorName(new Error(resolution.message), resolution.name ?? 'Error'))));
         }, resolution.delayMs ?? 0);
         return () => {
           clearTimeout(timer);

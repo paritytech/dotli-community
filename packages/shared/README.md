@@ -92,8 +92,10 @@ listener set, the sync store, the status cell and a few formatting helpers.
 Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
 - `resetAllStoresForTests`, `createMemoryStorage({ entries? })`, `must`, `nth`, `catchError(run)` (what `run` threw, or
-  undefined when it returned), `createManualTimers({ start? })` with `ManualTimers` (timers a spec moves by hand, whose
-  `countPending()` counts the timers still pending), `createFakePage()` with `FakePage` (a page with a document and a
-  window, each firing the events the browser fires on it, `pagehide` included), `recordLog` with `LogLine` (the
-  `LogEntry` of each line the shared log writes until a test ends, at one level if asked).
+  undefined when it returned), `catchRejection(pending)` (the error `pending` rejects with, rejecting when it resolves
+  instead), `readOutcome(wait)` (`'resolved'` or the message `wait` rejected with, never rejecting),
+  `createManualTimers({ start? })` with `ManualTimers` (timers a spec moves by hand, whose `countPending()` counts the
+  timers still pending), `createFakePage()` with `FakePage` (a page with a document and a window, each firing the events
+  the browser fires on it, `pagehide` included), `recordLog` with `LogLine` (the `LogEntry` of each line the shared log
+  writes until a test ends, at one level if asked).
 - `waitForDom` waits on the page for functional tests. It reads the DOM, so only they call it.

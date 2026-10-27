@@ -39,7 +39,7 @@ import {
   type ProtocolTransport,
   type SubscriptionEnd,
 } from './schema.js';
-import { endListeners } from './subscription.js';
+import { createEndListeners } from './createEndListeners.js';
 
 const { frame, resolve, storage, wallet, chain } = protocolSchema.sections;
 
@@ -61,11 +61,17 @@ type Case = {
 // Typed against the schema, so a method without a case fails to compile.
 type Cases = { [T in keyof Sections]: { [M in keyof Sections[T]]: Case } };
 
+type Params<S, V, E> = {
+  transport: ProtocolTransport;
+  method: Subscription<S, V, SubscriptionEnd<E>>;
+  start: NoInfer<S>;
+};
+
 /** A sample that is missing, which fails the test that reads it. */
 const NO_SAMPLE = hostFailure('Error: no sample left');
 
 /** A request with each answer it tries. */
-function requestCase<P, R, E>(
+function createRequestCase<P, R, E>(
   method: Request<P, R, E>,
   sample: { request: NoInfer<P>; responses: ResultPayload<NoInfer<R>, CallError<NoInfer<E>>>[] },
 ): Case {
@@ -103,11 +109,11 @@ function requestCase<P, R, E>(
  * Subscribes once and settles with the values heard and the one end, the peer's interrupt or a failure of the
  * library's, or fails with the closing error.
  */
-function heardUntilEnd<S, V, E>(
-  transport: ProtocolTransport,
-  method: Subscription<S, V, SubscriptionEnd<E>>,
-  start: NoInfer<S>,
-): Promise<{ values: V[]; end: SubscriptionEnd<E> }> {
+function listenUntilEnd<S, V, E>({
+  transport,
+  method,
+  start,
+}: Params<S, V, E>): Promise<{ values: V[]; end: SubscriptionEnd<E> }> {
   const values: V[] = [];
   return new Promise((settle, fail) => {
     transport.subscribe({
@@ -115,7 +121,7 @@ function heardUntilEnd<S, V, E>(
       start,
       listeners: {
         receive: value => values.push(value),
-        ...endListeners<E>(end => {
+        ...createEndListeners<E>(end => {
           settle({ values, end });
         }),
         close: fail,
@@ -125,7 +131,7 @@ function heardUntilEnd<S, V, E>(
 }
 
 /** A subscription with the values it sends before each of its ends, each a `CallError` of its reason. */
-function subscriptionCase<S, V, E>(
+function createSubscriptionCase<S, V, E>(
   method: Subscription<S, V, SubscriptionEnd<E>>,
   sample: {
     start: NoInfer<S>;
@@ -154,7 +160,7 @@ function subscriptionCase<S, V, E>(
     async call(caller) {
       const heard: { values: V[]; end: SubscriptionEnd<E> }[] = [];
       for (const _ of sample.interrupts) {
-        heard.push(await heardUntilEnd(caller, method, sample.start));
+        heard.push(await listenUntilEnd({ transport: caller, method, start: sample.start }));
       }
       return {
         calls: heard.length,
@@ -180,7 +186,7 @@ const apiStopped = domain({ tag: 'apiStopped' as const, value: 'The light client
 
 const cases: Cases = {
   frame: {
-    status: subscriptionCase(frame.status, {
+    status: createSubscriptionCase(frame.status, {
       start: undefined,
       values: [undefined],
       interrupts: [
@@ -190,10 +196,10 @@ const cases: Cases = {
         err(domain({ tag: 'released', value: 'the port was released' })),
       ],
     }),
-    heartbeat: requestCase(frame.heartbeat, { request: undefined, responses: [ok()] }),
-    beat: subscriptionCase(frame.beat, { start: undefined, values: [undefined, undefined], interrupts: [ok()] }),
-    warmup: requestCase(frame.warmup, { request: undefined, responses: [ok()] }),
-    telemetry: subscriptionCase(frame.telemetry, {
+    heartbeat: createRequestCase(frame.heartbeat, { request: undefined, responses: [ok()] }),
+    beat: createSubscriptionCase(frame.beat, { start: undefined, values: [undefined, undefined], interrupts: [ok()] }),
+    warmup: createRequestCase(frame.warmup, { request: undefined, responses: [ok()] }),
+    telemetry: createSubscriptionCase(frame.telemetry, {
       start: undefined,
       values: [
         { tag: 'chainSync', value: { chain: 'relay', kind: 'peers', peers: 8, isSyncing: true } },
@@ -208,11 +214,11 @@ const cases: Cases = {
     }),
   },
   resolve: {
-    owner: requestCase(resolve.owner, {
+    owner: createRequestCase(resolve.owner, {
       request: { label: 'app' },
       responses: [ok('5Grwva'), ok(null), err(syncTimeout), err(apiStopped)],
     }),
-    executableManifest: requestCase(resolve.executableManifest, {
+    executableManifest: createRequestCase(resolve.executableManifest, {
       request: { label: 'app', kind: 'worker' },
       responses: [
         ok({
@@ -224,7 +230,7 @@ const cases: Cases = {
         err(apiStopped),
       ],
     }),
-    rootManifest: requestCase(resolve.rootManifest, {
+    rootManifest: createRequestCase(resolve.rootManifest, {
       request: { label: 'app' },
       responses: [
         ok({
@@ -235,7 +241,7 @@ const cases: Cases = {
         err(syncTimeout),
       ],
     }),
-    dotName: subscriptionCase(resolve.dotName, {
+    dotName: createSubscriptionCase(resolve.dotName, {
       start: { label: 'app' },
       values: [
         { tag: 'phase', value: 'asset-hub-syncing' },
@@ -246,10 +252,10 @@ const cases: Cases = {
     }),
   },
   storage: {
-    authRead: requestCase(storage.authRead, { request: siteKey, responses: [ok('token'), ok(null)] }),
-    authWrite: requestCase(storage.authWrite, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
-    authClear: requestCase(storage.authClear, { request: siteKey, responses: [ok()] }),
-    authChanges: subscriptionCase(storage.authChanges, {
+    authRead: createRequestCase(storage.authRead, { request: siteKey, responses: [ok('token'), ok(null)] }),
+    authWrite: createRequestCase(storage.authWrite, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
+    authClear: createRequestCase(storage.authClear, { request: siteKey, responses: [ok()] }),
+    authChanges: createSubscriptionCase(storage.authChanges, {
       start: undefined,
       values: [
         { tag: 'session', value: siteKeyValue },
@@ -257,13 +263,13 @@ const cases: Cases = {
       ],
       interrupts: [ok()],
     }),
-    modeRead: requestCase(storage.modeRead, { request: siteKey, responses: [ok('wallet'), ok(null)] }),
-    modeWrite: requestCase(storage.modeWrite, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
-    modeClear: requestCase(storage.modeClear, { request: siteKey, responses: [ok()] }),
-    authClearIf: requestCase(storage.authClearIf, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
+    modeRead: createRequestCase(storage.modeRead, { request: siteKey, responses: [ok('wallet'), ok(null)] }),
+    modeWrite: createRequestCase(storage.modeWrite, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
+    modeClear: createRequestCase(storage.modeClear, { request: siteKey, responses: [ok()] }),
+    authClearIf: createRequestCase(storage.authClearIf, { request: siteKeyValue, responses: [ok(true), ok(false)] }),
   },
   wallet: {
-    read: requestCase(wallet.read, {
+    read: createRequestCase(wallet.read, {
       request: { siteId: 'app.dot' },
       responses: [
         ok({ tag: 'none', value: undefined }),
@@ -279,7 +285,7 @@ const cases: Cases = {
         ok({ tag: 'ok', value: { entropy: Uint8Array.of(4, 5, 6), identity: null, version: Uint8Array.of(8) } }),
       ],
     }),
-    save: requestCase(wallet.save, {
+    save: createRequestCase(wallet.save, {
       request: {
         siteId: 'app.dot',
         entropy: Uint8Array.of(9, 8, 7),
@@ -287,22 +293,22 @@ const cases: Cases = {
       },
       responses: [ok()],
     }),
-    identity: requestCase(wallet.identity, {
+    identity: createRequestCase(wallet.identity, {
       request: { siteId: 'app.dot', identity: { identityAccountId: '5Grwva', liteUsername: 'alice' } },
       responses: [ok()],
     }),
-    forget: requestCase(wallet.forget, { request: { siteId: 'app.dot' }, responses: [ok()] }),
-    forgetIf: requestCase(wallet.forgetIf, {
+    forget: createRequestCase(wallet.forget, { request: { siteId: 'app.dot' }, responses: [ok()] }),
+    forgetIf: createRequestCase(wallet.forgetIf, {
       request: { siteId: 'app.dot', version: Uint8Array.of(9, 8, 7) },
       responses: [ok(true), ok(false)],
     }),
   },
   chain: {
-    send: requestCase(chain.send, {
+    send: createRequestCase(chain.send, {
       request: { connectionId: 'c1', message: '{"jsonrpc":"2.0","id":1}' },
       responses: [ok()],
     }),
-    connect: subscriptionCase(chain.connect, {
+    connect: createSubscriptionCase(chain.connect, {
       start: { genesisHash: '0x91b171bb', connectionId: 'c1' },
       values: [
         { tag: 'connected', value: undefined },
@@ -319,7 +325,7 @@ const OPENER_HELLO = { resolutionId: 'resolution-1' };
 const ACCEPTER_HELLO = { resolutionId: null };
 
 /** An opener on the left and an accepter on the right of one in-memory channel, both over the protocol schema. */
-function protocolRig() {
+function createProtocolRig() {
   const { left, right, delivered } = createProviderPair();
   const issues: TransportIssue[] = [];
   const opener = createTransport({
@@ -345,7 +351,7 @@ type HandshakeFrame =
   | { handshakeResponse: ResultPayload<ProtocolHello, TransportVersions> };
 
 /** The handshake frames in `delivered`. */
-function handshakeOf(delivered: Uint8Array[]): HandshakeFrame[] {
+function readHandshakes(delivered: Uint8Array[]): HandshakeFrame[] {
   return delivered.flatMap((data): HandshakeFrame[] => {
     const read = readFrame(protocolSchema, data);
     switch (read.kind) {
@@ -371,9 +377,9 @@ function handshakeOf(delivered: Uint8Array[]): HandshakeFrame[] {
 }
 
 describe('protocolSchema', () => {
-  it('As the protocol, every method round trips its values through the schema', async () => {
+  it('As the protocol, I round trip the values of every method through the schema', async () => {
     // Given an opener and an accepter that serves every method with its samples
-    const { opener, accepter, delivered } = protocolRig();
+    const { opener, accepter, delivered } = createProtocolRig();
     const hellos: ProtocolHello[] = [];
     for (const sample of allCases) {
       sample.serve(accepter, hellos);
@@ -401,7 +407,7 @@ describe('protocolSchema', () => {
     const callCount = heard.reduce((sum, calls) => sum + calls.calls, 0);
     expect(hellos).toEqual(Array.from({ length: callCount }, () => OPENER_HELLO));
     // The handshake is the library's own, so its frames carry no call.
-    expect(handshakeOf(delivered)).toEqual([
+    expect(readHandshakes(delivered)).toEqual([
       { handshakeOffer: { version: protocolSchema.version, hello: OPENER_HELLO } },
       { handshakeResponse: ok(ACCEPTER_HELLO) },
     ]);
@@ -409,8 +415,8 @@ describe('protocolSchema', () => {
 
   it('As a page, I save a wallet without an identity and it round trips with a null identity', async () => {
     // Given an accepter that serves the save and an opener that sends one without an identity
-    const { opener, accepter, delivered } = protocolRig();
-    const save = requestCase(wallet.save, {
+    const { opener, accepter, delivered } = createProtocolRig();
+    const save = createRequestCase(wallet.save, {
       request: { siteId: 'app.dot', entropy: Uint8Array.of(9, 8, 7), identity: null },
       responses: [ok()],
     });
@@ -426,10 +432,10 @@ describe('protocolSchema', () => {
   });
 
   it('As a facade, I match a remote failure by its tag, not by a remote error name', () => {
-    // Given the failure types of the frame status and the resolve methods
+    // When the failure type of a resolve method is read
     type RemoteFailure = DomainError<typeof resolve.owner>;
 
-    // Then
+    // Then it, the frame status and every other method carry their failures as tagged values
     expectTypeOf<FrameFailure>().toEqualTypeOf<
       | { tag: 'fatal'; value: string }
       | { tag: 'initFailed'; value: string }
@@ -454,7 +460,7 @@ describe('protocolSchema', () => {
     expectTypeOf<DomainError<typeof storage.authRead>>().toBeUndefined();
   });
 
-  it("As the protocol, each subscription's interrupt keeps truapi's CallError bytes", () => {
+  it("As the protocol, I encode each subscription's interrupt in truapi's CallError bytes", () => {
     // Given a clean end, a domain reason and a failure of the library's, on methods with and without a reason
     const interrupts = [
       frame.status.message.enc({ tag: 'interrupt', value: ok() }),
@@ -479,9 +485,9 @@ describe('protocolSchema', () => {
     ]);
   });
 
-  it('As the protocol, a value codec decodes a payload that sits after a header in the message', async () => {
+  it('As the protocol, I decode a value whose payload sits after a header in the message', async () => {
     // Given a recorded owner request, whose label sits after the header in its buffer
-    const { opener, accepter, delivered } = protocolRig();
+    const { opener, accepter, delivered } = createProtocolRig();
     accepter.handleRequest(resolve.owner, ({ label }) => ok(`owner of ${label}`));
     opener.connect();
 
@@ -497,9 +503,9 @@ describe('protocolSchema', () => {
     expect(request?.value).toEqual({ label: 'app' });
   });
 
-  it('As the protocol, an invalid telemetry event is refused', async () => {
+  it('As the protocol, I refuse an invalid telemetry event', async () => {
     // Given a frame that sends a valid event, then a peer list past the limit
-    const { opener, accepter, delivered, issues } = protocolRig();
+    const { opener, accepter, delivered, issues } = createProtocolRig();
     const tooManyPeers = Array.from({ length: 51 }, (_, index) => ({
       peerId: `peer-${String(index)}`,
       roles: 'full',
@@ -515,11 +521,12 @@ describe('protocolSchema', () => {
     opener.connect();
 
     // When
-    const { values, end } = await heardUntilEnd(opener, frame.telemetry, undefined);
+    const { values, end } = await listenUntilEnd({ transport: opener, method: frame.telemetry, start: undefined });
 
     // Then
     expect(values).toEqual([{ tag: 'netBytes', value: 512 }]);
     expect(end).toEqual(err(malformedFrame('RangeError: a chainDetail event is past the telemetry limits')));
+    // An asymmetric matcher is typed any.
     expect(issues).toEqual([{ kind: 'refused', reason: 'malformed', cause: expect.any(RangeError) as RangeError }]);
     const refusals = delivered.flatMap(data => {
       try {
@@ -529,6 +536,7 @@ describe('protocolSchema', () => {
         return [toError(error)];
       }
     });
+    // An asymmetric matcher is typed any.
     expect(refusals).toEqual([expect.any(FrameRefusedError) as FrameRefusedError]);
   });
 });

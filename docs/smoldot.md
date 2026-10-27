@@ -68,19 +68,19 @@ exception: it imports the chain providers from `@dotli/chains` to honor the
 selected backend.
 
 ```ts
-import { protocolClient } from "@dotli/protocol";
+import { getProtocolClient } from "@dotli/protocol";
 import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config";
 
-const provider = protocolClient().createRemoteChainProvider(ASSET_HUB_PASEO_GENESIS);
+const provider = getProtocolClient().chains.createProvider(ASSET_HUB_PASEO_GENESIS);
 if (provider === null) {
   throw new Error("Chain not in SUPPORTED_GENESIS_HASHES");
 }
 const client = createClient(provider); // polkadot-api
 ```
 
-`protocolClient().createRemoteChainProvider(genesisHash)` returns a polkadot-api `JsonRpcProvider` that bridges to the protocol iframe via `chainConnect` / `chainSend` / `chainDisconnect` postMessage envelopes. The protocol iframe's smoldot is the actual backend. Returns `null` if the genesis hash is not in `SUPPORTED_GENESIS_HASHES`.
+`getProtocolClient().chains.createProvider(genesisHash)` returns a polkadot-api `JsonRpcProvider` that bridges to the protocol iframe via `chainConnect` / `chainSend` / `chainDisconnect` postMessage envelopes. The protocol iframe's smoldot is the actual backend. Returns `null` if the genesis hash is not in `SUPPORTED_GENESIS_HASHES`.
 
-Resolution helpers are pre-built: `protocolClient().resolveDotNameRemote(label)` and `protocolClient().resolveOwnerRemote(label)`. Call these instead of the resolver's local equivalents.
+Resolution helpers are pre-built: `getProtocolClient().resolve.resolveDotName(label)` and `getProtocolClient().resolve.resolveOwner(label)`. Call these instead of the resolver's local equivalents.
 
 Bulletin preimage submission is built, signed, and submitted entirely by the Rust core (`truapi-server`), which routes its `TransactionStorage.store` traffic through the host `chain.connect` callback like any other chain access. The host only provides `PreimageHost.lookupPreimage` for content retrieval; it no longer builds or signs the transaction.
 
@@ -115,7 +115,7 @@ Steps to make a parachain reachable through the protocol iframe. The sequence be
 3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
 4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
 5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Sandbox consumers call `protocolClient().createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol`. Rust-core access uses the host `chain.connect` callback.
+6. Sandbox consumers call `getProtocolClient().chains.createProvider(<your-genesis>)` from `@dotli/protocol`. Rust-core access uses the host `chain.connect` callback.
 
 Steps 4 and 5 make a chain reachable from both the protocol broker and the
 host callback. Skip them and the request fails with `"Unsupported chain"`.

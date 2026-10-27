@@ -126,7 +126,7 @@ export function createFrameBoot(): FrameBoot {
     },
     ready() {
       telemetry.serve(idleTelemetry);
-      status.ready();
+      status.markReady();
     },
     fail(error) {
       status.fail(error);

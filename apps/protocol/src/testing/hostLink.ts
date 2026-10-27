@@ -5,7 +5,7 @@
 // wire as the host does. Every issue a transport of the link raises is kept, and closing the links fails on any of
 // them, so none goes unseen.
 
-import { endListeners, protocolSchema, type ProtocolTransport, type SubscriptionEnd } from '@dotli/protocol';
+import { createEndListeners, protocolSchema, type ProtocolTransport, type SubscriptionEnd } from '@dotli/protocol';
 import { createDeferred } from '@dotli/shared';
 import { createProviderPair } from '@dotli/transport/testing';
 import { createTransport, describeIssue, type Subscription, type TransportIssue } from '@dotli/transport';
@@ -119,7 +119,7 @@ export function record<S, V, I>(
           }
         }
       },
-      ...endListeners<I>(ended.resolve),
+      ...createEndListeners<I>(ended.resolve),
       close: ended.resolve,
     },
   });

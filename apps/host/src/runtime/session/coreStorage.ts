@@ -7,7 +7,7 @@
 import { SITE_ID } from '@dotli/config';
 import { encodeCoreStorageKey } from '@parity/truapi-host';
 import type { CoreStorage, CoreStorageKey } from '@parity/truapi-host';
-import { SHARED_CORE_SESSION_KEY, protocolClient, type SharedStoreStatus } from '@dotli/protocol';
+import { SHARED_CORE_SESSION_KEY, getProtocolClient, type SharedStoreStatus } from '@dotli/protocol';
 import { m, recordExpected, reportExpected, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
@@ -398,18 +398,18 @@ export function createCoreStorage({
 /** The protocol frame's shared auth store, scoped to this site. */
 function siteSharedSessionStore(): SharedSessionStore {
   return {
-    read: key => protocolClient().readSharedAuthStorage(SITE_ID, key),
-    write: (key, value) => protocolClient().writeSharedAuthStorage(SITE_ID, key, value),
-    clear: key => protocolClient().clearSharedAuthStorage(SITE_ID, key),
-    clearIf: (key, expected) => protocolClient().clearSharedAuthStorageIf(SITE_ID, key, expected),
+    read: key => getProtocolClient().sharedAuth.read(SITE_ID, key),
+    write: (key, value) => getProtocolClient().sharedAuth.write({ siteId: SITE_ID, key, value }),
+    clear: key => getProtocolClient().sharedAuth.clear(SITE_ID, key),
+    clearIf: (key, expected) => getProtocolClient().sharedAuth.clearIf({ siteId: SITE_ID, key, expected }),
     subscribe: listener =>
-      protocolClient().subscribeSharedAuthStorage(change => {
+      getProtocolClient().sharedAuth.subscribe(change => {
         if (change.tag === 'session' && change.value.siteId === SITE_ID) {
           listener(change.value.key);
         }
       }),
-    getStatus: () => protocolClient().getSharedStoreStatus(),
-    subscribeStatus: listener => protocolClient().subscribeSharedStoreStatus(listener),
+    getStatus: () => getProtocolClient().sharedStore.getStatus(),
+    subscribeStatus: listener => getProtocolClient().sharedStore.subscribeStatus(listener),
   };
 }
 
