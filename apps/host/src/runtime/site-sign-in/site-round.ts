@@ -115,11 +115,13 @@ interface SiteSigningScreen {
 
 /**
  * What an action shows while it runs. `site-review` shows the site's call for the user to confirm, and
- * `site-approving` the transaction while the phone signs it.
+ * `site-sharing` asks the user to open Polkadot App while the phone is asked for the site account, and `site-approving`
+ * shows the transaction while the phone signs it.
  */
 export type SiteActionScreen =
   | SiteSigningScreen
   | { view: 'site-review'; origin: string; call: DisplayCall; account: DisplayAccount }
+  | { view: 'site-sharing'; origin: string }
   | { view: 'site-approving'; origin: string };
 
 /** What the window shows for a site. `window` while the reused window flow shows its own views. */

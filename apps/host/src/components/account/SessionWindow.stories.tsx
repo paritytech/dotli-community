@@ -982,6 +982,28 @@ export const SiteApproving: Story = {
   },
 };
 
+/** As a user signing a site's transaction, I am asked to open Polkadot App for its origin and can cancel. */
+export const SiteSharing: Story = {
+  tags: ['!autodocs'],
+  args: { screen: { view: 'site-sharing', origin: SITE_ORIGIN } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Then the window asks me to open Polkadot App, names the origin and offers Cancel alone', async () => {
+      await expect(windowView()).toHaveAttribute('data-view', 'site-sharing');
+      await expect(canvas.getByRole('heading', { level: 1 })).toHaveTextContent(/^Open Polkadot App$/);
+      await expect(byTestId('session-window-spinner')).toBeVisible();
+      await expect(status()).toHaveTextContent(SITE_ORIGIN);
+      await expect(buttonNames()).toEqual(['Cancel']);
+    });
+    await step('When I press Cancel', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Then the site round was cancelled once', async () => {
+      await waitFor(() => expect(onSiteCancel).toHaveBeenCalledTimes(1));
+      await expect(onSiteConfirm).not.toHaveBeenCalled();
+    });
+  },
+};
+
 /** Two sites in the list, the most recently used first, as the grants store lists them. */
 const SITES = [
   {

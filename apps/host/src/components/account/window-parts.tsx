@@ -434,6 +434,19 @@ function siteReviewParts(
   };
 }
 
+/** A site's transaction while the user is asked to open Polkadot App for the site account. */
+function siteSharingParts(origin: string, props: WindowPartsProps): SignInParts {
+  return StatusScreen({
+    mark: 'spinner',
+    title: 'Open Polkadot App',
+    body: origin,
+    actions: [siteCancel(props)],
+    testId: 'session-window-status',
+    titleTestId: 'session-window-title',
+    spinnerTestId: 'session-window-spinner',
+  });
+}
+
 /** A site's transaction while the phone signs it. */
 function siteApprovingParts(origin: string, props: WindowPartsProps): SignInParts {
   return StatusScreen({
@@ -597,6 +610,8 @@ export function windowParts(step: WindowStep, props: WindowPartsProps): SignInPa
       return siteSigningParts(step.origin, step.route, props);
     case 'site-review':
       return siteReviewParts(step.origin, step.call, step.account, props);
+    case 'site-sharing':
+      return siteSharingParts(step.origin, props);
     case 'site-approving':
       return siteApprovingParts(step.origin, props);
     case 'site-failed':
