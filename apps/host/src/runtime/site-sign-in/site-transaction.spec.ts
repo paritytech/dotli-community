@@ -31,7 +31,7 @@ import { SiteChainError, type SiteChain, type SiteDecodedCall } from './site-cha
 import type { SiteRound, SiteScreen } from './site-round.js';
 import { parsePublicSuffixList } from './public-suffix-list.js';
 import type { SiteGroups } from './site-groups.js';
-import { SiteAccountReadError, type SiteAccountReader } from './site-account-reader.js';
+import { SiteAccountReadError, SiteAccountRejectedError, type SiteAccountReader } from './site-account-reader.js';
 import { createSiteTransaction, siteTransactionAction, type SiteTransactionResult } from './site-transaction.js';
 import { SiteTxError } from './site-tx-signer.js';
 
@@ -189,16 +189,24 @@ function fakeTxSigner(builds: (() => Promise<string>)[] = []) {
   };
 }
 
-/** An account reader that reads the site account at once, after it answers with each failure it was given. */
-function fakeAccountReader(failures: Error[] = [], steps: string[] = []) {
+/**
+ * An account reader that answers each failure it was given first, then each held read in order, which the test
+ * resolves when it chooses, and then reads the site account at once.
+ */
+function fakeAccountReader(failures: Error[] = [], steps: string[] = [], reads: (() => Promise<Uint8Array>)[] = []) {
   const queue = [...failures];
+  const held = [...reads];
   const accounts: ProductAccountId[] = [];
   const accountReader: Pick<SiteAccountReader, 'account'> = {
     account: account => {
       accounts.push(account);
       steps.push('account');
       const failure = queue.shift();
-      return failure === undefined ? Promise.resolve(SITE_KEY) : Promise.reject(failure);
+      if (failure !== undefined) {
+        return Promise.reject(failure);
+      }
+      const read = held.shift();
+      return read === undefined ? Promise.resolve(SITE_KEY) : read();
     },
   };
   return { accountReader, accounts };
@@ -226,6 +234,8 @@ interface HarnessOptions extends ChainScript {
   grants?: SiteGrant[];
   builds?: (() => Promise<string>)[];
   accountFailures?: Error[];
+  /** What each site account read waits on after the failures, which holds the read open until the test resolves it. */
+  accountReads?: (() => Promise<Uint8Array>)[];
   /** What every new grant token throws, in place of a token. */
   tokenFailure?: Error;
 }
@@ -274,8 +284,8 @@ function recordingResponder() {
 
 /**
  * A site's transaction over fakes: `responder` answers the site, Asset Hub plays its script, the creator signs at
- * once and the account reader reads the site account at once, unless the test says otherwise. `steps` names each decode,
- * account read, review and build in the order they happened.
+ * once and the account reader reads the site account at once, unless the test says otherwise, such as reads it holds
+ * open. `steps` names each decode, account read, review and build in the order they happened.
  */
 async function roundOver(
   options: HarnessOptions,
@@ -290,7 +300,7 @@ async function roundOver(
   const steps: string[] = [];
   const chain = fakeChain(options, steps);
   const tx = fakeTxSigner(options.builds);
-  const { accountReader, accounts } = fakeAccountReader(options.accountFailures, steps);
+  const { accountReader, accounts } = fakeAccountReader(options.accountFailures, steps, options.accountReads);
   const windowFlows: (() => void)[] = [];
   const closed = deferred<undefined>();
   const flow = createSiteTransaction({
@@ -410,9 +420,9 @@ describe('site transaction', () => {
     h.flow.confirm();
     await h.closed;
 
-    // Then the call was decoded, the account read, the review shown and confirmed, and the transaction built, in that
+    // Then the call was decoded, the review shown and confirmed, the account read and the transaction built, in that
     // order, for the account the site named, and the site got the signed transaction in lowercase hex with a new token
-    expect(h.steps).toEqual(['decode', 'account', 'review', 'confirm', 'create']);
+    expect(h.steps).toEqual(['decode', 'review', 'confirm', 'account', 'create']);
     expect(review).toEqual({ view: 'site-review', origin: ORIGIN, call: DISPLAY, account: displayAccount(ACCOUNT) });
     const post = resultOf(h.posts);
     expect(post.result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
@@ -428,6 +438,7 @@ describe('site transaction', () => {
       'window',
       'site-signing',
       'site-review',
+      'site-sharing',
       'site-signing',
       'site-approving',
     ]);
@@ -456,7 +467,7 @@ describe('site transaction', () => {
 
     // Then the window showed the working view while the extensions filled, and Approve only once the phone was asked
     expect(whileFilling).toEqual({ view: 'site-signing', origin: ORIGIN, route: 'sign' });
-    expect(h.views.slice(-3)).toEqual(['site-review', 'site-signing', 'site-approving']);
+    expect(h.views.slice(-4)).toEqual(['site-review', 'site-sharing', 'site-signing', 'site-approving']);
     expect(resultOf(h.posts).result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
   });
 
@@ -548,8 +559,9 @@ describe('site transaction', () => {
     await h.closed;
 
     // Then the failure offered Try again, the retry opened the chain again and built again, the site account was read
-    // once, and the site got the signed transaction
+    // once and the window asked to open Polkadot App once, and the site got the signed transaction
     expect(failed).toEqual({ view: 'site-failed', origin: ORIGIN, route: 'sign', retry: true });
+    expect(h.views.filter(view => view === 'site-sharing')).toHaveLength(1);
     expect(h.chain.record).toMatchObject({ opened: 2, closed: 2, built: 2 });
     expect(h.accounts).toEqual([ACCOUNT]);
     expect(resultOf(h.posts).result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
@@ -696,14 +708,104 @@ describe('site transaction', () => {
     // Given an account reader whose account read fails
     const h = await harness({ accountFailures: [new SiteAccountReadError({ tag: 'Denied' })] });
 
-    // When the round runs for the main account
+    // When the user signs on the review and the read fails
     await consentAndStore(h);
+    await sign(h.flow, h);
     await h.until('site-failed');
 
-    // Then the failure offers Try again and names the account, and the chain was let go with nothing built
+    // Then the review showed first, the failure offers Try again and names the account, and the chain was let go with
+    // nothing built
+    expect(h.views).toContain('site-review');
     expect(h.flow.screen.get()).toEqual({ view: 'site-failed', origin: ORIGIN, route: 'sign', retry: true });
     expect(h.chain.record).toMatchObject({ opened: 1, closed: 1, built: 0 });
     expect(h.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'error', reason: 'account' }]);
+  });
+
+  it('As a user on the review, I see my call before the phone is asked for my site account', async () => {
+    // Given a site's round that has not been confirmed
+    const h = await harness();
+    await consentAndStore(h);
+
+    // When the review shows
+    await h.until('site-review');
+
+    // Then the phone was not asked for the site account
+    expect(h.accounts).toEqual([]);
+  });
+
+  it('As a user who confirms the review, I am asked to open Polkadot App while the window reads my site account', async () => {
+    // Given a phone that has not answered the site account read yet
+    const read = deferred<Uint8Array>();
+    const h = await harness({ accountReads: [() => read.promise] });
+    await consentAndStore(h);
+
+    // When the user signs on the review, and the window asks the phone for the site account
+    await sign(h.flow, h);
+    await h.until('site-sharing');
+    const sharing = h.flow.screen.get();
+    const builtWhileAsking = h.chain.record.built;
+    read.resolve(SITE_KEY);
+    await h.closed;
+
+    // Then the window asked to open Polkadot App before anything was built, and the site got its signed transaction
+    expect(sharing).toEqual({ view: 'site-sharing', origin: ORIGIN });
+    expect(builtWhileAsking).toBe(0);
+    expect(resultOf(h.posts).result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
+  });
+
+  it('As a user who is asked to open Polkadot App, I cancel and the site hears I cancelled', async () => {
+    // Given a phone that has not answered the site account read yet
+    const read = deferred<Uint8Array>();
+    const h = await harness({ accountReads: [() => read.promise] });
+    await consentAndStore(h);
+    await sign(h.flow, h);
+    await h.until('site-sharing');
+
+    // When the user cancels, and the phone answers after
+    h.flow.cancel();
+    read.resolve(SITE_KEY);
+    await h.closed;
+
+    // Then the site hears the round was cancelled
+    expect(h.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
+    expect(h.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
+  });
+
+  it('As a user who is asked to share my account, I reject it on the phone and the site hears I cancelled', async () => {
+    // Given a phone on which the user rejects sharing the site account
+    const rejection = new SiteAccountRejectedError({ tag: 'Domain', value: { tag: 'V1', value: { tag: 'Rejected' } } });
+    const h = await harness({ accountFailures: [rejection] });
+    await consentAndStore(h);
+
+    // When the user signs on the review
+    await sign(h.flow, h);
+    await h.closed;
+
+    // Then the site hears the round was cancelled, and the phone was never asked to sign
+    expect(h.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
+    expect(h.signedBy).toEqual([]);
+    expect(h.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'phone' }]);
+  });
+
+  it('As a user whose site account read failed, I press Try again and see the review again before the phone is asked again', async () => {
+    // Given a phone whose first site account read fails
+    const h = await harness({ accountFailures: [new SiteAccountReadError({ tag: 'Denied' })] });
+    await consentAndStore(h);
+    await sign(h.flow, h);
+    await h.until('site-failed');
+
+    // When the user tries again and signs on the review once more
+    const retried = h.flow.retry();
+    await sign(h.flow, h);
+    await retried;
+    await h.closed;
+    const afterFailure = h.views.slice(h.views.indexOf('site-failed'));
+
+    // Then the phone was asked twice, the review showed again before the second ask, and the site got its transaction
+    expect(h.accounts).toEqual([ACCOUNT, ACCOUNT]);
+    expect(resultOf(h.posts).result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
+    expect(afterFailure.indexOf('site-review')).toBeGreaterThan(-1);
+    expect(afterFailure.indexOf('site-review')).toBeLessThan(afterFailure.indexOf('site-sharing'));
   });
 
   it('As a user, I never hand a site my main session, main account or local wallet', async () => {
@@ -887,5 +989,41 @@ describe('site transaction action', () => {
 
     // Then the session closed once, when the round ended, and not again as the run ended
     expect(chain.record).toMatchObject({ opened: 1, closed: 1 });
+  });
+
+  it('As a round that ended while the phone was asked for the site account, I build nothing once the phone answers', async () => {
+    // Given the transaction action waiting on a phone that has not answered the site account read yet
+    const chain = fakeChain({});
+    const read = deferred<Uint8Array>();
+    const action = siteTransactionAction({
+      origin: ORIGIN,
+      genesis: NETWORK.assethub.genesis,
+      call: CALL,
+      account: ACCOUNT,
+      chain: chain.chain,
+      txSigner: fakeTxSigner().txSigner,
+      accountReader: fakeAccountReader([], [], [() => read.promise]).accountReader,
+    });
+    const ended = new AbortController();
+    const sharing = deferred<undefined>();
+    const running = action.run({
+      main: { owner: OWNER, username: null },
+      show: screen => {
+        if (screen.view === 'site-sharing') {
+          sharing.resolve(undefined);
+        }
+      },
+      confirmed: () => Promise.resolve(),
+      signal: ended.signal,
+    });
+    await sharing.promise;
+
+    // When the round ends, and the phone answers after
+    ended.abort();
+    read.resolve(SITE_KEY);
+
+    // Then the run rejects with the round's end, and the session closed once with nothing built
+    await expect(running).rejects.toBe(ended.signal.reason);
+    expect(chain.record).toMatchObject({ opened: 1, closed: 1, built: 0 });
   });
 });

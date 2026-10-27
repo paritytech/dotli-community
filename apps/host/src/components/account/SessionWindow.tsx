@@ -64,7 +64,7 @@ export function SessionWindow(props: SessionWindowProps): JSX.Element {
       if (screen.view === 'site-review') {
         return { view: screen.view, origin: screen.origin, call: screen.call, account: screen.account };
       }
-      if (screen.view === 'site-approving') {
+      if (screen.view === 'site-sharing' || screen.view === 'site-approving') {
         return { view: screen.view, origin: screen.origin };
       }
       if (screen.view === 'site-failed') {
