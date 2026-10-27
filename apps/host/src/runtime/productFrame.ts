@@ -8,7 +8,7 @@
 import { createMessagePortProvider, type WireProvider as Provider } from '@parity/truapi';
 import type { IframeHost, IframeHostOptions } from '@parity/truapi-host/web';
 import { BASE_DOMAIN, DEV_SANDBOX_PORT, getBackend, getNetwork, getLocalRoot } from '@dotli/config';
-import { sandboxLabel } from '@dotli/resolver';
+import { getSandboxLabel } from '@dotli/resolver';
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log, noop, createRandomId, sleep } from '@dotli/shared';
@@ -656,9 +656,9 @@ function appOrigin(label: string, location: PageLocation): string {
   const root = getLocalRoot(location.hostname);
   if (root !== null) {
     const port = import.meta.env.DEV ? DEV_SANDBOX_PORT : location.port;
-    return `${location.protocol}//${sandboxLabel(label)}.app.${root}:${port}`;
+    return `${location.protocol}//${getSandboxLabel(label)}.app.${root}:${port}`;
   }
-  return `https://${sandboxLabel(label)}.app.${BASE_DOMAIN}`;
+  return `https://${getSandboxLabel(label)}.app.${BASE_DOMAIN}`;
 }
 
 function getDeepPath(location: PageLocation, productBase: string): string {

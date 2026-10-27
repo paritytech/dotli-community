@@ -20,7 +20,7 @@ every caller checks a name against.
 - Manifest records are read as text and checked by handwritten validators, kept apart so the eager path does not pull
   the chain-storage code.
 - A read on a halted chain is retried on the rebuilt chain a bounded number of times. The resolver knows the halt by the
-  marker the chain pool puts on its answers, and repeats that marker rather than import the pool.
+  marker the chain pool puts on its answers, a shared wire constant, so it never imports the pool.
 - Waiting for sync races `whenReady()` against a timer, since it never settles without peers.
 - Error names are read verbatim by dashboards and Sentry filters.
 - The naming rules are small pure helpers with no chain access. The URL helpers read the active network's TLD to tell a
@@ -39,11 +39,10 @@ every caller checks a name against.
 
 ### `@dotli/resolver`
 
-- Resolving: `createDotnsResolver`, `DotnsResolver`, `DotnsResolverDeps`, `ResolveOptions`, `ResolvePhase`,
-  `ChainClient`.
+- Resolving: `createDotnsResolver`, `DotnsResolver`, `ResolveOptions`, `ResolvePhase`, `ChainClient`.
 - Manifests: `toRootManifestResult`, `toExecutableManifestResult`, `RootManifest`, `ExecutableManifest`,
   `ManifestResult`, `AppVersion`.
-- Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`, `sandboxLabel`,
-  `DotLabelResult`, `isExecutableKind`.
+- Naming rules: `dotNsUrl`, `validateDotLabel`, `isValidDotLabel`, `validateDotName`, `isValidDotName`,
+  `getSandboxLabel`, `DotLabelResult`, `isExecutableKind`.
 - Errors: `ResolverErrorName`.
 - Lazy loader: `loadResolve`.

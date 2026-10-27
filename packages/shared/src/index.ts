@@ -3,6 +3,7 @@
 
 export { areBytesEqual } from './areBytesEqual.js';
 export type { Branded } from './branded.js';
+export { CHAIN_HALTED_ERROR_DATA } from './chainHaltedErrorData.js';
 export type { AsyncTaskPool } from './createAsyncTaskPool.js';
 export { createAsyncTaskPool } from './createAsyncTaskPool.js';
 export { createDeferred } from './createDeferred.js';

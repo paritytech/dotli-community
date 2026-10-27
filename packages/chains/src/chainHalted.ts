@@ -1,13 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// No imports, so the host's eager protocol client takes these without pulling the broker into its chunk.
+// Imports nothing beyond `@dotli/shared`, so a caller on an eager path can take this module without the rest of the
+// package.
 
-/**
- * The `error.data` of an answer to a request the chain halted under. The chain
- * is rebuilt on the next connect, so a client that sees it may retry there.
- */
-export const CHAIN_HALTED_ERROR_DATA = 'dotli:chain-halted';
+import { CHAIN_HALTED_ERROR_DATA } from '@dotli/shared';
 
 /** The JSON-RPC error a request gets when its chain halted under it, or none can be had after a halt. */
 export function chainHaltedError(): { code: number; message: string; data: string } {

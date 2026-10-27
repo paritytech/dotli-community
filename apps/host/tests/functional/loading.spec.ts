@@ -151,7 +151,7 @@ test('As a user, when the app chunks fail to load mid-session, I see the appropr
 }) => {
   // Given: the gateway backend, the one whose name reads load a chunk after boot
   await setBackend(page, 'rpc-gateway');
-  await page.route('**/assets/resolve.*.js', route => route.abort());
+  await page.route('**/assets/createDotnsResolver.*.js', route => route.abort());
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });

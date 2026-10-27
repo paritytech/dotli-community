@@ -10,6 +10,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing, a timeout, abort, web storage
   that never throws, event listening with its own stop, the IndexedDB callbacks as promises and the wipe of an origin's
   stores.
+- Owns the wire constants several packages share, such as the marker on the answers of a halted chain.
 - Owns no page state, no dotNS rules, no metrics, no UI and no chain access. The log sink is bound from outside, and
   listener errors are reported through callbacks the caller passes in.
 
@@ -83,6 +84,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
   `formatDuration(start, { now? })`, `formatElapsed(start, { now? })`,
   `withTimeout({ work, ms, timeoutError, timers?, signal? })`, `sleep(ms, { signal?, timers? })`, `createRandomId()`,
   `noop`, `Timers`, `realTimers`.
+- Wire constants several packages share: `CHAIN_HALTED_ERROR_DATA`, the `error.data` of a JSON-RPC answer to a request
+  its chain halted under.
 
 ### `@dotli/shared/testing`
 

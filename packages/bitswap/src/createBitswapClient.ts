@@ -5,10 +5,10 @@
 
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
-import { CHAIN_HALTED_ERROR_DATA } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import type { RemoteChainProvider } from '@dotli/protocol';
 import {
+  CHAIN_HALTED_ERROR_DATA,
   createAsyncTaskPool,
   createPendingReplies,
   fromHex,

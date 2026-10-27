@@ -4,24 +4,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
-/**
- * A dotNS label. Callers lowercase user input first, because folding here would hide input
- * that disagrees with the registered form.
- */
-const DOT_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-
-/** Marks a subname's sandbox label, so no registered label can take a subname's origin. */
-const SUBNAME_SANDBOX_PREFIX = 'sn--';
-
-/** The longest label a DNS name can carry. */
-const MAX_LABEL_LENGTH = 63;
-
-/** No name under the TLD is a single character, while 2-character nodes exist, such as a device name's two-digit node. */
-const MIN_REGISTERED_LABEL_LENGTH = 2;
-
-/** The longest name a DNS hostname can carry. */
-const MAX_NAME_LENGTH = 253;
-
 export type DotLabelResult =
   | { ok: true }
   | {
@@ -38,6 +20,77 @@ export type DotLabelResult =
         | 'punycode'
         | 'reserved';
     };
+
+/**
+ * A dotNS label. Callers lowercase user input first, because folding here would hide input
+ * that disagrees with the registered form.
+ */
+const DOT_LABEL_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Marks a subname's sandbox label, so no registered label can take a subname's origin. */
+const SUBNAME_SANDBOX_PREFIX = 'sn--';
+
+/** The longest label a DNS name can carry. */
+const MAX_LABEL_LENGTH = 63;
+
+/** No name under the TLD is a single character, while 2-character nodes exist, such as a device name's two-digit node. */
+const MIN_REGISTERED_LABEL_LENGTH = 2;
+
+/** The longest name a DNS hostname can carry. */
+const MAX_NAME_LENGTH = 253;
+
+/** Validates a label registered under the TLD. */
+export function validateDotLabel(label: string): DotLabelResult {
+  if (label.length > 0 && label.length < MIN_REGISTERED_LABEL_LENGTH) {
+    return { ok: false, reason: 'too-short' };
+  }
+  return validateLabelShape(label);
+}
+
+/** Returns whether a label registered under the TLD is valid. */
+export function isValidDotLabel(label: string): boolean {
+  return validateDotLabel(label).ok;
+}
+
+/**
+ * A dotNS name: one label, or a subname whose labels each have a label's shape, such as `pr16.my-app`. Only the last,
+ * registered label must also meet the length minimum.
+ */
+export function validateDotName(name: string): DotLabelResult {
+  if (name.length > MAX_NAME_LENGTH) {
+    return { ok: false, reason: 'too-long' };
+  }
+  const labels = name.split('.');
+  const last = labels.length - 1;
+  for (const [index, label] of labels.entries()) {
+    const result = index === last ? validateDotLabel(label) : validateLabelShape(label);
+    if (!result.ok) {
+      return result;
+    }
+  }
+  return { ok: true };
+}
+
+/** Returns whether a dotNS name, one label or a subname, is valid. */
+export function isValidDotName(name: string): boolean {
+  return validateDotName(name).ok;
+}
+
+/**
+ * The one DNS label a product's sandbox origin is named by. A wildcard certificate covers a single label, so a subname
+ * gets a hash of its name. A label keeps itself, so the origins, and the storage, of products opened before stay.
+ *
+ * > CAUTION!
+ * > This function should be super stable and does not change behavior for each case, you can only extend it.
+ * > Site origin and all storages are bound to the domain name, so every change will effectively drop all user data.
+ */
+export function getSandboxLabel(name: string): string {
+  if (!name.includes('.')) {
+    return name;
+  }
+  const digest = bytesToHex(sha256(new TextEncoder().encode(name)));
+  return `${SUBNAME_SANDBOX_PREFIX}${digest.slice(0, MAX_LABEL_LENGTH - SUBNAME_SANDBOX_PREFIX.length)}`;
+}
 
 /** Every label rule apart from the minimum length. */
 function validateLabelShape(label: string): DotLabelResult {
@@ -67,59 +120,8 @@ function validateLabelShape(label: string): DotLabelResult {
   if (label.endsWith('-')) {
     return { ok: false, reason: 'trailing-hyphen' };
   }
-  if (!DOT_LABEL_RE.test(label)) {
+  if (!DOT_LABEL_PATTERN.test(label)) {
     return { ok: false, reason: 'invalid-char' };
   }
   return { ok: true };
-}
-
-/** Validates a label registered under the TLD. */
-export function validateDotLabel(label: string): DotLabelResult {
-  if (label.length > 0 && label.length < MIN_REGISTERED_LABEL_LENGTH) {
-    return { ok: false, reason: 'too-short' };
-  }
-  return validateLabelShape(label);
-}
-
-export function isValidDotLabel(label: string): boolean {
-  return validateDotLabel(label).ok;
-}
-
-/**
- * A dotNS name: one label, or a subname whose labels each have a label's shape, such as `pr16.my-app`. Only the last,
- * registered label must also meet the length minimum.
- */
-export function validateDotName(name: string): DotLabelResult {
-  if (name.length > MAX_NAME_LENGTH) {
-    return { ok: false, reason: 'too-long' };
-  }
-  const labels = name.split('.');
-  const last = labels.length - 1;
-  for (const [index, label] of labels.entries()) {
-    const result = index === last ? validateDotLabel(label) : validateLabelShape(label);
-    if (!result.ok) {
-      return result;
-    }
-  }
-  return { ok: true };
-}
-
-export function isValidDotName(name: string): boolean {
-  return validateDotName(name).ok;
-}
-
-/**
- * The one DNS label a product's sandbox origin is named by. A wildcard certificate covers a single label, so a subname
- * gets a hash of its name. A label keeps itself, so the origins, and the storage, of products opened before stay.
- *
- * > CAUTION!
- * > This function should be super stable and does not change behavior for each case, you can only extend it.
- * > Site origin and all storages are bound to the domain name, so every change will effectively drop all user data.
- */
-export function sandboxLabel(name: string): string {
-  if (!name.includes('.')) {
-    return name;
-  }
-  const digest = bytesToHex(sha256(new TextEncoder().encode(name)));
-  return `${SUBNAME_SANDBOX_PREFIX}${digest.slice(0, MAX_LABEL_LENGTH - SUBNAME_SANDBOX_PREFIX.length)}`;
 }

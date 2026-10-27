@@ -8,7 +8,8 @@ pool that shares one connection per chain among its consumers.
 - Owns the light client built on smoldot, its saved database and its sync reporting.
 - Owns the gateway mode chain providers over trusted RPC nodes.
 - Owns the byte meter that counts the chains' inbound traffic.
-- Owns the chain pool, its JSON-RPC broker and the watch guard, and the marker a halted chain answers with.
+- Owns the chain pool, its JSON-RPC broker and the watch guard, and the error a halted chain answers with. The marker
+  that error carries is a shared wire constant.
 - Does not own what is read over a chain, names or blocks. Does not own the connections the host reaches through the
   protocol frame.
 
@@ -41,7 +42,7 @@ flowchart LR
   above it, forks included, and the best block, so a session that joins late is replayed from it. A block is unpinned
   upstream only once no session and no snapshot holds it.
 - A request a halted chain leaves unanswered gets a marked error, and a typed error says whether the chain or the whole
-  frame stopped. The halt module imports nothing, so an eager client takes it without the broker.
+  frame stopped. The halt module imports nothing that loads the pool, so an eager client takes it without the broker.
 - The byte meter wraps the socket constructors of its own global scope, a page or a worker, since resource timing misses
   WebSocket and WebRTC. It is installed before any socket opens.
 - The light client is heavy, so it loads through a lazy loader. The entry is pure re-exports. The light client and its
@@ -61,8 +62,8 @@ flowchart LR
   `ChainTransportHooks`, `ConnectionStatus`.
 - Chain pool: `createChainPool`, `ChainPool`, `ChainPoolWatcher`, `LeaseProvider`, `ChainActivity`,
   `requireBrokerLocalProvider`, `ChainBrokerManager`, `StringJsonRpcConnection`.
-- Chain halt: `ChainHaltError`, `chainHaltedError`, `haltReasonOf`, `CHAIN_HALTED_ERROR_DATA`, `RemoteChainHalt`, and
-  `jsonRpcError`, the error answer every chain transport sends.
+- Chain halt: `ChainHaltError`, `chainHaltedError`, `haltReasonOf`, `RemoteChainHalt`, and `jsonRpcError`, the error
+  answer every chain transport sends.
 - Lazy loader: `loadProvider`.
 
 ### `@dotli/chains/testing`

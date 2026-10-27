@@ -3,82 +3,104 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { isValidDotLabel, isValidDotName, sandboxLabel, validateDotLabel, validateDotName } from './dotLabel.js';
+import { getSandboxLabel, isValidDotLabel, isValidDotName, validateDotLabel, validateDotName } from './dotLabel.js';
 
 describe('validateDotLabel', () => {
-  it('As a visitor, I try a punycode name and it is refused, since its letters can look like another name', () => {
-    // When / Then the label is refused as punycode
-    expect(validateDotLabel('xn--pypal-4ve')).toEqual({ ok: false, reason: 'punycode' });
-    expect(isValidDotLabel('xn--pypal-4ve')).toBe(false);
+  it.each([
+    ['with hyphens inside it', 'my-app'],
+    ['that only starts with the letters x and n', 'xnapp'],
+    ['of two characters', '01'],
+  ])('As a visitor, I open a name %s and it is accepted', (_shape, label) => {
+    // When
+    const result = validateDotLabel(label);
+
+    // Then the label is accepted
+    expect(result).toEqual({ ok: true });
   });
 
-  it('As a visitor, I open a name with hyphens inside it and it is accepted', () => {
-    // When / Then the label is accepted
-    expect(validateDotLabel('my-app')).toEqual({ ok: true });
-  });
+  it.each([
+    ['a punycode name', 'its letters can look like another name', 'xn--pypal-4ve', 'punycode'],
+    ['a name that starts with sn--', "it would share a subname's sandbox", 'sn--abc', 'reserved'],
+    ['a one-letter name', 'no name under .dot is that short', 'p', 'too-short'],
+    ['another one-letter name', 'no name under .dot is that short', 's', 'too-short'],
+  ])('As a visitor, I try %s and it is refused, since %s', (_name, _why, label, reason) => {
+    // When
+    const result = validateDotLabel(label);
+    const valid = isValidDotLabel(label);
 
-  it('As a visitor, I open a name that only starts with the letters x and n and it is accepted', () => {
-    // When / Then the label is accepted
-    expect(validateDotLabel('xnapp')).toEqual({ ok: true });
-  });
-
-  it("As a visitor, I try a name that starts with sn-- and it is refused, since it would share a subname's sandbox", () => {
-    // When / Then the label is refused as reserved
-    expect(validateDotLabel('sn--abc')).toEqual({ ok: false, reason: 'reserved' });
-  });
-
-  it('As a visitor, I try a one-letter name and it is refused, since no name under .dot is that short', () => {
-    // When / Then a one-letter label is refused as too short and a two-letter label is accepted
-    expect(validateDotLabel('p')).toEqual({ ok: false, reason: 'too-short' });
-    expect(isValidDotLabel('s')).toBe(false);
-    expect(validateDotLabel('01')).toEqual({ ok: true });
+    // Then the label is refused for its reason
+    expect(result).toEqual({ ok: false, reason });
+    expect(valid).toBe(false);
   });
 });
 
 describe('validateDotName', () => {
   it('As a visitor, I open a subname and each of its labels is checked', () => {
-    // When / Then a subname of valid labels is accepted and one with an invalid label is refused
-    expect(isValidDotName('pr16.back-me-up')).toBe(true);
-    expect(isValidDotName('doom')).toBe(true);
-    expect(validateDotName('pr16.-back')).toEqual({ ok: false, reason: 'leading-hyphen' });
-    expect(validateDotName('pr16..back')).toEqual({ ok: false, reason: 'empty' });
-    expect(validateDotName('pr16.xn--pypal-4ve')).toEqual({ ok: false, reason: 'punycode' });
+    // When
+    const subname = isValidDotName('pr16.back-me-up');
+    const label = isValidDotName('doom');
+    const leadingHyphen = validateDotName('pr16.-back');
+    const emptyLabel = validateDotName('pr16..back');
+    const punycode = validateDotName('pr16.xn--pypal-4ve');
+
+    // Then a subname of valid labels is accepted and one with an invalid label is refused
+    expect(subname).toBe(true);
+    expect(label).toBe(true);
+    expect(leadingHyphen).toEqual({ ok: false, reason: 'leading-hyphen' });
+    expect(emptyLabel).toEqual({ ok: false, reason: 'empty' });
+    expect(punycode).toEqual({ ok: false, reason: 'punycode' });
   });
 
   it('As a visitor, I open a subname and only its registered label must be two characters or more', () => {
-    // When / Then a one-letter subname label is accepted, a one-letter registered label is refused whether it stands
+    // When
+    const shortSubnameLabel = validateDotName('a.my-app');
+    const shortUnderSubname = validateDotName('pr16.a');
+    const shortAlone = validateDotName('p');
+    const deviceName = validateDotName('michael.01');
+    const badSubnameLabel = validateDotName('-a.my-app');
+
+    // Then a one-letter subname label is accepted, a one-letter registered label is refused whether it stands
     // alone or under a subname, a device name under its two-digit node is accepted, and a subname label still gets
     // the shape rules
-    expect(validateDotName('a.my-app')).toEqual({ ok: true });
-    expect(validateDotName('pr16.a')).toEqual({ ok: false, reason: 'too-short' });
-    expect(validateDotName('p')).toEqual({ ok: false, reason: 'too-short' });
-    expect(validateDotName('michael.01')).toEqual({ ok: true });
-    expect(validateDotName('-a.my-app')).toEqual({ ok: false, reason: 'leading-hyphen' });
+    expect(shortSubnameLabel).toEqual({ ok: true });
+    expect(shortUnderSubname).toEqual({ ok: false, reason: 'too-short' });
+    expect(shortAlone).toEqual({ ok: false, reason: 'too-short' });
+    expect(deviceName).toEqual({ ok: true });
+    expect(badSubnameLabel).toEqual({ ok: false, reason: 'leading-hyphen' });
   });
 
   it('As a visitor, I try a name longer than a hostname can carry and it is refused', () => {
     // Given a name of valid labels over 253 characters
     const name = Array.from({ length: 5 }, () => 'a'.repeat(63)).join('.');
 
-    // When / Then the name is refused as too long
-    expect(validateDotName(name)).toEqual({ ok: false, reason: 'too-long' });
+    // When
+    const result = validateDotName(name);
+
+    // Then the name is refused as too long
+    expect(result).toEqual({ ok: false, reason: 'too-long' });
   });
 });
 
-describe('sandboxLabel', () => {
+describe('getSandboxLabel', () => {
   it('As a visitor, I open a product by one label and its sandbox keeps the origin it had', () => {
-    // When / Then the label names its sandbox itself
-    expect(sandboxLabel('back-me-up')).toBe('back-me-up');
+    // When
+    const label = getSandboxLabel('back-me-up');
+
+    // Then the label names its sandbox itself
+    expect(label).toBe('back-me-up');
   });
 
   it('As a visitor, I open a subname and its sandbox gets one label of its own that no registered label can take', () => {
     // When
-    const label = sandboxLabel('pr16.back-me-up');
+    const label = getSandboxLabel('pr16.back-me-up');
+    const again = getSandboxLabel('pr16.back-me-up');
+    const other = getSandboxLabel('pr17.back-me-up');
+    const registrable = isValidDotLabel(label);
 
     // Then the label is one DNS label, stable, distinct per name and refused as a registered label
     expect(label).toMatch(/^sn--[0-9a-f]{59}$/);
-    expect(sandboxLabel('pr16.back-me-up')).toBe(label);
-    expect(sandboxLabel('pr17.back-me-up')).not.toBe(label);
-    expect(isValidDotLabel(label)).toBe(false);
+    expect(again).toBe(label);
+    expect(other).not.toBe(label);
+    expect(registrable).toBe(false);
   });
 });

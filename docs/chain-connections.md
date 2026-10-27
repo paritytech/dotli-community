@@ -280,8 +280,8 @@ sequenceDiagram
   Ctx-->>Host: CID
 ```
 
-- `withHaltRetry` in `packages/resolver/src/resolve.ts` wraps
-  `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
+- The `reads` pool's `retryIf` in `packages/resolver/src/createDotnsResolver.ts`
+  retries `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
   `resolveRootManifest`. Both smoldot backends (`smoldot-direct`,
   `smoldot-shared-worker`) run them.
 - A halt reaches a read in one of three shapes, and each one is retried:
@@ -407,11 +407,12 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Pool | `packages/chains/src/chainPool.ts` |
 | Broker | `packages/chains/src/broker.ts` |
 | Watch guard | `packages/chains/src/watchGuard.ts` |
-| Halted-chain marker, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chainHalted.ts` |
+| Halted-chain marker | `packages/shared/src/chainHaltedErrorData.ts` |
+| Halted-chain error, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chainHalted.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
 | RPC transport | `packages/chains/src/rpcChain.ts` |
 | smoldot transport | `packages/chains/src/provider.ts` |
-| Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/resolve.ts` |
+| Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/createDotnsResolver.ts` |
 | Host error page classification | `apps/host/src/errors.ts` |
 | Host pool, TrUAPI chain connections, `hostChainProvider` | `apps/host/src/runtime/hostCallbacks/chain.ts` |
 | Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/frameTransport.ts` |

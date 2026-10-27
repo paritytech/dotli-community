@@ -5,11 +5,16 @@
 
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { concatBytes } from '@noble/hashes/utils.js';
-import { decode as decodeContentHash, getCodec } from '@ensdomains/content-hash';
 import { fromHex, toHex } from '@dotli/shared';
 
+type ComputeNestedStringMappingSlotParams = {
+  outerKey: `0x${string}`;
+  innerKey: string;
+  outerSlot: number;
+};
+
 /** ENS-style namehash. */
-export function namehash(name: string): `0x${string}` {
+export function computeNamehash(name: string): `0x${string}` {
   let node = new Uint8Array(32);
   if (name === '') {
     return toHex(node);
@@ -28,10 +33,10 @@ export function namehash(name: string): `0x${string}` {
 /** For `mapping(bytes32 => T)` at slot N, key K lives at `keccak256(K ++ uint256(N))`. */
 export function computeMappingSlot(key: `0x${string}`, slotNumber: number): `0x${string}` {
   const slotBytes = new Uint8Array(32);
-  let n = slotNumber;
-  for (let i = 31; i >= 0 && n > 0; i--) {
-    slotBytes[i] = n & 0xff;
-    n >>>= 8;
+  let remaining = slotNumber;
+  for (let index = 31; index >= 0 && remaining > 0; index--) {
+    slotBytes[index] = remaining & 0xff;
+    remaining >>>= 8;
   }
 
   return toHex(new Uint8Array(keccak_256(concatBytes(fromHex(key), slotBytes))));
@@ -43,11 +48,11 @@ export function computeBytesDataSlot(baseSlot: `0x${string}`): `0x${string}` {
 }
 
 /** For `mapping(bytes32 => mapping(string => T))`. Solidity hashes a string key as raw UTF-8, unpadded. */
-export function computeNestedStringMappingSlot(
-  outerKey: `0x${string}`,
-  innerKey: string,
-  outerSlot: number,
-): `0x${string}` {
+export function computeNestedStringMappingSlot({
+  outerKey,
+  innerKey,
+  outerSlot,
+}: ComputeNestedStringMappingSlotParams): `0x${string}` {
   const midSlot = computeMappingSlot(outerKey, outerSlot);
   const innerBytes = new TextEncoder().encode(innerKey);
   return toHex(new Uint8Array(keccak_256(concatBytes(innerBytes, fromHex(midSlot)))));
@@ -60,19 +65,20 @@ export function addToSlot(slot: `0x${string}`, offset: number): `0x${string}` {
   }
   const bytes = fromHex(slot);
   let carry = offset;
-  for (let i = 31; i >= 0 && carry > 0; i--) {
-    const byte = bytes[i];
+  for (let index = 31; index >= 0 && carry > 0; index--) {
+    const byte = bytes[index];
     if (byte === undefined) {
       throw new Error(`Storage slot must be 32 bytes, got ${String(bytes.length)}`);
     }
     const sum = byte + (carry & 0xff);
-    bytes[i] = sum & 0xff;
+    bytes[index] = sum & 0xff;
     carry = (carry >>> 8) + (sum >>> 8);
   }
   return toHex(bytes);
 }
 
-export function wordToBigInt(data: Uint8Array): bigint {
+/** Reads a storage word as a big-endian unsigned integer. */
+export function readWordAsBigInt(data: Uint8Array): bigint {
   let value = 0n;
   for (const byte of data) {
     value = (value << 8n) | BigInt(byte);
@@ -109,7 +115,7 @@ export function decodeBytesSlot(
     return { inline: true, data: slotData.slice(0, length) };
   }
 
-  const word = wordToBigInt(slotData);
+  const word = readWordAsBigInt(slotData);
   const length = Number((word - 1n) / 2n);
   if (length === 0) {
     return null;
@@ -120,39 +126,4 @@ export function decodeBytesSlot(
     length,
     dataSlot: computeBytesDataSlot(baseSlotKey),
   };
-}
-
-/** Discriminated, so a malformed record is not reported as an unset one. */
-export type ContenthashResult =
-  | { kind: 'ok'; cid: string }
-  | { kind: 'empty' }
-  | { kind: 'unsupported-codec'; codec: string | null }
-  | { kind: 'decode-error'; cause: unknown };
-
-export function decodeIpfsContenthashResult(contenthashHex: string): ContenthashResult {
-  const hex = contenthashHex.startsWith('0x') ? contenthashHex.slice(2) : contenthashHex;
-  if (!hex || hex === '0' || hex.length < 4) {
-    return { kind: 'empty' };
-  }
-  let codec: string | null;
-  try {
-    codec = getCodec(hex) ?? null;
-  } catch (cause) {
-    return { kind: 'decode-error', cause };
-  }
-  if (codec !== 'ipfs') {
-    return { kind: 'unsupported-codec', codec };
-  }
-  try {
-    const cid = decodeContentHash(hex);
-    if (typeof cid === 'string' && cid.length > 0) {
-      return { kind: 'ok', cid };
-    }
-    return {
-      kind: 'decode-error',
-      cause: new Error('decodeContentHash returned empty'),
-    };
-  } catch (cause) {
-    return { kind: 'decode-error', cause };
-  }
 }

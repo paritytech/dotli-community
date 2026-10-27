@@ -3,14 +3,8 @@
 
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
 export { chainBytesReceived, installByteMeter } from './byteMeter.js';
-export {
-  CHAIN_HALTED_ERROR_DATA,
-  chainHaltedError,
-  ChainHaltError,
-  haltReasonOf,
-  jsonRpcError,
-  type RemoteChainHalt,
-} from './chainHalted.js';
+export type { RemoteChainHalt } from './chainHalted.js';
+export { chainHaltedError, ChainHaltError, haltReasonOf, jsonRpcError } from './chainHalted.js';
 export {
   createChainPool,
   type ChainActivity,
