@@ -12,7 +12,7 @@ import {
   setResolutionId,
   spans as S,
 } from '@dotli/metrics';
-import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
+import { byteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
 import { getErrorMessage, log, serializeError } from '@dotli/shared';
@@ -48,7 +48,7 @@ import { createTelemetryHandler, lightClientDb } from './telemetryHandler.js';
 
 // Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
 // invisible to resource timing, so the speed readout needs this.
-installByteMeter();
+byteMeter.install();
 
 // What the host hears of this frame's boot, on subscribe, so a failure before the host asks is not lost.
 const boot = createFrameBoot();
@@ -225,10 +225,13 @@ async function initDirectMode(): Promise<void> {
     loadLightClientService(),
   ]);
   const session = readSessionTuning(() => sessionStorage);
-  const lightClient = provider.createLightClient(provider.lightClientDeps(session, isLocalhost));
+  const lightClient = provider.createLightClient(provider.createLightClientDeps(session, isLocalhost));
   const service = lightClientService.startLightClientService({
     lightClient,
-    resolver: { createDotnsResolver: resolve.createDotnsResolver, enableSyncReporting: provider.enableSyncReporting },
+    resolver: {
+      createDotnsResolver: resolve.createDotnsResolver,
+      enableSyncReporting: provider.chainSync.enableSyncReporting,
+    },
     services: getActiveServicesConfig(),
   });
   window.addEventListener('pagehide', service.stop);
@@ -242,11 +245,11 @@ async function initDirectMode(): Promise<void> {
 
   boot.serveTelemetry(
     createTelemetryHandler({
-      onChainSync: provider.onChainSync,
+      onChainSync: provider.chainSync.onChainSync,
       // Telemetry only, attached by the host to the resolution it is tracing.
-      onChainDetail: provider.onChainDetail,
+      onChainDetail: provider.chainSync.onChainDetail,
       ...lightClientDb(lightClient),
-      netBytes: shareNetBytes(chainBytesReceived, intervalTicker(NET_BYTES_INTERVAL_MS)),
+      netBytes: shareNetBytes(byteMeter.readBytesReceived, intervalTicker(NET_BYTES_INTERVAL_MS)),
       // This frame's light client is its own, so each database read is this tab's.
       joinedSynced: () => false,
     }),

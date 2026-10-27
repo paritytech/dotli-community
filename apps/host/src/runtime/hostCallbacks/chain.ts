@@ -20,12 +20,12 @@ import {
   type RemoteChainProvider,
 } from '@dotli/protocol';
 import {
-  chainHaltedError,
+  createChainHaltedError,
   createChainPool,
   createCoreRpcChainProvider,
-  haltReasonOf,
+  createJsonRpcError,
+  getHaltReason,
   isCoreRpcChainSupported,
-  jsonRpcError,
   requireBrokerLocalProvider,
   type ChainPool,
   type ChainPoolWatcher,
@@ -55,7 +55,7 @@ const pageSources: HostChainSources = {
   backend: getBackend,
   remoteChain: genesisHash => protocolClient().createRemoteChainProvider(genesisHash),
   isRemoteChainConnectable,
-  rpcChain: createCoreRpcChainProvider,
+  rpcChain: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, { hooks }),
   isRpcChainSupported: isCoreRpcChainSupported,
 };
 
@@ -100,7 +100,11 @@ export function watchHostChains(watcher: ChainPoolWatcher, pool: ChainPool = hos
 
 /** The rpc-gateway name resolver reads through this lease instead of dialing its own socket. */
 export function hostAssetHubProvider(pool: ChainPool = hostChainPool): JsonRpcProvider {
-  return requireBrokerLocalProvider(pool, getActiveServicesConfig().assethub.genesis, 'Asset Hub');
+  return requireBrokerLocalProvider({
+    manager: pool,
+    genesisHash: getActiveServicesConfig().assethub.genesis,
+    label: 'Asset Hub',
+  });
 }
 
 /**
@@ -117,7 +121,7 @@ export function hostChainProvider(genesisHash: string, pool: ChainPool = hostCha
   }
   return (onMessage, onHalt) =>
     lease(onMessage, error => {
-      onHalt?.(haltReasonOf(error));
+      onHalt?.(getHaltReason(error));
     });
 }
 
@@ -197,7 +201,7 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
       if (lease === slot.connection) {
         lease = null;
       }
-      haltedBy = haltReasonOf(error);
+      haltedBy = getHaltReason(error);
       (haltedBy === 'frame' ? gatesOf(pool).frame : chainGate(pool, genesisHash)).noteHalt();
     });
     if (!slot.halted) {
@@ -263,7 +267,7 @@ function toConnection(genesisHash: string, pool: ChainPool, frame: FrameStatusSo
       if (connection === null) {
         // Notifications have nothing to answer.
         if (parsed.id !== undefined && parsed.id !== null) {
-          deliver(jsonRpcError(parsed.id, chainHaltedError()));
+          deliver(createJsonRpcError(parsed.id, createChainHaltedError()));
         }
         return;
       }

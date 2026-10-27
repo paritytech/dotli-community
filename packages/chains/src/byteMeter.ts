@@ -5,32 +5,22 @@
 // WebSocket and WebRTC. It patches its own global scope, a page or a worker. Install before smoldot starts, or its
 // earlier connections go uncounted.
 
+// Module state, since the patch target is the realm's global: a second meter would patch it twice.
 let received = 0;
 let installed = false;
 
-export function chainBytesReceived(): number {
-  return received;
-}
+/** The byte meter of this global scope, a page or a worker. */
+export const byteMeter = {
+  /**
+   * Patches the socket constructors on the first call, never at import. A repeated call does nothing. Adds listeners
+   * rather than replacing `onmessage`, so smoldot's own handler stays.
+   */
+  install: installByteMeter,
+  /** The bytes received on every metered socket since `install`, `0` before it. Never throws. */
+  readBytesReceived,
+};
 
-function sizeOf(data: unknown): number {
-  if (typeof data === 'string') {
-    // UTF-8 is what crossed the wire, not UTF-16 code units.
-    return new TextEncoder().encode(data).length;
-  }
-  if (data instanceof ArrayBuffer) {
-    return data.byteLength;
-  }
-  if (ArrayBuffer.isView(data)) {
-    return data.byteLength;
-  }
-  if (data instanceof Blob) {
-    return data.size;
-  }
-  return 0;
-}
-
-/** Idempotent. Adds listeners rather than replacing `onmessage`, so smoldot's own handler stays. */
-export function installByteMeter(): void {
+function installByteMeter(): void {
   if (installed || typeof globalThis.WebSocket !== 'function') {
     return;
   }
@@ -41,7 +31,7 @@ export function installByteMeter(): void {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
       this.addEventListener('message', (event: MessageEvent) => {
-        received += sizeOf(event.data);
+        received += getByteSize(event.data);
       });
     }
   }
@@ -58,9 +48,30 @@ export function installByteMeter(): void {
     ): RTCDataChannel {
       const channel = nativeCreate.call(this, label, options);
       channel.addEventListener('message', (event: MessageEvent) => {
-        received += sizeOf(event.data);
+        received += getByteSize(event.data);
       });
       return channel;
     };
   }
+}
+
+function readBytesReceived(): number {
+  return received;
+}
+
+function getByteSize(data: unknown): number {
+  if (typeof data === 'string') {
+    // UTF-8 is what crossed the wire, not UTF-16 code units.
+    return new TextEncoder().encode(data).length;
+  }
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength;
+  }
+  if (ArrayBuffer.isView(data)) {
+    return data.byteLength;
+  }
+  if (data instanceof Blob) {
+    return data.size;
+  }
+  return 0;
 }

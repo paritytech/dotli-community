@@ -1,37 +1,32 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
-export { chainBytesReceived, installByteMeter } from './byteMeter.js';
-export type { RemoteChainHalt } from './chainHalted.js';
-export { chainHaltedError, ChainHaltError, haltReasonOf, jsonRpcError } from './chainHalted.js';
+export { byteMeter } from './byteMeter.js';
+export type { RemoteChainHalt } from './chainHaltError.js';
+export { ChainHaltError } from './chainHaltError.js';
+export { createChainHaltedError } from './createChainHaltedError.js';
+export type { ChainActivity, ChainPool, ChainPoolWatcher, LeaseProvider } from './createChainPool.js';
+export { createChainPool } from './createChainPool.js';
+export type { ChainDetail, ChainPeer, ChainSyncEvent, ChainSyncKind } from './createChainSyncReporter.js';
+export { chainSync } from './createChainSyncReporter.js';
 export {
-  createChainPool,
-  type ChainActivity,
-  type ChainPool,
-  type ChainPoolWatcher,
-  type LeaseProvider,
-} from './chainPool.js';
-export {
-  enableSyncReporting,
-  onChainDetail,
-  onChainSync,
-  type ChainDetail,
-  type ChainPeer,
-  type ChainSyncEvent,
-  type ChainSyncKind,
-} from './chainSync.js';
-export { SMOLDOT_DB_NAME } from './smoldotDb.js';
-export {
-  createLightClient,
-  lightClientDeps,
-  type LightClient,
-  type LightClientChange,
-  type LightClientDeps,
-  type LightClientStatus,
-  type SmoldotDbChain,
-  type SmoldotDbOutcome,
-} from './provider.js';
-export { createCoreRpcChainProvider, getConnectedAssetHubRpcEndpoint, isCoreRpcChainSupported } from './rpcChain.js';
-export { type ChainTransportHooks, type ConnectionStatus } from './transportHooks.js';
+  createCoreRpcChainProvider,
+  getConnectedAssetHubRpcEndpoint,
+  isCoreRpcChainSupported,
+} from './createCoreRpcChainProvider.js';
+export { createJsonRpcError } from './createJsonRpcError.js';
+export type {
+  LightClient,
+  LightClientChange,
+  LightClientDeps,
+  LightClientStatus,
+  SmoldotDbChain,
+  SmoldotDbOutcome,
+} from './createLightClient.js';
+export { createLightClient, createLightClientDeps } from './createLightClient.js';
+export { SMOLDOT_DB_NAME } from './createSmoldotDb.js';
+export { getHaltReason } from './getHaltReason.js';
 export { loadProvider } from './lazy.js';
+export type { ChainBrokerManager, StringJsonRpcConnection } from './requireBrokerLocalProvider.js';
+export { requireBrokerLocalProvider } from './requireBrokerLocalProvider.js';
+export type { ChainTransportHooks, ConnectionStatus } from './transportHooks.js';

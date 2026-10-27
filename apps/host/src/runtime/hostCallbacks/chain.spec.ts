@@ -25,7 +25,7 @@ import { yielded } from '../../testing/fixtures.js';
 
 /** Trusted Providers' sockets, over the fake server. */
 const fakeSocketChain: HostChainSources['rpcChain'] = (genesisHash, hooks) =>
-  createCoreRpcChainProvider(genesisHash, hooks, FakeWebSocket as unknown as typeof WebSocket);
+  createCoreRpcChainProvider(genesisHash, { hooks, WebSocketBase: FakeWebSocket as unknown as typeof WebSocket });
 
 type Upstream = {
   sent: JsonRpcRequest[];

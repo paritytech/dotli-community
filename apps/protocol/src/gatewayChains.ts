@@ -12,7 +12,10 @@ import type { EngineOptions } from './engine.js';
  */
 export function openGatewayChains(): Pick<EngineOptions, 'pool' | 'isChainSupported'> {
   return {
-    pool: createChainPool({ createTransport: createCoreRpcChainProvider, destroyDelay: 60_000 }),
+    pool: createChainPool({
+      createTransport: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, { hooks }),
+      destroyDelay: 60_000,
+    }),
     isChainSupported: isCoreRpcChainSupported,
   };
 }

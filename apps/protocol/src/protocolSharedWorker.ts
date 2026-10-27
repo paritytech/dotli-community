@@ -9,15 +9,7 @@ declare const self: SharedWorkerGlobalScope;
 
 import { isLocalhost, setActiveNetwork } from '@dotli/config';
 import { flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotli/metrics';
-import {
-  chainBytesReceived,
-  createLightClient,
-  enableSyncReporting,
-  installByteMeter,
-  lightClientDeps,
-  onChainDetail,
-  onChainSync,
-} from '@dotli/chains';
+import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
 
 import { startProtocolWorker, workerNetwork } from './protocolWorker.js';
@@ -35,20 +27,20 @@ if (network.success) {
 }
 
 // Before the light client starts, or its first sockets go uncounted.
-installByteMeter();
+byteMeter.install();
 
 startProtocolWorker({
   scope: self,
   network,
   flush: () => flushTelemetry(2_000),
-  netBytes: { read: chainBytesReceived },
+  netBytes: { read: byteMeter.readBytesReceived },
   // A worker has no session to tune it from.
-  lightClient: createLightClient(lightClientDeps(null, isLocalhost)),
-  // The functions, not the namespace, so the worker bundle keeps only what it calls.
+  lightClient: createLightClient(createLightClientDeps(null, isLocalhost)),
+  // The resolver's factory by name, not its namespace, so the worker bundle keeps only what it calls of the resolver.
   resolver: {
     createDotnsResolver,
-    enableSyncReporting,
-    onChainDetail,
-    onChainSync,
+    enableSyncReporting: chainSync.enableSyncReporting,
+    onChainDetail: chainSync.onChainDetail,
+    onChainSync: chainSync.onChainSync,
   },
 });

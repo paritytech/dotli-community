@@ -6,7 +6,7 @@
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import { getErrorName, log, setErrorName, createRandomId, serializeError } from '@dotli/shared';
-import { chainHaltedError, jsonRpcError, type RemoteChainHalt } from '@dotli/chains';
+import { createChainHaltedError, createJsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import {
   getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
@@ -50,9 +50,9 @@ type RemoteChainConnection = {
 /** `null` for a notification, which has no `id` to answer. */
 function buildJsonRpcError(
   request: JsonRpcRequest,
-  error: string | ReturnType<typeof chainHaltedError>,
+  error: string | ReturnType<typeof createChainHaltedError>,
 ): JsonRpcMessage | null {
-  return request.id === undefined || request.id === null ? null : jsonRpcError(request.id, error);
+  return request.id === undefined || request.id === null ? null : createJsonRpcError(request.id, error);
 }
 
 /** A consumer callback that throws is reported, not propagated, so the other consumers still hear the halt. */
@@ -73,7 +73,7 @@ function haltRemote(connection: RemoteChainConnection, reason: RemoteChainHalt):
   for (const message of connection.pendingMessages) {
     const errResponse = buildJsonRpcError(
       message,
-      reason === 'chain' ? chainHaltedError() : 'Chain connection is closed',
+      reason === 'chain' ? createChainHaltedError() : 'Chain connection is closed',
     );
     if (errResponse !== null) {
       guardConsumer('message', () => {

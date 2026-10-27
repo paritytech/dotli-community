@@ -67,7 +67,7 @@ export type WorkerScope = {
 
 /** The resolver and the sync reporting, passed as functions so a test can drive fakes. */
 export type WorkerResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
-  Pick<typeof Chains, 'enableSyncReporting' | 'onChainDetail' | 'onChainSync'>;
+  Pick<typeof Chains.chainSync, 'enableSyncReporting' | 'onChainDetail' | 'onChainSync'>;
 
 /** The network a worker serves, or why it cannot serve one. */
 export type WorkerNetwork = ResultPayload<Network, string>;

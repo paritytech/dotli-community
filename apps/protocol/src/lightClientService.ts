@@ -93,7 +93,7 @@ export function observeChains(
 }
 
 export type LightClientResolver = Pick<typeof Resolver, 'createDotnsResolver'> &
-  Pick<typeof Chains, 'enableSyncReporting'>;
+  Pick<typeof Chains.chainSync, 'enableSyncReporting'>;
 
 export type LightClientServiceDeps = {
   lightClient: Chains.LightClient;
@@ -126,8 +126,9 @@ export function startLightClientService({
   // broker would drop its events and reads would hang. A separate resolver chain would also be released by the first
   // dApp connection mid-read (`ChainHead disjointed`).
   const dotns = resolver.createDotnsResolver({
-    assetHub: () => requireBrokerLocalProvider(pool, services.assethub.genesis, 'Asset Hub'),
-    people: () => requireBrokerLocalProvider(pool, services.people.genesis, 'People'),
+    assetHub: () =>
+      requireBrokerLocalProvider({ manager: pool, genesisHash: services.assethub.genesis, label: 'Asset Hub' }),
+    people: () => requireBrokerLocalProvider({ manager: pool, genesisHash: services.people.genesis, label: 'People' }),
     dotns: services.dotns,
     source: 'light-client',
   });

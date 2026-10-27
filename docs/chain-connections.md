@@ -128,7 +128,7 @@ flowchart TB
   L2["lease: remote:origin id<br/>(e.g. an app's connection)"] --> B
   L3["lease: remote:origin id"] --> B
   subgraph Entry["One entry per chain (genesis hash)"]
-    B["ChainBroker<br/>rewrites ids and tokens,<br/>shares chainHead follows"]
+    B["Chain broker<br/>rewrites ids and tokens,<br/>shares chainHead follows"]
     G["Watch guard<br/>ends transaction watches<br/>with 'dropped' on disconnect"]
     T["Transport<br/>(RPC socket or smoldot chain)"]
     B --> G --> T
@@ -139,7 +139,7 @@ flowchart TB
 
 - **Entry**: one per chain, built on the first lease. It holds the transport,
   a watch guard and a broker.
-- **Broker** (`ChainBroker`): many sessions share one transport. It rewrites
+- **Broker** (`createChainBroker`): many sessions share one transport. It rewrites
   every request id and subscription token so sessions cannot see or answer
   each other's traffic, and shares one `chainHead_v1_follow` between them.
 - **Lease**: a broker session. Local leases are named `local:N`; remote ones
@@ -165,7 +165,7 @@ flowchart TB
 
 ## The RPC transport
 
-An RPC chain socket (`packages/chains/src/rpcChain.ts`) is a stack:
+An RPC chain socket (`packages/chains/src/createCoreRpcChainProvider.ts`) is a stack:
 
 ```mermaid
 flowchart TB
@@ -185,7 +185,7 @@ flowchart TB
   node a chain's socket is on.
 
 The smoldot transport (`createChainProvider` in
-`packages/chains/src/provider.ts`) is one chain on the light client, in the
+`packages/chains/src/createLightClient.ts`) is one chain on the light client, in the
 protocol iframe or the SharedWorker only. It does not reconnect underneath its
 users: when its stream ends, it halts.
 
@@ -258,7 +258,7 @@ sequenceDiagram
   re-follows on the `stop`, and lands there), through that chain's gate (see
   [chains follow the protocol status](#a-product-keeps-retrying-after-a-halt-chains-follow-the-protocol-status)).
   The settings probe client hears `'chain'` (`hostChainProvider` reads the
-  reason with `haltReasonOf`).
+  reason with `getHaltReason`).
 
 ### …a chain halts while a page is loading
 
@@ -397,28 +397,28 @@ nothing hangs.
 | `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Wait for user demand, never redial on your own. A product's requests are demand, and take a new lease while the protocol status is not `failed` |
 
 Through the host pool the reason travels as a `ChainHaltError`
-(`packages/chains/src/chainHalted.ts`), and `haltReasonOf` reads it back.
+(`packages/chains/src/chainHaltError.ts`), and `getHaltReason` reads it back.
 Any other transport halt, such as a socket's, reads as `'chain'`.
 
 ## Where to look in the code
 
 | Piece | File |
 | --- | --- |
-| Pool | `packages/chains/src/chainPool.ts` |
-| Broker | `packages/chains/src/broker.ts` |
-| Watch guard | `packages/chains/src/watchGuard.ts` |
+| Pool | `packages/chains/src/createChainPool.ts` |
+| Broker | `packages/chains/src/createChainBroker.ts` |
+| Watch guard | `packages/chains/src/createWatchGuard.ts` |
 | Halted-chain marker | `packages/shared/src/chainHaltedErrorData.ts` |
-| Halted-chain error, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chainHalted.ts` |
+| Halted-chain error, `ChainHaltError`, `getHaltReason` | `packages/chains/src/createChainHaltedError.ts`, `packages/chains/src/chainHaltError.ts`, `packages/chains/src/getHaltReason.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
-| RPC transport | `packages/chains/src/rpcChain.ts` |
-| smoldot transport | `packages/chains/src/provider.ts` |
+| RPC transport | `packages/chains/src/createCoreRpcChainProvider.ts` |
+| smoldot transport | `packages/chains/src/createLightClient.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/createDotnsResolver.ts` |
 | Host error page classification | `apps/host/src/errors.ts` |
 | Host pool, TrUAPI chain connections, `hostChainProvider` | `apps/host/src/runtime/hostCallbacks/chain.ts` |
 | Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/frameTransport.ts` |
 | Host pool's chain gates | `apps/host/src/runtime/hostCallbacks/redialGate.ts` |
 | Settings probe | `apps/host/src/runtime/diagnostics.ts` (`queryFinalizedBlock`) |
-| Network panel | `apps/host/src/state/networkMonitor.ts`, `ChainPool.watch` in `packages/chains/src/chainPool.ts`, `packages/chains/src/headerNumber.ts` |
+| Network panel | `apps/host/src/state/networkMonitor.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
 | Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/engine.ts` |
 | Watched chains | `apps/protocol/src/lightClientService.ts` (`observeChains`) |
