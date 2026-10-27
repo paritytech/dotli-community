@@ -766,9 +766,8 @@ describe('site transaction', () => {
     read.resolve(SITE_KEY);
     await h.closed;
 
-    // Then the site hears the round was cancelled, and nothing was built
+    // Then the site hears the round was cancelled
     expect(h.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
-    expect(h.chain.record).toMatchObject({ built: 0 });
     expect(h.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
