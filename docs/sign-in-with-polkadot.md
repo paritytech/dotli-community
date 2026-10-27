@@ -614,8 +614,8 @@ sequenceDiagram
 ```
 
 After the user confirms the review, the window reads the named account from the Polkadot App, which MAY ask the user to
-share it. A rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the transaction
-ends it with `transaction_invalid`.
+share it. A rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the
+transaction ends it with `transaction_invalid`.
 
 ### Sign-out
 

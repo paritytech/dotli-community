@@ -559,7 +559,7 @@ describe('site transaction', () => {
     await h.closed;
 
     // Then the failure offered Try again, the retry opened the chain again and built again, the site account was read
-    // once and the phone was asked to open Polkadot App once, and the site got the signed transaction
+    // once and the window asked to open Polkadot App once, and the site got the signed transaction
     expect(failed).toEqual({ view: 'site-failed', origin: ORIGIN, route: 'sign', retry: true });
     expect(h.views.filter(view => view === 'site-sharing')).toHaveLength(1);
     expect(h.chain.record).toMatchObject({ opened: 2, closed: 2, built: 2 });
@@ -769,6 +769,7 @@ describe('site transaction', () => {
     // Then the site hears the round was cancelled, and nothing was built
     expect(h.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(h.chain.record).toMatchObject({ built: 0 });
+    expect(h.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'page' }]);
   });
 
   it('As a user who is asked to share my account, I reject it on the phone and the site hears I cancelled', async () => {
@@ -784,6 +785,7 @@ describe('site transaction', () => {
     // Then the site hears the round was cancelled, and the phone was never asked to sign
     expect(h.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(h.signedBy).toEqual([]);
+    expect(h.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'phone' }]);
   });
 
   it('As a user whose site account read failed, I press Try again and see the review again before the phone is asked again', async () => {
@@ -798,11 +800,11 @@ describe('site transaction', () => {
     await sign(h.flow, h);
     await retried;
     await h.closed;
+    const afterFailure = h.views.slice(h.views.indexOf('site-failed'));
 
     // Then the phone was asked twice, the review showed again before the second ask, and the site got its transaction
     expect(h.accounts).toEqual([ACCOUNT, ACCOUNT]);
     expect(resultOf(h.posts).result).toEqual({ transaction: SIGNED_TX.toLowerCase() });
-    const afterFailure = h.views.slice(h.views.indexOf('site-failed'));
     expect(afterFailure.indexOf('site-review')).toBeGreaterThan(-1);
     expect(afterFailure.indexOf('site-review')).toBeLessThan(afterFailure.indexOf('site-sharing'));
   });
