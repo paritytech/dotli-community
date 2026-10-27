@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // A site's transaction, the action a site's round runs on the sign route. It decodes the site's call for the review,
-// and once the user confirms, has the phone sign it as the product account the site names. The site gets the signed
-// transaction to send itself, and the window never sends it. Nothing of the main account reaches the site.
+// and once the user confirms, has the phone sign it as the product account the site names. The account's key is read
+// from the phone only after Confirm. The site gets the signed transaction to send itself, and the window never sends
+// it. Nothing of the main account reaches the site.
 
 import type { ProductAccountId } from '@parity/truapi';
 import { spans as S } from '@dotli/metrics';
@@ -102,10 +103,11 @@ export function siteTransactionAction(deps: {
   // rather than asking the phone again. Another main account derives another key.
   let readKey: { owner: string; key: Uint8Array } | null = null;
 
-  const siteKey = async (main: MainAccount): Promise<Uint8Array> => {
+  const siteKey = async (main: MainAccount, asking: () => void): Promise<Uint8Array> => {
     if (readKey?.owner === main.owner) {
       return readKey.key;
     }
+    asking();
     let key: Uint8Array;
     try {
       key = await accountReader.account(account);
@@ -137,12 +139,15 @@ export function siteTransactionAction(deps: {
         signal.addEventListener('abort', close, { once: true });
         // A round that ended while the chain opened asks nothing more of the chain or the phone.
         signal.throwIfAborted();
-        // Decoded before the key, so a call that cannot be shown costs no approval on the phone.
         const decoded = await decode(session, call);
-        // The account's key fills the nonce.
-        const publicKey = await siteKey(main);
         show({ view: 'site-review', origin, call: decoded.display, account: displayAccount(account) });
         await confirmed();
+        // Nothing reaches the phone before the user confirms the review. The account's key fills the nonce.
+        const publicKey = await siteKey(main, () => {
+          show({ view: 'site-sharing', origin });
+        });
+        // A round that ended while the phone was asked builds nothing.
+        signal.throwIfAborted();
         // The extensions fill before the phone is asked, so Approve shows only once it is.
         show({ view: 'site-signing', origin, route: 'sign' });
         const creator = txSigner.creator(account, () => {
