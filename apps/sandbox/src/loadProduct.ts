@@ -110,13 +110,13 @@ export async function loadProduct({ params, attempt }: LoadInput, deps: LoadProd
       contentLog.event(`Fetching ${cid} via IPFS gateway`, { ms: deps.sinceStart() });
       deps.showStatus('Fetching via IPFS gateway...');
       step = 'content_fetch';
-      result = await deps.fetchArchive(cid, deps.showStatus, { useGateway: true });
+      result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, useGateway: true });
     } else {
       // Through the host-relayed protocol bridge, so the sandbox runs no libp2p.
       contentLog.event(`Fetching ${cid} via bitswap`, { backend, ms: deps.sinceStart() });
       deps.showStatus('Fetching via bitswap...');
       step = 'content_fetch';
-      result = await deps.fetchArchive(cid, deps.showStatus, { bitswapBlockSource: deps.blockSource });
+      result = await deps.fetchArchive(cid, { onStatus: deps.showStatus, bitswapBlockSource: deps.blockSource });
     }
     contentLog.event(`Content fetched via ${isGateway ? 'gateway' : 'bitswap'}`, {
       type: result.type,

@@ -4,8 +4,8 @@
 // Polls the selected content backend until the preimage is found or the subscription drops.
 
 import type { PreimageHost } from '@parity/truapi-host';
-import { bitswapGet } from '@dotli/bitswap';
-import { hashToCid, fetchFromIpfs, loadVerify } from '@dotli/content';
+import { fetchBitswapBlock } from '@dotli/bitswap';
+import { createCidFromHash, fetchFromIpfs, loadVerify } from '@dotli/content';
 import { getBackend, type Backend } from '@dotli/config';
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createLazyLoad, serializeError, log, noop, toHex } from '@dotli/shared';
@@ -51,7 +51,7 @@ export function createBlockFetch(sources: BlockSources): PreimageFetch {
 
 const fetchContentBlock = createBlockFetch({
   backend: getBackend,
-  bitswap: bitswapGet,
+  bitswap: fetchBitswapBlock,
   gateway: async cid => (await fetchFromIpfs(cid)).data,
 });
 
@@ -91,8 +91,8 @@ function createPreimageLookupSubscribe(label: string, deps: PreimageDeps): Requi
     }
 
     return createResultStream<Uint8Array | undefined>([undefined], (push, pushError) => {
-      const cid = hashToCid(key);
-      // Aborting also reaches a running fetch, and a retrying bitswapGet can keep fetching for minutes after the
+      const cid = createCidFromHash(key);
+      // Aborting also reaches a running fetch, and a retrying fetchBitswapBlock can keep fetching for minutes after the
       // consumer has gone.
       const aborter = new AbortController();
       // The poll retries every 10 s for as long as the product waits, so a backend that keeps failing is recorded once

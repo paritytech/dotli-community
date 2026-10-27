@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
-import { fetchFromIpfs, fetchCarFromIpfs } from './ipfs.js';
+import { fetchCarFromIpfs, fetchFromIpfs } from './fetchFromIpfs.js';
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 const GATEWAY = 'https://gw.example';
@@ -19,7 +19,7 @@ describe('fetchFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
 
     // When it fetches the block
-    await fetchFromIpfs(CID, GATEWAY, fetchMock);
+    await fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
 
     // Then it asks for the raw binary block, not a content-negotiable GET
     // (a bare GET lets the gateway serve it as text/html and rewrite the body)
@@ -41,7 +41,7 @@ describe('fetchFromIpfs', () => {
     );
 
     // When it fetches the block
-    const { data, contentType } = await fetchFromIpfs(CID, GATEWAY, fetchMock);
+    const { data, contentType } = await fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
 
     // Then it gets the response bytes and content type back
     expect(Array.from(data)).toEqual([0xde, 0xad, 0xbe, 0xef]);
@@ -53,9 +53,11 @@ describe('fetchFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
     // When it fetches the block
+    const fetched = fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
+
     // Then it rejects rather than returning a bad body, naming the gateway and
     // the CID so a report says which gateway failed on what
-    await expect(fetchFromIpfs(CID, GATEWAY, fetchMock)).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
+    await expect(fetched).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
 
   it('As a visitor, I hit a gateway that answers with an error page and its transfer is stopped, not left open', async () => {
@@ -63,7 +65,7 @@ describe('fetchFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response('<h1>Bad gateway</h1>', { status: 502 }));
 
     // When it fetches the block
-    const fetched = fetchFromIpfs(CID, GATEWAY, fetchMock);
+    const fetched = fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
 
     // Then the fetch fails and the transfer it started is aborted
     await expect(fetched).rejects.toThrow('HTTP 502');
@@ -77,7 +79,7 @@ describe('fetchCarFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
 
     // When it fetches the archive
-    await fetchCarFromIpfs(CID, GATEWAY, fetchMock);
+    await fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
 
     // Then it asks for the CAR archive as a binary type (immune to gateway
     // text/html rewriting, same discipline as the raw block path)
@@ -94,7 +96,7 @@ describe('fetchCarFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(new Uint8Array([0xca, 0xfe]), { status: 200 }));
 
     // When it fetches the archive
-    const data = await fetchCarFromIpfs(CID, GATEWAY, fetchMock);
+    const data = await fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
 
     // Then it gets the response bytes back
     expect(Array.from(data)).toEqual([0xca, 0xfe]);
@@ -105,8 +107,10 @@ describe('fetchCarFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
     // When it fetches the archive
+    const fetched = fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
+
     // Then it rejects rather than returning a bad body, naming the gateway and the CID
-    await expect(fetchCarFromIpfs(CID, GATEWAY, fetchMock)).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
+    await expect(fetched).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
 });
 
@@ -118,7 +122,7 @@ describe('gateway limits', () => {
     fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
 
     // When the block is fetched
-    const fetched = fetchFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+    const fetched = fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock, limits: TIGHT });
 
     // Then the fetch fails as stalled
     await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
@@ -134,7 +138,7 @@ describe('gateway limits', () => {
     fetchMock.mockResolvedValue(new Response(body, { status: 200 }));
 
     // When the archive is fetched
-    const fetched = fetchCarFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+    const fetched = fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock, limits: TIGHT });
 
     // Then the fetch fails as stalled
     await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
@@ -145,7 +149,7 @@ describe('gateway limits', () => {
     fetchMock.mockResolvedValue(new Response(new Uint8Array(10), { status: 200 }));
 
     // When the archive is fetched
-    const fetched = fetchCarFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+    const fetched = fetchCarFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock, limits: TIGHT });
 
     // Then the fetch fails as too large
     await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayTooLargeError' });
@@ -156,7 +160,7 @@ describe('gateway limits', () => {
     fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }));
 
     // When the block is fetched
-    const { data } = await fetchFromIpfs(CID, GATEWAY, fetchMock, TIGHT);
+    const { data } = await fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock, limits: TIGHT });
 
     // Then every byte arrives
     expect(Array.from(data)).toEqual([1, 2, 3, 4]);

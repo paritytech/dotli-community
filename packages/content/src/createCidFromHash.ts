@@ -6,7 +6,8 @@ import { CID } from 'multiformats/cid';
 import { create } from 'multiformats/hashes/digest';
 import { BLAKE2B_256, RAW } from './codecs.js';
 
-export function hashToCid(hashHex: string): CID {
+/** The raw-codec CIDv1 of a blake2b-256 hash given in hex, as a preimage key names its content. */
+export function createCidFromHash(hashHex: string): CID {
   const digest = create(BLAKE2B_256, fromHex(hashHex));
   return CID.createV1(RAW, digest);
 }

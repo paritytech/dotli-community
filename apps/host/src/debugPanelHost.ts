@@ -4,7 +4,7 @@
 // The page as the debug panel reads it. Loaded only with the panel, so the diagnostics and the archive reader stay out
 // of the boot chunk.
 
-import { bitswapGet } from '@dotli/bitswap';
+import { fetchBitswapBlock } from '@dotli/bitswap';
 import { getBackend, type Backend } from '@dotli/config';
 import { readArchiveFiles } from '@dotli/content';
 import { blockCache } from '@dotli/storage';
@@ -22,7 +22,7 @@ import { walletModeStore } from './runtime/state/walletMode.js';
 type BlockSource = (cid: string) => Promise<Uint8Array>;
 
 /** As the sandbox relay serves blocks: from the block cache, else over bitswap. */
-const relayBlock: BlockSource = async cid => (await blockCache.get(cid)) ?? bitswapGet(cid);
+const relayBlock: BlockSource = async cid => (await blockCache.get(cid)) ?? fetchBitswapBlock(cid);
 
 /** The Archive tab reads what the sandbox was served: blocks on the light client, the gateway on rpc-gateway. */
 export function archiveTransport(

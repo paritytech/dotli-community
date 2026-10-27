@@ -7,7 +7,7 @@
 import { createLazyLoad } from '@dotli/shared';
 
 type Verifier = {
-  blockMatchesCid: (cid: string, bytes: Uint8Array) => boolean | Promise<boolean>;
+  isBlockMatchingCid: (cid: string, bytes: Uint8Array) => boolean | Promise<boolean>;
 };
 
 export type BlockVerifierDeps = {
@@ -26,5 +26,5 @@ export function createBlockVerifier({
       report('block_verifier_load', err);
     },
   });
-  return async (cid, bytes) => (await verifier()).blockMatchesCid(cid, bytes);
+  return async (cid, bytes) => (await verifier()).isBlockMatchingCid(cid, bytes);
 }

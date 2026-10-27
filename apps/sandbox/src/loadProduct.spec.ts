@@ -28,7 +28,7 @@ type Harness = {
   /** What the load did, in order. */
   events: string[];
   /** The options each `fetchArchive` call got. */
-  fetches: Parameters<FetchArchive>[2][];
+  fetches: Parameters<FetchArchive>[1][];
   workers: { waitForFreshController: boolean }[];
   written: string[];
   stored: ArchiveFiles[];
@@ -40,7 +40,7 @@ const BLOCK_SOURCE = (): Promise<Uint8Array> => Promise.resolve(new Uint8Array()
 /** A sandbox page whose network, worker and window are fakes. `fetched` is what the fetch gives back or throws. */
 function harness(fetched: FetchResult | Error, overrides: Partial<LoadProductDeps> = {}): Harness {
   const events: string[] = [];
-  const fetches: Parameters<FetchArchive>[2][] = [];
+  const fetches: Parameters<FetchArchive>[1][] = [];
   const workers: { waitForFreshController: boolean }[] = [];
   const written: string[] = [];
   const stored: ArchiveFiles[] = [];
@@ -58,7 +58,8 @@ function harness(fetched: FetchResult | Error, overrides: Partial<LoadProductDep
       workers.push(options);
       return Promise.resolve();
     },
-    fetchArchive: (_cid, _onStatus, options) => {
+    fetchArchive: (_cid, params) => {
+      const { onStatus: _onStatus, ...options } = params ?? {};
       fetches.push(options);
       return fetched instanceof Error ? Promise.reject(fetched) : Promise.resolve(fetched);
     },

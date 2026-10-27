@@ -27,8 +27,8 @@ describe('createBlockVerifier', () => {
   it('As a visitor whose verifier chunk failed once, a later block check loads it and the miss was reported once', async () => {
     // Given
     const chunkMiss = new TypeError('Failed to fetch dynamically imported module');
-    const blockMatchesCid = vi.fn(() => true);
-    const load = vi.fn().mockRejectedValueOnce(chunkMiss).mockResolvedValue({ blockMatchesCid });
+    const isBlockMatchingCid = vi.fn(() => true);
+    const load = vi.fn().mockRejectedValueOnce(chunkMiss).mockResolvedValue({ isBlockMatchingCid });
     const report = vi.fn();
     const verify = createBlockVerifier({ load, report });
 
@@ -44,8 +44,8 @@ describe('createBlockVerifier', () => {
 
   it('As a visitor, a block is checked by the verifier that loaded once', async () => {
     // Given
-    const blockMatchesCid = vi.fn(() => true);
-    const load = vi.fn(() => Promise.resolve({ blockMatchesCid }));
+    const isBlockMatchingCid = vi.fn(() => true);
+    const load = vi.fn(() => Promise.resolve({ isBlockMatchingCid }));
     const report = vi.fn();
     const verify = createBlockVerifier({ load, report });
     const bytes = new Uint8Array([1]);
@@ -56,7 +56,7 @@ describe('createBlockVerifier', () => {
 
     // Then
     expect(ok).toBe(true);
-    expect(blockMatchesCid).toHaveBeenCalledWith('bafy-a', bytes);
+    expect(isBlockMatchingCid).toHaveBeenCalledWith('bafy-a', bytes);
     expect(load).toHaveBeenCalledTimes(1);
     expect(report).not.toHaveBeenCalled();
   });

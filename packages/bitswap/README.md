@@ -28,9 +28,9 @@ flowchart LR
   means the connected peers lacked the block. Other errors are terminal. A second request for the same CID waits on the
   first.
 - The page has one client, built on first use over the protocol frame's remote chain provider.
-- The relay listens on the host's sandbox channel. It takes the cache and the client through `SandboxBlockRelayDeps` and
-  tags each block with its `BlockOrigin`. The host holds the blocks because the sandbox's credentialless origin loses
-  its storage on reload.
+- The relay listens on the host's sandbox channel. It takes the cache and the client as its params and tags each block
+  with its `BlockOrigin`. The host holds the blocks because the sandbox's credentialless origin loses its storage on
+  reload.
 - A block cache read, delete or write that fails and is worked around is captured, logged as an error and counted as
   `content.block_relay` with its `step`, so the fallback never hides it. A verifier that cannot run reports why itself,
   so each block it leaves unchecked is a breadcrumb and a `verify` count. That block is refused with
@@ -45,6 +45,5 @@ flowchart LR
 
 ### `@dotli/bitswap`
 
-- Client: `bitswapGet`.
-- Relay: `createSandboxBlockRelay`, `SandboxBlockRelay`, `SandboxBlockRelayDeps`, `BlockCache`, `BlockOrigin`,
-  `ContentProgress`.
+- Client: `fetchBitswapBlock(cid, signal?)`, which fetches one block on the page's client.
+- Relay: `createSandboxBlockRelay`, `SandboxBlockRelay`, `BlockCache`, `BlockOrigin`, `ContentProgress`.

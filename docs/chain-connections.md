@@ -418,7 +418,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Host pool's chain gates | `apps/host/src/runtime/hostCallbacks/redialGate.ts` |
 | Settings probe | `apps/host/src/runtime/diagnostics.ts` (`queryFinalizedBlock`) |
 | Network panel | `apps/host/src/state/networkMonitor.ts`, `ChainPool.watch` in `packages/chains/src/chainPool.ts`, `packages/chains/src/headerNumber.ts` |
-| Bitswap | `packages/bitswap/src/client.ts`, `packages/bitswap/src/relay.ts` |
+| Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/engine.ts` |
 | Watched chains | `apps/protocol/src/lightClientService.ts` (`observeChains`) |
 | SharedWorker ports and heartbeat | `apps/protocol/src/protocolWorker.ts` |

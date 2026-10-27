@@ -8,7 +8,7 @@ import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
 import { captureException, m, recordExpected, reportListener, spans as S } from '@dotli/metrics';
 import { createListenerSet, getErrorName, log, setErrorName, serializeError } from '@dotli/shared';
 
-import { readDagTotal } from './dagTotal.js';
+import { readDagTotal } from './readDagTotal.js';
 import { errorCode } from './errors.js';
 
 /** Every served block passes here. The root's link `Tsize` sum gives the total up front, so progress is real. */
@@ -21,13 +21,18 @@ export type ContentProgress = {
 export type BlockOrigin = 'cache' | 'network';
 
 export type BlockCache = {
-  /** Must return a fresh copy, since the relay transfers the buffer to the sandbox and detaches it. */
+  /**
+   * Must return a fresh copy, since the relay transfers the buffer to the sandbox and detaches it. Resolves null on a
+   * miss and rejects when the store cannot be read.
+   */
   get: (cid: string) => Promise<Uint8Array | null>;
+  /** Stores the bytes under the CID. Rejects when the store cannot be written. */
   put: (cid: string, bytes: Uint8Array) => Promise<void>;
+  /** Removes the CID's entry, and resolves when there is none. Rejects when the store cannot be written. */
   delete: (cid: string) => Promise<void>;
 };
 
-export type SandboxBlockRelayDeps = {
+type Params = {
   /** Hands over only messages from a trusted sandbox origin. */
   channel: SandboxChannel;
   /** Fetches one block over the network. The signal aborts when the frame that asked goes away. */
@@ -44,14 +49,7 @@ export type SandboxBlockRelayDeps = {
   now?: () => number;
 };
 
-export type SandboxBlockRelay = {
-  /** Hears the running total after each served block. Returns the unsubscribe. */
-  onProgress(listener: (progress: ContentProgress) => void): () => void;
-  /** Hears where each served block came from. Returns the unsubscribe. */
-  onServed(listener: (from: BlockOrigin) => void): () => void;
-  /** Stops answering new requests. Fetches already running still answer their frame. */
-  stop(): void;
-};
+export type SandboxBlockRelay = ReturnType<typeof createSandboxBlockRelay>;
 
 /** `unknown` when the verifier could not run, which says nothing about the bytes. */
 type Verdict = { kind: 'match' } | { kind: 'mismatch' } | { kind: 'unknown'; cause: unknown };
@@ -61,25 +59,36 @@ type ServedBlock = {
   from: BlockOrigin;
 };
 
+type RelayStep = 'verify' | 'cache_read' | 'cache_delete' | 'cache_write';
+
+type ReportRelayFailureParams = {
+  /** The relay step that failed. */
+  step: RelayStep;
+  /** What the step threw. */
+  error: unknown;
+  /** The block the step handled, when there was one. */
+  cid?: string;
+  /** The metric reason. The error's name when not given. */
+  reason?: string;
+};
+
+/** A frame's id with its origin, or the window of a sandbox that sends no id. */
+type FrameKey = MessageEventSource | string;
+
+/** Where a block request or abort came from: the frame id the sandbox sent, if any, its origin and its window. */
+type FrameAddress = {
+  frame: string | undefined;
+  origin: string;
+  source: MessageEventSource | null;
+};
+
 /**
  * Spelled as `CONTENT_ERRORS.VERIFICATION`, which bitswap may not import. The sandbox branches on this name.
  */
 const VERIFICATION_ERROR = 'ContentVerificationError';
 
-type RelayStep = 'verify' | 'cache_read' | 'cache_delete' | 'cache_write';
-
-/** A relay step that failed and was worked around, reported so the workaround does not hide it. */
-function reportRelayFailure(step: RelayStep, err: unknown, cid?: string, reason = getErrorName(err)): void {
-  captureException(err, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
-  log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(err)}`);
-  m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: reason ?? 'unknown', step });
-}
-
-/** A frame's id with its origin, or the window of a sandbox that sends no id. */
-type FrameKey = MessageEventSource | string;
-
-export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlockRelay {
-  const { channel, blocks, cache, now = () => performance.now() } = deps;
+/** Creates the host side of the sandbox's block channel, which serves, verifies and caches the blocks the sandbox asks for. */
+export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = () => performance.now() }: Params) {
   // A listener's throw must not fail a block the sandbox already got, nor keep the next listener from hearing it.
   const progressListeners = createListenerSet<ContentProgress>({
     onListenerError: reportListener('content', 'bitswap_relay.progress'),
@@ -96,9 +105,9 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
    * keyed by its window.
    */
   const inFlight = new Map<FrameKey, Map<string, AbortController>>();
-  function frameKey(frame: string | undefined, origin: string, source: MessageEventSource): FrameKey;
-  function frameKey(frame: string | undefined, origin: string, source: MessageEventSource | null): FrameKey | null;
-  function frameKey(frame: string | undefined, origin: string, source: MessageEventSource | null): FrameKey | null {
+  function getFrameKey(address: FrameAddress & { source: MessageEventSource }): FrameKey;
+  function getFrameKey(address: FrameAddress): FrameKey | null;
+  function getFrameKey({ frame, origin, source }: FrameAddress): FrameKey | null {
     return frame === undefined ? source : `${origin} ${frame}`;
   }
 
@@ -119,12 +128,12 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
 
   async function check(cid: string, bytes: Uint8Array): Promise<Verdict> {
     try {
-      return (await deps.verify(cid, bytes)) ? { kind: 'match' } : { kind: 'mismatch' };
-    } catch (err) {
+      return (await verify(cid, bytes)) ? { kind: 'match' } : { kind: 'mismatch' };
+    } catch (error) {
       // The verifier reported why it could not run, so each block it leaves unchecked is a breadcrumb and a count.
-      recordExpected(err, { flow: 'content', step: 'relay_verify' });
-      m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: getErrorName(err) ?? 'unknown', step: 'verify' });
-      return { kind: 'unknown', cause: err };
+      recordExpected(error, { flow: 'content', step: 'relay_verify' });
+      m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', step: 'verify' });
+      return { kind: 'unknown', cause: error };
     }
   }
 
@@ -132,8 +141,8 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     let bytes: Uint8Array | null;
     try {
       bytes = await store.get(cid);
-    } catch (err) {
-      reportRelayFailure('cache_read', err);
+    } catch (error) {
+      reportRelayFailure({ step: 'cache_read', error });
       return null;
     }
     if (bytes === null) {
@@ -148,8 +157,8 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
       return null;
     }
     // Corrupted on disk. Dropped so the network copy takes its place.
-    void store.delete(cid).catch((err: unknown) => {
-      reportRelayFailure('cache_delete', err);
+    void store.delete(cid).catch((error: unknown) => {
+      reportRelayFailure({ step: 'cache_delete', error });
     });
     return null;
   }
@@ -165,9 +174,9 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     // The sandbox re-hashes only the root block, so this is the check for every other block a peer sends.
     const verdict = await check(cid, bytes);
     if (verdict.kind === 'mismatch') {
-      const err = setErrorName(new Error(`Block ${cid} does not hash to its CID`), VERIFICATION_ERROR);
-      reportRelayFailure('verify', err, cid, 'mismatch');
-      throw err;
+      const error = setErrorName(new Error(`Block ${cid} does not hash to its CID`), VERIFICATION_ERROR);
+      reportRelayFailure({ step: 'verify', error, cid, reason: 'mismatch' });
+      throw error;
     }
     // Fail closed. The verifier already reported why it could not run, so this refusal is not reported again.
     if (verdict.kind === 'unknown') {
@@ -178,15 +187,15 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
     }
     if (cache !== null) {
       // The reply detaches `bytes.buffer` before the IndexedDB write clones it.
-      void cache.put(cid, bytes.slice()).catch((err: unknown) => {
-        reportRelayFailure('cache_write', err);
+      void cache.put(cid, bytes.slice()).catch((error: unknown) => {
+        reportRelayFailure({ step: 'cache_write', error });
       });
     }
     return { bytes, from: 'network' };
   }
 
   const stopAborts = channel.on('dotli:bitswap-abort', (data, { origin, source }) => {
-    const key = frameKey(data.frame, origin, source);
+    const key = getFrameKey({ frame: data.frame, origin, source });
     if (key === null) {
       return;
     }
@@ -209,7 +218,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
       return;
     }
     const aborter = new AbortController();
-    const key = frameKey(data.frame, origin, source);
+    const key = getFrameKey({ frame: data.frame, origin, source });
     let own = inFlight.get(key);
     if (own === undefined) {
       own = new Map<string, AbortController>();
@@ -234,6 +243,7 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
           ok: true,
           bytes: served.bytes,
         };
+        // The cache and the client return a fresh copy, so its buffer is an `ArrayBuffer` holding this block alone.
         source.postMessage(reply, { targetOrigin: origin, transfer: [served.bytes.buffer as ArrayBuffer] });
       })
       .catch((err: unknown) => {
@@ -252,11 +262,21 @@ export function createSandboxBlockRelay(deps: SandboxBlockRelayDeps): SandboxBlo
   });
 
   return {
+    /** Hears the running total after each served block. Returns the unsubscribe. */
     onProgress: progressListeners.subscribe,
+    /** Hears where each served block came from. Returns the unsubscribe. */
     onServed: servedListeners.subscribe,
-    stop() {
+    /** Stops answering new requests. Fetches already running still answer their frame. */
+    stop(): void {
       stopAborts();
       stopGets();
     },
   };
+}
+
+/** A relay step that failed and was worked around, reported so the workaround does not hide it. */
+function reportRelayFailure({ step, error, cid, reason = getErrorName(error) }: ReportRelayFailureParams): void {
+  captureException(error, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
+  log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(error)}`);
+  m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: reason ?? 'unknown', step });
 }

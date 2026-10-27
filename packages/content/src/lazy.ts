@@ -5,6 +5,9 @@
 
 import type * as VerifyNamespace from './verify.js';
 
-/** On first use, so the host's entry stays free of the hashing code. */
 export type VerifyModule = typeof VerifyNamespace;
-export const loadVerify = (): Promise<VerifyModule> => import('./verify.js');
+
+/** Loads the hashing code on first use, so the host's entry stays free of it. Rejects when the chunk fails to load. */
+export function loadVerify(): Promise<VerifyModule> {
+  return import('./verify.js');
+}

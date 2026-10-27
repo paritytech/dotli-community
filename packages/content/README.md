@@ -43,7 +43,8 @@ flowchart LR
 ### `@dotli/content`
 
 - Fetch and archive: `fetchArchive`, `readArchiveFiles`, `fetchFromIpfs`, `packArchive`, `parseIpfsResponse`,
-  `ArchiveFiles`, `FetchResult`.
+  `ArchiveFiles`, `FetchResult`. `fetchArchive`, `fetchFromIpfs` and `parseIpfsResponse` take their input and one
+  options object.
 - Verification: `CONTENT_ERRORS`.
-- Encryption and CIDs: `isEncrypted`, `decryptContent`, `hashToCid`.
-- Lazy loader: `loadVerify` loads the verify module on first use, with `assertBlockMatchesCid` and `blockMatchesCid`.
+- Encryption and CIDs: `isEncrypted`, `decryptContent`, `createCidFromHash`.
+- Lazy loader: `loadVerify` loads the verify module on first use, with `assertBlockMatchesCid` and `isBlockMatchingCid`.

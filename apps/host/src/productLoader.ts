@@ -7,7 +7,7 @@
 // The page's own state is imported.
 
 import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
-import { bitswapGet } from '@dotli/bitswap';
+import { fetchBitswapBlock } from '@dotli/bitswap';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { protocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
 import {
@@ -272,7 +272,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
   const rendered = (manifests: ProductManifests): void => {
     options.failureScreen.forget();
     void options.recents.record(label);
-    void applyProductBranding(label, manifests, { fetchBlock: bitswapGet });
+    void applyProductBranding(label, manifests, { fetchBlock: fetchBitswapBlock });
   };
   const handedOff = (): void => {
     trace.handedOff();
