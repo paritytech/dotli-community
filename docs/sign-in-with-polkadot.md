@@ -600,20 +600,21 @@ sequenceDiagram
     U->>P: Scan and approve the pairing
   end
   W->>A: Decode the call
-  opt the phone asks first
+  W->>U: Review, the site's origin, the call and the account
+  U->>W: Confirm
+  W->>U: Ask to open Polkadot App
+  opt the phone asks to share the account
     W->>P: Read the named account
     P->>U: Share the account
   end
-  W->>U: Review, the site's origin, the call and the account
-  U->>W: Confirm
   W->>P: Sign as the named product account
   P->>U: Approve
   W->>S: dotli:s:result with the signed transaction
   S->>A: Submit the transaction
 ```
 
-Before the review the window reads the named account from the Polkadot App, which MAY ask the user to share it. A
-rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the transaction
+After the user confirms the review, the window reads the named account from the Polkadot App, which MAY ask the user to
+share it. A rejection on the phone, there or at signing, ends the round with `cancelled`. A wallet that can't sign the transaction
 ends it with `transaction_invalid`.
 
 ### Sign-out

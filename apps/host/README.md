@@ -117,8 +117,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   takes the site's call from the request, else from the first payload the vetted site posts for the round, and shows
   Connecting until it has one. A call that is not hex of 2 to 1 000 000 bytes, or a request of dot.li's own page, is a
   bad request. The round asks consent and resumes the main session as a sign-in does, then decodes the call for the
-  review. Once the user confirms, the window fills every extension and the phone signs with the account the site names.
-  The site gets the signed transaction and sends it itself, and never gets the main account.
+  review. Once the user confirms, the window asks the user to open Polkadot App, reads the named account's key from the
+  phone, fills every extension and the phone signs with that account. The site gets the signed transaction and sends it
+  itself, and never gets the main account.
 - The sign-in window reads a site's registrable domain from a copy of the Public Suffix List it ships, a data file under
   the Mozilla Public License 2.0, read as text and kept with its license header, and refreshed with each release.
 - The site list lists the sites the main store keeps a grant for, the most recently used first, each with Revoke, which
