@@ -27,7 +27,7 @@
     "typecheck": "astro check && tsc --noEmit -p tsconfig.shipped.json"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.11",
+    "@astrojs/check": "^0.9.12",
     "@config/eslint": "*",
     "@config/storybook": "*",
     "@config/typescript": "*",
@@ -35,7 +35,7 @@
     "@dotli/transport": "*",
     "@noble/hashes": "^2.4.0",
     "@playwright/test": "^1.64.1",
-    "@solidjs/vite-plugin": "3.0.0-next.50",
+    "@solidjs/vite-plugin": "3.0.0-next.51",
     "@types/qrcode": "^1.5.6",
     "fake-indexeddb": "^6.2.6",
     "jsqr": "^1.4.0",
@@ -43,7 +43,7 @@
     "playwright": "^1.64.1",
     "simple-statistics": "^7.12.1",
     "storybook": "^10.6.2",
-    "storybook-solidjs-vite": "^10.7.2"
+    "storybook-solidjs-vite": "^10.7.4"
   },
   "dependencies": {
     "@config/astro-solid": "*",
@@ -60,18 +60,18 @@
     "@dotli/truapi-debug": "*",
     "@dotli/truapi-debug-ui": "*",
     "@dotli/ui": "*",
-    "@parity/truapi": "0.25.0",
-    "@parity/truapi-host": "0.25.0",
+    "@parity/truapi": "0.26.0",
+    "@parity/truapi-host": "0.26.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@polkadot-api/signers-common": "^0.4.0",
     "@polkadot-labs/hdkd-helpers": "^0.0.34",
     "@scure/base": "^2.4.0",
-    "@solidjs/web": "2.0.0-rc.15",
-    "astro": "^7.4.1",
+    "@solidjs/web": "2.0.0-rc.18",
+    "astro": "^7.4.2",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^3.2.2",
+    "polkadot-api": "^3.3.0",
     "qrcode": "^1.5.4",
-    "solid-js": "2.0.0-rc.15",
+    "solid-js": "2.0.0-rc.18",
     "workbox-window": "^7.4.1"
   }
 }
