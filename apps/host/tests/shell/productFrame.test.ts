@@ -11,7 +11,7 @@ import type { FrameProduct, ProductFrame } from '../../src/runtime/productFrame.
 import { answerConnection, createFakePageCore, type FakePageCore } from '../../src/runtime/pageCore.fake.js';
 import { createProductFrame } from '../../src/runtime/productFrame.js';
 import { createPermissionAuthorizations } from '../../src/runtime/permissions.js';
-import { clearScreen, showErrorPage } from '@dotli/ui';
+import { pageScreen, showErrorPage } from '@dotli/ui';
 import { createProductFrameView } from '../../src/productFrameView.js';
 import { nth } from '@dotli/shared/testing';
 
@@ -38,7 +38,7 @@ type Harness = {
 let channel: StartedSandboxChannel | null = null;
 
 afterEach(() => {
-  clearScreen();
+  pageScreen.clear();
   channel?.stop();
   channel = null;
 });
@@ -75,7 +75,7 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
     view: createProductFrameView({
       body: () => document.body,
       container: () => container,
-      clearScreen,
+      clearScreen: pageScreen.clear,
       hideLoading: () => undefined,
     }),
     notify: () => undefined,

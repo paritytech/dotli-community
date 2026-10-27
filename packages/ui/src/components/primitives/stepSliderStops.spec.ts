@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { handlesKey, stopAt, stopForKey } from './stepSliderStops.js';
+import { isHandledKey, getStopAt, getStopForKey } from './stepSliderStops.js';
 
 describe('step slider', () => {
   it.each([
@@ -14,9 +14,12 @@ describe('step slider', () => {
     [1, 3],
     [-0.4, 0],
     [1.7, 3],
-  ])('As a pointer at %d of the track, I land on stop %d of four', (fraction, stop) => {
+  ])('As a pointer user, I release at %d of the track and land on stop %d of four', (fraction, stop) => {
+    // When
+    const landed = getStopAt(fraction, 4);
+
     // Then
-    expect(stopAt(fraction, 4)).toBe(stop);
+    expect(landed).toBe(stop);
   });
 
   it.each<[string, number, number | null]>([
@@ -36,9 +39,12 @@ describe('step slider', () => {
     [' ', 2, 2],
     ['Tab', 2, null],
     ['a', 2, null],
-  ])('As a keyboard user pressing %j on stop %d of four, I commit stop %j', (key, index, stop) => {
+  ])('As a keyboard user, I press %j on stop %d of four and commit stop %j', (key, index, stop) => {
+    // When
+    const committed = getStopForKey({ key, index, count: 4 });
+
     // Then
-    expect(stopForKey(key, index, 4)).toBe(stop);
+    expect(committed).toBe(stop);
   });
 
   it.each<[string, boolean]>([
@@ -48,8 +54,11 @@ describe('step slider', () => {
     [' ', true],
     ['Tab', false],
     ['a', false],
-  ])('As a keyboard user pressing %j, the slider takes the key from the page: %j', (key, handled) => {
+  ])('As a keyboard user, I press %j and the slider takes the key from the page: %j', (key, handled) => {
+    // When
+    const taken = isHandledKey(key);
+
     // Then
-    expect(handlesKey(key)).toBe(handled);
+    expect(taken).toBe(handled);
   });
 });

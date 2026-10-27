@@ -6,7 +6,7 @@ import { AlertTriangleIcon, BanIcon, BellIcon, CheckIcon } from '../../icons.js'
 import { toastIcon } from './toastIcon.js';
 
 describe('toast icon', () => {
-  it('As a dotli user, a toast without its own icon shows the icon of its tone', () => {
+  it('As a dotli user, I get a toast without its own icon and see the icon of its tone', () => {
     // When
     const icons = (['info', 'ok', 'warn', 'err', 'idle'] as const).map(tone => toastIcon({ tone }));
 
@@ -14,7 +14,7 @@ describe('toast icon', () => {
     expect(icons).toEqual([BellIcon, CheckIcon, AlertTriangleIcon, AlertTriangleIcon, BanIcon]);
   });
 
-  it('As a dotli user, a toast with its own icon keeps it whatever its tone', () => {
+  it('As a dotli user, I get a toast with its own icon and it keeps that icon whatever its tone', () => {
     // Given
     const own = BanIcon;
 

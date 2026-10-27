@@ -6,26 +6,13 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
+import { appears } from '@dotli/ui/testing';
 import { Button } from '../../components/primitives/Button.js';
 import { ModalFocusFallback } from '../../components/floating/layerContext.js';
-import { openModal, type ModalHandoff, type ModalOutcome, type ModalView } from '../../page/state/modals.js';
+import { modals, type ModalHandoff, type ModalOutcome, type ModalView } from '../../page/state/createModals.js';
 import { ModalOutlet } from './ModalOutlet.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
-
-const permissionLike = (overrides: Partial<ModalView<Choice>> = {}): ModalView<Choice> => ({
-  title: 'Permission Request',
-  fields: [{ label: 'Application', value: 'playground.dot' }],
-  notice: 'Granting this permission will reload the application.',
-  buttons: [
-    { label: 'Deny', variant: 'danger', result: 'deny' },
-    { label: 'Always allow', variant: 'secondary', result: 'allow' },
-    { label: 'Allow once', variant: 'primary', result: 'once' },
-  ],
-  dismissOnBackdrop: true,
-  dismissResult: 'dismissed',
-  ...overrides,
-});
 
 const passwordView: ModalView<'cancel' | 'unlock'> = {
   title: 'Encrypted Content',
@@ -47,81 +34,10 @@ const asked: {
 } = { views: [], outcomes: [] };
 /** How the handed-off view closed, for the handoff stories. */
 const handoffClosed: string[] = [];
-/** The view an answered dialog hands its place to. */
-const waitingView = (overrides: Partial<ModalView<string>> = {}): ModalView<string> => ({
-  title: 'Waiting',
-  fields: [],
-  body: () => <p>Waiting step body</p>,
-  buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
-  dismissOnBackdrop: true,
-  dismissResult: 'background',
-  ...overrides,
-});
 /** The app frame the page hands focus to, as the host page gives its product frame. */
 let appFrame: HTMLIFrameElement | undefined;
-const arrange = (views: ModalView<string>[], next?: ModalView<string>): (() => void) => {
-  resetAllStoresForTests();
-  appFrame = undefined;
-  handoffClosed.length = 0;
-  asked.views = views;
-  asked.next = next;
-  asked.outcomes = [];
-  return () => {
-    asked.next = undefined;
-    resetAllStoresForTests();
-    appFrame = undefined;
-  };
-};
-const ask =
-  (...views: ModalView<string>[]) =>
-  () =>
-    arrange(views);
-/** Asks `view`, which hands its place to `next` once answered. */
-const askWithHandoff = (view: ModalView<string>, next: ModalView<string>) => () => arrange([view], next);
-
-/** The page: the Ask button that queues the story's prompts, the app's frames when given, and the outlet. */
-function Page(props: { frames?: number }) {
-  return (
-    <div style={{ display: 'flex', gap: '8px', 'flex-direction': 'column', 'align-items': 'flex-start' }}>
-      <Button
-        testId="opener"
-        onClick={() => {
-          const { next } = asked;
-          const handoff =
-            next === undefined
-              ? undefined
-              : (): ModalHandoff => ({
-                  view: next,
-                  signal: new AbortController().signal,
-                  closed: result => {
-                    handoffClosed.push(result);
-                  },
-                });
-          asked.outcomes.push(...asked.views.map(view => openModal(view, undefined, handoff)));
-        }}
-      >
-        Ask
-      </Button>
-      <Show when={props.frames}>
-        {count => (
-          <div id="app" style={{ display: 'flex', gap: '8px' }}>
-            {Array.from({ length: count() }, (_, i) => (
-              <iframe
-                title={`App frame ${String(i + 1)}`}
-                data-testid={`frame-${String(i + 1)}`}
-                srcdoc="<body style='margin:0;background:#335'></body>"
-                style={{ width: '120px', height: '60px', border: '0' }}
-              />
-            ))}
-          </div>
-        )}
-      </Show>
-      <ModalFocusFallback value={() => appFrame}>
-        <ModalOutlet />
-      </ModalFocusFallback>
-    </div>
-  );
-}
+// The dialog is portalled into the body, outside the story's canvas.
+const body = within(document.body);
 
 const meta = {
   title: 'Overlays/ModalOutlet',
@@ -133,34 +49,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The dialog is portalled into the body, outside the story's canvas.
-const body = within(document.body);
-const backdrop = () => body.queryByTestId('prompt-dialog-backdrop');
-const title = () => body.getByRole('heading', { level: 2 }).textContent;
-const press = async (el: Element) => {
-  await (await trustedInput()).click(el);
-};
-/** A press on the scrim beside the card, as a real press there lands. */
-const pressScrim = async () => {
-  await (await trustedInput()).click(body.getByTestId('prompt-dialog-scrim'), { position: { x: 4, y: 4 } });
-};
-const askNow = async () => {
-  await press(body.getByTestId('opener'));
-  await waitFor(() => expect(backdrop()).toHaveAttribute('data-open'));
-};
-const closed = async () => {
-  await waitFor(() => expect(backdrop()).toBeNull());
-};
-
 /** As a dotli user, I press Always allow on a prompt and it settles with that answer and closes. */
 export const ButtonSettles: Story = {
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
     await step('Given a prompt is up', askNow);
     await step('When I press Always allow', () => press(body.getByRole('button', { name: 'Always allow' })));
     await step("Then it settles with that button's answer and closes", async () => {
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'allow' });
-      await closed();
+      await waitForClosed();
     });
   },
 };
@@ -168,9 +65,9 @@ export const ButtonSettles: Story = {
 /** As a phone user, I cannot scroll the page under a prompt until I answer it. */
 export const PhoneLocksScroll: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
-    await step('Given a prompt is up on a phone', askNow);
+    await step('When a prompt comes up on a phone', askNow);
     await step('Then the page under it does not scroll', async () => {
       await expect(document.body).toHaveAttribute('data-scroll-locked');
     });
@@ -184,29 +81,31 @@ export const PhoneLocksScroll: Story = {
 
 /** As a dotli user, I dismiss queued prompts with the scrim and Escape one by one, and a click inside the card answers nothing. */
 export const ScrimAndEscapeDismiss: Story = {
-  beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
+  beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
     await step('Given two prompts are queued', askNow);
-    await step('When I click inside the card, then nothing is answered', async () => {
-      await press(body.getByTestId('prompt-dialog-notice'));
-      await expect(title()).toBe('Permission Request');
+    await step('When I click inside the card', () => press(body.getByTestId('prompt-dialog-notice')));
+    await step('Then nothing is answered', async () => {
+      await expect(readTitle()).toBe('Permission Request');
     });
-    await step('When I press the scrim, then the first is dismissed and the second shows', async () => {
-      await pressScrim();
+    await step('When I press the scrim', pressScrim);
+    await step('Then the first is dismissed and the second shows', async () => {
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'dismissed' });
-      await waitFor(() => expect(title()).toBe('Second'));
+      await waitFor(() => expect(readTitle()).toBe('Second'));
     });
-    await step('When I press Escape, then the second is dismissed', async () => {
+    await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
+    });
+    await step('Then the second is dismissed', async () => {
       await expect(asked.outcomes[1]).resolves.toEqual({ result: 'dismissed' });
-      await closed();
+      await waitForClosed();
     });
   },
 };
 
 /** As a dotli user, I press Escape on a prompt and it closes while the page hears the key as handled. */
 export const EscapeHandledForPage: Story = {
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
     const seen: boolean[] = [];
     const listener = (event: KeyboardEvent): void => {
@@ -218,10 +117,10 @@ export const EscapeHandledForPage: Story = {
     });
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
+      document.removeEventListener('keydown', listener);
     });
     await step('Then the prompt closed and the page heard the key as handled', async () => {
-      await closed();
-      document.removeEventListener('keydown', listener);
+      await waitForClosed();
       await expect(seen).toEqual([true]);
     });
   },
@@ -237,7 +136,7 @@ export const MustAnswerIgnoresScrimAndEscape: Story = {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it is still up', async () => {
-      await expect(backdrop()).toHaveAttribute('data-open');
+      await expect(queryBackdrop()).toHaveAttribute('data-open');
     });
     await step('When I type the password and press Unlock', async () => {
       await (await trustedInput()).type(body.getByTestId('prompt-dialog-input'), 'hunter2');
@@ -245,7 +144,7 @@ export const MustAnswerIgnoresScrimAndEscape: Story = {
     });
     await step('Then its only answer is Unlock, so the scrim and Escape answered nothing', async () => {
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'unlock', value: 'hunter2' });
-      await closed();
+      await waitForClosed();
     });
   },
 };
@@ -253,7 +152,7 @@ export const MustAnswerIgnoresScrimAndEscape: Story = {
 /** As a phone user, I press Close on a prompt sheet and it is dismissed as the scrim would. */
 export const PhoneSheetCloseDismisses: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
     await step('Given a prompt is up on a phone', askNow);
     await step("When I press the sheet's Close", async () => {
@@ -261,7 +160,7 @@ export const PhoneSheetCloseDismisses: Story = {
     });
     await step('Then it is dismissed as the scrim would, and closes', async () => {
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'dismissed' });
-      await closed();
+      await waitForClosed();
     });
   },
 };
@@ -286,12 +185,12 @@ export const PhoneSheetCloseCancels: Story = {
 
 /** As a keyboard user, I answer a prompt and focus returns to where I was. */
 export const FocusReturnsToOpener: Story = {
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
     await step('Given I asked from the page', askNow);
     await step('When I answer', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then focus is back where I was', async () => {
-      await closed();
+      await waitForClosed();
       await expect(body.getByTestId('opener')).toHaveFocus();
     });
   },
@@ -302,25 +201,31 @@ export const PasswordEnterSubmits: Story = {
   beforeEach: ask({ ...passwordView, input: { kind: 'password', placeholder: 'Password', error: 'Wrong password' } }),
   play: async ({ step }) => {
     const field = () => body.getByTestId('prompt-dialog-input');
-    await step('Given the password prompt is up with focus in its field', async () => {
-      await askNow();
+    await step('When the password prompt comes up', askNow);
+    await step('Then focus is in its field and its error shows', async () => {
       await waitFor(() => expect(field()).toHaveFocus());
       await expect(body.getByRole('alert')).toHaveTextContent('Wrong password');
     });
-    await step('When I press Enter with nothing typed, then nothing is sent', async () => {
+    await step('When I press Enter with nothing typed', async () => {
       await (await trustedInput()).keyboard('{Enter}');
-      await expect(backdrop()).toHaveAttribute('data-open');
+    });
+    await step('Then nothing is sent', async () => {
+      await expect(queryBackdrop()).toHaveAttribute('data-open');
       await expect(body.getByRole('button', { name: 'Unlock' })).toBeDisabled();
     });
-    await step('When I type the password and press Enter', async () => {
+    await step('When I type the password', async () => {
       await (await trustedInput()).type(field(), 'hunter2');
+    });
+    await step('Then Unlock is ready', async () => {
       await expect(body.getByRole('button', { name: 'Unlock' })).toBeEnabled();
+    });
+    await step('When I press Enter', async () => {
       await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then it unlocks with what I typed, and the Enter does not ask again from the page', async () => {
       await expect(asked.outcomes).toHaveLength(1);
       await expect(asked.outcomes[0]).resolves.toEqual({ result: 'unlock', value: 'hunter2' });
-      await closed();
+      await waitForClosed();
       await expect(body.getByTestId('opener')).toHaveFocus();
     });
   },
@@ -343,12 +248,12 @@ export const PasswordCancelDropsText: Story = {
 
 /** As a keyboard user, I answer the first of two prompts and the second shows with focus on it. */
 export const QueuedDialogGetsFocus: Story = {
-  beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
+  beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
     await step('Given two prompts are queued', askNow);
     await step('When I answer the first', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then the second shows with focus on it', async () => {
-      await waitFor(() => expect(title()).toBe('Second'));
+      await waitFor(() => expect(readTitle()).toBe('Second'));
       await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
     });
   },
@@ -356,16 +261,16 @@ export const QueuedDialogGetsFocus: Story = {
 
 /** As a keyboard user, I answer two queued prompts and focus returns to where I was. */
 export const FocusReturnsAfterQueue: Story = {
-  beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
+  beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
     await step('Given two prompts are queued from the page', askNow);
-    await step('When I answer both', async () => {
-      await press(body.getByRole('button', { name: 'Deny' }));
-      await waitFor(() => expect(title()).toBe('Second'));
-      await press(body.getByRole('button', { name: 'Deny' }));
+    await step('When I answer the first', () => press(body.getByRole('button', { name: 'Deny' })));
+    await step('Then the second shows', async () => {
+      await waitFor(() => expect(readTitle()).toBe('Second'));
     });
+    await step('When I answer the second', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then focus is back where I was', async () => {
-      await closed();
+      await waitForClosed();
       await expect(body.getByTestId('opener')).toHaveFocus();
     });
   },
@@ -374,7 +279,7 @@ export const FocusReturnsAfterQueue: Story = {
 /** As a keyboard user, I answer a prompt after the button I came from left the page and focus goes to the app. */
 export const GoneOriginFocusesApp: Story = {
   args: { frames: 1 },
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
     await step('Given a prompt is up over the app, and the button I came from leaves the page', async () => {
       await askNow();
@@ -383,7 +288,7 @@ export const GoneOriginFocusesApp: Story = {
     });
     await step('When I answer', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then focus goes to the app, not the page', async () => {
-      await closed();
+      await waitForClosed();
       await expect(document.activeElement).toBe(body.getByTestId('frame-1'));
     });
   },
@@ -392,7 +297,7 @@ export const GoneOriginFocusesApp: Story = {
 /** As a keyboard user, I answer a prompt after the app reloaded and focus goes to the app's new frame. */
 export const ReloadFocusesNewFrame: Story = {
   args: { frames: 2 },
-  beforeEach: ask(permissionLike()),
+  beforeEach: ask(buildPermissionView()),
   play: async ({ step }) => {
     await step('Given an app reload swapped the frame while the prompt is up, and my button is gone', async () => {
       appFrame = body.getByTestId<HTMLIFrameElement>('frame-1');
@@ -402,7 +307,7 @@ export const ReloadFocusesNewFrame: Story = {
     });
     await step('When I answer', () => press(body.getByRole('button', { name: 'Deny' })));
     await step("Then focus goes to the app's new frame", async () => {
-      await closed();
+      await waitForClosed();
       await expect(document.activeElement).toBe(body.getByTestId('frame-2'));
     });
   },
@@ -410,45 +315,45 @@ export const ReloadFocusesNewFrame: Story = {
 
 /** As a dotli user, I answer the first of two prompts and the second opens over the scrim already up. */
 export const SecondOpensOverScrim: Story = {
-  beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
+  beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
-    await step('Given two prompts are queued, the first bringing its scrim in', async () => {
-      await askNow();
-      await expect(backdrop()).not.toHaveAttribute('data-follows');
+    await step('When two prompts are queued', askNow);
+    await step('Then the first brings its scrim in', async () => {
+      await expect(queryBackdrop()).not.toHaveAttribute('data-follows');
     });
     await step('When I answer the first', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then the second opens over the scrim that is already up', async () => {
-      await waitFor(() => expect(title()).toBe('Second'));
-      await expect(backdrop()).toHaveAttribute('data-follows');
+      await waitFor(() => expect(readTitle()).toBe('Second'));
+      await expect(queryBackdrop()).toHaveAttribute('data-follows');
     });
   },
 };
 
 /** As a dotli user, I dismiss the first prompt with the scrim and the second opens over the same scrim. */
 export const ScrimDenyKeepsScrim: Story = {
-  beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
+  beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
     await step('Given two prompts are queued', askNow);
     await step('When I dismiss the first with a scrim press', pressScrim);
     await step('Then the second opens over the same scrim', async () => {
-      await waitFor(() => expect(title()).toBe('Second'));
-      await expect(backdrop()).toHaveAttribute('data-follows');
+      await waitFor(() => expect(readTitle()).toBe('Second'));
+      await expect(queryBackdrop()).toHaveAttribute('data-follows');
     });
   },
 };
 
 /** As a keyboard user, I dismiss one prompt with the scrim and answer the next and focus returns to where I was. */
 export const ScrimHandOffReturnsFocus: Story = {
-  beforeEach: ask(permissionLike(), permissionLike({ title: 'Second' })),
+  beforeEach: ask(buildPermissionView(), buildPermissionView({ title: 'Second' })),
   play: async ({ step }) => {
     await step('Given two prompts are queued from the page', askNow);
-    await step('When a scrim press dismisses the first and I answer the second', async () => {
-      await pressScrim();
-      await waitFor(() => expect(title()).toBe('Second'));
-      await press(body.getByRole('button', { name: 'Deny' }));
+    await step('When a scrim press dismisses the first', pressScrim);
+    await step('Then the second shows', async () => {
+      await waitFor(() => expect(readTitle()).toBe('Second'));
     });
+    await step('When I answer the second', () => press(body.getByRole('button', { name: 'Deny' })));
     await step('Then focus is back where I was', async () => {
-      await closed();
+      await waitForClosed();
       await expect(body.getByTestId('opener')).toHaveFocus();
     });
   },
@@ -456,33 +361,24 @@ export const ScrimHandOffReturnsFocus: Story = {
 
 /** As a dotli user, I get a later prompt after the queue emptied and it brings its own scrim in. */
 export const LaterPromptBringsScrim: Story = {
-  beforeEach: ask(permissionLike({ title: 'Later' })),
+  beforeEach: ask(buildPermissionView({ title: 'Later' })),
   play: async ({ step }) => {
     await step('Given a prompt came and was answered', async () => {
       await askNow();
       await press(body.getByRole('button', { name: 'Deny' }));
-      await closed();
+      await waitForClosed();
     });
     await step('When another prompt opens after the queue emptied', askNow);
     await step('Then it brings its own scrim in', async () => {
-      await expect(title()).toBe('Later');
-      await expect(backdrop()).not.toHaveAttribute('data-follows');
+      await expect(readTitle()).toBe('Later');
+      await expect(queryBackdrop()).not.toHaveAttribute('data-follows');
     });
   },
 };
 
-const reviewWithSign = (): ModalView<Choice> =>
-  permissionLike({
-    title: 'Sign',
-    buttons: [
-      { label: 'Reject', variant: 'danger', result: 'deny' },
-      { label: 'Sign', variant: 'primary', result: 'once' },
-    ],
-  });
-
 /** As a dotli user, I answer a review and the same dialog shows the next step in place. */
 export const HandoffSwapsInPlace: Story = {
-  beforeEach: askWithHandoff(reviewWithSign(), waitingView()),
+  beforeEach: askWithHandoff(buildReviewWithSign(), buildWaitingView()),
   play: async ({ step }) => {
     let dialog: HTMLElement | undefined;
     await step('Given a review is up', async () => {
@@ -523,32 +419,33 @@ export const HandoffClearsPassword: Story = {
       await askNow();
       await (await trustedInput()).type(field(), 'hunter2');
     });
-    await step('When I press Unlock and the next prompt takes its place', async () => {
-      await press(body.getByRole('button', { name: 'Unlock' }));
-      await waitFor(() => expect(title()).toBe('Try Again'));
-    });
-    await step('Then the first prompt got what I typed, and the next one starts empty', async () => {
-      await expect(asked.outcomes[0]).resolves.toEqual({ result: 'unlock', value: 'hunter2' });
-      await expect(field()).toHaveValue('');
-      await expect(body.getByRole('button', { name: 'Unlock' })).toBeDisabled();
-    });
+    await step('When I press Unlock', () => press(body.getByRole('button', { name: 'Unlock' })));
+    await step(
+      'Then the next prompt takes its place, the first got what I typed, and the next starts empty',
+      async () => {
+        await waitFor(() => expect(readTitle()).toBe('Try Again'));
+        await expect(asked.outcomes[0]).resolves.toEqual({ result: 'unlock', value: 'hunter2' });
+        await expect(field()).toHaveValue('');
+        await expect(body.getByRole('button', { name: 'Unlock' })).toBeDisabled();
+      },
+    );
   },
 };
 
 /** As a dotli user, I press Escape on the next step and it closes as the view's dismiss answer. */
 export const HandoffBackgroundsOnEscape: Story = {
-  beforeEach: askWithHandoff(reviewWithSign(), waitingView()),
+  beforeEach: askWithHandoff(buildReviewWithSign(), buildWaitingView()),
   play: async ({ step }) => {
-    await step('Given I signed and the next step is up', async () => {
-      await askNow();
-      await press(body.getByRole('button', { name: 'Sign' }));
+    await step('Given a review is up', askNow);
+    await step('When I sign', () => press(body.getByRole('button', { name: 'Sign' })));
+    await step('Then the next step is up', async () => {
       await waitFor(() => expect(body.getByText('Waiting step body')).toBeVisible());
     });
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step("Then the dialog is gone and the caller heard the view's dismiss answer", async () => {
-      await closed();
+      await waitForClosed();
       await expect(handoffClosed).toEqual(['background']);
     });
   },
@@ -557,7 +454,7 @@ export const HandoffBackgroundsOnEscape: Story = {
 /** As a phone user, I see the next step's sheet without a close button when it cannot be closed that way. */
 export const HandoffSheetHasNoClose: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  beforeEach: askWithHandoff(reviewWithSign(), waitingView({ closable: false })),
+  beforeEach: askWithHandoff(buildReviewWithSign(), buildWaitingView({ closable: false })),
   play: async ({ step }) => {
     await step('Given a review is up on a phone, with a close button', async () => {
       await askNow();
@@ -570,3 +467,137 @@ export const HandoffSheetHasNoClose: Story = {
     });
   },
 };
+
+/** The page: the Ask button that queues the story's prompts, the app's frames when given, and the outlet. */
+function Page(props: { frames?: number }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', 'flex-direction': 'column', 'align-items': 'flex-start' }}>
+      <Button
+        testId="opener"
+        onClick={() => {
+          const { next } = asked;
+          const handoff =
+            next === undefined
+              ? undefined
+              : (): ModalHandoff => ({
+                  view: next,
+                  signal: new AbortController().signal,
+                  closed: result => {
+                    handoffClosed.push(result);
+                  },
+                });
+          asked.outcomes.push(...asked.views.map(view => modals.open(view, { handoff })));
+        }}
+      >
+        Ask
+      </Button>
+      <Show when={props.frames}>
+        {count => (
+          <div id="app" style={{ display: 'flex', gap: '8px' }}>
+            {Array.from({ length: count() }, (_, index) => (
+              <iframe
+                title={`App frame ${String(index + 1)}`}
+                data-testid={`frame-${String(index + 1)}`}
+                srcdoc="<body style='margin:0;background:#335'></body>"
+                style={{ width: '120px', height: '60px', border: '0' }}
+              />
+            ))}
+          </div>
+        )}
+      </Show>
+      <ModalFocusFallback value={() => appFrame}>
+        <ModalOutlet />
+      </ModalFocusFallback>
+    </div>
+  );
+}
+
+function buildPermissionView(overrides: Partial<ModalView<Choice>> = {}): ModalView<Choice> {
+  return {
+    title: 'Permission Request',
+    fields: [{ label: 'Application', value: 'playground.dot' }],
+    notice: 'Granting this permission will reload the application.',
+    buttons: [
+      { label: 'Deny', variant: 'danger', result: 'deny' },
+      { label: 'Always allow', variant: 'secondary', result: 'allow' },
+      { label: 'Allow once', variant: 'primary', result: 'once' },
+    ],
+    dismissOnBackdrop: true,
+    dismissResult: 'dismissed',
+    ...overrides,
+  };
+}
+
+/** The view an answered dialog hands its place to. */
+function buildWaitingView(overrides: Partial<ModalView<string>> = {}): ModalView<string> {
+  return {
+    title: 'Waiting',
+    fields: [],
+    body: () => <p>Waiting step body</p>,
+    buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
+    dismissOnBackdrop: true,
+    dismissResult: 'background',
+    ...overrides,
+  };
+}
+
+function buildReviewWithSign(): ModalView<Choice> {
+  return buildPermissionView({
+    title: 'Sign',
+    buttons: [
+      { label: 'Reject', variant: 'danger', result: 'deny' },
+      { label: 'Sign', variant: 'primary', result: 'once' },
+    ],
+  });
+}
+
+function arrange(views: ModalView<string>[], next?: ModalView<string>): () => void {
+  resetAllStoresForTests();
+  appFrame = undefined;
+  handoffClosed.length = 0;
+  asked.views = views;
+  asked.next = next;
+  asked.outcomes = [];
+  return restore;
+
+  function restore(): void {
+    asked.next = undefined;
+    resetAllStoresForTests();
+    appFrame = undefined;
+  }
+}
+
+function ask(...views: ModalView<string>[]): () => () => void {
+  return () => arrange(views);
+}
+
+/** Asks `view`, which hands its place to `next` once answered. */
+function askWithHandoff(view: ModalView<string>, next: ModalView<string>): () => () => void {
+  return () => arrange([view], next);
+}
+
+function queryBackdrop(): HTMLElement | null {
+  return body.queryByTestId('prompt-dialog-backdrop');
+}
+
+function readTitle(): string {
+  return body.getByRole('heading', { level: 2 }).textContent;
+}
+
+async function press(element: Element): Promise<void> {
+  await (await trustedInput()).click(element);
+}
+
+/** A press on the scrim beside the card, as a real press there lands. */
+async function pressScrim(): Promise<void> {
+  await (await trustedInput()).click(body.getByTestId('prompt-dialog-scrim'), { position: { x: 4, y: 4 } });
+}
+
+async function askNow(): Promise<void> {
+  await press(body.getByTestId('opener'));
+  await appears('[data-testid="prompt-dialog-backdrop"][data-open]');
+}
+
+async function waitForClosed(): Promise<void> {
+  await waitFor(() => expect(queryBackdrop()).toBeNull());
+}

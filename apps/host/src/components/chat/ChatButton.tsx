@@ -4,7 +4,7 @@
 import { createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { ChatIcon } from '@dotli/ui/icons';
-import { ActionItem, ActionsContext, Chip, IconButton, focusLostOrInside, focusTrigger } from '@dotli/ui';
+import { ActionItem, ActionsContext, Chip, IconButton, isFocusLostOrInside, focusTrigger } from '@dotli/ui';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import s from './ChatButton.module.css';
 
@@ -39,7 +39,7 @@ export function ChatButton(props: ChatButtonProps): JSX.Element {
       if (!closed) {
         return;
       }
-      if (focusLostOrInside(props.panel())) {
+      if (isFocusLostOrInside(props.panel())) {
         focusTrigger(button, props.fallbackFocus?.());
       }
     },

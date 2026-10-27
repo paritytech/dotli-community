@@ -4,9 +4,10 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
 import { ReloadIcon, SlidersIcon } from '../../icons.js';
-import { showError, showErrorPage } from './showErrorPage.js';
+import { showError } from './showError.js';
+import { showErrorPage } from './showErrorPage.js';
 
-// The page mounts its own root, so each play shows one in the story's `#app` as the host page does.
+// The page mounts its own root, so each play shows one in the story's `#app`.
 
 const XSS = '<img src=x onerror="alert(1)">';
 
@@ -52,7 +53,7 @@ export const MarkupShownAsText: Story = {
     await step(
       'As a visitor, markup in a message, its plain and bold parts, the title, a tip and a button label is shown to me as text',
       async () => {
-        // Given
+        // When
         showErrorPage({
           title: XSS,
           detail: [XSS, ' tail ', { strong: XSS }],
@@ -82,7 +83,7 @@ export const NoEmptyTipsOrActions: Story = {
     await step(
       'As a visitor, I see no empty Try list or button row when there is nothing to suggest or click',
       async () => {
-        // Given
+        // When
         showErrorPage({ title: 't', tips: [], actions: [] });
 
         // Then
@@ -202,18 +203,17 @@ export const ShimTipsAndRetryButton: Story = {
     await step(
       'As a visitor, tips passed to the shorthand reach the page, and a bare retry callback becomes a Retry button',
       async () => {
-        // Given
+        // Given a retry callback that records its call
         let clicked = false;
-        showError(
-          't',
-          'd',
-          () => {
+
+        // When the shorthand shows a page and I press its Retry button
+        showError('t', {
+          detail: 'd',
+          action: () => {
             clicked = true;
           },
-          ['Check the cable.'],
-        );
-
-        // When
+          tips: ['Check the cable.'],
+        });
         canvas.getByRole('button', { name: 'Retry' }).click();
 
         // Then

@@ -4,7 +4,7 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { ModalFocusFallback, Overlays as PageOverlays, refuseModals, RootBoundary } from '@dotli/ui';
+import { ModalFocusFallback, modals, Overlays as PageOverlays, RootBoundary } from '@dotli/ui';
 import { productFrameFocus } from '../productFrameLayout.js';
 
 /**
@@ -14,7 +14,7 @@ import { productFrameFocus } from '../productFrameLayout.js';
  */
 export function Overlays(): JSX.Element {
   return (
-    <RootBoundary root="island:Overlays" onBroken={refuseModals}>
+    <RootBoundary root="island:Overlays" onBroken={modals.refuseAll}>
       <ModalFocusFallback value={productFrameFocus}>
         <PageOverlays />
       </ModalFocusFallback>

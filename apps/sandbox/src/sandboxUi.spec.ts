@@ -113,7 +113,10 @@ describe('sandbox UI', () => {
     await ui.ready();
 
     // Then
-    expect(module.showError).toHaveBeenCalledWith('Failed to load content', 'The network did not answer', retry);
+    expect(module.showError).toHaveBeenCalledWith('Failed to load content', {
+      detail: 'The network did not answer',
+      action: retry,
+    });
   });
 
   it('As a visitor whose page UI cannot load, the miss is counted once however many screens wait on it', async () => {
@@ -163,7 +166,7 @@ describe('sandbox UI', () => {
     // Then
     expect(load).toHaveBeenCalledTimes(2);
     expect(texts).toEqual(['First. failure']);
-    expect(module.showError).toHaveBeenCalledWith('Second', 'failure', undefined);
+    expect(module.showError).toHaveBeenCalledWith('Second', { detail: 'failure', action: undefined });
     expect(captures.expected).toHaveBeenCalledOnce();
   });
 

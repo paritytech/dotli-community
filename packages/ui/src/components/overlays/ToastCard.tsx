@@ -3,7 +3,7 @@
 
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissToast, removeToast, type ToastEntry } from '../../page/state/toasts.js';
+import { toasts, type ToastEntry } from '../../page/state/createToasts.js';
 import { toastIcon } from './toastIcon.js';
 import { Button } from '../primitives/Button.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
@@ -35,7 +35,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
     () => props.entry.leaving && hidden(),
     removeNow => {
       if (removeNow) {
-        removeToast(id);
+        toasts.remove(id);
       }
     },
   );
@@ -53,7 +53,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
       data-hidden={hidden() ? '' : undefined}
       onAnimationEnd={() => {
         if (props.entry.leaving) {
-          removeToast(id);
+          toasts.remove(id);
         } else {
           setEntering(false);
         }
@@ -103,7 +103,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
         aria-label="Dismiss"
         onClick={event => {
           event.stopPropagation();
-          dismissToast(id);
+          toasts.dismiss(id);
         }}
       >
         <CloseIcon />

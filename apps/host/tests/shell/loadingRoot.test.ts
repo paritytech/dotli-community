@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { clearScreen, pageContentStore, prefersReducedMotion, showErrorPage } from '@dotli/ui';
+import { pageScreen, prefersReducedMotion, showErrorPage } from '@dotli/ui';
 import { showNoContentError } from '../../src/noContentPage.js';
 import {
   createLoadingController,
@@ -35,12 +35,12 @@ describe('A full-page screen ends the loading screen', () => {
         },
         now: () => performance.now(),
       },
-      pageContent: pageContentStore,
+      pageContent: pageScreen.store,
     });
   });
 
   afterEach(() => {
-    clearScreen();
+    pageScreen.clear();
     ctl.stopStatusTick();
     vi.useRealTimers();
   });

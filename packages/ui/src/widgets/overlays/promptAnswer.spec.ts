@@ -2,25 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { ModalView } from '../../page/state/modals.js';
-import { closeAnswer, scrimAnswer } from './promptAnswer.js';
+import type { ModalView } from '../../page/state/createModals.js';
+import { getCloseAnswer, getScrimAnswer } from './promptAnswer.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
-
-function permissionLike(overrides: Partial<ModalView<Choice>> = {}): ModalView<Choice> {
-  return {
-    title: 'Permission Request',
-    fields: [],
-    buttons: [
-      { label: 'Deny', variant: 'danger', result: 'deny' },
-      { label: 'Always allow', variant: 'secondary', result: 'allow' },
-      { label: 'Allow once', variant: 'primary', result: 'once' },
-    ],
-    dismissOnBackdrop: true,
-    dismissResult: 'dismissed',
-    ...overrides,
-  };
-}
 
 const passwordView: ModalView<'cancel' | 'unlock'> = {
   title: 'Encrypted Content',
@@ -34,37 +19,76 @@ const passwordView: ModalView<'cancel' | 'unlock'> = {
 };
 
 describe('prompt answers', () => {
-  it('As a dotli user, the scrim and Escape answer a dismissable prompt with its dismissal, and the close button too', () => {
+  it('As a dotli user, I press the scrim, Escape or the close button on a dismissable prompt and each answers it with its dismissal', () => {
     // Given
-    const view = permissionLike();
+    const view = buildPermissionView();
 
-    // When / Then
-    expect(scrimAnswer(view)).toBe('dismissed');
-    expect(closeAnswer(view)).toBe('dismissed');
+    // When
+    const scrim = getScrimAnswer(view);
+    const close = getCloseAnswer(view);
+
+    // Then
+    expect(scrim).toBe('dismissed');
+    expect(close).toBe('dismissed');
   });
 
-  it('As a dotli user, the scrim and Escape leave a prompt that must be answered alone', () => {
-    // Given / When / Then
-    expect(scrimAnswer(passwordView)).toBeUndefined();
-    expect(scrimAnswer(permissionLike({ dismissOnBackdrop: false }))).toBeUndefined();
-  });
-
-  it('As a phone user, the close button on a prompt that must be answered answers it with its Cancel', () => {
-    // Given / When / Then
-    expect(closeAnswer(passwordView)).toBe('cancel');
-  });
-
-  it('As a phone user, the close button on a prompt with no Cancel and no scrim answer answers it with its danger reject', () => {
-    // Given / When / Then
-    expect(closeAnswer(permissionLike({ dismissOnBackdrop: false }))).toBe('deny');
-  });
-
-  it('As a phone user, the close button on a scrim-dismissable prompt with no scrim answer answers it with its danger reject', () => {
+  it('As a dotli user, I press the scrim or Escape on a prompt that must be answered and it stays unanswered', () => {
     // Given
-    const { dismissResult: _unused, ...view } = permissionLike();
+    const permissionView = buildPermissionView({ dismissOnBackdrop: false });
 
-    // When / Then
-    expect(scrimAnswer(view)).toBeUndefined();
-    expect(closeAnswer(view)).toBe('deny');
+    // When
+    const passwordScrim = getScrimAnswer(passwordView);
+    const permissionScrim = getScrimAnswer(permissionView);
+
+    // Then
+    expect(passwordScrim).toBeUndefined();
+    expect(permissionScrim).toBeUndefined();
+  });
+
+  it('As a phone user, I press the close button on a prompt that must be answered and it answers with its Cancel', () => {
+    // When
+    const close = getCloseAnswer(passwordView);
+
+    // Then
+    expect(close).toBe('cancel');
+  });
+
+  it('As a phone user, I press the close button on a prompt with no Cancel and no scrim answer and it answers with its danger reject', () => {
+    // Given
+    const view = buildPermissionView({ dismissOnBackdrop: false });
+
+    // When
+    const close = getCloseAnswer(view);
+
+    // Then
+    expect(close).toBe('deny');
+  });
+
+  it('As a phone user, I press the close button on a scrim-dismissable prompt with no scrim answer and it answers with its danger reject', () => {
+    // Given
+    const { dismissResult: _unused, ...view } = buildPermissionView();
+
+    // When
+    const scrim = getScrimAnswer(view);
+    const close = getCloseAnswer(view);
+
+    // Then
+    expect(scrim).toBeUndefined();
+    expect(close).toBe('deny');
   });
 });
+
+function buildPermissionView(overrides: Partial<ModalView<Choice>> = {}): ModalView<Choice> {
+  return {
+    title: 'Permission Request',
+    fields: [],
+    buttons: [
+      { label: 'Deny', variant: 'danger', result: 'deny' },
+      { label: 'Always allow', variant: 'secondary', result: 'allow' },
+      { label: 'Allow once', variant: 'primary', result: 'once' },
+    ],
+    dismissOnBackdrop: true,
+    dismissResult: 'dismissed',
+    ...overrides,
+  };
+}

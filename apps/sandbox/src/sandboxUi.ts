@@ -86,7 +86,7 @@ export function createSandboxUi({ load, toasts, showFallback, hideFallback }: Sa
     ready,
     showError: (title, message, retry) => {
       withUi(ui => {
-        ui.showError(title, message, retry);
+        ui.showError(title, { detail: message, action: retry });
       }, `${title}. ${message}`);
     },
     showRetryScreen: () => {

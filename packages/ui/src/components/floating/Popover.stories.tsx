@@ -6,13 +6,18 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
+import { appears } from '@dotli/ui/testing';
 import { Button } from '../primitives/Button.js';
 import { Popover } from './Popover.js';
+
+type Held = 'a' | 'b' | undefined;
 
 const onOpenChange = fn().mockName('onOpenChange');
 const onElse = fn().mockName('onElse');
 // The surface is portalled into the body, outside the story's canvas.
 const body = within(document.body);
+// Which button the popover holds, set by the play as a session drop or a re-render would.
+const [held, setHeld] = createSignal<Held>('a');
 
 const Failing = lazy(() => Promise.reject(new Error('chunk')));
 
@@ -146,14 +151,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const press = async (testId: string) => {
-  await (await trustedInput()).click(body.getByTestId(testId));
-};
-
 /** As a dotli user, I press a button to open its anchored dialog with focus on the first control, and Escape closes it. */
 export const Open: Story = {
-  play: async ({ step }) => {
-    await step('Given the button it holds announces the dialog it controls', async () => {
+  play: async ({ mount, step }) => {
+    await step('When the popover and its button render', async () => {
+      await mount();
+    });
+    await step('Then the button it holds announces the dialog it controls', async () => {
       const trigger = body.getByTestId('trigger');
       await waitFor(() => expect(trigger).toHaveAttribute('popovertarget', 'story-popover'));
       await expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
@@ -201,39 +205,46 @@ export const PhoneSheet: Story = {
 export const PhoneClosesReturnFocus: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
-    const settled = async (calls: boolean[][]) => {
+    async function expectSettled(calls: boolean[][]): Promise<void> {
       await waitFor(() => expect(onOpenChange.mock.calls).toEqual(calls));
       await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(body.getByTestId('trigger')).toHaveFocus());
       // The sheet's content leaves once its slide out has played, the last step of the close.
       await waitFor(() => expect(body.queryByTestId('inside-a')).toBeNull(), { timeout: 2000 });
       await expect(body.getByTestId('trigger')).toHaveFocus();
-    };
+    }
     await step('Given the sheet is open', () => press('trigger'));
     await step('When I press its close button', () => press('popover-sheet-close'));
-    await step('Then it closed once and the trigger has focus', () => settled([[true], [false]]));
-    await step('Given the sheet is open again', () => press('trigger'));
-    await step('When I press Escape', async () => {
+    await step('Then it closed once and the trigger has focus', () => expectSettled([[true], [false]]));
+    await step('When I open the sheet again', () => press('trigger'));
+    await step('Then focus is on its first control', async () => {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
+    });
+    await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
-    await step('Then it closed once more and the trigger has focus', () => settled([[true], [false], [true], [false]]));
+    await step('Then it closed once more and the trigger has focus', () =>
+      expectSettled([[true], [false], [true], [false]]),
+    );
   },
 };
 
 /** As a dotli user, I press a button the popover let go and its own click runs and nothing opens. */
 export const ReleasedTriggerOpensNothing: Story = {
   args: { handOver: true },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the popover and its button render', async () => {
+      await mount();
+    });
     const trigger = () => body.getByTestId('trigger');
-    await step('Given the popover holds the button as its trigger', async () => {
+    await step('Then the popover holds the button as its trigger', async () => {
       await waitFor(() => expect(trigger()).toHaveAttribute('popovertarget', 'story-popover'));
     });
-    await step('When the popover lets it go', async () => {
-      await press('let-go');
+    await step('When the popover lets it go', () => press('let-go'));
+    await step('Then the button is no longer its invoker', async () => {
       await waitFor(() => expect(trigger()).not.toHaveAttribute('popovertarget'));
     });
-    await step('And I press the button', () => press('trigger'));
+    await step('When I press the button', () => press('trigger'));
     await step('Then its own click ran and nothing opened', async () => {
       await expect(onElse).toHaveBeenCalledOnce();
       await expect(onOpenChange).not.toHaveBeenCalled();
@@ -266,19 +277,11 @@ export const LazyContentFails: Story = {
   },
 };
 
-const surfaceOpen = async () => {
-  await press('trigger');
-  await waitFor(() => expect(body.getByTestId('story-popover-surface')).toHaveAttribute('data-open'));
-};
-const tab = async (shift = false) => {
-  await (await trustedInput()).keyboard(shift ? '{Shift>}{Tab}{/Shift}' : '{Tab}');
-};
-
 /** As a keyboard user, I open a popover that starts with a link and focus lands on the first control, past the link. */
 export const FirstControlTakesFocus: Story = {
   args: { content: 'link-first' },
   play: async ({ step }) => {
-    await step('When I open a popover that starts with a link', surfaceOpen);
+    await step('When I open a popover that starts with a link', openSurface);
     await step('Then focus is on its first control, past the link', async () => {
       await waitFor(() => expect(body.getByTestId('inside-select')).toHaveFocus());
     });
@@ -289,15 +292,15 @@ export const FirstControlTakesFocus: Story = {
 export const TabSkipsUncheckedRadiosAndDisabled: Story = {
   args: { content: 'radios' },
   play: async ({ step }) => {
-    await step('When I open the popover', surfaceOpen);
+    await step('When I open the popover', openSurface);
     await step('Then focus skipped the disabled button and the link without href', async () => {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
-    await step('When I press Shift+Tab on the first stop', () => tab(true));
+    await step('When I press Shift+Tab on the first stop', pressShiftTab);
     await step('Then focus wrapped to the checked radio, the last stop', async () => {
       await expect(body.getByTestId('radio-on')).toHaveFocus();
     });
-    await step('When I press Tab on it', () => tab());
+    await step('When I press Tab on it', pressTab);
     await step('Then focus wrapped to the first stop, past the unchecked radio', async () => {
       await expect(body.getByTestId('inside-a')).toHaveFocus();
     });
@@ -308,29 +311,30 @@ export const TabSkipsUncheckedRadiosAndDisabled: Story = {
 export const TabWrapsPastControlsOutOfTabOrder: Story = {
   args: { content: 'tab-order' },
   play: async ({ step }) => {
-    await step('When I open the popover', surfaceOpen);
+    await step('When I open the popover', openSurface);
     await step('Then focus is on the first stop', async () => {
       await waitFor(() => expect(body.getByTestId('a-allow')).toHaveFocus());
     });
-    await step('When I press Tab between the stops, then the browser moves on inside', async () => {
-      await tab();
+    await step('When I press Tab between the stops', pressTab);
+    await step('Then the browser moves on inside', async () => {
       await expect(body.getByTestId('b-ask')).toHaveFocus();
     });
-    await step('When I press Tab on the last stop, then focus wraps to the first', async () => {
-      await tab();
+    await step('When I press Tab on the last stop', pressTab);
+    await step('Then focus wraps to the first', async () => {
       await expect(body.getByTestId('a-allow')).toHaveFocus();
     });
-    await step(
-      'When I press Tab on a control out of the Tab order past the last stop, then focus wraps to the first',
-      async () => {
-        body.getByTestId('b-allow').focus();
-        await tab();
-        await expect(body.getByTestId('a-allow')).toHaveFocus();
-      },
-    );
-    await step('When I press Shift+Tab on one before the first stop, then focus wraps to the last', async () => {
+    await step('When I press Tab on a control out of the Tab order past the last stop', async () => {
+      body.getByTestId('b-allow').focus();
+      await pressTab();
+    });
+    await step('Then focus wraps to the first again', async () => {
+      await expect(body.getByTestId('a-allow')).toHaveFocus();
+    });
+    await step('When I press Shift+Tab on one before the first stop', async () => {
       body.getByTestId('a-ask').focus();
-      await tab(true);
+      await pressShiftTab();
+    });
+    await step('Then focus wraps to the last', async () => {
       await expect(body.getByTestId('b-ask')).toHaveFocus();
     });
   },
@@ -340,16 +344,16 @@ export const TabWrapsPastControlsOutOfTabOrder: Story = {
 export const TabWrapsPastHiddenControls: Story = {
   args: { content: 'hidden' },
   play: async ({ step }) => {
-    await step('When I open the popover', surfaceOpen);
+    await step('When I open the popover', openSurface);
     await step('Then focus is on the first visible control', async () => {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
-    await step('When I press Shift+Tab, then focus wraps to the last visible control', async () => {
-      await tab(true);
+    await step('When I press Shift+Tab', pressShiftTab);
+    await step('Then focus wraps to the last visible control', async () => {
       await expect(body.getByTestId('inside-b')).toHaveFocus();
     });
-    await step('When I press Tab, then focus wraps to the first visible control', async () => {
-      await tab();
+    await step('When I press Tab', pressTab);
+    await step('Then focus wraps to the first visible control', async () => {
       await expect(body.getByTestId('inside-a')).toHaveFocus();
     });
   },
@@ -359,12 +363,12 @@ export const TabWrapsPastHiddenControls: Story = {
 export const EmptySurfaceKeepsFocus: Story = {
   args: { content: 'text' },
   play: async ({ step }) => {
-    await step('When I open a popover with nothing to press', surfaceOpen);
+    await step('When I open a popover with nothing to press', openSurface);
     await step('Then the surface itself has focus', async () => {
       await waitFor(() => expect(body.getByTestId('story-popover-surface')).toHaveFocus());
     });
-    await step('When I press Tab, then focus stays on the surface', async () => {
-      await tab();
+    await step('When I press Tab', pressTab);
+    await step('Then focus stays on the surface', async () => {
       await expect(body.getByTestId('story-popover-surface')).toHaveFocus();
     });
   },
@@ -374,7 +378,7 @@ export const EmptySurfaceKeepsFocus: Story = {
 export const LinksOnlySurfaceFocusesItself: Story = {
   args: { content: 'link' },
   play: async ({ step }) => {
-    await step('When I open a popover whose only control is a link', surfaceOpen);
+    await step('When I open a popover whose only control is a link', openSurface);
     await step('Then the surface has focus, not the link', async () => {
       await waitFor(() => expect(body.getByTestId('story-popover-surface')).toHaveFocus());
       await expect(body.getByTestId('inside-link')).not.toHaveFocus();
@@ -382,27 +386,30 @@ export const LinksOnlySurfaceFocusesItself: Story = {
   },
 };
 
-type Held = 'a' | 'b' | undefined;
-// Which button the popover holds, set by the play as a session drop or a re-render would.
-const [held, setHeld] = createSignal<Held>('a');
-
 /** Buttons A and B, and a popover triggered by whichever one `held` names. */
 function HeldHarness() {
-  const [a, setA] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
-  const [b, setB] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
-  const trigger = (): HTMLButtonElement | undefined => {
-    const which = held();
-    return which === 'a' ? a() : which === 'b' ? b() : undefined;
-  };
+  const [buttonA, setButtonA] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+  const [buttonB, setButtonB] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
+
+  function readTrigger(): HTMLButtonElement | undefined {
+    switch (held()) {
+      case 'a':
+        return buttonA();
+      case 'b':
+        return buttonB();
+      case undefined:
+        return undefined;
+    }
+  }
   return (
     <div style={{ display: 'flex', gap: '8px', 'justify-content': 'flex-end' }}>
-      <Button ref={setA} testId="held-a">
+      <Button ref={setButtonA} testId="held-a">
         A
       </Button>
-      <Button ref={setB} testId="held-b">
+      <Button ref={setButtonB} testId="held-b">
         B
       </Button>
-      <Popover id="story-held" title="Held" trigger={trigger()} onOpenChange={onOpenChange} testId="held-surface">
+      <Popover id="story-held" title="Held" trigger={readTrigger()} onOpenChange={onOpenChange} testId="held-surface">
         <div style={{ padding: '12px' }}>
           <Button testId="held-inside">Inside</Button>
         </div>
@@ -411,16 +418,17 @@ function HeldHarness() {
   );
 }
 
-const heldOpen = (): boolean => document.getElementById('story-held')?.hasAttribute('data-open') === true;
-
 /** As a dotli user, I press a button the popover took back and it opens once. */
 export const TriggerHandedBackOpensOnce: Story = {
   render: () => <HeldHarness />,
   beforeEach: () => {
     setHeld('a');
   },
-  play: async ({ step }) => {
-    await step('Given the popover holds A, and B announces nothing', async () => {
+  play: async ({ mount, step }) => {
+    await step('When the popover renders holding A', async () => {
+      await mount();
+    });
+    await step('Then the popover holds A, and B announces nothing', async () => {
       await waitFor(() => expect(body.getByTestId('held-a')).toHaveAttribute('popovertarget', 'story-held'));
       const other = body.getByTestId('held-b');
       await expect(other).not.toHaveAttribute('popovertarget');
@@ -428,16 +436,22 @@ export const TriggerHandedBackOpensOnce: Story = {
       await expect(other).not.toHaveAttribute('aria-expanded');
       await expect(other).not.toHaveAttribute('aria-controls');
     });
-    await step('When it hands A to B and back', async () => {
+    await step('When it hands A to B', () => {
       setHeld('b');
+    });
+    await step('Then B is its invoker', async () => {
       await waitFor(() => expect(body.getByTestId('held-b')).toHaveAttribute('popovertarget', 'story-held'));
+    });
+    await step('When it hands B back to A', () => {
       setHeld('a');
+    });
+    await step('Then A is its invoker again and B is not', async () => {
       await waitFor(() => expect(body.getByTestId('held-a')).toHaveAttribute('popovertarget', 'story-held'));
       await expect(body.getByTestId('held-b')).not.toHaveAttribute('popovertarget');
     });
-    await step('And I press A once', () => press('held-a'));
+    await step('When I press A once', () => press('held-a'));
     await step('Then it opened once', async () => {
-      await waitFor(() => expect(heldOpen()).toBe(true));
+      await waitFor(() => expect(isHeldOpen()).toBe(true));
       await expect(onOpenChange.mock.calls).toEqual([[true]]);
     });
   },
@@ -450,15 +464,15 @@ export const TriggerReleasedWhileOpenReturnsFocus: Story = {
     setHeld('a');
   },
   play: async ({ step }) => {
-    await step('Given the popover is open with focus inside', async () => {
-      await press('held-a');
+    await step('When I open the popover', () => press('held-a'));
+    await step('Then focus is inside it', async () => {
       await waitFor(() => expect(body.getByTestId('held-inside')).toHaveFocus());
     });
     await step('When the popover lets its button go, as a session drop does', () => {
       setHeld(undefined);
     });
     await step('Then it closed once and focus went back to the button', async () => {
-      await waitFor(() => expect(heldOpen()).toBe(false));
+      await waitFor(() => expect(isHeldOpen()).toBe(false));
       await expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
       await waitFor(() => expect(body.getByTestId('held-a')).toHaveFocus());
     });
@@ -472,18 +486,41 @@ export const TriggerReleasedFocusElsewhereClosesOnly: Story = {
     setHeld('a');
   },
   play: async ({ step }) => {
-    await step('Given the popover is open and focus dropped to the body, as Safari leaves it', async () => {
-      await press('held-a');
+    await step('When I open the popover', () => press('held-a'));
+    await step('Then focus is inside it', async () => {
       await waitFor(() => expect(body.getByTestId('held-inside')).toHaveFocus());
-      (document.activeElement as HTMLElement | null)?.blur();
     });
-    await step('When the popover lets its button go', () => {
+    await step('When focus drops to the body, as Safari leaves it, and the popover lets its button go', () => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       setHeld(undefined);
     });
     await step('Then it closed and left focus alone', async () => {
-      await waitFor(() => expect(heldOpen()).toBe(false));
+      await waitFor(() => expect(isHeldOpen()).toBe(false));
       await waitFor(() => expect(body.queryByTestId('held-inside')).toBeNull(), { timeout: 2000 });
       await expect(document.activeElement).toBe(document.body);
     });
   },
 };
+
+async function press(testId: string): Promise<void> {
+  await (await trustedInput()).click(body.getByTestId(testId));
+}
+
+async function openSurface(): Promise<void> {
+  await press('trigger');
+  await appears('[data-testid="story-popover-surface"][data-open]');
+}
+
+async function pressTab(): Promise<void> {
+  await (await trustedInput()).keyboard('{Tab}');
+}
+
+async function pressShiftTab(): Promise<void> {
+  await (await trustedInput()).keyboard('{Shift>}{Tab}{/Shift}');
+}
+
+function isHeldOpen(): boolean {
+  return document.getElementById('story-held')?.hasAttribute('data-open') === true;
+}

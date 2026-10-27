@@ -7,13 +7,13 @@
 import { withActiveTld } from '@dotli/config';
 import type { HostPrompts } from './runtime/hostPrompts.js';
 import { isDevicePermission } from './runtime/permissions.js';
-import { openModal, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
+import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permissionDialog.js';
 import { preimageSubmitDialog } from './components/permissions/preimageDialog.js';
 
 export type HostPromptsDeps = {
   /** Where the dialogs queue. The page's overlays by default. */
-  present?: typeof openModal | undefined;
+  present?: typeof modals.open | undefined;
   notify?: HostPrompts['notify'] | undefined;
 };
 
@@ -22,14 +22,14 @@ const HOST_PROMPT_TEST_ID = 'host-prompt';
 
 /** The user's answers come from the page's dialogs, and the runtime's notices are the page's notifications. */
 export function createHostPrompts({
-  present = openModal,
+  present = modals.open,
   notify = showNotification,
 }: HostPromptsDeps = {}): HostPrompts {
   const ask = <R extends string>(
     view: ModalView<R>,
     signal: AbortSignal,
     handoff?: (outcome: ModalOutcome<R>) => ModalHandoff | undefined,
-  ) => present({ ...view, testId: HOST_PROMPT_TEST_ID }, signal, handoff);
+  ) => present({ ...view, testId: HOST_PROMPT_TEST_ID }, { signal, handoff });
   return {
     askPermission: async (label, permission, signal, { allowOnce }) => {
       const dialog = permissionRequestDialog({

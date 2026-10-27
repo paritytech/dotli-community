@@ -41,7 +41,7 @@ export const RetryScreenReplacesErrorPage: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor whose load failed, retrying swaps the error page for the retry screen', async () => {
       // Given
-      showError('Failed to load content', 'd', () => undefined);
+      showError('Failed to load content', { detail: 'd', action: () => undefined });
 
       // When
       showRetryScreen();

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { withActiveTld } from '@dotli/config';
 import { chooseModalButton, dismissModal, shownModal } from '@dotli/ui/testing';
-import { openModal } from '@dotli/ui';
+import { modals } from '@dotli/ui';
 import { SignIcon } from './components/icons/SignIcon.js';
 import { createHostPrompts } from './pagePrompts.js';
 
@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 /** The prompts over the modal store, so a spec answers their dialogs in place of the overlays. */
-const prompts = createHostPrompts({ present: openModal, notify: () => undefined });
+const prompts = createHostPrompts({ present: modals.open, notify: () => undefined });
 
 const live = (): AbortSignal => new AbortController().signal;
 

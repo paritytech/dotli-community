@@ -25,11 +25,15 @@ export function ResizeHandle(props: {
     const startX = down.clientX;
     // The panel is border-box: its width is the prop's.
     const startWidth = props.width();
-    drags.start(handle, down, {
-      move: move => {
-        props.onResize(startWidth + (startX - move.clientX));
+    drags.start({
+      target: handle,
+      down,
+      handlers: {
+        move: move => {
+          props.onResize(startWidth + (startX - move.clientX));
+        },
+        end: props.onResizeEnd,
       },
-      end: props.onResizeEnd,
     });
   };
 

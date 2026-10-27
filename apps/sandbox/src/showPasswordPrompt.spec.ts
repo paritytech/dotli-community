@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { chooseModalButton, shownModal } from '@dotli/ui/testing';
-import { type ModalView, openModal } from '@dotli/ui';
+import { type ModalView, modals } from '@dotli/ui';
 import { DECRYPTION_CANCELLED, showPasswordPrompt } from './showPasswordPrompt.js';
 
 /** A password dialog as the app builds one. Its copy is the app's. */
@@ -26,7 +26,7 @@ afterEach(() => {
 describe('password prompt', () => {
   it('As a dotli user, I see the password dialog and unlock with my password', async () => {
     // Given
-    const password = showPasswordPrompt(LOCKED, openModal);
+    const password = showPasswordPrompt(LOCKED, modals.open);
 
     // Then
     expect(shownModal().view).toBe(LOCKED);
@@ -40,7 +40,7 @@ describe('password prompt', () => {
 
   it('As a dotli user who cancels, the sandbox gets a cancellation', async () => {
     // Given
-    const password = showPasswordPrompt(LOCKED, openModal);
+    const password = showPasswordPrompt(LOCKED, modals.open);
 
     // When
     chooseModalButton('Cancel');
@@ -51,7 +51,7 @@ describe('password prompt', () => {
 
   it('As a dotli user who unlocks with an empty field, the sandbox gets a cancellation', async () => {
     // Given
-    const password = showPasswordPrompt(LOCKED, openModal);
+    const password = showPasswordPrompt(LOCKED, modals.open);
 
     // When
     chooseModalButton('Unlock', '');

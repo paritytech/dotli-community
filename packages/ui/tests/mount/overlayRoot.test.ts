@@ -9,7 +9,7 @@ describe('ensureOverlayRoot', () => {
     document.body.innerHTML = '<main></main>';
   });
 
-  it('As a dotli user, toasts and modals stack above the page from one container, made once as the last child of body', () => {
+  it('As a dotli user, I see toasts and modals stack above the page from one container, made once as the last child of body', () => {
     // Given the page's app in the body
 
     // When the overlays ask for their container twice

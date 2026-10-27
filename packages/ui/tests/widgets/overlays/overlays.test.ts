@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createComponent } from 'solid-js';
 import { render } from '@solidjs/web';
-import { openModal, type ModalView } from '../../../src/page/state/modals.js';
-import { pushToast } from '../../../src/page/state/toasts.js';
+import { modals, type ModalView } from '../../../src/page/state/createModals.js';
+import { toasts } from '../../../src/page/state/createToasts.js';
 import { byTestId, settle } from '../../../src/testing/index.js';
 import { BellIcon } from '../../../src/icons.js';
 import { Overlays } from '../../../src/widgets/overlays/Overlays.js';
@@ -40,12 +40,12 @@ afterEach(() => {
 });
 
 describe('overlays', () => {
-  it('As a dotli user, a toast and a dialog raised before the overlays mount show once they do, and the dialog settles', async () => {
-    // Given
-    pushToast({ text: 'Get the desktop app', label: 'Polkadot Desktop', icon: BellIcon, dismissMs: 0 });
-    const outcome = openModal(VIEW);
+  it('As a dotli user, I get a toast and a dialog raised before the overlays mount and see both once they do, and the dialog settles', async () => {
+    // Given a toast and a dialog raised before any overlays exist
+    toasts.push({ text: 'Get the desktop app', label: 'Polkadot Desktop', icon: BellIcon, dismissMs: 0 });
+    const outcome = modals.open(VIEW);
 
-    // When
+    // When the overlays mount and the dialog is answered
     await mountOverlays();
     byTestId('prompt-dialog-btn-primary').click();
 

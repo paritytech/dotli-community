@@ -4,28 +4,13 @@
 // The error page both apps show in place of the page's content. Text goes in as text, so nothing a visitor typed is
 // parsed as markup.
 
-import { showScreen } from '../pageScreen.js';
-import type { ErrorAction, ErrorPageContent } from './arrangeErrorActions.js';
+import { pageScreen } from '../createPageScreen.js';
+import type { ErrorPageContent } from './arrangeErrorActions.js';
 import { ErrorPage } from './ErrorPage.js';
 
-export type ShowErrorPage = (page: ErrorPageContent) => void;
+export type ShowErrorPage = typeof showErrorPage;
 
-export const showErrorPage: ShowErrorPage = page => {
-  showScreen(standalone => <ErrorPage page={page} standalone={standalone} />);
-};
-
-/** Positional shorthand for `showErrorPage`. A bare callback becomes a Retry button. */
-export function showError(
-  title: string,
-  detail?: string,
-  action?: ErrorAction | ErrorAction[] | (() => void),
-  tips: readonly string[] = [],
-): void {
-  const actions = typeof action === 'function' ? [{ label: 'Retry', onClick: action }] : action;
-  showErrorPage({
-    title,
-    detail,
-    tips,
-    actions: actions === undefined ? [] : Array.isArray(actions) ? actions : [actions],
-  });
+/** Shows the error page in place of the page's content and the screen before. A page that fails to render is reported. */
+export function showErrorPage(page: ErrorPageContent): void {
+  pageScreen.show(standalone => <ErrorPage page={page} standalone={standalone} />);
 }

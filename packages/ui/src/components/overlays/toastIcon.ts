@@ -8,7 +8,7 @@ import { BellIcon } from '../icons/BellIcon.js';
 import { CheckIcon } from '../icons/CheckIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 import type { StatusTone } from '../../page/statusTone.js';
-import type { ToastEntry } from '../../page/state/toasts.js';
+import type { ToastEntry } from '../../page/state/createToasts.js';
 
 const TONE_ICON: Record<StatusTone, Component<IconProps>> = {
   info: BellIcon,

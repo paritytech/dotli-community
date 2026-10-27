@@ -8,9 +8,6 @@ export { settle } from './settle.js';
 export { appears, byId, byTestId, query } from './queries.dom.js';
 // Functional tests under happy-dom install it from their setup file.
 export { installPopoverPolyfill } from './popoverPolyfill.dom.js';
-// The modal store presents a dialog without the overlays, so a spec answers it in their place.
-export { modalsStore, settleModal } from '../page/state/modals.js';
-export { chooseModalButton, dismissModal, shownModal } from '../page/state/modals.fake.js';
+// The page's dialog queue presents a dialog without the overlays, so a spec answers it in their place.
+export { chooseModalButton, dismissModal, shownModal } from '../page/state/createModals.fake.js';
 export { PHONE_QUERY } from '../page/phoneViewport.js';
-// The toast store, bound to the document of a `FakePage` (from `@dotli/shared/testing`) whose visibility a spec flips.
-export { bindToastPage } from '../page/state/toasts.js';

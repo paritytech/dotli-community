@@ -49,7 +49,7 @@ function setup(standIns: Readonly<Record<string, () => void>> = {}): {
   onTestFinished(
     reportIslandErrors({
       target: page,
-      offerReload: createReloadOffer(notice => notices.push(notice), reload),
+      offerReload: createReloadOffer({ notify: notice => notices.push(notice), reload }),
       standIns,
     }),
   );

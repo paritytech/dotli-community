@@ -80,11 +80,15 @@ export function Resizer(props: {
         }
         props.onDragStart?.(target);
         target.setAttribute('data-dragging', '');
-        drags.start(target, e, {
-          move: props.onDrag,
-          end: () => {
-            target.removeAttribute('data-dragging');
-            report();
+        drags.start({
+          target,
+          down: e,
+          handlers: {
+            move: props.onDrag,
+            end: () => {
+              target.removeAttribute('data-dragging');
+              report();
+            },
           },
         });
       }}

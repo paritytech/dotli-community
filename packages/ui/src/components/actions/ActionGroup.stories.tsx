@@ -5,7 +5,8 @@ import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import { byId, query } from '@dotli/ui/testing';
+import { waitForDom } from '@dotli/shared/testing';
+import { appears, byId, query } from '@dotli/ui/testing';
 import type { SolidRenderer } from 'storybook-solidjs-vite';
 import type { StoryContext } from 'storybook/internal/types';
 import { expectBefore } from '@config/storybook/play';
@@ -18,16 +19,17 @@ import { OverflowMenu } from './OverflowMenu.js';
 import { GlobeIcon } from '../icons/GlobeIcon.js';
 import type { IconProps } from '../icons/iconProps.js';
 
+type Activation = {
+  name: string;
+  detail: number;
+};
+
 const GROUP = 'story-actions';
 const MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };
 
 /** Every stand-in item's width, wider than More so a row's room always fits More in its place. */
 const ITEM = 48;
-
-type Activation = {
-  name: string;
-  detail: number;
-};
+const ALL = ['auth', 'network', 'chat', 'permissions', 'theme', 'settings'];
 
 const activations: Activation[] = [];
 /** The room the bar gives the group, which a play changes and then announces with a resize, as a window would. */
@@ -43,6 +45,16 @@ const storyMorph: ActionGroupMorph = {
     return () => morph.ends.delete(listener);
   },
 };
+
+/** A group that has not measured yet, as in a build-time render. */
+const unmeasured: ActionBar = {
+  register: () => () => false,
+  observe: () => undefined,
+  moreButton: () => undefined,
+};
+
+/** The rows the group asked its room against, in order. */
+const roomRows: (HTMLElement | null)[] = [];
 
 function Item(props: {
   name: string;
@@ -61,8 +73,8 @@ function Item(props: {
       visible={props.visible ?? true}
       alert={props.alert}
       aside={props.aside === undefined ? undefined : () => props.aside}
-      activate={ev => {
-        activations.push({ name: props.name, detail: ev.detail });
+      activate={event => {
+        activations.push({ name: props.name, detail: event.detail });
       }}
     >
       <button id={`${props.name}-button`} type="button" style={{ width: `${String(props.width ?? ITEM)}px` }}>
@@ -117,45 +129,6 @@ function Group(props: { children: JSX.Element; end?: JSX.Element }): JSX.Element
   );
 }
 
-/** A row of the open More menu. */
-function moreRow(name: string): HTMLElement {
-  return query(document, `#${MORE.menuId} [role="menuitem"][data-item="${name}"]`);
-}
-
-/** The open More menu's rows, in order. */
-function moreRowNames(): string[] {
-  return [...document.querySelectorAll<HTMLElement>(`#${MORE.menuId} [role="menuitem"]`)].map(
-    row => row.dataset['item'] ?? '',
-  );
-}
-
-/** The phone variant's guard: the story's viewport really crossed the phone breakpoint. */
-async function expectPhone(step: StoryContext<SolidRenderer>['step']): Promise<void> {
-  await step('Given the phone viewport', async () => {
-    await waitFor(() => expect(isPhoneViewport()).toBe(true));
-  });
-}
-
-/**
- * Gives the group room for `slots` items side by side, More counting as one, and lets it measure again. Reads the gap
- * the group fits with, so the room is exact at either breakpoint without restating a spacing token.
- */
-function fitSlots(slots: number): void {
-  const gap = Number.parseFloat(getComputedStyle(byId(GROUP)).columnGap);
-  bar.room = slots * ITEM + (slots - 1) * gap;
-  window.dispatchEvent(new Event('resize'));
-}
-
-function inline(name: string): boolean {
-  const item = document.querySelector<HTMLElement>(`[data-testid="action-item"][data-item="${name}"]`);
-  return item !== null && item.hidden === false && !item.hasAttribute('data-parked');
-}
-
-const moreShows = (): boolean =>
-  document.querySelector('[data-testid="more-item"]')?.hasAttribute('data-parked') === false;
-const isOpen = (): boolean => document.getElementById(MORE.menuId)?.hasAttribute('data-open') === true;
-const ALL = ['auth', 'network', 'chat', 'permissions', 'theme', 'settings'];
-
 const meta = {
   title: 'Primitives/ActionGroup',
   component: ActionGroup,
@@ -182,20 +155,16 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Opens More by its button once it shows. */
-async function openMore(userEvent: { click: (el: Element) => Promise<void> }): Promise<void> {
-  await waitFor(() => expect(moreShows()).toBe(true));
-  await userEvent.click(byId(MORE.buttonId));
-  await waitFor(() => expect(isOpen()).toBe(true));
-}
-
 /** As a desktop user, every item sits in the bar when there is room, and the More button stays out of the way. */
 export const AllFit: Story = {
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the group renders with room for every item', async () => {
+      await mount();
+    });
     await step('Then every item is inline and More is parked', async () => {
       await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
-      await expect(ALL.filter(inline)).toEqual(ALL);
-      await expect(moreShows()).toBe(false);
+      await expect(ALL.filter(isInline)).toEqual(ALL);
+      await expect(isMoreShown()).toBe(false);
     });
   },
 };
@@ -207,19 +176,19 @@ export const NarrowingCollapsesInBarOrder: Story = {
       fitSlots(5);
     });
     await step('Then theme and settings moved into More, in bar order', async () => {
-      await waitFor(() => expect(inline('theme')).toBe(false));
-      await expect(inline('settings')).toBe(false);
-      await expect(inline('permissions')).toBe(true);
+      await waitFor(() => expect(isInline('theme')).toBe(false));
+      await expect(isInline('settings')).toBe(false);
+      await expect(isInline('permissions')).toBe(true);
       await openMore(userEvent);
-      await expect(moreRowNames()).toEqual(['theme', 'settings']);
+      await expect(listMoreRowNames()).toEqual(['theme', 'settings']);
     });
     await step('When the bar has room for two', () => {
       fitSlots(2);
     });
     await step('Then only the pinned account and More are left', async () => {
-      await waitFor(() => expect(inline('network')).toBe(false));
-      await expect(inline('auth')).toBe(true);
-      await waitFor(() => expect(moreRowNames()).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']));
+      await waitFor(() => expect(isInline('network')).toBe(false));
+      await expect(isInline('auth')).toBe(true);
+      await waitFor(() => expect(listMoreRowNames()).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']));
     });
   },
 };
@@ -236,11 +205,11 @@ export const AccountEndsBar: Story = {
       fitSlots(2);
     });
     await step('Then the account is inline after More and no row of it', async () => {
-      await waitFor(() => expect(moreShows()).toBe(true));
+      await waitFor(() => expect(isMoreShown()).toBe(true));
       await expectBefore(byId(MORE.buttonId), byId('account-button'));
-      await expect(inline('account')).toBe(true);
+      await expect(isInline('account')).toBe(true);
       await openMore(userEvent);
-      await expect(moreRowNames()).not.toContain('account');
+      await expect(listMoreRowNames()).not.toContain('account');
     });
   },
 };
@@ -248,19 +217,21 @@ export const AccountEndsBar: Story = {
 /** As a user widening the window, collapsed items come back and an open More menu closes with its last row. */
 export const WideningRestoresAndClosesMore: Story = {
   play: async ({ userEvent, step }) => {
-    await step('Given More open with two rows', async () => {
+    await step('When the bar has room for all but two items and I open More', async () => {
       fitSlots(5);
       await openMore(userEvent);
+    });
+    await step('Then More is expanded', async () => {
       await expect(byId(MORE.buttonId)).toHaveAttribute('aria-expanded', 'true');
     });
     await step('When the bar has room for every item', () => {
       fitSlots(6);
     });
     await step('Then the items are back, More is parked and its menu closed', async () => {
-      await waitFor(() => expect(inline('settings')).toBe(true));
-      await expect(inline('theme')).toBe(true);
-      await expect(moreShows()).toBe(false);
-      await waitFor(() => expect(isOpen()).toBe(false));
+      await waitFor(() => expect(isInline('settings')).toBe(true));
+      await expect(isInline('theme')).toBe(true);
+      await expect(isMoreShown()).toBe(false);
+      await waitFor(() => expect(isMoreOpen()).toBe(false));
       await expect(byId(MORE.buttonId)).toHaveAttribute('aria-expanded', 'false');
     });
   },
@@ -268,16 +239,19 @@ export const WideningRestoresAndClosesMore: Story = {
 
 /** As a user watching the pill fold or reveal, the items stay put and fit again once it comes to rest. */
 export const MorphKeepsItems: Story = {
-  play: async ({ step }) => {
-    await step('Given every item inline while the pill morphs', async () => {
-      await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
-      morph.running = true;
+  play: async ({ mount, step }) => {
+    await step('When the group renders', async () => {
+      await mount();
     });
-    await step('When the room shrinks mid-morph', () => {
+    await step('Then the group can collapse', async () => {
+      await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
+    });
+    await step('When the pill starts to morph and the room shrinks mid-morph', () => {
+      morph.running = true;
       fitSlots(2);
     });
     await step('Then the items stay put', async () => {
-      await expect(inline('settings')).toBe(true);
+      await expect(isInline('settings')).toBe(true);
     });
     await step('When the morph ends', () => {
       morph.running = false;
@@ -286,8 +260,8 @@ export const MorphKeepsItems: Story = {
       }
     });
     await step('Then they fit the new room', async () => {
-      await waitFor(() => expect(inline('settings')).toBe(false));
-      await expect(inline('auth')).toBe(true);
+      await waitFor(() => expect(isInline('settings')).toBe(false));
+      await expect(isInline('auth')).toBe(true);
     });
   },
 };
@@ -298,20 +272,22 @@ export const HiddenItem: Story = {
     setChat(false);
   },
   play: async ({ userEvent, step }) => {
-    await step('Given room for all but chat', async () => {
+    await step('When the bar has room for all but chat', () => {
       fitSlots(5);
+    });
+    await step('Then chat is hidden, the rest inline and More parked', async () => {
       await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
-      await expect(inline('chat')).toBe(false);
-      await waitFor(() => expect(inline('settings')).toBe(true));
-      await expect(moreShows()).toBe(false);
+      await expect(isInline('chat')).toBe(false);
+      await waitFor(() => expect(isInline('settings')).toBe(true));
+      await expect(isMoreShown()).toBe(false);
     });
     await step('When chat shows', () => {
       setChat(true);
     });
     await step('Then chat is inline and pushed the two lowest into More', async () => {
-      await waitFor(() => expect(inline('chat')).toBe(true));
+      await waitFor(() => expect(isInline('chat')).toBe(true));
       await openMore(userEvent);
-      await expect(moreRowNames()).toEqual(['theme', 'settings']);
+      await expect(listMoreRowNames()).toEqual(['theme', 'settings']);
     });
   },
 };
@@ -319,17 +295,19 @@ export const HiddenItem: Story = {
 /** As a user, an item growing (a longer account badge) pushes others into More. */
 export const GrowingItem: Story = {
   play: async ({ userEvent, step }) => {
-    await step('Given room for every item', async () => {
+    await step('When the bar has room for every item', () => {
       fitSlots(6);
-      await waitFor(() => expect(inline('settings')).toBe(true));
+    });
+    await step('Then settings is inline', async () => {
+      await waitFor(() => expect(isInline('settings')).toBe(true));
     });
     await step('When the account grows to twice its width', () => {
       setAuthWidth(2 * ITEM);
     });
     await step('Then theme and settings moved into More', async () => {
-      await waitFor(() => expect(inline('settings')).toBe(false));
+      await waitFor(() => expect(isInline('settings')).toBe(false));
       await openMore(userEvent);
-      await expect(moreRowNames()).toEqual(['theme', 'settings']);
+      await expect(listMoreRowNames()).toEqual(['theme', 'settings']);
     });
   },
 };
@@ -342,11 +320,11 @@ export const RowTapActivates: Story = {
       await openMore(userEvent);
     });
     await step('When I tap the theme row', async () => {
-      await userEvent.click(moreRow('theme'));
+      await userEvent.click(getMoreRow('theme'));
     });
     await step('Then theme was activated with my tap, the menu closed and More has focus', async () => {
       await waitFor(() => expect(activations).toEqual([{ name: 'theme', detail: 1 }]));
-      await waitFor(() => expect(isOpen()).toBe(false));
+      await waitFor(() => expect(isMoreOpen()).toBe(false));
       await expect(byId(MORE.buttonId)).toHaveFocus();
     });
   },
@@ -358,25 +336,28 @@ export const RowKeyActivates: Story = {
     await step('Given More open on the settings row', async () => {
       fitSlots(4);
       await openMore(userEvent);
-      moreRow('settings').focus();
+      getMoreRow('settings').focus();
     });
     await step('When I press Enter', async () => {
       await userEvent.keyboard('{Enter}');
     });
     await step('Then settings was activated with detail 0 and the menu closed', async () => {
       await waitFor(() => expect(activations).toEqual([{ name: 'settings', detail: 0 }]));
-      await waitFor(() => expect(isOpen()).toBe(false));
+      await waitFor(() => expect(isMoreOpen()).toBe(false));
     });
   },
 };
 
 /** As a screen-reader user, More announces its menu, and each row is a menu item with the item icon, label and a chevron. */
 export const MoreAria: Story = {
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the group renders and the bar has room for five, one of them More', async () => {
+      await mount();
+      fitSlots(5);
+    });
     const button = (): HTMLElement => byId(MORE.buttonId);
     await step('Then More announces its closed menu with no badge', async () => {
-      fitSlots(5);
-      await waitFor(() => expect(moreShows()).toBe(true));
+      await waitFor(() => expect(isMoreShown()).toBe(true));
       await expect(button()).toHaveAttribute('aria-haspopup', 'menu');
       await expect(button()).toHaveAttribute('aria-controls', MORE.menuId);
       await expect(button()).toHaveAttribute('aria-expanded', 'false');
@@ -389,7 +370,7 @@ export const MoreAria: Story = {
     await step('Then it is a menu named More, and the theme row a menu item with icon, label and chevron', async () => {
       await expect(byId(MORE.menuId)).toHaveAttribute('role', 'menu');
       await expect(byId(MORE.menuId)).toHaveAttribute('aria-label', 'More');
-      const row = moreRow('theme');
+      const row = getMoreRow('theme');
       await expect(row).toHaveAttribute('role', 'menuitem');
       await expect(row).toHaveAttribute('tabindex', '-1');
       await expect(row.textContent).toBe('THEME');
@@ -400,14 +381,6 @@ export const MoreAria: Story = {
   },
 };
 
-/** A group that has not measured yet, as in a build-time render. */
-const unmeasured: ActionBar = {
-  register: () => () => false,
-  observe: () => undefined,
-  moreButton: () => undefined,
-};
-
-/** As the build-time render, the More button is parked. */
 /** As a dotli user, I get a page built before measuring with the More button parked, so nothing flashes on first paint. */
 export const BuildTimeMoreParked: Story = {
   render: () => (
@@ -416,7 +389,10 @@ export const BuildTimeMoreParked: Story = {
       <OverflowMenu rows={[]} buttonRef={() => undefined} buttonId={MORE.buttonId} menuId={MORE.menuId} />
     </ActionsContext>
   ),
-  play: async ({ canvasElement, step }) => {
+  play: async ({ canvasElement, mount, step }) => {
+    await step('When the unmeasured group renders', async () => {
+      await mount();
+    });
     await step('Then More is parked', async () => {
       await expect(within(canvasElement).getByTestId('more-item')).toHaveAttribute('data-parked');
     });
@@ -426,11 +402,11 @@ export const BuildTimeMoreParked: Story = {
 /** As a user, a collapsed item stays in place, out of the tab order, so its surface keeps its anchor. */
 export const CollapsedKeepsAnchor: Story = {
   play: async ({ step }) => {
-    await step('When settings collapses', async () => {
+    await step('When the bar loses the room for settings', () => {
       fitSlots(5);
-      await waitFor(() => expect(inline('settings')).toBe(false));
     });
-    await step('Then its button is still in the page, in its parked wrapper', async () => {
+    await step('Then settings collapses and its button is still in the page, in its parked wrapper', async () => {
+      await waitFor(() => expect(isInline('settings')).toBe(false));
       await expect(byId('settings-button').parentElement).toHaveAttribute('data-parked');
       await expect(byId('settings-button').isConnected).toBe(true);
     });
@@ -466,12 +442,12 @@ export const MoreBadgeAndName: Story = {
   ),
   play: async ({ userEvent, step }) => {
     const more = (): HTMLElement => byId(MORE.buttonId);
-    await step('When network and settings collapse', async () => {
+    await step('When network and settings collapse and I open More', async () => {
       fitSlots(2);
       await openMore(userEvent);
-      await expect(moreRowNames()).toEqual(['network', 'settings']);
     });
-    await step("Then More carries the network's warning as its badge and in its name", async () => {
+    await step("Then More lists them and carries the network's warning as its badge and in its name", async () => {
+      await expect(listMoreRowNames()).toEqual(['network', 'settings']);
       await expect(more()).toHaveAttribute('data-badge');
       await expect(more()).toHaveAttribute('data-tone', 'warn');
       await expect(more()).toHaveAttribute('aria-label', 'More, network unstable');
@@ -497,12 +473,13 @@ export const NoBadgeWhenItemShows: Story = {
       <AlertItems />
     </Group>
   ),
-  play: async ({ step }) => {
-    await step('Given room for every item', async () => {
-      await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
+  play: async ({ mount, step }) => {
+    await step('When the group renders with its alerts', async () => {
+      await mount();
     });
-    await step('Then network is inline and More raises nothing', async () => {
-      await expect(inline('network')).toBe(true);
+    await step('Then the group can collapse, network is inline and More raises nothing', async () => {
+      await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-collapsible'));
+      await expect(isInline('network')).toBe(true);
       await expect(byId(MORE.buttonId)).not.toHaveAttribute('data-badge');
       await expect(byId(MORE.buttonId)).toHaveAttribute('aria-label', 'More');
     });
@@ -520,7 +497,10 @@ export const PhoneSeveralAlerts: Story = {
       <AlertItems aside />
     </Group>
   ),
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the group renders on a phone', async () => {
+      await mount();
+    });
     await expectPhone(step);
     const more = (): HTMLElement => byId(MORE.buttonId);
     await step('When everything but the account collapses', async () => {
@@ -530,8 +510,8 @@ export const PhoneSeveralAlerts: Story = {
     await step('Then More shows unread chat, the most severe, and names both, and the chat row its count', async () => {
       await expect(more()).toHaveAttribute('data-tone', 'info');
       await expect(more()).toHaveAttribute('aria-label', 'More, network syncing, chat has unread messages');
-      await expect(within(moreRow('chat')).getByTestId('more-row-aside')).toHaveTextContent('3');
-      await expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')).toBeNull();
+      await expect(within(getMoreRow('chat')).getByTestId('more-row-aside')).toHaveTextContent('3');
+      await expect(getMoreRow('network').querySelector('[data-testid="more-row-aside"]')).toBeNull();
     });
     await step('When the network goes offline', () => {
       setNetworkAlert({ tone: 'err', label: 'network offline' });
@@ -546,7 +526,10 @@ export const PhoneSeveralAlerts: Story = {
 /** As a phone user, More opens as a bottom sheet titled More over a scrim, and a tap on the scrim closes it. */
 export const PhoneSheetOverScrim: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the group renders on a phone', async () => {
+      await mount();
+    });
     await expectPhone(step);
     await step('When I tap More with three rows', async () => {
       fitSlots(4);
@@ -557,13 +540,13 @@ export const PhoneSheetOverScrim: Story = {
       await expect(byId(GROUP).contains(sheet)).toBe(false);
       await expect(within(sheet).getByTestId('menu-sheet-title')).toHaveTextContent('More');
       await expect(within(sheet).getByTestId('menu-sheet-body')).toHaveAttribute('role', 'menu');
-      await expect(moreRowNames()).toEqual(['permissions', 'theme', 'settings']);
+      await expect(listMoreRowNames()).toEqual(['permissions', 'theme', 'settings']);
     });
     await step('When I tap the scrim', async () => {
       await userEvent.click(within(document.body).getByTestId('menu-scrim'));
     });
     await step('Then the sheet closed and More has focus', async () => {
-      await waitFor(() => expect(isOpen()).toBe(false));
+      await waitFor(() => expect(isMoreOpen()).toBe(false));
       await waitFor(() => expect(byId(MORE.buttonId)).toHaveFocus());
     });
   },
@@ -572,29 +555,33 @@ export const PhoneSheetOverScrim: Story = {
 /** As a keyboard user on a phone-width window, a key on More opens the sheet on its first row, and the head is no stop for the arrows. */
 export const PhoneKeyOpensOnFirstRow: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the group renders on a phone', async () => {
+      await mount();
+    });
     await expectPhone(step);
-    await step('When I press Enter on More', async () => {
+    await step('When the bar has room for four', () => {
       fitSlots(4);
-      await waitFor(() => expect(moreShows()).toBe(true));
+    });
+    await step('Then More shows', async () => {
+      await waitFor(() => expect(isMoreShown()).toBe(true));
+    });
+    await step('When I press Enter on More', async () => {
       byId(MORE.buttonId).focus();
       await userEvent.keyboard('{Enter}');
     });
     await step('Then the sheet is open on its first row', async () => {
-      await waitFor(() => expect(isOpen()).toBe(true));
-      await waitFor(() => expect(moreRow('permissions')).toHaveFocus());
+      await waitFor(() => expect(isMoreOpen()).toBe(true));
+      await waitFor(() => expect(getMoreRow('permissions')).toHaveFocus());
     });
     await step('When I press ArrowUp', async () => {
       await userEvent.keyboard('{ArrowUp}');
     });
     await step('Then focus wrapped to the last row, past the head', async () => {
-      await expect(moreRow('settings')).toHaveFocus();
+      await expect(getMoreRow('settings')).toHaveFocus();
     });
   },
 };
-
-/** The rows the group asked its room against, in order. */
-const roomRows: (HTMLElement | null)[] = [];
 
 /** As an action group hydrated inside an island's box-less wrapper, I measure my room against the bar's row. */
 export const RowPastIslandWrapper: Story = {
@@ -617,7 +604,10 @@ export const RowPastIslandWrapper: Story = {
       </div>
     </Bar>
   ),
-  play: async ({ canvasElement, step }) => {
+  play: async ({ canvasElement, mount, step }) => {
+    await step('When the group renders in a wrapper inside the bar', async () => {
+      await mount();
+    });
     await step('Then the group measured, and asked its room against the bar, not the wrapper', async () => {
       await waitFor(() => expect(byId(GROUP)).toHaveAttribute('data-measured'));
       await expect(roomRows.length).toBeGreaterThan(0);
@@ -625,3 +615,52 @@ export const RowPastIslandWrapper: Story = {
     });
   },
 };
+
+/** Opens More by its button once it shows. */
+async function openMore(userEvent: { click: (element: Element) => Promise<void> }): Promise<void> {
+  await waitForDom(isMoreShown);
+  await userEvent.click(byId(MORE.buttonId));
+  await appears(`#${MORE.menuId}[data-open]`);
+}
+
+/** A row of the open More menu. */
+function getMoreRow(name: string): HTMLElement {
+  return query(document, `#${MORE.menuId} [role="menuitem"][data-item="${name}"]`);
+}
+
+/** The open More menu's rows, in order. */
+function listMoreRowNames(): string[] {
+  return [...document.querySelectorAll<HTMLElement>(`#${MORE.menuId} [role="menuitem"]`)].map(
+    row => row.dataset['item'] ?? '',
+  );
+}
+
+/** The phone variant's guard: the story's viewport really crossed the phone breakpoint. */
+async function expectPhone(step: StoryContext<SolidRenderer>['step']): Promise<void> {
+  await step('Then the viewport is a phone', async () => {
+    await waitFor(() => expect(isPhoneViewport()).toBe(true));
+  });
+}
+
+/**
+ * Gives the group room for `slots` items side by side, More counting as one, and lets it measure again. Reads the gap
+ * the group fits with, so the room is exact at either breakpoint without restating a spacing token.
+ */
+function fitSlots(slots: number): void {
+  const gap = Number.parseFloat(getComputedStyle(byId(GROUP)).columnGap);
+  bar.room = slots * ITEM + (slots - 1) * gap;
+  window.dispatchEvent(new Event('resize'));
+}
+
+function isInline(name: string): boolean {
+  const item = document.querySelector<HTMLElement>(`[data-testid="action-item"][data-item="${name}"]`);
+  return item !== null && item.hidden === false && !item.hasAttribute('data-parked');
+}
+
+function isMoreShown(): boolean {
+  return document.querySelector('[data-testid="more-item"]')?.hasAttribute('data-parked') === false;
+}
+
+function isMoreOpen(): boolean {
+  return document.getElementById(MORE.menuId)?.hasAttribute('data-open') === true;
+}

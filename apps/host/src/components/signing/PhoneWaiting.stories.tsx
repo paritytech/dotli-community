@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { Overlays, openModal, type ModalView } from '@dotli/ui';
+import { modals, Overlays, type ModalView } from '@dotli/ui';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import type { PhoneAsk } from '../../runtime/phoneMethods.js';
@@ -24,7 +24,7 @@ const meta = {
   render: args => {
     const view: ModalView<string> = phoneWaitingView({ ...args, icon: SignIcon });
     // The step is open before anyone answers it, since nothing here settles it.
-    void openModal(view);
+    void modals.open(view);
     return <Overlays />;
   },
 } satisfies Meta<{ ask: PhoneAsk; title: string }>;

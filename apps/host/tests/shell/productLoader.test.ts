@@ -17,7 +17,7 @@ import type { ExecutableManifest, ManifestResult, ResolvePhase } from '@dotli/re
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
 import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
-import { clearScreen } from '@dotli/ui';
+import { pageScreen } from '@dotli/ui';
 import { beginAttempt } from '../../src/journey.js';
 import type { LoadFailure } from '../../src/loadFailure.js';
 import { pageLoading } from '../../src/loadingController.js';
@@ -215,7 +215,7 @@ describe('createProductLoader', () => {
   afterEach(() => {
     // The load starts the page's loading screen, and the no-content test leaves a screen mounted.
     pageLoading.stopStatusTick();
-    clearScreen();
+    pageScreen.clear();
     for (const restore of undo.splice(0).reverse()) {
       restore();
     }

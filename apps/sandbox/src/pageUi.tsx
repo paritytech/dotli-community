@@ -14,5 +14,5 @@ export { showRetryScreen } from './showRetryScreen.js';
 export function mountOverlays(): void {
   const root = ensureOverlayRoot();
   root.dataset['overlays'] = '';
-  mountRoot('overlays', root, () => <Overlays />);
+  mountRoot({ name: 'overlays', container: root, view: () => <Overlays /> });
 }

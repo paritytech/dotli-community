@@ -4,8 +4,14 @@
 import { createMemo, createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
 import type { ReadableStore } from '@dotli/shared';
 
+type Params<Selected> = {
+  /** Whether two selected values count as the same, so the accessor keeps the first. */
+  equals?: ((previous: Selected, next: Selected) => boolean) | undefined;
+};
+
 /**
- * Read a store as a Solid accessor that unsubscribes when its owner is disposed.
+ * Read a store as a Solid accessor that unsubscribes when its owner is disposed. Throws outside a component or other
+ * reactive owner.
  *
  * Prefer `select` over reading one field of the whole value: Solid 2 runs an effect's function every time
  * its compute re-runs, even for an equal value. Pass `equals` (such as `isShallowEqual`) when `select` builds
@@ -14,26 +20,26 @@ import type { ReadableStore } from '@dotli/shared';
  * The accessor lags a synchronous `set` until Solid's next flush. Handlers acting on a value just written
  * read `store.get()`.
  */
-export function useStore<T>(store: ReadableStore<T>): Accessor<T>;
-export function useStore<T, S>(
-  store: ReadableStore<T>,
-  select: (value: T) => S,
-  equals?: (prev: S, next: S) => boolean,
-): Accessor<S>;
-export function useStore<T, S>(
-  store: ReadableStore<T>,
-  select?: (value: T) => S,
-  equals?: (prev: S, next: S) => boolean,
-): Accessor<S> {
+export function useStore<Value>(store: ReadableStore<Value>): Accessor<Value>;
+export function useStore<Value, Selected>(
+  store: ReadableStore<Value>,
+  select: (value: Value) => Selected,
+  params?: Params<Selected>,
+): Accessor<Selected>;
+export function useStore<Value, Selected>(
+  store: ReadableStore<Value>,
+  select?: (value: Value) => Selected,
+  { equals }: Params<Value | Selected> = {},
+): Accessor<Value | Selected> {
   if (!getOwner()) {
     throw new Error('useStore must be called inside a component or reactive owner');
   }
 
-  const pick = (state: T): S => (select === undefined ? (state as unknown as S) : select(state));
+  const pick = (state: Value): Value | Selected => (select === undefined ? state : select(state));
   // The store notifies from whatever owner a producer's `set` runs under, so the write opts out of
   // Solid's owned-scope check.
   const [version, setVersion] = createSignal(0, { ownedWrite: true });
-  onCleanup(store.subscribe(() => setVersion(n => n + 1)));
+  onCleanup(store.subscribe(() => setVersion(version => version + 1)));
   // An island renders at build time from the initial value and may hydrate after boot wrote the store,
   // so `ssrSource: 'client'` keeps `loadingValue` until hydration completes.
   return createMemo(

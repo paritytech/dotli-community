@@ -8,7 +8,7 @@ import '@dotli/ui/styles.css';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { reportBlockingModals } from './state/topbar.js';
-import { createReloadOffer, listenForChunkFailures, refuseModals, showError, showNotification } from '@dotli/ui';
+import { createReloadOffer, listenForChunkFailures, modals, showError, showNotification } from '@dotli/ui';
 import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
 import { offerDesktopApp } from './desktopOffer.js';
@@ -39,9 +39,12 @@ export const T0 = performance.now();
 export function startPage(options: { desktopOffer?: boolean } = {}): void {
   const { desktopOffer = true } = options;
   // One offer for the page, so chunk and island failures never stack reload toasts.
-  const offerReload = createReloadOffer(showNotification, () => {
-    markContinuation('app_update');
-    window.location.reload();
+  const offerReload = createReloadOffer({
+    notify: showNotification,
+    reload: () => {
+      markContinuation('app_update');
+      window.location.reload();
+    },
   });
   listenForChunkFailures({ target: window, offerReload });
   reportIslandErrors({
@@ -49,7 +52,7 @@ export function startPage(options: { desktopOffer?: boolean } = {}): void {
     standIns: pageStandIns({
       disableAuthModal,
       refuseModals: () => {
-        refuseModals();
+        modals.refuseAll();
       },
     }),
   });
@@ -248,12 +251,15 @@ function fixSettings(settings: Settings, configureFrame: (settings: Settings) =>
 export function reportBootFailure(err: unknown): void {
   captureException(err, { flow: 'boot', step: boot.step });
   const error = describeError(err, getBackend() !== 'rpc-gateway');
-  showError(error.title, error.message, {
-    label: RELOAD_BTN_LABEL,
-    icon: RotateCwIcon,
-    onClick: () => {
-      markContinuation('reload_button');
-      window.location.reload();
+  showError(error.title, {
+    detail: error.message,
+    action: {
+      label: RELOAD_BTN_LABEL,
+      icon: RotateCwIcon,
+      onClick: () => {
+        markContinuation('reload_button');
+        window.location.reload();
+      },
     },
   });
   setProductError();

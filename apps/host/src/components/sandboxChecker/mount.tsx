@@ -21,10 +21,10 @@ export type ViolationPanelView = (props: ViolationPanelProps) => JSX.Element;
 export function mountViolationPanel(iframe: HTMLIFrameElement, View: ViolationPanelView = ViolationPanel): () => void {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  return mountRoot(
-    ROOT,
+  return mountRoot({
+    name: ROOT,
     container,
-    () => (
+    view: () => (
       <View
         iframe={iframe}
         onReserve={bottom => {
@@ -32,6 +32,6 @@ export function mountViolationPanel(iframe: HTMLIFrameElement, View: ViolationPa
         }}
       />
     ),
-    { removeContainer: true },
-  );
+    removeContainer: true,
+  });
 }

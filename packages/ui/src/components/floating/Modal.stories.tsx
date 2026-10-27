@@ -12,6 +12,8 @@ import { Modal } from './Modal.js';
 const onOpenChange = fn().mockName('onOpenChange');
 // The modal is portalled into the body, outside the story's canvas.
 const body = within(document.body);
+const [swapOpen, setSwapOpen] = createSignal(false);
+const [step, setStep] = createSignal(1);
 
 function Harness() {
   const [open, setOpen] = createSignal(true);
@@ -65,9 +67,12 @@ type Story = StoryObj<typeof meta>;
 
 /** As a keyboard user, I tab past the last answer in the card and focus wraps inside it, and Escape reports it closed once. */
 export const Desktop: Story = {
-  play: async ({ userEvent, step }) => {
-    onOpenChange.mockClear();
-    await step('Given focus starts in the password field', async () => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+      onOpenChange.mockClear();
+    });
+    await step('Then focus starts in the password field', async () => {
       await waitFor(() => expect(body.getByTestId('story-password')).toHaveFocus());
     });
     await step('When I Tab past the last answer', async () => {
@@ -92,7 +97,10 @@ export const Desktop: Story = {
 /** As a phone user, I see the dialog as a sheet with its title. */
 export const Phone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders on a phone', async () => {
+      await mount();
+    });
     await step('Then it is a sheet titled Clear site data', async () => {
       await waitFor(() => expect(body.getByTestId('story-modal-sheet-title')).toHaveTextContent('Clear site data'));
     });
@@ -101,16 +109,19 @@ export const Phone: Story = {
 
 /** As a dotli user, I resize the window across the phone breakpoint and the dialog keeps my typed value and focus. */
 export const SwitchesFormKeepingContent: Story = {
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
     const input = () => body.getByTestId<HTMLInputElement>('story-password');
     const { page } = await import('vitest/browser');
     const wide = { width: window.innerWidth, height: window.innerHeight };
     try {
-      await step('Given I typed a password in the card', async () => {
-        await waitFor(() => expect(input()).toHaveFocus());
-        await userEvent.type(input(), 'hunter2');
+      await step('When the dialog renders as a card', async () => {
+        await mount();
       });
-      await step('When the window narrows to a phone', async () => {
+      await step('Then focus starts in the password field of the card', async () => {
+        await waitFor(() => expect(input()).toHaveFocus());
+      });
+      await step('When I type a password and the window narrows to a phone', async () => {
+        await userEvent.type(input(), 'hunter2');
         await page.viewport(390, 844);
       });
       await step('Then the sheet shows the same field, value and focus', async () => {
@@ -132,9 +143,6 @@ export const SwitchesFormKeepingContent: Story = {
     }
   },
 };
-
-const [swapOpen, setSwapOpen] = createSignal(false);
-const [step, setStep] = createSignal(1);
 
 /** A modal mounted closed whose content swaps in place from step to step, and its trigger. */
 function SwapHarness() {

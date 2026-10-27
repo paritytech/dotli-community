@@ -10,14 +10,13 @@ import { Field } from '../../components/primitives/Field.js';
 import { Modal } from '../../components/floating/Modal.js';
 import { useStore } from '../../components/useStore.js';
 import {
-  modalsStore,
-  settleModal,
+  modals,
   type ModalButton,
   type ModalButtonVariant,
   type ModalEntry,
   type ModalView,
-} from '../../page/state/modals.js';
-import { closeAnswer, scrimAnswer } from './promptAnswer.js';
+} from '../../page/state/createModals.js';
+import { getCloseAnswer, getScrimAnswer } from './promptAnswer.js';
 import s from './PromptDialog.module.css';
 
 const BUTTON_VARIANT: Record<ModalButtonVariant, ButtonVariant> = {
@@ -44,7 +43,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   const { id, view: first } = props.entry;
   // An answered dialog may hand its place to another view under the same id, which this follows without
   // remounting. A dialog that left the store keeps its last view while it closes.
-  const current = useStore(modalsStore, entries => entries.find(e => e.id === id)?.view);
+  const current = useStore(modals.store, entries => entries.find(entry => entry.id === id)?.view);
   const view = createMemo<ModalView<string>>(prev => current() ?? prev ?? first);
   const root = first.testId ?? DEFAULT_TEST_ID;
   const titleId = `overlay-modal-title-${String(id)}`;
@@ -62,38 +61,39 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
     setPassword('');
   });
 
-  const needsPassword = (button: ModalButton<string>): boolean =>
-    view().input !== undefined && button.variant === 'primary';
+  function isPasswordRequired(button: ModalButton<string>): boolean {
+    return view().input !== undefined && button.variant === 'primary';
+  }
 
-  const choose = (button: ModalButton<string>): void => {
-    if (needsPassword(button)) {
+  function choose(button: ModalButton<string>): void {
+    if (isPasswordRequired(button)) {
       if (password() === '') {
         return;
       }
-      settleModal(id, button.result, password());
+      modals.settle(id, button.result, { value: password() });
       return;
     }
-    settleModal(id, button.result);
-  };
+    modals.settle(id, button.result);
+  }
 
-  const answer = (result: string | undefined): void => {
+  function answer(result: string | undefined): void {
     if (result !== undefined) {
-      settleModal(id, result);
+      modals.settle(id, result);
     }
-  };
+  }
 
-  const submitWithEnter = (): void => {
-    const primary = view().buttons.find(b => b.variant === 'primary');
+  function submitWithEnter(): void {
+    const primary = view().buttons.find(button => button.variant === 'primary');
     if (primary !== undefined) {
       choose(primary);
     }
-  };
+  }
 
   return (
     <Modal
       open
       onOpenChange={(_, reason) => {
-        answer(reason === 'close' ? closeAnswer(view()) : scrimAnswer(view()));
+        answer(reason === 'close' ? getCloseAnswer(view()) : getScrimAnswer(view()));
       }}
       title={view().title}
       labelledBy={titleId}
@@ -152,8 +152,8 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
                 )}
               </Show>
               <input
-                ref={el => {
-                  input = el;
+                ref={element => {
+                  input = element;
                 }}
                 type="password"
                 class={s['input']}
@@ -189,7 +189,7 @@ export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
               variant={BUTTON_VARIANT[button.variant]}
               block
               testId={`${root}-btn-${BUTTON_TEST_ROLE[button.variant]}`}
-              disabled={needsPassword(button) && password() === ''}
+              disabled={isPasswordRequired(button) && password() === ''}
               onClick={() => {
                 choose(button);
               }}

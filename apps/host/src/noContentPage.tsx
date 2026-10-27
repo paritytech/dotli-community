@@ -5,9 +5,9 @@
 // nothing a visitor typed is parsed as markup.
 
 import { getActiveTldSuffix } from '@dotli/config';
-import { showScreen } from '@dotli/ui';
+import { pageScreen } from '@dotli/ui';
 import { NoContentPage } from './components/noContent/NoContentPage.js';
 
 export function showNoContentError(label: string): void {
-  showScreen(standalone => <NoContentPage label={label} tld={getActiveTldSuffix()} standalone={standalone} />);
+  pageScreen.show(standalone => <NoContentPage label={label} tld={getActiveTldSuffix()} standalone={standalone} />);
 }

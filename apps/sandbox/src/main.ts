@@ -14,7 +14,7 @@ import { getEndpointHost } from '@dotli/shared';
 
 import { createDecryptIfNeeded } from './decryptPrompt.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
-import { createReloadOffer, listenForChunkFailures, showNotification, toastsStore } from '@dotli/ui';
+import { createReloadOffer, listenForChunkFailures, showNotification, toasts } from '@dotli/ui';
 import { loadPageUi, loadSandboxChecker } from './lazy.js';
 import { hideFallbackScreen, showFallbackScreen } from './fallbackScreen.js';
 import { createSandboxUi } from './sandboxUi.js';
@@ -41,14 +41,17 @@ import {
 
 listenForChunkFailures({
   target: window,
-  offerReload: createReloadOffer(showNotification, () => {
-    window.location.reload();
+  offerReload: createReloadOffer({
+    notify: showNotification,
+    reload: () => {
+      window.location.reload();
+    },
   }),
 });
 
 const ui = createSandboxUi({
   load: loadPageUi,
-  toasts: toastsStore,
+  toasts: toasts.store,
   showFallback: text => {
     showFallbackScreen(document, text, () => {
       window.location.reload();

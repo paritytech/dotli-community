@@ -8,6 +8,18 @@ import { ShieldCheckIcon } from '../../testing/stories/glyphs.js';
 import { Chip } from './Chip.js';
 import { Choice } from './Choice.js';
 
+const TRANSPORTS = [
+  { value: 'per-tab', title: 'Light client per tab', description: 'Verified in your browser, separate for each tab' },
+  { value: 'shared', title: 'Light client shared', description: 'Verified in your browser, shared across tabs' },
+  {
+    value: 'gateway',
+    title: 'Trusted providers',
+    description: 'Fetched from trusted servers. Fastest, but less private',
+  },
+] as const;
+const onRefusedChoose = fn().mockName('onChoose');
+const onDisabledChoose = fn().mockName('onChoose');
+
 const meta = {
   title: 'Primitives/Choice',
   parameters: { chrome: true },
@@ -24,7 +36,10 @@ type Story = StoryObj<typeof meta>;
 
 /** As a dotli user, I read a static choice with a title and description and no control in it. */
 export const Plain: Story = {
-  play: async ({ canvas, step }) => {
+  play: async ({ canvas, mount, step }) => {
+    await step('When the choice renders', async () => {
+      await mount();
+    });
     await step('Then I read a static choice with no control in it', async () => {
       await expect(canvas.queryByRole('radio')).toBeNull();
       await expect(canvas.getByText('Light client per tab')).toBeVisible();
@@ -60,16 +75,6 @@ export const WithIcon: Story = {
   ),
 };
 
-const TRANSPORTS = [
-  { value: 'per-tab', title: 'Light client per tab', description: 'Verified in your browser, separate for each tab' },
-  { value: 'shared', title: 'Light client shared', description: 'Verified in your browser, shared across tabs' },
-  {
-    value: 'gateway',
-    title: 'Trusted providers',
-    description: 'Fetched from trusted servers. Fastest, but less private',
-  },
-] as const;
-
 /** As a dotli user, I pick a choice in a radio group and it becomes the chosen one with the focus on its radio. */
 export const RadioGroup: Story = {
   render: () => {
@@ -93,8 +98,11 @@ export const RadioGroup: Story = {
       </div>
     );
   },
-  play: async ({ canvas, userEvent, step }) => {
-    await step('Given the first transport is chosen', async () => {
+  play: async ({ canvas, userEvent, mount, step }) => {
+    await step('When the choices render', async () => {
+      await mount();
+    });
+    await step('Then the first transport shows chosen', async () => {
       await expect(canvas.getByRole('radio', { name: /Light client per tab/ })).toBeChecked();
     });
     await step('When I pick Trusted providers', async () => {
@@ -110,8 +118,6 @@ export const RadioGroup: Story = {
     );
   },
 };
-
-const onRefusedChoose = fn().mockName('onChoose');
 
 // The owner hears the pick and keeps the current transport.
 /** As a dotli user, I pick a choice its owner refuses, and the current choice stays checked. */
@@ -144,8 +150,6 @@ export const OwnerRefuses: Story = {
   },
 };
 
-const onDisabledChoose = fn().mockName('onChoose');
-
 /** As a dotli user, I try to pick a disabled choice and nothing is picked. */
 export const Disabled: Story = {
   render: args => (
@@ -156,10 +160,15 @@ export const Disabled: Story = {
       radio={{ name: 'transport', value: 'shared', disabled: true, onChoose: onDisabledChoose }}
     />
   ),
-  play: async ({ canvas, userEvent, step }) => {
+  play: async ({ canvas, userEvent, mount, step }) => {
+    await step('When the disabled choice renders', async () => {
+      await mount();
+    });
     const radio = canvas.getByRole('radio', { name: /Light client shared/ });
-    await step('When I try to pick the disabled choice', async () => {
+    await step('Then the choice shows disabled', async () => {
       await expect(radio).toBeDisabled();
+    });
+    await step('When I try to pick it', async () => {
       await userEvent.click(radio);
     });
     await step('Then nothing is picked', async () => {

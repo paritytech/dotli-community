@@ -62,64 +62,32 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/**
- * A real tap through the DevTools protocol, in top-page coordinates since the runner may scale the test's frame.
- * A scripted touch would read as keyboard focus to `:focus-visible`, and `Input.synthesizeTapGesture` never
- * reaches the page on Linux CI.
- */
-const tap = async (el: Element) => {
-  const { cdp } = await import('vitest/browser');
-  const session = cdp();
-  const box = el.getBoundingClientRect();
-  let x = box.left + box.width / 2;
-  let y = box.top + box.height / 2;
-  let win: Window = window;
-  while (win.frameElement !== null) {
-    const frame = win.frameElement.getBoundingClientRect();
-    const scale = frame.width / win.innerWidth;
-    x = frame.left + x * scale;
-    y = frame.top + y * scale;
-    win = win.parent;
-  }
-  // Chromium turns touches into a click only while touch is emulated.
-  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-  try {
-    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
-    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  } finally {
-    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
-  }
-};
-
-const tip = (): HTMLElement => byId('story-tip');
-const trigger = () => body.getByTestId('tip-trigger');
-
 /** As a mouse user, I rest on the trigger and the tooltip shows and stays while I am on it, then hides when I leave. */
 export const ShowsOnHover: Story = {
   play: async ({ step }) => {
     await step('When the mouse rests on the trigger', async () => {
-      await (await trustedInput()).hover(trigger());
+      await (await trustedInput()).hover(getTrigger());
     });
     await step('Then the tooltip shows, describing the trigger, and focus stays put', async () => {
-      await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
-      await expect(tip()).toHaveAttribute('role', 'tooltip');
-      await expect(tip()).toHaveAttribute('popover', 'manual');
-      await expect(trigger()).toHaveAttribute('aria-describedby', 'story-tip');
-      await expect(trigger()).toHaveAttribute('aria-expanded', 'true');
-      await expect(trigger()).not.toHaveFocus();
+      await waitFor(() => expect(getTip()).toHaveAttribute('data-open'));
+      await expect(getTip()).toHaveAttribute('role', 'tooltip');
+      await expect(getTip()).toHaveAttribute('popover', 'manual');
+      await expect(getTrigger()).toHaveAttribute('aria-describedby', 'story-tip');
+      await expect(getTrigger()).toHaveAttribute('aria-expanded', 'true');
+      await expect(getTrigger()).not.toHaveFocus();
     });
     await step('When the mouse moves onto the tooltip', async () => {
       await (await trustedInput()).hover(body.getByTestId('tip-text'));
     });
     await step('Then it stays', async () => {
-      await expect(tip()).toHaveAttribute('data-open');
+      await expect(getTip()).toHaveAttribute('data-open');
     });
     await step('When the mouse leaves both', async () => {
       await (await trustedInput()).hover(body.getByTestId('elsewhere'));
     });
     await step('Then it hides', async () => {
-      await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
-      await expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+      await waitFor(() => expect(getTip()).not.toHaveAttribute('data-open'));
+      await expect(getTrigger()).toHaveAttribute('aria-expanded', 'false');
     });
   },
 };
@@ -129,30 +97,30 @@ export const ShowsOnKeyboardFocusAndEscapeHides: Story = {
   play: async ({ step }) => {
     await step('When I Tab to the trigger', async () => {
       await (await trustedInput()).tab();
-      await expect(trigger()).toHaveFocus();
     });
-    await step('Then the tooltip shows at once', async () => {
-      await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
+    await step('Then the trigger has focus and the tooltip shows at once', async () => {
+      await expect(getTrigger()).toHaveFocus();
+      await waitFor(() => expect(getTip()).toHaveAttribute('data-open'));
     });
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it hides and focus stays on the trigger', async () => {
-      await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
-      await expect(trigger()).toHaveFocus();
+      await waitFor(() => expect(getTip()).not.toHaveAttribute('data-open'));
+      await expect(getTrigger()).toHaveFocus();
     });
     await step('When I press Enter on the trigger', async () => {
       await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then it shows again', async () => {
-      await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
+      await waitFor(() => expect(getTip()).toHaveAttribute('data-open'));
     });
     await step('When I Tab on', async () => {
       await (await trustedInput()).tab();
-      await expect(body.getByTestId('elsewhere')).toHaveFocus();
     });
-    await step('Then it hides', async () => {
-      await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
+    await step('Then focus moved on and it hides', async () => {
+      await expect(body.getByTestId('elsewhere')).toHaveFocus();
+      await waitFor(() => expect(getTip()).not.toHaveAttribute('data-open'));
     });
   },
 };
@@ -162,24 +130,28 @@ export const TapToggles: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
     await step('When I tap the trigger', async () => {
-      await tap(trigger());
+      await tap(getTrigger());
     });
     await step('Then the tooltip shows', async () => {
-      await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
+      await waitFor(() => expect(getTip()).toHaveAttribute('data-open'));
     });
     await step('When I tap elsewhere', async () => {
       await tap(body.getByTestId('elsewhere'));
     });
     await step('Then it hides', async () => {
-      await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getTip()).not.toHaveAttribute('data-open'));
     });
-    await step('When I tap the trigger twice', async () => {
-      await tap(trigger());
-      await waitFor(() => expect(tip()).toHaveAttribute('data-open'));
-      await tap(trigger());
+    await step('When I tap the trigger', async () => {
+      await tap(getTrigger());
+    });
+    await step('Then it shows again', async () => {
+      await waitFor(() => expect(getTip()).toHaveAttribute('data-open'));
+    });
+    await step('When I tap the trigger a second time', async () => {
+      await tap(getTrigger());
     });
     await step('Then the second tap hid it', async () => {
-      await waitFor(() => expect(tip()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getTip()).not.toHaveAttribute('data-open'));
     });
   },
 };
@@ -187,10 +159,13 @@ export const TapToggles: Story = {
 /** As a screen reader user, I meet a tooltip moved to another trigger, and the old trigger refers to nothing. */
 export const MovedTriggerKeepsNoAria: Story = {
   render: () => <SwapHarness />,
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the tooltip renders on the first trigger', async () => {
+      await mount();
+    });
     const first = () => body.getByTestId('tip-first');
     const second = () => body.getByTestId('tip-second');
-    await step('Given the tooltip on the first trigger', async () => {
+    await step('Then the first trigger refers to the tooltip', async () => {
       await waitFor(() => expect(first()).toHaveAttribute('aria-describedby', 'swap-tip'));
       await expect(first()).toHaveAttribute('aria-expanded', 'false');
     });
@@ -205,3 +180,40 @@ export const MovedTriggerKeepsNoAria: Story = {
     });
   },
 };
+
+/**
+ * A real tap through the DevTools protocol, in top-page coordinates since the runner may scale the test's frame.
+ * A scripted touch would read as keyboard focus to `:focus-visible`, and `Input.synthesizeTapGesture` never
+ * reaches the page on Linux CI.
+ */
+async function tap(element: Element): Promise<void> {
+  const { cdp } = await import('vitest/browser');
+  const session = cdp();
+  const box = element.getBoundingClientRect();
+  let centerX = box.left + box.width / 2;
+  let centerY = box.top + box.height / 2;
+  let frameWindow: Window = window;
+  while (frameWindow.frameElement !== null) {
+    const frame = frameWindow.frameElement.getBoundingClientRect();
+    const scale = frame.width / frameWindow.innerWidth;
+    centerX = frame.left + centerX * scale;
+    centerY = frame.top + centerY * scale;
+    frameWindow = frameWindow.parent;
+  }
+  // Chromium turns touches into a click only while touch is emulated.
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  try {
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: centerX, y: centerY }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  }
+}
+
+function getTip(): HTMLElement {
+  return byId('story-tip');
+}
+
+function getTrigger(): HTMLElement {
+  return body.getByTestId('tip-trigger');
+}

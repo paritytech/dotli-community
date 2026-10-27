@@ -70,13 +70,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const menu = (): HTMLElement => byId('story-menu');
-const row = (testId: string) => body.getByTestId(testId);
-
 /** As a keyboard user, I open the menu with Enter, move with the arrows and typeahead, and choose a row with focus back on More. */
 export const KeyboardOpensOnFirstItem: Story = {
-  play: async ({ step }) => {
-    await step('Given More announces the menu it controls', async () => {
+  play: async ({ mount, step }) => {
+    await step('When the menu and its More button render', async () => {
+      await mount();
+    });
+    await step('Then More announces the menu it controls', async () => {
       const more = body.getByTestId('story-more');
       await waitFor(() => expect(more).toHaveAttribute('popovertarget', 'story-menu'));
       await expect(more).toHaveAttribute('aria-haspopup', 'menu');
@@ -88,35 +88,35 @@ export const KeyboardOpensOnFirstItem: Story = {
       await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then the menu is open on Network', async () => {
-      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
-      await expect(menu()).toHaveAttribute('role', 'menu');
+      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
+      await expect(getMenu()).toHaveAttribute('role', 'menu');
       await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'true');
-      await waitFor(() => expect(row('row-network')).toHaveFocus());
+      await waitFor(() => expect(getRow('row-network')).toHaveFocus());
     });
     await step('When I press ArrowUp', async () => {
       await (await trustedInput()).keyboard('{ArrowUp}');
     });
     await step('Then focus wrapped to Settings', async () => {
-      await expect(row('row-settings')).toHaveFocus();
+      await expect(getRow('row-settings')).toHaveFocus();
     });
     await step('When I type p', async () => {
       await (await trustedInput()).keyboard('p');
     });
     await step('Then typeahead moved to Permissions', async () => {
-      await expect(row('row-permissions')).toHaveFocus();
+      await expect(getRow('row-permissions')).toHaveFocus();
     });
     await step('When I press Tab', async () => {
       await (await trustedInput()).keyboard('{Tab}');
     });
     await step('Then focus stayed on Permissions', async () => {
-      await expect(row('row-permissions')).toHaveFocus();
+      await expect(getRow('row-permissions')).toHaveFocus();
     });
     await step('When I press Enter', async () => {
       await (await trustedInput()).keyboard('{Enter}');
     });
     await step('Then Permissions was chosen, the menu closed and More has focus', async () => {
       await expect(onRow).toHaveBeenCalledWith('permissions');
-      await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
       await expect(body.getByTestId('story-more')).toHaveFocus();
     });
   },
@@ -130,16 +130,20 @@ export const ArrowDownOpensOnFirstItem: Story = {
       await (await trustedInput()).keyboard('{ArrowDown}');
     });
     await step('Then the menu is open on Network', async () => {
-      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
-      await waitFor(() => expect(row('row-network')).toHaveFocus());
+      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
+      await waitFor(() => expect(getRow('row-network')).toHaveFocus());
     });
-    await step('When I press End, then Escape', async () => {
+    await step('When I press End', async () => {
       await (await trustedInput()).keyboard('{End}');
-      await expect(row('row-settings')).toHaveFocus();
+    });
+    await step('Then focus is on Settings', async () => {
+      await expect(getRow('row-settings')).toHaveFocus();
+    });
+    await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then the menu closed, nothing was chosen and More has focus', async () => {
-      await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
       await expect(onRow).not.toHaveBeenCalled();
       await waitFor(() => expect(body.getByTestId('story-more')).toHaveFocus());
     });
@@ -153,20 +157,20 @@ export const PointerOpensOnTheMenu: Story = {
       await (await trustedInput()).click(body.getByTestId('story-more'));
     });
     await step('Then the menu itself has focus', async () => {
-      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
-      await waitFor(() => expect(menu()).toHaveFocus());
+      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
+      await waitFor(() => expect(getMenu()).toHaveFocus());
     });
     await step('When I hover Permissions', async () => {
-      await (await trustedInput()).hover(row('row-permissions'));
+      await (await trustedInput()).hover(getRow('row-permissions'));
     });
     await step('Then Permissions has focus', async () => {
-      await waitFor(() => expect(row('row-permissions')).toHaveFocus());
+      await waitFor(() => expect(getRow('row-permissions')).toHaveFocus());
     });
     await step('When I click More again', async () => {
       await (await trustedInput()).click(body.getByTestId('story-more'));
     });
     await step('Then the menu closed', async () => {
-      await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
       await expect(body.getByTestId('story-more')).toHaveAttribute('aria-expanded', 'false');
     });
   },
@@ -181,7 +185,7 @@ export const Sheet: Story = {
     });
     await step('Then a sheet titled More holds the rows as a menu, which has focus', async () => {
       await waitFor(() => expect(body.getByTestId('menu-sheet-title')).toHaveTextContent('More'));
-      await expect(menu()).toHaveAttribute('data-open');
+      await expect(getMenu()).toHaveAttribute('data-open');
       const sheetBody = body.getByTestId('menu-sheet-body');
       await expect(sheetBody).toHaveAttribute('role', 'menu');
       await expect(sheetBody).toHaveAccessibleName('More');
@@ -192,7 +196,7 @@ export const Sheet: Story = {
       await (await trustedInput()).keyboard('{ArrowDown}');
     });
     await step('Then Network has focus', async () => {
-      await expect(row('row-network')).toHaveFocus();
+      await expect(getRow('row-network')).toHaveFocus();
     });
   },
 };
@@ -201,20 +205,22 @@ export const Sheet: Story = {
 export const SheetRowHandsOff: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
-    await step('Given the More sheet is open', async () => {
+    await step('When I tap More', async () => {
       await (await trustedInput()).click(body.getByTestId('story-more'));
-      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
+    });
+    await step('Then the More sheet is open', async () => {
+      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
     });
     await step('When I tap the Settings row, which opens a sheet', async () => {
-      await (await trustedInput()).click(row('row-settings'));
+      await (await trustedInput()).click(getRow('row-settings'));
     });
     await step("Then the Settings sheet took More's place: both marked as a hand-off", async () => {
       await expect(onRow).toHaveBeenCalledWith('settings');
       const settings = document.getElementById('story-settings');
       await waitFor(() => expect(settings).toHaveAttribute('data-open'));
       await expect(settings).toHaveAttribute('data-handoff');
-      await expect(menu()).not.toHaveAttribute('data-open');
-      await expect(menu()).toHaveAttribute('data-handoff');
+      await expect(getMenu()).not.toHaveAttribute('data-open');
+      await expect(getMenu()).toHaveAttribute('data-handoff');
     });
     await step('And focus is in the Settings sheet, not back on More', async () => {
       // More's rows leave once its slide out has played, the last thing its close does.
@@ -235,18 +241,28 @@ export const SheetRowHandsOff: Story = {
 export const SheetRowWithoutSheetSlides: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ step }) => {
-    await step('Given the More sheet is open', async () => {
+    await step('When I tap More', async () => {
       await (await trustedInput()).click(body.getByTestId('story-more'));
-      await waitFor(() => expect(menu()).toHaveAttribute('data-open'));
+    });
+    await step('Then the More sheet is open', async () => {
+      await waitFor(() => expect(getMenu()).toHaveAttribute('data-open'));
     });
     await step('When I tap the Network row, which opens no sheet', async () => {
-      await (await trustedInput()).click(row('row-network'));
+      await (await trustedInput()).click(getRow('row-network'));
     });
     await step('Then More closed as usual, not marked as a hand-off, and More has focus', async () => {
       await expect(onRow).toHaveBeenCalledWith('network');
-      await waitFor(() => expect(menu()).not.toHaveAttribute('data-open'));
-      await expect(menu()).not.toHaveAttribute('data-handoff');
+      await waitFor(() => expect(getMenu()).not.toHaveAttribute('data-open'));
+      await expect(getMenu()).not.toHaveAttribute('data-handoff');
       await waitFor(() => expect(body.getByTestId('story-more')).toHaveFocus());
     });
   },
 };
+
+function getMenu(): HTMLElement {
+  return byId('story-menu');
+}
+
+function getRow(testId: string): HTMLElement {
+  return body.getByTestId(testId);
+}

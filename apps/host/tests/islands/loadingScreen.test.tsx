@@ -18,7 +18,7 @@ import { LoadingScreen } from '../../src/islands/LoadingScreen.js';
 import { createLoadingController, type LoadingController } from '../../src/loadingController.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { getLoadingState, updateLoading } from '../../src/state/loading.js';
-import { pageContentStore, prefersReducedMotion } from '@dotli/ui';
+import { pageScreen, prefersReducedMotion } from '@dotli/ui';
 import { byId, settle } from '@dotli/ui/testing';
 
 const mounted: (() => void)[] = [];
@@ -63,7 +63,7 @@ beforeEach(() => {
       },
       now: () => 0,
     },
-    pageContent: pageContentStore,
+    pageContent: pageScreen.store,
   });
   app().replaceChildren();
   captures.exception.mockClear();

@@ -5,7 +5,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
+import { pageScreen, RootBoundary, useStore } from '@dotli/ui';
 import { showBrokenPage } from '../brokenPage.js';
 import { SessionWindow as Content } from '../components/account/SessionWindow.js';
 import {
@@ -21,7 +21,7 @@ import {
  * the whole page, and a full-page screen takes it over.
  */
 export function SessionWindow(): JSX.Element {
-  const shown = useStore(pageContentStore, content => content === 'page');
+  const shown = useStore(pageScreen.store, content => content === 'page');
   return (
     <Show when={shown()}>
       <RootBoundary

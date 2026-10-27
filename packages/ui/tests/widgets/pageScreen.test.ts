@@ -1,32 +1,36 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { createComponent, onCleanup } from 'solid-js';
 import { render } from '@solidjs/web';
-import { pushToast } from '../../src/page/state/toasts.js';
+import { toasts } from '../../src/page/state/createToasts.js';
 import { byTestId, settle } from '../../src/testing/index.js';
 import { BellIcon } from '../../src/icons.js';
 import { Overlays } from '../../src/widgets/overlays/Overlays.js';
-import { clearScreen, pageContentStore, showScreen } from '../../src/widgets/pageScreen.js';
+import { createPageScreen } from '../../src/widgets/createPageScreen.js';
 
 /** The views taken down, by test id. */
 let disposed: string[] = [];
 
 /** A screen's view, as plain markup a test can find, that records its disposal. */
-function screen(testId: string): HTMLElement {
+function renderScreen(testId: string): HTMLElement {
   onCleanup(() => disposed.push(testId));
-  const el = document.createElement('p');
-  el.dataset['testid'] = testId;
-  el.textContent = testId;
-  return el;
+  const element = document.createElement('p');
+  element.dataset['testid'] = testId;
+  element.textContent = testId;
+  return element;
 }
 
 let disposeOverlays: (() => void) | undefined;
+let pageScreen: ReturnType<typeof createPageScreen>;
+
+beforeEach(() => {
+  pageScreen = createPageScreen({ page: document });
+});
 
 afterEach(() => {
-  clearScreen();
   disposeOverlays?.();
   disposeOverlays = undefined;
   resetAllStoresForTests();
@@ -35,47 +39,47 @@ afterEach(() => {
 });
 
 describe('page screen', () => {
-  it("As a visitor, a full-page screen takes the place of the page's content, and a later one takes its place in turn", () => {
+  it("As a visitor, I see a full-page screen take the place of the page's content, and a later one take its place in turn", () => {
     // Given
     document.body.innerHTML = '<div id="app"><iframe data-testid="frame"></iframe></div>';
 
     // When
-    showScreen(() => screen('first'));
-    showScreen(() => screen('second'));
+    pageScreen.show(() => renderScreen('first'));
+    pageScreen.show(() => renderScreen('second'));
 
     // Then
     expect(document.querySelector('[data-testid="frame"]')).toBeNull();
     expect(document.querySelector('[data-testid="first"]')).toBeNull();
     expect(byTestId('second').textContent).toBe('second');
     expect(disposed).toEqual(['first']);
-    expect(pageContentStore.get()).toBe('screen');
+    expect(pageScreen.store.get()).toBe('screen');
   });
 
-  it('As the shell, clearing the screen takes it down and keeps what the page put in #app since', () => {
+  it('As the shell, I clear the screen and it goes, and what the page put in #app since stays', () => {
     // Given
     document.body.innerHTML = '<div id="app"></div>';
-    showScreen(() => screen('error'));
+    pageScreen.show(() => renderScreen('error'));
     const frame = document.createElement('iframe');
     document.getElementById('app')?.append(frame);
 
     // When
-    clearScreen();
+    pageScreen.clear();
 
     // Then
     expect(document.querySelector('[data-testid="error"]')).toBeNull();
     expect(frame.isConnected).toBe(true);
-    expect(pageContentStore.get()).toBe('page');
+    expect(pageScreen.store.get()).toBe('page');
   });
 
-  it('As a page with no #app, a screen fills the body and is told it stands alone', () => {
+  it('As a page with no #app, I show a screen and it fills the body and is told it stands alone', () => {
     // Given
     document.body.innerHTML = '<main data-testid="landing"></main>';
     let standalone: boolean | undefined;
 
     // When
-    showScreen(alone => {
+    pageScreen.show(alone => {
       standalone = alone;
-      return screen('error');
+      return renderScreen('error');
     });
 
     // Then
@@ -84,17 +88,17 @@ describe('page screen', () => {
     expect(byTestId('error').textContent).toBe('error');
   });
 
-  it('As a visitor on a page with no #app, I still see a toast raised after a full-page screen took the body', async () => {
+  it('As a visitor on a page with no #app, I get a toast after a full-page screen took the body and still see it', async () => {
     // Given: the overlays mounted in the container the page marks as theirs, beside the page's own content.
     document.body.innerHTML = '<main data-testid="landing"></main>';
     const host = document.createElement('div');
     host.dataset['overlays'] = '';
     document.body.append(host);
     disposeOverlays = render(() => createComponent(Overlays, {}), host);
-    showScreen(() => screen('error'));
+    pageScreen.show(() => renderScreen('error'));
 
     // When
-    pushToast({ text: 'A new version may have been deployed', label: 'Reload', icon: BellIcon, dismissMs: 0 });
+    toasts.push({ text: 'A new version may have been deployed', label: 'Reload', icon: BellIcon, dismissMs: 0 });
     await settle();
 
     // Then

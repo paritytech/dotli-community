@@ -6,8 +6,7 @@
 
 import { toAbortError } from '@dotli/shared';
 import type { EnforceablePermissionName } from './permissions.js';
-import { openModal, type ModalView, type NotificationParams } from '@dotli/ui';
-import { modalsStore, settleModal } from '@dotli/ui/testing';
+import { modals, type ModalView, type NotificationParams } from '@dotli/ui';
 import type { HostPrompts, PermissionPromptDecision } from './hostPrompts.js';
 
 export type FakePrompt =
@@ -72,7 +71,7 @@ export function createFakePrompts(): FakePrompts {
         }
       };
       waiters.add(check);
-      unsubscribe = modalsStore.subscribe(check);
+      unsubscribe = modals.store.subscribe(check);
       check();
     });
 
@@ -139,16 +138,16 @@ export function createFakePrompts(): FakePrompts {
         ask({ kind: 'permission', label, permission, allowOnce }, signal),
       confirmPreimage: (label, size, signal) => ask({ kind: 'preimage', label, size }, signal),
       confirmReview: async (dialog, signal, handoff) => {
-        const opened = openModal(dialog, signal, outcome => handoff?.(outcome.result));
-        const id = modalsStore.get().at(-1)?.id;
+        const opened = modals.open(dialog, { signal, handoff: outcome => handoff?.(outcome.result) });
+        const id = modals.store.get().at(-1)?.id;
         if (id !== undefined && !signal.aborted) {
           queue.push({
             prompt: () => {
-              const entry = modalsStore.get().find(e => e.id === id);
+              const entry = modals.store.get().find(e => e.id === id);
               return entry === undefined ? undefined : { kind: 'review', dialog: entry.view };
             },
             settle: answer => {
-              settleModal(id, String(answer));
+              modals.settle(id, String(answer));
             },
           });
           wake();

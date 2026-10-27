@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { must, resetAllStoresForTests } from '@dotli/shared/testing';
 import { memorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
-import { clearScreen, showErrorPage } from '@dotli/ui';
+import { pageScreen, showErrorPage } from '@dotli/ui';
 import { LandingAuth } from '../../src/islands/LandingAuth.js';
 import { LandingNav } from '../../src/islands/LandingNav.js';
 import { LandingPart } from '../../src/islands/LandingPart.js';
@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  clearScreen();
+  pageScreen.clear();
   for (const unmount of unmounts) {
     unmount();
   }

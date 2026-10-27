@@ -3,7 +3,7 @@
 
 // The runtime's product frame view answered with the page's frame layout, screens and loading screen.
 
-import { clearScreen } from '@dotli/ui';
+import { pageScreen } from '@dotli/ui';
 import type { ProductFrameView } from './runtime/productFrame.js';
 import { loadViolationPanelMount } from './lazy.js';
 import { hideLoading } from './loadingController.js';
@@ -65,6 +65,6 @@ export function productFrameContainer(): HTMLElement {
 export const productFrameView: ProductFrameView = createProductFrameView({
   body: () => document.body,
   container: productFrameContainer,
-  clearScreen,
+  clearScreen: pageScreen.clear,
   hideLoading,
 });

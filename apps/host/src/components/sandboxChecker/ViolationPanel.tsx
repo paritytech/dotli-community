@@ -117,7 +117,7 @@ export function ViolationPanel(props: ViolationPanelProps): JSX.Element {
         }}
         onPointerDown={event => {
           if (!collapsed() && handle !== undefined) {
-            drags.start(handle, event, { move: onDragMove });
+            drags.start({ target: handle, down: event, handlers: { move: onDragMove } });
           }
         }}
       />

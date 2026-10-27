@@ -10,9 +10,8 @@ function pageReload(): void {
 
 /** For a page of the host's own, such as the landing page, that cannot show. */
 export function showBrokenPage(reload: () => void = pageReload): void {
-  showError('Something went wrong on our side', "This page didn't load properly. Reloading usually fixes it.", {
-    label: 'Reload',
-    icon: RotateCwIcon,
-    onClick: reload,
+  showError('Something went wrong on our side', {
+    detail: "This page didn't load properly. Reloading usually fixes it.",
+    action: { label: 'Reload', icon: RotateCwIcon, onClick: reload },
   });
 }

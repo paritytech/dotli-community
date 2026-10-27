@@ -53,10 +53,10 @@ export function setupTruapiDebugPanel(options: SetupOptions): () => void {
   });
 
   const View = options.view ?? Panel;
-  const disposeView = mountRoot(
-    ROOT,
+  const disposeView = mountRoot({
+    name: ROOT,
     container,
-    () => (
+    view: () => (
       <PanelWorkContext value={options.work ?? panelWork}>
         <View
           store={store}
@@ -68,8 +68,9 @@ export function setupTruapiDebugPanel(options: SetupOptions): () => void {
       </PanelWorkContext>
     ),
     // A render error, even a late one, tears the panel down rather than leave it frozen with timers running.
-    { removeContainer: true, onBroken: unsubscribe },
-  );
+    removeContainer: true,
+    onBroken: unsubscribe,
+  });
   // Callers expect the panel, its layout and the iframe fit in place on return.
   flush();
 
