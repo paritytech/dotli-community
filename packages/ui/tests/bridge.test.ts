@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  asProductId,
   HostRequestLoginResponse,
   VersionedHostRequestLoginError,
   decodeWireMessage,
@@ -27,6 +28,7 @@ type MockProvider = {
 };
 
 type MockRuntime = {
+  parseProductId: ReturnType<typeof vi.fn>;
   createProvider: ReturnType<typeof vi.fn>;
   cancelPairing: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
@@ -139,6 +141,7 @@ function makeLoginProvider(options: {
 
 function makeRuntime(): MockRuntime {
   const runtime = {
+    parseProductId: vi.fn(async (value: string) => asProductId(value)),
     createProvider: vi.fn(() => {
       const item = deferred<MockProvider>();
       mocks.coreProviderDefers.push(item);
@@ -271,6 +274,41 @@ describe("bridge render lifecycle", () => {
         import("@dotli/ui/blocking-modal-queue"),
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
+  });
+
+  it("opens the product provider with the identifier returned by Rust", async () => {
+    const { renderIframe } = await import("@dotli/ui/bridge");
+    mocks.createWebWorkerPairingHostRuntime.mockImplementationOnce(() => {
+      const runtime = makeRuntime();
+      runtime.parseProductId.mockResolvedValue(asProductId("canonical.paseo"));
+      return Promise.resolve(runtime);
+    });
+    const render = renderIframe("https://product.example/app", "product", {
+      productId: asProductId(" UNNORMALIZED.PASEO "),
+    });
+    await waitForProviderRequests(1);
+    expect(mocks.coreRuntimes[0].parseProductId).toHaveBeenCalledWith(
+      " UNNORMALIZED.PASEO ",
+    );
+    expect(mocks.coreRuntimes[0].createProvider).toHaveBeenCalledWith({
+      productId: "canonical.paseo",
+    });
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+  });
+
+  it("disposes the initialized worker when Rust rejects an identifier", async () => {
+    const { renderIframe } = await import("@dotli/ui/bridge");
+    mocks.createWebWorkerPairingHostRuntime.mockImplementationOnce(() => {
+      const runtime = makeRuntime();
+      runtime.parseProductId.mockRejectedValue(new Error("invalid product ID"));
+      return Promise.resolve(runtime);
+    });
+    await expect(
+      renderIframe("https://product.example/app", "product"),
+    ).rejects.toThrow("invalid product ID");
+    expect(mocks.coreRuntimes[0].createProvider).not.toHaveBeenCalled();
+    expect(mocks.coreRuntimes[0].dispose).toHaveBeenCalledOnce();
   });
 
   it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {

@@ -1,3 +1,4 @@
+import { asProductId } from "@parity/truapi";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getActiveServicesConfig,
@@ -32,8 +33,10 @@ describe("labelToProductId", () => {
 describe("createTruapiRuntimeConfig", () => {
   it("As a dotli integrator, the host accepts an explicit product id for local previews", () => {
     expect(
-      createTruapiRuntimeConfig("localhost:3000", "truapi-playground.dot")
-        .productId,
+      createTruapiRuntimeConfig(
+        "localhost:3000",
+        asProductId("truapi-playground.dot"),
+      ).productId,
     ).toBe("truapi-playground.dot");
   });
 

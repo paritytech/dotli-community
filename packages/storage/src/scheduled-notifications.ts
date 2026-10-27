@@ -28,15 +28,30 @@ const BY_PRODUCT_ID = "byProductId";
 export interface ScheduledNotificationRecord {
   hostId: number;
   perProductId: number;
-  productId: string;
+  productLabel: string;
   title: string;
   text: string;
   deeplink: string | null;
   scheduledAt: number;
 }
 
-export interface ScheduleRequest {
+/** IndexedDB keys retain the bare label in their productId field. */
+interface StoredNotificationRecord extends Omit<
+  ScheduledNotificationRecord,
+  "productLabel"
+> {
   productId: string;
+}
+
+function readNotification(
+  stored: StoredNotificationRecord,
+): ScheduledNotificationRecord {
+  const { productId, ...record } = stored;
+  return { ...record, productLabel: productId };
+}
+
+export interface ScheduleRequest {
+  productLabel: string;
   title: string;
   text: string;
   deeplink: string | null;
@@ -68,7 +83,7 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
 
       let result: ScheduleResult | null = null;
 
-      const countReq = byProduct.count(IDBKeyRange.only(req.productId));
+      const countReq = byProduct.count(IDBKeyRange.only(req.productLabel));
       countReq.onsuccess = () => {
         if (countReq.result >= SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP) {
           result = { ok: false, error: "ScheduleLimitReached" };
@@ -76,19 +91,19 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
           return;
         }
 
-        const counterReq = counters.get(req.productId);
+        const counterReq = counters.get(req.productLabel);
         counterReq.onsuccess = () => {
           const current = counterReq.result as CounterEntry | undefined;
           const next = (current?.next ?? 0) + 1;
           counters.put({
-            productId: req.productId,
+            productId: req.productLabel,
             next,
           } satisfies CounterEntry);
 
           // hostId is autoIncrement, so it is omitted from the record.
           const insertReq = records.add({
             perProductId: next,
-            productId: req.productId,
+            productId: req.productLabel,
             title: req.title,
             text: req.text,
             deeplink: req.deeplink,
@@ -131,18 +146,21 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
  * Bump the per-product counter without persisting a record. Used by the
  * immediate-fire path so the returned NotificationId is still monotonic.
  */
-export function allocateId(productId: string): Promise<number> {
+export function allocateId(productLabel: string): Promise<number> {
   return new Promise((resolve, reject) => {
     void getDb().then((db) => {
       const tx = db.transaction(COUNTER_STORE, "readwrite");
       const counters = tx.objectStore(COUNTER_STORE);
       let allocated = 0;
 
-      const get = counters.get(productId);
+      const get = counters.get(productLabel);
       get.onsuccess = () => {
         const current = get.result as CounterEntry | undefined;
         allocated = (current?.next ?? 0) + 1;
-        counters.put({ productId, next: allocated } satisfies CounterEntry);
+        counters.put({
+          productId: productLabel,
+          next: allocated,
+        } satisfies CounterEntry);
       };
 
       tx.oncomplete = () => {
@@ -157,11 +175,11 @@ export function allocateId(productId: string): Promise<number> {
 
 /**
  * Idempotent. Returns true if a matching record was deleted, false if no
- * such (productId, perProductId) pair existed (already fired or never
+ * such (productLabel, perProductId) pair existed (already fired or never
  * scheduled).
  */
 export function cancel(
-  productId: string,
+  productLabel: string,
   perProductId: number,
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
@@ -171,13 +189,13 @@ export function cancel(
       const byProduct = records.index(BY_PRODUCT_ID);
       let deleted = false;
 
-      const cursorReq = byProduct.openCursor(IDBKeyRange.only(productId));
+      const cursorReq = byProduct.openCursor(IDBKeyRange.only(productLabel));
       cursorReq.onsuccess = () => {
         const cursor = cursorReq.result;
         if (!cursor) {
           return;
         }
-        const rec = cursor.value as ScheduledNotificationRecord;
+        const rec = cursor.value as StoredNotificationRecord;
         if (rec.perProductId === perProductId) {
           cursor.delete();
           deleted = true;
@@ -233,7 +251,7 @@ export function listAll(): Promise<ScheduledNotificationRecord[]> {
         if (!cursor) {
           return;
         }
-        out.push(cursor.value as ScheduledNotificationRecord);
+        out.push(readNotification(cursor.value as StoredNotificationRecord));
         cursor.continue();
       };
 
@@ -248,7 +266,7 @@ export function listAll(): Promise<ScheduledNotificationRecord[]> {
 }
 
 export function listForProduct(
-  productId: string,
+  productLabel: string,
 ): Promise<ScheduledNotificationRecord[]> {
   return new Promise((resolve, reject) => {
     void getDb().then((db) => {
@@ -256,13 +274,13 @@ export function listForProduct(
       const byProduct = tx.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
       const out: ScheduledNotificationRecord[] = [];
 
-      const cursorReq = byProduct.openCursor(IDBKeyRange.only(productId));
+      const cursorReq = byProduct.openCursor(IDBKeyRange.only(productLabel));
       cursorReq.onsuccess = () => {
         const cursor = cursorReq.result;
         if (!cursor) {
           return;
         }
-        out.push(cursor.value as ScheduledNotificationRecord);
+        out.push(readNotification(cursor.value as StoredNotificationRecord));
         cursor.continue();
       };
 

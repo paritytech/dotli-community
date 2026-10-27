@@ -9,6 +9,7 @@
 // sessions, product identities, or storage namespaces. Any future nested
 // traffic must share the top-level core/provider context.
 
+import type { ProductId } from "@parity/truapi";
 import {
   decodeWireMessage,
   encodeWireMessage,
@@ -103,7 +104,10 @@ type CoreProviderBase = Provider &
     | "getPermissionAuthorizationStatuses"
     | "setPermissionAuthorizationStatus"
   >;
-type CoreProvider = CoreProviderBase & PairingHostAdmin;
+type CoreProvider = CoreProviderBase &
+  PairingHostAdmin & {
+    readonly productId: ProductId;
+  };
 type PairingRuntimeControls = PairingHostAdmin & {
   dispose(): void;
 };
@@ -112,7 +116,7 @@ type CurrentProduct =
       mode: "iframe";
       label: string;
       url: string;
-      productId?: string;
+      productId?: ProductId;
     }
   | {
       mode: "subdomain";
@@ -144,10 +148,12 @@ function ensureStoredSessionForwarder(): void {
 
 function trackCoreProvider(
   provider: CoreProviderBase,
+  productId: ProductId,
   pairing: PairingRuntimeControls,
   disposeModalScope: () => void,
 ): CoreProvider {
   const tracked: CoreProvider = {
+    productId,
     postMessage(message: Uint8Array): void {
       provider.postMessage(message);
     },
@@ -190,6 +196,7 @@ function trackCoreProvider(
     }
   });
   return {
+    productId,
     postMessage(message: Uint8Array): void {
       tracked.postMessage(message);
     },
@@ -426,7 +433,7 @@ function applyIframeStyling(
 function pipeProviders(
   product: Provider,
   core: Provider,
-  args: { flowId: string; label: string; productId: string },
+  args: { flowId: string; label: string; productId: ProductId },
 ): () => void {
   let sawInbound = false;
   let sawOutbound = false;
@@ -480,7 +487,7 @@ function pipeProviders(
 
 function emitWireFrameDebug(
   direction: "incoming" | "outgoing",
-  productId: string,
+  productId: ProductId,
   message: Uint8Array,
 ): void {
   if (!hasDotliDebugListeners()) {
@@ -509,7 +516,7 @@ function emitWireFrameDebug(
 
 function wrapCoreProviderForDebug(
   provider: CoreProviderBase,
-  productId: string,
+  productId: ProductId,
 ): CoreProviderBase {
   const listeners = new Set<(message: Uint8Array) => void>();
   let disposed = false;
@@ -689,7 +696,7 @@ async function createHost(args: {
   allowedOrigin: string;
   sandbox: string;
   label: string;
-  productId?: string;
+  productId?: ProductId;
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
@@ -701,7 +708,7 @@ async function createHost(args: {
     coreProvider,
   );
   const { createIframeHost } = await runtimeChunkPromise;
-  const productId = args.productId ?? labelToProductId(args.label);
+  const productId = coreProvider.productId;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   // TODO(remove-legacy-nova): `legacyProbeCleanup` (including its two `?.()`
@@ -823,7 +830,7 @@ async function createCoreProvider(
     pairingLabel?: string;
     pairingDotSuffix?: boolean;
     pairingHostGlobal?: boolean;
-    productId?: string;
+    productId?: ProductId;
   } = {},
 ): Promise<CoreProvider> {
   if (blockingModalCoordinator === null) {
@@ -836,7 +843,7 @@ async function createCoreProvider(
     const { createWebWorkerPairingHostRuntime, HostWorker } =
       await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
-    const { productId, ...hostConfig } = runtimeConfig;
+    const { productId: candidateProductId, ...hostConfig } = runtimeConfig;
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),
       createHostCallbacks({
@@ -850,14 +857,21 @@ async function createCoreProvider(
         hostConfig,
       },
     );
-    const provider = await runtime.createProvider({ productId });
-    return trackCoreProvider(
-      wrapCoreProviderForDebug(provider, options.productId ?? label),
-      runtime,
-      () => {
-        blockingModalScope.dispose();
-      },
-    );
+    try {
+      const productId = await runtime.parseProductId(candidateProductId);
+      const provider = await runtime.createProvider({ productId });
+      return trackCoreProvider(
+        wrapCoreProviderForDebug(provider, productId),
+        productId,
+        runtime,
+        () => {
+          blockingModalScope.dispose();
+        },
+      );
+    } catch (error) {
+      runtime.dispose();
+      throw error;
+    }
   } catch (error) {
     blockingModalScope.dispose();
     throw error;
@@ -934,12 +948,12 @@ function disposeLandingAuthHost(): void {
 export async function renderIframe(
   url: string,
   label: string,
-  options: { productId?: string } = {},
+  options: { productId?: ProductId } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId("render");
   const bridgeFlowId = newFlowId("bridge");
-  const productId = options.productId ?? label;
+  const productId = options.productId ?? labelToProductId(label);
   emitDotliDebugEvent({
     layer: "render",
     event: "iframe_begin",
@@ -1129,7 +1143,7 @@ export async function renderAppSubdomain(
     event: "setup_begin",
     flowId: bridgeFlowId,
     timestamp: Date.now(),
-    payload: { label, productId: label },
+    payload: { label, productId: labelToProductId(label) },
   });
   emitDotliDebugEvent({
     layer: "render",
@@ -1157,7 +1171,7 @@ export async function renderAppSubdomain(
     event: "setup_ready",
     flowId: bridgeFlowId,
     timestamp: Date.now(),
-    payload: { label, productId: label },
+    payload: { label, productId: labelToProductId(label) },
   });
   applyIframeStyling(host.iframe, { topbarOffset: true });
   activateHost(host, previousHost, loading === null ? [] : [loading]);
@@ -1169,7 +1183,11 @@ export async function renderAppSubdomain(
         event: "iframe_load",
         flowId: bridgeFlowId,
         timestamp: Date.now(),
-        payload: { label, productId: label, mode: "subdomain" },
+        payload: {
+          label,
+          productId: labelToProductId(label),
+          mode: "subdomain",
+        },
       });
     },
     { once: true },

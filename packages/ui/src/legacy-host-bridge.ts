@@ -14,6 +14,7 @@
 // `tests/legacy-host-bridge.test.ts`. Nothing in the modern MessagePort path
 // or the Rust core depends on anything here.
 
+import type { ProductId } from "@parity/truapi";
 import {
   decodeWireMessage,
   encodeWireMessage,
@@ -132,7 +133,7 @@ export interface WindowMessageProvider extends WireProvider {
  */
 export function createLegacyNovaChainHeadProvider(
   provider: WireProvider,
-  productId?: string,
+  productId?: ProductId,
 ): WireProvider {
   /** Per genesis: Nova's synthetic follow id -> follow-start wire request id. */
   const followWireIdsByGenesis = new Map<string, Map<string, string>>();

@@ -1,3 +1,4 @@
+import type { ProductId } from "@parity/truapi";
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -372,7 +373,7 @@ export type BridgeEvent =
       timestamp: number;
       payload: {
         label: string;
-        productId: string;
+        productId: ProductId;
       };
     }
   | {
@@ -382,7 +383,7 @@ export type BridgeEvent =
       timestamp: number;
       payload: {
         label: string;
-        productId: string;
+        productId: ProductId;
       };
     }
   | {
@@ -392,7 +393,7 @@ export type BridgeEvent =
       timestamp: number;
       payload: {
         label: string;
-        productId: string;
+        productId: ProductId;
         mode: "iframe" | "subdomain";
       };
     }
@@ -403,7 +404,7 @@ export type BridgeEvent =
       timestamp: number;
       payload: {
         label: string;
-        productId: string;
+        productId: ProductId;
       };
     }
   | {
@@ -413,7 +414,7 @@ export type BridgeEvent =
       timestamp: number;
       payload: {
         label: string;
-        productId: string;
+        productId: ProductId;
       };
     };
 

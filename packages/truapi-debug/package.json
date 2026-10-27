@@ -21,6 +21,7 @@
   "dependencies": {
     "@dotli/config": "workspace:*",
     "@dotli/shared": "workspace:*",
-    "nanoevents": "^9.1.0"
+    "nanoevents": "^9.1.0",
+    "@parity/truapi": "0.9.0"
   }
 }

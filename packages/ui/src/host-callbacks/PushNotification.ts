@@ -48,7 +48,7 @@ export function createNotificationAdapters(
     }
 
     const result = await scheduleNotification({
-      productId: label,
+      productLabel: label,
       title: label,
       text,
       deeplink: deeplink ?? null,

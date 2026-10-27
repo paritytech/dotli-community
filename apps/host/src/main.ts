@@ -15,6 +15,7 @@ if (typeof globalThis.requestIdleCallback !== "function") {
     }, 1) as unknown as number;
 }
 
+import { asProductId, type ProductId } from "@parity/truapi";
 import "./pwa";
 import "./offline";
 import "@dotli/ui/styles.css";
@@ -177,7 +178,7 @@ const T0 = performance.now();
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
 const blockingModalCoordinator = createBlockingModalCoordinator();
 
-function parseLocalProductIdOverride(): string | undefined {
+function localProductIdOverride(): ProductId | undefined {
   if (!isLocalhost) {
     return undefined;
   }
@@ -187,8 +188,7 @@ function parseLocalProductIdOverride(): string | undefined {
   if (value === null || value.trim() === "") {
     return undefined;
   }
-  const productId = value.trim();
-  return dotNsUrl.isProductIdentifier(productId) ? productId : undefined;
+  return asProductId(value.trim());
 }
 
 /**
@@ -931,7 +931,7 @@ async function main(): Promise<void> {
   });
 
   const label = parseDotLabel();
-  const productIdOverride = parseLocalProductIdOverride();
+  const productIdOverride = localProductIdOverride();
 
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;

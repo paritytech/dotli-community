@@ -8,12 +8,13 @@
 //
 // Events are never mutated after insertion.
 
+import type { ProductId } from "@parity/truapi";
 import type { DotliDebugEvent } from "./dotli-debug-types.ts";
 
 export interface TruapiDebugMessageEvent {
   kind: "truapi";
   direction: "incoming" | "outgoing";
-  productId?: string;
+  productId?: ProductId;
   requestId: string;
   payload: { tag: string; value: unknown };
 }
@@ -26,7 +27,7 @@ export interface StoredTruapiEvent {
   seq: EventSeq;
   receivedAt: number;
   direction: TruapiDebugMessageEvent["direction"];
-  productId: string | undefined;
+  productId: ProductId | undefined;
   /** Correlation key for TrUAPI groups (request/response, subscription). */
   requestId: string;
   tag: string;
@@ -193,8 +194,8 @@ export class EventStore {
 
   /** Discover every distinct productId present in the buffer (incl. `undefined`).
    *  System events have no productId and do not contribute. */
-  productIds(): (string | undefined)[] {
-    const seen = new Set<string | undefined>();
+  productIds(): (ProductId | undefined)[] {
+    const seen = new Set<ProductId | undefined>();
     for (const e of this.buf) {
       if (e.kind === "truapi") {
         seen.add(e.productId);

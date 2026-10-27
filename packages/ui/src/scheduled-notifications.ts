@@ -114,7 +114,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
  * allocate an id. Everything else is persisted to IDB.
  */
 export async function scheduleNotification(req: {
-  productId: string;
+  productLabel: string;
   title: string;
   text: string;
   deeplink: string | null;
@@ -125,12 +125,12 @@ export async function scheduleNotification(req: {
   // Inline the null/past check so `scheduledAt` narrows to `number` below
   // without a non-null assertion.
   if (req.scheduledAt === null || req.scheduledAt <= now) {
-    const id = await allocateId(req.productId);
+    const id = await allocateId(req.productLabel);
     return { ok: true, id, immediate: true };
   }
 
   const result = await dbSchedule({
-    productId: req.productId,
+    productLabel: req.productLabel,
     title: req.title,
     text: req.text,
     deeplink: req.deeplink,
@@ -155,10 +155,10 @@ export async function scheduleNotification(req: {
  * had already fired or never existed.
  */
 export async function cancelNotification(
-  productId: string,
+  productLabel: string,
   perProductId: number,
 ): Promise<boolean> {
-  const removed = await dbCancel(productId, perProductId);
+  const removed = await dbCancel(productLabel, perProductId);
   if (removed) {
     bcChannel?.postMessage({ kind: "cancelled" } satisfies WakeMessage);
   }

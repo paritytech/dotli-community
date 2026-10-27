@@ -25,6 +25,7 @@
 //      arrives on the follow subscription carrying a matching
 //      operationId.
 
+import type { ProductId } from "@parity/truapi";
 import {
   decodeChainAnnotations,
   formatChainLabel,
@@ -776,7 +777,7 @@ function linkRail(
 }
 
 function followKey(
-  productId: string | undefined,
+  productId: ProductId | undefined,
   genesisHash: string | undefined,
 ): string {
   return `${productId ?? "__anon"}|${genesisHash ?? "__unknown"}`;

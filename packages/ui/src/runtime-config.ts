@@ -1,10 +1,13 @@
+import { asProductId, type ProductId } from "@parity/truapi";
 import { getActiveServicesConfig, withActiveTld } from "@dotli/config/network";
 import type { ProductRuntimeConfig } from "@parity/truapi-host";
 
 declare const __DOTLI_VERSION__: string | undefined;
 
-export function labelToProductId(label: string): string {
-  return label.startsWith("localhost:") ? label : withActiveTld(label);
+export function labelToProductId(label: string): ProductId {
+  return asProductId(
+    label.startsWith("localhost:") ? label : withActiveTld(label),
+  );
 }
 
 function getPlatformType(userAgent: string = navigator.userAgent): string {
@@ -32,7 +35,7 @@ type RuntimeConfigWithAssetHub = ProductRuntimeConfig & {
 // solely from the label (or the explicit override).
 export function createTruapiRuntimeConfig(
   label: string,
-  productId: string = labelToProductId(label),
+  productId: ProductId = labelToProductId(label),
 ): ProductRuntimeConfig {
   const config: RuntimeConfigWithAssetHub = {
     productId,

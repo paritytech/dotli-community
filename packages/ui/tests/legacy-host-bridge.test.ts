@@ -3,6 +3,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  asProductId,
+  type ProductId,
   decodeWireMessage,
   encodeWireMessage,
   VersionedHostAccountGetRequest,
@@ -95,7 +97,7 @@ type FollowBoundRequest = {
   };
 };
 
-function createHarness(productId?: string): {
+function createHarness(productId?: ProductId): {
   adapted: WireProvider;
   emit(message: Uint8Array): void;
   received: Uint8Array[];
@@ -173,7 +175,7 @@ function decodedFollowId<T extends FollowBoundRequest>(
 describe("createLegacyNovaChainHeadProvider", () => {
   it("As a dotli integrator, the host normalizes the legacy .dot suffix for a localhost product account", () => {
     // Given
-    const harness = createHarness("localhost:3000");
+    const harness = createHarness(asProductId("localhost:3000"));
 
     // When
     harness.emit(
@@ -202,7 +204,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
 
   it("As a dotli integrator, the host does not rewrite an explicitly requested different product account", () => {
     // Given
-    const harness = createHarness("localhost:3000");
+    const harness = createHarness(asProductId("localhost:3000"));
 
     // When
     harness.emit(

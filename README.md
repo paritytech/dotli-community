@@ -18,6 +18,8 @@ A decentralized web browser that runs in your browser. Visit any Polkadot applic
 
 ---
 
+The TrUAPI bridge validates product ID candidates through the existing Rust worker before opening a product provider. Host APIs share the `ProductId` type from `@parity/truapi`; display labels and persisted notification label keys remain separate.
+
 ## How to access apps
 
 dotli resolves apps by **subdomain** — the `.dot` name is the host:

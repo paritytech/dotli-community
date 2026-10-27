@@ -74,7 +74,7 @@ describe("notification host callbacks", () => {
       expect.any(AbortSignal),
     );
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
-      productId: "myapp",
+      productLabel: "myapp",
       title: "myapp",
       text: "hello",
       deeplink: null,
@@ -106,7 +106,7 @@ describe("notification host callbacks", () => {
     // Then
     expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
-      productId: "myapp",
+      productLabel: "myapp",
       title: "myapp",
       text: "later",
       deeplink: "dot://open",
