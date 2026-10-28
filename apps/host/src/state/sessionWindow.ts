@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
-import type { SiteList, SiteListScreen } from '../runtime/siteSignIn/siteList.js';
-import type { SiteRound, SiteScreen } from '../runtime/siteSignIn/siteRound.js';
+import type { SiteList, SiteListScreen } from '../runtime/siteSignIn/createSiteList.js';
+import type { SiteRound, SiteScreen } from '../runtime/siteSignIn/createSiteRound.js';
 import { closeWindow } from '../sessionWindowPage.js';
 import type { PairingView } from './authModal.js';
 

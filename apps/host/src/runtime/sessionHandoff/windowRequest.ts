@@ -7,61 +7,63 @@
  * with.
  */
 
-import type { SafeStorage } from '@dotli/shared';
-import {
-  asRecord,
-  readRequestParams,
-  readSessionRequest,
-  routeOfPath,
-  type SessionRequest,
-  type SessionRoute,
-} from './sessionProtocol.js';
+import { isRecord, type SafeStorage } from '@dotli/shared';
+import { readRequestParams, readSessionRequest, type SessionRequest } from './readSessionRequest.js';
+import { getRoute, type SessionRoute } from './sessionRoute.js';
 
-const REQUEST_KEY = 'dotli:s:request';
-
-export type WindowRequestDeps = {
+type TakeWindowRequestParams = {
   pathname: string;
   search: string;
   hash: string;
   storage: SafeStorage;
+  /** Puts `url` in place of the window's URL, without a load. */
   replaceUrl: (url: string) => void;
 };
 
-function keep(storage: SafeStorage, pathname: string, params: Record<string, unknown>): void {
-  storage.setItem(REQUEST_KEY, JSON.stringify({ path: pathname, params }));
-}
+type WatchNewRequestsParams = {
+  pathname: string;
+  /** Hears each change of the window's fragment until the returned stop. */
+  listen: (handler: () => void) => () => void;
+  /** The window's fragment now, with its leading `#`. */
+  hash: () => string;
+  storage: SafeStorage;
+  /** Loads the window again. */
+  reload: () => void;
+};
 
-/** The request kept for `pathname`, or null when none is kept or the kept one no longer parses. */
-function kept(storage: SafeStorage, pathname: string, route: SessionRoute): SessionRequest | null {
-  const raw = storage.getItem(REQUEST_KEY);
-  if (raw === null) {
-    return null;
-  }
-  let entry: Record<string, unknown> | null;
-  try {
-    entry = asRecord(JSON.parse(raw));
-  } catch {
-    // A kept entry that is not JSON is the documented no-request outcome.
-    return null;
-  }
-  const params = asRecord(entry?.['params']);
-  return entry?.['path'] === pathname && params !== null ? readSessionRequest(route, params) : null;
-}
+type KeepRequestParams = {
+  storage: SafeStorage;
+  pathname: string;
+  params: Record<string, unknown>;
+};
+
+type ReadKeptRequestParams = {
+  storage: SafeStorage;
+  pathname: string;
+  route: SessionRoute;
+};
+
+const REQUEST_KEY = 'dotli:s:request';
 
 /**
  * The request this window answers, or null when it has none. A fragment with params is this load's request whether or
  * not it reads, so it replaces what was kept. Without one, the request kept for this path serves a reload. Only a round
  * is required here, so a request of another version or for another party is kept for the window to answer.
  */
-export function takeWindowRequest(deps: WindowRequestDeps): SessionRequest | null {
-  const { pathname, search, hash, storage, replaceUrl } = deps;
-  const route = routeOfPath(pathname);
+export function takeWindowRequest({
+  pathname,
+  search,
+  hash,
+  storage,
+  replaceUrl,
+}: TakeWindowRequestParams): SessionRequest | null {
+  const route = getRoute(pathname);
   if (route === null) {
     return null;
   }
   const params = readRequestParams(hash);
   if (params === undefined) {
-    return kept(storage, pathname, route);
+    return readKeptRequest({ storage, pathname, route });
   }
   replaceUrl(pathname + search);
   const request = params === null ? null : readSessionRequest(route, params);
@@ -69,7 +71,7 @@ export function takeWindowRequest(deps: WindowRequestDeps): SessionRequest | nul
     storage.removeItem(REQUEST_KEY);
     return null;
   }
-  keep(storage, pathname, params);
+  keepRequest({ storage, pathname, params });
   return request;
 }
 
@@ -78,24 +80,39 @@ export function forgetWindowRequest(storage: SafeStorage): void {
   storage.removeItem(REQUEST_KEY);
 }
 
-export type NewRequestDeps = {
-  pathname: string;
-  listen: (handler: () => void) => () => void;
-  hash: () => string;
-  storage: SafeStorage;
-  reload: () => void;
-};
-
 /** Keeps and reloads for each new request a page puts in this window's fragment. Returns the stop function. */
-export function watchNewRequests(deps: NewRequestDeps): () => void {
-  const { pathname, listen, hash, storage, reload } = deps;
-  const route = routeOfPath(pathname);
+export function watchNewRequests({ pathname, listen, hash, storage, reload }: WatchNewRequestsParams): () => void {
+  const route = getRoute(pathname);
   return listen(() => {
     const params = readRequestParams(hash());
     if (route === null || params === undefined || params === null || readSessionRequest(route, params) === null) {
       return;
     }
-    keep(storage, pathname, params);
+    keepRequest({ storage, pathname, params });
     reload();
   });
+}
+
+function keepRequest({ storage, pathname, params }: KeepRequestParams): void {
+  storage.setItem(REQUEST_KEY, JSON.stringify({ path: pathname, params }));
+}
+
+/** The request kept for `pathname`, or null when none is kept or the kept one no longer parses. */
+function readKeptRequest({ storage, pathname, route }: ReadKeptRequestParams): SessionRequest | null {
+  const raw = storage.getItem(REQUEST_KEY);
+  if (raw === null) {
+    return null;
+  }
+  let entry: unknown;
+  try {
+    entry = JSON.parse(raw);
+  } catch {
+    // A kept entry that is not JSON is the documented no-request outcome.
+    return null;
+  }
+  if (!isRecord(entry)) {
+    return null;
+  }
+  const params = entry['params'];
+  return entry['path'] === pathname && isRecord(params) ? readSessionRequest(route, params) : null;
 }

@@ -39,16 +39,16 @@ import { reconcilePage } from './session/restoreRule.js';
 import { createSessionLease } from './session/createSessionLease.js';
 import { sessionState } from './session/createSessionState.js';
 import { siteWallet } from './session/siteWallet.js';
-import { createMainAccountSource, type MainAccountSource } from './siteSignIn/mainAccount.js';
-import { createSiteChain } from './siteSignIn/siteChain.js';
-import { createSiteAccountReader } from './siteSignIn/siteAccountReader.js';
-import { createSiteTxSigner } from './siteSignIn/siteTxSigner.js';
+import { createMainAccountSource, type MainAccountSource } from './siteSignIn/createMainAccountSource.js';
+import { createSiteChain } from './siteSignIn/createSiteChain.js';
+import { createSiteAccountReader } from './siteSignIn/createSiteAccountReader.js';
+import { createSiteTxSigner } from './siteSignIn/createSiteTxSigner.js';
 import { createPageSignOut } from './signOut.js';
-import { pageSignInHandoff } from './sessionHandoff/opener.js';
-import { applySessionResult } from './sessionHandoff/applyResult.js';
-import type { SessionResult } from './sessionHandoff/messages.js';
-import type { WindowFlowDeps } from './sessionHandoff/windowFlow.js';
-import type { WindowSignOutDeps } from './sessionHandoff/windowSignout.js';
+import { applySessionResult } from './sessionHandoff/applySessionResult.js';
+import { getPageSignInHandoff } from './sessionHandoff/createSessionHandoff.js';
+import type { WindowFlowParams } from './sessionHandoff/createWindowFlow.js';
+import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
+import type { WindowSignOutParams } from './sessionHandoff/signOutInWindow.js';
 import { authState } from './state/authState.js';
 import { signingOutState } from './state/signingOutState.js';
 import { walletModeState } from './state/walletModeState.js';
@@ -188,7 +188,7 @@ const pageSignOut = createPageSignOut({
   wallet: siteWallet,
   presence: sessionPresence,
   reportSigningOut: signingOutState.set,
-  signOutWindow: () => pageSignInHandoff(pageRole()),
+  signOutWindow: () => getPageSignInHandoff(pageRole()),
   signOuts,
   onCore: end => coreCommands.logout(end),
 });
@@ -231,7 +231,7 @@ const restoredCopy: {
 };
 
 /** The main store for the sign-in window, written through the page's flag keeper. */
-export const windowStore: Pick<WindowFlowDeps, 'store' | 'wallet' | 'signIns'> = {
+export const windowStore: Pick<WindowFlowParams, 'store' | 'wallet' | 'signIns'> = {
   signIns: signInFlag,
   store: {
     readSession: restoredCopy.readSession,
@@ -263,7 +263,7 @@ export function startSessionLease(): () => void {
 }
 
 /** The main store's restore and a core of its own, for the sign-out window. */
-export const windowSignOut: Pick<WindowSignOutDeps, 'restore' | 'endSession'> = {
+export const windowSignOut: Pick<WindowSignOutParams, 'restore' | 'endSession'> = {
   restore: restoreOnBoot,
   endSession,
 };

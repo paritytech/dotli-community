@@ -7,7 +7,7 @@
 import type { AuthModalView } from '../state/authModal.js';
 import type { LoginFailureKind } from './loginFailure.js';
 import type { DotliAuthState } from './session/types.js';
-import type { PageCancelReason } from './sessionHandoff/opener.js';
+import type { PageCancelReason } from './sessionHandoff/createSessionHandoff.js';
 
 export type CloseAuthModalOptions = {
   /** Leaves the core's login running, for a page that signed in meanwhile. */

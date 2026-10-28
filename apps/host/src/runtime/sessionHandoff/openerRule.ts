@@ -8,12 +8,29 @@ import { LOOPBACK_ROOT } from '@dotli/config/local-roots';
 export type SessionOpenerVerdict = 'allowed' | 'malformed' | 'insecure' | 'port' | 'localhost' | 'foreign' | 'app';
 
 /**
+ * Who opened the window: dot.li's own page (`first`), a site (`third`), or an origin of no party, refused with the
+ * verdict that says why.
+ */
+export type OpenerParty =
+  { party: 'first' } | { party: 'third' } | { party: null; verdict: Exclude<SessionOpenerVerdict, 'allowed'> };
+
+/** The party of an opener the window serves: dot.li's own page (`first`) or a site (`third`). */
+export type Party = Exclude<OpenerParty['party'], null>;
+
+type GetSitePartyParams = {
+  opener: string;
+  self: string;
+  /** The verdict of an opener that parses and is no product, which a site's origin may carry. */
+  verdict: Exclude<SessionOpenerVerdict, 'allowed' | 'malformed' | 'app'>;
+};
+
+/**
  * How the sign-in window judges `opener` against its own origin `self`. Both must be bare origins whose hostname has no
  * trailing dot. In production the opener is https on the default port, on the root domain or a subdomain, never a
  * product origin under `app.`. Under a local root it sits under the window's own local root and shares the window's
  * protocol and port.
  */
-export function sessionOpenerVerdict(opener: string, self: string): SessionOpenerVerdict {
+export function getSessionOpenerVerdict(opener: string, self: string): SessionOpenerVerdict {
   const openerUrl = parseOrigin(opener);
   const selfUrl = parseOrigin(self);
   if (!openerUrl || !selfUrl) {
@@ -36,6 +53,28 @@ export function sessionOpenerVerdict(opener: string, self: string): SessionOpene
   return place === 'site' ? 'allowed' : place;
 }
 
+/**
+ * The party of `opener` against the window's own origin `self`. A site is any https origin off the window's root
+ * domain and its local root, on any port, or a localhost page on any port other than the window itself. A product's
+ * sandbox under the window's own root domain or local root is never a site, and a page under that root on another
+ * protocol or port is refused.
+ */
+export function getOpenerParty(opener: string, self: string): OpenerParty {
+  const verdict = getSessionOpenerVerdict(opener, self);
+  switch (verdict) {
+    case 'allowed':
+      return { party: 'first' };
+    case 'malformed':
+    case 'app':
+      return { party: null, verdict };
+    case 'insecure':
+    case 'port':
+    case 'localhost':
+    case 'foreign':
+      return getSiteParty({ opener, self, verdict });
+  }
+}
+
 // A hostname with a trailing dot names the same host as the one without it, which the rule would read as another site,
 // so such an origin is malformed.
 function parseOrigin(value: string): URL | null {
@@ -46,27 +85,8 @@ function parseOrigin(value: string): URL | null {
   return url.origin === value && !url.hostname.endsWith('.') ? url : null;
 }
 
-/**
- * Who opened the window: dot.li's own page (`first`), a site (`third`), or an origin of no party, refused with the
- * verdict that says why.
- */
-export type OpenerParty =
-  { party: 'first' } | { party: 'third' } | { party: null; verdict: Exclude<SessionOpenerVerdict, 'allowed'> };
-
-/**
- * The party of `opener` against the window's own origin `self`. A site is any https origin off the window's root
- * domain and its local root, on any port, or a localhost page on any port other than the window itself. A product's
- * sandbox under the window's own root domain or local root is never a site, and a page under that root on another
- * protocol or port is refused.
- */
-export function openerParty(opener: string, self: string): OpenerParty {
-  const verdict = sessionOpenerVerdict(opener, self);
-  if (verdict === 'allowed') {
-    return { party: 'first' };
-  }
-  if (verdict === 'malformed' || verdict === 'app') {
-    return { party: null, verdict };
-  }
+/** A site's party for an opener off the window's own pages, or no party with `verdict` for one that is no site. */
+function getSiteParty({ opener, self, verdict }: GetSitePartyParams): OpenerParty {
   // Both parse, since the verdict is not malformed.
   const { hostname, protocol } = new URL(opener);
   const selfHost = new URL(self).hostname;

@@ -1,0 +1,1433 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
+import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { createSyncStore, createDeferred, createStoreStatus, isRecord, waitForStatus } from '@dotli/shared';
+import { recordLog } from '@dotli/shared/testing';
+import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindow.js';
+import type { AuthCommands, LoginOutcome } from '../coreLogin.js';
+import type { LogoutOutcome } from '../signOut.js';
+import type { DotliAuthState } from '../session/types.js';
+import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
+import { createOwnerSignInFlag } from '../session/signInFlag.js';
+import type { SignInIntent } from './parseWindowRequest.js';
+import type { SessionResult } from './parseSessionResult.js';
+import { createFakeMessageBus, createFakeWindowHandle } from './listenToMessages.fake.js';
+import { createFakePageEvents } from '../../testing/pageEvents.js';
+import { getOpenerParty } from './openerRule.js';
+import { createResponder } from './createResponder.js';
+import { createWindowFlow, type PhraseCheck, type WindowFlow, type WindowFlowParams } from './createWindowFlow.js';
+import { createHelloMessage } from './sessionMessages.js';
+
+type Stored = {
+  session?: string;
+  uiState?: string;
+  wallet?: { entropy: Uint8Array; identity: LocalWalletIdentity | null };
+};
+
+type OpenWindowParams = {
+  /** The request's intent, `signin` by default. */
+  intent?: SignInIntent;
+  /** Whether the opener is vetted before the flow starts. Without it the window still waits for its hello. */
+  vetted?: boolean;
+  /** Whether a page opened the window, false for a window no page opened. */
+  opener?: boolean;
+  stored?: Stored;
+  auth?: DotliAuthState;
+  /** The phrase check's loader, by default one that has it at once. */
+  loadPhrase?: WindowFlowParams['loadPhrase'];
+  /** Whether what the flow delivers goes on to the opener, as the window's own delivery sends it. True by default. */
+  forward?: boolean;
+  /** How the views name the vetted page, by its host as for dot.li's own page by default. */
+  pageLabel?: WindowFlowParams['pageLabel'];
+};
+
+type SayHelloParams = {
+  /** The origin the hello comes from, the page's by default. */
+  origin?: string;
+};
+
+type AnswerLoginParams = {
+  /** How the login ended, paired by default. */
+  outcome?: LoginOutcome;
+};
+
+const PAGE = 'https://browse.dot.li';
+const BLOB = '0xsession';
+const UI_STATE = JSON.stringify({ connected: true, publicKey: '0x01', liteUsername: 'alice.01' });
+const ENTROPY = new Uint8Array(16).fill(7);
+const PHRASE = 'twelve good words';
+const PHRASE_ENTROPY = new Uint8Array(16).fill(9);
+const IDENTITY: LocalWalletIdentity = { identityAccountId: '5Grwva', liteUsername: 'bob.02' };
+
+/** A phrase check that knows only `PHRASE`. */
+const PHRASE_CHECK: PhraseCheck = { phraseToEntropy: phrase => (phrase === PHRASE ? PHRASE_ENTROPY : null) };
+
+const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' };
+const PAIRED_ACCOUNT = { connected: true, publicKey: '0x02', liteUsername: 'carol.03' };
+const CONNECTED: DotliAuthState = { tag: 'Connected', session: PAIRED_ACCOUNT };
+/** The command layer's answer once the core paired and stored the session. */
+const PAIRED: LoginOutcome = { kind: 'paired', account: PAIRED_ACCOUNT };
+
+const SELF = 'https://dot.li';
+
+/**
+ * A window flow over fakes: the opener, the flag, the window's auth state and core, and the main store, with the
+ * window's real responder and flag keeper. The fake core stores and clears its session through that keeper.
+ */
+function openWindow(options: OpenWindowParams = {}) {
+  const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+  const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
+  const opener = options.opener === false ? null : createFakeWindowHandle();
+  const messages = createFakeMessageBus();
+  const restores = createFakePageEvents();
+  const responder = createResponder<SessionResult>({
+    opener,
+    judge: origin => getOpenerParty(origin, SELF),
+    round: 'r1',
+    listen: messages.listen,
+    onPageRestore: restores.subscribe,
+  });
+  if (options.vetted === true) {
+    sayHello();
+  }
+  const presence = createFakeSessionPresence('present');
+  const auth = createSyncStore<DotliAuthState>({
+    name: 'testAuth',
+    initial: options.auth ?? { tag: 'Disconnected' },
+    equals: () => false,
+  });
+  const main = {
+    session: options.stored?.session ?? null,
+    uiState: options.stored?.uiState ?? null,
+    wallet: options.stored?.wallet ?? null,
+  };
+  const calls: string[] = [];
+  const reads = { uiCache: 0 };
+  // Each login the window asked for, which the test answers in place of the command layer.
+  const logins: ReturnType<typeof createDeferred<LoginOutcome>>[] = [];
+  const failures: { phone: boolean; save: Error | null; forget: Error | null; read: Error | null } = {
+    phone: false,
+    save: null,
+    forget: null,
+    read: null,
+  };
+  const signIns = createOwnerSignInFlag({
+    presence,
+    readStoredSignIn: () => Promise.resolve(main.session !== null || main.wallet !== null ? 'held' : 'none'),
+  });
+  const commands: AuthCommands = {
+    login() {
+      calls.push('login');
+      const answer = createDeferred<LoginOutcome>();
+      logins.push(answer);
+      return answer.promise;
+    },
+    async logout() {
+      calls.push('logout');
+      // Lets the paired session go from the store through the flag keeper whether or not the phone heard of it, and
+      // answers whether it did, with one more try for a phone that missed it.
+      const held = main.session;
+      if (held === null) {
+        return { phone: 'told' };
+      }
+      await signIns.clear({
+        drop() {
+          main.session = null;
+          main.uiState = null;
+          return Promise.resolve(true);
+        },
+      });
+      return getLogoutOutcome();
+    },
+    cancelLogin() {
+      calls.push('cancelLogin');
+    },
+  };
+  const closed = createDeferred<undefined>();
+  // Each result the flow delivered, whether or not it went on to the opener.
+  const delivered: SessionResult[] = [];
+  const flow = createWindowFlow({
+    responder,
+    signIns,
+    auth,
+    commands,
+    store: {
+      readSession: () =>
+        Promise.resolve(
+          failures.read === null ? { status: 'ok', blob: main.session } : { status: 'failed', error: failures.read },
+        ),
+      readUiCache() {
+        reads.uiCache += 1;
+        return Promise.resolve(main.uiState);
+      },
+      writeUiCache(value) {
+        main.uiState = value;
+        return Promise.resolve();
+      },
+    },
+    wallet: {
+      read: (): Promise<LocalWalletReadResult> =>
+        Promise.resolve(
+          main.wallet === null ? { status: 'none' } : { status: 'ok', ...main.wallet, version: Uint8Array.of(1) },
+        ),
+      save(entropy, identity) {
+        calls.push('save');
+        if (failures.save !== null) {
+          return Promise.reject(failures.save);
+        }
+        main.wallet = { entropy, identity };
+        return Promise.resolve();
+      },
+      forget() {
+        calls.push('forget');
+        if (failures.forget !== null) {
+          return Promise.reject(failures.forget);
+        }
+        main.wallet = null;
+        return Promise.resolve();
+      },
+    },
+    loadPhrase: options.loadPhrase ?? (() => Promise.resolve(PHRASE_CHECK)),
+    intent: options.intent ?? 'signin',
+    pageLabel: options.pageLabel ?? (origin => new URL(origin).host),
+    deliver(result) {
+      delivered.push(result);
+      if (options.forward !== false) {
+        responder.send(result);
+      }
+    },
+    close() {
+      calls.push('close');
+      closed.resolve(undefined);
+    },
+  });
+
+  /** The opener's hello for the request's round, from a page or, refused, from a product. */
+  function sayHello({ origin = PAGE }: SayHelloParams = {}): void {
+    messages.post({ data: createHelloMessage('r1'), origin, source: opener });
+  }
+
+  /** Whether the phone heard the sign-out, with one more try that answers the same way for a phone that missed it. */
+  function getLogoutOutcome(): LogoutOutcome {
+    if (!failures.phone) {
+      return { phone: 'told' };
+    }
+    return {
+      phone: 'untold',
+      tellAgain() {
+        calls.push('tell again');
+        return Promise.resolve(getLogoutOutcome());
+      },
+    };
+  }
+
+  /** The command layer answering the window's last login, paired by default. */
+  function answerLogin({ outcome = PAIRED }: AnswerLoginParams = {}): void {
+    logins.at(-1)?.resolve(outcome);
+  }
+
+  /** The command layer rejecting the window's last login, over a paired session it could not store. */
+  function failLogin(error: Error): void {
+    logins.at(-1)?.reject(error);
+  }
+
+  /** The opener vetted for the request's round. */
+  function vet(): void {
+    sayHello();
+  }
+
+  /** A product's page saying hello, which the window refuses. */
+  function refuse(): void {
+    sayHello({ origin: 'https://x.app.dot.li' });
+  }
+
+  /** The results my opener got. */
+  function readSent(): unknown[] {
+    return (opener?.posted ?? []).flatMap(({ message }) =>
+      isRecord(message) && message['type'] === 'dotli:s:result' ? [message['result']] : [],
+    );
+  }
+
+  /** The core writing the session it paired through the window's flag keeper. */
+  function storeSession(blob: string): Promise<void> {
+    return signIns.store(() => {
+      main.session = blob;
+    });
+  }
+
+  return {
+    flow,
+    presence,
+    auth,
+    main,
+    calls,
+    reads,
+    delivered,
+    answerLogin,
+    failLogin,
+    failures,
+    closed: closed.promise,
+    metrics,
+    errors,
+    vet,
+    refuse,
+    /** The window's page coming back from the back-forward cache. */
+    restore: restores.fire,
+    readSent,
+    storeSession,
+  };
+}
+
+/** Waits until the flow shows a screen that `met` accepts. */
+function waitForScreen(flow: WindowFlow, met: (screen: SignInScreen) => boolean): Promise<void> {
+  return waitForStatus(createStoreStatus(flow.screen), met);
+}
+
+/** What the view on show offers, null on a view other than Continue. */
+function getOffer(flow: WindowFlow): ContinueOffer | null {
+  const shown = flow.screen.get();
+  return shown.view === 'continue' ? shown.offer : null;
+}
+
+/** Waits until the flow shows `view`. */
+function waitForView(flow: WindowFlow, view: WindowView): Promise<void> {
+  return waitForScreen(flow, current => current.view === view);
+}
+
+/** Waits until the flow's pairing is of `kind`. */
+function waitForPairing(flow: WindowFlow, kind: SignInScreen['pairing']['kind']): Promise<void> {
+  return waitForScreen(flow, current => current.pairing.kind === kind);
+}
+
+describe('session window flow', () => {
+  it('As a user in the sign-in window, I see nothing to press and nothing is read before the opener is vetted', () => {
+    // Given an empty main store, and an opener that has not said hello
+    const stored: Stored = {};
+
+    // When the window opens and no hello arrives
+    const { flow, calls, presence } = openWindow({ stored });
+
+    // Then it connects with nothing offered, read or flagged
+    expect(flow.screen.get().view).toBe('connecting');
+    expect(flow.screen.get()).not.toHaveProperty('offer');
+    expect(flow.screen.get().pageHost).toBeNull();
+    expect(calls).toEqual([]);
+    expect(presence.calls).toEqual([]);
+  });
+
+  it('As a user in a sign-in window that refused its opener, I see the refused view and nothing starts', () => {
+    // Given a window not yet vetted
+    const { flow, refuse, calls } = openWindow();
+
+    // When the opener is refused
+    refuse();
+
+    // Then the refused view shows and nothing ran
+    expect(flow.screen.get().view).toBe('refused');
+    expect(calls).toEqual([]);
+  });
+
+  it('As a user in the sign-in window with a stored session, I press Continue and the session is sent', async () => {
+    // Given a main store holding a paired session
+    const { flow, readSent, vet, presence, calls, closed } = openWindow({
+      stored: { session: BLOB, uiState: UI_STATE },
+    });
+
+    // When the opener is vetted
+    vet();
+    await waitForView(flow, 'continue');
+
+    // Then Continue offers the paired account
+    expect(getOffer(flow)).toEqual({
+      wallet: 'paired',
+      account: { publicKey: '0x01', liteUsername: 'alice.01' },
+    });
+
+    // When the flag is cleared elsewhere and the user presses Continue
+    void presence.clear();
+    await flow.continueWithStored();
+    await closed;
+
+    // Then the flag is set again and the window closes once it has sent what the store holds
+    expect(presence.state).toBe('present');
+    expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+    expect(calls).toEqual(['close']);
+  });
+
+  it('As a user in the sign-in window with a stored session, I press Continue and the flow hands it to its delivery, which alone sends it', async () => {
+    // Given a vetted window on Continue whose delivery keeps what it gets
+    const { flow, readSent, vet, delivered, calls } = openWindow({
+      stored: { session: BLOB, uiState: UI_STATE },
+      forward: false,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+
+    // Then the flow delivered the stored session once, sent nothing itself and left the window open
+    expect(delivered).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+    expect(readSent()).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it('As a dotli developer, I wire the window flow to its responder and the flow can only watch it, never send', () => {
+    // Given the responder the flow depends on
+    type FlowResponder = WindowFlowParams['responder'];
+
+    // When its type is read
+    const watched = expectTypeOf<FlowResponder>();
+
+    // Then it has a state and a subscription, and no send
+    watched.toHaveProperty('state');
+    watched.toHaveProperty('subscribe');
+    watched.not.toHaveProperty('send');
+  });
+
+  it('As a user in the sign-in window with a stored session and a local wallet, I am offered the local wallet and press Continue to send it', async () => {
+    // Given a main store holding a paired session and a local wallet
+    const { flow, readSent, vet, closed } = openWindow({
+      stored: { session: BLOB, uiState: UI_STATE, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+    });
+
+    // When the opener is vetted
+    vet();
+    await waitForView(flow, 'continue');
+
+    // Then Continue offers the local wallet's account
+    expect(getOffer(flow)).toEqual({
+      wallet: 'local',
+      account: { identityAccountId: '5Grwva', liteUsername: 'bob.02', primaryUsername: 'bob.02' },
+    });
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+    await closed;
+
+    // Then the session and the wallet are sent together
+    expect(readSent()).toEqual([
+      { session: { blob: BLOB, uiState: UI_STATE }, localWallet: { entropy: ENTROPY, identity: IDENTITY } },
+    ]);
+  });
+
+  it('As a user in the sign-in window with a wallet that has no identity, I see no names and Continue shows the generic label', async () => {
+    // Given a main store holding only a wallet with no identity
+    const { flow, vet } = openWindow({ stored: { wallet: { entropy: ENTROPY, identity: null } } });
+
+    // When the opener is vetted
+    vet();
+    await waitForView(flow, 'continue');
+
+    // Then Continue offers the local wallet with no account
+    expect(getOffer(flow)).toEqual({ wallet: 'local', account: null });
+  });
+
+  it('As a user in the sign-in window, I see the vetted page and it is named as the window is told to name it', async () => {
+    // Given an empty main store and a window that names a page by its full origin
+    const { flow, vet } = openWindow({ pageLabel: origin => `named ${origin}` });
+
+    // When the opener is vetted
+    vet();
+    await waitForView(flow, 'pairing');
+
+    // Then the pairing names the page by the label made from its vetted origin
+    expect(flow.screen.get().pageHost).toBe(`named ${PAGE}`);
+  });
+
+  it('As a user in the sign-in window, I pair and the cookie is left to the core while the session it stored is sent', async () => {
+    // Given an empty main store
+    const { flow, readSent, vet, presence, auth, calls, closed, storeSession, answerLogin, main } = openWindow();
+
+    // When the opener is vetted
+    vet();
+    await waitForView(flow, 'pairing');
+
+    // Then the flag claims no sign-in while nothing is stored, the window asks its core to pair and names the page
+    expect(presence.state).toBe('absent');
+    expect(calls).toEqual(['login']);
+    expect(flow.screen.get().pageHost).toBe('browse.dot.li');
+
+    // When the core pairs, stores the session it paired and reports it, and my login answers
+    auth.set(PAIRING);
+    await storeSession(BLOB);
+    auth.set({ tag: 'Authenticating' });
+    auth.set(CONNECTED);
+    answerLogin();
+    await closed;
+
+    // Then the flow itself set nothing, since the core's own write raised the flag before and after the session landed
+    expect(presence.calls).toEqual(['clear', 'set', 'set']);
+    expect(readSent()).toEqual([
+      { session: { blob: BLOB, uiState: JSON.stringify(PAIRED_ACCOUNT) }, localWallet: null },
+    ]);
+    // And the main store caches the paired account, so a page with no core and a later Continue show my name
+    expect(main.uiState).toBe(JSON.stringify(PAIRED_ACCOUNT));
+  });
+
+  it('As a user in the sign-in window, I abandon pairing and the cookie stays unset', async () => {
+    // Given a window pairing with its code on show
+    const { flow, vet, presence, auth, calls } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+
+    // When the user presses Cancel
+    flow.cancel();
+
+    // Then the flag is cleared once and the window closes
+    expect(presence.calls).toEqual(['clear']);
+    expect(presence.state).toBe('absent');
+    expect(calls).toEqual(['login', 'close']);
+  });
+
+  it('As a user in the sign-in window, I see my core report Connected and nothing is sent until my login answers', async () => {
+    // Given a window whose core paired and stored the session
+    const { flow, readSent, vet, auth, closed, storeSession, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+    await storeSession(BLOB);
+
+    // When the core reports Connected
+    auth.set(CONNECTED);
+    await flow.settled();
+
+    // Then nothing went out on the report alone
+    expect(readSent()).toEqual([]);
+
+    // When the login answers
+    answerLogin();
+    await closed;
+
+    // Then the paired session is sent once
+    expect(readSent()).toEqual([
+      { session: { blob: BLOB, uiState: JSON.stringify(PAIRED_ACCOUNT) }, localWallet: null },
+    ]);
+  });
+
+  it('As a user in the sign-in window, I press Cancel and the cookie stays while the main store holds a sign-in', async () => {
+    // Given a window on Continue over a stored session
+    const { flow, vet, presence, calls } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user presses Cancel
+    flow.cancel();
+
+    // Then the flag is not touched and the window closes
+    expect(presence.calls).toEqual([]);
+    expect(calls).toEqual(['close']);
+  });
+
+  it('As a user in the sign-in window, I press Use another account and the phone is told, the store cleared and pairing started', async () => {
+    // Given a window on Continue over a paired session and a local wallet
+    const { flow, readSent, vet, presence, auth, main, calls } = openWindow({
+      stored: { session: BLOB, uiState: UI_STATE, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user presses Use another account
+    await flow.useAnotherAccount();
+
+    // Then the flow deletes the flag itself
+    expect(calls).toEqual(['logout', 'forget', 'login']);
+    expect(main).toEqual({ session: null, uiState: null, wallet: null });
+    expect(presence.calls).toEqual(['clear']);
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(flow.screen.get()).not.toHaveProperty('offer');
+    expect(readSent()).toEqual([]);
+
+    // When the core starts pairing
+    auth.set(PAIRING);
+
+    // Then a pairing alone claims no sign-in
+    expect(presence.state).toBe('absent');
+  });
+
+  it('As a user in the sign-in window with only a local wallet, I press Use another account and the wallet is forgotten and pairing starts', async () => {
+    // Given a window on Continue over only a local wallet
+    const { flow, vet, presence, main, calls } = openWindow({
+      stored: { wallet: { entropy: ENTROPY, identity: null } },
+    });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user presses Use another account
+    await flow.useAnotherAccount();
+
+    // Then the wallet is forgotten through the flag and pairing starts
+    expect(calls).toEqual(['logout', 'forget', 'login']);
+    expect(main.wallet).toBeNull();
+    expect(presence.calls).toEqual(['clear']);
+    expect(flow.screen.get().view).toBe('pairing');
+  });
+
+  it('As a user in the sign-in window whose sign-out could not tell the phone, I stay on Continue and pair only once a retry told it', async () => {
+    // Given a window on Continue whose phone cannot be told
+    const { flow, vet, calls, failures, main } = openWindow({
+      stored: { session: BLOB, wallet: { entropy: ENTROPY, identity: null } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.phone = true;
+
+    // When the user presses Use another account
+    await flow.useAnotherAccount();
+
+    // Then the store let the session go, but the window waits for the phone and keeps the wallet
+    expect(flow.screen.get().view).toBe('continue');
+    expect(flow.screen.get().failure).toBe('phone');
+    expect(calls).toEqual(['logout']);
+    expect(main.session).toBeNull();
+    expect(main.wallet).not.toBeNull();
+
+    // When the user tries again and the phone hears of the same session
+    failures.phone = false;
+    await flow.useAnotherAccount();
+
+    // Then pairing starts with no failure once the phone was told
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(flow.screen.get().failure).toBeNull();
+    expect(calls).toEqual(['logout', 'tell again', 'forget', 'login']);
+    expect(main).toEqual({ session: null, uiState: null, wallet: null });
+  });
+
+  it('As a user in the sign-in window whose sign-out could not tell the phone, I go on to another account without it and pairing starts', async () => {
+    // Given a window on Continue whose phone could not be told
+    const { flow, vet, calls, failures, main } = openWindow({
+      stored: { session: BLOB, wallet: { entropy: ENTROPY, identity: null } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.phone = true;
+    await flow.useAnotherAccount();
+
+    // When the user goes on without the phone
+    await flow.goOnWithoutPhone();
+
+    // Then the store is emptied and pairing starts
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(calls).toEqual(['logout', 'forget', 'login']);
+    expect(main).toEqual({ session: null, uiState: null, wallet: null });
+  });
+
+  it('As a user in the sign-in window whose phone missed my sign-out, I press Try again and each press tells it once more', async () => {
+    // Given a window whose phone missed the sign-out
+    const { flow, vet, calls, failures } = openWindow({ stored: { session: BLOB }, auth: CONNECTED });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.phone = true;
+    await flow.useAnotherAccount();
+
+    // When the user presses Try again twice
+    await flow.useAnotherAccount();
+    await flow.useAnotherAccount();
+
+    // Then each press tells the phone again and the failure stays
+    expect(calls).toEqual(['logout', 'tell again', 'tell again']);
+    expect(flow.screen.get().failure).toBe('phone');
+  });
+
+  it('As a user in the sign-in window whose phone missed my sign-out, I go on over a main store that cannot be read and stay on Continue', async () => {
+    // Given a window whose phone missed the sign-out over a store that cannot be read
+    const { flow, vet, calls, failures } = openWindow({
+      stored: { session: BLOB, wallet: { entropy: ENTROPY, identity: null } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.phone = true;
+    await flow.useAnotherAccount();
+    failures.read = new Error('frame down');
+
+    // When the user goes on without the phone
+    await flow.goOnWithoutPhone();
+
+    // Then a session the store may still hold is not paired over
+    expect(flow.screen.get().view).toBe('continue');
+    expect(flow.screen.get().failure).toBe('sign-out');
+    expect(calls).toEqual(['logout']);
+  });
+
+  it('As a user in the sign-in window on Continue with no sign-out failure on show, I press Go on and nothing happens', async () => {
+    // Given a window on Continue with no failure on show
+    const { flow, vet, calls } = openWindow({ stored: { session: BLOB }, auth: CONNECTED });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user goes on without the phone
+    await flow.goOnWithoutPhone();
+
+    // Then the window stays on Continue and nothing ran
+    expect(flow.screen.get().view).toBe('continue');
+    expect(calls).toEqual([]);
+  });
+
+  it('As a user in the sign-in window whose wallet could not be forgotten, I am offered it again and told so while the cookie stays', async () => {
+    // Given a window on Continue whose wallet cannot be forgotten
+    const { flow, vet, presence, calls, failures, metrics, errors } = openWindow({
+      stored: { session: BLOB, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+      auth: CONNECTED,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.forget = new Error('frame down');
+
+    // When the user presses Use another account
+    await flow.useAnotherAccount();
+
+    // Then the flag stays and Continue offers the wallet again with the failure
+    expect(calls).toEqual(['logout', 'forget']);
+    expect(presence.state).toBe('present');
+    expect(flow.screen.get().view).toBe('continue');
+    expect(getOffer(flow)).toEqual({
+      wallet: 'local',
+      account: { identityAccountId: '5Grwva', liteUsername: 'bob.02', primaryUsername: 'bob.02' },
+    });
+    expect(flow.screen.get().failure).toBe('sign-out');
+    expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'forget' }]);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('As a user in the sign-in window whose Continue failed, I see the failed view with Try again and the failure is reported', async () => {
+    // Given a window on Continue over a store that cannot be read
+    const { flow, readSent, vet, failures, metrics, errors } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+    failures.read = new Error('store down');
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+
+    // Then nothing is sent and the failed view shows, counted and logged
+    expect(readSent()).toEqual([]);
+    expect(flow.screen.get().view).toBe('failed');
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'continue' }]);
+    expect(errors).toHaveLength(1);
+
+    // When the store answers again and the user presses Try again
+    failures.read = null;
+    await flow.retry();
+
+    // Then Continue is offered again
+    expect(flow.screen.get().view).toBe('continue');
+  });
+
+  it('As a user in the sign-in window whose first step failed, I am told so instead of waiting and Retry decides again', async () => {
+    // Given a window over a store that cannot be read
+    const { flow, vet, failures, metrics, errors } = openWindow({ stored: { session: BLOB } });
+    failures.read = new Error('store down');
+
+    // When the opener is vetted
+    vet();
+    await flow.settled();
+
+    // Then the failed view shows, counted and logged
+    expect(flow.screen.get().view).toBe('failed');
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'decide' }]);
+    expect(errors).toHaveLength(1);
+
+    // When the store answers again and the user presses Retry
+    failures.read = null;
+    await flow.retry();
+
+    // Then Continue offers the stored session
+    expect(flow.screen.get().view).toBe('continue');
+    expect(getOffer(flow)).toEqual({ wallet: 'paired', account: null });
+  });
+
+  it('As a user in the sign-in window whose finish failed after pairing, I am told so and Retry offers the session it stored', async () => {
+    // Given a window pairing over a store that cannot be read
+    const { flow, vet, auth, failures, storeSession, metrics, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+    failures.read = new Error('store down');
+
+    // When the core connects and the login answers
+    auth.set(CONNECTED);
+    answerLogin();
+    await waitForView(flow, 'failed');
+
+    // Then the finish failure is counted
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'finish' }]);
+
+    // When the store recovers with the session and the user presses Retry
+    failures.read = null;
+    await storeSession(BLOB);
+    await flow.retry();
+
+    // Then Continue is offered
+    expect(flow.screen.get().view).toBe('continue');
+  });
+
+  it('As a user in the sign-in window whose Back failed, I press Back and am told so with Retry', async () => {
+    // Given a window on the phrase view over a store that cannot be read
+    const { flow, failures } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+    failures.read = new Error('store down');
+
+    // When the user presses Back
+    await flow.closePhrase();
+
+    // Then the failed view shows
+    expect(flow.screen.get().view).toBe('failed');
+
+    // When the store recovers and the user presses Retry
+    failures.read = null;
+    await flow.retry();
+
+    // Then the intent the opener named decides again
+    expect(flow.screen.get().view).toBe('phrase');
+  });
+
+  it('As a user in the sign-in window, I press Retry on a view that did not fail and nothing happens', async () => {
+    // Given a window pairing with nothing failed
+    const { flow, vet, calls } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+
+    // When the user presses Retry
+    await flow.retry();
+
+    // Then the window keeps pairing with its one login
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(calls).toEqual(['login']);
+  });
+
+  it('As a user in the sign-in window, I import a phrase and it replaces the wallet, keeps the paired session and sends both', async () => {
+    // Given a phrase window over a paired session and a local wallet
+    const { flow, readSent, presence, main, calls, closed } = openWindow({
+      intent: 'phrase',
+      vetted: true,
+      stored: { session: BLOB, uiState: UI_STATE, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+    });
+    await waitForView(flow, 'phrase');
+    void presence.clear();
+    const walletWhenSet: (Uint8Array | undefined)[] = [];
+    const set = presence.set.bind(presence);
+    presence.set = setRecordingWallet;
+
+    function setRecordingWallet(): Promise<void> {
+      walletWhenSet.push(main.wallet?.entropy);
+      return set();
+    }
+
+    // When the user imports a phrase
+    await flow.importPhrase(PHRASE);
+    await closed;
+
+    // Then the flag was set before the new wallet was saved, and the new wallet replaced the old one
+    expect(walletWhenSet[0]).toBe(ENTROPY);
+    expect(presence.state).toBe('present');
+    expect(calls).toEqual(['save', 'close']);
+    expect(main.wallet).toEqual({ entropy: PHRASE_ENTROPY, identity: null });
+    expect(main.session).toBe(BLOB);
+    expect(readSent()).toEqual([
+      { session: { blob: BLOB, uiState: UI_STATE }, localWallet: { entropy: PHRASE_ENTROPY, identity: null } },
+    ]);
+  });
+
+  it('As a user in the sign-in window whose wallet could not be saved, I see the form say so and the failure is reported and the cookie deleted', async () => {
+    // Given a phrase window whose wallet save fails
+    const { flow, readSent, presence, failures, metrics, errors } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+    failures.save = new Error('quota');
+
+    // When the user imports a phrase
+    const imported = flow.importPhrase(PHRASE);
+
+    // Then the import rejects, nothing is sent, the flag goes back down and the failure is counted
+    await expect(imported).rejects.toThrow('The recovery phrase wallet could not be saved');
+    expect(readSent()).toEqual([]);
+    expect(flow.screen.get().view).toBe('phrase');
+    expect(presence.calls).toEqual(['set', 'clear']);
+    expect(metrics.counted('wallet.local_activate')).toEqual([{ outcome: 'error', reason: 'save' }]);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('As a user in the sign-in window whose store cannot be read after my phrase wallet saved, I see the failed view and the form is not told the save failed', async () => {
+    // Given a phrase window over a store that cannot be read, which nothing reads before the wallet saves
+    const { flow, readSent, failures, metrics } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+    failures.read = new Error('store down');
+
+    // When the user imports a phrase
+    await flow.importPhrase(PHRASE);
+
+    // Then the import resolves on the failed view, nothing is sent and the failed read is counted
+    expect(flow.screen.get().view).toBe('failed');
+    expect(readSent()).toEqual([]);
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'phrase' }]);
+  });
+
+  it('As a user in the sign-in window whose store could not be read after my phrase wallet saved, I press Try again and see the phrase form', async () => {
+    // Given a phrase window on the failed view, as the store could not be read after the wallet saved
+    const { flow, readSent, failures } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+    failures.read = new Error('store down');
+    await flow.importPhrase(PHRASE);
+    const viewAfterImport = flow.screen.get().view;
+
+    // When the store answers again and Try again is pressed
+    failures.read = null;
+    await flow.retry();
+
+    // Then the import had failed, and the window decides the phrase intent again and shows the phrase form, with
+    // nothing sent
+    expect(viewAfterImport).toBe('failed');
+    expect(flow.screen.get().view).toBe('phrase');
+    expect(readSent()).toEqual([]);
+  });
+
+  it('As a user in the sign-in window, I enter a phrase that is not one and it is reported and touches nothing', async () => {
+    // Given a phrase window
+    const { flow, readSent, presence, calls, metrics } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+
+    // When the user imports a phrase that is not one
+    const imported = flow.importPhrase('not a phrase');
+
+    // Then the import rejects, nothing is touched or sent and the failure is counted
+    await expect(imported).rejects.toThrow('Not a valid recovery phrase');
+    expect(calls).toEqual([]);
+    expect(presence.calls).toEqual([]);
+    expect(readSent()).toEqual([]);
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'phrase' }]);
+  });
+
+  it('As a debug panel user, I see no phrase form until the phrase check has loaded and then only a valid phrase is taken', async () => {
+    // Given a phrase check still on its way
+    const called = createDeferred<undefined>();
+    const check = createDeferred<PhraseCheck>();
+
+    // When a vetted phrase window opens and asks for the check
+    const { flow } = openWindow({
+      intent: 'phrase',
+      vetted: true,
+      loadPhrase() {
+        called.resolve(undefined);
+        return check.promise;
+      },
+    });
+    await called.promise;
+    const takesPhraseBeforeLoad = flow.isValidPhrase(PHRASE);
+
+    // Then the window still connects and takes no phrase
+    expect(flow.screen.get().view).toBe('connecting');
+    expect(takesPhraseBeforeLoad).toBe(false);
+
+    // When the check loads
+    check.resolve(PHRASE_CHECK);
+    await waitForView(flow, 'phrase');
+    const takes = { valid: flow.isValidPhrase(PHRASE), invalid: flow.isValidPhrase('not a phrase') };
+
+    // Then the check takes only the valid phrase
+    expect(takes).toEqual({ valid: true, invalid: false });
+  });
+
+  it('As a debug panel user whose phrase check failed to load, I see the failure and Retry loads it again', async () => {
+    // Given a phrase check that fails to load once
+    let loads = 0;
+    const { flow, metrics } = openWindow({
+      intent: 'phrase',
+      vetted: true,
+      loadPhrase() {
+        loads += 1;
+        return loads === 1 ? Promise.reject(new Error('chunk missing')) : Promise.resolve(PHRASE_CHECK);
+      },
+    });
+
+    // When the first load fails
+    await waitForView(flow, 'failed');
+    const takesPhraseAfterMiss = flow.isValidPhrase(PHRASE);
+
+    // Then the miss is counted once under the missed-chunk count, not the flow's
+    expect(metrics.counted('lazy_chunk.load')).toEqual([{ outcome: 'error', reason: 'phrase_import' }]);
+    expect(metrics.counted('session_window.flow')).toEqual([]);
+    expect(takesPhraseAfterMiss).toBe(false);
+
+    // When the user presses Retry
+    await flow.retry();
+    const takesPhraseAfterRetry = flow.isValidPhrase(PHRASE);
+
+    // Then the check loads again and the phrase view shows
+    expect(loads).toBe(2);
+    expect(flow.screen.get().view).toBe('phrase');
+    expect(takesPhraseAfterRetry).toBe(true);
+  });
+
+  it('As a user in the sign-in window opened for a phrase with nothing stored, I press Back and pairing starts', async () => {
+    // Given a phrase window over an empty store
+    const { flow, calls } = openWindow({ intent: 'phrase', vetted: true });
+    await waitForView(flow, 'phrase');
+
+    // When the user presses Back
+    await flow.closePhrase();
+
+    // Then pairing starts
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(calls).toEqual(['login']);
+  });
+
+  it('As a user in the sign-in window opened for a phrase with a stored session, I press Back and am offered Continue', async () => {
+    // Given a phrase window over a stored session
+    const { flow } = openWindow({ intent: 'phrase', vetted: true, stored: { session: BLOB } });
+    await waitForView(flow, 'phrase');
+
+    // When the user presses Back
+    await flow.closePhrase();
+
+    // Then Continue offers the stored session
+    expect(flow.screen.get().view).toBe('continue');
+    expect(getOffer(flow)).toEqual({ wallet: 'paired', account: null });
+  });
+
+  it('As a user in a sign-in window with no opener, I sign in against the main store and nothing is sent, which the window says', async () => {
+    // Given a window with no opener, pairing
+    const { flow, readSent, delivered, auth, calls, storeSession, answerLogin } = openWindow({ opener: false });
+    await waitForView(flow, 'pairing');
+
+    // When the core pairs and stores the session and the login answers
+    auth.set(PAIRING);
+    await storeSession(BLOB);
+    auth.set(CONNECTED);
+    answerLogin();
+    await waitForView(flow, 'done-no-opener');
+
+    // Then nothing is sent and no page is named
+    expect(flow.screen.get().pageHost).toBeNull();
+    expect(readSent()).toEqual([]);
+    expect(delivered).toEqual([]);
+    expect(calls).toEqual(['login']);
+  });
+
+  it('As a user in a sign-in window with no opener whose request asks for a phrase, I open it and see the phrase view first', async () => {
+    // Given a window with no opener whose request asks for a phrase
+    const { flow, calls } = openWindow({ opener: false, intent: 'phrase' });
+
+    // When the flow settles
+    await flow.settled();
+
+    // Then the phrase view shows and no login starts
+    expect(flow.screen.get().view).toBe('phrase');
+    expect(calls).toEqual([]);
+  });
+
+  it('As a user who opens a resume window with no opener, I wait for nobody and am offered what is stored, as a sign-in window offers it', async () => {
+    // Given a window with no opener whose request asks to resume, over a stored session
+    const { flow, readSent, calls } = openWindow({
+      opener: false,
+      intent: 'resume',
+      stored: { session: BLOB, uiState: UI_STATE },
+    });
+
+    // When the flow settles
+    await flow.settled();
+
+    // Then Continue offers the stored account and nothing is sent
+    expect(flow.screen.get().view).toBe('continue');
+    expect(getOffer(flow)).toEqual({
+      wallet: 'paired',
+      account: { publicKey: '0x01', liteUsername: 'alice.01' },
+    });
+    expect(readSent()).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it('As a user in the sign-in window whose store was emptied before Continue, I press Continue and pair instead of sending nothing', async () => {
+    // Given a window on Continue whose store was emptied since
+    const { flow, readSent, vet, main, calls } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+    main.session = null;
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+
+    // Then pairing starts and nothing is sent
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(readSent()).toEqual([]);
+    expect(calls).toEqual(['login']);
+  });
+
+  it('As a user in a restored sign-in window, I return to it and the same round vetted again leaves my view as it was', async () => {
+    // Given one window on Continue and one pairing
+    const stored = openWindow({ stored: { session: BLOB } });
+    stored.vet();
+    await waitForView(stored.flow, 'continue');
+    const pairing = openWindow();
+    pairing.vet();
+    await waitForView(pairing.flow, 'pairing');
+
+    // When both are restored and their opener vets the same round again
+    for (const window of [stored, pairing]) {
+      window.restore();
+      window.vet();
+      await window.flow.settled();
+    }
+
+    // Then nothing was decided again and no second pairing started
+    expect(stored.flow.screen.get().view).toBe('continue');
+    expect(stored.calls).toEqual([]);
+    expect(pairing.flow.screen.get().view).toBe('pairing');
+    expect(pairing.calls).toEqual(['login']);
+  });
+
+  it('As a user pairing in a restored sign-in window, I return to it and its round carries on the login under way while Retry starts one only after it answered', async () => {
+    // Given a window pairing, its code on show
+    const { flow, vet, restore, auth, calls, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+
+    // When it is restored and its opener vets the request's round again
+    restore();
+    vet();
+    await flow.settled();
+
+    // Then the round carries on with the login under way, whose code stays
+    expect(calls).toEqual(['login']);
+    expect(flow.screen.get().pairing).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
+
+    // When that login fails and Retry is pressed
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'Login request denied' });
+    answerLogin({ outcome: { kind: 'failed' } });
+    await waitForPairing(flow, 'error');
+    await flow.retry();
+
+    // Then the vetting again started no login of its own, and Retry started the one more
+    expect(calls).toEqual(['login', 'login']);
+    expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
+  });
+
+  it('As a user pairing in a restored sign-in window whose store cannot be read, I return to it and my code stays with nothing decided again', async () => {
+    // Given a window pairing with its code on show, restored while its read of the store fails
+    const { flow, vet, restore, auth, calls, failures, metrics } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+    failures.read = new Error('frame down');
+    restore();
+
+    // When its opener vets the request's round again
+    vet();
+    await flow.settled();
+
+    // Then the login under way still shows its code, no step read the store and no second login started
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(flow.screen.get().pairing).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
+    expect(metrics.counted('session_window.flow')).toEqual([]);
+    expect(calls).toEqual(['login']);
+  });
+
+  it('As a user in a restored sign-in window, I finish before it is vetted again and the result is sent then', async () => {
+    // Given a restored window waiting for its opener again
+    const { flow, readSent, vet, restore, calls } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+    restore();
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+
+    // Then nothing went out yet, and the window stays open
+    expect(readSent()).toEqual([]);
+    expect(calls).toEqual([]);
+
+    // When the restored window is vetted again
+    vet();
+
+    // Then the result is sent then and the window closes
+    expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: null }, localWallet: null }]);
+    expect(calls).toEqual(['close']);
+  });
+
+  it('As a user in the sign-in window on a flag store that answers late, I press Continue and the session is sent only once the flag landed', async () => {
+    // Given a window on Continue whose flag write is held
+    const { flow, readSent, vet, presence } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+    const landed = createDeferred<undefined>();
+    const asked = createDeferred<undefined>();
+    presence.set = holdFlagWrite;
+
+    function holdFlagWrite(): Promise<undefined> {
+      asked.resolve(undefined);
+      return landed.promise;
+    }
+
+    // When the user presses Continue and the flag write is asked
+    const continued = flow.continueWithStored();
+    await asked.promise;
+
+    // Then nothing is sent yet
+    expect(readSent()).toEqual([]);
+
+    // When the flag write lands
+    landed.resolve(undefined);
+    await continued;
+
+    // Then the session is sent
+    expect(readSent()).toHaveLength(1);
+  });
+
+  it('As a user in the sign-in window, I press Continue twice and the second press sends nothing more', async () => {
+    // Given a window on Continue over a stored session
+    const { flow, readSent, vet, calls } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user presses Continue twice at once
+    await Promise.all([flow.continueWithStored(), flow.continueWithStored()]);
+
+    // Then one result is sent and the window closes once
+    expect(readSent()).toHaveLength(1);
+    expect(calls).toEqual(['close']);
+  });
+
+  it('As a user in the sign-in window, I see how far my pairing got and its failure stays through a disconnect while Retry pairs again', async () => {
+    // Given a window pairing
+    const { flow, vet, auth, calls, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+
+    // When the core shows its code, then fails, then reads signed out
+    auth.set(PAIRING);
+    const shownCode = flow.screen.get().pairing;
+    auth.set({ tag: 'LoginFailed', kind: 'Other', reason: 'Login request denied' });
+    auth.set({ tag: 'Disconnected' });
+
+    // Then the code showed and the declined failure stays with Retry
+    expect(shownCode).toEqual({ kind: 'pairing', payload: 'polkadotapp://pair?handshake=test' });
+    expect(flow.screen.get().pairing).toMatchObject({ kind: 'error', title: 'Sign-in was declined', retry: true });
+
+    // When Retry is pressed before my login answered, and it answers that it failed
+    const retried = flow.retry();
+    answerLogin({ outcome: { kind: 'failed' } });
+    await retried;
+
+    // Then a new login started only once the failed one answered, and the failure gave way to a fresh pairing
+    expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
+    expect(calls).toEqual(['login', 'login']);
+  });
+
+  it('As a user in the sign-in window whose core cancelled my login after showing its code, I am told the sign-in was cancelled and Retry pairs again', async () => {
+    // Given a pairing whose code is on show
+    const { flow, vet, auth, calls, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+
+    // When the core ends the login with no failure of its own, and reads signed out
+    answerLogin({ outcome: { kind: 'cancelled' } });
+    auth.set({ tag: 'Disconnected' });
+    await waitForPairing(flow, 'error');
+
+    // Then the dead code is gone and Retry is offered
+    expect(flow.screen.get().pairing).toMatchObject({ kind: 'error', title: 'Sign-in was cancelled', retry: true });
+
+    // When the user presses Retry
+    await flow.retry();
+
+    // Then a new login starts with the spinner
+    expect(flow.screen.get().pairing).toEqual({ kind: 'spinner' });
+    expect(calls).toEqual(['login', 'login']);
+  });
+
+  it('As a user in the sign-in window whose login failed with no word from the core, I am told so and the code goes', async () => {
+    // Given a pairing whose code is on show
+    const { flow, vet, auth, answerLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+    auth.set(PAIRING);
+
+    // When the login answers failed
+    answerLogin({ outcome: { kind: 'failed' } });
+    await waitForPairing(flow, 'error');
+
+    // Then the generic failure shows with Retry
+    expect(flow.screen.get().pairing).toMatchObject({ kind: 'error', title: 'Sign-in did not complete', retry: true });
+  });
+
+  it('As a user in the sign-in window whose pairing could not be stored, I am told so and Retry pairs again', async () => {
+    // Given a window pairing
+    const { flow, vet, calls, metrics, failLogin } = openWindow();
+    vet();
+    await waitForView(flow, 'pairing');
+
+    // When the command layer says the paired session could not be stored
+    failLogin(new Error('The paired session could not be stored'));
+    await waitForView(flow, 'failed');
+
+    // Then the pairing failure is counted
+    expect(metrics.counted('session_window.flow')).toEqual([{ outcome: 'error', reason: 'pairing' }]);
+
+    // When the user presses Retry
+    await flow.retry();
+
+    // Then nothing is stored, so the window pairs again
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(calls).toEqual(['login', 'login']);
+  });
+
+  it('As a user in the sign-in window on Continue, I see my core pick up a sign-in from elsewhere and nothing is sent by itself', async () => {
+    // Given no login of mine runs
+    const { flow, vet, auth, readSent, calls } = openWindow({ stored: { session: BLOB } });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the core reports Connected
+    auth.set(CONNECTED);
+    await flow.settled();
+
+    // Then the user still chooses
+    expect(flow.screen.get().view).toBe('continue');
+    expect(readSent()).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it('As a user in the sign-in window, I press Continue and the account it offered is sent without reading it again', async () => {
+    // Given a window on Continue over a session with its account
+    const { flow, vet, readSent, reads, closed } = openWindow({ stored: { session: BLOB, uiState: UI_STATE } });
+    vet();
+    await waitForView(flow, 'continue');
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+    await closed;
+
+    // Then the account was read once and sent with the session
+    expect(reads.uiCache).toBe(1);
+    expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+  });
+
+  it('As a user in the sign-in window whose store took another sign-in before Continue, I press Continue and that one is sent with its own account', async () => {
+    // Given a window on Continue whose store took another session since
+    const { flow, vet, main, readSent, closed } = openWindow({ stored: { session: BLOB, uiState: UI_STATE } });
+    vet();
+    await waitForView(flow, 'continue');
+    const otherAccount = JSON.stringify(PAIRED_ACCOUNT);
+    main.session = '0xother';
+    main.uiState = otherAccount;
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+    await closed;
+
+    // Then the new session is sent with its own account
+    expect(readSent()).toEqual([{ session: { blob: '0xother', uiState: otherAccount }, localWallet: null }]);
+  });
+
+  it('As a user in the sign-in window whose stored wallet was signed out elsewhere before Continue, I press Continue and pair instead', async () => {
+    // Given a window on Continue whose stored wallet was forgotten since
+    const { flow, vet, main, readSent, calls } = openWindow({
+      stored: { wallet: { entropy: ENTROPY, identity: null } },
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    main.wallet = null;
+
+    // When the user presses Continue
+    await flow.continueWithStored();
+
+    // Then pairing starts and nothing is sent
+    expect(flow.screen.get().view).toBe('pairing');
+    expect(readSent()).toEqual([]);
+    expect(calls).toEqual(['login']);
+  });
+
+  describe('resuming a sign-in made elsewhere', () => {
+    it('As a user in a sign-in window a page asked to resume, I am not offered Continue and the stored session is sent at once after the flag landed', async () => {
+      // Given a window over a stored session with its views and flag writes recorded
+      const { flow, readSent, vet, presence, calls, closed } = openWindow({
+        intent: 'resume',
+        stored: { session: BLOB, uiState: UI_STATE },
+      });
+      const views: WindowView[] = [];
+      onTestFinished(
+        flow.screen.subscribe(() => {
+          views.push(flow.screen.get().view);
+        }),
+      );
+      const order: string[] = [];
+      presence.set = setRecordingSent;
+
+      function setRecordingSent(): Promise<void> {
+        order.push(`flag with ${String(readSent().length)} sent`);
+        presence.state = 'present';
+        return Promise.resolve();
+      }
+
+      // When the page that asked it to resume is vetted
+      vet();
+      await closed;
+
+      // Then the session is sent after the flag, with no Continue on show
+      expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+      expect(order[0]).toBe('flag with 0 sent');
+      expect(presence.state).toBe('present');
+      expect(views).not.toContain('continue');
+      expect(calls).toEqual(['close']);
+    });
+
+    it('As a user in a sign-in window a page asked to resume, I am not offered Continue and a stored local wallet is sent with the paired session', async () => {
+      // Given a window over a paired session and a local wallet
+      const { readSent, vet, closed } = openWindow({
+        intent: 'resume',
+        stored: { session: BLOB, uiState: UI_STATE, wallet: { entropy: ENTROPY, identity: IDENTITY } },
+      });
+
+      // When the page that asked it to resume is vetted
+      vet();
+      await closed;
+
+      // Then the session and the wallet are sent together
+      expect(readSent()).toEqual([
+        { session: { blob: BLOB, uiState: UI_STATE }, localWallet: { entropy: ENTROPY, identity: IDENTITY } },
+      ]);
+    });
+
+    it('As a user in a sign-in window asked to resume over an empty store, I fall back to signing in and the stale flag is dropped', async () => {
+      // Given a window over an empty store
+      const { flow, readSent, vet, presence, calls } = openWindow({ intent: 'resume' });
+
+      // When the page that asked it to resume is vetted
+      vet();
+      await waitForView(flow, 'pairing');
+
+      // Then nothing is sent, the flag drops and pairing starts for the page
+      expect(readSent()).toEqual([]);
+      expect(presence.state).toBe('absent');
+      expect(calls).toEqual(['login']);
+      expect(flow.screen.get().pageHost).toBe('browse.dot.li');
+    });
+
+    it('As a user in a sign-in window whose resume failed, I am told so and Retry sends the stored sign-in', async () => {
+      // Given a resume that failed on a store that could not be read
+      const { flow, readSent, vet, failures, closed } = openWindow({
+        intent: 'resume',
+        stored: { session: BLOB, uiState: UI_STATE },
+      });
+      failures.read = new Error('frame unavailable');
+      vet();
+      await waitForView(flow, 'failed');
+
+      // When the store recovers and the user presses Retry
+      failures.read = null;
+      await flow.retry();
+      await closed;
+
+      // Then the stored session is sent
+      expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
+    });
+  });
+});

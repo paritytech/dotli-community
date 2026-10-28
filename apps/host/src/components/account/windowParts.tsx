@@ -8,9 +8,9 @@ import { For, merge, omit, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Button, Callout, Row, SectionLabel, Stack, Well } from '@dotli/ui';
 import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/icons';
-import type { DisplayAccount } from '../../runtime/siteSignIn/siteAccount.js';
-import type { DisplayCall } from '../../runtime/siteSignIn/siteCall.js';
-import type { ListedSite, SiteListScreen } from '../../runtime/siteSignIn/siteList.js';
+import type { DisplayAccount } from '../../runtime/siteSignIn/toDisplayAccount.js';
+import type { DisplayCall } from '../../runtime/siteSignIn/toDisplayCall.js';
+import type { ListedSite, SiteListScreen } from '../../runtime/siteSignIn/createSiteList.js';
 import type { PairingView } from '../../state/authModal.js';
 import type {
   ContinueOffer,

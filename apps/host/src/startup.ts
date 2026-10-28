@@ -23,7 +23,7 @@ import { productState } from './runtime/state/productState.js';
 import { takePendingReset } from './runtime/pendingReset.js';
 import { readSharedSettings, writeSharedSettings } from './runtime/sharedMode.js';
 import { disableAuthModal, initAuthController } from './runtime/authController.js';
-import { pageSignInHandoff } from './runtime/sessionHandoff/opener.js';
+import { getPageSignInHandoff } from './runtime/sessionHandoff/createSessionHandoff.js';
 import { choosePageRole, showsSession, signInSurface, type PageRole } from './runtime/pageRole.js';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
 import { bootSettings } from './bootSettings.js';
@@ -211,7 +211,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
     initAuthController({
       coordinator: blockingModalCoordinator,
       commands: async () => (await bridgeReady).authCommands,
-      handoff: pageSignInHandoff(role),
+      handoff: getPageSignInHandoff(role),
       applyResult: async result => (await bridgeReady).applyWindowResult(result),
       inPagePhrase: async () => {
         const [{ phraseToEntropy }, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridgeReady]);

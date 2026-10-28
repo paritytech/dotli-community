@@ -3,16 +3,15 @@
 
 import type { ProductAccountId } from '@parity/truapi';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { hex } from '@scure/base';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import {
-  hashBlake2b,
   createSyncStore,
   createDeferred,
   fromHex,
   createStoreStatus,
+  isRecord,
   toHex,
   waitForStatus,
 } from '@dotli/shared';
@@ -20,40 +19,48 @@ import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { AuthCommands } from '../coreLogin.js';
-import { createFakeMessageBus, createFakeWindowHandle } from '../sessionHandoff/messages.fake.js';
-import { openerParty } from '../sessionHandoff/openerRule.js';
-import { createResponder } from '../sessionHandoff/responder.js';
-import { createWindowFlow } from '../sessionHandoff/windowFlow.js';
+import { createVettedResponder } from '../sessionHandoff/createResponder.fake.js';
+import { createWindowFlow } from '../sessionHandoff/createWindowFlow.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
 import { createOwnerSignInFlag } from '../session/signInFlag.js';
-import { createFakePageEvents } from '../../testing/pageEvents.js';
-import { MainAccountError, mainAccountOf, type MainAccount } from './mainAccount.js';
-import { parsePublicSuffixList } from './publicSuffixList.js';
-import type { DisplayCall } from './siteCall.js';
-import type { SiteChain } from './siteChain.js';
-import type { SiteSignRequest } from './siteSignRequest.js';
-import type { SiteAccountReader } from './siteAccountReader.js';
-import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowDeps } from './siteWindow.js';
+import { findLeakedSecrets, MAIN_BLOB, WALLET_ACCOUNT, WALLET_ENTROPY } from '../../testing/findLeakedSecrets.js';
+import { MAIN_KEY } from '../../testing/siteRoundConstants.js';
+import { MainAccountError, getMainAccount, type MainAccount } from './createMainAccountSource.js';
+import { parsePublicSuffixList } from './parsePublicSuffixList.js';
+import type { DisplayCall } from './toDisplayCall.js';
+import type { SiteChain } from './createSiteChain.js';
+import type { SiteSignRequest } from './parseSiteSignRequest.js';
+import type { SiteAccountReader } from './createSiteAccountReader.js';
+import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowParams } from './siteWindow.js';
+
+type CreateWindowPartsParams = {
+  /** How the window's core reports the main account, as `MAIN` by default. */
+  mainAccount?: SiteWindowParams['mainAccount'];
+};
+
+type OpenTransactionWindowParams = {
+  /** A read of the old token's grant that waits for it, which makes the request carry that token. */
+  grantRead?: Promise<void>;
+};
+
+/** One view the window showed, with the page or route it names. */
+type ShownView = { view: string; pageHost?: string | null; route?: string };
 
 const SELF = 'https://dot.li';
 const ORIGIN = 'https://my-site.com';
-const NET = 'paseo-next-v2';
-const NETWORK = NETWORK_NAME_TO_SERVICES_CONFIG[NET];
+const NETWORK_NAME = 'paseo-next-v2';
+const SERVICES = NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK_NAME];
 const ACCOUNT: ProductAccountId = {
-  dotNsIdentifier: `myapp.${NETWORK.dotns.TLD}`,
+  dotNsIdentifier: `myapp.${SERVICES.dotns.TLD}`,
   derivationIndex: { tag: 'Index', value: 0 },
 };
 const NOW = Date.parse('2026-10-23T15:00:00.000Z');
 
-const MAIN_KEY = `0x${'a'.repeat(64)}`;
 const MAIN_SESSION = { connected: true, publicKey: MAIN_KEY, fullUsername: 'alice.dot' };
 const MAIN_UI_STATE = JSON.stringify(MAIN_SESSION);
 /** The main account the window's core reports, read as the window reads it. */
-const MAIN: MainAccount = must(mainAccountOf(MAIN_SESSION), 'the main account');
-const MAIN_BLOB = 'MAIN-SESSION-BLOB';
-const WALLET_ENTROPY = new Uint8Array(16).fill(0x5c);
-const WALLET_ACCOUNT = '5LocalWalletIdentityAccountOfTheMainStore';
+const MAIN: MainAccount = must(getMainAccount(MAIN_SESSION), 'the main account');
 
 const SITE_KEY = new Uint8Array(32).fill(0x22);
 const TOKEN = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE';
@@ -68,25 +75,21 @@ const DISPLAY: DisplayCall = { name: 'Balances.transfer_keep_alive', args: [{ na
 /** The signed transaction the fake chain builds. */
 const SIGNED_TX = `0x${'5e'.repeat(80)}`;
 
+/** An account reader that reads the site account at once. */
+const ACCOUNT_READER: SiteAccountReader = {
+  account: () => Promise.resolve(SITE_KEY),
+};
+
 /**
  * A session window over fakes for a site's round: the opener and its messages, a main store that holds a paired
  * session and a local wallet, the window's auth state, the main account its core reports through `mainAccount` and an
  * in-memory grants store, with the window's real responder and real window flow. The site said hello, so the window is
  * vetted.
  */
-function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.resolve(MAIN)) {
+function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: CreateWindowPartsParams = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   recordLog({ onFinished: onTestFinished, level: 'error' });
-  const opener = createFakeWindowHandle();
-  const messages = createFakeMessageBus();
-  const responder = createResponder<unknown>({
-    opener,
-    judge: origin => openerParty(origin, SELF),
-    round: 'r1',
-    listen: messages.listen,
-    onPageRestore: createFakePageEvents().subscribe,
-  });
-  messages.post({ data: { type: 'dotli:s:hello', v: 1, round: 'r1' }, origin: ORIGIN, source: opener });
+  const { responder, opener, post } = createVettedResponder({ origin: ORIGIN, self: SELF });
   const signIns = createOwnerSignInFlag({
     presence: createFakeSessionPresence('present'),
     readStoredSignIn: () => Promise.resolve('held'),
@@ -98,7 +101,7 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     cancelLogin: () => undefined,
   };
   const closed = createDeferred<undefined>();
-  const deps: Omit<SiteWindowDeps, 'request'> = {
+  const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
     responder,
@@ -133,64 +136,69 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     mainAccount,
     now: () => NOW,
     randomToken: () => TOKEN,
-    close: () => {
+    close() {
       closed.resolve(undefined);
     },
   };
   return {
-    deps,
+    params,
     metrics,
     closed: closed.promise,
     /** Every message the opener got, ready included. */
-    posted: () => opener.posted.map(({ message }) => message),
+    readPosted: () => opener.posted.map(({ message }) => message),
     /** The site posts `call` as the round's payload. */
-    payload: (call: string): void => {
-      messages.post({ data: { type: 'dotli:s:payload', round: 'r1', call }, origin: ORIGIN, source: opener });
+    postPayload(call: string): void {
+      // A third-party site writes its payload itself, with no dotli builder, so this stands in for that site's wire.
+      post({ data: { type: 'dotli:s:payload', round: 'r1', call }, origin: ORIGIN, source: opener });
     },
   };
 }
 
 /** What the window showed of `window`, each view with the page or route it names, from now on. */
 function watchWindow({ site, screen }: SiteWindow) {
-  const shown: { view: string; pageHost?: string | null; route?: string }[] = [];
-  const record = (): void => {
-    const current = screen.get();
-    if ('pageHost' in current) {
-      shown.push({ view: current.view, pageHost: current.pageHost });
-    } else if ('route' in current) {
-      shown.push({ view: current.view, route: current.route });
-    } else {
-      shown.push({ view: current.view });
-    }
-  };
+  const shown: ShownView[] = [];
+  function record(): void {
+    shown.push(getShownView(screen.get()));
+  }
   record();
-  screen.subscribe(record);
+  onTestFinished(screen.subscribe(record));
   return {
     site,
     screen,
     shown,
     /** Resolves once the window shows `view`. */
-    until: (view: string) => waitForStatus(createStoreStatus(screen), current => current.view === view),
+    waitForView: (view: string) => waitForStatus(createStoreStatus(screen), current => current.view === view),
   };
+}
+
+/** A view as the window showed it, with the page or route it names. */
+function getShownView(current: ReturnType<SiteWindow['screen']['get']>): ShownView {
+  if ('pageHost' in current) {
+    return { view: current.view, pageHost: current.pageHost };
+  }
+  if ('route' in current) {
+    return { view: current.view, route: current.route };
+  }
+  return { view: current.view };
 }
 
 /**
  * A site's sign-in in a session window over the window's parts, whose core reports the main account as `mainAccount`
  * says.
  */
-function harness(mainAccount?: SiteWindowDeps['mainAccount']) {
-  const parts = windowParts(mainAccount);
-  const window = openSiteSignIn({ ...parts.deps, request: { round: 'r1', siteToken: null, groupToken: null } });
-  return { ...parts, ...watchWindow(window) };
+function openSignInWindow(options: CreateWindowPartsParams = {}) {
+  const parts = createWindowParts(options);
+  const opened = openSiteSignIn({ ...parts.params, request: { round: 'r1', siteToken: null, groupToken: null } });
+  return { ...parts, ...watchWindow(opened) };
 }
 
 /** Asset Hub that decodes any call and builds its signed transaction, recording each call it decodes as hex. */
-function fakeChain() {
+function createFakeChain() {
   const decoded: string[] = [];
   const chain: SiteChain = {
     open: () =>
       Promise.resolve({
-        decode: call => {
+        decode(call) {
           decoded.push(toHex(call));
           return Promise.resolve({
             display: DISPLAY,
@@ -204,42 +212,36 @@ function fakeChain() {
   return { chain, decoded };
 }
 
-/** An account reader that reads the site account at once. */
-const ACCOUNT_READER: SiteAccountReader = {
-  account: () => Promise.resolve(SITE_KEY),
-};
-
 /**
  * A site's transaction window over the window's parts, a chain that builds it and an account reader that reads the site account,
  * for a request that carries `call` or leaves it to a payload. `asked` resolves once the window asked for the payload.
- * With `grantRead`, the request carries an old token whose read waits for it.
  */
-function transactionHarness(call: string | null, { grantRead }: { grantRead?: Promise<void> } = {}) {
-  const parts = windowParts();
-  const { chain, decoded } = fakeChain();
+function openTransactionWindow(call: string | null, { grantRead }: OpenTransactionWindowParams = {}) {
+  const parts = createWindowParts();
+  const { chain, decoded } = createFakeChain();
   const asked = createDeferred<undefined>();
   const request: SiteSignRequest = {
     round: 'r1',
     account: ACCOUNT,
     siteToken: grantRead === undefined ? null : OLD_TOKEN,
     groupToken: null,
-    chain: NETWORK.assethub.genesis,
+    chain: SERVICES.assethub.genesis,
     call,
   };
-  const { responder, grants } = parts.deps;
+  const { responder, grants } = parts.params;
   const opening = openSiteTransaction({
-    ...parts.deps,
+    ...parts.params,
     request,
     grants: {
       ...grants,
-      read: async token => {
+      async read(token) {
         await grantRead;
         return grants.read(token);
       },
     },
     responder: {
       ...responder,
-      payload: () => {
+      payload() {
         asked.resolve(undefined);
         return responder.payload();
       },
@@ -252,51 +254,34 @@ function transactionHarness(call: string | null, { grantRead }: { grantRead?: Pr
 }
 
 describe('site sign-in window', () => {
-  it('As a user, I never hand a site my main session, main account or local wallet', async () => {
+  it('As a user, I sign in to a site and never hand it my main session, main account or local wallet', async () => {
     // Given a main store with a paired session and a local wallet beside it, and a site on its consent view
-    const h = harness();
-    await h.until('consent');
+    const page = openSignInWindow();
+    await page.waitForView('consent');
 
     // When the user consents and the round runs to its result
-    await h.site.consent();
-    await h.closed;
+    await page.site.consent();
+    await page.closed;
+    const leaked = findLeakedSecrets(page.readPosted());
 
     // Then the site got its one result, the main account's username alone, and no message it got carries any of them
-    // A byte array writes as its hex, since JSON would write it as an object of indices.
-    const sent = h
-      .posted()
-      .map(message =>
-        JSON.stringify(message, (_key, value: unknown) => (value instanceof Uint8Array ? toHex(value) : value)),
-      );
-    const secrets = [
-      MAIN_BLOB,
-      'a'.repeat(64),
-      hex.encode(WALLET_ENTROPY),
-      WALLET_ACCOUNT,
-      toHex(hashBlake2b(fromHex(MAIN_KEY), 32)),
-    ];
-    const results = h.posted().filter(message => (message as { type: string }).type === 'dotli:s:result');
-    expect(results).toEqual([
+    expect(page.readPosted().filter(message => isRecord(message) && message['type'] === 'dotli:s:result')).toEqual([
       { type: 'dotli:s:result', round: 'r1', result: { username: MAIN.username }, site_token: TOKEN },
     ]);
-    for (const message of sent) {
-      for (const secret of secrets) {
-        expect(message).not.toContain(secret);
-      }
-    }
+    expect(leaked).toEqual([]);
   });
 
-  it("As a user, I see the site's consent, then the window flow's view naming the site by its full origin, then the signing", async () => {
+  it("As a user, I consent to a site and see its consent, then the window flow's view naming the site by its full origin, then the signing", async () => {
     // Given a site on its consent view
-    const h = harness();
-    await h.until('consent');
+    const page = openSignInWindow();
+    await page.waitForView('consent');
 
     // When the user consents and the round runs to its result
-    await h.site.consent();
-    await h.closed;
+    await page.site.consent();
+    await page.closed;
 
     // Then the window showed the site's views, and the window flow's own while it resumed the main session
-    expect(h.shown).toEqual([
+    expect(page.shown).toEqual([
       { view: 'site-signing', route: 'auth' },
       { view: 'consent' },
       { view: 'connecting', pageHost: ORIGIN },
@@ -307,79 +292,81 @@ describe('site sign-in window', () => {
   it('As a user whose stored session is gone, I press Try again and the window resumes the sign-in in a new flow', async () => {
     // Given a core that first reports the stored session gone, then the session the new flow resumes
     let reads = 0;
-    const h = harness(() => {
-      reads += 1;
-      return reads === 1
-        ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
-        : Promise.resolve(MAIN);
+    const page = openSignInWindow({
+      mainAccount: () => {
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
+          : Promise.resolve(MAIN);
+      },
     });
-    await h.until('consent');
-    await h.site.consent();
-    await h.until('site-failed');
+    await page.waitForView('consent');
+    await page.site.consent();
+    await page.waitForView('site-failed');
 
     // When the user presses Try again
-    await h.site.retry();
-    await h.closed;
+    await page.site.retry();
+    await page.closed;
 
     // Then the window flow ran again, its view showed, and the site got its one result
-    expect(h.shown.filter(shown => shown.view === 'connecting')).toHaveLength(2);
-    expect(h.posted().filter(message => JSON.stringify(message).includes('dotli:s:result'))).toHaveLength(1);
+    expect(page.shown.filter(shown => shown.view === 'connecting')).toHaveLength(2);
+    expect(page.readPosted().filter(message => JSON.stringify(message).includes('dotli:s:result'))).toHaveLength(1);
   });
 });
 
 describe('site group window', () => {
-  it("As a user, I see a group's consent name the registrable domain of the site I opened the window from", async () => {
+  it("As a user, I open the window from a site of a group and its consent names the site's registrable domain", async () => {
     // Given the window's parts with a suffix list that loads
-    const parts = windowParts();
+    const parts = createWindowParts();
     const suffixes = parsePublicSuffixList('com\nli\n');
 
     // When a site asks to sign in under a group token
-    const w = watchWindow(
+    const watched = watchWindow(
       openSiteSignIn({
-        ...parts.deps,
+        ...parts.params,
         groups: { registrable: hostname => Promise.resolve(suffixes.registrable(hostname)) },
         request: { round: 'r1', siteToken: null, groupToken: 'my group' },
       }),
     );
-    await w.until('consent');
+    await watched.waitForView('consent');
 
     // Then the consent names the site's origin and its group's registrable domain
-    expect(w.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, group: 'my-site.com' });
+    expect(watched.screen.get()).toEqual({ view: 'consent', origin: ORIGIN, group: 'my-site.com' });
   });
 });
 
 describe('site transaction window', () => {
-  it("As a user, I see a site's transaction from Signing to its consent for the site I opened the window from", async () => {
+  it("As a user, I open a site's transaction and see it go from Signing to its consent for the site I opened the window from", async () => {
     // Given a site's request that carries its call and a token whose grant is still being read
     const grantRead = createDeferred<undefined>();
-    const h = transactionHarness(CALL, { grantRead: grantRead.promise });
-    const w = watchWindow(must(await h.opening, 'an opened transaction window'));
+    const page = openTransactionWindow(CALL, { grantRead: grantRead.promise });
+    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
 
     // When the grant read ends
     grantRead.resolve(undefined);
-    await w.until('consent');
+    await watched.waitForView('consent');
 
     // Then the window started on the sign route's working view, then asked the consent of the vetted origin
-    expect(w.shown).toEqual([{ view: 'site-signing', route: 'sign' }, { view: 'consent' }]);
-    expect(w.screen.get()).toMatchObject({ origin: ORIGIN });
+    expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }, { view: 'consent' }]);
+    expect(watched.screen.get()).toMatchObject({ origin: ORIGIN });
   });
 
-  it('As a site, I get my signed transaction for the call my request carries, ignoring any payload', async () => {
+  it('As a site, I send a call in my request and a payload and get my transaction signed for the call my request carries', async () => {
     // Given a site's request that carries its call, and a payload with another call the site posted as well
-    const h = transactionHarness(CALL);
-    h.payload(PAYLOAD_CALL);
-    const w = watchWindow(must(await h.opening, 'an opened transaction window'));
-    await w.until('consent');
+    const page = openTransactionWindow(CALL);
+    page.postPayload(PAYLOAD_CALL);
+    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
+    await watched.waitForView('consent');
 
     // When the user consents and confirms the review
-    await w.site.consent();
-    await w.until('site-review');
-    w.site.confirm();
-    await h.closed;
+    await watched.site.consent();
+    await watched.waitForView('site-review');
+    watched.site.confirm();
+    await page.closed;
 
     // Then the request's call was decoded, and the site got the signed transaction
-    expect(h.decoded).toEqual([CALL]);
-    expect(h.posted()).toContainEqual({
+    expect(page.decoded).toEqual([CALL]);
+    expect(page.readPosted()).toContainEqual({
       type: 'dotli:s:result',
       round: 'r1',
       result: { transaction: SIGNED_TX },
@@ -389,35 +376,35 @@ describe('site transaction window', () => {
 
   it('As a site, I post my call after the window opened and the window waits for it before it starts my round', async () => {
     // Given a site's request with no call, whose window asked for the payload
-    const h = transactionHarness(null);
-    await h.asked;
+    const page = openTransactionWindow(null);
+    await page.asked;
 
     // When the site posts its call
-    h.payload(PAYLOAD_CALL);
-    const w = watchWindow(must(await h.opening, 'an opened transaction window'));
-    await w.until('consent');
-    await w.site.consent();
-    await w.until('site-review');
+    page.postPayload(PAYLOAD_CALL);
+    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
+    await watched.waitForView('consent');
+    await watched.site.consent();
+    await watched.waitForView('site-review');
 
     // Then the round started with the call that came, and decodes the posted call
-    expect(h.decoded).toEqual([PAYLOAD_CALL]);
+    expect(page.decoded).toEqual([PAYLOAD_CALL]);
   });
 
   it('As a site, I post a call that is not hex of two or more bytes and am refused as a bad request, counted as my transaction', async () => {
     // Given a site's request with no call, whose window asked for the payload
-    const h = transactionHarness(null);
-    await h.asked;
+    const page = openTransactionWindow(null);
+    await page.asked;
 
     // When the site posts a one-byte call
-    h.payload('0x0a');
-    const window = await h.opening;
-    await h.closed;
+    page.postPayload('0x0a');
+    const opened = await page.opening;
+    await page.closed;
 
     // Then no round starts, the site is refused and the refusal counts as a transaction
-    expect(window).toBeNull();
-    expect(h.decoded).toEqual([]);
-    expect(h.posted()).toContainEqual({ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' });
-    expect(h.metrics.counted('session_pages.site_transaction')).toEqual([
+    expect(opened).toBeNull();
+    expect(page.decoded).toEqual([]);
+    expect(page.readPosted()).toContainEqual({ type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' });
+    expect(page.metrics.counted('session_pages.site_transaction')).toEqual([
       { outcome: 'refused', reason: 'bad_request' },
     ]);
   });

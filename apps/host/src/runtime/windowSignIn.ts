@@ -7,8 +7,9 @@
 import { spans as S } from '@dotli/metrics';
 import { getErrorMessage } from '@dotli/shared';
 import type { DotliAuthState } from './session/types.js';
-import type { SessionResult, SignInIntent } from './sessionHandoff/messages.js';
-import type { SessionHandoff, SignInOutcome } from './sessionHandoff/opener.js';
+import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
+import type { SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
+import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { AuthModalPort, SignInRoute } from './signInRoute.js';
 import type { WalletMode } from './state/walletModeState.js';
 import { reportLocalWalletFailure, reportWalletFailure } from './walletFailure.js';

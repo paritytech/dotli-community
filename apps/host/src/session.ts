@@ -20,38 +20,41 @@ import { createDeferred, listen, log, pageLocalStorage, pageSessionStorage, crea
 import { siteGrants } from '@dotli/storage';
 import type { ProductAccountId } from '@parity/truapi';
 import { base64urlnopad } from '@scure/base';
-import {
-  parseWindowRequest,
-  type SIGNED_OUT_RESULT,
-  type SessionResult,
-  type SignInIntent,
-} from './runtime/sessionHandoff/messages.js';
-import { openerParty, type OpenerParty } from './runtime/sessionHandoff/openerRule.js';
+import { getOpenerParty, type OpenerParty } from './runtime/sessionHandoff/openerRule.js';
 import type { PageRole } from './runtime/pageRole.js';
-import { startPageResponder, type Responder } from './runtime/sessionHandoff/responder.js';
-import { answerSignIn, answerSignOut, type SignInRound } from './runtime/sessionHandoff/roundAnswer.js';
-import { routeOfPath, type SessionRequest } from './runtime/sessionHandoff/sessionProtocol.js';
+import { startPageResponder, type Responder } from './runtime/sessionHandoff/createResponder.js';
+import { parseWindowRequest, type SignInIntent } from './runtime/sessionHandoff/parseWindowRequest.js';
+import type { SessionResult } from './runtime/sessionHandoff/parseSessionResult.js';
+import type { SessionRequest } from './runtime/sessionHandoff/readSessionRequest.js';
+import {
+  answerSignIn,
+  answerSignOut,
+  type SIGNED_OUT_RESULT,
+  type SignInRound,
+} from './runtime/sessionHandoff/roundAnswer.js';
+import { getRoute } from './runtime/sessionHandoff/sessionRoute.js';
 import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from './runtime/sessionHandoff/windowRequest.js';
 import { closeWindow } from './sessionWindowPage.js';
 import { reportWalletFailure } from './runtime/walletFailure.js';
 import { loadRecoveryPhrase, type BridgeModule } from './lazy.js';
 import {
   createWindowFlow,
-  responderScreen,
+  getResponderScreen,
   type WindowFlow,
-  type WindowFlowDeps,
-} from './runtime/sessionHandoff/windowFlow.js';
-import { signOutInWindow, type WindowSignOutDeps } from './runtime/sessionHandoff/windowSignout.js';
+  type WindowFlowParams,
+} from './runtime/sessionHandoff/createWindowFlow.js';
+import { signOutInWindow, type WindowSignOutParams } from './runtime/sessionHandoff/signOutInWindow.js';
 import publicSuffixListUrl from './runtime/siteSignIn/public-suffix-list.dat?url';
-import { createSiteGroups } from './runtime/siteSignIn/siteGroups.js';
-import { createSiteList } from './runtime/siteSignIn/siteList.js';
-import { createRedirectResponder } from './runtime/siteSignIn/redirectResponder.js';
-import { vetRedirect } from './runtime/siteSignIn/siteRedirect.js';
-import { readRedirectFields, SITE_TOKEN_BYTES, type RedirectFields } from './runtime/siteSignIn/siteRequest.js';
-import { checkReturnTo } from './runtime/siteSignIn/siteReturn.js';
-import { sealProbe, sealRedirect } from './runtime/siteSignIn/siteSeal.js';
-import { forgetsUnsentGrant } from './runtime/siteSignIn/siteRound.js';
-import { openSiteSignIn, openSiteTransaction, type SiteWindowDeps } from './runtime/siteSignIn/siteWindow.js';
+import { createSiteGroups } from './runtime/siteSignIn/createSiteGroups.js';
+import { createSiteList } from './runtime/siteSignIn/createSiteList.js';
+import { createRedirectResponder } from './runtime/siteSignIn/createRedirectResponder.js';
+import { vetRedirect } from './runtime/siteSignIn/vetRedirect.js';
+import { readRedirectFields, type RedirectFields } from './runtime/siteSignIn/readRedirectFields.js';
+import { SITE_TOKEN_BYTES } from './runtime/siteSignIn/parseSiteRequest.js';
+import { checkReturnTo } from './runtime/siteSignIn/checkReturnTo.js';
+import { probeSeal, sealRedirect } from './runtime/siteSignIn/siteSeal.js';
+import { isUnsentGrantForgotten } from './runtime/siteSignIn/createSiteRound.js';
+import { openSiteSignIn, openSiteTransaction, type SiteWindowParams } from './runtime/siteSignIn/siteWindow.js';
 import { authState } from './runtime/state/authState.js';
 import { windowSettings } from './sessionSettings.js';
 import {
@@ -77,18 +80,18 @@ function windowHostOptions(
 
 /** The network a window boots on: its request's when this deployment runs it, else the default. */
 function bootNetwork(request: SessionRequest, enabled: readonly Network[]): Network {
-  return enabled.find(net => net === request.net) ?? getDefaultNetwork();
+  return enabled.find(network => network === request.network) ?? getDefaultNetwork();
 }
 
 /** The party of a hello's origin, dot.li's own page or a site, or why it has none. */
 function judgeOpener(origin: string): OpenerParty {
-  return openerParty(origin, window.location.origin);
+  return getOpenerParty(origin, window.location.origin);
 }
 
 /** A request the window cannot read as dot.li's own has no round it answers, so it listens to nobody. */
 function refuseUnreadable(): void {
   log.event('Session window refused: no readable request', { flow: 'boot' });
-  setWindowScreen(responderScreen({ kind: 'refused' }));
+  setWindowScreen(getResponderScreen({ kind: 'refused' }));
 }
 
 /**
@@ -134,7 +137,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
 async function runSignOut(
   taken: SessionRequest,
   enabled: readonly Network[],
-  { notified, read, firstParty }: Pick<WindowSignOutDeps, 'notified' | 'read' | 'firstParty'>,
+  { notified, read, firstParty }: Pick<WindowSignOutParams, 'notified' | 'read' | 'firstParty'>,
 ): Promise<void> {
   const { bridgeModule } = await startHost(
     createRandomId(),
@@ -165,7 +168,7 @@ async function runSignOut(
  */
 function startFlow(
   bridgeModule: BridgeModule,
-  flow: Pick<WindowFlowDeps, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>,
+  flow: Pick<WindowFlowParams, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>,
 ): WindowFlow {
   const started = createWindowFlow({
     auth: authState.store,
@@ -216,7 +219,7 @@ function siteWindowDeps(
   round: Extract<SignInRound<BridgeModule>, { party: 'third' | 'third-sign' }>,
   account: ProductAccountId | null,
   close: () => void,
-): Omit<SiteWindowDeps, 'request'> {
+): Omit<SiteWindowParams, 'request'> {
   const { booted: bridgeModule } = round;
   // Before the round starts, so the first core the window boots runs as the right product: the named account's for a
   // transaction, and dot.li's own for a sign-in, which names no account.
@@ -280,9 +283,9 @@ async function openSiteTransactionFlow(
 
 /** Shows where the responder stands until the returned function stops it. */
 function showResponder(responder: Responder<unknown>): () => void {
-  setWindowScreen(responderScreen(responder.state()));
+  setWindowScreen(getResponderScreen(responder.state()));
   return responder.subscribe(state => {
-    setWindowScreen(responderScreen(state));
+    setWindowScreen(getResponderScreen(state));
   });
 }
 
@@ -305,10 +308,10 @@ async function redirectSignIn(
   enabled: readonly Network[],
   fields: RedirectFields,
 ): Promise<void> {
-  setWindowScreen(responderScreen({ kind: 'connecting' }));
+  setWindowScreen(getResponderScreen({ kind: 'connecting' }));
   const verdict = await vetRedirect(fields, {
     self: window.location.origin,
-    probe: pub => sealProbe(pub),
+    probe: sitePublicKey => probeSeal(sitePublicKey),
     // Wrapped, since the page's `fetch` throws when called as a method of another object. The deadline keeps a site
     // that never answers from leaving the window on Connecting.
     checkReturnTo: url =>
@@ -318,7 +321,7 @@ async function redirectSignIn(
     const { view, reason } = verdict;
     log.event('redirect sign-in refused', { flow: 'wallet', reason });
     m.count(S.SITE_SIGN_IN, { outcome: 'refused', reason });
-    setWindowScreen(view === 'refused' ? responderScreen({ kind: 'refused' }) : { view });
+    setWindowScreen(view === 'refused' ? getResponderScreen({ kind: 'refused' }) : { view });
     return;
   }
   // Stops showing the round's screen once the round opened, and does nothing before.
@@ -326,7 +329,7 @@ async function redirectSignIn(
   const responder = createRedirectResponder({
     origin: verdict.origin,
     returnTo: fields.returnTo,
-    pub: fields.pub,
+    sitePublicKey: fields.sitePublicKey,
     round: taken.round,
     seal: sealRedirect,
     forgetRequest: () => {
@@ -368,7 +371,7 @@ async function redirectSignIn(
 async function forgetUnsentGrant(token: string): Promise<void> {
   try {
     const grant = await siteGrants.read(token);
-    if (grant !== null && forgetsUnsentGrant(grant)) {
+    if (grant !== null && isUnsentGrantForgotten(grant)) {
       await siteGrants.forget(token);
     }
   } catch (error) {
@@ -387,7 +390,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
     const fields = readRedirectFields(taken.params);
     if (fields === 'invalid') {
       log.event('Session window refused: invalid redirect fields', { flow: 'boot' });
-      setWindowScreen(responderScreen({ kind: 'refused' }));
+      setWindowScreen(getResponderScreen({ kind: 'refused' }));
       return;
     }
     if (fields !== 'none') {
@@ -445,7 +448,7 @@ async function main(): Promise<void> {
     return;
   }
   // The site list carries no request, so it reads none and keeps none.
-  if (routeOfPath(location.pathname) === 'manage') {
+  if (getRoute(location.pathname) === 'manage') {
     startPage({ desktopOffer: false });
     manageSites();
     return;

@@ -4,55 +4,107 @@
 import { createSafeStorage, type SafeStorage } from '@dotli/shared';
 import { createMemoryStorage, must } from '@dotli/shared/testing';
 import { describe, expect, it } from 'vitest';
-import { signInWindowUrl } from './messages.js';
-import { requestUrl } from './sessionProtocol.js';
+import { createSignInWindowUrl } from './createSignInWindowUrl.js';
+import { createRequestUrl } from './sessionRoute.js';
 import { forgetWindowRequest, takeWindowRequest, watchNewRequests } from './windowRequest.js';
 
 const KEY = 'dotli:s:request';
 const AUTH = '/s/auth';
 const ORIGIN = 'https://dot.li';
 
-/** The fragment of a request URL, with its leading `#`. */
-const hashOf = (url: string): string => new URL(url).hash;
-
-const signIn = (round: string) => hashOf(signInWindowUrl('signin', 'paseo-next-v2', round, ORIGIN));
-
-/** The request `signIn('r1')` reads as. */
+/** The request `createSignInHash('r1')` reads as. */
 const SIGN_IN_R1 = {
   route: 'auth',
   round: 'r1',
-  v: 1,
-  net: 'paseo-next-v2',
+  version: 1,
+  network: 'paseo-next-v2',
   params: { v: 1, net: 'paseo-next-v2', round: 'r1', intent: 'signin' },
 };
 
-type KeptEntry = {
-  path: string;
-  params: { v: number; net: string; round: string; intent: string };
-};
+/** The fragment of a request URL, with its leading `#`. */
+function getHash(url: string): string {
+  return new URL(url).hash;
+}
 
-/** The request entry in `backing`. */
-function keptEntry(backing: Storage): KeptEntry {
-  return JSON.parse(must(backing.getItem(KEY), 'a kept request')) as KeptEntry;
+/** The fragment of a sign-in request for `round`. */
+function createSignInHash(round: string): string {
+  return getHash(createSignInWindowUrl({ intent: 'signin', network: 'paseo-next-v2', round, origin: ORIGIN }));
+}
+
+/** The fragment of a sign-in request of version 2 for `round`. */
+function createVersion2Hash(round: string): string {
+  const params = { v: 2, net: 'paseo-next-v2', round, intent: 'signin' };
+  return getHash(createRequestUrl({ origin: ORIGIN, route: 'auth', params }));
+}
+
+/** The request entry in `backing`, as JSON parses it. */
+function readKeptEntry(backing: Storage): unknown {
+  return JSON.parse(must(backing.getItem(KEY), 'a kept request'));
 }
 
 /** A SafeStorage over one shared backing store. */
-function fakeStorage(): { storage: SafeStorage; backing: Storage } {
+function createFakeStorage(): { storage: SafeStorage; backing: Storage } {
   const backing = createMemoryStorage();
   return { storage: createSafeStorage(() => backing), backing };
 }
 
+/** A window on the sign-in route that took and kept the request for round r1. */
+function keepFirstRound(storage: SafeStorage): void {
+  takeWindowRequest({ pathname: AUTH, search: '', hash: createSignInHash('r1'), storage, replaceUrl: () => {} });
+}
+
+/**
+ * A window that holds round r1 and watches its fragment: `changeHash` puts a new fragment in place and fires the
+ * change, and `reloads` and `stopped` read what the watch did.
+ */
+function watchFirstRound() {
+  const { storage, backing } = createFakeStorage();
+  keepFirstRound(storage);
+  let hash = '';
+  let onChange: () => void = () => {};
+  let stopped = false;
+  let reloads = 0;
+  const stop = watchNewRequests({
+    pathname: AUTH,
+    listen(handler) {
+      onChange = handler;
+      return () => {
+        stopped = true;
+      };
+    },
+    hash: () => hash,
+    storage,
+    reload() {
+      reloads += 1;
+    },
+  });
+  return {
+    backing,
+    stop,
+    changeHash(next: string): void {
+      hash = next;
+      onChange();
+    },
+    get reloads() {
+      return reloads;
+    },
+    get stopped() {
+      return stopped;
+    },
+  };
+}
+
 describe('window request', () => {
-  it('As a window, I read my request from the fragment, keep it and clear the fragment', () => {
+  it('As a user signing in, I open the sign-in window with my request in its fragment and it is read, kept and cleared from the URL', () => {
     // Given a window on /s/auth whose fragment carries a request
-    const { storage, backing } = fakeStorage();
+    const { storage, backing } = createFakeStorage();
     const replaced: string[] = [];
 
     // When it takes its request
     const request = takeWindowRequest({
       pathname: AUTH,
       search: '?x=1',
-      hash: signIn('r1'),
+      hash: createSignInHash('r1'),
       storage,
       replaceUrl: url => replaced.push(url),
     });
@@ -60,17 +112,17 @@ describe('window request', () => {
     // Then it gets the request, the fragment is gone from the URL and the request is kept
     expect(request).toEqual(SIGN_IN_R1);
     expect(replaced).toEqual(['/s/auth?x=1']);
-    expect(keptEntry(backing)).toEqual({
+    expect(readKeptEntry(backing)).toEqual({
       path: AUTH,
       params: { v: 1, net: 'paseo-next-v2', round: 'r1', intent: 'signin' },
     });
   });
 
-  it('As a reloaded window, I take my request with the fragment gone and get the one I kept', () => {
+  it('As a user, I reload the sign-in window with the fragment gone and it answers the request it kept', () => {
     // Given a window that kept a request and reloaded without the fragment
-    const { storage } = fakeStorage();
+    const { storage } = createFakeStorage();
     const replaced: string[] = [];
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
+    keepFirstRound(storage);
 
     // When it takes its request again
     const request = takeWindowRequest({
@@ -86,10 +138,10 @@ describe('window request', () => {
     expect(replaced).toEqual([]);
   });
 
-  it('As a window on another route, I ignore a request kept for a different path and get none', () => {
+  it('As a user, I open the sign-out window while a request is kept for the sign-in path and it takes none', () => {
     // Given a request kept for /s/auth
-    const { storage } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
+    const { storage } = createFakeStorage();
+    keepFirstRound(storage);
 
     // When the signout window takes its request
     const request = takeWindowRequest({
@@ -104,16 +156,16 @@ describe('window request', () => {
     expect(request).toBeNull();
   });
 
-  it('As a window on a path that is no session route, I get no request and keep the fragment out of storage', () => {
+  it('As a user, I open a window on a path that is no session route and it takes no request and keeps the fragment out of storage', () => {
     // Given a fragment that carries a valid request
-    const { storage, backing } = fakeStorage();
+    const { storage, backing } = createFakeStorage();
     const replaced: string[] = [];
 
     // When a window on another path takes its request
     const request = takeWindowRequest({
       pathname: '/s/other',
       search: '',
-      hash: signIn('r1'),
+      hash: createSignInHash('r1'),
       storage,
       replaceUrl: url => replaced.push(url),
     });
@@ -124,10 +176,10 @@ describe('window request', () => {
     expect(backing.getItem(KEY)).toBeNull();
   });
 
-  it('As a window, I get no request from a broken fragment, clear it from the URL and drop the request I kept', () => {
+  it('As a user, I reload the sign-in window with a broken fragment and it takes no request, clears the URL and drops the one it kept', () => {
     // Given a kept request and a reload whose fragment holds params that are not base64url JSON
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
+    const { storage, backing } = createFakeStorage();
+    keepFirstRound(storage);
     const replaced: string[] = [];
 
     // When it takes its request
@@ -145,35 +197,36 @@ describe('window request', () => {
     expect(backing.getItem(KEY)).toBeNull();
   });
 
-  it('As a window, I take a request of another version from the fragment and keep it, so my answer can name the version', () => {
+  it('As a site, I open the sign-in window with a request of another version and it is kept, so the answer can name the version', () => {
     // Given a kept request and a fragment that names version 2
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
+    const { storage, backing } = createFakeStorage();
+    keepFirstRound(storage);
     const replaced: string[] = [];
     const params = { v: 2, net: 'paseo-next-v2', round: 'r2', intent: 'signin' };
-    const hash = hashOf(requestUrl(ORIGIN, 'auth', params));
 
     // When it takes its request
     const request = takeWindowRequest({
       pathname: AUTH,
       search: '',
-      hash,
+      hash: createVersion2Hash('r2'),
       storage,
       replaceUrl: url => replaced.push(url),
     });
 
     // Then it gets the new request with its version, the fragment is cleared and the new request replaces the older
-    expect(request).toEqual({ route: 'auth', round: 'r2', v: 2, net: 'paseo-next-v2', params });
+    expect(request).toEqual({ route: 'auth', round: 'r2', version: 2, network: 'paseo-next-v2', params });
     expect(replaced).toEqual(['/s/auth']);
-    expect(keptEntry(backing)).toEqual({ path: AUTH, params });
+    expect(readKeptEntry(backing)).toEqual({ path: AUTH, params });
   });
 
-  it('As a window, I get no request from a fragment with no round and drop the request I kept', () => {
+  it('As a site, I open the sign-in window with a request that has no round and it takes none and drops the one it kept', () => {
     // Given a kept request and a fragment whose params carry no round
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
+    const { storage, backing } = createFakeStorage();
+    keepFirstRound(storage);
     const replaced: string[] = [];
-    const hash = hashOf(requestUrl(ORIGIN, 'auth', { v: 1, net: 'paseo-next-v2', intent: 'signin' }));
+    const hash = getHash(
+      createRequestUrl({ origin: ORIGIN, route: 'auth', params: { v: 1, net: 'paseo-next-v2', intent: 'signin' } }),
+    );
 
     // When it takes its request
     const request = takeWindowRequest({
@@ -191,11 +244,11 @@ describe('window request', () => {
   });
 
   it.each([
-    ['text that is not JSON', 'not json'],
-    ['params that are not a request', JSON.stringify({ path: AUTH, params: { v: 1 } })],
-  ])('As a window, I find a kept entry that no longer parses (%s) and get no request', (_name, kept) => {
+    { name: 'text that is not JSON', kept: 'not json' },
+    { name: 'params that are not a request', kept: JSON.stringify({ path: AUTH, params: { v: 1 } }) },
+  ])('As a user, I reload the sign-in window over a kept entry of $name and it takes no request', ({ kept }) => {
     // Given a kept entry that is unusable
-    const { storage, backing } = fakeStorage();
+    const { storage, backing } = createFakeStorage();
     backing.setItem(KEY, kept);
 
     // When the window takes its request with no fragment
@@ -206,107 +259,45 @@ describe('window request', () => {
   });
 
   it.each([
-    ['a new round', (round: string) => signIn(round)],
-    [
-      'a new round of another version',
-      (round: string) => hashOf(requestUrl(ORIGIN, 'auth', { v: 2, net: 'paseo-next-v2', round, intent: 'signin' })),
-    ],
-  ])('As a window reused for %s, I keep the new request and reload', (_name, requestHash) => {
-    // Given a window that holds round r1 and listens for hash changes
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
-    let hash = '';
-    let handler: () => void = () => {};
-    let stopped = false;
-    let reloads = 0;
-    const stop = watchNewRequests({
-      pathname: AUTH,
-      listen: h => {
-        handler = h;
-        return () => {
-          stopped = true;
-        };
-      },
-      hash: () => hash,
-      storage,
-      reload: () => {
-        reloads += 1;
-      },
-    });
+    { name: 'a new round', createHash: createSignInHash },
+    { name: 'a new round of another version', createHash: createVersion2Hash },
+  ])(
+    'As a user, I reuse the open sign-in window for $name and it keeps the new request and reloads',
+    ({ createHash }) => {
+      // Given a window that holds round r1 and listens for hash changes
+      const window = watchFirstRound();
 
-    // When a page opens the same window for round r2
-    hash = requestHash('r2');
-    handler();
-    stop();
+      // When a page opens the same window for round r2, and the watch stops
+      window.changeHash(createHash('r2'));
+      window.stop();
 
-    // Then the new request is kept and the window reloads
-    expect(keptEntry(backing).params.round).toBe('r2');
-    expect(reloads).toBe(1);
-    expect(stopped).toBe(true);
-  });
-
-  it('As a window, I ignore a hash change that carries no request and keep my round', () => {
-    // Given a window that holds round r1 and listens for hash changes
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
-    let hash = '';
-    let handler: () => void = () => {};
-    let reloads = 0;
-    watchNewRequests({
-      pathname: AUTH,
-      listen: h => {
-        handler = h;
-        return () => {};
-      },
-      hash: () => hash,
-      storage,
-      reload: () => {
-        reloads += 1;
-      },
-    });
-
-    // When the hash changes to something that is no request
-    hash = '#section';
-    handler();
-
-    // Then nothing reloads and the kept request stays
-    expect(reloads).toBe(0);
-    expect(keptEntry(backing).params.round).toBe('r1');
-  });
+      // Then the new request is kept and the window reloads
+      expect(readKeptEntry(window.backing)).toMatchObject({ params: { round: 'r2' } });
+      expect(window.reloads).toBe(1);
+      expect(window.stopped).toBe(true);
+    },
+  );
 
   it.each([
-    ['params that are not base64url JSON', '#params=%%%'],
-    ['params that are no request', hashOf(requestUrl(ORIGIN, 'auth', { v: 1 }))],
-  ])('As a window, I ignore a hash change that carries %s and keep my round', (_name, changed) => {
+    { name: 'no request', hash: '#section' },
+    { name: 'params that are not base64url JSON', hash: '#params=%%%' },
+    {
+      name: 'params that are no request',
+      hash: getHash(createRequestUrl({ origin: ORIGIN, route: 'auth', params: { v: 1 } })),
+    },
+  ])('As a user, I change the open sign-in window to a fragment with $name and it keeps my round', ({ hash }) => {
     // Given a window that holds round r1 and listens for hash changes
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
-    let hash = '';
-    let handler: () => void = () => {};
-    let reloads = 0;
-    watchNewRequests({
-      pathname: AUTH,
-      listen: h => {
-        handler = h;
-        return () => {};
-      },
-      hash: () => hash,
-      storage,
-      reload: () => {
-        reloads += 1;
-      },
-    });
+    const window = watchFirstRound();
 
     // When the hash changes to it
-    hash = changed;
-    handler();
+    window.changeHash(hash);
 
     // Then nothing reloads and the kept request stays
-    expect(reloads).toBe(0);
-    expect(keptEntry(backing).params.round).toBe('r1');
+    expect(window.reloads).toBe(0);
+    expect(readKeptEntry(window.backing)).toMatchObject({ params: { round: 'r1' } });
   });
 
-  it('As a window whose storage keeps nothing, I read the fragment request and still get it for this load', () => {
+  it('As a user whose window storage keeps nothing, I open the sign-in window and it still reads the fragment request for this load', () => {
     // Given a storage that drops every write
     const storage: SafeStorage = {
       getItem: () => null,
@@ -319,7 +310,7 @@ describe('window request', () => {
     const request = takeWindowRequest({
       pathname: AUTH,
       search: '',
-      hash: signIn('r1'),
+      hash: createSignInHash('r1'),
       storage,
       replaceUrl: () => {},
     });
@@ -328,16 +319,17 @@ describe('window request', () => {
     expect(request).toEqual(SIGN_IN_R1);
   });
 
-  it('As a window that answered by redirect, I forget my request and a reload takes none', () => {
+  it('As a site whose window answered by redirect, I see it forget its request and a reload takes none', () => {
     // Given a window that kept its request
-    const { storage, backing } = fakeStorage();
-    takeWindowRequest({ pathname: AUTH, search: '', hash: signIn('r1'), storage, replaceUrl: () => {} });
+    const { storage, backing } = createFakeStorage();
+    keepFirstRound(storage);
 
-    // When it forgets the kept request
+    // When it forgets the kept request and reloads without the fragment
     forgetWindowRequest(storage);
+    const reloaded = takeWindowRequest({ pathname: AUTH, search: '', hash: '', storage, replaceUrl: () => {} });
 
-    // Then nothing is kept and a reload without the fragment takes no request
+    // Then nothing is kept and the reload takes no request
     expect(backing.getItem(KEY)).toBeNull();
-    expect(takeWindowRequest({ pathname: AUTH, search: '', hash: '', storage, replaceUrl: () => {} })).toBeNull();
+    expect(reloaded).toBeNull();
   });
 });

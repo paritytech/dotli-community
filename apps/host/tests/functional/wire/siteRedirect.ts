@@ -9,7 +9,8 @@
 
 import { base64urlnopad, utf8 } from '@scure/base';
 import { isValidNetwork } from '@dotli/config/networks';
-import { PROTOCOL_VERSION, requestUrl } from '../../../src/runtime/sessionHandoff/sessionProtocol.js';
+import { PROTOCOL_VERSION } from '../../../src/runtime/sessionHandoff/sessionMessages.js';
+import { createRequestUrl } from '../../../src/runtime/sessionHandoff/sessionRoute.js';
 
 const X25519 = { name: 'X25519' } as const;
 const KEPT_KEY = 'site-redirect:round';
@@ -97,7 +98,7 @@ async function signIn(): Promise<void> {
     return_to: `${location.origin}${RETURN_PATH}`,
     pub: base64urlnopad.encode(pub),
   };
-  location.assign(requestUrl(windowOrigin, 'auth', params));
+  location.assign(createRequestUrl({ origin: windowOrigin, route: 'auth', params }));
 }
 
 const answer = new URLSearchParams(location.hash.slice(1)).get('dotli-s');

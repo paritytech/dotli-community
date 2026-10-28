@@ -11,7 +11,7 @@
 import { expect, type APIRequestContext, type Frame, type Page } from '@playwright/test';
 import { DOMAIN, NETWORK, PORT, TIMEOUT_MS } from '../env.js';
 import { getProductFrame } from '../productFrame.js';
-import { requestUrl } from '../../src/runtime/sessionHandoff/sessionProtocol.js';
+import { createRequestUrl } from '../../src/runtime/sessionHandoff/sessionRoute.js';
 import { seedSettings } from './fixtures/settings.js';
 import { isProtocolFrameUrl, ROOT_ORIGIN, waitForFrame } from './helpers/frames.js';
 import {
@@ -40,11 +40,10 @@ import {
 const LANDING_URL = `${ROOT_ORIGIN}/`;
 const PRODUCT_URL = `http://browse.localhost:${PORT}/`;
 /** The window opened on its own at its recovery phrase view, as the debug panel's wallet tab asks for it. */
-const PHRASE_WINDOW_URL = requestUrl(ROOT_ORIGIN, 'auth', {
-  v: 1,
-  net: NETWORK,
-  round: crypto.randomUUID(),
-  intent: 'phrase',
+const PHRASE_WINDOW_URL = createRequestUrl({
+  origin: ROOT_ORIGIN,
+  route: 'auth',
+  params: { v: 1, net: NETWORK, round: crypto.randomUUID(), intent: 'phrase' },
 });
 /** An origin the window serves: a product host on the root domain. */
 const OPENER_ORIGIN = `http://opener.localhost:${PORT}`;

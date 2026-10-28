@@ -27,8 +27,9 @@ import { createSyncStore, createDeferred, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './state/productState.js';
 import { createChanges, type Changes } from '../testing/changes.js';
-import type { SessionResult, SignInIntent } from './sessionHandoff/messages.js';
-import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/opener.js';
+import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
+import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
+import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
 import type { WalletMode } from './state/walletModeState.js';
 import type { WalletSwitchOutcome } from './walletSwitch.js';
 

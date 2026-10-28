@@ -11,7 +11,7 @@ import type { HostCoreStorage, SessionRead } from './session/createCoreStorage.j
 import type { SessionPresence } from './session/types.js';
 import { readWalletOrFailed, type SiteWallet, type WalletRead } from './session/siteWallet.js';
 import type { SessionState } from './session/createSessionState.js';
-import type { SessionHandoff } from './sessionHandoff/opener.js';
+import type { SessionHandoff } from './sessionHandoff/createSessionHandoff.js';
 import type { SignInFlag } from './session/signInFlag.js';
 import type { WalletMode } from './state/walletModeState.js';
 import { reportWalletFailure } from './walletFailure.js';
