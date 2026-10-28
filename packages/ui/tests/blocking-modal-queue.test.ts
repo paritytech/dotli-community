@@ -1,3 +1,4 @@
+import { asProductId } from "@parity/truapi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
@@ -14,6 +15,7 @@ describe("blocking modal queue", () => {
     // Given
     const scope = createBlockingModalCoordinator().createScope();
     const callbacks = createHostCallbacks({
+      getProductId: () => asProductId("myapp.paseo"),
       label: "localhost:3000",
       blockingModalScope: scope,
     });

@@ -1,6 +1,7 @@
 // Push-notification callback. The Rust core passes the typed request, and
 // this adapter returns a stable host-side id for cancel support.
 
+import type { ProductId } from "@parity/truapi";
 import type { Notifications } from "@parity/truapi-host";
 import { log } from "@dotli/shared/log";
 import {
@@ -17,6 +18,7 @@ import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
+  getProductId: () => ProductId,
   modalScope: BlockingModalScope = createBlockingModalScope(),
   // One budget per host callback surface: `handlers.ts` passes the same
   // limiter here and to the permission prompts so a product cannot double
@@ -28,6 +30,7 @@ export function createNotificationAdapters(
     deeplink,
     scheduledAt,
   }) => {
+    const productId = getProductId();
     log.warn(`[${label}] Push notification:`, {
       text,
       deeplink,
@@ -48,7 +51,7 @@ export function createNotificationAdapters(
     }
 
     const result = await scheduleNotification({
-      productLabel: label,
+      productId,
       title: label,
       text,
       deeplink: deeplink ?? null,
@@ -66,7 +69,7 @@ export function createNotificationAdapters(
 
   const cancelPushNotification: Required<Notifications>["cancelNotification"] =
     async (id) => {
-      await cancelNotification(label, id);
+      await cancelNotification(getProductId(), id);
     };
 
   return { pushNotification, cancelNotification: cancelPushNotification };

@@ -1,3 +1,4 @@
+import { asProductId } from "@parity/truapi";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -57,7 +58,9 @@ describe("notification host callbacks", () => {
     // Given
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { pushNotification } = createNotificationAdapters("myapp", () =>
+      asProductId("worker.myapp.paseo"),
+    );
 
     // When
     const response = await pushNotification({
@@ -74,7 +77,7 @@ describe("notification host callbacks", () => {
       expect.any(AbortSignal),
     );
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
-      productLabel: "myapp",
+      productId: asProductId("worker.myapp.paseo"),
       title: "myapp",
       text: "hello",
       deeplink: null,
@@ -92,8 +95,10 @@ describe("notification host callbacks", () => {
     await registerNotificationAuthorization("Authorized");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification, cancelNotification } =
-      createNotificationAdapters("myapp");
+    const { pushNotification, cancelNotification } = createNotificationAdapters(
+      "myapp",
+      () => asProductId("worker.myapp.paseo"),
+    );
 
     // When
     await pushNotification({
@@ -106,13 +111,38 @@ describe("notification host callbacks", () => {
     // Then
     expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
-      productLabel: "myapp",
+      productId: asProductId("worker.myapp.paseo"),
       title: "myapp",
       text: "later",
       deeplink: "dot://open",
       scheduledAt: 123,
     });
-    expect(mocks.cancelNotification).toHaveBeenCalledWith("myapp", 7);
+    expect(mocks.cancelNotification).toHaveBeenCalledWith(
+      asProductId("worker.myapp.paseo"),
+      7,
+    );
+  });
+
+  it("does not prompt or mutate notifications before the product identity is ready", async () => {
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
+    const adapters = createNotificationAdapters("myapp", () => {
+      throw new Error("Product identity is not initialized");
+    });
+
+    await expect(
+      adapters.pushNotification({
+        text: "hello",
+        deeplink: undefined,
+        scheduledAt: undefined,
+      }),
+    ).rejects.toThrow("Product identity is not initialized");
+    await expect(adapters.cancelNotification(7)).rejects.toThrow(
+      "Product identity is not initialized",
+    );
+    expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
+    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
+    expect(mocks.cancelNotification).not.toHaveBeenCalled();
   });
 
   it("As a dotli integrator, the host rejects when notification permission is denied", async () => {
@@ -121,7 +151,9 @@ describe("notification host callbacks", () => {
     mocks.showPermissionRequestModal.mockResolvedValue("denied");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { pushNotification } = createNotificationAdapters("myapp", () =>
+      asProductId("worker.myapp.paseo"),
+    );
 
     // When
     const notification = pushNotification({
@@ -145,7 +177,9 @@ describe("notification host callbacks", () => {
     mocks.showPermissionRequestModal.mockResolvedValue("dismissed");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { pushNotification } = createNotificationAdapters("myapp", () =>
+      asProductId("worker.myapp.paseo"),
+    );
 
     // When
     const notification = pushNotification({
@@ -168,7 +202,9 @@ describe("notification host callbacks", () => {
     await registerNotificationAuthorization("Denied");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { pushNotification } = createNotificationAdapters("myapp", () =>
+      asProductId("worker.myapp.paseo"),
+    );
 
     // When
     const notification = pushNotification({

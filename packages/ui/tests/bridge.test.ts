@@ -7,6 +7,7 @@ import {
   encodeWireMessage,
   scale,
 } from "@parity/truapi";
+import type { RequiredHostCallbacks } from "@parity/truapi-host";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 
 type Deferred<T> = {
@@ -61,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   createWebWorkerPairingHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
+  cancelNotification: vi.fn(),
   timerStop: vi.fn(),
   HostWorker: vi.fn(),
 }));
@@ -76,6 +78,11 @@ vi.mock("@parity/truapi-host/web", () => ({
 
 vi.mock("@parity/truapi-host/worker-runtime?worker", () => ({
   default: mocks.HostWorker,
+}));
+
+vi.mock("@dotli/ui/scheduled-notifications", () => ({
+  scheduleNotification: vi.fn(),
+  cancelNotification: mocks.cancelNotification,
 }));
 
 vi.mock("@dotli/metrics/metrics", () => ({
@@ -276,13 +283,21 @@ describe("bridge render lifecycle", () => {
     initBridgeEventListeners(createBlockingModalCoordinator());
   });
 
-  it("opens the product provider with the identifier returned by Rust", async () => {
+  it("routes provider and notification ownership through the identifier returned by Rust", async () => {
     const { renderIframe } = await import("@dotli/ui/bridge");
-    mocks.createWebWorkerPairingHostRuntime.mockImplementationOnce(() => {
-      const runtime = makeRuntime();
-      runtime.parseProductId.mockResolvedValue(asProductId("canonical.paseo"));
-      return Promise.resolve(runtime);
-    });
+    mocks.createWebWorkerPairingHostRuntime.mockImplementationOnce(
+      async (_worker: Worker, callbacks: RequiredHostCallbacks) => {
+        await expect(
+          callbacks.notifications.cancelNotification(7),
+        ).rejects.toThrow("Product identity is not initialized");
+        expect(mocks.cancelNotification).not.toHaveBeenCalled();
+        const runtime = makeRuntime();
+        runtime.parseProductId.mockResolvedValue(
+          asProductId("canonical.paseo"),
+        );
+        return runtime;
+      },
+    );
     const render = renderIframe("https://product.example/app", "product", {
       productId: asProductId(" UNNORMALIZED.PASEO "),
     });
@@ -293,6 +308,13 @@ describe("bridge render lifecycle", () => {
     expect(mocks.coreRuntimes[0].createProvider).toHaveBeenCalledWith({
       productId: "canonical.paseo",
     });
+    const callbacks = mocks.createWebWorkerPairingHostRuntime.mock
+      .calls[0][1] as RequiredHostCallbacks;
+    await callbacks.notifications.cancelNotification(7);
+    expect(mocks.cancelNotification).toHaveBeenCalledWith(
+      asProductId("canonical.paseo"),
+      7,
+    );
     mocks.coreProviderDefers[0].resolve(makeProvider());
     await render;
   });

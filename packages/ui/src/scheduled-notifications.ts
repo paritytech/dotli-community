@@ -25,6 +25,7 @@
  * notifications.
  */
 
+import type { ProductId } from "@parity/truapi";
 import {
   schedule as dbSchedule,
   cancel as dbCancel,
@@ -114,7 +115,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
  * allocate an id. Everything else is persisted to IDB.
  */
 export async function scheduleNotification(req: {
-  productLabel: string;
+  productId: ProductId;
   title: string;
   text: string;
   deeplink: string | null;
@@ -125,12 +126,12 @@ export async function scheduleNotification(req: {
   // Inline the null/past check so `scheduledAt` narrows to `number` below
   // without a non-null assertion.
   if (req.scheduledAt === null || req.scheduledAt <= now) {
-    const id = await allocateId(req.productLabel);
+    const id = await allocateId(req.productId);
     return { ok: true, id, immediate: true };
   }
 
   const result = await dbSchedule({
-    productLabel: req.productLabel,
+    productId: req.productId,
     title: req.title,
     text: req.text,
     deeplink: req.deeplink,
@@ -155,10 +156,10 @@ export async function scheduleNotification(req: {
  * had already fired or never existed.
  */
 export async function cancelNotification(
-  productLabel: string,
+  productId: ProductId,
   perProductId: number,
 ): Promise<boolean> {
-  const removed = await dbCancel(productLabel, perProductId);
+  const removed = await dbCancel(productId, perProductId);
   if (removed) {
     bcChannel?.postMessage({ kind: "cancelled" } satisfies WakeMessage);
   }

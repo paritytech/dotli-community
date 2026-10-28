@@ -18,7 +18,7 @@ A decentralized web browser that runs in your browser. Visit any Polkadot applic
 
 ---
 
-The TrUAPI bridge validates product ID candidates through the existing Rust worker before opening a product provider. Host APIs share the `ProductId` type from `@parity/truapi`; display labels and persisted notification label keys remain separate.
+The TrUAPI bridge validates product ID candidates through the existing Rust worker before opening a product provider. Host APIs and notification storage use the `ProductId` type from `@parity/truapi`. Notification ownership, counters and cancellation use the full identity, including its network; display labels remain separate.
 
 ## How to access apps
 

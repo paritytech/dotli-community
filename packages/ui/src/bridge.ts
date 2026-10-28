@@ -844,10 +844,17 @@ async function createCoreProvider(
       await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId: candidateProductId, ...hostConfig } = runtimeConfig;
+    let productId: ProductId | undefined;
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),
       createHostCallbacks({
         label,
+        getProductId: () => {
+          if (productId === undefined) {
+            throw new Error("Product identity is not initialized");
+          }
+          return productId;
+        },
         pairingLabel: options.pairingLabel,
         pairingDotSuffix: options.pairingDotSuffix,
         pairingHostGlobal: options.pairingHostGlobal,
@@ -858,7 +865,7 @@ async function createCoreProvider(
       },
     );
     try {
-      const productId = await runtime.parseProductId(candidateProductId);
+      productId = await runtime.parseProductId(candidateProductId);
       const provider = await runtime.createProvider({ productId });
       return trackCoreProvider(
         wrapCoreProviderForDebug(provider, productId),

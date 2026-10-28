@@ -7,6 +7,7 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
+import type { ProductId } from "@parity/truapi";
 import type { RequiredHostCallbacks } from "@parity/truapi-host";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
@@ -32,6 +33,7 @@ import { createSubmitRateLimiter } from "./rate-limit";
 
 export interface CreateHostCallbacksOptions {
   label: string;
+  getProductId: () => ProductId;
   pairingLabel?: string;
   pairingDotSuffix?: boolean;
   pairingHostGlobal?: boolean;
@@ -43,6 +45,7 @@ export function createHostCallbacks(
 ): RequiredHostCallbacks {
   const {
     label,
+    getProductId,
     pairingLabel,
     pairingDotSuffix,
     pairingHostGlobal,
@@ -55,6 +58,7 @@ export function createHostCallbacks(
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters(
       label,
+      getProductId,
       blockingModalScope,
       promptLimiter,
     ),

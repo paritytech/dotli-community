@@ -1,3 +1,4 @@
+import { asProductId } from "@parity/truapi";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
 
@@ -102,6 +103,7 @@ describe("prompt rate limiting across host callbacks", () => {
     const { createHostCallbacks } =
       await import("@dotli/ui/host-callbacks/handlers");
     const { permissions, notifications } = createHostCallbacks({
+      getProductId: () => asProductId("myapp.paseo"),
       label: "myapp",
     });
 

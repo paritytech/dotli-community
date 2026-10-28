@@ -249,6 +249,7 @@
         "@dotli/config": "workspace:*",
         "@dotli/metrics": "workspace:*",
         "@dotli/shared": "workspace:*",
+        "@parity/truapi": "0.9.0",
       },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",
