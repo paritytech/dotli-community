@@ -12,7 +12,8 @@ import { m, spans as S } from '@dotli/metrics';
 import { getProtocolOrigin } from '@dotli/protocol';
 import { createDeferred, log, listenForPageReturn } from '@dotli/shared';
 import { signInSurface, type PageRole } from '../pageRole.js';
-import { sessionPresence, type SessionPresence } from '../session/presence.js';
+import { sessionPresence } from '../session/createPagePresence.js';
+import type { SessionPresence } from '../session/types.js';
 import {
   listenToMessages,
   parseSessionResult,

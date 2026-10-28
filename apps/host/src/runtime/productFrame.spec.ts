@@ -8,7 +8,7 @@ import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
 import { createSyncStore } from '@dotli/shared';
 import { createCoreAuthCommands } from './coreLogin.js';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 import { schedulePendingReset } from './pendingReset.js';
 import {
   createProductFrame,
@@ -19,7 +19,7 @@ import {
   type ProductFramePage,
   type ProductFrameStatus,
 } from './productFrame.js';
-import { getProductState } from './state/product.js';
+import { productState } from './state/productState.js';
 import type { ManifestFacts } from './manifestFacts.js';
 import { createPermissionAuthorizations } from './permissions.js';
 import type { PermissionsChange } from './state/productPermissions.js';
@@ -35,7 +35,7 @@ import {
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { nth } from '@dotli/shared/testing';
 import { fakeIframe, fakeProductFrameView, type FakeProductFrameView } from './productFrame.fake.js';
-import { createFakeStoredSession } from './session/coreStorage.fake.js';
+import { createFakeStoredSession } from './session/createCoreStorage.fake.js';
 
 /** A handler that throws fails the test. */
 const rethrow = (error: unknown): never => {
@@ -497,7 +497,7 @@ describe('product frame renders', () => {
     expect(nth(fakes.runtimes, 0).createProvider).toHaveBeenLastCalledWith(
       expect.objectContaining({ executionKind: 'Worker' }),
     );
-    expect(getProductState()).toMatchObject({ status: 'loaded', label: 'chatty', chat: true });
+    expect(productState.get()).toMatchObject({ status: 'loaded', label: 'chatty', chat: true });
 
     // When
     await settle(fakes, subdomainProduct('quiet'), 1);
@@ -506,7 +506,7 @@ describe('product frame renders', () => {
     expect(fakes.runtimes.at(-1)?.createProvider).toHaveBeenLastCalledWith(
       expect.objectContaining({ executionKind: 'App' }),
     );
-    expect(getProductState()).toMatchObject({ status: 'loaded', label: 'quiet', chat: false });
+    expect(productState.get()).toMatchObject({ status: 'loaded', label: 'quiet', chat: false });
   });
 
   it('As a dApp user, the tab names my product by its published name from the first render, and the page knows its versions', async () => {
@@ -519,7 +519,7 @@ describe('product frame renders', () => {
 
     // Then
     expect(frameView.titles).toEqual([{ mode: 'subdomain', label: 'doom', displayName: 'DOOM' }]);
-    expect(getProductState()).toMatchObject({ status: 'loaded', label: 'doom', ...facts });
+    expect(productState.get()).toMatchObject({ status: 'loaded', label: 'doom', ...facts });
   });
 });
 

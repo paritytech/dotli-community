@@ -18,19 +18,26 @@ import { recordBestBlock, recordChainActivity } from '../state/networkMonitor.js
 import { createBridge } from './createBridge.js';
 import { createCoreAuthCommands, type AuthCommands } from './coreLogin.js';
 import { createCoreRuntimeBoot } from './coreRuntime.js';
-import { hostChainProvider, watchHostChains } from './hostCallbacks/chain.js';
+import { getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
+import { watchHostChains } from './hostCallbacks/watchHostChains.js';
 import { pagePermissions, productPermissions } from './pagePermissions.js';
 import { forgetsSiteGrants, pageRole } from './pageRole.js';
-import { coreStorage, onStoredSessionChanged, signInFlag, type SessionRead } from './session/coreStorage.js';
-import { createHostCallbacks, promptAsks } from './hostCallbacks/handlers.js';
+import {
+  coreStorage,
+  listenForStoredSessionChange,
+  signInFlag,
+  type SessionRead,
+} from './session/createCoreStorage.js';
+import { createHostCallbacks } from './hostCallbacks/createHostCallbacks.js';
+import { createPromptAsks } from './hostCallbacks/createPromptAsks.js';
 import { LANDING_PRODUCT } from './pageCore.js';
-import { windowAsks } from './hostCallbacks/windowAsks.js';
-import { onSessionFlagChange, sessionPresence } from './session/presence.js';
-import { onLocalWalletChange } from './session/walletChanges.js';
-import { watchPresence } from './session/presenceWatch.js';
+import { getWindowAsks } from './hostCallbacks/getWindowAsks.js';
+import { listenForSessionFlagChange, sessionPresence } from './session/createPagePresence.js';
+import { listenForSiteWalletChange } from './session/listenForLocalWalletChange.js';
+import { watchPresence } from './session/watchPresence.js';
 import { reconcilePage } from './session/restoreRule.js';
-import { createSessionLease } from './session/sessionLease.js';
-import { sessionState } from './session/sessionState.js';
+import { createSessionLease } from './session/createSessionLease.js';
+import { sessionState } from './session/createSessionState.js';
 import { siteWallet } from './session/siteWallet.js';
 import { createMainAccountSource, type MainAccountSource } from './siteSignIn/mainAccount.js';
 import { createSiteChain } from './siteSignIn/siteChain.js';
@@ -42,9 +49,9 @@ import { applySessionResult } from './sessionHandoff/applyResult.js';
 import type { SessionResult } from './sessionHandoff/messages.js';
 import type { WindowFlowDeps } from './sessionHandoff/windowFlow.js';
 import type { WindowSignOutDeps } from './sessionHandoff/windowSignout.js';
-import { authStore } from './state/auth.js';
-import { setSigningOut } from './state/signOut.js';
-import { getWalletMode } from './state/walletMode.js';
+import { authState } from './state/authState.js';
+import { signingOutState } from './state/signingOutState.js';
+import { walletModeState } from './state/walletModeState.js';
 import { readWalletBoot, restoreOnBoot, serveSites } from './walletBoot.js';
 import { walletSwitch } from './walletSwitch.js';
 
@@ -52,7 +59,7 @@ import { walletSwitch } from './walletSwitch.js';
 export { walletSwitch } from './walletSwitch.js';
 
 // The pool behind these leases already ships in this chunk, so other callers take them from here.
-export { hostAssetHubProvider, hostChainProvider } from './hostCallbacks/chain.js';
+export { getHostAssetHubProvider, getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
 
 // Started with debug mode from the boot chunk, which must not import the codecs this file already carries.
 export { preloadWireDescriber } from './coreConnection.js';
@@ -84,10 +91,10 @@ const bootRuntime = createCoreRuntimeBoot({
       ...options,
       prompts: hostPrompts,
       notifications: pageNotifications(),
-      asks:
+      createAsks:
         pageRole() === 'signin-window'
-          ? windowAsks
-          : promptAsks({
+          ? getWindowAsks
+          : createPromptAsks({
               prompts: hostPrompts,
               permissions: { registry: pagePermissions, product: productPermissions },
             }),
@@ -100,7 +107,7 @@ const signOuts = createAsyncTaskPool({ poolSize: 1 });
 
 const bridge = createBridge({
   bootRuntime,
-  onStoredSessionChanged,
+  onStoredSessionChanged: listenForStoredSessionChange,
   createIframeHost: async options =>
     (await hostRuntime()).web.createIframeHost({ ...options, container: productFrameContainer() }),
   onPermissionsChanged: productPermissions.onChanged,
@@ -153,7 +160,7 @@ export const siteTxSigner = createSiteTxSigner({ acquire: () => bridge.core.acqu
 /** Asset Hub for the session window, where a site's call is decoded and built into its signed transaction. */
 export const siteChain = createSiteChain({
   genesis: () => getActiveServicesConfig().assethub.genesis,
-  provider: genesis => hostChainProvider(genesis),
+  provider: genesis => getHostChainProvider(genesis),
   loadApi: loadPolkadotApi,
   loadFillers: loadTxFillers,
 });
@@ -161,15 +168,15 @@ export const siteChain = createSiteChain({
 const endSession = (blob: string): Promise<void> => bridge.endSession(fromHex(blob));
 
 const coreCommands = createCoreAuthCommands({
-  auth: authStore,
+  auth: authState.store,
   core: bridge.core,
   session: sessionState,
-  walletMode: getWalletMode,
+  walletMode: walletModeState.getMode,
   storedSession: coreStorage,
 });
 
 const pageSignOut = createPageSignOut({
-  walletMode: getWalletMode,
+  walletMode: walletModeState.getMode,
   copy: coreStorage,
   flag: signInFlag,
   endSession,
@@ -180,7 +187,7 @@ const pageSignOut = createPageSignOut({
   forgetGrants: () => (forgetsSiteGrants(pageRole()) ? siteGrants.forgetAll() : Promise.resolve()),
   wallet: siteWallet,
   presence: sessionPresence,
-  reportSigningOut: setSigningOut,
+  reportSigningOut: signingOutState.set,
   signOutWindow: () => pageSignInHandoff(pageRole()),
   signOuts,
   onCore: end => coreCommands.logout(end),
@@ -241,9 +248,9 @@ export const windowStore: Pick<WindowFlowDeps, 'store' | 'wallet' | 'signIns'> =
 const sessionLease = createSessionLease({
   copy: {
     readSession: restoredCopy.readSession,
-    onStoredSessionChanged,
+    onStoredSessionChanged: listenForStoredSessionChange,
   },
-  walletMode: getWalletMode,
+  walletMode: walletModeState.getMode,
   core: bridge.core,
 });
 
@@ -276,22 +283,26 @@ export function startSessionState(): () => void {
   }
   const stopState = sessionState.start();
   const stopWatch = watchPresence({
-    onRecheck: handler => {
+    subscribeRecheck(handler) {
       const stops = [
         listenForPageReturn({ visibility: document, target: window, handler }),
-        onSessionFlagChange(handler),
-        onLocalWalletChange(handler),
+        listenForSessionFlagChange(handler),
+        listenForSiteWalletChange(handler),
       ];
-      return () => {
+
+      function unsubscribe(): void {
         for (const stop of stops) {
           stop();
         }
-      };
+      }
+
+      return unsubscribe;
     },
-    signedIn: () => authStore.get().tag === 'Connected',
+    isSignedIn: () => authState.get().tag === 'Connected',
     signOuts,
     reconcile: () => reconcilePage('visible'),
-    pageWallet: async () => (getWalletMode() === 'local' ? ((await readWalletBoot())?.version ?? null) : null),
+    readPageWalletVersion: async () =>
+      walletModeState.getMode() === 'local' ? ((await readWalletBoot())?.version ?? null) : null,
     followWallet: () => {
       window.location.reload();
     },

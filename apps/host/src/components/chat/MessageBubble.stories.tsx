@@ -5,7 +5,7 @@ import { For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, within } from 'storybook/test';
 import { expectBefore } from '@config/storybook/play';
-import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
 import { MessageBubble } from './MessageBubble.js';
 
 const NOW = 1_700_000_000_000;

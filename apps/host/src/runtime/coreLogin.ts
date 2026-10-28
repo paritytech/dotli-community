@@ -21,13 +21,14 @@ import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { captureException, recordExpected, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createDeferred, getErrorMessage, log, type ReadableStore, toError } from '@dotli/shared';
 import { ownCoreConnection } from './coreConnection.js';
-import type { DotliAuthState } from './session/authState.js';
-import type { HostCoreStorage } from './session/coreStorage.js';
-import type { SessionState, TruapiSessionUiState } from './session/sessionState.js';
+import type { DotliAuthState } from './session/types.js';
+import type { HostCoreStorage } from './session/createCoreStorage.js';
+import type { SessionState } from './session/createSessionState.js';
+import type { TruapiSessionUiState } from './session/parseUiStateCache.js';
 import { LoginRequestError } from './loginRequestError.js';
 import { CoreRedialError, type PageCore } from './pageCore.js';
 import type { LogoutOutcome } from './signOut.js';
-import type { WalletMode } from './state/walletMode.js';
+import type { WalletMode } from './state/walletModeState.js';
 
 /**
  * How a login ended. `paired` once the core reports the account signed in and, for a pairing, the page's copy holds the

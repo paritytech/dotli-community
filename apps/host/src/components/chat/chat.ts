@@ -11,7 +11,7 @@ import type {
   ProductRendererRenderRequest,
   RendererNode,
 } from '@parity/truapi';
-import type { ChatMessageRecord, ChatRoomFooter } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord, ChatRoomFooter } from '../../runtime/chat/createChatStore.js';
 
 /** Where a custom message's renderer streams its trees. */
 export type ChatRenderSink = {
@@ -21,13 +21,19 @@ export type ChatRenderSink = {
 
 /** What a message asks of the product: a custom tree, a tap on an action or a gesture inside a tree. */
 export type ChatMessageActions = {
-  /** Streams replacement trees into `sink` until disposed. */
-  renderCustomMessage: (productId: string, request: ProductRendererRenderRequest, sink: ChatRenderSink) => () => void;
-  triggerAction: (
-    productId: string,
-    roomId: string,
-    trigger: { messageId: string; actionId: string; payload?: HexString },
-  ) => Promise<void>;
+  /** Streams replacement trees into `sink` until disposed. Never throws: a failure reaches `sink.onError`. */
+  renderCustomMessage: (params: {
+    productId: string;
+    request: ProductRendererRenderRequest;
+    sink: ChatRenderSink;
+  }) => () => void;
+  /** Hands the user's tap on a message action to the product. Rejects when it cannot reach the product. */
+  triggerAction: (params: {
+    productId: string;
+    roomId: string;
+    trigger: { messageId: string; actionId: string; payload?: HexString };
+  }) => Promise<void>;
+  /** Hands a gesture inside a custom message's tree to the product. Rejects when it cannot reach the product. */
   triggerRendererAction: (productId: string, item: HostRendererActionSubscribeItem) => Promise<void>;
 };
 

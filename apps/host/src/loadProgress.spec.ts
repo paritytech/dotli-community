@@ -10,7 +10,7 @@ import { createSyncStore } from '@dotli/shared';
 import type { PageContent } from '@dotli/ui';
 import { createLoadingController, type LoadingPhase } from './loadingController.js';
 import { startLoadProgress, type ContentProgressFacts, type LoadingScreen, type LoadProgress } from './loadProgress.js';
-import { setProductLoaded } from './runtime/state/product.js';
+import { productState } from './runtime/state/productState.js';
 import { getLoadingState } from './state/loading.js';
 import { networkMonitor } from './state/networkMonitor.js';
 
@@ -350,7 +350,7 @@ describe('startLoadProgress', () => {
     netBytes.send({ received: 200 });
 
     // When
-    setProductLoaded('doom', 'doom.dot');
+    productState.setLoaded({ label: 'doom', productId: 'doom.dot' });
     vi.advanceTimersByTime(5_000);
     netBytes.send({ received: 300 });
 

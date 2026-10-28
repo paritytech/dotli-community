@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { hashBlake2b, createSyncStore, fromHex, toHex, type ReadableStore } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
-import type { DotliAuthState } from '../session/authState.js';
+import type { DotliAuthState } from '../session/types.js';
 import { createMainAccountSource, mainAccountOf, MainAccountError, type MainAccountSource } from './mainAccount.js';
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;

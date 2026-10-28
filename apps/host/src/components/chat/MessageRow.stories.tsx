@@ -4,7 +4,7 @@
 import { createSignal, Show } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
-import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
 import { MessageRow } from './MessageRow.js';
 
 const NOW = 1_700_000_000_000;
@@ -71,9 +71,10 @@ export const ActionButtonsReachApp: Story = {
       await userEvent.click(canvas.getByRole('button', { name: 'Yes' }));
     });
     await step('Then the action reached the app and the failure is reported', async () => {
-      await expect(args.chat.triggerAction).toHaveBeenCalledWith('app.dot', 'main', {
-        messageId: 'm1',
-        actionId: 'yes',
+      await expect(args.chat.triggerAction).toHaveBeenCalledWith({
+        productId: 'app.dot',
+        roomId: 'main',
+        trigger: { messageId: 'm1', actionId: 'yes' },
       });
       await waitFor(() => expect(args.onActionError).toHaveBeenCalledTimes(1));
     });

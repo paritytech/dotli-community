@@ -3,8 +3,8 @@
 
 import { createMemo } from 'solid-js';
 import type { ReadableStore } from '@dotli/shared';
-import type { DotliAuthState } from '../runtime/session/authState.js';
-import type { TruapiSessionUiState } from '../runtime/session/sessionState.js';
+import type { DotliAuthState } from '../runtime/session/types.js';
+import type { TruapiSessionUiState } from '../runtime/session/parseUiStateCache.js';
 import { useStore } from '@dotli/ui';
 import type { Account } from '../components/account/account.js';
 

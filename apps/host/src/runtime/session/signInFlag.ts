@@ -6,16 +6,16 @@
 
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import { ownsFlag, type PageRole } from '../pageRole.js';
-import type { SessionPresence } from './presence.js';
+import type { SessionPresence } from './types.js';
 
 export type SignInFlag = {
   /** Runs a write of a sign-in. Rejects when the write rejects. */
   store(write: () => Promise<void> | void): Promise<void>;
   /**
-   * Runs a clear of a sign-in, which resolves whether it cleared one, and resolves with that. Without one, only the
-   * flag is brought in line with the store. Rejects when the clear rejects.
+   * Runs `drop`, a clear of a sign-in that resolves whether it cleared one, and resolves with that. Without one, only
+   * the flag is brought in line with the store. Rejects when the drop rejects.
    */
-  clear(clear?: () => Promise<boolean>): Promise<boolean>;
+  clear(options?: { drop?: () => Promise<boolean> }): Promise<boolean>;
   /**
    * Extends the flag's lifetime only if it is set at that moment, so a sign-out elsewhere is not undone. Every keeper
    * renews, so the flag lives as long as the user keeps using dotli. Needs no queue. Reports its own failure.
@@ -23,17 +23,20 @@ export type SignInFlag = {
   renew(): void;
 };
 
-const NOTHING_TO_CLEAR = (): Promise<boolean> => Promise.resolve(false);
-
 /** Whether the page's copy holds a paired session or a local wallet, or `unread` when a read failed. */
 export type StoredSignIn = 'held' | 'none' | 'unread';
 
-export type SignInFlagDeps = {
+type Params = {
   /** The signed-in flag. Never rejects, and reports its own failed writes. */
   presence: Pick<SessionPresence, 'set' | 'clear' | 'renew'>;
   /** Records its own failed reads. Never rejects. Each keeper decides what an `unread` copy means for the flag. */
-  storedSignIn: () => Promise<StoredSignIn>;
+  readStoredSignIn: () => Promise<StoredSignIn>;
 };
+
+type CreatePageSignInFlagParams = {
+  /** The page's role, read on first use. */
+  role: () => PageRole;
+} & Params;
 
 /**
  * The flag keeper of a page that does not own the flag. It renews a flag that is still set, never raises the flag for
@@ -42,33 +45,35 @@ export type SignInFlagDeps = {
  * still has every page drop the sign-in on its next load. A sign-in stored since the core's read is another one, which
  * the flag still covers.
  */
-export function pageSignInFlag(deps: SignInFlagDeps): SignInFlag {
-  const { presence, storedSignIn } = deps;
-
+export function createNonOwnerSignInFlag({ presence, readStoredSignIn }: Params): SignInFlag {
   /**
    * A sign-in stored elsewhere after the drop raised the flag before its write, which this delete may have undone, so
    * a copy that holds one now raises it again. The owner raises it once more after its write, so whichever lands last
    * covers it. Where the copy is not the main store, such as a product's in Safari, this read cannot see that sign-in.
    * A copy that cannot be read leaves the flag down, since raising it for nothing would undo a sign-out everywhere.
    */
-  const dropFlag = async (): Promise<void> => {
+  async function dropFlag(): Promise<void> {
     await presence.clear();
-    const stored = await storedSignIn();
-    if (stored === 'held') {
-      await presence.set();
-    } else if (stored === 'unread') {
-      log.event('signed-in flag left down after a drop, the copy could not be read', { flow: 'wallet' });
+    switch (await readStoredSignIn()) {
+      case 'held':
+        await presence.set();
+        return;
+      case 'unread':
+        log.event('signed-in flag left down after a drop, the copy could not be read', { flow: 'wallet' });
+        return;
+      case 'none':
+        return;
     }
-  };
+  }
 
   return {
     async store(write) {
       await write();
     },
-    async clear(clear = NOTHING_TO_CLEAR) {
+    async clear({ drop = dropNothing } = {}) {
       let cleared: boolean;
       try {
-        cleared = await clear();
+        cleared = await drop();
       } catch (error) {
         // The store still holds the session the core read, so a read now could not tell it from a new sign-in.
         void presence.clear();
@@ -92,16 +97,15 @@ export function pageSignInFlag(deps: SignInFlagDeps): SignInFlag {
  * store holds none. Its writes and clears run one at a time, so the check that the store holds nothing and the flag's
  * delete never interleave with a sign-in being stored, the core's included.
  */
-export function ownerSignInFlag(deps: SignInFlagDeps): SignInFlag {
-  const { presence, storedSignIn } = deps;
+export function createOwnerSignInFlag({ presence, readStoredSignIn }: Params): SignInFlag {
   const steps = createAsyncTaskPool({ poolSize: 1 });
 
   // A store that cannot be read may still hold a sign-in, so the flag stays for it.
-  const dropIfEmpty = async (): Promise<void> => {
-    if ((await storedSignIn()) === 'none') {
+  async function dropIfEmpty(): Promise<void> {
+    if ((await readStoredSignIn()) === 'none') {
       await presence.clear();
     }
-  };
+  }
 
   return {
     store: write =>
@@ -117,9 +121,9 @@ export function ownerSignInFlag(deps: SignInFlagDeps): SignInFlag {
         // Again, as a page whose core dropped another session may have deleted it between the two.
         await presence.set();
       }),
-    clear: (clear = NOTHING_TO_CLEAR) =>
+    clear: ({ drop = dropNothing } = {}) =>
       steps.call(async () => {
-        const cleared = await clear();
+        const cleared = await drop();
         await dropIfEmpty();
         return cleared;
       }),
@@ -129,19 +133,24 @@ export function ownerSignInFlag(deps: SignInFlagDeps): SignInFlag {
   };
 }
 
-export type PageSignInFlagDeps = {
-  role: () => PageRole;
-} & SignInFlagDeps;
-
 /** The page's flag keeper, picked by the page's role on first use, as the role is chosen after the module loads. */
-export function createPageSignInFlag(deps: PageSignInFlagDeps): SignInFlag {
+export function createPageSignInFlag({ role, ...params }: CreatePageSignInFlagParams): SignInFlag {
   let inner: SignInFlag | undefined;
-  const get = (): SignInFlag => (inner ??= ownsFlag(deps.role()) ? ownerSignInFlag(deps) : pageSignInFlag(deps));
+
+  function getInner(): SignInFlag {
+    inner ??= ownsFlag(role()) ? createOwnerSignInFlag(params) : createNonOwnerSignInFlag(params);
+    return inner;
+  }
+
   return {
-    store: write => get().store(write),
-    clear: clear => get().clear(clear),
-    renew: () => {
-      get().renew();
+    store: write => getInner().store(write),
+    clear: options => getInner().clear(options),
+    renew() {
+      getInner().renew();
     },
   };
+}
+
+function dropNothing(): Promise<boolean> {
+  return Promise.resolve(false);
 }

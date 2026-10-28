@@ -4,21 +4,25 @@
 // This site's local wallet, which the protocol frame keeps in the shared store under this site's id.
 
 import { SITE_ID } from '@dotli/config';
+import { recordExpected } from '@dotli/metrics';
 import { getProtocolClient, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
 
 /** A wallet read, or why the frame could not answer it. */
 export type WalletRead = LocalWalletReadResult | { status: 'failed'; error: unknown };
 
 export type SiteWallet = {
-  /** Reads the stored wallet, or answers that there is none. */
+  /** Reads the stored wallet, or answers that there is none. Rejects when the protocol frame cannot answer. */
   read(): Promise<LocalWalletReadResult>;
-  /** Stores the wallet's entropy, with the identity derived from it, where a `null` identity stores none yet. */
+  /**
+   * Stores the wallet's entropy, with the identity derived from it, where a `null` identity stores none yet. Rejects
+   * when the protocol frame cannot store it.
+   */
   save(entropy: Uint8Array, identity: LocalWalletIdentity | null): Promise<void>;
-  /** Replaces the identity stored with the wallet and leaves its entropy as it is. */
+  /** Replaces the identity stored with the wallet and leaves its entropy as it is. Rejects as `save` does. */
   updateIdentity(identity: LocalWalletIdentity): Promise<void>;
-  /** Forgets the wallet whatever version the store holds. */
+  /** Forgets the wallet whatever version the store holds. Rejects when the protocol frame cannot forget it. */
   forget(): Promise<void>;
-  /** Forgets the wallet only while the store still holds `version`. Resolves whether it went. */
+  /** Forgets the wallet only while the store holds `version`. Resolves whether it went. Rejects as `forget` does. */
   forgetIf(version: Uint8Array): Promise<boolean>;
 };
 
@@ -30,6 +34,11 @@ export const siteWallet: SiteWallet = {
   forget: () => getProtocolClient().sharedWallet.forget(SITE_ID),
   forgetIf: version => getProtocolClient().sharedWallet.forgetIf(SITE_ID, version),
 };
+
+/** Records a failed wallet read made to check the page's sign-in, as the environment's failure. Never throws. */
+export function recordPresenceWalletReadFailure(error: unknown): void {
+  recordExpected(error, { flow: 'wallet', step: 'presence_wallet_read' });
+}
 
 /** The wallet read, or the failure of a read that rejected or threw. Never rejects. */
 export async function readWalletOrFailed(read: () => Promise<LocalWalletReadResult>): Promise<WalletRead> {

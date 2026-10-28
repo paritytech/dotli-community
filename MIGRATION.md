@@ -17,7 +17,7 @@ The active launch path is `apps/host/src/runtime/bridge.ts`:
 - imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`;
 - starts a Web Worker that owns the `truapi-server` WASM core;
 - creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
-- supplies typed callbacks from `apps/host/src/runtime/hostCallbacks/handlers.ts`;
+- supplies typed callbacks from `apps/host/src/runtime/hostCallbacks/createHostCallbacks.ts`;
 - creates a product-scoped provider with `runtime.createProvider({ productId })`;
 - calls `createIframeHost(...)` with the product URL, sandbox policy, allowed origin, and the worker-backed provider.
 
@@ -28,19 +28,19 @@ restore, and logout are core-owned and do not cross the JS host callback boundar
 
 dotli still supplies platform primitives that are host policy or browser UI:
 
-| Area                      | Files                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------- |
-| navigation                | `apps/host/src/runtime/hostCallbacks/openUrl.ts`                                                  |
-| notifications             | `apps/host/src/runtime/hostCallbacks/pushNotification.ts`                                         |
-| device/remote permissions | `apps/host/src/runtime/hostCallbacks/promptPermission.ts`, `apps/host/src/runtime/permissions.ts` |
-| feature support           | `apps/host/src/runtime/hostCallbacks/featureSupported.ts`                                         |
-| product storage           | `apps/host/src/runtime/hostCallbacks/localStorage.ts`                                             |
-| session persistence       | `apps/host/src/runtime/session/coreStorage.ts`, `sessionState.ts`                                 |
-| pairing presentation      | `apps/host/src/runtime/session/authState.ts`                                                      |
-| user confirmations        | `apps/host/src/runtime/hostCallbacks/userConfirmation.ts`                                         |
-| preimage lookup UI        | `apps/host/src/runtime/hostCallbacks/preimage.ts`                                                 |
-| theme subscription        | `apps/host/src/runtime/hostCallbacks/theme.ts`                                                    |
-| chain backend connection  | `apps/host/src/runtime/hostCallbacks/chain.ts`                                                    |
+| Area                      | Files                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| navigation                | `apps/host/src/runtime/hostCallbacks/createNavigateTo.ts`                                               |
+| notifications             | `apps/host/src/runtime/hostCallbacks/createNotificationAdapters.ts`                                     |
+| device/remote permissions | `apps/host/src/runtime/hostCallbacks/createPromptPermission.ts`, `apps/host/src/runtime/permissions.ts` |
+| feature support           | `apps/host/src/runtime/hostCallbacks/createFeatureSupported.ts`                                         |
+| product storage           | `apps/host/src/runtime/hostCallbacks/createLocalStorageCallbacks.ts`                                    |
+| session persistence       | `apps/host/src/runtime/session/createCoreStorage.ts`, `createSessionState.ts`                           |
+| pairing presentation      | `apps/host/src/runtime/session/createAuthStateChanged.ts`                                               |
+| user confirmations        | `apps/host/src/runtime/hostCallbacks/createUserConfirmationAdapters.ts`                                 |
+| preimage lookup UI        | `apps/host/src/runtime/hostCallbacks/createPreimageAdapters.ts`                                         |
+| theme subscription        | `apps/host/src/runtime/hostCallbacks/createThemeSubscribe.ts`                                           |
+| chain backend connection  | `apps/host/src/runtime/hostCallbacks/createChainConnect.ts`                                             |
 
 These callbacks must remain generic host primitives. They should not re-add Nova package imports, wallet-specific JS
 channels, or statement-store request routing that belongs inside the Rust core.

@@ -7,12 +7,11 @@ import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testin
 import { createAsyncTaskPool, createSyncStore, type AsyncTaskPool } from '@dotli/shared';
 import { nth } from '@dotli/shared/testing';
 import { createAuthCommands } from './coreLogin.js';
-import type { DotliAuthState } from './session/authState.js';
-import type { SessionRead } from './session/coreStorage.js';
-import type { Presence } from './session/presence.js';
-import { createFakeSessionPresence } from './session/presence.fake.js';
+import type { SessionRead } from './session/createCoreStorage.js';
+import type { DotliAuthState, Presence } from './session/types.js';
+import { createFakeSessionPresence } from './session/createPagePresence.fake.js';
 import { createPageSignOut, type PageSignOut, type PageSignOutDeps } from './signOut.js';
-import type { WalletMode } from './state/walletMode.js';
+import type { WalletMode } from './state/walletModeState.js';
 import type { WalletSwitchOutcome } from './walletSwitch.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 
@@ -146,9 +145,9 @@ function harness(
       walletMode: () => options.walletMode ?? 'app',
       copy,
       flag: {
-        clear: async clear => {
+        clear: async options => {
           fakes.flagClears += 1;
-          return (await clear?.()) ?? false;
+          return (await options?.drop?.()) ?? false;
         },
       },
       endSession,

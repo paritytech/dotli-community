@@ -10,10 +10,10 @@ import {
   type CoreCommands,
   type LoginOutcome,
 } from './coreLogin.js';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
-import type { WalletMode } from './state/walletMode.js';
-import { createFakeStoredSession, type FakeStoredSession } from './session/coreStorage.fake.js';
+import type { WalletMode } from './state/walletModeState.js';
+import { createFakeStoredSession, type FakeStoredSession } from './session/createCoreStorage.fake.js';
 import {
   answerConnection,
   createFakePageCore,

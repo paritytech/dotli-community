@@ -5,8 +5,8 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { recordLog } from '@dotli/shared/testing';
-import type { Presence } from '../session/presence.js';
-import { createFakeSessionPresence } from '../session/presence.fake.js';
+import type { Presence } from '../session/types.js';
+import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
 import { reconcileWithPresence, type RestoreStore } from '../session/restoreRule.js';
 import { signOutInWindow } from './windowSignout.js';
 

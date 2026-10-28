@@ -65,10 +65,10 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
     if (shown.signal.aborted || stopRender !== null) {
       return;
     }
-    stopRender = mount.chat.renderCustomMessage(
-      mount.productId,
-      { context, payload: mount.payload },
-      {
+    stopRender = mount.chat.renderCustomMessage({
+      productId: mount.productId,
+      request: { context, payload: mount.payload },
+      sink: {
         onUpdate: node => {
           if (shown.signal.aborted) {
             return;
@@ -83,7 +83,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
           }
         },
       },
-    );
+    });
   };
 
   const stop = (): void => {

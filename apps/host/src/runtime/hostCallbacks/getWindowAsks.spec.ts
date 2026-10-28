@@ -1,0 +1,30 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { describe, expect, it } from 'vitest';
+import type { ProductContext } from '@parity/truapi-host';
+import { getWindowAsks } from './getWindowAsks.js';
+
+const PRODUCT: ProductContext = { productId: 'myapp.paseo', executionKind: 'App' };
+
+describe('the session window answering its core', () => {
+  it('As a user in the session window, I let a site ask for each permission and confirmation and each is allowed once with no prompt', async () => {
+    // Given the session window's asks
+    const { permissions, userConfirmation } = getWindowAsks();
+    const review = {
+      tag: 'AccountAccess',
+      value: { requestingProductId: 'a.dot', targetProductId: 'b.dot' },
+    } as const;
+
+    // When the core asks for each permission and confirmation
+    const answers = {
+      remote: await permissions.remotePermission(PRODUCT, { permission: { tag: 'ChainSubmit' } }),
+      device: await permissions.devicePermission(PRODUCT, 'Camera'),
+      action: await userConfirmation.confirmUserAction(review),
+      permission: await userConfirmation.confirmPermission(review),
+    };
+
+    // Then each is allowed once
+    expect(answers).toEqual({ remote: 'AllowOnce', device: 'AllowOnce', action: true, permission: 'AllowOnce' });
+  });
+});

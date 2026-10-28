@@ -42,7 +42,7 @@ function harness(options: { bootError?: Error; activateError?: Error; firstDisco
   }[] = [];
   // Every call on a runtime, in order, so a test can tell which came first.
   const runtimeCalls: string[] = [];
-  const session = { coresGone: vi.fn() };
+  const session = { reportCoresGone: vi.fn() };
   let watches = 0;
   const bridge: Bridge = createBridge({
     bootRuntime: request => {
@@ -200,7 +200,7 @@ describe('bridge', () => {
     // Then the core never spoke for the page's session, and was not disposed under the phone's message
     expect(requests).toHaveLength(1);
     expect(requests[0]?.sessionInMemory).toBe(true);
-    expect(requests[0]?.inService()).toBe(false);
+    expect(requests[0]?.isInService()).toBe(false);
     expect(runtimeCalls).toEqual([
       'activateExternalSession',
       'disconnectSession',

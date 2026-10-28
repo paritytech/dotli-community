@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { setProductError } from './runtime/state/product.js';
+import { productState } from './runtime/state/productState.js';
 import { getTopbarState, setTopbarPresent } from './state/topbar.js';
 import { registerTopbarSurface } from './state/topbarSurfaces.js';
 import { createTopbarAutoHide, HIDE_DELAY_MS, type TopbarAutoHide } from './topbarAutohide.js';
@@ -342,7 +342,7 @@ describe('topbar auto-hide over the product', () => {
     expect(isHidden()).toBe(true);
 
     // When
-    setProductError();
+    productState.setError();
     advance(HIDE_DELAY_MS * 2);
 
     // Then

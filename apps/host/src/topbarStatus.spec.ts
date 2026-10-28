@@ -3,11 +3,12 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
-import { createChatConnections, createChatStore } from './runtime/chat/store.js';
+import { createChatConnections } from './runtime/chat/createChatConnections.js';
+import { createChatStore } from './runtime/chat/createChatStore.js';
 import { labelToProductId } from './runtime/runtimeConfig.js';
-import { setAuthState } from './runtime/state/auth.js';
-import { setProductLoaded } from './runtime/state/product.js';
-import { memoryChatRepo } from './runtime/chat/store.fake.js';
+import { authState } from './runtime/state/authState.js';
+import { productState } from './runtime/state/productState.js';
+import { createMemoryChatRepo } from './runtime/chat/createChatStore.fake.js';
 import { startChatPanelState } from './state/chatPanel.js';
 import {
   actionRoom,
@@ -67,16 +68,20 @@ describe('capsuleStatus', () => {
 describe('pageNeedsAction', () => {
   it('As a user with unread chat, the capsule leads with the action dot', async () => {
     // Given a loaded chat product, logged in, with the panel closed
-    const chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
+    const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
     const local = createMemoryStorage();
     stopChatState = startChatPanelState(chat, local);
     const product = labelToProductId('chatty');
-    setProductLoaded('chatty', product, { chat: true });
-    setAuthState({ tag: 'Connected', session: { connected: true } });
+    productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
+    authState.set({ tag: 'Connected', session: { connected: true } });
     expect(pageNeedsAction()).toBe(false);
 
     // When the product posts
-    await chat.postProductMessage(product, 'main', { tag: 'Text', value: { text: 'hi' } });
+    await chat.postProductMessage({
+      productId: product,
+      roomId: 'main',
+      content: { tag: 'Text', value: { text: 'hi' } },
+    });
 
     // Then
     expect(pageNeedsAction()).toBe(true);

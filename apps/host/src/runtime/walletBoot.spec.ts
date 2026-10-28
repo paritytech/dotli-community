@@ -5,11 +5,11 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { createSyncStore } from '@dotli/shared';
-import type { WalletModeState } from './state/walletMode.js';
+import type { WalletModeState } from './state/walletModeState.js';
 import type { PageRole } from './pageRole.js';
 import { createWalletBoot } from './walletBoot.js';
-import type { Presence } from './session/presence.js';
-import type { SessionRead } from './session/coreStorage.js';
+import type { Presence } from './session/types.js';
+import type { SessionRead } from './session/createCoreStorage.js';
 import type { PresenceReader, Reconciled } from './session/restoreRule.js';
 import type { WalletRead } from './session/siteWallet.js';
 

@@ -5,7 +5,7 @@
 // the sign-in window's pairing both show it.
 
 import type { PairingView } from '../state/authModal.js';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 
 export type LoginFailureKind = Extract<DotliAuthState, { tag: 'LoginFailed' }>['kind'];
 

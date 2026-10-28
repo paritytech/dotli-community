@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import type { ThemePref } from '../runtime/state/theme.js';
+import type { ThemePreference } from '../runtime/state/themeState.js';
 import type { SavedSettings } from '../components/settings/settings.js';
 import { openSettings, registerSettingsOpener } from '../settingsIntent.js';
 import { useSettingsPanel } from './settings.js';
@@ -26,7 +26,10 @@ afterEach(() => {
 /** The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
   const settings = createSyncStore<SavedSettings | null>({ name: 'settings-test-settings', initial: null });
-  const theme = createSyncStore<{ pref: ThemePref }>({ name: 'settings-test-theme', initial: { pref: 'system' } });
+  const theme = createSyncStore<{ preference: ThemePreference }>({
+    name: 'settings-test-theme',
+    initial: { preference: 'system' },
+  });
   const { panel, dispose } = createRoot(d => ({
     panel: useSettingsPanel({
       settings,
@@ -88,7 +91,7 @@ describe('useSettingsPanel', () => {
 
     // When
     settings.set(SAVED);
-    theme.set({ pref: 'dark' });
+    theme.set({ preference: 'dark' });
     flush();
 
     // Then

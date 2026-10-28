@@ -7,11 +7,11 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletReadResult } from '@dotli/protocol';
 import { createMemoryStorage } from '@dotli/shared/testing';
-import { createCoreStorage } from './coreStorage.js';
-import { pageSignInFlag } from './signInFlag.js';
-import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './coreStorage.fake.js';
-import { createFakeSessionPresence, type FakeSessionPresence } from './presence.fake.js';
-import { createPagePresence } from './presence.js';
+import { createCoreStorage } from './createCoreStorage.js';
+import { createNonOwnerSignInFlag } from './signInFlag.js';
+import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
+import { createFakeSessionPresence, getUnservedChannel, type FakeSessionPresence } from './createPagePresence.fake.js';
+import { createPagePresence } from './createPagePresence.js';
 import { reconcileWithPresence, type RestoreStore } from './restoreRule.js';
 
 const SESSION_KEY = SHARED_CORE_SESSION_KEY;
@@ -39,21 +39,23 @@ function saveWallet(entropy: Uint8Array): void {
   wallet.record = { entropy, version: Uint8Array.of(saves) };
 }
 
-function walletRead(): LocalWalletReadResult {
+function buildWalletRead(): LocalWalletReadResult {
   return wallet.record === null ? { status: 'none' } : { status: 'ok', ...wallet.record, identity: null };
 }
 
 /** Reads the flag as `reads` says, one value per read, then as the fake's state. */
-function flagReads(...reads: FakeSessionPresence['state'][]): void {
+function stageFlagReads(...reads: FakeSessionPresence['state'][]): void {
   const read = presence.read.bind(presence);
-  presence.read = () => {
+  presence.read = readStaged;
+
+  function readStaged(): Promise<FakeSessionPresence['state']> {
     const next = reads.shift();
     if (next === undefined) {
       return read();
     }
     presence.calls.push('read');
     return Promise.resolve(next);
-  };
+  }
 }
 
 beforeEach(() => {
@@ -62,19 +64,20 @@ beforeEach(() => {
   wallet = { record: null, readError: null };
   const coreStorage = createCoreStorage({
     shared,
-    flag: pageSignInFlag({ presence, storedSignIn: () => Promise.resolve('none') }),
+    flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('none') }),
     local: () => createMemoryStorage(),
     keyDb: () => new IDBFactory(),
   });
   store = {
     readSession: () => coreStorage.readSession(),
     dropSessionIf: blob => coreStorage.dropSessionIf(blob),
-    readWallet: () => (wallet.readError === null ? Promise.resolve(walletRead()) : Promise.reject(wallet.readError)),
+    readWallet: () =>
+      wallet.readError === null ? Promise.resolve(buildWalletRead()) : Promise.reject(wallet.readError),
   };
 });
 
 describe('the restore rule', () => {
-  it('As a page whose cookie is present, I keep what is stored and clear nothing', async () => {
+  it('As a user whose cookie is present, I load the page and keep what is stored with nothing cleared', async () => {
     // Given a stored session and wallet with the cookie present
     shared.entries.set(SESSION_KEY, DEAD);
     saveWallet(ENTROPY);
@@ -93,7 +96,7 @@ describe('the restore rule', () => {
     expect(wallet.record?.entropy).toEqual(ENTROPY);
   });
 
-  it('As a page whose cookie is gone, I drop the stored session with its account, keep the local wallet and count once', async () => {
+  it('As a user whose cookie is gone, I load the page and the stored session drops with its account while the local wallet stays and the drop counts once', async () => {
     // Given a stored session, its account and a wallet with the cookie gone
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     shared.entries.set(SESSION_KEY, DEAD);
@@ -118,7 +121,7 @@ describe('the restore rule', () => {
     expect(presence.calls).toEqual(['read', 'read']);
   });
 
-  it('As a developer whose cookie is gone with only a local wallet stored, I keep the wallet, read the flag once and count nothing', async () => {
+  it('As a developer whose cookie is gone with only a local wallet stored, I load the page and keep the wallet with one flag read and nothing counted', async () => {
     // Given only a local wallet stored with the cookie gone
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     saveWallet(ENTROPY);
@@ -139,7 +142,7 @@ describe('the restore rule', () => {
     expect(metrics.counted('session.presence')).toEqual([]);
   });
 
-  it('As a page becoming visible or a window, I count what I drop under my own name', async () => {
+  it('As a user, I drop a dead session on visible and in a window and each drop counts under its own name', async () => {
     // Given the cookie gone
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     presence.state = 'absent';
@@ -157,7 +160,7 @@ describe('the restore rule', () => {
     ]);
   });
 
-  it('As a page whose cookie cannot be read, I keep what is stored', async () => {
+  it('As a user whose cookie cannot be read, I load the page and keep what is stored', async () => {
     // Given a stored session and wallet with a flag that reads unknown
     shared.entries.set(SESSION_KEY, DEAD);
     saveWallet(ENTROPY);
@@ -174,19 +177,17 @@ describe('the restore rule', () => {
     expect(wallet.record?.entropy).toEqual(ENTROPY);
   });
 
-  it('As a page whose flag read fails, I keep what is stored and leave a breadcrumb', async () => {
+  it('As a user whose flag read fails, I load the page and keep what is stored with a breadcrumb left', async () => {
     // Given a stored session whose flag read rejects
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
     const failure = new Error('cookie jar exploded');
     const unreadable = createPagePresence({
-      shared: () => true,
+      isShared: () => true,
       localhost: false,
-      channel: () => {
-        throw new Error('no dev store on a deployed page');
-      },
+      channel: getUnservedChannel,
       jar: {
-        read: () => {
+        read() {
           throw failure;
         },
         write: () => undefined,
@@ -203,7 +204,7 @@ describe('the restore rule', () => {
     expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_read' });
   });
 
-  it('As a page that holds nothing, I read the flag once and clear nothing', async () => {
+  it('As a user with nothing stored, I load the page and the flag is read once with nothing cleared', async () => {
     // Given an empty store with the cookie gone
     presence.state = 'absent';
 
@@ -220,10 +221,10 @@ describe('the restore rule', () => {
     expect(presence.calls).toEqual(['read']);
   });
 
-  it('As a page reading while a sign-in elsewhere sets the cookie and stores, I keep the new sign-in', async () => {
+  it('As a user whose sign-in elsewhere sets the cookie and stores during my read, I load the page and keep the new sign-in', async () => {
     // Given the flag gone as the store is read, and set again by a sign-in by the time it is read again
     shared.entries.set(SESSION_KEY, DEAD);
-    flagReads('absent', 'present');
+    stageFlagReads('absent', 'present');
 
     // When the rule runs on load
     const restored = await reconcileWithPresence({ presence, store }, 'load');
@@ -238,18 +239,12 @@ describe('the restore rule', () => {
     expect(shared.entries.get(SESSION_KEY)).toBe(DEAD);
   });
 
-  it('As a page dropping a dead session, I keep a session another tab stores between my read and my clear', async () => {
+  it('As a user dropping a dead session, I load the page and keep a session another tab stores between my read and my clear', async () => {
     // Given the flag gone on both reads, and another tab's sign-in landing right after the second
     shared.entries.set(SESSION_KEY, DEAD);
     shared.entries.set(UI_STATE_CACHE_KEY, CACHED_UI_STATE);
     const read = presence.read.bind(presence);
-    presence.read = async () => {
-      const flag = await read();
-      if (presence.calls.length === 2) {
-        shared.changeFromOtherTab(SESSION_KEY, '0x0a0b0c');
-      }
-      return flag;
-    };
+    presence.read = readThenSignInElsewhere;
     presence.state = 'absent';
 
     // When the rule runs on load
@@ -260,9 +255,17 @@ describe('the restore rule', () => {
     expect(restored.dead).toEqual({ blob: DEAD, cleared: 'none' });
     expect(shared.entries.get(SESSION_KEY)).toBe('0x0a0b0c');
     expect(shared.entries.get(UI_STATE_CACHE_KEY)).toBe(CACHED_UI_STATE);
+
+    async function readThenSignInElsewhere(): Promise<FakeSessionPresence['state']> {
+      const flag = await read();
+      if (presence.calls.length === 2) {
+        shared.changeFromOtherTab(SESSION_KEY, '0x0a0b0c');
+      }
+      return flag;
+    }
   });
 
-  it('As a page whose store keeps a dead session, I read none and the failure is counted as a failed drop', async () => {
+  it('As a user whose store keeps a dead session, I load the page and read none while the failure counts as a failed drop', async () => {
     // Given a dead session the store refuses to drop
     const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const captures = { exception: vi.fn(), expected: vi.fn() };
@@ -281,7 +284,7 @@ describe('the restore rule', () => {
     expect(metrics.counted('session.presence')).toEqual([{ outcome: 'error', reason: 'load' }]);
   });
 
-  it('As a page whose wallet cannot be read, I still drop a dead session and hand back why the wallet failed', async () => {
+  it('As a user whose wallet cannot be read, I load the page and a dead session still drops while the wallet failure is handed back', async () => {
     // Given a dead session beside a wallet that cannot be read
     const failure = new Error('frame unavailable');
     shared.entries.set(SESSION_KEY, DEAD);
@@ -297,7 +300,7 @@ describe('the restore rule', () => {
     expect(shared.entries.has(SESSION_KEY)).toBe(false);
   });
 
-  it('As a page whose store cannot be read, I hand back the failure and clear nothing', async () => {
+  it('As a user whose store cannot be read, I load the page and get the failure back with nothing cleared', async () => {
     // Given a dead session in a store that cannot be read
     const failure = new Error('protocol iframe never listened');
     shared.entries.set(SESSION_KEY, DEAD);

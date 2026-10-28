@@ -7,12 +7,12 @@
 
 import { createPermissionAuthorizations, type PermissionAuthorizations } from './permissions.js';
 import { createProductPermissions, type ProductPermissions } from './state/productPermissions.js';
-import { productStore } from './state/product.js';
+import { productState } from './state/productState.js';
 
 export const pagePermissions: PermissionAuthorizations = createPermissionAuthorizations();
 
 /** The permissions of the product on show, for the menu, the prompts and the frame. */
 export const productPermissions: ProductPermissions = createProductPermissions({
   registry: pagePermissions,
-  product: productStore,
+  product: productState.store,
 });

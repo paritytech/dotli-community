@@ -3,7 +3,7 @@
 
 import { untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
 import { MessageBubble } from './MessageBubble.js';
 import type { ChatMessageActions } from './chat.js';
 import { CustomMessage } from './CustomMessage.js';
@@ -28,7 +28,11 @@ export function MessageRow(props: {
       now={props.now}
       onAction={actionId => {
         void chat
-          .triggerAction(record.productId, record.roomId, { messageId: record.messageId, actionId })
+          .triggerAction({
+            productId: record.productId,
+            roomId: record.roomId,
+            trigger: { messageId: record.messageId, actionId },
+          })
           .catch(() => {
             props.onActionError();
           });

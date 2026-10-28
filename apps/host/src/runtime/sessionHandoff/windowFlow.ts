@@ -25,10 +25,11 @@ import type { AuthCommands } from '../coreLogin.js';
 import type { LogoutOutcome } from '../signOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
 import { loginFailureView } from '../loginFailure.js';
-import type { DotliAuthState } from '../session/authState.js';
-import type { HostCoreStorage } from '../session/coreStorage.js';
+import type { DotliAuthState } from '../session/types.js';
+import type { HostCoreStorage } from '../session/createCoreStorage.js';
 import type { SignInFlag } from '../session/signInFlag.js';
-import { localSessionUiState, parseUiStateCache, type TruapiSessionUiState } from '../session/uiState.js';
+import { getLocalSessionUiState } from '../session/getLocalSessionUiState.js';
+import { parseUiStateCache, type TruapiSessionUiState } from '../session/parseUiStateCache.js';
 import type { SessionResult, SignInIntent } from './messages.js';
 import type { Responder, ResponderState } from './responder.js';
 
@@ -150,7 +151,7 @@ function accountOf(ui: TruapiSessionUiState | null): OfferedAccount | null {
 function offerOf(stored: SessionResult): ContinueOffer | null {
   if (stored.localWallet !== null) {
     const identity = stored.localWallet.identity;
-    return { wallet: 'local', account: identity === null ? null : accountOf(localSessionUiState(identity)) };
+    return { wallet: 'local', account: identity === null ? null : accountOf(getLocalSessionUiState(identity)) };
   }
   if (stored.session !== null) {
     const uiState = stored.session.uiState;
@@ -386,9 +387,11 @@ export function createWindowFlow(deps: WindowFlowDeps): WindowFlow {
       return;
     }
     try {
-      await signIns.clear(async () => {
-        await wallet.forget();
-        return true;
+      await signIns.clear({
+        drop: async () => {
+          await wallet.forget();
+          return true;
+        },
       });
     } catch (error) {
       // The wallet is still stored, so the flag stays up for it.

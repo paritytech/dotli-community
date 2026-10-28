@@ -7,7 +7,7 @@ import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { ChatMessageContent, HexString } from '@parity/truapi';
 import { InlineActionButton } from './InlineActionButton.js';
-import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
 import { relativeTime } from './relativeTime.js';
 import s from './MessageBubble.module.css';
 

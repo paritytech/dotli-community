@@ -9,9 +9,9 @@ import { recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindow.js';
 import type { AuthCommands, LoginOutcome } from '../coreLogin.js';
 import type { LogoutOutcome } from '../signOut.js';
-import type { DotliAuthState } from '../session/authState.js';
-import { createFakeSessionPresence } from '../session/presence.fake.js';
-import { ownerSignInFlag } from '../session/signInFlag.js';
+import type { DotliAuthState } from '../session/types.js';
+import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
+import { createOwnerSignInFlag } from '../session/signInFlag.js';
 import type { SessionResult, SignInIntent } from './messages.js';
 import { createFakeMessageBus, createFakeWindowHandle } from './messages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
@@ -106,9 +106,9 @@ function harness(options: HarnessOptions = {}) {
     forget: null,
     read: null,
   };
-  const signIns = ownerSignInFlag({
+  const signIns = createOwnerSignInFlag({
     presence,
-    storedSignIn: () => Promise.resolve(main.session !== null || main.wallet !== null ? 'held' : 'none'),
+    readStoredSignIn: () => Promise.resolve(main.session !== null || main.wallet !== null ? 'held' : 'none'),
   });
   const commands: AuthCommands = {
     login: () => {
@@ -125,10 +125,12 @@ function harness(options: HarnessOptions = {}) {
       if (held === null) {
         return { phone: 'told' };
       }
-      await signIns.clear(() => {
-        main.session = null;
-        main.uiState = null;
-        return Promise.resolve(true);
+      await signIns.clear({
+        drop: () => {
+          main.session = null;
+          main.uiState = null;
+          return Promise.resolve(true);
+        },
       });
       const told = (): LogoutOutcome =>
         failures.phone

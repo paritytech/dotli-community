@@ -10,7 +10,7 @@ import type { ResolvePhase } from '@dotli/resolver';
 import { debugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingPhase } from './loadingController.js';
 import { log } from '@dotli/shared';
-import { productStore } from './runtime/state/product.js';
+import { productState } from './runtime/state/productState.js';
 import { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './state/networkMonitor.js';
 import { chainTelemetryName, createChainPhaseTracker } from './resolutionTrace.js';
 import {
@@ -413,8 +413,8 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
     bytesDebugSamples++;
     debugBus.emit({ layer: 'chain', event: 'bytes', flowId, timestamp: at, payload: { received } });
   };
-  const stopBytesDebugOnLoad = productStore.subscribe(() => {
-    if (productStore.get().status !== 'loaded') {
+  const stopBytesDebugOnLoad = productState.store.subscribe(() => {
+    if (productState.get().status !== 'loaded') {
       return;
     }
     stopBytesDebugOnLoad();

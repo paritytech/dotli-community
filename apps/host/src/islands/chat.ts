@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, onCleanup } from 'solid-js';
-import type { ChatStore } from '../runtime/chat/store.js';
-import { productStore } from '../runtime/state/product.js';
+import type { ChatStore } from '../runtime/chat/createChatStore.js';
+import { productState } from '../runtime/state/productState.js';
 import { useStore } from '@dotli/ui';
 import { setChatWidth } from '../productFrameLayout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';
@@ -27,7 +27,7 @@ import {
 /** The open panel's view of `chat`, read only while the panel body lives. */
 function openFeed(chat: ChatStore): ChatFeed {
   const productId = useStore(chatPanelStore, currentChatProductId);
-  const loadId = useStore(productStore, state => state.loadId);
+  const loadId = useStore(productState.store, state => state.loadId);
   onCleanup(markFollowedRoomSeen(chat.view));
   return {
     contacts: useStore(chat.view, state => state.contacts),
@@ -56,7 +56,9 @@ function openFeed(chat: ChatStore): ChatFeed {
 function useChatConversation(chat: ChatStore): ChatConversation {
   // Slices, so a width drag, a topbar toggle or the composer-focus flag never re-runs the rows.
   const label = useStore(chatPanelStore, state => state.label);
-  const displayName = useStore(productStore, state => (state.status === 'loaded' ? state.displayName : undefined));
+  const displayName = useStore(productState.store, state =>
+    state.status === 'loaded' ? state.displayName : undefined,
+  );
   return {
     loggedIn: useStore(chatPanelStore, state => state.loggedIn),
     productName: () => displayName() ?? label(),
@@ -78,7 +80,7 @@ function useChatConversation(chat: ChatStore): ChatConversation {
     send: (roomId, text) => {
       const productId = currentChatProductId();
       // The panel only opens for a loaded product, so there is always one while it can send.
-      return productId === null ? Promise.resolve() : chat.postUserMessage(productId, roomId, text);
+      return productId === null ? Promise.resolve() : chat.postUserMessage({ productId, roomId, text });
     },
     actions: chat,
   };

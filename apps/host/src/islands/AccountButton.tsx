@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { authStore, loggedInStore } from '../runtime/state/auth.js';
+import { authState } from '../runtime/state/authState.js';
 import { logout, startLogin } from '../runtime/authController.js';
-import { sessionElsewhereStore } from '../runtime/state/sessionElsewhere.js';
-import { signingOutStore } from '../runtime/state/signOut.js';
-import { walletModeStore } from '../runtime/state/walletMode.js';
+import { sessionElsewhereState } from '../runtime/state/sessionElsewhereState.js';
+import { signingOutState } from '../runtime/state/signingOutState.js';
+import { walletModeState } from '../runtime/state/walletModeState.js';
 import { getProtocolOrigin } from '@dotli/protocol';
 import { routeUrl } from '../runtime/sessionHandoff/sessionProtocol.js';
 import { useStore } from '@dotli/ui';
@@ -17,11 +17,11 @@ import { useAccount } from './account.js';
 /** The account button bound to the session, as the topbar and the landing page's corner show it. */
 export function AccountButton(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
   const account = useAccount({
-    auth: authStore,
-    loggedIn: loggedInStore,
-    walletMode: walletModeStore,
-    signingOut: signingOutStore,
-    elsewhere: sessionElsewhereStore,
+    auth: authState.store,
+    loggedIn: authState.loggedInStore,
+    walletMode: walletModeState.store,
+    signingOut: signingOutState.store,
+    elsewhere: sessionElsewhereState.store,
   });
   const modalOpen = useStore(authModalStore, state => state.open);
   return (

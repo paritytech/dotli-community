@@ -6,7 +6,7 @@
 
 import type { AuthModalView } from '../state/authModal.js';
 import type { LoginFailureKind } from './loginFailure.js';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 import type { PageCancelReason } from './sessionHandoff/opener.js';
 
 export type CloseAuthModalOptions = {

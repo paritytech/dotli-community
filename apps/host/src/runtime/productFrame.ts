@@ -13,7 +13,7 @@ import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION, type SandboxChannel } 
 import { captureException, getResolutionId, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, log, noop, createRandomId, sleep } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
-import { chatConnections } from './chat/chatStore.js';
+import { chatConnections } from './chat/createChatConnections.js';
 import { ownCoreConnection } from './coreConnection.js';
 import { ERRORS } from './errors.js';
 import { CoreRedialError, type CoreConnection, type CoreLease, type PageCore } from './pageCore.js';
@@ -21,7 +21,7 @@ import { takePendingReset } from './pendingReset.js';
 import { createPermissionResponseGate } from './permissionResponseGate.js';
 import type { PermissionAuthorizations } from './permissions.js';
 import { labelToProductId } from './runtimeConfig.js';
-import { setProductLoaded } from './state/product.js';
+import { productState } from './state/productState.js';
 import type { PermissionsChange } from './state/productPermissions.js';
 import type { ShowNotification } from '@dotli/ui';
 import type { ManifestFacts } from './manifestFacts.js';
@@ -391,12 +391,20 @@ export function createProductFrame(deps: ProductFrameDeps): ProductFrame {
     view.showTitle(titledProduct(product));
     // The runtime productId, so chat data is keyed like storage when the debug path overrides it.
     if (product.mode === 'iframe') {
-      setProductLoaded(product.label, product.productId ?? labelToProductId(product.label), { chat: host.chat });
+      productState.setLoaded({
+        label: product.label,
+        productId: product.productId ?? labelToProductId(product.label),
+        details: { chat: host.chat },
+      });
     } else {
-      setProductLoaded(product.label, labelToProductId(product.label), {
-        cid: product.cid,
-        chat: host.chat,
-        ...manifestFactsOf(product),
+      productState.setLoaded({
+        label: product.label,
+        productId: labelToProductId(product.label),
+        details: {
+          cid: product.cid,
+          chat: host.chat,
+          ...manifestFactsOf(product),
+        },
       });
     }
     debugBus.emit({

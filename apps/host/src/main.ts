@@ -10,7 +10,7 @@ import { boot, reportBootFailure, startHost, startPage, T0, type HostStartup } f
 import { listenForSandboxStatus, onSandboxDone } from './loadingController.js';
 import { showLocalhostPill, showProductPill } from './state/urlPill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbarAutohide.js';
-import { loggedInStore } from './runtime/state/auth.js';
+import { authState } from './runtime/state/authState.js';
 import { loadBridge, loadDebugPanelHost } from './lazy.js';
 import type { ProductFrame } from './runtime/productFrame.js';
 import { fetchBitswapBlock, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
@@ -79,7 +79,7 @@ type Shell = {
 async function loadRpcResolver(): Promise<RpcResolver> {
   const [mod, bridge] = await Promise.all([loadResolve(), loadBridge()]);
   return mod.createDotnsResolver({
-    assetHub: bridge.hostAssetHubProvider,
+    assetHub: bridge.getHostAssetHubProvider,
     dotns: getActiveServicesConfig().dotns,
     source: 'rpc-gateway',
   });
@@ -173,7 +173,7 @@ async function openLocalTarget(target: LocalTarget, shell: Shell): Promise<void>
   setProductContentShown(true);
   if (proxied) {
     // No dotNS name to verify, so the shield is settled as soon as the product shows.
-    startShieldAutoHide({ loggedIn: loggedInStore, arm: armTopbarAutoHide }).settle();
+    startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: armTopbarAutoHide }).settle();
   }
   history.replaceState(null, '', localTargetPath(target));
   performance.mark('dotli:main:end');

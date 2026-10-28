@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Accessor } from 'solid-js';
-import type { TruapiSessionUiState } from '../../runtime/session/sessionState.js';
+import type { TruapiSessionUiState } from '../../runtime/session/parseUiStateCache.js';
 
 /** A signed-in session as the account views show it. */
 export type AccountSession = Omit<TruapiSessionUiState, 'connected'>;

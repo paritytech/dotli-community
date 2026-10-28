@@ -3,7 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { dotliVersion } from '../runtime/runtimeConfig.js';
-import { themeStore } from '../runtime/state/theme.js';
+import { themeState } from '../runtime/state/themeState.js';
 import { SettingsItem } from '../components/settings/SettingsItem.js';
 import { isTruapiDebugEnabled, openInDebugMode, pageSettingsActions } from '../settingsActions.js';
 import { registerSettingsOpener } from '../settingsIntent.js';
@@ -20,7 +20,7 @@ import { useSettingsPanel } from './settings.js';
 export function SettingsButton(): JSX.Element {
   const panel = useSettingsPanel({
     settings: settingsStore,
-    theme: themeStore,
+    theme: themeState.store,
     selectTheme: selectThemePref,
     apply: pageSettingsActions.applyAndReset,
     registerOpener: registerSettingsOpener,

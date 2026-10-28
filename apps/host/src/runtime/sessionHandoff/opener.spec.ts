@@ -4,7 +4,7 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { must } from '@dotli/shared/testing';
-import { createFakeSessionPresence } from '../session/presence.fake.js';
+import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
 import { SIGNED_OUT_RESULT, type SessionResult } from './messages.js';
 import { createFakeMessageBus, createFakeWindowHandle, type FakeWindowHandle } from './messages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';

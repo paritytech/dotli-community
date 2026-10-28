@@ -9,11 +9,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
-import { createChatConnections, createChatStore, type ChatStore } from '../../src/runtime/chat/store.js';
+import { createChatConnections } from '../../src/runtime/chat/createChatConnections.js';
+import { createChatStore, type ChatStore } from '../../src/runtime/chat/createChatStore.js';
 import { labelToProductId } from '../../src/runtime/runtimeConfig.js';
-import { setAuthState } from '../../src/runtime/state/auth.js';
-import { setProductLoaded } from '../../src/runtime/state/product.js';
-import { memoryChatRepo } from '../../src/runtime/chat/store.fake.js';
+import { authState } from '../../src/runtime/state/authState.js';
+import { productState } from '../../src/runtime/state/productState.js';
+import { createMemoryChatRepo } from '../../src/runtime/chat/createChatStore.fake.js';
 import { setTopbarVisible } from '../../src/state/topbar.js';
 import { ChatDock } from '../../src/islands/ChatDock.js';
 import {
@@ -40,11 +41,11 @@ function mountIsland(): void {
 }
 
 beforeEach(() => {
-  chat = createChatStore({ repo: memoryChatRepo(), connections: createChatConnections() });
+  chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
   const local = createMemoryStorage();
   stopState = startChatPanelState(chat, local);
-  setProductLoaded(LABEL, PRODUCT, { chat: true });
-  setAuthState({ tag: 'Connected', session: { connected: true } });
+  productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
+  authState.set({ tag: 'Connected', session: { connected: true } });
 });
 
 afterEach(() => {

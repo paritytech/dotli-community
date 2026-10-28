@@ -13,7 +13,7 @@ import {
 } from './diagnostics.js';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { setProductLoaded } from './state/product.js';
+import { productState } from './state/productState.js';
 
 const people = getActiveServicesConfig().people.genesis;
 const provider: RemoteChainProvider = () => ({ send: vi.fn(), disconnect: vi.fn() });
@@ -243,7 +243,11 @@ describe('createPageDiagnostics', () => {
     // Given
     onTestFinished(resetAllStoresForTests);
     onTestFinished(setSettings({ ...getSettings(), backend: 'smoldot-direct' }));
-    setProductLoaded('doom', 'doom.dot', { cid: 'bafy', manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] });
+    productState.setLoaded({
+      label: 'doom',
+      productId: 'doom.dot',
+      details: { cid: 'bafy', manifestVersion: 1, appVersion: [1, 2, 3, 'beta'] },
+    });
     const { diagnostics } = pageDiagnostics('wss://live.example');
 
     // When

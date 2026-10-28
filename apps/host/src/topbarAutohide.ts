@@ -5,7 +5,7 @@
 // the reveal shortcut so its controls never become mouse-only. Timing and input only, the store drives what shows.
 
 import { isMobileDevice } from './device.js';
-import { productStore } from './runtime/state/product.js';
+import { productState } from './runtime/state/productState.js';
 import { focusables, isPhoneViewport, watchPhoneViewport } from '@dotli/ui';
 import { currentProductFrame, setTopbarLayout, type TopbarLayout } from './productFrameLayout.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
@@ -236,8 +236,8 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
     const { signal } = listeners;
     const page = deps.page();
 
-    const unsubscribe = productStore.subscribe(() => {
-      if (productStore.get().status === 'error') {
+    const unsubscribe = productState.store.subscribe(() => {
+      if (productState.get().status === 'error') {
         setContentShown(false);
       }
     });

@@ -271,6 +271,12 @@ export const spans = {
   PERMISSIONS_CHANGE: 'permissions.change',
 
   /**
+   * One failed read of the chat store: the panel's contacts or messages, after which the panel keeps its last view, or
+   * a product's room list, which then rejects to its caller. Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  CHAT_READ: 'chat.read',
+
+  /**
    * One Share diagnostic click in the debug panel. Tagged `outcome` and, on error, `reason`, as a failed one opens no
    * issue.
    */
@@ -350,6 +356,12 @@ export const spans = {
    * because it no longer decrypts.
    */
   CORE_STORAGE_SECRET: 'core_storage.secret',
+
+  /**
+   * A stored core value that could not be decoded, which then reads as absent. Tagged `outcome` (error) and `reason`
+   * (`corrupt`).
+   */
+  CORE_STORAGE_READ: 'core_storage.read',
 
   /**
    * A read of a product's storage for its subscription that failed. Tagged `outcome` (error) and `reason` (the error's

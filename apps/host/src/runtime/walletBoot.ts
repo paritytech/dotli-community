@@ -9,11 +9,11 @@ import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, log } from '@dotli/shared';
 import { reportLocalWalletFailure } from './walletFailure.js';
 import { loadReader, pageRole, pairsOnly, sharesFlag, type PageRole } from './pageRole.js';
-import { signInFlag } from './session/coreStorage.js';
+import { signInFlag } from './session/createCoreStorage.js';
 import { reconcilePage, type PresenceReader, type Reconciled } from './session/restoreRule.js';
 import type { WalletRead } from './session/siteWallet.js';
 import type { SignInFlag } from './session/signInFlag.js';
-import { setWalletModeState, type WalletModeState } from './state/walletMode.js';
+import { walletModeState, type WalletModeState } from './state/walletModeState.js';
 
 export type LocalWalletBoot = Extract<LocalWalletReadResult, { status: 'ok' }>;
 
@@ -165,7 +165,7 @@ let pageWalletBoot: WalletBoot | undefined;
 function pageBoot(): WalletBoot {
   pageWalletBoot ??= createWalletBoot({
     reconcile: reconcilePage,
-    report: setWalletModeState,
+    report: walletModeState.set,
     flag: signInFlag,
     role: pageRole(),
   });

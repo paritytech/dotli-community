@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
-import { createChatConnections, createChatStore, type ChatStore } from '../runtime/chat/store.js';
+import { createRecordingConnection } from '../runtime/chat/createChatConnections.fake.js';
+import { createMemoryChatRepo } from '../runtime/chat/createChatStore.fake.js';
+import { createChatConnections } from '../runtime/chat/createChatConnections.js';
+import { createChatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
 import { labelToProductId } from '../runtime/runtimeConfig.js';
-import { setProductError, setProductLoaded } from '../runtime/state/product.js';
-import { setAuthState } from '../runtime/state/auth.js';
+import { productState } from '../runtime/state/productState.js';
+import { authState } from '../runtime/state/authState.js';
 import { reportBlockingModals, setTopbarVisible } from './topbar.js';
 import {
   backToChatRooms,
@@ -31,18 +33,22 @@ let chat: ChatStore;
 let connections: ReturnType<typeof createChatConnections>;
 
 function showProduct(label: string): void {
-  setProductLoaded(label, labelToProductId(label), { chat: true });
-  setAuthState({ tag: 'Connected', session: { connected: true } });
+  productState.setLoaded({ label, productId: labelToProductId(label), details: { chat: true } });
+  authState.set({ tag: 'Connected', session: { connected: true } });
 }
 
 async function productMessage(label: string, roomId: string): Promise<void> {
-  await chat.postProductMessage(labelToProductId(label), roomId, { tag: 'Text', value: { text: 'hi' } });
+  await chat.postProductMessage({
+    productId: labelToProductId(label),
+    roomId,
+    content: { tag: 'Text', value: { text: 'hi' } },
+  });
 }
 
 beforeEach(() => {
   local = createMemoryStorage();
   connections = createChatConnections();
-  chat = createChatStore({ repo: memoryChatRepo(), connections });
+  chat = createChatStore({ repo: createMemoryChatRepo(), connections });
   remove = startChatPanelState(chat, local);
 });
 
@@ -54,19 +60,19 @@ afterEach(() => {
 describe('chat panel state', () => {
   it('As a user, the chat button shows only for a chat-capable product while I am logged in', () => {
     // Given a product that declares no chat
-    setProductLoaded('first-app', labelToProductId('first-app'));
+    productState.setLoaded({ label: 'first-app', productId: labelToProductId('first-app') });
 
     // Then
     expect(chatButtonVisible()).toBe(false);
 
     // When it loads again declaring chat
-    setProductLoaded('first-app', labelToProductId('first-app'), { chat: true });
+    productState.setLoaded({ label: 'first-app', productId: labelToProductId('first-app'), details: { chat: true } });
 
     // Then
     expect(chatButtonVisible()).toBe(false);
 
     // When
-    setAuthState({ tag: 'Connected', session: { connected: true } });
+    authState.set({ tag: 'Connected', session: { connected: true } });
 
     // Then
     expect(chatButtonVisible()).toBe(true);
@@ -77,7 +83,7 @@ describe('chat panel state', () => {
     showProduct('app');
 
     // When
-    setProductError();
+    productState.setError();
 
     // Then
     expect(chatButtonVisible()).toBe(false);
@@ -90,7 +96,7 @@ describe('chat panel state', () => {
     setChatPanelOpen(true);
 
     // When
-    setAuthState({ tag: 'Disconnected' });
+    authState.set({ tag: 'Disconnected' });
 
     // Then
     expect(chatButtonVisible()).toBe(false);
@@ -123,10 +129,10 @@ describe('chat panel state', () => {
   it('As a user, my own messages and messages for another product do not count as unread', async () => {
     // Given
     showProduct('app');
-    connections.register(labelToProductId('app'), recordingConnection());
+    connections.register(labelToProductId('app'), createRecordingConnection());
 
     // When
-    await chat.postUserMessage(labelToProductId('app'), 'a', 'hello');
+    await chat.postUserMessage({ productId: labelToProductId('app'), roomId: 'a', text: 'hello' });
     await productMessage('other', 'a');
 
     // Then
@@ -142,7 +148,7 @@ describe('chat panel state', () => {
     setChatComposerError('oops');
 
     // When
-    setProductLoaded('next', 'next.dot');
+    productState.setLoaded({ label: 'next', productId: 'next.dot' });
 
     // Then
     const state = chatPanelStore.get();
@@ -159,7 +165,7 @@ describe('chat panel state', () => {
     openChatRoom('a');
 
     // When
-    setProductLoaded('app', labelToProductId('app'), { chat: true });
+    productState.setLoaded({ label: 'app', productId: labelToProductId('app'), details: { chat: true } });
 
     // Then
     expect(chatPanelStore.get().activeRoomId).toBe('a');
@@ -168,7 +174,7 @@ describe('chat panel state', () => {
   it('As a user whose product loaded before the chat panel state started, the panel follows that product', () => {
     // Given
     remove();
-    setProductLoaded('early', 'early.dot');
+    productState.setLoaded({ label: 'early', productId: 'early.dot' });
 
     // When
     remove = startChatPanelState(undefined, local);
@@ -219,7 +225,7 @@ describe('chat panel state', () => {
 
   it('As the chat panel, a width drag past the clamp, a cleared composer error and an unchanged topbar notify nobody', () => {
     // Given
-    setProductLoaded('app', 'app.dot', { chat: true });
+    productState.setLoaded({ label: 'app', productId: 'app.dot', details: { chat: true } });
     setChatPanelWidth(10_000);
     let notified = 0;
     const stop = chatPanelStore.subscribe(() => {
@@ -267,7 +273,7 @@ describe('chat panel state', () => {
   it('As a panel wired after a login, the session and the hidden topbar are already known', () => {
     // Given
     remove();
-    setAuthState({ tag: 'Connected', session: { connected: true } });
+    authState.set({ tag: 'Connected', session: { connected: true } });
     setTopbarVisible(false);
 
     // When
@@ -284,7 +290,7 @@ describe('chat panel state', () => {
 describe('chat panel state, rooms seen', () => {
   /** A chat store whose conversation reads wait for `release`, wired into the panel state in place of the default. */
   function heldReads(): { release: () => Promise<void> } {
-    const repo = memoryChatRepo();
+    const repo = createMemoryChatRepo();
     repo.reads.hold.messages = true;
     remove();
     chat = createChatStore({ repo, connections });

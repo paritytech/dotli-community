@@ -24,9 +24,9 @@ import { createFakeMessageBus, createFakeWindowHandle } from '../sessionHandoff/
 import { openerParty } from '../sessionHandoff/openerRule.js';
 import { createResponder } from '../sessionHandoff/responder.js';
 import { createWindowFlow } from '../sessionHandoff/windowFlow.js';
-import type { DotliAuthState } from '../session/authState.js';
-import { createFakeSessionPresence } from '../session/presence.fake.js';
-import { ownerSignInFlag } from '../session/signInFlag.js';
+import type { DotliAuthState } from '../session/types.js';
+import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
+import { createOwnerSignInFlag } from '../session/signInFlag.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
 import { MainAccountError, mainAccountOf, type MainAccount } from './mainAccount.js';
 import { parsePublicSuffixList } from './publicSuffixList.js';
@@ -87,9 +87,9 @@ function windowParts(mainAccount: SiteWindowDeps['mainAccount'] = () => Promise.
     onPageRestore: createFakePageEvents().subscribe,
   });
   messages.post({ data: { type: 'dotli:s:hello', v: 1, round: 'r1' }, origin: ORIGIN, source: opener });
-  const signIns = ownerSignInFlag({
+  const signIns = createOwnerSignInFlag({
     presence: createFakeSessionPresence('present'),
-    storedSignIn: () => Promise.resolve('held'),
+    readStoredSignIn: () => Promise.resolve('held'),
   });
   // The window resumes what is stored, so it never pairs or signs out.
   const commands: AuthCommands = {

@@ -3,7 +3,7 @@
 
 // The permissions of the product on show. The core persists them, so the store holds what was last read or written.
 // Every write, from the panel or a prompt, goes through one path that retries and announces once, and the work runs one
-// at a time, so a read never lands over a newer write. The page builds one, over its own registry and product.
+// at a time, so a read never lands over a newer write.
 
 import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
 import {
@@ -24,13 +24,7 @@ import {
   type PermissionTargets,
 } from '../permissions.js';
 import { throwIfAborted } from '../blockingModalQueue.js';
-import type { ProductState } from './product.js';
-
-const NAMES: readonly EnforceablePermissionName[] = ALL_PERMISSIONS.map(({ name }) => name);
-
-/** Attempts per change in all, the first included. */
-const ATTEMPTS = 3;
-const RETRY_DELAY_MS = 300;
+import type { ProductState } from './productState.js';
 
 /** `statuses` follow the menu order of `ALL_PERMISSIONS`. */
 export type ProductPermissionsState =
@@ -61,24 +55,10 @@ export type ChangeOutcome = {
   failed: readonly EnforceablePermissionName[];
 };
 
-const NONE: ProductPermissionsState = { status: 'none' };
+export type ProductPermissions = ReturnType<typeof createProductPermissions>;
 
-function sameState(a: ProductPermissionsState, b: ProductPermissionsState): boolean {
-  if (a.status !== b.status || (a.status !== 'none' && b.status !== 'none' && a.label !== b.label)) {
-    return false;
-  }
-  if (a.status === 'read' && b.status === 'read') {
-    return a.statuses.length === b.statuses.length && a.statuses.every((status, i) => status === b.statuses[i]);
-  }
-  return true;
-}
-
-function permissionStatusIn(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
-  return statuses[NAMES.indexOf(name)] ?? 'ask';
-}
-
-export type ProductPermissionsDeps = {
-  /** The core's permission store, reached through the connections the product frame opens. */
+type Params = {
+  /** The core's permission store. */
   registry: Pick<PermissionAuthorizations, 'statuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
   product: ReadableStore<ProductState>;
@@ -86,37 +66,24 @@ export type ProductPermissionsDeps = {
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
-export type ProductPermissions = {
-  state: ReadableStore<ProductPermissionsState>;
-  /** The panel change not yet settled. */
-  pending: ReadableStore<PendingPermissions>;
-  /** Every change this store makes, for whoever must act on it, such as the frame that reloads for a new policy. */
-  onChanged: (listener: (change: PermissionsChange) => void) => () => void;
-  /** Reads the statuses again. Calls that queue behind a read share the next one. */
-  refresh: () => Promise<void>;
-  /**
-   * A change made in the panel. A newer one supersedes it: dropped while queued, no more retries while running. Never
-   * rejects, as a failure is reported, the store read again and the failed permissions resolved.
-   */
-  change: (label: string, targets: PermissionTargets) => Promise<ChangeOutcome>;
-  /**
-   * A decision from the product's own prompt, never superseded. A write that still fails after the last attempt
-   * rejects, so the product hears it, and an aborted prompt changes nothing once its writes are back.
-   */
-  recordPromptDecision: (
-    label: string,
-    name: EnforceablePermissionName,
-    decision: PromptDecision,
-    signal: AbortSignal,
-  ) => Promise<void>;
-  /**
-   * Reads on every load, a reload of the same product included, until the returned stop. A second call returns it
-   * too.
-   */
-  start: () => () => void;
+type RecordPromptDecisionParams = {
+  label: string;
+  name: EnforceablePermissionName;
+  decision: PromptDecision;
+  /** The prompt's own signal. Once it aborts, the decision changes nothing. */
+  signal: AbortSignal;
 };
 
-type WriteOptions = {
+type PatchParams = {
+  label: string;
+  /** The targets whose write landed. */
+  landed: readonly EnforceablePermissionName[];
+  targets: PermissionTargets;
+};
+
+type WriteParams = {
+  label: string;
+  targets: PermissionTargets;
   /** A panel change superseded by a newer one: dropped while queued, no more attempts while running. */
   superseded?: AbortSignal;
   /** A prompt torn down. Its change rejects and shows nothing, as its answer never reaches the product. */
@@ -136,36 +103,133 @@ type WriteResult = {
   errors: unknown[];
 };
 
-export function createProductPermissions({
-  registry,
-  product,
-  timers = realTimers,
-}: ProductPermissionsDeps): ProductPermissions {
+const NAMES: readonly EnforceablePermissionName[] = ALL_PERMISSIONS.map(({ name }) => name);
+
+/** Attempts per change in all, the first included. */
+const ATTEMPTS = 3;
+const RETRY_DELAY_MS = 300;
+
+const NONE: ProductPermissionsState = { status: 'none' };
+
+const POOL = 'product-permissions';
+
+/** Builds the permissions store of the product on show, over the core's `registry`. Building one reads nothing. */
+export function createProductPermissions({ registry, product, timers = realTimers }: Params) {
   const permissions = createSyncStore<ProductPermissionsState>({
     name: 'product_permissions',
     initial: NONE,
-    equals: sameState,
+    equals: isSameState,
   });
-  const pending = createSyncStore<PendingPermissions>({ name: 'product_permissions_pending', initial: null });
+  const pendingChange = createSyncStore<PendingPermissions>({ name: 'product_permissions_pending', initial: null });
+  const state: ReadableStore<ProductPermissionsState> = permissions;
+  const pending: ReadableStore<PendingPermissions> = pendingChange;
 
   // One listener's failure must not keep the change from the others.
   const changes = createListenerSet<PermissionsChange>({
     onListenerError: reportListener('ui', 'product_permissions.change'),
   });
-  const announce = changes.emit;
 
   // Reads and writes run one at a time, so the store only ever moves forward.
   const work = createAsyncTaskPool({ poolSize: 1 });
-  const POOL = 'product-permissions';
 
-  function currentLabel(): string | null {
+  let requested = 0;
+  let covered = 0;
+  // The latest panel change, which any newer one supersedes.
+  let latest: AbortController | null = null;
+  let stopFollowing: (() => void) | null = null;
+
+  function refresh(): Promise<void> {
+    const ticket = ++requested;
+    return work.call(
+      async () => {
+        // A read that started after this call was made already answers it.
+        if (covered >= ticket) {
+          return;
+        }
+        covered = requested;
+        await read();
+      },
+      { pool: POOL },
+    );
+  }
+
+  function change(label: string, targets: PermissionTargets): Promise<ChangeOutcome> {
+    latest?.abort();
+    const own = new AbortController();
+    latest = own;
+    pendingChange.set({ label, targets });
+    return work.call(
+      async () => {
+        try {
+          const { failed } = await write({ label, targets, superseded: own.signal, fromPrompt: false });
+          return { failed };
+        } finally {
+          if (latest === own) {
+            latest = null;
+            pendingChange.set(null);
+          }
+        }
+      },
+      { pool: POOL },
+    );
+  }
+
+  function recordPromptDecision({ label, name, decision, signal }: RecordPromptDecisionParams): Promise<void> {
+    return work.call(
+      async () => {
+        const { errors } = await write({
+          label,
+          targets: { [name]: decision },
+          prompt: signal,
+          always: true,
+          fromPrompt: true,
+        });
+        if (errors.length > 0) {
+          throw errors.length === 1 && errors[0] instanceof Error
+            ? errors[0]
+            : new AggregateError(errors, 'the prompt answer was not stored');
+        }
+      },
+      { pool: POOL },
+    );
+  }
+
+  function start(): () => void {
+    if (stopFollowing !== null) {
+      return stopFollowing;
+    }
+    followProduct();
+    const unsubscribe = product.subscribe(followProduct);
+    stopFollowing = stopFollowingProduct;
+    return stopFollowing;
+
+    function stopFollowingProduct(): void {
+      unsubscribe();
+      stopFollowing = null;
+    }
+  }
+
+  function followProduct(): void {
+    const label = getCurrentLabel();
+    const current = permissions.get();
+    if (label === null) {
+      permissions.set(NONE);
+      return;
+    }
+    if (current.status === 'none' || current.label !== label) {
+      permissions.set({ status: 'reading', label });
+    }
+    void refresh();
+  }
+
+  function getCurrentLabel(): string | null {
     const shown = product.get();
     return shown.status === 'loaded' ? shown.label : null;
   }
 
   /** A read or write lands only for the product still on show. */
   function land(label: string, next: ProductPermissionsState): void {
-    if (currentLabel() === label) {
+    if (getCurrentLabel() === label) {
       permissions.set(next);
     }
   }
@@ -175,7 +239,7 @@ export function createProductPermissions({
     return current.status === 'read' && current.label === label ? current.statuses : null;
   }
 
-  function patch(label: string, landed: readonly EnforceablePermissionName[], targets: PermissionTargets): void {
+  function patch({ label, landed, targets }: PatchParams): void {
     const current = readStatuses(label);
     if (current === null || landed.length === 0) {
       return;
@@ -188,7 +252,7 @@ export function createProductPermissions({
   }
 
   async function read(): Promise<void> {
-    const label = currentLabel();
+    const label = getCurrentLabel();
     if (label === null) {
       return;
     }
@@ -212,69 +276,62 @@ export function createProductPermissions({
   }
 
   /** Runs in the pool's slot. Writes every target, retries the failed, then shows and announces what landed. */
-  async function write(label: string, targets: PermissionTargets, options: WriteOptions): Promise<WriteResult> {
-    if (options.superseded?.aborted === true) {
+  async function write({
+    label,
+    targets,
+    superseded,
+    prompt,
+    always = false,
+    fromPrompt,
+  }: WriteParams): Promise<WriteResult> {
+    if (superseded?.aborted === true) {
       return { failed: [], errors: [] };
     }
-    if (options.prompt !== undefined) {
-      throwIfAborted(options.prompt);
+    if (prompt !== undefined) {
+      throwIfAborted(prompt);
     }
     const names = NAMES.filter(name => targets[name] !== undefined);
     const before = readStatuses(label);
-    const was = (name: EnforceablePermissionName): PermissionStatus | undefined =>
-      before === null ? undefined : permissionStatusIn(before, name);
+    const getStatusBefore = (name: EnforceablePermissionName): PermissionStatus | undefined =>
+      before === null ? undefined : getPermissionStatus(before, name);
     // With the statuses unread nothing is known to match, so every target is written.
-    if (options.always !== true && before !== null && names.every(name => was(name) === targets[name])) {
+    if (!always && before !== null && names.every(name => getStatusBefore(name) === targets[name])) {
       return { failed: [], errors: [] };
     }
 
     let failed = names;
     let errors: unknown[] = [];
     let sending: Promise<void> = Promise.resolve();
-    const send = async (): Promise<void> => {
-      const results = await Promise.allSettled(
-        failed.map(name => registry.setStatus(label, name, targets[name] ?? 'ask')),
-      );
-      errors = results.flatMap((result): unknown[] => (result.status === 'rejected' ? [result.reason] : []));
-      failed = failed.filter((_, i) => results[i]?.status === 'rejected');
-    };
-    const attempt = async (): Promise<void> => {
-      sending = send();
-      await sending;
-      if (failed.length > 0) {
-        throw new AggregateError(errors, 'some permissions kept their status');
-      }
-    };
     const attempts = createAsyncTaskPool({
       poolSize: 1,
       retryCount: ATTEMPTS - 1,
       retryDelay: RETRY_DELAY_MS,
       timers,
     });
-    const signals = [options.superseded, options.prompt].filter(signal => signal !== undefined);
-    const stop = signals.length > 0 ? AbortSignal.any(signals) : undefined;
+    const signals = [superseded, prompt].filter(signal => signal !== undefined);
+    const stopSignal = signals.length > 0 ? AbortSignal.any(signals) : undefined;
     // `failed` and `errors` carry the outcome, so the rejection, the last attempt's or a stop's, adds nothing.
-    await attempts.call(attempt, stop === undefined ? {} : { signal: stop }).then(
+    await attempts.call(attempt, stopSignal === undefined ? {} : { signal: stopSignal }).then(
       () => undefined,
       () => undefined,
     );
     // A stop settles the call at once, but the writes already sent finish first.
     await sending;
-    if (options.prompt !== undefined) {
-      throwIfAborted(options.prompt);
+    if (prompt !== undefined) {
+      throwIfAborted(prompt);
     }
 
     const landed = names.filter(name => !failed.includes(name));
-    patch(label, landed, targets);
-    const changed = landed.filter(name => was(name) !== targets[name]);
+    patch({ label, landed, targets });
+    const changed = landed.filter(name => getStatusBefore(name) !== targets[name]);
     if (changed.length > 0) {
-      announce({
+      changes.emit({
         label,
         permissions: changed,
         allowChanged: changed.some(
-          name => isDevicePermission(name) && (was(name) === 'granted' || targets[name] === 'granted'),
+          name => isDevicePermission(name) && (getStatusBefore(name) === 'granted' || targets[name] === 'granted'),
         ),
-        fromPrompt: options.fromPrompt,
+        fromPrompt,
       });
     }
     if (failed.length > 0) {
@@ -285,97 +342,73 @@ export function createProductPermissions({
       m.count(S.PERMISSIONS_CHANGE, { outcome: 'ok' });
     }
     return { failed, errors };
+
+    async function attempt(): Promise<void> {
+      sending = send();
+      await sending;
+      if (failed.length > 0) {
+        throw new AggregateError(errors, 'some permissions kept their status');
+      }
+    }
+
+    async function send(): Promise<void> {
+      const results = await Promise.allSettled(
+        failed.map(name => registry.setStatus(label, name, targets[name] ?? 'ask')),
+      );
+      errors = results.flatMap((result): unknown[] => (result.status === 'rejected' ? [result.reason] : []));
+      failed = failed.filter((_, i) => results[i]?.status === 'rejected');
+    }
   }
 
-  let requested = 0;
-  let covered = 0;
-
-  const refresh = (): Promise<void> => {
-    const ticket = ++requested;
-    return work.call(
-      async () => {
-        // A read that started after this call was made already answers it.
-        if (covered >= ticket) {
-          return;
-        }
-        covered = requested;
-        await read();
-      },
-      { pool: POOL },
-    );
-  };
-
-  // The latest panel change, which any newer one supersedes.
-  let latest: AbortController | null = null;
-
-  const change: ProductPermissions['change'] = (label, targets) => {
-    latest?.abort();
-    const own = new AbortController();
-    latest = own;
-    pending.set({ label, targets });
-    return work.call(
-      async () => {
-        try {
-          const { failed } = await write(label, targets, { superseded: own.signal, fromPrompt: false });
-          return { failed };
-        } finally {
-          if (latest === own) {
-            latest = null;
-            pending.set(null);
-          }
-        }
-      },
-      { pool: POOL },
-    );
-  };
-
-  const recordPromptDecision: ProductPermissions['recordPromptDecision'] = (label, name, decision, signal) =>
-    work.call(
-      async () => {
-        const { errors } = await write(label, { [name]: decision }, { prompt: signal, always: true, fromPrompt: true });
-        if (errors.length > 0) {
-          throw errors.length === 1 && errors[0] instanceof Error
-            ? errors[0]
-            : new AggregateError(errors, 'the prompt answer was not stored');
-        }
-      },
-      { pool: POOL },
-    );
-
-  let stopFollowing: (() => void) | null = null;
-
-  const start = (): (() => void) => {
-    if (stopFollowing !== null) {
-      return stopFollowing;
-    }
-    const follow = (): void => {
-      const label = currentLabel();
-      const current = permissions.get();
-      if (label === null) {
-        permissions.set(NONE);
-        return;
-      }
-      if (current.status === 'none' || current.label !== label) {
-        permissions.set({ status: 'reading', label });
-      }
-      void refresh();
-    };
-    follow();
-    const unsubscribe = product.subscribe(follow);
-    stopFollowing = () => {
-      unsubscribe();
-      stopFollowing = null;
-    };
-    return stopFollowing;
-  };
-
   return {
-    state: permissions,
+    /** The permissions of the product on show, as last read or written. */
+    state,
+    /** The panel change not yet settled. */
     pending,
+    /**
+     * Subscribes to every change this store makes and returns the unsubscribe. A listener that throws is reported, and
+     * the others still hear the change.
+     */
     onChanged: changes.subscribe,
+    /**
+     * Reads the statuses again. Calls that queue behind a read share the next one. Never rejects, as a failed read is
+     * reported and the store shows it failed.
+     */
     refresh,
+    /**
+     * A change made in the panel. A newer one supersedes it: dropped while queued, no more retries while running. Never
+     * rejects, as a failure is reported, the store read again and the failed permissions resolved.
+     */
     change,
+    /**
+     * A decision from the product's own prompt, never superseded. A write that still fails after the last attempt
+     * rejects, so the product hears it, and an aborted prompt changes nothing once its writes are back.
+     */
     recordPromptDecision,
+    /**
+     * Reads on every load, a reload of the same product included, until the returned stop. A second call returns it
+     * too. Never throws.
+     */
     start,
   };
+}
+
+function isSameState(current: ProductPermissionsState, next: ProductPermissionsState): boolean {
+  if (
+    current.status !== next.status ||
+    (current.status !== 'none' && next.status !== 'none' && current.label !== next.label)
+  ) {
+    return false;
+  }
+  if (current.status === 'read' && next.status === 'read') {
+    return (
+      current.statuses.length === next.statuses.length &&
+      current.statuses.every((status, i) => status === next.statuses[i])
+    );
+  }
+  return true;
+}
+
+function getPermissionStatus(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
+  return statuses[NAMES.indexOf(name)] ?? 'ask';
 }

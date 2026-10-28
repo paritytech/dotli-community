@@ -22,7 +22,7 @@ import { loadBridge, loadPolkadotApi } from '../lazy.js';
 import { pagePermissions } from './pagePermissions.js';
 import { ALL_PERMISSIONS, type PermissionAuthorizations } from './permissions.js';
 import { dotliVersion } from './runtimeConfig.js';
-import { getProductState } from './state/product.js';
+import { productState } from './state/productState.js';
 
 // Defined in the host's Astro config, so undefined in tests and other bundles.
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
@@ -97,7 +97,7 @@ async function formatDiagnosticsReport(
     `  Worker cache: ${cache.skipWorkerCache ? 'off' : 'on'}`,
   );
 
-  const product = getProductState();
+  const product = productState.get();
   if (product.status === 'loaded') {
     const productLabel = product.label;
     lines.push('', 'Permissions:');
@@ -168,7 +168,7 @@ function buildBaseDiagnosticsRows(page: DiagnosticsPage = browserPage()): Diagno
     rows.push(copyableRow('Bulletin Node', cfg.bulletin.rpcs[0] ?? 'n/a'));
   }
 
-  const product = getProductState();
+  const product = productState.get();
   if (product.status === 'loaded' && product.manifestVersion !== undefined) {
     rows.push(['Manifest', `v${String(product.manifestVersion)}`]);
   }
@@ -280,7 +280,7 @@ export function createFinalizedBlockQuery(
 // The bridge and `polkadot-api` chunks load only when a report asks for chain heights.
 const queryFinalizedBlock = createFinalizedBlockQuery({
   provider: async genesisHash =>
-    isRemoteChainSupported(genesisHash) ? (await loadBridge()).hostChainProvider(genesisHash) : null,
+    isRemoteChainSupported(genesisHash) ? (await loadBridge()).getHostChainProvider(genesisHash) : null,
   createClient: async provider => (await loadPolkadotApi()).createClient(provider),
 });
 

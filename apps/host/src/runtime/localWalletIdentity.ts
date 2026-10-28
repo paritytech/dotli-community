@@ -9,7 +9,7 @@ import { reportExpected, spans as S } from '@dotli/metrics';
 import type { LocalWalletIdentity } from '@dotli/protocol';
 import { createAsyncTaskPool, fromHex } from '@dotli/shared';
 import { loadPolkadotApi } from '../lazy.js';
-import { hostChainProvider } from './hostCallbacks/chain.js';
+import { getHostChainProvider } from './hostCallbacks/getHostChainProvider.js';
 import { siteWallet } from './session/siteWallet.js';
 import { reportLocalWalletFailure, type LocalWalletFailureReason } from './walletFailure.js';
 import type { LocalWalletBoot } from './walletBoot.js';
@@ -88,7 +88,7 @@ function isConsumer(value: unknown): value is { lite_username: Uint8Array } {
 }
 
 async function readFromPeople(identityAccountId: string): Promise<string | null> {
-  const provider = hostChainProvider(getActiveServicesConfig().people.genesis);
+  const provider = getHostChainProvider(getActiveServicesConfig().people.genesis);
   if (provider === null) {
     throw new Error('People is not reachable on this chain backend');
   }

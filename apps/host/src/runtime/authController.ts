@@ -12,13 +12,13 @@ import { getErrorMessage, log, type ReadableStore, registerStoreStateReset } fro
 import type { AuthCommands } from './coreLogin.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blockingModalQueue.js';
 import { createInPageSignIn, type InPagePhrase } from './inPageSignIn.js';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 import type { SessionResult } from './sessionHandoff/messages.js';
 import type { SessionHandoff } from './sessionHandoff/opener.js';
 import type { AuthModalPort, CloseAuthModalOptions, SignInRoute } from './signInRoute.js';
-import { authStore } from './state/auth.js';
-import { sessionElsewhereStore } from './state/sessionElsewhere.js';
-import { getWalletMode, type WalletMode } from './state/walletMode.js';
+import { authState } from './state/authState.js';
+import { sessionElsewhereState } from './state/sessionElsewhereState.js';
+import { walletModeState, type WalletMode } from './state/walletModeState.js';
 import { createWindowSignIn } from './windowSignIn.js';
 import { authModalStore, resetAuthModal, updateAuthModal } from '../state/authModal.js';
 import { loginFailureView, type LoginFailureKind } from './loginFailure.js';
@@ -358,9 +358,9 @@ export function initAuthController(
   pageController?.dispose();
   const controller = createAuthController({
     ...deps,
-    auth: authStore,
-    walletMode: getWalletMode,
-    elsewhere: () => sessionElsewhereStore.get(),
+    auth: authState.store,
+    walletMode: walletModeState.getMode,
+    elsewhere: () => sessionElsewhereState.store.get(),
   });
   if (pageModalBroken) {
     controller.disableAuthModal();

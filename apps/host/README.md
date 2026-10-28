@@ -51,7 +51,15 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
   signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
   reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
-  state (topbar, URL pill, chat panel, network) lives with the page.
+  state (topbar, URL pill, chat panel, network) lives with the page. Each runtime state is one entity object: its
+  read-only store, its getters and the setters its writers call. The chat store and the product connections it reaches
+  the product through are each a factory with the page's instance beside it, and the store stamps messages with the
+  clock it is given.
+- Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
+  the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
+  The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
+  lease that pool, and the chain watcher watches it. A product's local storage is one factory whose page instance every
+  core shares, so a write from one runtime reaches the subscriptions of the others.
 - Each entry chooses the page's role once, before the boot reads anything: a page (a product), the landing page, a
   preview opened on its own, a preview its preview host frames, the sign-in window or the sign-out window. The role
   alone says where a sign-in runs, whether the page shares the signed-in flag or raises it, whether a stored wallet

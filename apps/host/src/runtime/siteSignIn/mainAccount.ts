@@ -16,8 +16,8 @@ import {
   type StatusCell,
 } from '@dotli/shared';
 import type { CoreLease } from '../pageCore.js';
-import type { DotliAuthState } from '../session/authState.js';
-import type { TruapiSessionUiState } from '../session/uiState.js';
+import type { DotliAuthState } from '../session/types.js';
+import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
 
 /** The main account an action runs for. The round never sends any of it. */
 export type MainAccount = {

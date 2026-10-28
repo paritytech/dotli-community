@@ -10,7 +10,7 @@ import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRender
 import { createSyncStore, isShallowEqual, type SyncStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
 import { chatUnreadLabel } from '../../components/chat/unread.js';
-import type { ChatMessageRecord } from '../../runtime/chat/store.js';
+import type { ChatMessageRecord } from '../../runtime/chat/createChatStore.js';
 import type { ChatRenderSink } from '../../components/chat/chat.js';
 import type { ChatBot, ChatContacts, ChatConversation, ChatFeed, ChatRoom } from '../../components/chat/chat.js';
 import type { ChatButtonProps } from '../../components/chat/ChatButton.js';
@@ -240,13 +240,13 @@ export function chatStage(initial: Partial<StageState> = {}): ChatStage {
       return stage.sendError === null ? Promise.resolve() : Promise.reject(stage.sendError);
     },
     actions: {
-      renderCustomMessage: (_productId, request, sink) => {
+      renderCustomMessage: ({ request, sink }) => {
         stage.renders.push({ request, sink });
         return () => {
           disposed += 1;
         };
       },
-      triggerAction: (_productId, roomId, trigger) => {
+      triggerAction: ({ roomId, trigger }) => {
         stage.actions.push({ roomId, messageId: trigger.messageId, actionId: trigger.actionId });
         return Promise.resolve();
       },

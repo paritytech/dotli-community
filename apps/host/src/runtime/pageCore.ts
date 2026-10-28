@@ -163,7 +163,7 @@ export function createPageCore(deps: PageCoreDeps): PageCore {
       blockingModalScope,
       phoneRequests,
       isLive: () => cores.has(core),
-      inService: () => cores.has(core) && !core.faulted,
+      isInService: () => cores.has(core) && !core.faulted,
     };
     const attempt = async (): Promise<BootedCoreRuntime> => {
       const booted = await deps.bootRuntime(request);

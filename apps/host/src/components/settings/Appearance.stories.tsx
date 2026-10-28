@@ -6,17 +6,17 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { AppearancePicker } from './Appearance.js';
-import type { ThemePref } from '../../runtime/state/theme.js';
+import type { ThemePreference } from '../../runtime/state/themeState.js';
 
-const [theme, setThemeSignal] = createSignal<ThemePref>('system');
+const [theme, setThemeSignal] = createSignal<ThemePreference>('system');
 
-function setTheme(next: ThemePref): void {
+function setTheme(next: ThemePreference): void {
   setThemeSignal(next);
   flush();
 }
 
 /** What the picker asked of the page. */
-const settingsAsked = { themes: [] as ThemePref[] };
+const settingsAsked = { themes: new Array<ThemePreference>() };
 
 /** The picker as a page gives it the story's theme. A pick applies as the page's theme would. */
 function StoryAppearance(): JSX.Element {

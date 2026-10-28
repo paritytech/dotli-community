@@ -11,7 +11,7 @@ import type {
 } from '@parity/truapi-host/web';
 import { log } from '@dotli/shared';
 import type { BlockingModalScope } from './blockingModalQueue.js';
-import type { CreateHostCallbacksOptions } from './hostCallbacks/handlers.js';
+import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import type { LocalWalletCoreModule } from '../lazy.js';
 import type { PageProduct } from './pageCore.js';
 import type { PhoneRequestTracker } from './phoneRequests.js';
@@ -29,7 +29,7 @@ export type CoreRuntimeRequest = {
    * False once the core went down or turned stale. Leases can keep a retired core running, and only the core in
    * service speaks for the session.
    */
-  inService: () => boolean;
+  isInService: () => boolean;
   /**
    * Keeps the core's session slot in memory, so nothing it does reaches the stored session or the signed-in flag. For
    * a core that must never write either.
@@ -56,12 +56,12 @@ export type CoreRuntimeDeps = {
     createWebWorkerPairingHostRuntime: typeof createWebWorkerPairingHostRuntime;
     HostWorker: new () => Worker;
   }>;
-  createCallbacks: (options: CreateHostCallbacksOptions) => WebWorkerHostCallbacks;
+  createCallbacks: (options: CoreCallbacksParams) => WebWorkerHostCallbacks;
   loadLocalWalletCore: () => Promise<Pick<LocalWalletCoreModule, 'bootLocalWalletCore'>>;
 };
 
 export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
-  return async ({ product, blockingModalScope, phoneRequests, isLive, inService, sessionInMemory = false }) => {
+  return async ({ product, blockingModalScope, phoneRequests, isLive, isInService, sessionInMemory = false }) => {
     const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
     const callbacksFor = (local: boolean): WebWorkerHostCallbacks =>
       deps.createCallbacks({
@@ -71,7 +71,7 @@ export function createCoreRuntimeBoot(deps: CoreRuntimeDeps): BootCoreRuntime {
         pairingHostGlobal: product.pairing?.hostGlobal,
         blockingModalScope,
         sessionInMemory: local || sessionInMemory,
-        inService,
+        isInService,
         phoneRequests,
       });
     // The wallet read and the host chunk load in parallel, so a Polkadot App boot waits on whichever is slower. The

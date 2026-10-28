@@ -19,7 +19,7 @@ import { getBackend, isLocalhost, isSharedWorkerAvailable, setSettings, type Set
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { loadBridge, loadRecoveryPhrase, type BridgeModule } from './lazy.js';
 import { createBlockingModalCoordinator } from './runtime/blockingModalQueue.js';
-import { setProductError } from './runtime/state/product.js';
+import { productState } from './runtime/state/productState.js';
 import { takePendingReset } from './runtime/pendingReset.js';
 import { readSharedSettings, writeSharedSettings } from './runtime/sharedMode.js';
 import { disableAuthModal, initAuthController } from './runtime/authController.js';
@@ -262,5 +262,5 @@ export function reportBootFailure(err: unknown): void {
       },
     },
   });
-  setProductError();
+  productState.setError();
 }

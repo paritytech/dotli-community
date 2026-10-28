@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { pageLocalStorage, type SafeStorage } from '@dotli/shared';
-import { setTheme, type ThemePref } from './runtime/state/theme.js';
+import { themeState, type ThemePreference } from './runtime/state/themeState.js';
 
 /** The stored choice's key, also cleared by a settings reset. */
 export const THEME_KEY = 'dotli-theme';
@@ -20,29 +20,29 @@ export type ThemeControllerDeps = {
 export type ThemeController = {
   /** Applies the stored choice and follows the OS while it is System, until the returned stop. */
   startTheme: () => () => void;
-  selectThemePref: (pref: ThemePref) => void;
+  selectThemePref: (preference: ThemePreference) => void;
 };
 
 export function createThemeController({ storage, colorScheme, root }: ThemeControllerDeps): ThemeController {
-  function getStoredThemePref(): ThemePref {
+  function getStoredThemePref(): ThemePreference {
     const stored = storage.getItem(THEME_KEY);
     return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
   }
 
-  function resolveTheme(pref: ThemePref): 'light' | 'dark' {
-    if (pref !== 'system') {
-      return pref;
+  function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
+    if (preference !== 'system') {
+      return preference;
     }
     return colorScheme().matches ? 'light' : 'dark';
   }
 
-  function applyThemePref(pref: ThemePref): void {
-    const resolved = resolveTheme(pref);
+  function applyThemePref(preference: ThemePreference): void {
+    const resolved = resolveTheme(preference);
     const element = root();
-    element.setAttribute('data-theme-pref', pref);
+    element.setAttribute('data-theme-pref', preference);
     element.setAttribute('data-theme', resolved);
     // The TrUAPI bridge follows this store to forward the theme to the product.
-    setTheme({ pref, resolved });
+    themeState.set({ preference, resolved });
   }
 
   return {
@@ -60,9 +60,9 @@ export function createThemeController({ storage, colorScheme, root }: ThemeContr
         os.removeEventListener('change', follow);
       };
     },
-    selectThemePref: pref => {
-      storage.setItem(THEME_KEY, pref);
-      applyThemePref(pref);
+    selectThemePref: preference => {
+      storage.setItem(THEME_KEY, preference);
+      applyThemePref(preference);
     },
   };
 }

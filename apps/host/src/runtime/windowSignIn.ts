@@ -6,11 +6,11 @@
 
 import { spans as S } from '@dotli/metrics';
 import { getErrorMessage } from '@dotli/shared';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 import type { SessionResult, SignInIntent } from './sessionHandoff/messages.js';
 import type { SessionHandoff, SignInOutcome } from './sessionHandoff/opener.js';
 import type { AuthModalPort, SignInRoute } from './signInRoute.js';
-import type { WalletMode } from './state/walletMode.js';
+import type { WalletMode } from './state/walletModeState.js';
 import { reportLocalWalletFailure, reportWalletFailure } from './walletFailure.js';
 
 export type WindowSignInDeps = {

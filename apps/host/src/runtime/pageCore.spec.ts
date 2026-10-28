@@ -580,7 +580,7 @@ describe('page core', () => {
     connection.close();
 
     // Then
-    expect(requests[0]?.inService()).toBe(true);
+    expect(requests[0]?.isInService()).toBe(true);
     expect(requests).toHaveLength(1);
   });
 
@@ -1239,9 +1239,9 @@ describe('page core retirement', () => {
 
     // Then
     expect(requests[0]?.isLive()).toBe(true);
-    expect(requests[0]?.inService()).toBe(false);
+    expect(requests[0]?.isInService()).toBe(false);
     await changes.until(() => outcomes.length === 2 && outcomes.at(-1) === 'ok');
-    expect(requests[1]?.inService()).toBe(true);
+    expect(requests[1]?.isInService()).toBe(true);
   });
 
   it('As a local wallet user whose pairing core turned stale, I keep it under my product while it stops speaking for my session', async () => {
@@ -1250,7 +1250,7 @@ describe('page core retirement', () => {
     const { core, requests, storeListeners, changes } = harness({ walletFound: () => walletFound });
     const lease = await core.acquire();
     await lease.connect();
-    expect(requests[0]?.inService()).toBe(true);
+    expect(requests[0]?.isInService()).toBe(true);
 
     // When
     walletFound = true;
@@ -1261,7 +1261,7 @@ describe('page core retirement', () => {
     // Then
     await changes.until(() => requests.length === 2);
     expect(requests[0]?.isLive()).toBe(true);
-    expect(requests[0]?.inService()).toBe(false);
+    expect(requests[0]?.isInService()).toBe(false);
   });
 
   it('As a user, I open another product while a login still holds the old core and it speaks for my session until it goes down', async () => {
@@ -1272,15 +1272,15 @@ describe('page core retirement', () => {
     await kept.connect();
     core.setProduct({ label: 'second' });
     await core.acquire();
-    expect(requests[0]?.inService()).toBe(true);
+    expect(requests[0]?.isInService()).toBe(true);
 
     // When the old core goes down
     nthRuntime(runtimes, 0).providers[0]?.goDown();
 
     // Then it stops speaking for the session, and the page dials nothing for the product it left
     expect(requests[0]?.isLive()).toBe(true);
-    expect(requests[0]?.inService()).toBe(false);
-    expect(requests[1]?.inService()).toBe(true);
+    expect(requests[0]?.isInService()).toBe(false);
+    expect(requests[1]?.isInService()).toBe(true);
     expect(requests).toHaveLength(2);
     expect(outcomes).toEqual(['ok', 'ok']);
   });
@@ -1345,7 +1345,7 @@ describe('page core with nobody holding it', () => {
     // Then
     expect(requests).toHaveLength(3);
     expect(lease.runtime).toBe(nthRuntime(runtimes, 2).runtime);
-    expect(requests[2]?.inService()).toBe(true);
+    expect(requests[2]?.isInService()).toBe(true);
   });
 
   it('As a product holding the core when it dies, I get a replacement at once', async () => {

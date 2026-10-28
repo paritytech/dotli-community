@@ -9,11 +9,11 @@ import type {
 } from '@parity/truapi-host/web';
 import { createBlockingModalCoordinator } from './blockingModalQueue.js';
 import { createCoreRuntimeBoot, type CoreRuntimeDeps } from './coreRuntime.js';
-import type { CreateHostCallbacksOptions } from './hostCallbacks/handlers.js';
+import type { CoreCallbacksParams } from './hostCallbacks/createHostCallbacks.js';
 import { createPhoneRequestTracker } from './phoneRequests.js';
 import type { BootLocalWalletCore } from './localWalletCore.js';
 import { createSyncStore } from '@dotli/shared';
-import type { WalletModeState } from './state/walletMode.js';
+import type { WalletModeState } from './state/walletModeState.js';
 import { createWalletBoot, type LocalWalletBoot } from './walletBoot.js';
 
 const WALLET: LocalWalletBoot = {
@@ -41,7 +41,7 @@ type Harness = {
       ) => Promise<WorkerPairingHostRuntime>
     >
   >;
-  callbackOptions: CreateHostCallbacksOptions[];
+  callbackOptions: CoreCallbacksParams[];
   bootLocalWalletCore: ReturnType<typeof vi.fn<BootLocalWalletCore>>;
 };
 
@@ -50,7 +50,7 @@ function harness(...reads: (LocalWalletBoot | null)[]): Harness {
     (_worker: Worker, _callbacks: WebWorkerHostCallbacks, _options: CreateWebWorkerPairingHostRuntimeOptions) =>
       Promise.resolve(RUNTIME),
   );
-  const callbackOptions: CreateHostCallbacksOptions[] = [];
+  const callbackOptions: CoreCallbacksParams[] = [];
   const bootLocalWalletCore = vi.fn<BootLocalWalletCore>(() => Promise.resolve(LOCAL_RUNTIME));
   return {
     create,
@@ -77,7 +77,7 @@ const request = {
   blockingModalScope: createBlockingModalCoordinator().createScope(),
   phoneRequests: createPhoneRequestTracker(),
   isLive: () => true,
-  inService: () => true,
+  isInService: () => true,
 };
 
 describe('core runtime boot', () => {
@@ -107,7 +107,7 @@ describe('core runtime boot', () => {
     await boot(request);
 
     // Then
-    expect(callbackOptions[0]?.inService).toBe(request.inService);
+    expect(callbackOptions[0]?.isInService).toBe(request.isInService);
   });
 
   it('As a user in the sign-out window, I open it and it boots a pairing core whose session stays in memory', async () => {
@@ -138,7 +138,7 @@ describe('core runtime boot', () => {
     expect(wallet).toBe(WALLET);
     expect(isLive).toBe(request.isLive);
     expect(callbackOptions).toEqual([expect.objectContaining({ sessionInMemory: true })]);
-    expect(callbackOptions[0]?.inService).toBe(request.inService);
+    expect(callbackOptions[0]?.isInService).toBe(request.isInService);
     expect(create).not.toHaveBeenCalled();
   });
 

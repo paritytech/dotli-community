@@ -4,12 +4,12 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
 import { createSyncStore, waitForStatus, type ReadableStore } from '@dotli/shared';
-import type { DotliAuthState } from '../session/authState.js';
-import { createCoreStorage } from '../session/coreStorage.js';
-import { pageSignInFlag } from '../session/signInFlag.js';
-import { createFakeSharedSessionStore } from '../session/coreStorage.fake.js';
-import { createFakeSessionPresence } from '../session/presence.fake.js';
-import { createSessionState } from '../session/sessionState.js';
+import type { DotliAuthState } from '../session/types.js';
+import { createCoreStorage } from '../session/createCoreStorage.js';
+import { createNonOwnerSignInFlag } from '../session/signInFlag.js';
+import { createFakeSharedSessionStore } from '../session/createCoreStorage.fake.js';
+import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
+import { createSessionState } from '../session/createSessionState.js';
 import { applySessionResult } from './applyResult.js';
 import type { SessionResult } from './messages.js';
 
@@ -34,9 +34,9 @@ function page(stored: { blob?: string; uiState?: string; wallet?: LocalWalletRea
   }
   const storage = createCoreStorage({
     shared,
-    flag: pageSignInFlag({
+    flag: createNonOwnerSignInFlag({
       presence: createFakeSessionPresence('present'),
-      storedSignIn: () => Promise.resolve('none'),
+      readStoredSignIn: () => Promise.resolve('none'),
     }),
   });
   const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' }, equals: () => false });
@@ -49,9 +49,9 @@ function page(stored: { blob?: string; uiState?: string; wallet?: LocalWalletRea
       presence: 'present',
     }),
     auth,
-    elsewhere: () => undefined,
+    setElsewhere: () => undefined,
     isLocalWallet: () => false,
-    offersResume: () => true,
+    isResumeOffered: () => true,
   });
   onTestFinished(session.start());
   const sessionChanges = vi.fn();

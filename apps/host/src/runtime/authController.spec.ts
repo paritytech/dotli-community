@@ -20,16 +20,16 @@ import {
   type BlockingModalScope,
   type HoldSlot,
 } from './blockingModalQueue.js';
-import type { DotliAuthState } from './session/authState.js';
+import type { DotliAuthState } from './session/types.js';
 import { authModalStore, resetAuthModal, type AuthModalState } from '../state/authModal.js';
-import { setAuthState } from './state/auth.js';
+import { authState } from './state/authState.js';
 import { createSyncStore, createDeferred, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
-import { setProductLoaded } from './state/product.js';
+import { productState } from './state/productState.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import type { SessionResult, SignInIntent } from './sessionHandoff/messages.js';
 import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/opener.js';
-import type { WalletMode } from './state/walletMode.js';
+import type { WalletMode } from './state/walletModeState.js';
 import type { WalletSwitchOutcome } from './walletSwitch.js';
 
 /** What a fake login answers, which the controller does not read. */
@@ -1573,8 +1573,8 @@ describe('auth controller on the page stores', () => {
         coordinator: createBlockingModalCoordinator(),
         commands: () => Promise.resolve(commands),
       });
-      setAuthState({ tag: 'Disconnected' });
-      setProductLoaded('localhost:3000', 'localhost:3000');
+      authState.set({ tag: 'Disconnected' });
+      productState.setLoaded({ label: 'localhost:3000', productId: 'localhost:3000' });
 
       // When
       startLogin();
@@ -1599,11 +1599,11 @@ describe('auth controller on the page stores', () => {
             cancelLogin: () => undefined,
           }),
       });
-      setAuthState({ tag: 'Disconnected' });
-      setProductLoaded('localhost:3000', 'localhost:3000');
+      authState.set({ tag: 'Disconnected' });
+      productState.setLoaded({ label: 'localhost:3000', productId: 'localhost:3000' });
 
       // When
-      setAuthState({ tag: 'LoginFailed', kind: 'Other', reason: 'Host failure' });
+      authState.set({ tag: 'LoginFailed', kind: 'Other', reason: 'Host failure' });
 
       // Then
       expect(getAuthModalState()).toMatchObject({

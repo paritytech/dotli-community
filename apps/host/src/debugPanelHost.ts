@@ -13,10 +13,10 @@ import { setDockInset } from './productFrameLayout.js';
 import { getTopbarState } from './state/topbar.js';
 import { closeDebugMode } from './settingsActions.js';
 import { importPhrase, logout } from './runtime/authController.js';
-import { authStore } from './runtime/state/auth.js';
+import { authState } from './runtime/state/authState.js';
 import { pageDiagnostics } from './runtime/diagnostics.js';
-import { productStore } from './runtime/state/product.js';
-import { walletModeStore } from './runtime/state/walletMode.js';
+import { productState } from './runtime/state/productState.js';
+import { walletModeState } from './runtime/state/walletModeState.js';
 
 /** One block's bytes by CID. */
 type BlockSource = (cid: string) => Promise<Uint8Array>;
@@ -33,9 +33,9 @@ export function archiveTransport(
 }
 
 export const debugPanelHost: DebugPanelHost = {
-  product: productStore,
-  auth: authStore,
-  walletMode: walletModeStore,
+  product: productState.store,
+  auth: authState.store,
+  walletMode: walletModeState.store,
   walletSwitch: { importPhrase, usePolkadotApp: logout },
   diagnostics: pageDiagnostics,
   archive: cid => readArchiveFiles(cid, archiveTransport(getBackend(), relayBlock)),

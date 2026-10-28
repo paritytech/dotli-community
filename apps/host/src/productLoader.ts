@@ -34,8 +34,8 @@ import { applyProductBranding } from './productBranding.js';
 import type { RecentLabels } from './recentLabels.js';
 import { startResolutionTrace, type CidCacheResult } from './resolutionTrace.js';
 import type { ProductFrame } from './runtime/productFrame.js';
-import { loggedInStore } from './runtime/state/auth.js';
-import { setProductError } from './runtime/state/product.js';
+import { authState } from './runtime/state/authState.js';
+import { productState } from './runtime/state/productState.js';
 import { startShieldAutoHide } from './shieldAutohide.js';
 import { setVerificationShieldState, showProductPill, type ShieldState } from './state/urlPill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbarAutohide.js';
@@ -139,7 +139,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
 
   // The shield shows how the content was checked, and the topbar may fold from then on.
   const shieldState: ShieldState = isVerifiedSession(backend) ? 'verified' : 'trusted';
-  const autoHide = startShieldAutoHide({ loggedIn: loggedInStore, arm: armTopbarAutoHide });
+  const autoHide = startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: armTopbarAutoHide });
   const settleShield = (): void => {
     setVerificationShieldState(shieldState);
     autoHide.settle();
@@ -210,7 +210,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
       payload: { label, reason: getErrorMessage(err), dependency },
     });
     // Once for the failed load, however many times the user moves between its error screens.
-    setProductError();
+    productState.setError();
     options.failureScreen.show({ error, cause: err, label, backend });
   };
   /**
@@ -397,7 +397,7 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     if (cid === null) {
       // Its recent pill stays: the name may still resolve on another network.
       showNoContentError(label);
-      setProductError();
+      productState.setError();
       endJourney();
       trace.finish('no_content');
       performance.mark('dotli:main:end');

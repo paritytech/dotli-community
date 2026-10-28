@@ -13,7 +13,7 @@ import { byId, byTestId } from '@dotli/ui/testing';
 import type { AuthCommands } from '../../src/runtime/coreLogin.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/blockingModalQueue.js';
 import { initAuthController, startLogin } from '../../src/runtime/authController.js';
-import { setAuthState } from '../../src/runtime/state/auth.js';
+import { authState } from '../../src/runtime/state/authState.js';
 import { getTopbarState, reportBlockingModals, setTopbarVisible } from '../../src/state/topbar.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/productFrameView.js';
@@ -51,7 +51,7 @@ function mountIsland(placement: 'center' | 'topbar-end' = 'topbar-end'): void {
     applyResult: () => Promise.reject(new Error('This page has no sign-in window')),
     inPagePhrase: () => Promise.reject(new Error('No phrase import in this test')),
   });
-  setAuthState({ tag: 'Disconnected' });
+  authState.set({ tag: 'Disconnected' });
   const slot = document.createElement('div');
   document.body.append(slot);
   unmount = render(() => <AuthModal placement={placement} />, slot);

@@ -12,11 +12,10 @@ import {
   type ReadableStore,
   type SafeStorage,
 } from '@dotli/shared';
-import { chatStore } from '../runtime/chat/chatStore.js';
-import type { ChatChange, ChatStore, ChatView } from '../runtime/chat/store.js';
+import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
 import { labelToProductId } from '../runtime/runtimeConfig.js';
-import { getProductState, productStore } from '../runtime/state/product.js';
-import { getLoggedIn, loggedInStore } from '../runtime/state/auth.js';
+import { productState } from '../runtime/state/productState.js';
+import { authState } from '../runtime/state/authState.js';
 import { getTopbarState, topbarStore } from './topbar.js';
 
 const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';
@@ -189,7 +188,7 @@ export function startChatPanelState(
 ): () => void {
   widthStorage = storage;
   const followProduct = (): void => {
-    const product = getProductState();
+    const product = productState.get();
     if (product.status === 'error') {
       update({ label: null, runtimeProductId: null, available: false });
       return;
@@ -230,16 +229,16 @@ export function startChatPanelState(
 
   const follow = (): void => {
     update({
-      loggedIn: getLoggedIn(),
+      loggedIn: authState.isLoggedIn(),
       topbarVisible: getTopbarState().visible,
     });
   };
   follow();
   followProduct();
   const unsubscribe = [
-    loggedInStore.subscribe(follow),
+    authState.loggedInStore.subscribe(follow),
     topbarStore.subscribe(follow),
-    productStore.subscribe(followProduct),
+    productState.store.subscribe(followProduct),
     chat.subscribe(onChatChange),
   ];
   return () => {

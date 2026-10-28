@@ -4,11 +4,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot, createSignal, flush } from 'solid-js';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
-import { createChatConnections, createChatStore, type ChatStore } from '../runtime/chat/store.js';
+import { createChatConnections } from '../runtime/chat/createChatConnections.js';
+import { createChatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
 import { labelToProductId } from '../runtime/runtimeConfig.js';
-import { setAuthState } from '../runtime/state/auth.js';
-import { setProductError, setProductLoaded } from '../runtime/state/product.js';
-import { memoryChatRepo, recordingConnection } from '../runtime/chat/store.fake.js';
+import { authState } from '../runtime/state/authState.js';
+import { productState } from '../runtime/state/productState.js';
+import { createRecordingConnection } from '../runtime/chat/createChatConnections.fake.js';
+import { createMemoryChatRepo } from '../runtime/chat/createChatStore.fake.js';
 import { chatPanelStore, startChatPanelState, openChatRoom, setChatPanelOpen } from '../state/chatPanel.js';
 import { useChatDock } from './chat.js';
 
@@ -22,11 +24,11 @@ let stopState: () => void = () => undefined;
 
 beforeEach(() => {
   connections = createChatConnections();
-  chat = createChatStore({ repo: memoryChatRepo(), connections });
+  chat = createChatStore({ repo: createMemoryChatRepo(), connections });
   local = createMemoryStorage();
   stopState = startChatPanelState(chat, local);
-  setProductLoaded(LABEL, PRODUCT, { chat: true });
-  setAuthState({ tag: 'Connected', session: { connected: true } });
+  productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
+  authState.set({ tag: 'Connected', session: { connected: true } });
 });
 
 afterEach(() => {
@@ -66,7 +68,7 @@ describe('useChatDock', () => {
 
   it("As a user, my reply goes to the loaded product's room", async () => {
     // Given
-    const connection = recordingConnection();
+    const connection = createRecordingConnection();
     connections.register(PRODUCT, connection);
     const { dock, dispose } = mountDock();
 
@@ -88,7 +90,7 @@ describe('useChatDock', () => {
     expect(dock.conversation.productName()).toBe(LABEL);
 
     // When
-    setProductLoaded(LABEL, PRODUCT, { chat: true, displayName: 'Chatty' });
+    productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true, displayName: 'Chatty' } });
     flush();
 
     // Then
@@ -134,7 +136,11 @@ describe('useChatDock', () => {
     // Given
     await chat.createRoom(PRODUCT, { roomId: 'main', name: 'Main', icon: '' });
     setChatPanelOpen(true);
-    await chat.postProductMessage(PRODUCT, 'main', { tag: 'Text', value: { text: 'hi' } });
+    await chat.postProductMessage({
+      productId: PRODUCT,
+      roomId: 'main',
+      content: { tag: 'Text', value: { text: 'hi' } },
+    });
     expect(chatPanelStore.get().unreadByRoom).toEqual({ main: 1 });
     const { dock, dispose } = mountDock();
 
@@ -206,7 +212,7 @@ describe('useChatDock', () => {
     expect(dock.available()).toBe(true);
 
     // When
-    setProductError();
+    productState.setError();
     flush();
 
     // Then

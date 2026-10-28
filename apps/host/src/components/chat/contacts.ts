@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChatRoomFooter } from '../../runtime/chat/store.js';
+import type { ChatRoomFooter } from '../../runtime/chat/createChatStore.js';
 import type { ChatBot, ChatRoom } from './chat.js';
 
 /** A room or a registered bot. A bot's conversation is keyed by its botId, which the product uses as the roomId. */

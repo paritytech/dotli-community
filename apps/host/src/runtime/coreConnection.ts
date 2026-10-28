@@ -11,7 +11,7 @@ import { debugBus } from '@dotli/truapi-debug';
 import { loadWireDescriber } from '../lazy.js';
 import { reportLazyMiss } from '../lazyMiss.js';
 import type { CoreConnection } from './pageCore.js';
-import { getWalletMode } from './state/walletMode.js';
+import { walletModeState } from './state/walletModeState.js';
 
 export type CoreProvider = WireProvider &
   Pick<
@@ -52,7 +52,7 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
     return;
   }
   const { requestId, payload } = decoded.value;
-  const decodeWalletFrames = getWalletMode() === 'local';
+  const decodeWalletFrames = walletModeState.getMode() === 'local';
   // Off the transport path: a panel listener that throws becomes a rejection the page reports, and delivery goes on.
   void preloadWireDescriber().then(
     ({ describeWireFrame }) => {

@@ -7,13 +7,13 @@
 import { m, spans as S } from '@dotli/metrics';
 import { log, type AsyncTaskPool } from '@dotli/shared';
 import type { PageCore } from './pageCore.js';
-import type { HostCoreStorage, SessionRead } from './session/coreStorage.js';
-import type { SessionPresence } from './session/presence.js';
+import type { HostCoreStorage, SessionRead } from './session/createCoreStorage.js';
+import type { SessionPresence } from './session/types.js';
 import { readWalletOrFailed, type SiteWallet, type WalletRead } from './session/siteWallet.js';
-import type { SessionState } from './session/sessionState.js';
+import type { SessionState } from './session/createSessionState.js';
 import type { SessionHandoff } from './sessionHandoff/opener.js';
 import type { SignInFlag } from './session/signInFlag.js';
-import type { WalletMode } from './state/walletMode.js';
+import type { WalletMode } from './state/walletModeState.js';
 import { reportWalletFailure } from './walletFailure.js';
 import type { WalletSwitchOutcome } from './walletSwitch.js';
 
@@ -140,7 +140,7 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
     }
     if (blob !== null) {
       try {
-        await deps.flag.clear(() => deps.copy.dropSessionIf(blob));
+        await deps.flag.clear({ drop: () => deps.copy.dropSessionIf(blob) });
       } catch (error) {
         // The flag is gone, so the next load drops the copy by the restore rule.
         reportLetGoFailure(error, 'drop');
@@ -238,7 +238,7 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
     } else {
       const { blob } = read;
       try {
-        await deps.flag.clear(() => deps.copy.dropSessionIf(blob));
+        await deps.flag.clear({ drop: () => deps.copy.dropSessionIf(blob) });
         log.event('local sign-out let the paired session go untold, as the page pairs in place', { flow: 'wallet' });
         m.count(S.WALLET_LOGOUT, { outcome: 'error', reason: 'no_window' });
       } catch (error) {
@@ -250,7 +250,7 @@ export function createPageSignOut(deps: PageSignOutDeps): PageSignOut {
     await forgetGrants();
     // Either outcome ends the sign-out here: the page reloads, or the switch already reported why it stayed.
     await deps.leaveLocalWallet(async () => {
-      await deps.flag.clear(() => forgetWalletRead(wallet));
+      await deps.flag.clear({ drop: () => forgetWalletRead(wallet) });
     });
     return untold ? UNTOLD_IN_PLACE : TOLD;
   }

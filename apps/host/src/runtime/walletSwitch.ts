@@ -7,7 +7,7 @@
 
 import { log } from '@dotli/shared';
 import { reportLocalWalletFailure } from './walletFailure.js';
-import { signInFlag } from './session/coreStorage.js';
+import { signInFlag } from './session/createCoreStorage.js';
 import { siteWallet } from './session/siteWallet.js';
 
 /** `reloading` once the switch is stored for every app, `failed` after the failure was reported. */

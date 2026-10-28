@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { memorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
-import { setAuthState } from '../../src/runtime/state/auth.js';
+import { authState } from '../../src/runtime/state/authState.js';
 import { createRecentLabels, type RecentLabels } from '../../src/recentLabels.js';
 import { mountLandingPage } from '../helpers/landing.js';
 import { appears, byId, query } from '@dotli/ui/testing';
@@ -37,7 +37,7 @@ beforeEach(() => {
   setPageUrl('http://localhost:5173/');
   shared = memorySharedChannel();
   // A visitor not signed in, whose saved session has been read.
-  setAuthState({ tag: 'Disconnected' });
+  authState.set({ tag: 'Disconnected' });
   localStorage.clear();
   captures.exception.mockClear();
   document.body.innerHTML = '';

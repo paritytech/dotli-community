@@ -8,7 +8,7 @@
 import type { SandboxChannel } from '@dotli/sandbox-wire';
 import { createAsyncTaskPool } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blockingModalQueue.js';
-import type { SessionState } from './session/sessionState.js';
+import type { SessionState } from './session/createSessionState.js';
 import type { BootCoreRuntime, BootedCoreRuntime } from './coreRuntime.js';
 import { createPageCore, LANDING_PRODUCT, type PageCore, type PageProduct } from './pageCore.js';
 import { createPhoneRequestTracker } from './phoneRequests.js';
@@ -28,7 +28,7 @@ export type BridgeDeps = {
   notify: ProductFrameDeps['notify'];
   /** Starts telling the network panel who holds each host chain and its best blocks, without holding any. */
   watchChains: () => void;
-  session: Pick<SessionState, 'coresGone'>;
+  session: Pick<SessionState, 'reportCoresGone'>;
 };
 
 export type Bridge = {
@@ -90,7 +90,7 @@ export function createBridge(deps: BridgeDeps): Bridge {
       blockingModalScope,
       phoneRequests,
       isLive: () => live,
-      inService: () => false,
+      isInService: () => false,
       sessionInMemory: true,
     });
     const ending = {
@@ -129,7 +129,7 @@ export function createBridge(deps: BridgeDeps): Bridge {
           onStoredSessionChanged: deps.onStoredSessionChanged,
           coordinator,
           onCoresGone: () => {
-            deps.session.coresGone();
+            deps.session.reportCoresGone();
           },
         }),
       };

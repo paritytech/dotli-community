@@ -52,7 +52,7 @@ import { checkReturnTo } from './runtime/siteSignIn/siteReturn.js';
 import { sealProbe, sealRedirect } from './runtime/siteSignIn/siteSeal.js';
 import { forgetsUnsentGrant } from './runtime/siteSignIn/siteRound.js';
 import { openSiteSignIn, openSiteTransaction, type SiteWindowDeps } from './runtime/siteSignIn/siteWindow.js';
-import { authStore } from './runtime/state/auth.js';
+import { authState } from './runtime/state/authState.js';
 import { windowSettings } from './sessionSettings.js';
 import {
   setCloseIntent,
@@ -168,7 +168,7 @@ function startFlow(
   flow: Pick<WindowFlowDeps, 'responder' | 'intent' | 'pageLabel' | 'deliver' | 'close'>,
 ): WindowFlow {
   const started = createWindowFlow({
-    auth: authStore,
+    auth: authState.store,
     commands: bridgeModule.authCommands,
     ...bridgeModule.windowStore,
     loadPhrase: loadRecoveryPhrase,

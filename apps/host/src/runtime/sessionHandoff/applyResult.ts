@@ -6,7 +6,7 @@
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { areBytesEqual, log } from '@dotli/shared';
-import type { HostCoreStorage } from '../session/coreStorage.js';
+import type { HostCoreStorage } from '../session/createCoreStorage.js';
 import type { SessionResult } from './messages.js';
 
 export type ApplyResultDeps = {

@@ -29,7 +29,7 @@ import {
   Well,
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
-import type { ThemePref } from '../../runtime/state/theme.js';
+import type { ThemePreference } from '../../runtime/state/themeState.js';
 import type { ApplySettings, SavedSettings } from './settings.js';
 import s from './SettingsContent.module.css';
 
@@ -70,8 +70,8 @@ export type SettingsContentProps = {
   settings: Accessor<SavedSettings | null>;
   /** dotli's version, beside the heading. */
   version: string;
-  theme: Accessor<ThemePref>;
-  onTheme: (theme: ThemePref) => void;
+  theme: Accessor<ThemePreference>;
+  onTheme: (theme: ThemePreference) => void;
   onApply: ApplySettings;
   /** The debug panel is on in this tab, so Advanced offers no way to turn it on. */
   debugMode: Accessor<boolean>;
