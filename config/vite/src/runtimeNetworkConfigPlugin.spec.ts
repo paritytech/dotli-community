@@ -5,25 +5,28 @@ import { describe, expect, it } from 'vitest';
 import {
   RUNTIME_NETWORK_CONFIG_HEADERS,
   RUNTIME_NETWORK_CONFIG_PATH,
-  runtimeNetworkConfigScriptBody,
+  createRuntimeNetworkConfigBody,
 } from './runtimeNetworkConfigPlugin.js';
-import { nginxHeaders } from './testing/nginx.js';
+import { readNginxHeaders } from './testing/nginx.js';
 
-describe('runtimeNetworkConfigScriptBody', () => {
+describe('createRuntimeNetworkConfigBody', () => {
   it('As an operator, I set DOTLI_NETWORK and the page receives my config as written', () => {
     // Given
     const raw = ' {"enabled":["previewnet"]} ';
 
     // When
-    const body = runtimeNetworkConfigScriptBody(raw);
+    const body = createRuntimeNetworkConfigBody(raw);
 
     // Then
     expect(body).toBe('window.__DOTLI_NETWORK__ = {"enabled":["previewnet"]};\n');
   });
 
   it('As an operator, I leave DOTLI_NETWORK unset or blank and the page keeps the built-in networks', () => {
+    // Given a blank DOTLI_NETWORK beside an unset one
+    const blank = '  ';
+
     // When
-    const bodies = [runtimeNetworkConfigScriptBody(undefined), runtimeNetworkConfigScriptBody('  ')];
+    const bodies = [createRuntimeNetworkConfigBody(undefined), createRuntimeNetworkConfigBody(blank)];
 
     // Then
     expect(bodies).toEqual(['window.__DOTLI_NETWORK__ = {};\n', 'window.__DOTLI_NETWORK__ = {};\n']);
@@ -34,7 +37,7 @@ describe('runtimeNetworkConfigScriptBody', () => {
     const raw = '{"enabled":';
 
     // When
-    const read = (): string => runtimeNetworkConfigScriptBody(raw);
+    const read = (): string => createRuntimeNetworkConfigBody(raw);
 
     // Then
     expect(read).toThrow(/DOTLI_NETWORK is not valid JSON/);
@@ -44,7 +47,7 @@ describe('runtimeNetworkConfigScriptBody', () => {
 describe('the config script against nginx', () => {
   it("As an operator, I run a Node server and the config script carries the container nginx's headers", () => {
     // Given
-    const nginx = nginxHeaders('docker/dotli-runtime-network.conf');
+    const nginx = readNginxHeaders('docker/dotli-runtime-network.conf');
 
     // When
     const headers = { ...RUNTIME_NETWORK_CONFIG_HEADERS };
@@ -54,7 +57,9 @@ describe('the config script against nginx', () => {
     expect(RUNTIME_NETWORK_CONFIG_PATH).toBe('/dotli-network.js');
   });
 
-  it('As another site, I cannot read the config, which may name private endpoints', () => {
+  it('As an operator, I serve the config script and another site cannot read it, since it may name private endpoints', () => {
+    // Given the config script's built-in headers
+
     // When
     const headers = { ...RUNTIME_NETWORK_CONFIG_HEADERS };
 

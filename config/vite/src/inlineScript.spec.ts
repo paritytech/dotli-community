@@ -7,44 +7,55 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createContext, runInContext } from 'node:vm';
 import type { Rolldown } from 'vite';
-import { bundleClassicScript, classicScriptOf, inlineScriptFile } from './inlineScript.js';
+import { bundleClassicScript, toClassicScript, getInlineScriptFile } from './inlineScript.js';
 
-describe('inlineScriptFile', () => {
-  it('As a dotli developer, I mark a module for inlining with the inline-script query', () => {
+/** A bundler output file with only the fields the script conversion reads. */
+type OutputFile =
+  | { type: 'chunk'; fileName: string; code: string; moduleIds: string[] }
+  | { type: 'asset'; fileName: string; source: string };
+
+/** Returns `files` typed as the bundler's output, with only the fields the script conversion reads. */
+function toBundlerOutput(files: OutputFile[]): (Rolldown.OutputChunk | Rolldown.OutputAsset)[] {
+  // The conversion reads only each file's type, name, code and modules, so the bundler's other fields stay out.
+  return files as (Rolldown.OutputChunk | Rolldown.OutputAsset)[];
+}
+
+describe('getInlineScriptFile', () => {
+  it('As a dotli developer, I add the inline-script query to a module id and only that id is marked for inlining', () => {
     // Given
     const ids = ['/src/head/theme.ts?inline-script', '/src/head/theme.ts', '/src/head/theme.ts?raw'];
 
     // When
-    const files = ids.map(inlineScriptFile);
+    const files = ids.map(getInlineScriptFile);
 
     // Then
     expect(files).toEqual(['/src/head/theme.ts', null, null]);
   });
 });
 
-describe('classicScriptOf', () => {
-  it('As a dotli developer, I fail the build when a script would need more than its one inline tag', () => {
+describe('toClassicScript', () => {
+  it('As a dotli developer, I inline a script that would need more than its one inline tag and the build fails', () => {
     // Given a bundle that also emitted an asset
-    const output = [
+    const output = toBundlerOutput([
       { type: 'chunk', fileName: 'theme.js', code: '', moduleIds: [] },
       { type: 'asset', fileName: 'theme.css', source: '' },
-    ] as unknown as Rolldown.OutputChunk[];
+    ]);
 
     // When
-    const pick = (): unknown => classicScriptOf('theme.ts', output);
+    const pick = (): unknown => toClassicScript('theme.ts', output);
 
     // Then
     expect(pick).toThrow('theme.ts must bundle to one script, got: theme.js, theme.css');
   });
 
-  it('As a dotli developer, I fail the build when a script holds text that would end its inline tag', () => {
+  it('As a dotli developer, I inline a script holding text that would end its inline tag and the build fails', () => {
     // Given
-    const output = [
+    const output = toBundlerOutput([
       { type: 'chunk', fileName: 'banner.js', code: 'document.write("</script>")', moduleIds: [] },
-    ] as unknown as Rolldown.OutputChunk[];
+    ]);
 
     // When
-    const pick = (): unknown => classicScriptOf('banner.ts', output);
+    const pick = (): unknown => toClassicScript('banner.ts', output);
 
     // Then
     expect(pick).toThrow('would end its inline tag early');
@@ -63,7 +74,7 @@ describe('bundleClassicScript', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('As a dotli developer, I get a module and its imports as one script that runs on its own', async () => {
+  it('As a dotli developer, I bundle a module that imports a helper and get one classic script that runs on its own', async () => {
     // Given an entry that imports a helper
     writeFileSync(
       join(dir, 'mark.ts'),
@@ -76,7 +87,7 @@ describe('bundleClassicScript', () => {
 
     // When it is bundled and run as a classic script, with nothing but its global
     const script = await bundleClassicScript(join(dir, 'entry.ts'), 'es2022');
-    const page = { marks: [] as string[] };
+    const page: { marks: string[] } = { marks: [] };
     runInContext(script.code, createContext({ page }));
 
     // Then it ran the helper, and it names both modules for the rebuild

@@ -4,13 +4,13 @@
 
 // The head tags the shell and the landing page share.
 import { RUNTIME_NETWORK_CONFIG_PATH } from '@config/vite/runtime-network-config';
-import { socialMetaAttributes } from '@config/vite/social-meta';
+import { listSocialMetaAttributes } from '@config/vite/social-meta';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
 // Its script is blocking and classic on purpose: it sets the network config global before the module bundle runs.
 const runtimeNetworkConfig = import.meta.env.VITE_RUNTIME_NETWORK_CONFIG === 'true';
-const socialMeta = socialMetaAttributes({
+const socialMeta = listSocialMetaAttributes({
   title: TITLE,
   description:
     'A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.',
@@ -29,7 +29,7 @@ const socialMeta = socialMetaAttributes({
 />
 <title>{TITLE}</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-{socialMeta.map(attrs => (
-  <meta {...attrs} />
+{socialMeta.map(attributes => (
+  <meta {...attributes} />
 ))}
 <link rel="manifest" href={`${base}manifest.webmanifest`} />

@@ -6,9 +6,9 @@
 
 import type { Plugin, PluginOption } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { appBuildOptions } from './buildOptions.ts';
+import { createAppBuildOptions } from './buildOptions.ts';
 
-export type ServiceWorkerOptions = {
+type Params = {
   /** The worker source's folder, relative to the app root. */
   srcDir: string;
   /** The worker source, such as `app-sw.ts`, served as `app-sw.js`. */
@@ -18,13 +18,16 @@ export type ServiceWorkerOptions = {
 };
 
 // The PWA plugin's inner build sets only target, minify and sourcemap, so the shared minify chain is added here.
-const buildOptions: Plugin = {
+const BUILD_OPTIONS_PLUGIN: Plugin = {
   name: 'service-worker-build-options',
-  config: () => ({ build: appBuildOptions({ codeSplitting: false }) }),
+  config: () => ({ build: createAppBuildOptions({ output: { codeSplitting: false } }) }),
 };
 
-/** Builds the worker after the page. The page registers it itself, and dev serves the source as it is. */
-export function serviceWorker({ srcDir, filename, plugins }: ServiceWorkerOptions): PluginOption[] {
+/**
+ * Returns the plugins that build the worker after the page, with no registration script. Dev serves the source as it
+ * is. Never throws.
+ */
+export function serviceWorker({ srcDir, filename, plugins }: Params): PluginOption[] {
   return VitePWA({
     strategies: 'injectManifest',
     srcDir,
@@ -36,7 +39,7 @@ export function serviceWorker({ srcDir, filename, plugins }: ServiceWorkerOption
       injectionPoint: '',
       rollupFormat: 'es',
       sourcemap: false,
-      buildPlugins: { vite: [buildOptions, ...(plugins?.() ?? [])] },
+      buildPlugins: { vite: [BUILD_OPTIONS_PLUGIN, ...(plugins?.() ?? [])] },
     },
   });
 }

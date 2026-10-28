@@ -8,10 +8,43 @@
 import { dirname } from 'node:path';
 import { build, type Plugin, type Rolldown } from 'vite';
 
+export type ClassicScript = {
+  /** The script's text. */
+  code: string;
+  /** Every module the script holds, so a change to any of them rebuilds it. */
+  modules: string[];
+};
+
 const QUERY = 'inline-script';
 
-/** The module an `?inline-script` import names, or null for any other id. */
-export function inlineScriptFile(id: string): string | null {
+/**
+ * Returns the plugin that resolves `import script from './module.js?inline-script'` to the module's bundled classic
+ * script, as a string. Its load fails the build when the module does not bundle to one inline-safe script.
+ */
+export function inlineScript(): Plugin {
+  let target: string | string[] | false = 'es2022';
+  return {
+    name: 'dotli-inline-script',
+    enforce: 'pre',
+    configResolved(config) {
+      target = config.build.target;
+    },
+    async load(id) {
+      const file = getInlineScriptFile(id);
+      if (file === null) {
+        return null;
+      }
+      const script = await bundleClassicScript(file, target);
+      for (const module of script.modules) {
+        this.addWatchFile(module);
+      }
+      return `export default ${JSON.stringify(script.code)};\n`;
+    },
+  };
+}
+
+/** Returns the module an `?inline-script` import names, or null for any other id. Never throws. */
+export function getInlineScriptFile(id: string): string | null {
   const [file, query] = id.split('?', 2);
   if (file === undefined || query === undefined) {
     return null;
@@ -19,14 +52,11 @@ export function inlineScriptFile(id: string): string | null {
   return new URLSearchParams(query).has(QUERY) ? file : null;
 }
 
-export type ClassicScript = {
-  code: string;
-  /** Every module the script holds, so a change to any of them rebuilds it. */
-  modules: string[];
-};
-
-/** The one chunk a script bundle must come to. Anything else could not run from a single inline tag. */
-export function classicScriptOf(
+/**
+ * Returns the one chunk a script bundle must come to. Throws on anything else, which could not run from a single
+ * inline tag.
+ */
+export function toClassicScript(
   file: string,
   output: readonly (Rolldown.OutputChunk | Rolldown.OutputAsset)[],
 ): ClassicScript {
@@ -42,7 +72,10 @@ export function classicScriptOf(
   return { code: chunk.code, modules: chunk.moduleIds.filter(id => !id.startsWith('\0')) };
 }
 
-/** Bundles `file` and what it imports into one self-contained, minified classic script. */
+/**
+ * Bundles `file` and what it imports into one self-contained, minified classic script. Rejects when the build fails or
+ * does not come to one inline-safe script.
+ */
 export async function bundleClassicScript(file: string, target: string | string[] | false): Promise<ClassicScript> {
   const result = await build({
     configFile: false,
@@ -70,32 +103,5 @@ export async function bundleClassicScript(file: string, target: string | string[
   if (only === undefined || more.length > 0) {
     throw new Error(`${file} built ${String(more.length + 1)} outputs, expected one`);
   }
-  return classicScriptOf(file, only.output);
-}
-
-/**
- * Resolves `import script from './module.js?inline-script'` to the module's bundled classic script, as Vite's own
- * `?raw` resolves to a file's text.
- */
-export function inlineScript(): Plugin {
-  let target: string | string[] | false = 'es2022';
-  return {
-    name: 'dotli-inline-script',
-    enforce: 'pre',
-    configResolved(config) {
-      target = config.build.target;
-    },
-    async load(id) {
-      const file = inlineScriptFile(id);
-      if (file === null) {
-        return null;
-      }
-      const script = await bundleClassicScript(file, target);
-      for (const module of script.modules) {
-        this.addWatchFile(module);
-      }
-      // A string literal, as `?raw` emits it.
-      return `export default ${JSON.stringify(script.code)};\n`;
-    },
-  };
+  return toClassicScript(file, only.output);
 }

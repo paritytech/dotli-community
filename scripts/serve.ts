@@ -3,8 +3,7 @@
 
 // The release tarball's server for environments without Docker. Node builtins only, so the bundled serve.mjs runs
 // under node and bun.
-// Routes and headers come from the shared serving table, which a spec holds to nginx's snippets. Sandbox isolation
-// depends on them.
+// Sandbox isolation depends on the routes and headers it sends.
 // Binds loopback by default because the bundle only works over `*.localhost`, so remote use goes through a tunnel.
 
 import { createServer, type ServerResponse } from 'node:http';
@@ -14,18 +13,29 @@ import { pipeline } from 'node:stream';
 import {
   RUNTIME_NETWORK_CONFIG_HEADERS,
   RUNTIME_NETWORK_CONFIG_PATH,
-  runtimeNetworkConfigScriptBody,
+  createRuntimeNetworkConfigBody,
 } from '@config/vite/runtime-network-config';
 import {
   createLocalServing,
-  headerPolicy,
-  pathInBuild,
-  requestHostname,
+  getHeaderPolicy,
+  getPathInBuild,
+  getRequestHostname,
   resolveFile,
   type HeaderPolicy,
   type Site,
 } from '@config/vite/serving';
 import { LOCAL_ROOTS } from '@dotli/config/local-roots';
+
+type Params = {
+  response: ServerResponse;
+  /** The file on disk, before any precompressed sibling is chosen. */
+  filePath: string;
+  /** The path the file is served at, which picks its cache headers. */
+  pathname: string;
+  policy: HeaderPolicy;
+  /** The request's `Accept-Encoding`, or empty when it has none. */
+  acceptEncoding: string;
+};
 
 const PORT = Number(process.env['PORT'] ?? '5173');
 const HOST = process.env['HOST'] ?? '127.0.0.1';
@@ -38,8 +48,27 @@ const DIRS: Record<Site, string> = {
   protocol: join(DIST, 'protocol'),
 };
 
-/** Matches `brotli_static` and `gzip_static`. Brotli first, as the smaller. */
-function negotiate(filePath: string, acceptEncoding: string): { path: string; encoding?: string } {
+function send({ response, filePath, pathname, policy, acceptEncoding }: Params): void {
+  const chosen = negotiateEncoding(filePath, acceptEncoding);
+  const headers = serving.getResponseHeaders({ filePath, pathname, policy });
+  if (chosen.encoding !== undefined) {
+    headers['Content-Encoding'] = chosen.encoding;
+    headers['Vary'] = 'Accept-Encoding';
+  }
+  response.writeHead(200, headers);
+  // A file that fails to read, such as one swapped out by a redeploy, ends this response and not the server.
+  // Node and Bun pass `undefined` on success, whatever the types say.
+  pipeline(createReadStream(chosen.path), response, (error: NodeJS.ErrnoException | null | undefined) => {
+    // A client that leaves mid-file is no server failure.
+    if (error === null || error === undefined || error.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+      return;
+    }
+    console.error(`serve: could not send ${chosen.path}: ${error.message}`);
+  });
+}
+
+/** Picks the precompressed sibling the client accepts, brotli first, as the smaller. Never throws. */
+function negotiateEncoding(filePath: string, acceptEncoding: string): { path: string; encoding?: string } {
   if (acceptEncoding.includes('br') && existsSync(`${filePath}.br`)) {
     return { path: `${filePath}.br`, encoding: 'br' };
   }
@@ -47,31 +76,6 @@ function negotiate(filePath: string, acceptEncoding: string): { path: string; en
     return { path: `${filePath}.gz`, encoding: 'gzip' };
   }
   return { path: filePath };
-}
-
-function send(
-  res: ServerResponse,
-  filePath: string,
-  pathname: string,
-  policy: HeaderPolicy,
-  acceptEncoding: string,
-): void {
-  const chosen = negotiate(filePath, acceptEncoding);
-  const headers = serving.responseHeaders(filePath, pathname, policy);
-  if (chosen.encoding !== undefined) {
-    headers['Content-Encoding'] = chosen.encoding;
-    headers['Vary'] = 'Accept-Encoding';
-  }
-  res.writeHead(200, headers);
-  // A file that fails to read, such as one swapped out by a redeploy, ends this response and not the server.
-  // Node and Bun pass `undefined` on success, whatever the types say.
-  pipeline(createReadStream(chosen.path), res, (err: NodeJS.ErrnoException | null | undefined) => {
-    // A client that leaves mid-file is no server failure.
-    if (err === null || err === undefined || err.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-      return;
-    }
-    console.error(`serve: could not send ${chosen.path}: ${err.message}`);
-  });
 }
 
 if (PORT === 80) {
@@ -95,35 +99,41 @@ for (const dir of Object.values(DIRS)) {
 }
 
 // Read once, so a $DOTLI_NETWORK that is not JSON stops the server here instead of failing its first request.
-const runtimeConfigBody = runtimeNetworkConfigScriptBody(process.env['DOTLI_NETWORK']);
+const RUNTIME_CONFIG_BODY = createRuntimeNetworkConfigBody(process.env['DOTLI_NETWORK']);
 
-const server = createServer((req, res) => {
+const server = createServer((request, response) => {
   let url: URL;
   try {
-    url = new URL(req.url ?? '/', 'http://placeholder');
+    url = new URL(request.url ?? '/', 'http://placeholder');
   } catch {
     // A request line no URL can hold, such as `//[`, is the client's error. Throwing here would stop the server.
-    res.writeHead(400).end('Bad Request');
+    response.writeHead(400).end('Bad Request');
     return;
   }
-  const route = serving.routeFor(requestHostname(req.headers), url.pathname);
+  const route = serving.getRoute(getRequestHostname(request.headers), url.pathname);
   const dir = DIRS[route.site];
-  const acceptEncoding = req.headers['accept-encoding'] ?? '';
+  const acceptEncoding = request.headers['accept-encoding'] ?? '';
   const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
 
   // Ahead of the SPA fallback, whose index.html would fail as a script syntax error rather than a missing file.
   if (url.pathname === RUNTIME_NETWORK_CONFIG_PATH) {
-    res.writeHead(200, { ...RUNTIME_NETWORK_CONFIG_HEADERS });
-    res.end(runtimeConfigBody);
+    response.writeHead(200, { ...RUNTIME_NETWORK_CONFIG_HEADERS });
+    response.end(RUNTIME_CONFIG_BODY);
     return;
   }
 
-  const resolved = resolveFile(dir, route, pathInBuild(route, url.pathname));
+  const resolved = resolveFile({ dir, route, pathname: getPathInBuild(route, url.pathname) });
   if (resolved === undefined) {
-    res.writeHead(404).end('Not Found');
+    response.writeHead(404).end('Not Found');
     return;
   }
-  send(res, resolved.file, resolved.pathname, headerPolicy(route, url.pathname), accept);
+  send({
+    response,
+    filePath: resolved.file,
+    pathname: resolved.pathname,
+    policy: getHeaderPolicy(route, url.pathname),
+    acceptEncoding: accept,
+  });
 });
 
 // PORT=0 picks a free port, so the log reports the bound one.

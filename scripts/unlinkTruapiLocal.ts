@@ -8,42 +8,48 @@ import { existsSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const packageNames = ['truapi', 'truapi-host', 'truapi-provider'];
-const installRoots = [
-  resolve(dotliRoot, 'node_modules/@parity'),
-  resolve(dotliRoot, 'apps/host/node_modules/@parity'),
-  resolve(dotliRoot, 'packages/chains/node_modules/@parity'),
+const DOTLI_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PACKAGE_NAMES = ['truapi', 'truapi-host', 'truapi-provider'];
+const INSTALL_ROOTS = [
+  resolve(DOTLI_ROOT, 'node_modules/@parity'),
+  resolve(DOTLI_ROOT, 'apps/host/node_modules/@parity'),
+  resolve(DOTLI_ROOT, 'packages/chains/node_modules/@parity'),
 ];
 
-for (const root of installRoots) {
-  for (const name of packageNames) {
+for (const root of INSTALL_ROOTS) {
+  for (const name of PACKAGE_NAMES) {
     rmSync(resolve(root, name), { force: true, recursive: true });
   }
 }
 
 const result = spawnSync('npm', ['install'], {
-  cwd: dotliRoot,
+  cwd: DOTLI_ROOT,
   stdio: 'inherit',
 });
 if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-const productRoot = resolve(dotliRoot, process.env['E2E_PRODUCT_REPO'] ?? '../host-playground');
-const nestedTruapi = resolve(productRoot, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
-const linkedProductSdkHost = resolve(productRoot, 'node_modules/@parity/product-sdk-host');
-const isSymlink = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
-if (existsSync(resolve(productRoot, 'package.json')) && (isSymlink(nestedTruapi) || isSymlink(linkedProductSdkHost))) {
-  if (isSymlink(linkedProductSdkHost)) {
-    rmSync(linkedProductSdkHost, { force: true, recursive: true });
+const PRODUCT_ROOT = resolve(DOTLI_ROOT, process.env['E2E_PRODUCT_REPO'] ?? '../host-playground');
+const NESTED_TRUAPI = resolve(PRODUCT_ROOT, 'node_modules/@parity/product-sdk-host/node_modules/@parity/truapi');
+const LINKED_PRODUCT_SDK_HOST = resolve(PRODUCT_ROOT, 'node_modules/@parity/product-sdk-host');
+if (
+  existsSync(resolve(PRODUCT_ROOT, 'package.json')) &&
+  (isSymlink(NESTED_TRUAPI) || isSymlink(LINKED_PRODUCT_SDK_HOST))
+) {
+  if (isSymlink(LINKED_PRODUCT_SDK_HOST)) {
+    rmSync(LINKED_PRODUCT_SDK_HOST, { force: true, recursive: true });
   }
-  rmSync(nestedTruapi, { force: true, recursive: true });
+  rmSync(NESTED_TRUAPI, { force: true, recursive: true });
   const productInstall = spawnSync('yarn', ['install', '--force'], {
-    cwd: productRoot,
+    cwd: PRODUCT_ROOT,
     stdio: 'inherit',
   });
   if (productInstall.status !== 0) {
     process.exit(productInstall.status ?? 1);
   }
+}
+
+function isSymlink(path: string): boolean {
+  return lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
 }

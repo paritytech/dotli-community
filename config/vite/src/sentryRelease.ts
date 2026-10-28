@@ -5,14 +5,68 @@
 // is a prerelease of the next patch, so it sorts between the two, with its commit as build metadata.
 
 import { execSync } from 'node:child_process';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
+import { loadEnv, type PluginOption } from 'vite';
 
 const PACKAGE = 'dotli';
 
 // `git describe --long` output: tag, commits since it, abbreviated hash.
 const DESCRIBE = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?-(\d+)-g([0-9a-f]+)$/;
 
-/** The release name for a `git describe --tags --long` result, or null if it names no semver tag. */
-export function releaseFromDescribe(describe: string): string | null {
+/**
+ * Sets `VITE_SENTRY_RELEASE` unless already given, so the SDK and the sourcemap upload agree, and returns it. Never
+ * throws. Left unset without git tags, and then returns `undefined`.
+ */
+export function provideSentryRelease(cwd: string): string | undefined {
+  const given = process.env['VITE_SENTRY_RELEASE'];
+  if (given !== undefined && given !== '') {
+    return given;
+  }
+  let describe: string;
+  try {
+    describe = execSync("git describe --tags --long --abbrev=7 --match 'v[0-9]*'", {
+      cwd,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString();
+  } catch {
+    // No git, or no tag reachable from HEAD.
+    return undefined;
+  }
+  const release = parseReleaseName(describe);
+  if (release === null) {
+    return undefined;
+  }
+  process.env['VITE_SENTRY_RELEASE'] = release;
+  return release;
+}
+
+/**
+ * Returns the plugin that uploads the source maps of the app in `appDir` when metrics are on and a token is set, and
+ * `false` otherwise, so local builds keep them. Never throws.
+ */
+export function createSentryUpload(appDir: string, envDir: string): PluginOption {
+  if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
+    return false;
+  }
+  const plugins = [
+    sentryVitePlugin({
+      org: 'paritytech',
+      project: 'dotli',
+      telemetry: false,
+      authToken: process.env['SENTRY_AUTH_TOKEN'],
+      release: getUploadRelease(appDir),
+      sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+    }),
+  ].flat();
+  // Decided per build, from the `.env` files and process env of the build's mode.
+  return plugins.map(plugin => ({
+    ...plugin,
+    apply: (_config, { mode }) => loadEnv(mode, envDir, 'VITE_')['VITE_METRICS'] === 'true',
+  }));
+}
+
+/** Returns the release name for a `git describe --tags --long` result, or null if it names no semver tag. */
+export function parseReleaseName(describe: string): string | null {
   const match = DESCRIBE.exec(describe.trim());
   if (match === null) {
     return null;
@@ -31,37 +85,10 @@ export function releaseFromDescribe(describe: string): string | null {
 }
 
 /**
- * Sets `VITE_SENTRY_RELEASE` unless already given, so the SDK and the sourcemap upload agree.
- * Left unset without git tags, where the SDK falls back to the commit.
- */
-export function provideSentryRelease(cwd: string): string | undefined {
-  const given = process.env['VITE_SENTRY_RELEASE'];
-  if (given !== undefined && given !== '') {
-    return given;
-  }
-  let describe: string;
-  try {
-    describe = execSync("git describe --tags --long --abbrev=7 --match 'v[0-9]*'", {
-      cwd,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).toString();
-  } catch {
-    // No git, or no tag reachable from HEAD.
-    return undefined;
-  }
-  const release = releaseFromDescribe(describe);
-  if (release === null) {
-    return undefined;
-  }
-  process.env['VITE_SENTRY_RELEASE'] = release;
-  return release;
-}
-
-/**
  * The sourcemap upload's `release`, with commits read from git for suspect commits.
  * `ignoreMissing` because the previous release may be a commit-named one git does not know.
  */
-export function sentryUploadRelease(
+function getUploadRelease(
   cwd: string,
 ): { name: string; setCommits: { auto: true; ignoreMissing: true } } | Record<string, never> {
   const name = provideSentryRelease(cwd) ?? process.env['VITE_COMMIT_SHA'];

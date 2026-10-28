@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { dependencyVersions } from './dependencyVersions.js';
+import { listDependencyVersions } from './dependencyVersions.js';
 
 let root = '';
 
@@ -18,8 +18,8 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('dependencyVersions', () => {
-  it('As the diagnostics panel, I get the installed version of each direct dependency in a scope, once and sorted', () => {
+describe('listDependencyVersions', () => {
+  it('As a dotli developer, I list the dependencies of a scope and get the installed version of each direct one, once and sorted', () => {
     // Given two workspaces sharing a hoisted dependency, one with its own nested copy of another
     root = mkdtempSync(join(tmpdir(), 'dotli-versions-'));
     write('apps/host/package.json', { dependencies: { '@scope/b': '^2', other: '^1' } });
@@ -34,7 +34,7 @@ describe('dependencyVersions', () => {
     write('node_modules/other/package.json', { name: 'other', version: '1.0.0' });
 
     // When
-    const versions = dependencyVersions(root, ['@scope/']);
+    const versions = listDependencyVersions(root, ['@scope/']);
 
     // Then
     expect(versions).toEqual([
@@ -43,13 +43,13 @@ describe('dependencyVersions', () => {
     ]);
   });
 
-  it('As the diagnostics panel, a dependency that is not installed is left out rather than failing the build', () => {
+  it('As a dotli developer, I list a scope with a dependency that is not installed and it is left out rather than failing the build', () => {
     // Given
     root = mkdtempSync(join(tmpdir(), 'dotli-versions-'));
     write('packages/chains/package.json', { dependencies: { '@scope/missing': '^1' } });
 
     // When
-    const versions = dependencyVersions(root, ['@scope/']);
+    const versions = listDependencyVersions(root, ['@scope/']);
 
     // Then
     expect(versions).toEqual([]);

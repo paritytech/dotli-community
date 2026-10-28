@@ -4,16 +4,41 @@
 // Syncs every workspace package.json `version` to the release tag, so built artifacts carry the release version.
 //   node scripts/setVersion.ts [<version>]          # default from $RELEASE_TAG, $GITHUB_REF_NAME or $GITHUB_REF
 //   node scripts/setVersion.ts --check [<version>]  # every package at <version>, or sharing one
-// The lockfile embeds workspace versions, so run `npm install` after a local bump. CI runs this after `npm ci`.
+// The lockfile embeds workspace versions, so run `npm install` after a local bump.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+type PackageVersion = {
+  file: string;
+  version: string;
+  text: string;
+};
+
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Tolerates a leading "v".
 const SEMVER = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
+
+function main(): void {
+  const args = process.argv.slice(2);
+  const check = args.includes('--check');
+  const positional = args.find(a => !a.startsWith('-'));
+  const target = resolveTargetVersion(positional);
+  const packages = readVersionedPackages();
+
+  if (check) {
+    runCheck(packages, target);
+    return;
+  }
+  if (target === null) {
+    throw new Error(
+      'No version given. Pass one (e.g. `node scripts/setVersion.ts 0.6.1`) or set RELEASE_TAG / GITHUB_REF_NAME.',
+    );
+  }
+  runSet(packages, target);
+}
 
 function normalizeVersion(raw: string): string {
   const version = SEMVER.exec(raw.trim())?.[1];
@@ -38,12 +63,13 @@ function resolveTargetVersion(positional: string | undefined): string | null {
 
 /** Every workspace package.json (from the root `workspaces` globs) plus the root. */
 function findPackageJsons(): string[] {
-  const rootPkgPath = join(REPO_ROOT, 'package.json');
-  const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf8')) as {
+  const rootPackagePath = join(REPO_ROOT, 'package.json');
+  // The repo's own root package.json, whose `workspaces` is a list of globs.
+  const rootPackage = JSON.parse(readFileSync(rootPackagePath, 'utf8')) as {
     workspaces?: string[];
   };
-  const out = [rootPkgPath];
-  for (const glob of rootPkg.workspaces ?? []) {
+  const paths = [rootPackagePath];
+  for (const glob of rootPackage.workspaces ?? []) {
     // The repo only uses the `dir/*` form.
     const base = glob.endsWith('/*') ? glob.slice(0, -2) : glob;
     const baseDir = join(REPO_ROOT, base);
@@ -51,59 +77,57 @@ function findPackageJsons(): string[] {
       continue;
     }
     for (const entry of readdirSync(baseDir)) {
-      const pkgPath = join(baseDir, entry, 'package.json');
-      if (existsSync(pkgPath) && statSync(pkgPath).isFile()) {
-        out.push(pkgPath);
+      const packagePath = join(baseDir, entry, 'package.json');
+      if (!existsSync(packagePath) || !statSync(packagePath).isFile()) {
+        continue;
       }
+      paths.push(packagePath);
     }
   }
-  return out;
+  return paths;
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const rel = (p: string): string => relative(REPO_ROOT, p) || 'package.json';
+function toRelativePath(path: string): string {
+  return relative(REPO_ROOT, path) || 'package.json';
+}
 
-type PkgVersion = {
-  file: string;
-  version: string;
-  text: string;
-};
-
-function readVersionedPackages(): PkgVersion[] {
-  const result: PkgVersion[] = [];
+function readVersionedPackages(): PackageVersion[] {
+  const result: PackageVersion[] = [];
   for (const file of findPackageJsons()) {
     const text = readFileSync(file, 'utf8');
-    const pkg = JSON.parse(text) as { version?: unknown };
-    if (typeof pkg.version === 'string') {
-      result.push({ file, version: pkg.version, text });
+    // A package.json is an object, and the check below reads only `version`.
+    const packageJson = JSON.parse(text) as { version?: unknown };
+    if (typeof packageJson.version === 'string') {
+      result.push({ file, version: packageJson.version, text });
     }
   }
   return result;
 }
 
 /** Rewrites only the top-level `version` field, preserving formatting. */
-function writeVersion(pkg: PkgVersion, target: string): void {
-  const re = new RegExp(`("version"\\s*:\\s*")${escapeRegExp(pkg.version)}(")`);
-  const updated = pkg.text.replace(re, `$1${target}$2`);
-  if (updated === pkg.text) {
-    throw new Error(`Could not locate the version field in ${rel(pkg.file)}`);
+function writeVersion(packageVersion: PackageVersion, target: string): void {
+  const pattern = new RegExp(`("version"\\s*:\\s*")${escapeRegExp(packageVersion.version)}(")`);
+  const updated = packageVersion.text.replace(pattern, `$1${target}$2`);
+  if (updated === packageVersion.text) {
+    throw new Error(`Could not locate the version field in ${toRelativePath(packageVersion.file)}`);
   }
-  writeFileSync(pkg.file, updated);
+  writeFileSync(packageVersion.file, updated);
 }
 
-function runCheck(packages: PkgVersion[], target: string | null): void {
+function runCheck(packages: PackageVersion[], target: string | null): void {
   // With no explicit target, "in sync" means every package shares one version.
   const reference = target ?? packages[0]?.version ?? null;
   if (reference === null) {
-    console.error('No package.json with a version field found.');
+    console.error(`No package.json with a version field found under ${REPO_ROOT}.`);
     process.exit(1);
   }
-  const mismatches = packages.filter(p => p.version !== reference);
-  for (const p of mismatches) {
-    console.error(`✗ ${rel(p.file)}: ${p.version} (expected ${reference})`);
+  const mismatches = packages.filter(entry => entry.version !== reference);
+  for (const mismatch of mismatches) {
+    console.error(`✗ ${toRelativePath(mismatch.file)}: ${mismatch.version} (expected ${reference})`);
   }
   if (mismatches.length > 0) {
     console.error(
@@ -115,14 +139,14 @@ function runCheck(packages: PkgVersion[], target: string | null): void {
   console.log(`All ${String(packages.length)} package versions are ${reference}.`);
 }
 
-function runSet(packages: PkgVersion[], target: string): void {
+function runSet(packages: PackageVersion[], target: string): void {
   let changed = 0;
-  for (const pkg of packages) {
-    if (pkg.version === target) {
+  for (const packageVersion of packages) {
+    if (packageVersion.version === target) {
       continue;
     }
-    writeVersion(pkg, target);
-    console.log(`✓ ${rel(pkg.file)}: ${pkg.version} to ${target}`);
+    writeVersion(packageVersion, target);
+    console.log(`✓ ${toRelativePath(packageVersion.file)}: ${packageVersion.version} to ${target}`);
     changed++;
   }
   console.log(
@@ -132,28 +156,9 @@ function runSet(packages: PkgVersion[], target: string): void {
   );
 }
 
-function main(): void {
-  const args = process.argv.slice(2);
-  const check = args.includes('--check');
-  const positional = args.find(a => !a.startsWith('-'));
-  const target = resolveTargetVersion(positional);
-  const packages = readVersionedPackages();
-
-  if (check) {
-    runCheck(packages, target);
-    return;
-  }
-  if (target === null) {
-    throw new Error(
-      'No version given. Pass one (e.g. `node scripts/setVersion.ts 0.6.1`) or set RELEASE_TAG / GITHUB_REF_NAME.',
-    );
-  }
-  runSet(packages, target);
-}
-
 try {
   main();
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }

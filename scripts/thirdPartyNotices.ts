@@ -10,6 +10,16 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { format, resolveConfig } from 'prettier';
 
+type LockEntry = {
+  name?: string;
+  license?: unknown;
+  link?: boolean;
+};
+
+type Lockfile = {
+  packages: Record<string, LockEntry>;
+};
+
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT = join(REPO_ROOT, 'THIRD_PARTY_NOTICES.md');
 
@@ -58,21 +68,12 @@ FSL-1.1-Apache-2.0) terms is used to build the application and is not redistribu
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (\`MPL-2.0\`), unmodified and with its license header.`;
 
-type LockEntry = {
-  name?: string;
-  license?: unknown;
-  link?: boolean;
-};
-
-type Lockfile = {
-  packages: Record<string, LockEntry>;
-};
-
-function sectionOf(license: unknown, path: string): string {
+function getSection(license: unknown, path: string): string {
   if (typeof license !== 'string') {
     throw new Error(`${path}: no SPDX license in package-lock.json (${JSON.stringify(license)})`);
   }
   const section = ALIASES[license] ?? license;
+  // Widened to search the tuple for any string, as `section` may be one it does not hold.
   if (!(SECTIONS as readonly string[]).includes(section)) {
     throw new Error(`${path}: license ${license} is not reviewed; add it to SECTIONS in scripts/thirdPartyNotices.ts`);
   }
@@ -80,7 +81,8 @@ function sectionOf(license: unknown, path: string): string {
 }
 
 /** Each installed third-party package name, with the sections its versions fall under. */
-function installedPackages(): Map<string, Set<string>> {
+function listInstalledPackages(): Map<string, Set<string>> {
+  // npm writes package-lock.json, and only the fields `Lockfile` names are read.
   const lock = JSON.parse(readFileSync(join(REPO_ROOT, 'package-lock.json'), 'utf8')) as Lockfile;
   const packages = new Map<string, Set<string>>();
   for (const [path, entry] of Object.entries(lock.packages)) {
@@ -95,13 +97,13 @@ function installedPackages(): Map<string, Set<string>> {
       continue;
     }
     const sections = packages.get(name) ?? new Set<string>();
-    sections.add(sectionOf(entry.license, path));
+    sections.add(getSection(entry.license, path));
     packages.set(name, sections);
   }
   return packages;
 }
 
-function render(packages: Map<string, Set<string>>): string {
+function renderNotices(packages: Map<string, Set<string>>): string {
   const bySection = new Map<string, string[]>();
   for (const [name, sections] of packages) {
     for (const section of sections) {
@@ -120,7 +122,7 @@ function render(packages: Map<string, Set<string>>): string {
   return [INTRO, note, ...sections].join('\n\n') + '\n';
 }
 
-const markdown = render(installedPackages());
+const MARKDOWN = renderNotices(listInstalledPackages());
 const options = (await resolveConfig(OUTPUT)) ?? {};
-writeFileSync(OUTPUT, await format(markdown, { ...options, filepath: OUTPUT }));
+writeFileSync(OUTPUT, await format(MARKDOWN, { ...options, filepath: OUTPUT }));
 console.log(`Wrote ${OUTPUT}`);

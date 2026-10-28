@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Refreshes the vendored Public Suffix List the session window reads. Run with each release.
+// Refreshes the vendored Public Suffix List. Run with each release.
 
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

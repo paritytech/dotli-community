@@ -8,6 +8,13 @@
 
 import type { BuildEnvironmentOptions, Rolldown, TerserOptions } from 'vite';
 
+type WorkerRolldownOptions = Omit<Rolldown.RolldownOptions, 'plugins' | 'input' | 'onwarn' | 'preserveEntrySignatures'>;
+
+type Params = {
+  /** Output options the bundle adds to the shared ones. */
+  output?: Rolldown.OutputOptions;
+};
+
 const TERSER_OPTIONS: TerserOptions = {
   ecma: 2020,
   module: true,
@@ -29,13 +36,20 @@ const OXC_MINIFY: Rolldown.MinifyOptions = {
   codegen: { removeWhitespace: true },
 };
 
-type WorkerRolldownOptions = Omit<Rolldown.RolldownOptions, 'plugins' | 'input' | 'onwarn' | 'preserveEntrySignatures'>;
+/** Returns the `build` options for an app bundle. Spread first, then set the rest. Never throws. */
+export function createAppBuildOptions({ output = {} }: Params = {}): BuildEnvironmentOptions {
+  return {
+    minify: 'terser',
+    terserOptions: TERSER_OPTIONS,
+    rolldownOptions: createRolldownOptions({ output }),
+  };
+}
 
 /**
- * Rolldown options for app and worker bundles.
+ * Returns the Rolldown options for app and worker bundles. Never throws.
  * Lazy barrels stop a static re-export of a lazily loaded module from pinning it into the barrel importer's chunk.
  */
-export function rolldownOptions(output: Rolldown.OutputOptions = {}): WorkerRolldownOptions {
+export function createRolldownOptions({ output = {} }: Params = {}): WorkerRolldownOptions {
   return {
     experimental: { lazyBarrel: true },
     treeshake: {
@@ -43,14 +57,5 @@ export function rolldownOptions(output: Rolldown.OutputOptions = {}): WorkerRoll
       unknownGlobalSideEffects: false,
     },
     output: { ...output, minify: OXC_MINIFY },
-  };
-}
-
-/** `build` options for an app bundle. Spread first, then set the rest. */
-export function appBuildOptions(output: Rolldown.OutputOptions = {}): BuildEnvironmentOptions {
-  return {
-    minify: 'terser',
-    terserOptions: TERSER_OPTIONS,
-    rolldownOptions: rolldownOptions(output),
   };
 }

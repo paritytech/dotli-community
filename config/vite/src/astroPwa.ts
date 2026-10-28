@@ -10,14 +10,15 @@ import type { Plugin, PluginOption } from 'vite';
 import { VitePWA, type VitePluginPWAAPI, type VitePWAOptions } from 'vite-plugin-pwa';
 
 /**
- * The web manifest and service worker for an Astro site. The page links the manifest and registers the worker itself.
+ * Returns the integration that adds the web manifest and service worker to an Astro site. Injects no manifest link and
+ * no worker registration. Its build-done hook rejects when generating the worker fails.
  */
 export function astroPwa(options: Partial<VitePWAOptions>): AstroIntegration {
   let api: VitePluginPWAAPI | undefined;
   return {
     name: 'dotli-pwa',
     hooks: {
-      'astro:config:setup': ({ command, config, updateConfig }) => {
+      'astro:config:setup'({ command, config, updateConfig }) {
         if (command !== 'build' && command !== 'dev') {
           return;
         }
@@ -47,7 +48,7 @@ export function astroPwa(options: Partial<VitePWAOptions>): AstroIntegration {
         }
         updateConfig({ vite: { plugins } });
       },
-      'astro:build:done': async () => {
+      async 'astro:build:done'() {
         if (api !== undefined && !api.disabled) {
           await api.generateSW();
         }

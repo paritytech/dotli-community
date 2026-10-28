@@ -12,12 +12,17 @@ import { after, describe, it } from 'node:test';
 
 type Server = ChildProcessByStdio<null, Readable, Readable>;
 
+type Params = {
+  /** Extra header lines, each ending in CRLF. Defaults to none. */
+  headers?: string;
+};
+
 const SERVE = join(import.meta.dirname, 'serve.ts');
 const dists: string[] = [];
 const servers: Server[] = [];
 
 /** A bundle with the three builds' folders, all the server checks for at start. */
-function emptyDist(): string {
+function createEmptyDist(): string {
   const dist = mkdtempSync(join(tmpdir(), 'dotli-serve-'));
   for (const site of ['host', 'app', 'protocol']) {
     mkdirSync(join(dist, site));
@@ -46,32 +51,32 @@ function collect(stream: Readable): () => string {
 }
 
 /** The port the server reports once it listens. Rejects if it exits first. */
-function listeningPort(server: Server): Promise<number> {
-  const out = collect(server.stdout);
+function waitForPort(server: Server): Promise<number> {
+  const readStdout = collect(server.stdout);
   return new Promise((resolve, reject) => {
     server.stdout.on('data', () => {
-      const port = /on http:\/\/localhost:(\d+)/.exec(out())?.[1];
+      const port = /on http:\/\/localhost:(\d+)/.exec(readStdout())?.[1];
       if (port !== undefined) {
         resolve(Number(port));
       }
     });
     server.once('exit', code => {
-      reject(new Error(`serve exited with ${String(code)} before listening:\n${out()}`));
+      reject(new Error(`serve exited with ${String(code)} before listening:\n${readStdout()}`));
     });
   });
 }
 
 /** Resolves once the server's stderr matches `pattern`. Rejects if the server exits first. */
-function untilStderr(server: Server, pattern: RegExp): Promise<void> {
-  const text = collect(server.stderr);
+function waitForStderr(server: Server, pattern: RegExp): Promise<void> {
+  const readStderr = collect(server.stderr);
   return new Promise((resolve, reject) => {
     server.stderr.on('data', () => {
-      if (pattern.test(text())) {
+      if (pattern.test(readStderr())) {
         resolve();
       }
     });
     server.once('exit', code => {
-      reject(new Error(`serve exited with ${String(code)}:\n${text()}`));
+      reject(new Error(`serve exited with ${String(code)}:\n${readStderr()}`));
     });
   });
 }
@@ -80,7 +85,11 @@ function untilStderr(server: Server, pattern: RegExp): Promise<void> {
  * The raw reply to one request, for a line `fetch` would refuse to send or a header it sets itself. Settles when the
  * connection closes, with the socket error if the server cut it.
  */
-function rawRequest(port: number, requestLine: string, headers = ''): Promise<{ reply: string; error?: Error }> {
+function sendRawRequest(
+  port: number,
+  requestLine: string,
+  { headers = '' }: Params = {},
+): Promise<{ reply: string; error?: Error }> {
   return new Promise(resolve => {
     let reply = '';
     let error: Error | undefined;
@@ -91,8 +100,8 @@ function rawRequest(port: number, requestLine: string, headers = ''): Promise<{ 
     socket.on('data', (chunk: Buffer) => {
       reply += chunk.toString();
     });
-    socket.on('error', (err: Error) => {
-      error = err;
+    socket.on('error', (socketError: Error) => {
+      error = socketError;
     });
     socket.on('close', () => {
       resolve(error === undefined ? { reply } : { reply, error });
@@ -112,7 +121,7 @@ after(() => {
 describe('serve', { timeout: 20_000 }, () => {
   it('As an operator, I start the release server with a DOTLI_NETWORK that is not JSON and it refuses to start', async () => {
     // Given
-    const dist = emptyDist();
+    const dist = createEmptyDist();
 
     // When
     const server = startServe(dist, '{"enabled":');
@@ -128,29 +137,29 @@ describe('serve', { timeout: 20_000 }, () => {
 
   it('As another site, I cannot read the config the release server sends, and the page itself gets it unchanged', async () => {
     // Given
-    const server = startServe(emptyDist(), '{"enabled":["previewnet"]}');
-    const port = await listeningPort(server);
+    const server = startServe(createEmptyDist(), '{"enabled":["previewnet"]}');
+    const port = await waitForPort(server);
 
     // When
-    const res = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
-    const body = await res.text();
+    const response = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
+    const body = await response.text();
 
     // Then
-    assert.equal(res.status, 200);
-    assert.equal(res.headers.get('cross-origin-resource-policy'), 'same-origin');
-    assert.equal(res.headers.get('access-control-allow-origin'), null);
-    assert.equal(res.headers.get('access-control-allow-private-network'), null);
-    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+    assert.equal(response.headers.get('access-control-allow-private-network'), null);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal(body, 'window.__DOTLI_NETWORK__ = {"enabled":["previewnet"]};\n');
   });
 
   it('As a remote client, I send a request line that is no URL and get a 400, and the server keeps serving', async () => {
     // Given a running release server
-    const server = startServe(emptyDist(), '');
-    const port = await listeningPort(server);
+    const server = startServe(createEmptyDist(), '');
+    const port = await waitForPort(server);
 
     // When one request names a path no URL can hold
-    const { reply } = await rawRequest(port, 'GET //[ HTTP/1.1');
+    const { reply } = await sendRawRequest(port, 'GET //[ HTTP/1.1');
     const next = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
     await next.body?.cancel();
 
@@ -162,11 +171,11 @@ describe('serve', { timeout: 20_000 }, () => {
 
   it('As a visitor, I fetch an asset and get its bytes, and the server keeps serving', async () => {
     // Given an asset in the host build
-    const dist = emptyDist();
+    const dist = createEmptyDist();
     mkdirSync(join(dist, 'host', 'assets'));
     writeFileSync(join(dist, 'host', 'assets', 'app.js'), 'run()');
     const server = startServe(dist, '');
-    const port = await listeningPort(server);
+    const port = await waitForPort(server);
 
     // When the visitor fetches it, then asks again
     const asset = await fetch(`http://127.0.0.1:${String(port)}/assets/app.js`);
@@ -182,16 +191,16 @@ describe('serve', { timeout: 20_000 }, () => {
 
   it('As an operator, I have a file fail to read mid-request and the server logs it and keeps serving', async () => {
     // Given an asset whose brotli copy is a folder, which passes the existence check and fails to read
-    const dist = emptyDist();
+    const dist = createEmptyDist();
     mkdirSync(join(dist, 'host', 'assets'));
     writeFileSync(join(dist, 'host', 'assets', 'app.js'), 'run()');
     mkdirSync(join(dist, 'host', 'assets', 'app.js.br'));
     const server = startServe(dist, '');
-    const logged = untilStderr(server, /could not send/);
-    const port = await listeningPort(server);
+    const logged = waitForStderr(server, /could not send/);
+    const port = await waitForPort(server);
 
     // When a client asks for it in brotli
-    await rawRequest(port, 'GET /assets/app.js HTTP/1.1', 'Accept-Encoding: br\r\n');
+    await sendRawRequest(port, 'GET /assets/app.js HTTP/1.1', { headers: 'Accept-Encoding: br\r\n' });
     await logged;
     const next = await fetch(`http://127.0.0.1:${String(port)}/dotli-network.js`);
     await next.body?.cancel();

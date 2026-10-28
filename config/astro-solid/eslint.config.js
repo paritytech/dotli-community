@@ -6,6 +6,8 @@
 import { defineConfig } from 'eslint/config';
 import { config, importBans, onlyAllowedScopes } from '@config/eslint/vite';
 
+const TOOLING_SCOPES = onlyAllowedScopes(['@config/eslint'], 'Tooling imports only tooling.');
+
 export default defineConfig([
   ...config,
   {
@@ -15,12 +17,13 @@ export default defineConfig([
       },
     },
   },
-  ...importBans([onlyAllowedScopes(['@config/eslint'], 'Tooling imports only tooling.')]),
+  ...importBans([TOOLING_SCOPES]),
   {
-    // Node loads this through astro.config.ts directly, so its imports name `.ts` files.
-    files: ['src/index.ts'],
+    // Node loads the integration and its container renderer through astro.config.ts directly, so their imports name
+    // `.ts` files. The `.ts` and test-only module bans are lifted. The workspace-import ban still holds.
+    files: ['src/index.ts', 'src/containerRenderer.ts'],
     rules: {
-      'no-restricted-imports': 'off',
+      'no-restricted-imports': ['error', { patterns: [TOOLING_SCOPES] }],
     },
   },
 ]);

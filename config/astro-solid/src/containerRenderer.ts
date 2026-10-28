@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { AstroRenderer } from 'astro';
+import { PACKAGE_NAME } from './packageName.ts';
 
 /** The Solid renderer, for Astro's integration and Container API. */
 export function getContainerRenderer(): AstroRenderer {
   return {
-    name: '@config/astro-solid',
-    clientEntrypoint: '@config/astro-solid/client.js',
-    serverEntrypoint: '@config/astro-solid/server.js',
+    name: PACKAGE_NAME,
+    clientEntrypoint: `${PACKAGE_NAME}/client.js`,
+    serverEntrypoint: `${PACKAGE_NAME}/server.js`,
   };
 }

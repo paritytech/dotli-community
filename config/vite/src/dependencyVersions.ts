@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The versions the diagnostics panel lists: dot.li's direct dependencies only, since transitive ones would balloon the
-// list, each at the version Node resolves for the workspace that depends on it.
+// The installed versions of dot.li's direct dependencies only, since transitive ones would balloon the list, each at the
+// version Node resolves for the workspace that depends on it.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { findPackageJSON } from 'node:module';
@@ -10,56 +10,68 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export type PackageVersion = {
+  /** The package's name. */
   name: string;
+  /** Its installed version. */
   version: string;
 };
 
 const WORKSPACE_ROOTS = ['apps', 'packages'];
 
-function installedVersion(name: string, from: URL): string | undefined {
-  let manifest: string | undefined;
-  try {
-    manifest = findPackageJSON(name, from);
-  } catch (err) {
-    // Not installed, as in a partial checkout, so the panel leaves it out.
-    if ((err as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND') {
-      return undefined;
+/**
+ * Returns each direct dependency of a workspace under `repoRoot` whose name starts with one of `prefixes`, at its
+ * installed version, sorted by name. One that is not installed is left out. Throws when a dependency cannot be
+ * resolved for another reason.
+ */
+export function listDependencyVersions(repoRoot: string, prefixes: readonly string[]): PackageVersion[] {
+  const versions = new Map<string, string>();
+  for (const manifest of listWorkspaceManifests(repoRoot)) {
+    // A workspace's package.json, whose shape this repo writes.
+    const { dependencies = {} } = JSON.parse(readFileSync(manifest, 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    for (const name of Object.keys(dependencies)) {
+      if (versions.has(name) || !prefixes.some(prefix => name.startsWith(prefix))) {
+        continue;
+      }
+      const version = readInstalledVersion(name, pathToFileURL(manifest));
+      if (version === undefined) {
+        continue;
+      }
+      versions.set(name, version);
     }
-    throw new Error(`Could not resolve ${name} from ${from.href}`, { cause: err });
   }
-  if (manifest === undefined) {
-    return undefined;
-  }
-  const { version } = JSON.parse(readFileSync(manifest, 'utf8')) as { version?: string };
-  return version === undefined || version === '' ? undefined : version;
+  return [...versions].sort(([a], [b]) => a.localeCompare(b)).map(([name, version]) => ({ name, version }));
 }
 
-/** Each direct dependency of a workspace under `repoRoot` whose name starts with one of `prefixes`, sorted by name. */
-export function dependencyVersions(repoRoot: string, prefixes: readonly string[]): PackageVersion[] {
-  const versions = new Map<string, string>();
+function listWorkspaceManifests(repoRoot: string): string[] {
+  const manifests: string[] = [];
   for (const workspaces of WORKSPACE_ROOTS) {
     const dir = join(repoRoot, workspaces);
     if (!existsSync(dir)) {
       continue;
     }
-    for (const workspace of readdirSync(dir)) {
-      const manifest = join(dir, workspace, 'package.json');
-      if (!existsSync(manifest)) {
-        continue;
-      }
-      const { dependencies = {} } = JSON.parse(readFileSync(manifest, 'utf8')) as {
-        dependencies?: Record<string, string>;
-      };
-      for (const name of Object.keys(dependencies)) {
-        if (versions.has(name) || !prefixes.some(prefix => name.startsWith(prefix))) {
-          continue;
-        }
-        const version = installedVersion(name, pathToFileURL(manifest));
-        if (version !== undefined) {
-          versions.set(name, version);
-        }
-      }
-    }
+    const candidates = readdirSync(dir).map(workspace => join(dir, workspace, 'package.json'));
+    manifests.push(...candidates.filter(manifest => existsSync(manifest)));
   }
-  return [...versions].sort(([a], [b]) => a.localeCompare(b)).map(([name, version]) => ({ name, version }));
+  return manifests;
+}
+
+function readInstalledVersion(name: string, from: URL): string | undefined {
+  let manifest: string | undefined;
+  try {
+    manifest = findPackageJSON(name, from);
+  } catch (error) {
+    // Not installed, as in a partial checkout, so the list leaves it out.
+    if (error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND') {
+      return undefined;
+    }
+    throw new Error(`Could not resolve ${name} from ${from.href}`, { cause: error });
+  }
+  if (manifest === undefined) {
+    return undefined;
+  }
+  // An installed package's package.json, where npm guarantees an object.
+  const { version } = JSON.parse(readFileSync(manifest, 'utf8')) as { version?: string };
+  return version === undefined || version === '' ? undefined : version;
 }

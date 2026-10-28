@@ -8,20 +8,36 @@ import {
   SIGNING_WORKER_RUNTIME_ID,
   rewriteWasmGlue,
   truapiSigningWorker,
-  workerAssetFileName,
+  getWorkerAssetFileName,
 } from './truapiSigningWorker.js';
 import type { Rolldown } from 'vite';
+
+/** The plugin's hooks, as the cases call them. */
+type Hooks = {
+  /** Takes the resolved config's root and assets folder. */
+  configResolved: (config: { root: string; build: { assetsDir: string } }) => void;
+  /** Returns the marked runtime's file for its id, or `null` for any other id. Throws when it is not installed. */
+  resolveId: (source: string) => string | null;
+  /** Resolves to the rewritten marked runtime, or `null` for any other module. */
+  load: (this: unknown, id: string) => Promise<string | null>;
+};
 
 // Hoisted to the workspace root.
 const PACKAGE_DIST = resolve(import.meta.dirname, '../../../node_modules/@parity/truapi-host/dist');
 const PUBLISHED_RUNTIME = `${PACKAGE_DIST}/worker-runtime.js`;
 
-type ConfigResolvedHook = (config: { root: string; build: { assetsDir: string } }) => void;
-type ResolveIdHook = (source: string) => string | null;
-type LoadHook = (this: unknown, id: string) => Promise<string | null>;
+/** Returns the plugin's hooks, typed as the cases call them. */
+function readHooks(plugin: ReturnType<typeof truapiSigningWorker>): Hooks {
+  // The plugin defines each hook as a plain function, which Vite types as a function-or-object hook.
+  return {
+    configResolved: plugin.configResolved as Hooks['configResolved'],
+    resolveId: plugin.resolveId as Hooks['resolveId'],
+    load: plugin.load as Hooks['load'],
+  };
+}
 
 describe('truapiSigningWorker', () => {
-  it('As a dotli developer, I rewrite the web glue to the testing glue in the marked runtime', () => {
+  it('As a dotli developer, I rewrite the marked runtime and it imports the testing glue instead of the web glue', () => {
     // Given
     const code = 'const wasmModulePromise = import("./wasm/web/truapi_server.js");';
 
@@ -32,7 +48,7 @@ describe('truapiSigningWorker', () => {
     expect(rewritten).toBe('const wasmModulePromise = import("./wasm/testing/truapi_server.js");');
   });
 
-  it('As a dotli developer, I fail the build when the runtime stops naming the web glue', () => {
+  it('As a dotli developer, I rewrite a runtime that stops naming the web glue and the build fails', () => {
     // Given
     const code = 'const wasmModulePromise = import("./wasm/other.js");';
 
@@ -43,7 +59,7 @@ describe('truapiSigningWorker', () => {
     expect(rewrite).toThrow(/no longer imports/);
   });
 
-  it('As a dotli developer, I can rely on the published runtime still naming the web glue', () => {
+  it('As a dotli developer, I rewrite the published runtime and it still names the web glue to replace', () => {
     // Given
     const code = readFileSync(PUBLISHED_RUNTIME, 'utf8');
 
@@ -55,9 +71,9 @@ describe('truapiSigningWorker', () => {
     expect(rewritten).not.toContain('./wasm/web/truapi_server.js');
   });
 
-  it('As a dotli developer, I leave every module but the marked runtime untouched', async () => {
+  it('As a dotli developer, I load modules through the plugin and only the marked runtime is rewritten', async () => {
     // Given
-    const load = truapiSigningWorker().load as LoadHook;
+    const { load } = readHooks(truapiSigningWorker());
 
     // When
     const plain = await load.call({}, PUBLISHED_RUNTIME);
@@ -68,34 +84,34 @@ describe('truapiSigningWorker', () => {
     expect(marked).toContain('./wasm/testing/truapi_server.js');
   });
 
-  it('As a dotli developer, I resolve the marked id to the real published runtime file', () => {
+  it('As a dotli developer, I resolve the marked id and get the real published runtime file', () => {
     // Given
-    const plugin = truapiSigningWorker();
-    (plugin.configResolved as ConfigResolvedHook)({
+    const hooks = readHooks(truapiSigningWorker());
+    hooks.configResolved({
       root: resolve(import.meta.dirname, '../../../apps/host'),
       build: { assetsDir: 'assets' },
     });
 
     // When
-    const id = (plugin.resolveId as ResolveIdHook)(SIGNING_WORKER_RUNTIME_ID);
+    const id = hooks.resolveId(SIGNING_WORKER_RUNTIME_ID);
 
     // Then
     expect(id).toBe(`${PUBLISHED_RUNTIME}?truapi-signing`);
   });
 
-  it('As a dotli developer, I fail loudly when the published package is not found', () => {
+  it('As a dotli developer, I resolve the marked id where the published package is not installed and the build fails loudly', () => {
     // Given
-    const plugin = truapiSigningWorker();
-    (plugin.configResolved as ConfigResolvedHook)({ root: '/', build: { assetsDir: 'assets' } });
+    const hooks = readHooks(truapiSigningWorker());
+    hooks.configResolved({ root: '/', build: { assetsDir: 'assets' } });
 
     // When
-    const resolveId = (): string | null => (plugin.resolveId as ResolveIdHook)(SIGNING_WORKER_RUNTIME_ID);
+    const resolveId = (): string | null => hooks.resolveId(SIGNING_WORKER_RUNTIME_ID);
 
     // Then
     expect(resolveId).toThrow(/was not found/);
   });
 
-  it('As a dotli developer, I give the testing server wasm its own name and leave other worker assets as Vite names them', () => {
+  it('As a dotli developer, I name the worker wasm assets and the testing server wasm gets its own name while the others keep the names Vite gives them', () => {
     // Given
     const asset = (originalFileName: string): Rolldown.PreRenderedAsset => ({
       type: 'asset',
@@ -105,9 +121,12 @@ describe('truapiSigningWorker', () => {
     });
 
     // When
-    const testing = workerAssetFileName(asset(`${PACKAGE_DIST}/wasm/testing/truapi_server_bg.wasm`), 'assets');
-    const web = workerAssetFileName(asset(`${PACKAGE_DIST}/wasm/web/truapi_server_bg.wasm`), 'assets');
-    const verifiable = workerAssetFileName(asset(`${PACKAGE_DIST}/wasm/testing/truapi_verifiable_bg.wasm`), 'assets');
+    const testing = getWorkerAssetFileName(asset(`${PACKAGE_DIST}/wasm/testing/truapi_server_bg.wasm`), 'assets');
+    const web = getWorkerAssetFileName(asset(`${PACKAGE_DIST}/wasm/web/truapi_server_bg.wasm`), 'assets');
+    const verifiable = getWorkerAssetFileName(
+      asset(`${PACKAGE_DIST}/wasm/testing/truapi_verifiable_bg.wasm`),
+      'assets',
+    );
 
     // Then
     expect(testing).toBe('assets/truapi_signing_bg-[hash][extname]');

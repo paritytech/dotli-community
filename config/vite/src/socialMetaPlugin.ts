@@ -6,28 +6,38 @@
 import type { HtmlTagDescriptor, Plugin } from 'vite';
 
 export type SocialMeta = {
-  /** Should match `<title>`. */
+  /** The page's title. */
   title: string;
   /** Ideally under 160 characters. */
   description: string;
+  /** The site's name, as `og:site_name` gives it. */
   siteName: string;
   /** Root-relative path to a square PNG of at least 200x200. */
   image: string;
+  /** The image's alternative text. */
   imageAlt: string;
 };
 
-/** Resolves `image` against `VITE_APP_URL`, keeping it relative when unset. */
-export function socialImageUrl(image: string): string {
-  const appUrl = process.env['VITE_APP_URL']?.trim();
-  if (appUrl === undefined || appUrl === '') {
-    return image;
-  }
-  return new URL(image, appUrl).href;
+/** Returns the plugin that injects the link-unfurl meta tags of `config` into the page head. */
+export function socialMetaTags(config: SocialMeta): Plugin {
+  return {
+    name: 'dotli-social-meta',
+    transformIndexHtml(): HtmlTagDescriptor[] {
+      return listSocialMetaAttributes(config).map(attributes => ({
+        tag: 'meta',
+        attrs: attributes,
+        injectTo: 'head' as const,
+      }));
+    },
+  };
 }
 
-/** The tags socialMetaTags() injects, as attribute sets, for a page that writes its own head. */
-export function socialMetaAttributes(config: SocialMeta): Record<string, string>[] {
-  const image = socialImageUrl(config.image);
+/**
+ * Returns the link-unfurl meta tags of `config` as attribute sets, for a page that writes its own head. Throws when
+ * `VITE_APP_URL` is set but is not a URL.
+ */
+export function listSocialMetaAttributes(config: SocialMeta): Record<string, string>[] {
+  const image = getSocialImageUrl(config.image);
   return [
     { name: 'description', content: config.description },
     { property: 'og:type', content: 'website' },
@@ -44,11 +54,14 @@ export function socialMetaAttributes(config: SocialMeta): Record<string, string>
   ];
 }
 
-export function socialMetaTags(config: SocialMeta): Plugin {
-  return {
-    name: 'dotli-social-meta',
-    transformIndexHtml(): HtmlTagDescriptor[] {
-      return socialMetaAttributes(config).map(attrs => ({ tag: 'meta', attrs, injectTo: 'head' as const }));
-    },
-  };
+/**
+ * Returns `image` resolved against `VITE_APP_URL`, or `image` as it is when that is unset. Throws when it is set but is
+ * not a URL.
+ */
+export function getSocialImageUrl(image: string): string {
+  const appUrl = process.env['VITE_APP_URL']?.trim();
+  if (appUrl === undefined || appUrl === '') {
+    return image;
+  }
+  return new URL(image, appUrl).href;
 }
