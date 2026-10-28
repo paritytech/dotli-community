@@ -18,6 +18,9 @@ resolution. See the root [README](../../README.md) for the product as a whole.
 - Boot starts Sentry before any other module evaluates, then listens for chunk preload errors. The sandbox's own UI
   (toasts, dialogs, the error page, the retry screen and the password dialog) is one chunk it loads the first time
   something needs it, so a product that loads never fetches it, and nothing loads it once the product's page is written.
+- The entry builds each page dependency once, such as the messages to the host, the fallback screen and the block
+  bridge, and passes it to the units that use it as a param. The messages to the host, the block bridge, the archive
+  handoff and the runner's wait for the host take their timers as a param too, defaulting to the page's own.
 - A runner performs the load once, and again on each retry the visitor asks for, up to a limit. Every failure is
   reported and shown. It refuses to run as a top-level page.
 - One load fetches and verifies the content, hands an archive to the service worker and writes the page. It never
@@ -33,7 +36,8 @@ resolution. See the root [README](../../README.md) for the product as a whole.
   and wherever its router has moved it since. An exact match always wins, and the last handoff's directory holds. Only
   on the dev server do the sandbox's own module paths skip the archive. The page side registers it and checks its
   version. The packed archive reaches the controlling worker by a handoff.
-- After a load the origin's stores are purged of anything the product left behind.
+- On a full reset, the first load purges the origin's stores of anything an earlier product left behind, before the
+  service worker registers, so the fresh worker starts clean. A retry keeps the state the first attempt left.
 - The password dialog comes with the sandbox's own UI. Its dialogs are `ModalView` data, with an icon component, that
   the shared dialog renders.
 - The error page and the retry screen come with that chunk. A failed chunk load is not cached, so the next need loads it

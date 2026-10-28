@@ -12,57 +12,41 @@ import { decryptContent, fetchArchive, isEncrypted, parseIpfsResponse } from '@d
 import { m, setResolutionId } from '@dotli/metrics';
 import { getEndpointHost } from '@dotli/shared';
 
-import { createDecryptIfNeeded } from './decryptPrompt.js';
+import { createDecryptIfNeeded } from './createDecryptIfNeeded.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
 import { createReloadOffer, listenForChunkFailures, showNotification, toasts } from '@dotli/ui';
 import { loadPageUi, loadSandboxChecker } from './lazy.js';
-import { hideFallbackScreen, showFallbackScreen } from './fallbackScreen.js';
-import { createSandboxUi } from './sandboxUi.js';
+import { createFallbackScreen } from './createFallbackScreen.js';
+import { createSandboxUi } from './createSandboxUi.js';
 import { showPasswordPrompt } from './showPasswordPrompt.js';
-import {
-  askHostToRerender,
-  dismissHostLoading,
-  notifyLoadingDone,
-  reportSandboxDebug,
-  showStatus,
-} from './hostMessages.js';
-import { withoutContractParams } from './contractUrl.js';
-import { createBitswapBridge, hostOriginRule } from './bitswapBridge.js';
+import { createHostMessages } from './createHostMessages.js';
+import { stripContractParams } from './stripContractParams.js';
+import { createBitswapBridge, createHostOriginRule } from './createBitswapBridge.js';
 import { loadProduct, type BlockSource, type SandboxParams } from './loadProduct.js';
-import { purgeSandboxOriginState } from './originPurge.js';
-import { runSandbox } from './sandboxRun.js';
-import {
-  listenForArchiveFailures,
-  offerReloadNotice,
-  registerAppServiceWorker,
-  storeArchiveInSW,
-  type AppServiceWorker,
-} from './serviceWorker.js';
+import { purgeSandboxOriginState } from './purgeSandboxOriginState.js';
+import { runSandbox } from './runSandbox.js';
+import { listenForArchiveFailures } from './listenForArchiveFailures.js';
+import { offerReloadNotice } from './offerReloadNotice.js';
+import { registerAppServiceWorker, type AppServiceWorker } from './registerAppServiceWorker.js';
+import { storeArchiveInServiceWorker } from './storeArchiveInServiceWorker.js';
 
 listenForChunkFailures({
   target: window,
-  offerReload: createReloadOffer({
-    notify: showNotification,
-    reload: () => {
-      window.location.reload();
-    },
-  }),
+  offerReload: createReloadOffer({ notify: showNotification, reload: reloadPage }),
 });
+
+const hostMessages = createHostMessages({ parent: window.parent });
+
+const fallbackScreen = createFallbackScreen({ page: document, reload: reloadPage });
 
 const ui = createSandboxUi({
   load: loadPageUi,
   toasts: toasts.store,
-  showFallback: text => {
-    showFallbackScreen(document, text, () => {
-      window.location.reload();
-    });
-  },
-  hideFallback: () => {
-    hideFallbackScreen(document);
-  },
+  showFallback: fallbackScreen.show,
+  hideFallback: fallbackScreen.hide,
 });
 
-const T0 = performance.now();
+const STARTED_AT = performance.now();
 
 const appWorker: AppServiceWorker = {
   container: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
@@ -71,24 +55,51 @@ const appWorker: AppServiceWorker = {
 };
 
 const decryptIfNeeded = createDecryptIfNeeded({
-  prompt: async options => showPasswordPrompt((await ui.ready()).passwordPromptDialog(options)),
-  dismissHostLoading,
+  prompt: async options => showPasswordPrompt((await ui.loadUi()).createPasswordPromptView(options)),
+  dismissHostLoading: hostMessages.dismissLoading,
   isEncrypted,
   decryptContent,
   parseIpfsResponse,
 });
 
-function sinceStart(): number {
-  return Math.round(performance.now() - T0);
+function reloadPage(): void {
+  window.location.reload();
+}
+
+function measureSinceStart(): number {
+  return Math.round(performance.now() - STARTED_AT);
 }
 
 /** The dApp sees only the user's own query params. */
 function stripContractParamsFromUrl(): void {
-  history.replaceState(null, '', withoutContractParams(window.location.href));
+  history.replaceState(null, '', stripContractParams(window.location.href));
+}
+
+/** Replaces this document with the product's page. */
+function writeProductPage(html: string): void {
+  ui.dispose();
+  stripContractParamsFromUrl();
+  document.open();
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
+  document.write(html);
+  document.close();
+}
+
+/** Shows the run's failure on the sandbox's error page, with its retry. */
+function showFailure(title: string, message: string, { retry }: { retry?: (() => Promise<void>) | undefined }): void {
+  if (retry === undefined) {
+    ui.showError(title, message);
+    return;
+  }
+  ui.showError(title, message, {
+    retry: () => {
+      void retry();
+    },
+  });
 }
 
 /** Inline, since document.write() replaces the page. */
-async function maybeInjectSandboxChecker(html: string): Promise<string> {
+async function injectCheckerIfEnabled(html: string): Promise<string> {
   if (import.meta.env.VITE_SANDBOX_CHECKER !== 'true') {
     return html;
   }
@@ -100,9 +111,9 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
 let blockSource: BlockSource | null = null;
 
 function configure(params: SandboxParams): void {
-  // The host fails a sandbox that stays silent, and the purge and the worker registration before the first progress
-  // can take seconds.
-  showStatus('Starting the app');
+  // Said at once, since the sandbox must not stay silent, and the purge and the worker registration before the next
+  // progress can take seconds.
+  hostMessages.showStatus('Starting the app');
   // Before the first load, so a failure in it is still attributed to its page load.
   if (params.resolutionId !== null) {
     setResolutionId(params.resolutionId);
@@ -114,7 +125,7 @@ function configure(params: SandboxParams): void {
     blockSource = createBitswapBridge({
       window,
       parent: window.parent,
-      isHostOrigin: hostOriginRule(BASE_DOMAIN),
+      isHostOrigin: createHostOriginRule(BASE_DOMAIN),
     }).requestBlock;
   }
 }
@@ -125,56 +136,41 @@ void runSandbox(
     configure,
     load: input =>
       loadProduct(input, {
-        showStatus,
+        showStatus: hostMessages.showStatus,
         purge: () =>
           purgeSandboxOriginState({
             indexedDB: typeof indexedDB === 'undefined' ? null : indexedDB,
             caches: typeof caches === 'undefined' ? null : caches,
             serviceWorker: appWorker.container,
-            localStorage: () => localStorage,
-            sessionStorage: () => sessionStorage,
+            getLocalStorage: () => localStorage,
+            getSessionStorage: () => sessionStorage,
             document,
             pathname: window.location.pathname,
           }),
         registerWorker: options => registerAppServiceWorker(appWorker, options),
+        isControlled: () => 'serviceWorker' in navigator && navigator.serviceWorker.controller !== null,
         fetchArchive,
         blockSource,
         decrypt: decryptIfNeeded,
-        storeArchive: files => storeArchiveInSW(appWorker.container, files, window.location.pathname),
-        prepareHtml: maybeInjectSandboxChecker,
-        report: reportSandboxDebug,
-        loaded: () => {
-          notifyLoadingDone({ outcome: 'loaded' });
+        storeArchive: files =>
+          storeArchiveInServiceWorker({ container: appWorker.container, files, pagePath: window.location.pathname }),
+        prepareHtml: injectCheckerIfEnabled,
+        report: hostMessages.reportDebug,
+        notifyLoaded: () => {
+          hostMessages.notifyLoadingDone({ outcome: 'loaded' });
         },
-        write: html => {
-          ui.close();
-          stripContractParamsFromUrl();
-          document.open();
-          // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
-          document.write(html);
-          document.close();
-        },
-        sinceStart,
+        write: writeProductPage,
+        measureSinceStart,
       }),
-    failed: step => {
-      notifyLoadingDone({ outcome: 'failed', failedStep: step });
+    notifyFailed: step => {
+      hostMessages.notifyLoadingDone({ outcome: 'failed', failedStep: step });
     },
-    show: (title, message, retry) => {
-      ui.showError(
-        title,
-        message,
-        retry === undefined
-          ? undefined
-          : () => {
-              void retry();
-            },
-      );
-    },
-    retrying: () => {
+    show: showFailure,
+    showRetrying: () => {
       ui.showRetryScreen();
     },
-    askRerender: askHostToRerender,
-    gatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
+    askRerender: hostMessages.askRerender,
+    getGatewayHost: () => getEndpointHost(getActiveServicesConfig().bulletin.ipfsGateways.at(0)),
     baseDomain: BASE_DOMAIN,
     recoverTimeoutMs: SANDBOX_TIMEOUTS.RECOVER,
   },

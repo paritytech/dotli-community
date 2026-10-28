@@ -26,21 +26,20 @@ afterEach(() => {
 describe('password prompt', () => {
   it('As a dotli user, I see the password dialog and unlock with my password', async () => {
     // Given
-    const password = showPasswordPrompt(LOCKED, modals.open);
-
-    // Then
-    expect(shownModal().view).toBe(LOCKED);
+    const password = showPasswordPrompt(LOCKED, { present: modals.open });
+    const shown = shownModal().view;
 
     // When
     chooseModalButton('Unlock', 'hunter2');
 
-    // Then
+    // Then the dialog shown was the one asked for, and it answered with the password
+    expect(shown).toBe(LOCKED);
     await expect(password).resolves.toBe('hunter2');
   });
 
-  it('As a dotli user who cancels, the sandbox gets a cancellation', async () => {
+  it('As a dotli user, I cancel the password dialog and the load gets a cancellation', async () => {
     // Given
-    const password = showPasswordPrompt(LOCKED, modals.open);
+    const password = showPasswordPrompt(LOCKED, { present: modals.open });
 
     // When
     chooseModalButton('Cancel');
@@ -49,9 +48,9 @@ describe('password prompt', () => {
     await expect(password).rejects.toThrow(DECRYPTION_CANCELLED);
   });
 
-  it('As a dotli user who unlocks with an empty field, the sandbox gets a cancellation', async () => {
+  it('As a dotli user, I unlock with an empty field and the load gets a cancellation', async () => {
     // Given
-    const password = showPasswordPrompt(LOCKED, modals.open);
+    const password = showPasswordPrompt(LOCKED, { present: modals.open });
 
     // When
     chooseModalButton('Unlock', '');

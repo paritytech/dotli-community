@@ -5,6 +5,8 @@
 // ChaCha20-Poly1305 comes from @noble/ciphers because Web Crypto lacks it.
 
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { setErrorName } from '@dotli/shared';
+import { CONTENT_ERRORS } from './errors.js';
 
 const MAGIC = new Uint8Array([
   0x44,
@@ -39,7 +41,11 @@ export function isEncrypted(data: Uint8Array): boolean {
   return true;
 }
 
-/** Throws on a wrong password or corrupted data. */
+/**
+ * The plaintext of encrypted `data` under `password`. Rejects with an error named `CONTENT_ERRORS.WRONG_PASSWORD`,
+ * whose cause is the cipher's error, when the password is wrong or the bytes were altered, and with what Web Crypto
+ * rejects with when it cannot derive the key.
+ */
 export async function decryptContent(data: Uint8Array, password: string): Promise<Uint8Array> {
   const salt = data.slice(MAGIC.length, MAGIC.length + SALT_LENGTH);
   const nonce = data.slice(MAGIC.length + SALT_LENGTH, HEADER_LENGTH);
@@ -47,7 +53,14 @@ export async function decryptContent(data: Uint8Array, password: string): Promis
 
   const key = await deriveKey(password, salt);
   const aead = chacha20poly1305(key, nonce, MAGIC);
-  return aead.decrypt(ciphertext);
+  try {
+    return aead.decrypt(ciphertext);
+  } catch (error: unknown) {
+    throw setErrorName(
+      new Error('The password does not open the encrypted content', { cause: error }),
+      CONTENT_ERRORS.WRONG_PASSWORD,
+    );
+  }
 }
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {

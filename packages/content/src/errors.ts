@@ -11,4 +11,6 @@ export const CONTENT_ERRORS = {
   GATEWAY_STALLED: 'ContentGatewayStalledError',
   /** The IPFS gateway sent more bytes than one response may hold. */
   GATEWAY_TOO_LARGE: 'ContentGatewayTooLargeError',
+  /** The password does not open the encrypted content, or its bytes were altered. */
+  WRONG_PASSWORD: 'ContentWrongPasswordError',
 } as const;

@@ -32,7 +32,8 @@ flowchart LR
   product load may take a block source that bypasses the relay, so that read hashes every block here.
 - The archive step reads CAR files and UnixFS directories, plain or HAMT-sharded, into `ArchiveFiles`, a path to bytes
   map. A file is read through every level of its chunk tree and must come to the size it declares.
-- Decryption handles content in the layout external tooling writes, with ChaCha20-Poly1305.
+- Decryption handles content in the layout external tooling writes, with ChaCha20-Poly1305. A wrong password, or bytes
+  that were altered, fails with a named error.
 - Error names are kept apart from the code that throws them. Callers branch on `error.name`, since errors are rebuilt
   across `postMessage`.
 - The entry is pure re-exports so the bundler drops unused ones. Verification pulls the hash code, so the host's eager
@@ -45,6 +46,6 @@ flowchart LR
 - Fetch and archive: `fetchArchive`, `readArchiveFiles`, `fetchFromIpfs`, `packArchive`, `parseIpfsResponse`,
   `ArchiveFiles`, `FetchResult`. `fetchArchive`, `fetchFromIpfs` and `parseIpfsResponse` take their input and one
   options object.
-- Verification: `CONTENT_ERRORS`.
+- Errors: `CONTENT_ERRORS`, the names of the verification, gateway and wrong-password failures.
 - Encryption and CIDs: `isEncrypted`, `decryptContent`, `createCidFromHash`.
 - Lazy loader: `loadVerify` loads the verify module on first use, with `assertBlockMatchesCid` and `isBlockMatchingCid`.

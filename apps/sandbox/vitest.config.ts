@@ -19,5 +19,6 @@ export default defineConfig({
     ...TEST_DEFINES,
     'import.meta.env.DEV': 'false',
     'import.meta.env.VITE_APP_DEBUG': '"true"',
+    'import.meta.env.VITE_METRICS': '"true"',
   },
 });

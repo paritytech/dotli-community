@@ -3,9 +3,18 @@
 
 // Lazy entry points, each its own chunk, so the sandbox's boot leaves them out.
 
-/** What the sandbox draws itself. A product that loads needs none of it. */
-export const loadPageUi = () => import('./pageUi.js');
-export type PageUiModule = Awaited<ReturnType<typeof loadPageUi>>;
+import type * as sandboxChecker from './injectSandboxChecker.js';
+import type * as pageUi from './pageUi.js';
 
-/** Only a checker build injects it. */
-export const loadSandboxChecker = () => import('./injectChecker.js');
+/** The exports of the chunk the sandbox draws itself with. */
+export type PageUiModule = typeof pageUi;
+
+/** What the sandbox draws itself. A product that loads needs none of it. Rejects when the chunk cannot load. */
+export function loadPageUi(): Promise<PageUiModule> {
+  return import('./pageUi.js');
+}
+
+/** The injector of the checker into a product's page. Rejects when the chunk cannot load. */
+export function loadSandboxChecker(): Promise<typeof sandboxChecker> {
+  return import('./injectSandboxChecker.js');
+}

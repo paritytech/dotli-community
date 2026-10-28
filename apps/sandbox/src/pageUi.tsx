@@ -7,7 +7,7 @@
 import { ensureOverlayRoot, mountRoot, Overlays } from '@dotli/ui';
 
 export { showError } from '@dotli/ui';
-export { passwordPromptDialog } from './passwordDialog.js';
+export { createPasswordPromptView } from './createPasswordPromptView.js';
 export { showRetryScreen } from './showRetryScreen.js';
 
 /** Mounts the toasts and dialogs, in a container a full-page screen keeps. */

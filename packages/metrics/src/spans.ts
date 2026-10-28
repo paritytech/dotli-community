@@ -180,6 +180,21 @@ export const spans = {
    */
   SANDBOX_HANDLER: 'sandbox.handler',
 
+  /** A failed registration of the sandbox service worker. Tagged `outcome` (error) and `reason` (the error's name). */
+  SANDBOX_SW_REGISTER: 'sandbox.sw_register',
+
+  /**
+   * A failed freshness check or update of the sandbox service worker. Tagged `outcome` (error) and `reason` (the
+   * error's name).
+   */
+  SANDBOX_SW_UPDATE: 'sandbox.sw_update',
+
+  /**
+   * An abort the sandbox's block bridge could not post to the host after a request timed out. Tagged `outcome` (error)
+   * and `reason` (the error's name).
+   */
+  SANDBOX_BITSWAP_ABORT: 'sandbox.bitswap_abort',
+
   /** Dynamic import of the container chunk. */
   BRIDGE_CHUNK_LOAD: 'bridge.chunk_load',
 
