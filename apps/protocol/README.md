@@ -65,7 +65,8 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   tells no other tab. A clear that names the value it expects reads and clears in one task, and the wallet's forget that
   names a version deletes only that record, in one transaction, so a value another tab wrote between a page's read and
   its clear stays. Each wallet save and forget, and a forget by version that forgot, tells the other tabs on the
-  shared-auth change relay as a tagged `wallet` change, so a page on the wallet in another tab learns it went.
+  shared-auth change relay as a tagged `wallet` change, so a page on the wallet in another tab learns it went. A change
+  the relay cannot post is captured, logged and counted, and the write it follows is still answered.
 - In shared-worker mode the iframe serves the store and wallet methods itself, and its relay forwards the chain and name
   calls to the SharedWorker through its own transport. That transport opens the handshake toward the worker, with this
   page load's resolution id as its hello. A forwarded call crosses as its message bytes, so the iframe decodes no chain
@@ -95,13 +96,19 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   counts as a ready timeout. A heartbeat it cannot send is captured, logged and counted, and the link stops answering,
   so the worker releases the port. A ready wait that fails, by timeout, a worker that fails to load or one that reports
   a failure, disposes the link's transport with that error, so the status subscription, the beats and the relay let go
-  of the worker. The timeout and the load failure are init failures.
+  of the worker. The timeout and the load failure are init failures. A load failure after ready, which nothing waits on,
+  is captured, logged and counted.
 - A fatal light client ends every port's frame status with the error, and a port that connects later hears it on
-  subscribe. The worker closes once every connected port has heard it.
+  subscribe. The worker closes once every connected port has heard it. One unit owns the ports and this close, since a
+  release, a port hearing why and the close each lead to the others. The close waits a task on the timers the worker is
+  given, so connects already queued for it are served first, and sends the worker's buffered telemetry before it. A send
+  that fails is captured, logged and counted, and the close goes on.
 - One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, a watcher
   that takes a halted chain again after a short wait, and the name resolver, for the iframe and the SharedWorker alike.
-  Each keeps its own transport. Both build the telemetry they send the host with one typed builder, so a change to the
-  wire contract fails the build in both. Tester knobs come from session storage and never block startup.
+  Each keeps its own transport. Both warm People through the setup without holding ready, and a warm that fails is
+  logged and counted as an expected failure, since a later read retries it. Both build the telemetry they send the host
+  with one typed builder, so a change to the wire contract fails the build in both. Tester knobs come from session
+  storage and never block startup.
 - The worker core may read only the fixed services config, because the runtime network config never reaches a worker
   that serves every tab. Lint enforces it.
 

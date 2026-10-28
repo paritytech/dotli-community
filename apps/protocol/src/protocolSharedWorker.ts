@@ -12,14 +12,16 @@ import { flushTelemetry, initSentry, installGlobalErrorHandlers, m } from '@dotl
 import { byteMeter, chainSync, createLightClient, createLightClientDeps } from '@dotli/chains';
 import { createDotnsResolver } from '@dotli/resolver';
 
-import { startProtocolWorker, workerNetwork } from './protocolWorker.js';
+import { parseWorkerNetwork } from './parseWorkerNetwork.js';
+import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
+import { startProtocolWorker } from './startProtocolWorker.js';
 
 initSentry('worker');
 installGlobalErrorHandlers('worker');
-// Tagged so broker and smoldot counters aggregate with the iframe's.
-m.setDefaults({ protocol_mode: 'shared-worker' });
+// Every later metric carries the mode.
+m.setDefaults({ protocol_mode: SHARED_WORKER_MODE });
 
-const network = workerNetwork(self.name);
+const network = parseWorkerNetwork(self.name);
 if (network.success) {
   // Before the light client starts, since everything in this worker reads the active network.
   setActiveNetwork(network.value);

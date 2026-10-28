@@ -160,6 +160,21 @@ export const spans = {
   PROTOCOL_WORKER_HEARTBEAT: 'protocol.worker_heartbeat',
 
   /**
+   * A shared auth or wallet change the protocol frame could not post to the other tabs, tagged `outcome` (error) and
+   * `reason` (the error's name).
+   */
+  PROTOCOL_SHARED_AUTH_BROADCAST: 'protocol.shared_auth_broadcast',
+
+  /**
+   * The People chain the protocol frame or its SharedWorker warms in the background failed to sync, so the first read of
+   * People waits on it instead. Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PROTOCOL_PEOPLE_WARM: 'protocol.people_warm',
+
+  /** An error event the protocol SharedWorker fired after it was ready. Tagged `outcome` (error) and `reason` (the error's name). */
+  PROTOCOL_SHARED_WORKER_ERROR: 'protocol.shared_worker_error',
+
+  /**
    * A sandbox message handler on the host that threw. Tagged `outcome` (error) and `reason` (the error's name), as the
    * sandbox then gets no answer.
    */
