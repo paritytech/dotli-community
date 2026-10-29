@@ -4,14 +4,7 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import {
-  closeAuthModal,
-  disableAuthModal,
-  focusSignInWindow,
-  importPhraseInPage,
-  isValidPhrase,
-  retryLogin,
-} from '../runtime/authController.js';
+import { authControl } from '../runtime/createAuthController.js';
 import { LayerTracker, ModalFocusFallback, RootBoundary, useStore } from '@dotli/ui';
 import { productFrameFocus } from '../productFrameLayout.js';
 import { AuthModal as Modal, type AuthModalPlacement } from '../components/account/AuthModal.js';
@@ -32,7 +25,7 @@ import { closeWhenOpen, useRevealWhileOpen } from './useRevealWhileOpen.js';
  */
 export function AuthModal(props: { placement: AuthModalPlacement }): JSX.Element {
   return (
-    <RootBoundary root="island:AuthModal" onBroken={disableAuthModal}>
+    <RootBoundary root="island:AuthModal" onBroken={authControl.disableModal}>
       <BoundModal placement={props.placement} />
     </RootBoundary>
   );
@@ -51,16 +44,16 @@ function BoundModal(props: { placement: AuthModalPlacement }): JSX.Element {
         <Modal
           placement={props.placement}
           state={state}
-          onClose={closeWhenOpen(authModalStore, closeAuthModal)}
+          onClose={closeWhenOpen(authModalStore, authControl.closeAuthModal)}
           onRetry={() => {
-            retryLogin();
+            authControl.retryLogin();
           }}
           onFocusWindow={() => {
-            focusSignInWindow();
+            authControl.focusSignInWindow();
           }}
           restoreFocus={getAuthModalTrigger}
-          isValidPhrase={isValidPhrase}
-          onImportPhrase={importPhraseInPage}
+          isValidPhrase={authControl.isValidPhrase}
+          onImportPhrase={authControl.importPhraseInPage}
         />
       </ModalFocusFallback>
     </LayerTracker>

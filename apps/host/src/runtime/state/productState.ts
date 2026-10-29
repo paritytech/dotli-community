@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
-import type { ManifestFacts } from '../manifestFacts.js';
+import type { ManifestFacts } from '../formatAppVersion.js';
 
 /** What the page knows of the loaded product beside its label. */
 export type ProductDetails = {

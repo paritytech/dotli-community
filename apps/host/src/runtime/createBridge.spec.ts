@@ -1,45 +1,39 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
 import { isSandboxOrigin } from '@dotli/config';
+import { catchError, catchRejection } from '@dotli/shared/testing';
+import { rethrow } from '../testing/rethrow.js';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
 import {
   createBlockingModalCoordinator,
   type BlockingModalCoordinator,
   type BlockingModalScope,
-} from './blockingModalQueue.js';
+} from './createBlockingModalCoordinator.js';
 import { createBridge, type Bridge } from './createBridge.js';
-import type { CoreRuntimeRequest } from './coreRuntime.js';
-import { makeProvider } from './pageCore.fake.js';
-import { createPermissionAuthorizations } from './permissions.js';
-import { fakeIframe, fakeProductFrameView } from './productFrame.fake.js';
+import type { CoreRuntimeRequest } from './createCoreRuntimeBoot.js';
+import { createFakeProvider } from './createPageCore.fake.js';
+import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
+import { createFakeIframe, createFakeProductFrameView } from './createProductFrame.fake.js';
 
-let channel: StartedSandboxChannel | null = null;
-
-/** A handler that throws fails the test. */
-const rethrow = (error: unknown): never => {
-  throw error;
+type Params = {
+  /** Every boot rejects with it when given. */
+  bootError?: Error;
+  /** Every activation of a session rejects with it when given. */
+  activateError?: Error;
+  /** The first core's disconnects reject with it when given. */
+  firstDisconnectError?: Error;
 };
-
-afterEach(() => {
-  channel?.stop();
-  channel = null;
-});
 
 /**
  * The page's bridge over a fake core runtime and frame host, counting the chain watches it starts and recording each
  * boot request.
  */
-function harness(options: { bootError?: Error; activateError?: Error; firstDisconnectError?: Error } = {}) {
+function createHarness({ bootError, activateError, firstDisconnectError }: Params = {}) {
   const requests: CoreRuntimeRequest[] = [];
-  const runtimes: {
-    resetSessionState: Mock<() => Promise<void>>;
-    disconnectSession: Mock<() => Promise<void>>;
-    activateExternalSession: Mock<(blob: Uint8Array) => Promise<void>>;
-    dispose: Mock<() => void>;
-  }[] = [];
+  const runtimes: ReturnType<typeof createFakeRuntime>[] = [];
   // Every call on a runtime, in order, so a test can tell which came first.
   const runtimeCalls: string[] = [];
   const session = { reportCoresGone: vi.fn() };
@@ -47,42 +41,23 @@ function harness(options: { bootError?: Error; activateError?: Error; firstDisco
   const bridge: Bridge = createBridge({
     bootRuntime: request => {
       requests.push(request);
-      if (options.bootError !== undefined) {
-        return Promise.reject(options.bootError);
+      if (bootError !== undefined) {
+        return Promise.reject(bootError);
       }
-      const runtime = {
-        createProvider: () => Promise.resolve(makeProvider()),
-        cancelPairing: vi.fn(),
-        disconnectSession: vi.fn(() => {
-          runtimeCalls.push('disconnectSession');
-          const failure = runtimes.length === 1 ? options.firstDisconnectError : undefined;
-          return failure === undefined ? Promise.resolve() : Promise.reject(failure);
-        }),
-        resetSessionState: vi.fn(() => {
-          runtimeCalls.push('resetSessionState');
-          return Promise.resolve();
-        }),
-        activateExternalSession: vi.fn((_blob: Uint8Array) => {
-          runtimeCalls.push('activateExternalSession');
-          return options.activateError === undefined ? Promise.resolve() : Promise.reject(options.activateError);
-        }),
-        notifySessionStoreChanged: vi.fn(),
-        dispose: vi.fn(() => {
-          runtimeCalls.push('dispose');
-        }),
-      };
+      const runtime = createFakeRuntime();
       runtimes.push(runtime);
       return Promise.resolve({
+        // The fake holds only the runtime members the bridge calls.
         runtime: runtime as unknown as WorkerPairingHostRuntime,
         local: false,
-        stale: () => Promise.resolve(false),
+        isStale: () => Promise.resolve(false),
       });
     },
-    onStoredSessionChanged: () => () => undefined,
-    createIframeHost: () => Promise.resolve({ iframe: fakeIframe(), dispose: () => undefined }),
-    onPermissionsChanged: () => () => undefined,
+    subscribeStoredSession: () => () => undefined,
+    createIframeHost: () => Promise.resolve({ iframe: createFakeIframe(), dispose: () => undefined }),
+    subscribePermissionChanges: () => () => undefined,
     permissions: createPermissionAuthorizations(),
-    frameView: fakeProductFrameView().view,
+    frameView: createFakeProductFrameView().view,
     notify: () => undefined,
     watchChains: () => {
       watches += 1;
@@ -90,48 +65,76 @@ function harness(options: { bootError?: Error; activateError?: Error; firstDisco
     session,
   });
   return { bridge, watches: () => watches, requests, runtimes, runtimeCalls, session };
+
+  function createFakeRuntime() {
+    return {
+      createProvider: () => Promise.resolve(createFakeProvider()),
+      cancelPairing: vi.fn(),
+      disconnectSession: vi.fn(() => {
+        runtimeCalls.push('disconnectSession');
+        const failure = runtimes.length === 1 ? firstDisconnectError : undefined;
+        return failure === undefined ? Promise.resolve() : Promise.reject(failure);
+      }),
+      resetSessionState: vi.fn(() => {
+        runtimeCalls.push('resetSessionState');
+        return Promise.resolve();
+      }),
+      activateExternalSession: vi.fn((_blob: Uint8Array) => {
+        runtimeCalls.push('activateExternalSession');
+        return activateError === undefined ? Promise.resolve() : Promise.reject(activateError);
+      }),
+      notifySessionStoreChanged: vi.fn(),
+      dispose: vi.fn(() => {
+        runtimeCalls.push('dispose');
+      }),
+    };
+  }
 }
 
 /** The page's blocking-modal queue, recording each scope a core takes from it. */
-function recordingCoordinator(): { coordinator: BlockingModalCoordinator; scopes: BlockingModalScope[] } {
+function createRecordingCoordinator(): { coordinator: BlockingModalCoordinator; scopes: BlockingModalScope[] } {
   const queue = createBlockingModalCoordinator();
   const scopes: BlockingModalScope[] = [];
   return {
-    coordinator: {
-      createScope: () => {
-        const scope = queue.createScope();
-        scopes.push(scope);
-        return scope;
-      },
-    },
+    coordinator: { createScope },
     scopes,
   };
+
+  function createScope(): BlockingModalScope {
+    const scope = queue.createScope();
+    scopes.push(scope);
+    return scope;
+  }
 }
 
-function sandboxChannel(): StartedSandboxChannel {
-  channel = startSandboxChannel({ target: new EventTarget(), isTrustedOrigin: isSandboxOrigin, report: rethrow });
+/** A sandbox channel on a target of its own, stopped when the test finishes. A handler that throws fails the test. */
+function startTestSandboxChannel(): StartedSandboxChannel {
+  const channel = startSandboxChannel({ target: new EventTarget(), isTrustedOrigin: isSandboxOrigin, report: rethrow });
+  onTestFinished(() => {
+    channel.stop();
+  });
   return channel;
 }
 
 describe('bridge', () => {
-  it('As the shell, I start the product frame after the page core is built and a second start hands me the same frame', () => {
+  it('As a dotli integrator, I start the product frame after the page core is built and a second start hands me the same frame', () => {
     // Given
-    const { bridge } = harness();
+    const { bridge } = createHarness();
     bridge.initBridge(createBlockingModalCoordinator());
 
     // When
-    const first = bridge.startProductFrame(sandboxChannel());
-    const second = bridge.startProductFrame(sandboxChannel());
+    const first = bridge.startProductFrame(startTestSandboxChannel());
+    const second = bridge.startProductFrame(startTestSandboxChannel());
 
     // Then
     expect(second).toBe(first);
   });
 
-  it('As the network panel, the host chains report to me from the first initBridge, and a repeat keeps that core and attaches no second watch', async () => {
+  it('As a debug panel user, I see the host chains report from the first bridge init and a repeat init keeps that core with no second watch', async () => {
     // Given
-    const { bridge, watches, requests } = harness();
-    const first = recordingCoordinator();
-    const second = recordingCoordinator();
+    const { bridge, watches, requests } = createHarness();
+    const first = createRecordingCoordinator();
+    const second = createRecordingCoordinator();
     bridge.initBridge(first.coordinator);
 
     // When
@@ -146,22 +149,22 @@ describe('bridge', () => {
     expect(second.scopes).toEqual([]);
   });
 
-  it('As the shell, starting the product frame before the page core is built fails with a named error', () => {
+  it('As a dotli integrator, I start the product frame before the page core is built and it fails with a named error', () => {
     // Given
-    const { bridge } = harness();
+    const { bridge } = createHarness();
 
     // When
-    const start = (): void => {
-      bridge.startProductFrame(sandboxChannel());
-    };
+    const error = catchError(() => {
+      bridge.startProductFrame(startTestSandboxChannel());
+    });
 
     // Then
-    expect(start).toThrow('TrUAPI page core used before initBridge');
+    expect(error).toEqual(new Error('TrUAPI page core used before initBridge'));
   });
 
   it('As a user signing out before the page core is built, I cancel and reset and no core is found or booted', async () => {
     // Given a bridge with no page core yet
-    const { bridge, requests } = harness();
+    const { bridge, requests } = createHarness();
 
     // When the sign-out cancels pairing and resets the session
     bridge.core.cancelPairing();
@@ -173,9 +176,12 @@ describe('bridge', () => {
 
   it('As a user signing out, I reset the core already running and no other boots', async () => {
     // Given a page whose core runs
-    const { bridge, requests, runtimeCalls } = harness();
+    const { bridge, requests, runtimeCalls } = createHarness();
     bridge.initBridge(createBlockingModalCoordinator());
     const lease = await bridge.core.acquire();
+    onTestFinished(() => {
+      lease.release();
+    });
 
     // When the sign-out resets the session
     await bridge.core.resetSession();
@@ -183,14 +189,13 @@ describe('bridge', () => {
     // Then the running core reset its session and no other booted
     expect(requests).toHaveLength(1);
     expect(runtimeCalls).toEqual(['resetSessionState']);
-    lease.release();
   });
 
   it('As a user signing out, I end the stored session on a memory-only core of my own, which stays up to tell the phone and ends the next one too', async () => {
     // Given two stored sessions and a built bridge
     const first = Uint8Array.from([1, 2, 3]);
     const second = Uint8Array.from([4, 5, 6]);
-    const { bridge, requests, runtimes, runtimeCalls } = harness();
+    const { bridge, requests, runtimes, runtimeCalls } = createHarness();
     bridge.initBridge(createBlockingModalCoordinator());
 
     // When both sessions are ended
@@ -213,34 +218,33 @@ describe('bridge', () => {
   it('As a user signing out whose core refuses the session, I hear it and that core goes, so the next end boots another', async () => {
     // Given a core that refuses the session
     const failure = new Error('not a session');
-    const { bridge, requests, runtimeCalls } = harness({ activateError: failure });
+    const { bridge, requests, runtimeCalls } = createHarness({ activateError: failure });
     bridge.initBridge(createBlockingModalCoordinator());
 
-    // When a session is ended
-    const ending = bridge.endSession(Uint8Array.from([1]));
+    // When a session is ended, then another
+    const firstError = await catchRejection(bridge.endSession(Uint8Array.from([1])));
+    const callsAfterFirst = [...runtimeCalls];
+    const secondError = await catchRejection(bridge.endSession(Uint8Array.from([1])));
 
-    // Then the end rejects with the refusal and the core is disposed
-    await expect(ending).rejects.toBe(failure);
-    expect(runtimeCalls).toEqual(['activateExternalSession', 'dispose']);
-
-    // When another session is ended
-    await expect(bridge.endSession(Uint8Array.from([1]))).rejects.toBe(failure);
-
-    // Then a second core was booted for it
+    // Then each end rejects with the refusal, the first core is disposed and a second core was booted
+    expect(firstError).toBe(failure);
+    expect(callsAfterFirst).toEqual(['activateExternalSession', 'dispose']);
+    expect(secondError).toBe(failure);
     expect(requests).toHaveLength(2);
   });
 
   it('As a user signing out whose core could not disconnect, I hear it and that core goes, so the next end boots another', async () => {
     // Given a core whose first disconnect fails
     const failure = new Error('worker fatal error: disconnect');
-    const { bridge, requests, runtimeCalls } = harness({ firstDisconnectError: failure });
+    const { bridge, requests, runtimeCalls } = createHarness({ firstDisconnectError: failure });
     bridge.initBridge(createBlockingModalCoordinator());
 
     // When one session ends with that failure and another follows
-    await expect(bridge.endSession(Uint8Array.from([1]))).rejects.toBe(failure);
+    const firstError = await catchRejection(bridge.endSession(Uint8Array.from([1])));
     await bridge.endSession(Uint8Array.from([2]));
 
     // Then the failed core was disposed and a second one ended the next session
+    expect(firstError).toBe(failure);
     expect(requests).toHaveLength(2);
     expect(runtimeCalls).toEqual([
       'activateExternalSession',
@@ -253,21 +257,22 @@ describe('bridge', () => {
 
   it('As a user whose sign-out core failed to boot, I sign out again and it boots again', async () => {
     // Given a sign-out whose core failed to boot
-    const { bridge, requests } = harness({ bootError: new Error('worker fatal error: boot') });
+    const { bridge, requests } = createHarness({ bootError: new Error('worker fatal error: boot') });
     bridge.initBridge(createBlockingModalCoordinator());
-    await expect(bridge.endSession(Uint8Array.from([1]))).rejects.toThrow('worker fatal error: boot');
+    const firstError = await catchRejection(bridge.endSession(Uint8Array.from([1])));
 
     // When a session is ended again
     const again = bridge.endSession(Uint8Array.from([1]));
 
     // Then the core boots again and fails the same way
+    expect(firstError.message).toContain('worker fatal error: boot');
     await expect(again).rejects.toThrow('worker fatal error: boot');
     expect(requests).toHaveLength(2);
   });
 
   it('As a user signing out before the bridge is built, I end a session and it fails with a named error', async () => {
     // Given a bridge that was never built
-    const { bridge, requests } = harness();
+    const { bridge, requests } = createHarness();
 
     // When a session is ended
     const ending = bridge.endSession(Uint8Array.from([1]));

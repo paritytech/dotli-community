@@ -4,14 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { createPermissionAuthorizations, type PermissionAuthorizations } from '../permissions.js';
+import { createPermissionAuthorizations, type PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
   createProductPermissions,
   type PermissionsChange,
   type ProductPermissions,
 } from '../state/productPermissions.js';
 import { productState } from '../state/productState.js';
-import { createBlockingModalCoordinator, type BlockingModalScope } from '../blockingModalQueue.js';
+import { createBlockingModalCoordinator, type BlockingModalScope } from '../createBlockingModalCoordinator.js';
 import { createPromptPermission } from './createPromptPermission.js';
 import type { PermissionPromptDecision } from '../hostPrompts.js';
 import { createFakePrompts, type FakePrompts } from '../hostPrompts.fake.js';
@@ -68,7 +68,7 @@ describe('device permission prompts', () => {
 
     // Then
     expect(answer).toBe('AllowOnce');
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
   });
 
   it.each<{ permission: 'Camera' | 'Notifications'; button: PromptButton; announced: string; allowChanged: boolean }>([
@@ -119,7 +119,7 @@ describe('three-way permission prompts', () => {
       // When
       await clickPromptButton(button);
       const heard = await response;
-      const stored = await registry.status('myapp', 'ChainSubmit');
+      const stored = await registry.getStatus('myapp', 'ChainSubmit');
 
       // Then
       expect({ heard, stored, recorded }).toEqual({ heard: answer, stored: status, recorded: changes });
@@ -133,7 +133,7 @@ describe('three-way permission prompts', () => {
     // When
     await clickPromptButton('Allow once');
     const answer = await response;
-    const stored = await registry.status('myapp', 'Notifications');
+    const stored = await registry.getStatus('myapp', 'Notifications');
 
     // Then
     expect(answer).toBe('AllowOnce');
@@ -145,12 +145,12 @@ describe('three-way permission prompts', () => {
 
     // When
     const response = createPrompts().devicePermission(PRODUCT, 'Camera');
-    await page.promptShown();
-    const shown = page.shown();
+    await page.waitForPrompt();
+    const shown = page.getShown();
 
     // Then
     expect(shown).toMatchObject({ kind: 'permission', permission: 'Camera', allowOnce: false });
-    expect(page.pending()).toHaveLength(1);
+    expect(page.listPending()).toHaveLength(1);
 
     // When
     await clickPromptButton('Deny');
@@ -162,7 +162,7 @@ describe('three-way permission prompts', () => {
   it('As a product developer, I ask with an existing grant and get it answered without a lasting upgrade', async () => {
     // Given the status can reflect a pending one-time grant, so answering
     // AllowAlways here would quietly make it permanent
-    await registry.setStatus('myapp', 'ChainSubmit', 'granted');
+    await registry.setStatus({ label: 'myapp', permission: 'ChainSubmit', status: 'granted' });
 
     // When
     const response = createPrompts().remotePermission(PRODUCT, {
@@ -171,19 +171,19 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
   });
 
   it('As a user with a stored notification denial, I am asked for notifications and it is denied with a quiet blocked notice and no prompt', async () => {
     // Given
-    await registry.setStatus('myapp', 'Notifications', 'denied');
+    await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'denied' });
 
     // When
     const response = createPrompts().devicePermission(PRODUCT, 'Notifications');
 
     // Then
     await expect(response).resolves.toBe('Deny');
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(page.notices).toEqual([
       expect.objectContaining({
         text: 'Notifications access is blocked. Use the permissions menu in the top bar to change this.',
@@ -195,7 +195,7 @@ describe('three-way permission prompts', () => {
   it('As a user, I dismiss a notification prompt and no decision is recorded', async () => {
     // Given
     const response = createPrompts().devicePermission(PRODUCT, 'Notifications');
-    await page.promptShown();
+    await page.waitForPrompt();
 
     // When
     page.dismiss();
@@ -203,7 +203,7 @@ describe('three-way permission prompts', () => {
       () => null,
       (error: unknown) => error,
     );
-    const stored = await registry.status('myapp', 'Notifications');
+    const stored = await registry.getStatus('myapp', 'Notifications');
 
     // Then
     expect(failure).toMatchObject({ message: 'User dismissed permission dialog' });
@@ -214,19 +214,19 @@ describe('three-way permission prompts', () => {
 describe('queued permission prompts', () => {
   it('As a product developer with notifications granted, I ask while another dialog is open and get my answer', async () => {
     // Given a dialog that holds the queue until the user answers it
-    await registry.setStatus('myapp', 'Notifications', 'granted');
+    await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'granted' });
     const scope = createBlockingModalCoordinator().createScope();
     const held = scope.enqueue(signal =>
-      page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }),
+      page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, allowOnce: true }),
     );
-    await page.promptShown();
+    await page.waitForPrompt();
 
     // When
     const response = createPrompts({ scope }).devicePermission(PRODUCT, 'Notifications');
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(page.shown()).toMatchObject({ permission: 'ChainSubmit' });
+    expect(page.getShown()).toMatchObject({ permission: 'ChainSubmit' });
 
     // When the queue's scope goes
     scope.dispose();
@@ -237,12 +237,12 @@ describe('queued permission prompts', () => {
 
   it('As a user with notifications blocked, I am asked while another dialog is open and am told so', async () => {
     // Given a dialog that holds the queue until the user answers it
-    await registry.setStatus('myapp', 'Notifications', 'denied');
+    await registry.setStatus({ label: 'myapp', permission: 'Notifications', status: 'denied' });
     const scope = createBlockingModalCoordinator().createScope();
     const held = scope.enqueue(signal =>
-      page.prompts.askPermission('myapp', 'ChainSubmit', signal, { allowOnce: true }),
+      page.prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal, allowOnce: true }),
     );
-    await page.promptShown();
+    await page.waitForPrompt();
 
     // When
     const response = createPrompts({ scope }).devicePermission(PRODUCT, 'Notifications');
@@ -282,13 +282,13 @@ describe('queued permission prompts', () => {
     // When the same permission is asked twice and the user grants the first prompt
     const first = permissions.devicePermission(PRODUCT, 'Notifications');
     const second = permissions.devicePermission(PRODUCT, 'Notifications');
-    await page.promptShown();
+    await page.waitForPrompt();
     page.decide('granted');
 
     // Then the duplicate reads the saved grant instead of prompting, and
     // answers without upgrading what it found
     await expect(Promise.all([first, second])).resolves.toEqual(['AllowAlways', 'AllowOnce']);
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(status).toBe('Authorized');
   });
 });
@@ -311,7 +311,7 @@ function createPrompts({
 function recordChanges(): PermissionsChange[] {
   const changes: PermissionsChange[] = [];
   onTestFinished(
-    store.onChanged(change => {
+    store.subscribeChanges(change => {
       changes.push(change);
     }),
   );
@@ -355,6 +355,6 @@ function isOffered(allowOnce: boolean, text: PromptButton): boolean {
 
 /** Presses the permission dialog's button with this label, once a prompt that offers it is up. */
 async function clickPromptButton(text: PromptButton): Promise<void> {
-  await page.promptShown(prompt => prompt.kind === 'permission' && isOffered(prompt.allowOnce, text));
+  await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' && isOffered(prompt.allowOnce, text) });
   page.decide(DECISIONS[text]);
 }

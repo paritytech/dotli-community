@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { ALL_PERMISSIONS } from '../../runtime/permissions.js';
+import { ALL_PERMISSIONS } from '../../runtime/permissionPolicy.js';
 import { permissionIcon } from './permissionIcons.js';
 import { permissionRequestDialog, type PermissionRequest } from './permissionDialog.js';
 

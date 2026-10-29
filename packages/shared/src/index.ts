@@ -30,6 +30,7 @@ export { getEndpointHost } from './getEndpointHost.js';
 export { getErrorChain } from './getErrorChain.js';
 export { getErrorMessage } from './getErrorMessage.js';
 export { getErrorName } from './getErrorName.js';
+export { getKeys } from './getKeys.js';
 export { hashBlake2b } from './hashBlake2b.js';
 export { fromHex, toHex } from './hex.js';
 export { IdbOpenBlockedError } from './idbOpenBlockedError.js';

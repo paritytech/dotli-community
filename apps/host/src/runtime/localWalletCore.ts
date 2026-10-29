@@ -14,38 +14,15 @@ import { getActiveServicesConfig } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { loadSigningWorker } from '../lazy.js';
-import { refreshLiteUsername } from './localWalletIdentity.js';
+import { liteUsernameRefresh } from './createLiteUsernameRefresh.js';
 import { reportLocalWalletFailure, type LocalWalletFailureReason } from './walletFailure.js';
-import type { LocalWalletBoot } from './walletBoot.js';
+import type { LocalWalletBoot } from './createWalletBoot.js';
+import { watchIdentityAccount } from './watchIdentityAccount.js';
 
 type CreateRuntime = typeof createWebWorkerPairingHostRuntime;
 
-/** The core tells its identity account only through the auth state it reports, so the account is caught there. */
-export function watchIdentityAccount(callbacks: WebWorkerHostCallbacks): {
-  callbacks: WebWorkerHostCallbacks;
-  identityAccountId: Promise<string>;
-} {
-  let found: (identityAccountId: string) => void = () => undefined;
-  const identityAccountId = new Promise<string>(resolve => {
-    found = resolve;
-  });
-  return {
-    callbacks: {
-      ...callbacks,
-      auth: {
-        authStateChanged(state) {
-          callbacks.auth.authStateChanged(state);
-          if (state.tag === 'Connected' && state.value.identityAccountId !== undefined) {
-            found(state.value.identityAccountId);
-          }
-        },
-      },
-    },
-    identityAccountId,
-  };
-}
-
-export type LocalWalletCoreDeps = {
+export type LocalWalletCoreBootParams = {
+  /** Loads the signing host's worker. Rejects when it fails to load. */
   loadSigningWorker: () => Promise<{ default: new () => Worker }>;
   /** Settles with the name the network holds when it differs from the cached one, else with `undefined`. */
   refreshLiteUsername: (
@@ -56,20 +33,40 @@ export type LocalWalletCoreDeps = {
   reportFailure: (error: unknown, reason: LocalWalletFailureReason) => void;
 };
 
-export type BootLocalWalletCore = (
-  create: CreateRuntime,
-  callbacks: WebWorkerHostCallbacks,
-  hostConfig: WebWorkerHostConfig,
-  wallet: LocalWalletBoot,
-  isLive: () => boolean,
-) => Promise<WorkerPairingHostRuntime>;
+/** One local wallet core to boot. */
+type BootParams = {
+  /** Builds the runtime over the signing worker. */
+  create: CreateRuntime;
+  /** What the core asks the page, passed on with the identity account caught from its auth states. */
+  callbacks: WebWorkerHostCallbacks;
+  /** The product's host config, which boots with the active TLD as its network suffix. */
+  hostConfig: WebWorkerHostConfig;
+  /** The stored wallet the core signs with. */
+  wallet: LocalWalletBoot;
+  /** False once the core is gone, so a late re-activation stands down. */
+  isLive: () => boolean;
+};
 
-export function createLocalWalletCoreBoot(deps: LocalWalletCoreDeps): BootLocalWalletCore {
-  return async (create, callbacks, hostConfig, wallet, isLive) => {
+export type BootLocalWalletCore = ReturnType<typeof createLocalWalletCoreBoot>;
+
+/** Returns the boot of a local wallet core. Never throws. */
+export function createLocalWalletCoreBoot({
+  loadSigningWorker,
+  refreshLiteUsername,
+  reportFailure,
+}: LocalWalletCoreBootParams) {
+  /** Resolves with the activated signing host. Rejects when it fails to boot or to activate. */
+  async function boot({
+    create,
+    callbacks,
+    hostConfig,
+    wallet,
+    isLive,
+  }: BootParams): Promise<WorkerPairingHostRuntime> {
     const watched = watchIdentityAccount(callbacks);
     let runtime: WorkerPairingHostRuntime;
     try {
-      const { default: SigningWorker } = await deps.loadSigningWorker();
+      const { default: SigningWorker } = await loadSigningWorker();
       runtime = await create(new SigningWorker(), watched.callbacks, {
         hostConfig: { ...hostConfig, networkSuffix: getActiveServicesConfig().dotns.TLD },
         role: 'signing',
@@ -90,8 +87,7 @@ export function createLocalWalletCoreBoot(deps: LocalWalletCoreDeps): BootLocalW
     log.event('local wallet activated', { flow: 'wallet' });
 
     // A repeated activation drops grants held only in memory, so it happens only when the name changed.
-    void deps
-      .refreshLiteUsername(wallet, watched.identityAccountId)
+    void refreshLiteUsername(wallet, watched.identityAccountId)
       .then(async name => {
         if (name === undefined || !isLive()) {
           return;
@@ -100,15 +96,18 @@ export function createLocalWalletCoreBoot(deps: LocalWalletCoreDeps): BootLocalW
         log.event('local wallet re-activated with a new username', { flow: 'wallet' });
       })
       .catch((error: unknown) => {
-        deps.reportFailure(error, 'reactivate');
+        reportFailure(error, 'reactivate');
       });
 
     return runtime;
-  };
+  }
+
+  return boot;
 }
 
+/** The page's local wallet core boot. */
 export const bootLocalWalletCore: BootLocalWalletCore = createLocalWalletCoreBoot({
   loadSigningWorker,
-  refreshLiteUsername,
+  refreshLiteUsername: liteUsernameRefresh.refresh,
   reportFailure: reportLocalWalletFailure,
 });

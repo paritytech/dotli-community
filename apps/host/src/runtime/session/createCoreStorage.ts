@@ -70,7 +70,7 @@ export type StoredSession = Pick<
   | 'readUiCache'
   | 'writeUiCache'
   | 'subscribeStatus'
-  | 'onStoredSessionChanged'
+  | 'subscribeStoredSession'
 >;
 
 type Params = {
@@ -322,6 +322,34 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     };
   }
 
+  function subscribeStoredSession(listener: () => void): () => void {
+    const unsubscribeLocal = localChangeListeners.subscribe(() => {
+      listener();
+    });
+    const unsubscribeShared = shared.subscribe(key => {
+      if (key === SHARED_CORE_SESSION_KEY) {
+        listener();
+      }
+    });
+    let lastStatus = shared.getStatus();
+    const unsubscribeStatus = shared.subscribeStatus(status => {
+      const recovered = lastStatus === 'unavailable' && status === 'available';
+      lastStatus = status;
+      // A core whose own read failed holds no session, so the store coming back is a change for it.
+      if (recovered) {
+        listener();
+      }
+    });
+
+    function unsubscribe(): void {
+      unsubscribeLocal();
+      unsubscribeShared();
+      unsubscribeStatus();
+    }
+
+    return unsubscribe;
+  }
+
   return {
     /** Builds the slots one core reads and writes. Its clear drops only the session it last read or wrote. */
     createAdapters({ sessionInMemory = false }: CreateAdaptersParams = {}): CoreStorage {
@@ -367,7 +395,7 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     subscribeSessionReads: (listener: (failed: boolean) => void): (() => void) =>
       sessionReadListeners.subscribe(listener),
     /** Hears each core's write of its session that failed, with the failure. Returns the unsubscribe. */
-    onSessionWriteFailed: (listener: (error: unknown) => void): (() => void) =>
+    subscribeSessionWriteFailures: (listener: (error: unknown) => void): (() => void) =>
       sessionWriteFailures.subscribe(listener),
     /** The cached account, or null for none and for a read that failed. Never throws, and reports its own failure. */
     readUiCache,
@@ -381,39 +409,13 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
      * Calls `listener` for a session written in this tab, changed by another tab, or readable again once the store is
      * back. Returns the unsubscribe.
      */
-    onStoredSessionChanged(listener: () => void): () => void {
-      const unsubscribeLocal = localChangeListeners.subscribe(() => {
-        listener();
-      });
-      const unsubscribeShared = shared.subscribe(key => {
-        if (key === SHARED_CORE_SESSION_KEY) {
-          listener();
-        }
-      });
-      let lastStatus = shared.getStatus();
-      const unsubscribeStatus = shared.subscribeStatus(status => {
-        const recovered = lastStatus === 'unavailable' && status === 'available';
-        lastStatus = status;
-        // A core whose own read failed holds no session, so the store coming back is a change for it.
-        if (recovered) {
-          listener();
-        }
-      });
-
-      function unsubscribe(): void {
-        unsubscribeLocal();
-        unsubscribeShared();
-        unsubscribeStatus();
-      }
-
-      return unsubscribe;
-    },
+    subscribeStoredSession,
   };
 }
 
 /** The page's flag keeper, picked by the page's role on first use. */
 export const signInFlag: SignInFlag = createPageSignInFlag({
-  role: pageRole,
+  role: pageRole.get,
   presence: sessionPresence,
   readStoredSignIn,
 });
@@ -423,14 +425,6 @@ export const coreStorage: HostCoreStorage = createCoreStorage({
   shared: createSiteSharedSessionStore(),
   flag: signInFlag,
 });
-
-/**
- * Calls `listener` each time the page's stored session changes, as the page's core storage reports it. Returns the
- * unsubscribe.
- */
-export function listenForStoredSessionChange(listener: () => void): () => void {
-  return coreStorage.onStoredSessionChanged(listener);
-}
 
 /** The protocol frame's shared auth store, scoped to this site. */
 function createSiteSharedSessionStore(): SharedSessionStore {

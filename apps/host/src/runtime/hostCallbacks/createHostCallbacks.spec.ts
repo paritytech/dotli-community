@@ -4,16 +4,16 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ProductContext } from '@parity/truapi-host';
-import { createBlockingModalCoordinator } from '../blockingModalQueue.js';
+import { createBlockingModalCoordinator } from '../createBlockingModalCoordinator.js';
 import { createHostCallbacks } from './createHostCallbacks.js';
 import { createPromptAsks } from './createPromptAsks.js';
 import { SUBMIT_MAX_PER_WINDOW } from './createSubmitRateLimiter.js';
 import type { NotificationScheduler } from './createNotificationAdapters.js';
 import type { HostPrompts } from '../hostPrompts.js';
 import { createFakePrompts } from '../hostPrompts.fake.js';
-import { requestFrame } from '../phoneRequests.fake.js';
-import { createPhoneRequestTracker } from '../phoneRequests.js';
-import { createPermissionAuthorizations } from '../permissions.js';
+import { encodePhoneRequestFrame } from '../../testing/encodePhoneRequestFrame.js';
+import { createPhoneRequestTracker } from '../createPhoneRequestTracker.js';
+import { createPermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import { createProductPermissions } from '../state/productPermissions.js';
 import { productState } from '../state/productState.js';
 import { getWindowAsks } from './getWindowAsks.js';
@@ -61,25 +61,27 @@ describe('blocking modal queue across host callbacks', () => {
       },
     });
     const camera = callbacks.permissions.devicePermission(PRODUCT, 'Camera');
-    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account Access');
+    await page.waitForPrompt({
+      matches: prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account Access',
+    });
 
     // Then
-    expect(page.pending()).toHaveLength(1);
+    expect(page.listPending()).toHaveLength(1);
 
     // When
     page.chooseReviewButton('Allow');
-    await page.promptShown(prompt => prompt.kind === 'permission');
+    await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' });
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
-    expect(page.pending()).toHaveLength(1);
+    expect(page.listPending()).toHaveLength(1);
 
     // When
     page.decide('granted');
 
     // Then
     await expect(camera).resolves.toEqual('AllowAlways');
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
   });
 
   it('As a user with a paired phone, I allow an account access and it waits on the phone before the next prompt', async () => {
@@ -100,8 +102,12 @@ describe('blocking modal queue across host callbacks', () => {
       phoneRequests,
     });
     tap.fromProduct(
-      requestFrame('a', 'getAccount', {
-        productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+      encodePhoneRequestFrame({
+        requestId: 'a',
+        method: 'getAccount',
+        body: {
+          productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+        },
       }),
     );
     const accountAccess = callbacks.userConfirmation.confirmUserAction({
@@ -109,19 +115,21 @@ describe('blocking modal queue across host callbacks', () => {
       value: { requestingProductId: 'truapi-playground.dot', targetProductId: 'other-product.dot' },
     });
     const camera = callbacks.permissions.devicePermission(PRODUCT, 'Camera');
-    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account Access');
+    await page.waitForPrompt({
+      matches: prompt => prompt.kind === 'review' && prompt.dialog.title === 'Account Access',
+    });
 
     // When
     page.chooseReviewButton('Allow');
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
-    expect(page.pending()).toHaveLength(1);
-    expect(page.shownReview().buttons.map(button => button.label)).toEqual(['Wait in background']);
+    expect(page.listPending()).toHaveLength(1);
+    expect(page.getShownReview().buttons.map(button => button.label)).toEqual(['Wait in background']);
 
     // When
     page.chooseReviewButton('Wait in background');
-    await page.promptShown(prompt => prompt.kind === 'permission');
+    await page.waitForPrompt({ matches: prompt => prompt.kind === 'permission' });
     page.decide('granted');
 
     // Then
@@ -153,7 +161,7 @@ describe('session window asks across host callbacks', () => {
     // Then both are allowed and no page prompt was asked
     expect([camera, confirmed]).toEqual(['AllowOnce', true]);
     expect(askPermission).not.toHaveBeenCalled();
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
   });
 });
 

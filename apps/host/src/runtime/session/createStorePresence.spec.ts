@@ -3,13 +3,13 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SharedChannel } from '../sharedMode.js';
-import { memorySharedChannel } from '../sharedMode.fake.js';
+import { createMemorySharedChannel } from '../sharedMode.fake.js';
 import { createStorePresence } from './createStorePresence.js';
 
 describe('store presence', () => {
   it('As a developer on a local page, I set and clear the flag and read present after the set and absent after the clear', async () => {
     // Given a flag over a working dev store
-    const presence = createStorePresence(memorySharedChannel());
+    const presence = createStorePresence(createMemorySharedChannel());
 
     // When the flag is set, read and cleared
     void presence.set();

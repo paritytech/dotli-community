@@ -22,7 +22,7 @@ import type {
   PermissionGroup,
   PermissionStatus,
   PermissionTargets,
-} from '../../runtime/permissions.js';
+} from '../../runtime/permissionPolicy.js';
 import { PermissionRow } from './PermissionRow.js';
 import { PresetPicker } from './PresetPicker.js';
 import { presetOf, SECURE } from './presets.js';

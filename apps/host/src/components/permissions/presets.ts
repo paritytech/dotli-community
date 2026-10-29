@@ -4,7 +4,11 @@
 // The four presets the permissions slider offers, and which one a set of statuses reads as. A preset is never stored,
 // it is read from the statuses each time.
 
-import { ALL_PERMISSIONS, type EnforceablePermissionName, type PermissionStatus } from '../../runtime/permissions.js';
+import {
+  ALL_PERMISSIONS,
+  type EnforceablePermissionName,
+  type PermissionStatus,
+} from '../../runtime/permissionPolicy.js';
 
 export type PresetId = 'restricted' | 'secure' | 'trusted' | 'unlimited';
 

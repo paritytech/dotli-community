@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Tags and decodes wire frames for the debug panel. Chain frames keep the `remote_chain_*` tag names
-// because the panel's swimlane and annotation logic keys on them.
+// Tags and decodes wire frames for the debug panel. The `remote_chain_*` tag names of chain frames are stable output.
 
 import * as WIRE_TABLE from '@parity/truapi/wire-table';
 import * as generated from '@parity/truapi';
@@ -16,26 +15,48 @@ import {
   type MethodIds,
 } from '@parity/truapi';
 import { CallError, Result, type Codec } from '@parity/truapi/scale';
+import { isRecord } from '@dotli/shared';
 
 type WireCodec = {
+  /** Decodes a frame's payload. Throws when the bytes are malformed. */
   dec: (bytes: Uint8Array) => unknown;
 };
 
-/**
- * Must match the generated client's composition exactly, because a bare codec does not throw on real
- * response bytes and would quietly decode garbage instead of falling back to raw bytes.
- */
-function responseCodec<T, E>(ok: Codec<T>, err: Codec<E>): WireCodec {
-  return Result(ok, CallError(err));
-}
-
-/**
- * Wire-table keys and codec stems use different word orders, so this link is the one hand-written fact.
- * The drift-guard test checks everything derived from it against the installed `@parity/truapi`.
- */
+/** Wire-table keys and codec stems use different word orders, so this link is the one hand-written fact. */
 type ChainLinkage = {
   wireTableKey: keyof typeof WIRE_TABLE;
   stem: string;
+};
+
+/** One leg of a chain method, tagged in its chain's lane. */
+type SetLegParams = {
+  messageType: number;
+  /** The leg's name, which ends its tag. */
+  role: string;
+  /** Null for a leg the panel shows as raw bytes. */
+  codec: WireCodec | null;
+};
+
+type ChainEntry = {
+  tag: string;
+  /** Tag-only when null, either on purpose or after a codegen-drift miss. */
+  codec: WireCodec | null;
+};
+
+type GenericEntry = {
+  name: string;
+  redacted: boolean;
+};
+
+export type WireFrameId = {
+  traitId: number;
+  methodId: number;
+  messageType: number;
+};
+
+type DescribeWireFrameParams = {
+  /** Local mode only, where the panel stands in for the phone's request screen. */
+  decodeWalletFrames?: boolean;
 };
 
 const CHAIN_LINKAGE: readonly ChainLinkage[] = [
@@ -58,42 +79,16 @@ const CHAIN_LINKAGE: readonly ChainLinkage[] = [
   { wireTableKey: 'CHAIN_STOP_TRANSACTION', stem: 'TransactionStop' },
 ];
 
-function snakeCase(stem: string): string {
-  return stem.replace(/(?!^)([A-Z])/g, '_$1').toLowerCase();
-}
-
-/** Undefined on a renamed or removed export, so the caller falls back to a tag-only entry. */
-function resolveCodec(exportName: string): Codec<unknown> | undefined {
-  const candidate = (generated as Record<string, unknown>)[exportName];
-  if (
-    typeof candidate === 'object' &&
-    candidate !== null &&
-    typeof (candidate as { dec?: unknown }).dec === 'function'
-  ) {
-    return candidate as Codec<unknown>;
-  }
-  return undefined;
-}
-
-type ChainEntry = {
-  tag: string;
-  /** Tag-only when null, either on purpose or after a codegen-drift miss. */
-  codec: WireCodec | null;
-};
-
-export type WireFrameId = {
-  traitId: number;
-  methodId: number;
-  messageType: number;
-};
-
-export function wireFrameKey(frame: WireFrameId): number {
-  return (frame.traitId << 16) | (frame.methodId << 8) | frame.messageType;
-}
-
-export function wireFrameId(ids: MethodIds, messageType: number): WireFrameId {
-  return { traitId: ids.trait, methodId: ids.method, messageType };
-}
+/** The requests a local signing host serves itself, which a paired phone would otherwise show the user. */
+const WALLET_LINKAGE: readonly ChainLinkage[] = [
+  { wireTableKey: 'SIGNING_SIGN_PAYLOAD', stem: 'SignPayload' },
+  { wireTableKey: 'SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT', stem: 'SignPayloadWithLegacyAccount' },
+  { wireTableKey: 'SIGNING_SIGN_RAW', stem: 'SignRaw' },
+  { wireTableKey: 'SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT', stem: 'SignRawWithLegacyAccount' },
+  { wireTableKey: 'SIGNING_CREATE_TRANSACTION', stem: 'CreateTransaction' },
+  { wireTableKey: 'SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT', stem: 'CreateTransactionWithLegacyAccount' },
+  { wireTableKey: 'RESOURCE_ALLOCATION_REQUEST', stem: 'RequestResourceAllocation' },
+];
 
 const REQUEST_LEGS: readonly (readonly [number, string])[] = [
   [MESSAGE_TYPE_REQUEST, 'request'],
@@ -107,128 +102,27 @@ const SUBSCRIPTION_LEGS: readonly (readonly [number, string])[] = [
   [MESSAGE_TYPE_STOP, 'stop'],
 ];
 
-function legsOf(ids: MethodIds): readonly (readonly [number, string])[] {
-  return ids.kind === 'subscription' ? SUBSCRIPTION_LEGS : REQUEST_LEGS;
-}
-
-function isMethodIds(value: unknown): value is MethodIds {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as MethodIds).trait === 'number' &&
-    typeof (value as MethodIds).method === 'number'
-  );
-}
-
-function buildChainEntries(): Map<number, ChainEntry> {
-  const entries = new Map<number, ChainEntry>();
-
-  for (const { wireTableKey, stem } of CHAIN_LINKAGE) {
-    const ids: MethodIds = WIRE_TABLE[wireTableKey];
-    const tagBase = `remote_chain_${snakeCase(stem)}`;
-    const set = (messageType: number, role: string, codec: WireCodec | null): void => {
-      entries.set(wireFrameKey(wireFrameId(ids, messageType)), {
-        tag: `${tagBase}_${role}`,
-        codec,
-      });
-    };
-
-    if (ids.kind === 'subscription') {
-      set(MESSAGE_TYPE_START, 'start', resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null);
-      set(MESSAGE_TYPE_RECEIVE, 'receive', resolveCodec(`VersionedRemoteChain${stem}Item`) ?? null);
-      // Never decoded, but tagged so the swimlane puts them in their chain's lane.
-      set(MESSAGE_TYPE_INTERRUPT, 'interrupt', null);
-      set(MESSAGE_TYPE_STOP, 'stop', null);
-      continue;
-    }
-
-    set(MESSAGE_TYPE_REQUEST, 'request', resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null);
-    const okCodec = resolveCodec(`VersionedRemoteChain${stem}Response`);
-    const errCodec = resolveCodec(`VersionedRemoteChain${stem}Error`);
-    set(
-      MESSAGE_TYPE_RESPONSE,
-      'response',
-      okCodec !== undefined && errCodec !== undefined ? responseCodec(okCodec, errCodec) : null,
-    );
-  }
-
-  return entries;
-}
-
-/** The requests a local signing host serves itself, which a paired phone would otherwise show the user. */
-const WALLET_LINKAGE: readonly ChainLinkage[] = [
-  { wireTableKey: 'SIGNING_SIGN_PAYLOAD', stem: 'SignPayload' },
-  { wireTableKey: 'SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT', stem: 'SignPayloadWithLegacyAccount' },
-  { wireTableKey: 'SIGNING_SIGN_RAW', stem: 'SignRaw' },
-  { wireTableKey: 'SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT', stem: 'SignRawWithLegacyAccount' },
-  { wireTableKey: 'SIGNING_CREATE_TRANSACTION', stem: 'CreateTransaction' },
-  { wireTableKey: 'SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT', stem: 'CreateTransactionWithLegacyAccount' },
-  { wireTableKey: 'RESOURCE_ALLOCATION_REQUEST', stem: 'RequestResourceAllocation' },
-];
-
-function buildWalletCodecs(): Map<number, WireCodec> {
-  const codecs = new Map<number, WireCodec>();
-  for (const { wireTableKey, stem } of WALLET_LINKAGE) {
-    const ids: MethodIds = WIRE_TABLE[wireTableKey];
-    const request = resolveCodec(`VersionedHost${stem}Request`);
-    const ok = resolveCodec(`VersionedHost${stem}Response`);
-    const err = resolveCodec(`VersionedHost${stem}Error`);
-    if (request !== undefined) {
-      codecs.set(wireFrameKey(wireFrameId(ids, MESSAGE_TYPE_REQUEST)), request);
-    }
-    if (ok !== undefined && err !== undefined) {
-      codecs.set(wireFrameKey(wireFrameId(ids, MESSAGE_TYPE_RESPONSE)), responseCodec(ok, err));
-    }
-  }
-  return codecs;
-}
-
-let walletCodecs: Map<number, WireCodec> | null = null;
-
 // These families leave the tap as byte length only. Matching is by name, so a discriminant newer than
 // the host's wire table falls back to raw bytes, an accepted skew.
 const REDACTED_PREFIXES = ['signing', 'session', 'entropy', 'local_storage'];
 
-type GenericEntry = {
-  name: string;
-  redacted: boolean;
-};
-
-function buildGenericNames(): Map<number, GenericEntry> {
-  const names = new Map<number, GenericEntry>();
-  for (const [exportName, ids] of Object.entries(WIRE_TABLE)) {
-    if (!isMethodIds(ids)) {
-      continue;
-    }
-    for (const [messageType, role] of legsOf(ids)) {
-      const name = `${exportName.toLowerCase()}_${role}`;
-      const redacted = REDACTED_PREFIXES.some(prefix => name.startsWith(prefix));
-      names.set(wireFrameKey(wireFrameId(ids, messageType)), {
-        name,
-        redacted,
-      });
-    }
-  }
-  return names;
-}
-
 let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
+let walletCodecs: Map<number, WireCodec> | null = null;
 
-export type DescribeOptions = {
-  /** Local mode only, where the panel stands in for the phone's request screen. */
-  decodeWalletFrames?: boolean;
-};
-
+/**
+ * Returns the frame's tag and its decoded value, or its raw bytes when it has no codec or does not decode, or only its
+ * length for a wallet frame the panel must not show. Never throws.
+ */
 export function describeWireFrame(
   frame: WireFrameId,
   bytes: Uint8Array,
-  options: DescribeOptions = {},
+  { decodeWalletFrames = false }: DescribeWireFrameParams = {},
 ): { tag: string; value: unknown } {
   chainEntries ??= buildChainEntries();
   genericNames ??= buildGenericNames();
 
-  const wireId = wireFrameKey(frame);
+  const wireId = getWireFrameKey(frame);
   const chain = chainEntries.get(wireId);
   if (chain !== undefined) {
     if (chain.codec === null) {
@@ -247,7 +141,7 @@ export function describeWireFrame(
     const tag = `wire_${String(frame.traitId)}_${String(frame.methodId)}_${String(frame.messageType)}`;
     return { tag, value: { wireId, bytes } };
   }
-  if (options.decodeWalletFrames === true) {
+  if (decodeWalletFrames) {
     walletCodecs ??= buildWalletCodecs();
     const codec = walletCodecs.get(wireId);
     if (codec !== undefined) {
@@ -266,4 +160,135 @@ export function describeWireFrame(
     };
   }
   return { tag: generic.name, value: { wireId, bytes } };
+}
+
+/** Returns the number that keys `frame` in the describer's tables. Never throws. */
+export function getWireFrameKey(frame: WireFrameId): number {
+  return (frame.traitId << 16) | (frame.methodId << 8) | frame.messageType;
+}
+
+/** Returns the frame id of a method's `messageType` leg. Never throws. */
+export function getWireFrameId(ids: MethodIds, messageType: number): WireFrameId {
+  return { traitId: ids.trait, methodId: ids.method, messageType };
+}
+
+/**
+ * Must match the generated client's composition exactly, because a bare codec does not throw on real
+ * response bytes and would quietly decode garbage instead of falling back to raw bytes.
+ */
+function createResponseCodec<Value, Failure>(okCodec: Codec<Value>, errorCodec: Codec<Failure>): WireCodec {
+  return Result(okCodec, CallError(errorCodec));
+}
+
+function toSnakeCase(stem: string): string {
+  return stem.replace(/(?!^)([A-Z])/g, '_$1').toLowerCase();
+}
+
+/** Undefined on a renamed or removed export, so the caller falls back to a tag-only entry. */
+function resolveCodec(exportName: string): Codec<unknown> | undefined {
+  const generatedExports: unknown = generated;
+  if (!isRecord(generatedExports)) {
+    return undefined;
+  }
+  const candidate = generatedExports[exportName];
+  return isCodec(candidate) ? candidate : undefined;
+}
+
+/**
+ * Whether `value` is one of the generated module's codecs, which are arrays carrying their `dec`. The module's exports
+ * are untyped by name, and only `dec` is ever called, so an export with a `dec` passes as a codec.
+ */
+function isCodec(value: unknown): value is Codec<unknown> {
+  return typeof value === 'object' && value !== null && 'dec' in value && typeof value.dec === 'function';
+}
+
+function getLegs(ids: MethodIds): readonly (readonly [number, string])[] {
+  return ids.kind === 'subscription' ? SUBSCRIPTION_LEGS : REQUEST_LEGS;
+}
+
+function isMethodIds(value: unknown): value is MethodIds {
+  return isRecord(value) && typeof value['trait'] === 'number' && typeof value['method'] === 'number';
+}
+
+function buildChainEntries(): Map<number, ChainEntry> {
+  const entries = new Map<number, ChainEntry>();
+
+  for (const { wireTableKey, stem } of CHAIN_LINKAGE) {
+    const ids: MethodIds = WIRE_TABLE[wireTableKey];
+    const tagBase = `remote_chain_${toSnakeCase(stem)}`;
+
+    function setLeg({ messageType, role, codec }: SetLegParams): void {
+      entries.set(getWireFrameKey(getWireFrameId(ids, messageType)), {
+        tag: `${tagBase}_${role}`,
+        codec,
+      });
+    }
+
+    if (ids.kind === 'subscription') {
+      setLeg({
+        messageType: MESSAGE_TYPE_START,
+        role: 'start',
+        codec: resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null,
+      });
+      setLeg({
+        messageType: MESSAGE_TYPE_RECEIVE,
+        role: 'receive',
+        codec: resolveCodec(`VersionedRemoteChain${stem}Item`) ?? null,
+      });
+      // Never decoded, but tagged, so every leg of a chain method carries its chain's tag.
+      setLeg({ messageType: MESSAGE_TYPE_INTERRUPT, role: 'interrupt', codec: null });
+      setLeg({ messageType: MESSAGE_TYPE_STOP, role: 'stop', codec: null });
+      continue;
+    }
+
+    setLeg({
+      messageType: MESSAGE_TYPE_REQUEST,
+      role: 'request',
+      codec: resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null,
+    });
+    const okCodec = resolveCodec(`VersionedRemoteChain${stem}Response`);
+    const errorCodec = resolveCodec(`VersionedRemoteChain${stem}Error`);
+    setLeg({
+      messageType: MESSAGE_TYPE_RESPONSE,
+      role: 'response',
+      codec: okCodec !== undefined && errorCodec !== undefined ? createResponseCodec(okCodec, errorCodec) : null,
+    });
+  }
+
+  return entries;
+}
+
+function buildWalletCodecs(): Map<number, WireCodec> {
+  const codecs = new Map<number, WireCodec>();
+  for (const { wireTableKey, stem } of WALLET_LINKAGE) {
+    const ids: MethodIds = WIRE_TABLE[wireTableKey];
+    const requestCodec = resolveCodec(`VersionedHost${stem}Request`);
+    const okCodec = resolveCodec(`VersionedHost${stem}Response`);
+    const errorCodec = resolveCodec(`VersionedHost${stem}Error`);
+    if (requestCodec !== undefined) {
+      codecs.set(getWireFrameKey(getWireFrameId(ids, MESSAGE_TYPE_REQUEST)), requestCodec);
+    }
+    if (okCodec !== undefined && errorCodec !== undefined) {
+      codecs.set(getWireFrameKey(getWireFrameId(ids, MESSAGE_TYPE_RESPONSE)), createResponseCodec(okCodec, errorCodec));
+    }
+  }
+  return codecs;
+}
+
+function buildGenericNames(): Map<number, GenericEntry> {
+  const names = new Map<number, GenericEntry>();
+  for (const [exportName, ids] of Object.entries(WIRE_TABLE)) {
+    if (!isMethodIds(ids)) {
+      continue;
+    }
+    for (const [messageType, role] of getLegs(ids)) {
+      const name = `${exportName.toLowerCase()}_${role}`;
+      const redacted = REDACTED_PREFIXES.some(prefix => name.startsWith(prefix));
+      names.set(getWireFrameKey(getWireFrameId(ids, messageType)), {
+        name,
+        redacted,
+      });
+    }
+  }
+  return names;
 }

@@ -6,8 +6,8 @@ import { createDeferred } from '@dotli/shared';
 import { bindCaptureSink } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { SharedChannel } from '../sharedMode.js';
-import { memorySharedChannel } from '../sharedMode.fake.js';
-import { sharesFlag } from '../pageRole.js';
+import { createMemorySharedChannel } from '../sharedMode.fake.js';
+import { isFlagShared } from '../pageRole.js';
 import type { CookieJar } from './createCookiePresence.js';
 import { createFakeCookieJar } from './createCookiePresence.fake.js';
 import { getUnservedChannel } from './createPagePresence.fake.js';
@@ -65,7 +65,7 @@ describe('page presence', () => {
     jar.write(`has_session=1; Domain=${DOMAIN}; Path=/; Secure; SameSite=Lax; Max-Age=60`);
     jar.written.length = 0;
     const presence = createPagePresence({
-      isShared: () => sharesFlag('framed-preview'),
+      isShared: () => isFlagShared('framed-preview'),
       localhost: false,
       channel: getUnservedChannel,
       jar,
@@ -89,7 +89,7 @@ describe('page presence', () => {
       // Given the page's flag for that role on a working jar
       const jar = createFakeCookieJar();
       const presence = createPagePresence({
-        isShared: () => sharesFlag(role),
+        isShared: () => isFlagShared(role),
         localhost: false,
         channel: getUnservedChannel,
         jar,
@@ -124,7 +124,7 @@ describe('page presence', () => {
     // Given a flag over a dev store that fails
     const captures = { exception: vi.fn(), expected: vi.fn() };
     onTestFinished(bindCaptureSink(captures));
-    const channel = memorySharedChannel();
+    const channel = createMemorySharedChannel();
     channel.readFails = true;
     const presence = createPagePresence({
       isShared: () => true,
@@ -254,5 +254,10 @@ describe('presence writes', () => {
 });
 
 function createDeployedPresence(jar: CookieJar) {
-  return createPagePresence({ isShared: () => sharesFlag('page'), localhost: false, channel: getUnservedChannel, jar });
+  return createPagePresence({
+    isShared: () => isFlagShared('page'),
+    localhost: false,
+    channel: getUnservedChannel,
+    jar,
+  });
 }

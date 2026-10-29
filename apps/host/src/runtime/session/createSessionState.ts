@@ -6,11 +6,11 @@
 
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
 import { createAsyncTaskPool, createSyncStore, type ReadableStore } from '@dotli/shared';
-import { offersResume, pageRole } from '../pageRole.js';
+import { isResumeOffered, pageRole } from '../pageRole.js';
 import { authState } from '../state/authState.js';
 import { walletModeState } from '../state/walletModeState.js';
 import { sessionElsewhereState } from '../state/sessionElsewhereState.js';
-import { restoreOnBoot, type Restored } from '../walletBoot.js';
+import { pageWalletBoot, type Restored } from '../createWalletBoot.js';
 import { coreStorage, type StoredSession } from './createCoreStorage.js';
 import { getLocalSessionUiState } from './getLocalSessionUiState.js';
 import { parseUiStateCache, type TruapiSessionUiState } from './parseUiStateCache.js';
@@ -220,7 +220,7 @@ export function createSessionState({
         }),
       );
       // A sign-in from the window, a change in another tab, and the store coming back after a read failed.
-      const stopChanges = store.onStoredSessionChanged(() => {
+      const stopChanges = store.subscribeStoredSession(() => {
         if (isCopyAllowedToShow()) {
           void refresh();
         }
@@ -315,12 +315,12 @@ export function createSessionState({
 /** The page's session state, the one writer of the auth store. */
 export const sessionState = createSessionState({
   store: coreStorage,
-  restore: restoreOnBoot,
+  restore: pageWalletBoot.restore,
   auth: authState,
   setElsewhere: sessionElsewhereState.set,
   isLocalWallet: () => walletModeState.getMode() === 'local',
   // Read when first needed, as the role is chosen after this module loads.
-  isResumeOffered: () => offersResume(pageRole()),
+  isResumeOffered: () => isResumeOffered(pageRole.get()),
 });
 
 /** The states in which the page holds no sign-in of its own and its button offers one. */

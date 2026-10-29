@@ -35,8 +35,28 @@ export type FakeSharedSessionStore = {
   statusListenerCount(): number;
 } & SharedSessionStore;
 
+/** The page's copy as a login waits on it: a session a core stores, or a write of it that fails. */
+export type FakeStoredSession = {
+  /** A core storing `blob`, which tells every listener. */
+  store(blob: string): void;
+  /** A core's write of its session failing. */
+  failWrite(error: Error): void;
+} & Pick<HostCoreStorage, 'readSession' | 'subscribeStoredSession' | 'subscribeSessionWriteFailures'>;
+
+type CreateFakeSharedSessionStoreParams = {
+  /** The status the store starts at, connecting by default. */
+  status?: SharedStoreStatus;
+};
+
+type CreateFakeStoredSessionParams = {
+  /** The session the copy holds at first, none by default. */
+  blob?: string | null;
+};
+
 /** A shared auth store in memory, starting at `status`. Rejects only as a test stages it. */
-export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connecting'): FakeSharedSessionStore {
+export function createFakeSharedSessionStore({
+  status = 'connecting',
+}: CreateFakeSharedSessionStoreParams = {}): FakeSharedSessionStore {
   const entries = new Map<string, string>();
   const writeWaiters = new Map<string, ((value: string) => void)[]>();
   const clearWaiters = new Map<string, ReturnType<typeof createDeferred<undefined>>[]>();
@@ -151,26 +171,18 @@ export function createFakeSharedSessionStore(status: SharedStoreStatus = 'connec
   return store;
 }
 
-/** The page's copy as a login waits on it: a session a core stores, or a write of it that fails. */
-export type FakeStoredSession = {
-  /** A core storing `blob`, which tells every listener. */
-  store(blob: string): void;
-  /** A core's write of its session failing. */
-  failWrite(error: Error): void;
-} & Pick<HostCoreStorage, 'readSession' | 'onStoredSessionChanged' | 'onSessionWriteFailed'>;
-
 /** The page's copy holding `blob`. Never rejects. */
-export function createFakeStoredSession(blob: string | null = null): FakeStoredSession {
+export function createFakeStoredSession({ blob = null }: CreateFakeStoredSessionParams = {}): FakeStoredSession {
   let stored = blob;
   const changes = new Set<() => void>();
   const failures = new Set<(error: unknown) => void>();
   return {
     readSession: () => Promise.resolve({ status: 'ok', blob: stored }),
-    onStoredSessionChanged(listener) {
+    subscribeStoredSession(listener) {
       changes.add(listener);
       return () => changes.delete(listener);
     },
-    onSessionWriteFailed(listener) {
+    subscribeSessionWriteFailures(listener) {
       failures.add(listener);
       return () => failures.delete(listener);
     },

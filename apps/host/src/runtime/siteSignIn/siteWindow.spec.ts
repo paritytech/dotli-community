@@ -18,7 +18,7 @@ import {
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
-import type { AuthCommands } from '../coreLogin.js';
+import type { AuthCommands } from '../createAuthCommands.js';
 import { createVettedResponder } from '../sessionHandoff/createResponder.fake.js';
 import { createWindowFlow } from '../sessionHandoff/createWindowFlow.js';
 import type { DotliAuthState } from '../session/types.js';
@@ -91,7 +91,7 @@ function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: Create
   recordLog({ onFinished: onTestFinished, level: 'error' });
   const { responder, opener, post } = createVettedResponder({ origin: ORIGIN, self: SELF });
   const signIns = createOwnerSignInFlag({
-    presence: createFakeSessionPresence('present'),
+    presence: createFakeSessionPresence({ state: 'present' }),
     readStoredSignIn: () => Promise.resolve('held'),
   });
   // The window resumes what is stored, so it never pairs or signs out.

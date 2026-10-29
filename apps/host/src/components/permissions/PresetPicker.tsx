@@ -4,7 +4,7 @@
 import { createMemo, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { Chip, Spinner, StepSlider } from '@dotli/ui';
-import type { PermissionStatus } from '../../runtime/permissions.js';
+import type { PermissionStatus } from '../../runtime/permissionPolicy.js';
 import { PRESETS, presetOf, type Preset } from './presets.js';
 import s from './PresetPicker.module.css';
 

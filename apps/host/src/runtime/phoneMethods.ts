@@ -51,6 +51,8 @@ import { CallError, Result, type CallErrorValue, type Codec } from '@parity/trua
 /** What the phone is asked to do, which words the waiting step. */
 export type PhoneAsk = 'sign' | 'approve';
 
+export type PhoneMethod = keyof typeof PHONE_METHODS;
+
 type ResponseCodec = Codec<Result<unknown, CallErrorValue<unknown>>>;
 
 /** One phone-bound method: its wire ids, its codecs and what the phone is asked to do. */
@@ -63,104 +65,115 @@ type PhoneMethodEntry = {
   ask: PhoneAsk;
 };
 
+type Params<Request, Ok, Failure> = {
+  ids: MethodIds;
+  /** The method's `Versioned...Request` codec. */
+  request: Codec<Request>;
+  /** The method's `Versioned...Response` codec. */
+  ok: Codec<Ok>;
+  /** The method's `Versioned...Error` codec. */
+  error: Codec<Failure>;
+  ask: PhoneAsk;
+};
+
+/** Every method whose request goes to the paired phone, by name. */
+export const PHONE_METHODS = {
+  signPayload: buildMethodEntry({
+    ids: SIGNING_SIGN_PAYLOAD,
+    request: VersionedHostSignPayloadRequest,
+    ok: VersionedHostSignPayloadResponse,
+    error: VersionedHostSignPayloadError,
+    ask: 'sign',
+  }),
+  signPayloadWithLegacyAccount: buildMethodEntry({
+    ids: SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+    request: VersionedHostSignPayloadWithLegacyAccountRequest,
+    ok: VersionedHostSignPayloadWithLegacyAccountResponse,
+    error: VersionedHostSignPayloadWithLegacyAccountError,
+    ask: 'sign',
+  }),
+  createTransaction: buildMethodEntry({
+    ids: SIGNING_CREATE_TRANSACTION,
+    request: VersionedHostCreateTransactionRequest,
+    ok: VersionedHostCreateTransactionResponse,
+    error: VersionedHostCreateTransactionError,
+    ask: 'sign',
+  }),
+  createTransactionWithLegacyAccount: buildMethodEntry({
+    ids: SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+    request: VersionedHostCreateTransactionWithLegacyAccountRequest,
+    ok: VersionedHostCreateTransactionWithLegacyAccountResponse,
+    error: VersionedHostCreateTransactionWithLegacyAccountError,
+    ask: 'sign',
+  }),
+  signRaw: buildMethodEntry({
+    ids: SIGNING_SIGN_RAW,
+    request: VersionedHostSignRawRequest,
+    ok: VersionedHostSignRawResponse,
+    error: VersionedHostSignRawError,
+    ask: 'sign',
+  }),
+  signRawWithLegacyAccount: buildMethodEntry({
+    ids: SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
+    request: VersionedHostSignRawWithLegacyAccountRequest,
+    ok: VersionedHostSignRawWithLegacyAccountResponse,
+    error: VersionedHostSignRawWithLegacyAccountError,
+    ask: 'sign',
+  }),
+  signRawUnwatermarkedDeprecated: buildMethodEntry({
+    ids: SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
+    request: VersionedHostSignRawRequest,
+    ok: VersionedHostSignRawResponse,
+    error: VersionedHostSignRawError,
+    ask: 'sign',
+  }),
+  signRawUnwatermarkedDeprecatedWithLegacyAccount: buildMethodEntry({
+    ids: SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
+    request: VersionedHostSignRawWithLegacyAccountRequest,
+    ok: VersionedHostSignRawWithLegacyAccountResponse,
+    error: VersionedHostSignRawWithLegacyAccountError,
+    ask: 'sign',
+  }),
+  signVrf: buildMethodEntry({
+    ids: ACCOUNT_SIGN_VRF,
+    request: VersionedHostAccountSignVrfRequest,
+    ok: VersionedHostAccountSignVrfResponse,
+    error: VersionedHostAccountSignVrfError,
+    ask: 'sign',
+  }),
+  getAccount: buildMethodEntry({
+    ids: ACCOUNT_GET_ACCOUNT,
+    request: VersionedHostAccountGetRequest,
+    ok: VersionedHostAccountGetResponse,
+    error: VersionedHostAccountGetError,
+    ask: 'approve',
+  }),
+  requestResourceAllocation: buildMethodEntry({
+    ids: RESOURCE_ALLOCATION_REQUEST,
+    request: VersionedHostRequestResourceAllocationRequest,
+    ok: VersionedHostRequestResourceAllocationResponse,
+    error: VersionedHostRequestResourceAllocationError,
+    ask: 'approve',
+  }),
+} satisfies Record<string, PhoneMethodEntry>;
+
 /**
  * The response codec must be the generated client's exact composition, as a bare codec would decode real response
- * bytes as garbage. The widening casts are the one place the method-specific types are erased.
+ * bytes as garbage.
  */
-function entryOf<Req, Ok, Err>(
-  ids: MethodIds,
-  request: Codec<Req>,
-  ok: Codec<Ok>,
-  err: Codec<Err>,
-  ask: PhoneAsk,
-): PhoneMethodEntry {
+function buildMethodEntry<Request, Ok, Failure>({
+  ids,
+  request,
+  ok,
+  error,
+  ask,
+}: Params<Request, Ok, Failure>): PhoneMethodEntry {
   return {
     ids,
+    // Erases the method's request type, so one table holds every method's request codec.
     request: request as Codec<unknown>,
-    response: Result(ok, CallError(err)) as unknown as ResponseCodec,
+    // Erases the method's ok and error types, so one table holds every method's response codec.
+    response: Result(ok, CallError(error)) as unknown as ResponseCodec,
     ask,
   };
 }
-
-/** Every method whose request goes to the paired phone, exported for the frame builders of specs. */
-export const PHONE_METHODS = {
-  signPayload: entryOf(
-    SIGNING_SIGN_PAYLOAD,
-    VersionedHostSignPayloadRequest,
-    VersionedHostSignPayloadResponse,
-    VersionedHostSignPayloadError,
-    'sign',
-  ),
-  signPayloadWithLegacyAccount: entryOf(
-    SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-    VersionedHostSignPayloadWithLegacyAccountRequest,
-    VersionedHostSignPayloadWithLegacyAccountResponse,
-    VersionedHostSignPayloadWithLegacyAccountError,
-    'sign',
-  ),
-  createTransaction: entryOf(
-    SIGNING_CREATE_TRANSACTION,
-    VersionedHostCreateTransactionRequest,
-    VersionedHostCreateTransactionResponse,
-    VersionedHostCreateTransactionError,
-    'sign',
-  ),
-  createTransactionWithLegacyAccount: entryOf(
-    SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-    VersionedHostCreateTransactionWithLegacyAccountRequest,
-    VersionedHostCreateTransactionWithLegacyAccountResponse,
-    VersionedHostCreateTransactionWithLegacyAccountError,
-    'sign',
-  ),
-  signRaw: entryOf(
-    SIGNING_SIGN_RAW,
-    VersionedHostSignRawRequest,
-    VersionedHostSignRawResponse,
-    VersionedHostSignRawError,
-    'sign',
-  ),
-  signRawWithLegacyAccount: entryOf(
-    SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
-    VersionedHostSignRawWithLegacyAccountRequest,
-    VersionedHostSignRawWithLegacyAccountResponse,
-    VersionedHostSignRawWithLegacyAccountError,
-    'sign',
-  ),
-  signRawUnwatermarkedDeprecated: entryOf(
-    SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
-    VersionedHostSignRawRequest,
-    VersionedHostSignRawResponse,
-    VersionedHostSignRawError,
-    'sign',
-  ),
-  signRawUnwatermarkedDeprecatedWithLegacyAccount: entryOf(
-    SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
-    VersionedHostSignRawWithLegacyAccountRequest,
-    VersionedHostSignRawWithLegacyAccountResponse,
-    VersionedHostSignRawWithLegacyAccountError,
-    'sign',
-  ),
-  signVrf: entryOf(
-    ACCOUNT_SIGN_VRF,
-    VersionedHostAccountSignVrfRequest,
-    VersionedHostAccountSignVrfResponse,
-    VersionedHostAccountSignVrfError,
-    'sign',
-  ),
-  getAccount: entryOf(
-    ACCOUNT_GET_ACCOUNT,
-    VersionedHostAccountGetRequest,
-    VersionedHostAccountGetResponse,
-    VersionedHostAccountGetError,
-    'approve',
-  ),
-  requestResourceAllocation: entryOf(
-    RESOURCE_ALLOCATION_REQUEST,
-    VersionedHostRequestResourceAllocationRequest,
-    VersionedHostRequestResourceAllocationResponse,
-    VersionedHostRequestResourceAllocationError,
-    'approve',
-  ),
-} satisfies Record<string, PhoneMethodEntry>;
-
-export type PhoneMethod = keyof typeof PHONE_METHODS;

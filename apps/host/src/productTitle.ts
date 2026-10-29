@@ -4,7 +4,7 @@
 // The tab title has one writer, the product frame, which hands over the name the product's root manifest published.
 
 import { SITE_ID, withActiveTld } from '@dotli/config';
-import type { TitledProduct } from './runtime/productFrame.js';
+import type { TitledProduct } from './runtime/createProductFrame.js';
 
 /** The tab title for a product, preferring the display name its root manifest publishes. */
 export function productTitle(product: TitledProduct): string {

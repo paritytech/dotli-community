@@ -5,7 +5,8 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
-import { ALL_PERMISSIONS, createPermissionAuthorizations, type PermissionAuthorizations } from '../permissions.js';
+import { createPermissionAuthorizations, type PermissionAuthorizations } from '../createPermissionAuthorizations.js';
+import { ALL_PERMISSIONS } from '../permissionPolicy.js';
 import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
 import { productState } from './productState.js';
 import { createProductPermissions, type PermissionsChange, type ProductPermissions } from './productPermissions.js';
@@ -224,7 +225,7 @@ describe('product permissions store', () => {
     createFakeCore();
     const sentry = bindRecordingSentry({ onFinished: onTestFinished });
     cleanups.push(
-      permissions.onChanged(() => {
+      permissions.subscribeChanges(() => {
         throw new TypeError('listener broke');
       }),
     );
@@ -821,7 +822,7 @@ function buildAllTargets(status: 'ask' | 'granted' | 'denied'): Record<string, '
 function recordChanges(): PermissionsChange[] {
   const changes: PermissionsChange[] = [];
   cleanups.push(
-    permissions.onChanged(change => {
+    permissions.subscribeChanges(change => {
       changes.push(change);
     }),
   );

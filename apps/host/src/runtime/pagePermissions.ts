@@ -5,11 +5,12 @@
 // product frame fills the route with each connection it opens. Built here only and passed to the rest, so the frame,
 // the store, the prompt and the diagnostics all reach the same registry.
 
-import { createPermissionAuthorizations, type PermissionAuthorizations } from './permissions.js';
+import { createPermissionAuthorizations } from './createPermissionAuthorizations.js';
 import { createProductPermissions, type ProductPermissions } from './state/productPermissions.js';
 import { productState } from './state/productState.js';
 
-export const pagePermissions: PermissionAuthorizations = createPermissionAuthorizations();
+/** The page's one registry of the connections that read and write product permissions. */
+export const pagePermissions = createPermissionAuthorizations();
 
 /** The permissions of the product on show, for the menu, the prompts and the frame. */
 export const productPermissions: ProductPermissions = createProductPermissions({

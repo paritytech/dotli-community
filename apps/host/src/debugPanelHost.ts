@@ -12,9 +12,9 @@ import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
 import { setDockInset } from './productFrameLayout.js';
 import { getTopbarState } from './state/topbar.js';
 import { closeDebugMode } from './settingsActions.js';
-import { importPhrase, logout } from './runtime/authController.js';
+import { authControl } from './runtime/createAuthController.js';
 import { authState } from './runtime/state/authState.js';
-import { pageDiagnostics } from './runtime/diagnostics.js';
+import { pageDiagnostics } from './runtime/createPageDiagnostics.js';
 import { productState } from './runtime/state/productState.js';
 import { walletModeState } from './runtime/state/walletModeState.js';
 
@@ -36,7 +36,7 @@ export const debugPanelHost: DebugPanelHost = {
   product: productState.store,
   auth: authState.store,
   walletMode: walletModeState.store,
-  walletSwitch: { importPhrase, usePolkadotApp: logout },
+  walletSwitch: { importPhrase: authControl.importPhrase, usePolkadotApp: authControl.logout },
   diagnostics: pageDiagnostics,
   archive: cid => readArchiveFiles(cid, archiveTransport(getBackend(), relayBlock)),
   contentInsets: { top: 'var(--content-top)', bottom: 'var(--content-bottom)' },

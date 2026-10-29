@@ -7,8 +7,8 @@ import type { ShowNotification } from '@dotli/ui';
 import { captureException, m, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import type { PhoneMethod } from './phoneMethods.js';
-import { phoneMetricOutcome, type PhoneOutcome } from './phoneOutcome.js';
-import { phoneOutcomeNotice } from './phoneOutcomeNotice.js';
+import { getPhoneMetricOutcome, type PhoneOutcome } from './phoneOutcome.js';
+import { getPhoneOutcomeNotice } from './getPhoneOutcomeNotice.js';
 
 /** Which way a frame was going. */
 export type PhoneLeg = 'request' | 'response';
@@ -25,15 +25,22 @@ export type PhoneEnd = {
   app: string;
 };
 
+type Params = {
+  method: PhoneMethod;
+  /** Why the frame did not decode. */
+  error: unknown;
+  leg: PhoneLeg;
+};
+
 /** Counts a waited request once and tells the user how it ended. A toast that fails is reported, never thrown. */
 export function reportPhoneEnd(end: PhoneEnd, notify: ShowNotification): void {
   m.count(S.PHONE_REQUEST, {
-    outcome: phoneMetricOutcome(end.outcome),
+    outcome: getPhoneMetricOutcome(end.outcome),
     reason: end.method,
     background: end.background ? 'yes' : 'no',
   });
   try {
-    const notice = phoneOutcomeNotice(end);
+    const notice = getPhoneOutcomeNotice(end);
     if (notice !== undefined) {
       notify(notice);
     }
@@ -43,8 +50,11 @@ export function reportPhoneEnd(end: PhoneEnd, notify: ShowNotification): void {
   }
 }
 
-/** A tracked frame that did not decode. A request is counted here, an answer by the end of its claim. */
-export function reportUndecodablePhoneFrame(method: PhoneMethod, error: unknown, leg: PhoneLeg): void {
+/**
+ * Reports a tracked frame that did not decode. A request is counted here, an answer by the end of its claim. Never
+ * throws.
+ */
+export function reportUndecodablePhoneFrame({ method, error, leg }: Params): void {
   captureException(error, { flow: 'wallet', step: 'phone_request', tags: { method } });
   log.error(`[dot.li phone request] ${method} ${leg} did not decode:`, error);
   if (leg === 'request') {
@@ -52,7 +62,7 @@ export function reportUndecodablePhoneFrame(method: PhoneMethod, error: unknown,
   }
 }
 
-/** A review or request that would not encode, so the review cannot be matched to its request. */
+/** Reports a review or request that would not encode, so the review cannot be matched to its request. Never throws. */
 export function reportUnmatchablePhoneReview(method: PhoneMethod, error: unknown): void {
   captureException(error, { flow: 'wallet', step: 'phone_review_match', tags: { method } });
   log.error(`[dot.li phone review] ${method} did not encode for matching:`, error);

@@ -7,7 +7,7 @@
 import { BASE_DOMAIN, isLocalhost } from '@dotli/config';
 import { recordExpected } from '@dotli/metrics';
 import { listen } from '@dotli/shared';
-import { pageRole, sharesFlag } from '../pageRole.js';
+import { pageRole, isFlagShared } from '../pageRole.js';
 import { getSharedChannel, type SharedChannel } from '../sharedMode.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import {
@@ -116,7 +116,7 @@ export function createPagePresence({
 
 /** The cookie on a real domain, the dev HTTP store on a local root, and none on a page whose role shares no flag. */
 export const sessionPresence: SessionPresence = createPagePresence({
-  isShared: () => sharesFlag(pageRole()),
+  isShared: () => isFlagShared(pageRole.get()),
   localhost: isLocalhost,
   channel: getSharedChannel,
   jar: documentJar,
@@ -127,7 +127,7 @@ export const sessionPresence: SessionPresence = createPagePresence({
  * Returns the unsubscribe.
  */
 export function listenForSessionFlagChange(listener: () => void): () => void {
-  const cookie = sharesFlag(pageRole()) && !isLocalhost;
+  const cookie = isFlagShared(pageRole.get()) && !isLocalhost;
   return listenForCookieFlagChange(cookie ? getDocumentCookieChanges() : null, listener);
 }
 

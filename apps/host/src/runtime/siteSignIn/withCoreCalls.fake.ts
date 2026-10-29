@@ -3,7 +3,7 @@
 
 import { vi } from 'vitest';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
-import { makeProvider, type FakeCoreProvider } from '../pageCore.fake.js';
+import { createFakeProvider, type FakeCoreProvider } from '../createPageCore.fake.js';
 
 type Params = {
   /** The core's provider, a fresh fake one by default. */
@@ -11,7 +11,7 @@ type Params = {
 };
 
 /** A core lease over `provider`, recording each connect, close and release. */
-export function createFakeCoreLease({ provider = makeProvider() }: Params = {}) {
+export function createFakeCoreLease({ provider = createFakeProvider() }: Params = {}) {
   const connection = {
     // The fake is a partial provider, enough for the calls under test.
     provider: provider as unknown as TrUApiProductProvider,

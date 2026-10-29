@@ -17,7 +17,7 @@ import { ACCOUNT_GET_ACCOUNT } from '@parity/truapi/wire-table';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import { fromHex, toHex } from '@dotli/shared';
 import { must } from '@dotli/shared/testing';
-import { makeProvider } from '../pageCore.fake.js';
+import { createFakeProvider } from '../createPageCore.fake.js';
 import { createSiteAccountReader, SiteAccountReadError, SiteAccountRejectedError } from './createSiteAccountReader.js';
 import { encodeResponseFrame } from '../../testing/encodeResponseFrame.js';
 import { toVersionedError } from '../../testing/toVersionedError.js';
@@ -45,7 +45,7 @@ function encodeAccountResponse(answer: AccountAnswer): Uint8Array {
 function createFakeCore(answers: { account?: AccountAnswer[] }) {
   const order: string[] = [];
   const accountRequests: HostAccountGetRequest[] = [];
-  const provider = makeProvider({
+  const provider = createFakeProvider({
     onPostMessage(message) {
       const decoded = decodeWireMessage(message);
       if (decoded.isErr()) {

@@ -33,7 +33,7 @@ import { watchSandbox } from './sandboxWatch.js';
 import { applyProductBranding } from './productBranding.js';
 import type { RecentLabels } from './recentLabels.js';
 import { startResolutionTrace, type CidCacheResult } from './resolutionTrace.js';
-import type { ProductFrame } from './runtime/productFrame.js';
+import type { ProductFrame } from './runtime/createProductFrame.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
 import { startShieldAutoHide } from './shieldAutohide.js';

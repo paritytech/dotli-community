@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { ALL_PERMISSIONS } from '../runtime/permissions.js';
+import { ALL_PERMISSIONS } from '../runtime/permissionPolicy.js';
 import { productPermissions } from '../runtime/pagePermissions.js';
 import { productState } from '../runtime/state/productState.js';
 import { PermissionsItem } from '../components/permissions/PermissionsItem.js';

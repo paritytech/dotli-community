@@ -7,10 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isSandboxOrigin } from '@dotli/config';
 import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
-import type { FrameProduct, ProductFrame } from '../../src/runtime/productFrame.js';
-import { answerConnection, createFakePageCore, type FakePageCore } from '../../src/runtime/pageCore.fake.js';
-import { createProductFrame } from '../../src/runtime/productFrame.js';
-import { createPermissionAuthorizations } from '../../src/runtime/permissions.js';
+import type { FrameProduct, ProductFrame } from '../../src/runtime/createProductFrame.js';
+import { answerConnection, createFakePageCore, type FakePageCore } from '../../src/runtime/createPageCore.fake.js';
+import { createProductFrame } from '../../src/runtime/createProductFrame.js';
+import { createPermissionAuthorizations } from '../../src/runtime/createPermissionAuthorizations.js';
 import { pageScreen, showErrorPage } from '@dotli/ui';
 import { createProductFrameView } from '../../src/productFrameView.js';
 import { nth } from '@dotli/shared/testing';
@@ -69,7 +69,7 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
       return Promise.resolve({ iframe, dispose });
     },
     channel,
-    onPermissionsChanged: () => () => undefined,
+    subscribePermissionChanges: () => () => undefined,
     permissions: createPermissionAuthorizations(),
     // The page around the frame, as the host wires it.
     view: createProductFrameView({

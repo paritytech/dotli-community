@@ -11,8 +11,13 @@ export type FakeSessionPresence = {
   readonly calls: ('read' | 'set' | 'clear' | 'renew')[];
 } & SessionPresence;
 
+type Params = {
+  /** What the first read answers, absent by default. */
+  state?: Presence;
+};
+
 /** An in-memory presence: set the `state` to stage a read, and read `calls` to see what a flow did. Never rejects. */
-export function createFakeSessionPresence(state: Presence = 'absent'): FakeSessionPresence {
+export function createFakeSessionPresence({ state = 'absent' }: Params = {}): FakeSessionPresence {
   const fake: FakeSessionPresence = {
     state,
     calls: [],

@@ -72,7 +72,7 @@ describe('core storage', () => {
     local = createMemoryStorage();
     keyDb = new IDBFactory();
     shared = createFakeSharedSessionStore();
-    presence = createFakeSessionPresence('present');
+    presence = createFakeSessionPresence({ state: 'present' });
     coreStorage = createCoreStorage({
       shared,
       flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: readStoredInShared }),
@@ -551,7 +551,7 @@ describe('core storage', () => {
     // Given
     const storage = coreStorage.createAdapters();
     const listener = vi.fn();
-    const unsubscribe = coreStorage.onStoredSessionChanged(listener);
+    const unsubscribe = coreStorage.subscribeStoredSession(listener);
 
     // When the session is written here, another tab changes it and another key, and a write follows the unsubscribe
     await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9]));
@@ -570,7 +570,7 @@ describe('core storage', () => {
   it("As a user signing in through the window, I get the window's session installed with its account and my cores hear it", async () => {
     // Given a listener for session changes
     const listener = vi.fn();
-    onTestFinished(coreStorage.onStoredSessionChanged(listener));
+    onTestFinished(coreStorage.subscribeStoredSession(listener));
 
     // When the window's session is installed with its account
     await coreStorage.installSession('0x0a0b', CACHED_UI_STATE);
@@ -585,7 +585,7 @@ describe('core storage', () => {
     // Given the window already stored the session, but no account
     shared.entries.set(SESSION_KEY, '0x0a0b');
     const listener = vi.fn();
-    onTestFinished(coreStorage.onStoredSessionChanged(listener));
+    onTestFinished(coreStorage.subscribeStoredSession(listener));
 
     // When the window's session is installed with its account
     await coreStorage.installSession('0x0a0b', CACHED_UI_STATE);
@@ -611,7 +611,7 @@ describe('core storage', () => {
   it('As a returning user, I get the shared store back and my running cores are told to read the session again', () => {
     // Given
     const listener = vi.fn();
-    const unsubscribe = coreStorage.onStoredSessionChanged(listener);
+    const unsubscribe = coreStorage.subscribeStoredSession(listener);
     shared.setStatus('available');
     shared.setStatus('unavailable');
 
@@ -655,7 +655,7 @@ describe('core storage', () => {
     shared.changeFromOtherTab(SESSION_KEY, '0x0a0b');
     shared.entries.set(UI_STATE_CACHE_KEY, CACHED_UI_STATE);
     const listener = vi.fn();
-    onTestFinished(coreStorage.onStoredSessionChanged(listener));
+    onTestFinished(coreStorage.subscribeStoredSession(listener));
 
     // When the session read earlier is dropped
     const dropped = await coreStorage.dropSessionIf(
@@ -675,11 +675,11 @@ describe('core storage', () => {
     onTestFinished(bindCaptureSink({ exception: vi.fn(), expected: vi.fn() }));
     const heard = vi.fn();
     onTestFinished(
-      coreStorage.onStoredSessionChanged(() => {
+      coreStorage.subscribeStoredSession(() => {
         throw new Error('first listener broke');
       }),
     );
-    onTestFinished(coreStorage.onStoredSessionChanged(heard));
+    onTestFinished(coreStorage.subscribeStoredSession(heard));
 
     // When the session is written
     await coreStorage.createAdapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
@@ -829,7 +829,7 @@ describe('core storage', () => {
     shared.entries.set(SESSION_KEY, '0x010203');
     shared.entries.set(UI_STATE_CACHE_KEY, CACHED_UI_STATE);
     const changed = vi.fn();
-    onTestFinished(coreStorage.onStoredSessionChanged(changed));
+    onTestFinished(coreStorage.subscribeStoredSession(changed));
 
     // When the page drops the session it read
     const dropped = await coreStorage.dropSessionIf('0x010203');

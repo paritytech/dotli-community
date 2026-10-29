@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { archiveTransport, debugPanelHost } from './debugPanelHost.js';
 import { attachProductFrame, setDockInset, type ApplyFrameBox } from './productFrameLayout.js';
-import { fakeIframe } from './runtime/productFrame.fake.js';
+import { createFakeIframe } from './runtime/createProductFrame.fake.js';
 
 afterEach(() => {
   resetAllStoresForTests();
@@ -29,7 +29,7 @@ describe('the debug panel host', () => {
   it("As the debug panel, the room I report docks beside the sandbox checker's at the bottom edge, not over it", () => {
     // Given a frame on the page and the checker docked below it
     const apply = vi.fn<ApplyFrameBox>();
-    attachProductFrame(fakeIframe(), apply);
+    attachProductFrame(createFakeIframe(), apply);
     setDockInset({ right: 0, bottom: 100 }, 'sandbox-checker');
 
     // When

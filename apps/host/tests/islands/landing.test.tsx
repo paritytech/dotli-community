@@ -9,7 +9,7 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { memorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
+import { createMemorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { createRecentLabels, type RecentLabels } from '../../src/recentLabels.js';
 import { mountLandingPage } from '../helpers/landing.js';
@@ -35,7 +35,7 @@ function visited(...labels: string[]): void {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   setPageUrl('http://localhost:5173/');
-  shared = memorySharedChannel();
+  shared = createMemorySharedChannel();
   // A visitor not signed in, whose saved session has been read.
   authState.set({ tag: 'Disconnected' });
   localStorage.clear();

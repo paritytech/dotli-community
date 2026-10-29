@@ -6,7 +6,7 @@
 
 import { withActiveTld } from '@dotli/config';
 import type { HostPrompts } from './runtime/hostPrompts.js';
-import { isDevicePermission } from './runtime/permissions.js';
+import { isDevicePermission } from './runtime/permissionPolicy.js';
 import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permissionDialog.js';
 import { preimageSubmitDialog } from './components/permissions/preimageDialog.js';
@@ -31,7 +31,7 @@ export function createHostPrompts({
     handoff?: (outcome: ModalOutcome<R>) => ModalHandoff | undefined,
   ) => present({ ...view, testId: HOST_PROMPT_TEST_ID }, { signal, handoff });
   return {
-    askPermission: async (label, permission, signal, { allowOnce }) => {
+    askPermission: async ({ label, permission, signal, allowOnce }) => {
       const dialog = permissionRequestDialog({
         app: withActiveTld(label),
         permission,
@@ -40,9 +40,9 @@ export function createHostPrompts({
       });
       return (await ask(dialog, signal)).result;
     },
-    confirmPreimage: async (label, size, signal) =>
+    confirmPreimage: async ({ label, size, signal }) =>
       (await ask(preimageSubmitDialog({ app: withActiveTld(label), dataSize: size }), signal)).result === 'allow',
-    confirmReview: async (dialog, signal, handoff) =>
+    confirmReview: async (dialog, signal, { handoff } = {}) =>
       (await ask(dialog, signal, outcome => handoff?.(outcome.result))).result,
     notify,
   };

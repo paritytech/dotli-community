@@ -6,7 +6,7 @@ import { Overlays, showNotification, type NotificationParams } from '@dotli/ui';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import type { PhoneOutcome } from '../../runtime/phoneOutcome.js';
-import { phoneOutcomeNotice } from '../../runtime/phoneOutcomeNotice.js';
+import { getPhoneOutcomeNotice } from '../../runtime/getPhoneOutcomeNotice.js';
 
 const APP = 'dotli.dot';
 
@@ -32,7 +32,7 @@ const meta = {
   play: async ({ args, step }) => {
     let notice: NotificationParams | undefined;
     await step('When the waited request ends', () => {
-      notice = phoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
+      notice = getPhoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
     });
     const { text, tone } = args;
     if (text === undefined) {

@@ -14,7 +14,7 @@ import { NfcIcon } from '../icons/NfcIcon.js';
 import { SignIcon } from '../icons/SignIcon.js';
 import { StatementIcon } from '../icons/StatementIcon.js';
 import { UploadIcon } from '../icons/UploadIcon.js';
-import type { EnforceablePermissionName } from '../../runtime/permissions.js';
+import type { EnforceablePermissionName } from '../../runtime/permissionPolicy.js';
 
 const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, Component<IconProps>>> = {
   Notifications: BellIcon,

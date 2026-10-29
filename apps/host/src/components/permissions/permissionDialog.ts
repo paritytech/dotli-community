@@ -3,7 +3,7 @@
 
 import type { ModalView } from '@dotli/ui';
 import { permissionIcon } from './permissionIcons.js';
-import type { EnforceablePermissionName } from '../../runtime/permissions.js';
+import type { EnforceablePermissionName } from '../../runtime/permissionPolicy.js';
 
 const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
   Notifications: 'Show in-app and system notifications',

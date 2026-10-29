@@ -10,9 +10,9 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { byId, byTestId } from '@dotli/ui/testing';
-import type { AuthCommands } from '../../src/runtime/coreLogin.js';
-import { createBlockingModalCoordinator } from '../../src/runtime/blockingModalQueue.js';
-import { initAuthController, startLogin } from '../../src/runtime/authController.js';
+import type { AuthCommands } from '../../src/runtime/createAuthCommands.js';
+import { createBlockingModalCoordinator } from '../../src/runtime/createBlockingModalCoordinator.js';
+import { authControl } from '../../src/runtime/createAuthController.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { getTopbarState, reportBlockingModals, setTopbarVisible } from '../../src/state/topbar.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
@@ -43,7 +43,7 @@ async function untilModal(open: boolean): Promise<void> {
 
 /** The island mounted as Astro hydrates it, with no saved session and the page's controller started. */
 function mountIsland(placement: 'center' | 'topbar-end' = 'topbar-end'): void {
-  initAuthController({
+  authControl.init({
     coordinator: createBlockingModalCoordinator({ report: reportBlockingModals }),
     commands: () => Promise.resolve(commands),
     // The in-page pairing, as on a preview its preview host frames.
@@ -78,7 +78,7 @@ describe('AuthModal island', () => {
     mountIsland();
 
     // When
-    startLogin();
+    authControl.startLogin();
     await untilModal(true);
 
     // Then
@@ -102,7 +102,7 @@ describe('AuthModal island', () => {
     mountIsland('center');
 
     // When a sign-in starts
-    startLogin();
+    authControl.startLogin();
     await untilModal(true);
 
     // Then a centred dialog with a dark scrim and Cancel shows
@@ -134,7 +134,7 @@ describe('AuthModal island', () => {
     const handBack = setAuthModalTrigger(button);
     mountIsland();
     button.focus();
-    startLogin();
+    authControl.startLogin();
     await untilModal(true);
 
     // When: the button leaves the page, and I cancel

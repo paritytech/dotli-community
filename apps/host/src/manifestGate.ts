@@ -11,7 +11,7 @@ import {
   type ManifestResult,
   type RootManifest,
 } from '@dotli/resolver';
-import type { ManifestFacts } from './runtime/manifestFacts.js';
+import type { ManifestFacts } from './runtime/formatAppVersion.js';
 import type { CachedManifests } from '@dotli/storage';
 
 export type ProductManifests = {

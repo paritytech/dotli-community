@@ -6,10 +6,11 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry, recordCaptures, type RecordingSentry } from '@dotli/metrics/testing';
 import { spans as S } from '@dotli/metrics';
 import { withActiveTld } from '@dotli/config';
-import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../blockingModalQueue.js';
+import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../createBlockingModalCoordinator.js';
 import type { HostPrompts } from '../hostPrompts.js';
-import { requestFrame, responseFrame } from '../phoneRequests.fake.js';
-import { createPhoneRequestTracker, type PhoneRequestTracker } from '../phoneRequests.js';
+import { encodePhoneRequestFrame } from '../../testing/encodePhoneRequestFrame.js';
+import { encodePhoneResponseFrame, type PhoneResult } from '../../testing/encodePhoneResponseFrame.js';
+import { createPhoneRequestTracker, type PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 import { createUserConfirmationAdapters as createAdapters } from './createUserConfirmationAdapters.js';
 import type { ModalButton, ModalButtonVariant, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
@@ -78,8 +79,8 @@ type CreatePairedPhoneParams = {
 
 const PRODUCT_ACCOUNT = { dotNsIdentifier: 'product.dot', derivationIndex: { tag: 'Index' as const, value: 0 } };
 
-const SIGNED = { ok: { signature: '0x01' } };
-const REJECTED = { domain: { tag: 'Rejected' } };
+const SIGNED: PhoneResult = { kind: 'ok', value: { signature: '0x01' } };
+const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
 
 const SIGN_FOOTER: [string, ModalButtonVariant][] = [
   ['Cancel', 'danger'],
@@ -564,7 +565,7 @@ describe('user confirmation modal', () => {
     await waitForModal();
 
     // Then
-    expect(page.shown()).toEqual({ kind: 'preimage', label: 'localhost:3000', size: 2048 });
+    expect(page.getShown()).toEqual({ kind: 'preimage', label: 'localhost:3000', size: 2048 });
 
     // When
     page.allowPreimage(true);
@@ -764,7 +765,7 @@ describe('waiting on the phone', () => {
   it('As a user with a paired phone, I approve a signing and the core hears it while the dialog waits on the phone', async () => {
     // Given
     const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', buildSignRequest('0x06')));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }));
     const confirmation = confirmUserAction(buildSignReview('0x06'));
     await waitForModal();
 
@@ -785,11 +786,11 @@ describe('waiting on the phone', () => {
     await confirmation;
 
     // When
-    tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
-    const notices = await page.noticesShown(1);
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED }));
+    const notices = await page.waitForNotices(1);
 
     // Then
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
     expect(notices[0]?.label).toBe(withActiveTld('localhost:3000'));
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'no' }]);
@@ -805,14 +806,14 @@ describe('waiting on the phone', () => {
     page.settleReview('background');
 
     // Then
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
 
     // When
-    tap.fromCore(responseFrame('a', 'signPayload', REJECTED));
-    const notices = await page.noticesShown(1);
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: REJECTED }));
+    const notices = await page.waitForNotices(1);
 
     // Then
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(['Rejected in Polkadot App']);
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'refused', reason: 'signPayload', background: 'yes' }]);
   });
@@ -827,12 +828,12 @@ describe('waiting on the phone', () => {
 
     // Then
     await expect(confirmation).resolves.toBe(true);
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(page.notices).toEqual([]);
 
     // When
-    tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
-    const notices = await page.noticesShown(1);
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED }));
+    const notices = await page.waitForNotices(1);
 
     // Then
     expect(notices.map(n => n.text)).toEqual(['Sign Transaction: signed in Polkadot App']);
@@ -842,8 +843,8 @@ describe('waiting on the phone', () => {
   it('As a user, I send the wait to the background and the next prompt shows', async () => {
     // Given
     const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', buildSignRequest('0x06')));
-    tap.fromProduct(requestFrame('b', 'signPayload', buildSignRequest('0x07')));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'b', method: 'signPayload', body: buildSignRequest('0x07') }));
     const first = confirmUserAction(buildSignReview('0x06'));
     const second = confirmUserAction(buildSignReview('0x07'));
     await waitForModal();
@@ -853,15 +854,17 @@ describe('waiting on the phone', () => {
 
     // Then
     await expect(first).resolves.toBe(true);
-    expect(page.pending()).toHaveLength(1);
+    expect(page.listPending()).toHaveLength(1);
     expect(isWaiting()).toBe(true);
 
     // When
     page.settleReview('background');
-    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel');
+    await page.waitForPrompt({
+      matches: prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel',
+    });
 
     // Then
-    expect(page.pending()).toHaveLength(1);
+    expect(page.listPending()).toHaveLength(1);
 
     // When
     press('sign');
@@ -885,10 +888,12 @@ describe('waiting on the phone', () => {
 
     // When
     scope.dispose();
-    await page.promptShown(prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel');
+    await page.waitForPrompt({
+      matches: prompt => prompt.kind === 'review' && prompt.dialog.buttons[0]?.label === 'Cancel',
+    });
 
     // Then
-    expect(page.pending()).toHaveLength(1);
+    expect(page.listPending()).toHaveLength(1);
 
     // When
     press('sign');
@@ -922,9 +927,9 @@ describe('waiting on the phone', () => {
     await confirmation;
 
     // When
-    tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED }));
     await recorded;
-    await page.screenCleared();
+    await page.waitForClearedScreen();
 
     // Then
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([{ outcome: 'ok', reason: 'signPayload', background: 'no' }]);
@@ -939,14 +944,14 @@ describe('waiting on the phone', () => {
     recordLog({ onFinished: onTestFinished });
     const { tap, confirmation } = await signForPhone({ tracker: createPhoneRequestTracker() });
     await confirmation;
-    const answer = responseFrame('a', 'signPayload', SIGNED);
+    const answer = encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED });
 
     // When
     tap.fromCore(answer.subarray(0, answer.length - 3));
-    const notices = await page.noticesShown(1);
+    const notices = await page.waitForNotices(1);
 
     // Then
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(["Polkadot App didn't complete the request: undecodable"]);
     expect(captured.map(c => c.step)).toEqual(['phone_request']);
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([
@@ -978,7 +983,11 @@ describe('waiting on the phone', () => {
         // A local wallet core, whose tracker is disposed as it has no phone.
         const tracker = createPhoneRequestTracker();
         tracker.dispose();
-        tracker.connect().fromProduct(requestFrame('a', 'signPayload', buildSignRequest('0x06')));
+        tracker
+          .connect()
+          .fromProduct(
+            encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }),
+          );
         return createPageAdapters({ phoneRequests: tracker }).confirmUserAction(buildSignReview('0x06'));
       },
     },
@@ -999,22 +1008,22 @@ describe('waiting on the phone', () => {
 
     // Then
     await expect(confirmation).resolves.toBe(true);
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
   });
 
   it('As a user, I get the phone answer as the step opens and it closes at once with one toast', async () => {
     // Given
     const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', buildSignRequest('0x06')));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }));
     const confirmation = confirmUserAction(buildSignReview('0x06'));
     await waitForModal();
 
     // When
     press('sign');
-    tap.fromCore(responseFrame('a', 'signPayload', SIGNED));
+    tap.fromCore(encodePhoneResponseFrame({ requestId: 'a', method: 'signPayload', result: SIGNED }));
     const confirmed = await confirmation;
-    await page.screenCleared();
-    const notices = await page.noticesShown(1);
+    await page.waitForClearedScreen();
+    const notices = await page.waitForNotices(1);
 
     // Then
     expect(confirmed).toBe(true);
@@ -1029,7 +1038,7 @@ describe('waiting on the phone', () => {
 
     // When
     tracker.dispose();
-    await page.screenCleared();
+    await page.waitForClearedScreen();
 
     // Then
     expect(page.notices).toEqual([]);
@@ -1057,7 +1066,7 @@ describe('waiting on the phone', () => {
 
     // Then
     await expect(confirmation).resolves.toBe(true);
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(sentry.counted(S.PHONE_REQUEST)).toEqual([]);
     expect(captured).toEqual([]);
   });
@@ -1065,7 +1074,7 @@ describe('waiting on the phone', () => {
   it('As a user, I reject a review that went to the phone and the dialog closes as today', async () => {
     // Given
     const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(requestFrame('a', 'signPayload', buildSignRequest('0x06')));
+    tap.fromProduct(encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }));
     const confirmation = confirmUserAction(buildSignReview('0x06'));
     await waitForModal();
 
@@ -1074,14 +1083,16 @@ describe('waiting on the phone', () => {
 
     // Then
     await expect(confirmation).resolves.toBe(false);
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
   });
 
   it('As a user granting an allowance, I wait on my phone and hear it was granted', async () => {
     // Given
     const resources = [{ tag: 'SmartContractAllowance' as const, value: { tag: 'Index' as const, value: 1 } }];
     const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(requestFrame('a', 'requestResourceAllocation', { resources }));
+    tap.fromProduct(
+      encodePhoneRequestFrame({ requestId: 'a', method: 'requestResourceAllocation', body: { resources } }),
+    );
     const confirmation = confirmUserAction({
       tag: 'ResourceAllocation',
       value: { callingProductId: 'product.dot', resources },
@@ -1097,11 +1108,17 @@ describe('waiting on the phone', () => {
     expect(getShownDialog().title).toBe('Resource Allocation');
 
     // When
-    tap.fromCore(responseFrame('a', 'requestResourceAllocation', { ok: { outcomes: ['Allocated'] } }));
-    const notices = await page.noticesShown(1);
+    tap.fromCore(
+      encodePhoneResponseFrame({
+        requestId: 'a',
+        method: 'requestResourceAllocation',
+        result: { kind: 'ok', value: { outcomes: ['Allocated'] } },
+      }),
+    );
+    const notices = await page.waitForNotices(1);
 
     // Then
-    expect(page.pending()).toEqual([]);
+    expect(page.listPending()).toEqual([]);
     expect(notices.map(n => n.text)).toEqual(['Allowance granted']);
   });
 
@@ -1109,7 +1126,9 @@ describe('waiting on the phone', () => {
     // Given
     const resources = [{ tag: 'SmartContractAllowance' as const, value: { tag: 'Index' as const, value: 1 } }];
     const { tap, confirmUserAction } = createPairedPhone();
-    tap.fromProduct(requestFrame('a', 'requestResourceAllocation', { resources }));
+    tap.fromProduct(
+      encodePhoneRequestFrame({ requestId: 'a', method: 'requestResourceAllocation', body: { resources } }),
+    );
     void confirmUserAction({ tag: 'ResourceAllocation', value: { callingProductId: 'product.dot', resources } });
     await waitForModal();
 
@@ -1126,8 +1145,12 @@ describe('waiting on the phone', () => {
     // Given
     const { tap, confirmPermission } = createPairedPhone();
     tap.fromProduct(
-      requestFrame('a', 'getAccount', {
-        productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+      encodePhoneRequestFrame({
+        requestId: 'a',
+        method: 'getAccount',
+        body: {
+          productAccountId: { dotNsIdentifier: 'other-product.dot', derivationIndex: { tag: 'Index', value: 0 } },
+        },
       }),
     );
     const decision = confirmPermission({
@@ -1160,11 +1183,11 @@ function createPageAdapters({ phoneRequests = createPhoneRequestTracker() }: Cre
 
 /** The review on screen. */
 function getShownDialog(): ModalView<string> {
-  return page.shownReview();
+  return page.getShownReview();
 }
 
 function waitForModal(): Promise<unknown> {
-  return page.promptShown();
+  return page.waitForPrompt();
 }
 
 function dismissModal(): void {
@@ -1253,7 +1276,7 @@ function createPairedPhone({
   prompts = page.prompts,
   coordinator = createBlockingModalCoordinator(),
   tracker = createPhoneRequestTracker({
-    reportUndecodable: (method, error) => {
+    reportUndecodable: ({ method, error }) => {
       throw new Error(`${method} frame did not decode`, { cause: error });
     },
   }),
@@ -1267,7 +1290,9 @@ function createPairedPhone({
 /** A paired phone whose sign request the user signed in the dialog, so the review goes to the phone. */
 async function signForPhone(params?: CreatePairedPhoneParams) {
   const phone = createPairedPhone(params);
-  phone.tap.fromProduct(requestFrame('a', 'signPayload', buildSignRequest('0x06')));
+  phone.tap.fromProduct(
+    encodePhoneRequestFrame({ requestId: 'a', method: 'signPayload', body: buildSignRequest('0x06') }),
+  );
   const confirmation = phone.confirmUserAction(buildSignReview('0x06'));
   await waitForModal();
   press('sign');
@@ -1288,5 +1313,5 @@ function bindNextRecord(): { sentry: RecordingSentry; recorded: Promise<void> } 
 
 /** Whether the dialog on screen is the waiting step. */
 function isWaiting(): boolean {
-  return page.shownReview().buttons[0]?.label === 'Wait in background';
+  return page.getShownReview().buttons[0]?.label === 'Wait in background';
 }

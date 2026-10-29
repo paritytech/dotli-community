@@ -6,7 +6,7 @@
 
 import { createSignal, flush } from 'solid-js';
 import { fn } from 'storybook/test';
-import type { EnforceablePermissionName, PermissionStatus, PermissionTargets } from '../../runtime/permissions.js';
+import type { EnforceablePermissionName, PermissionStatus, PermissionTargets } from '../../runtime/permissionPolicy.js';
 import type { MenuPermission, PermissionsNotice } from '../../components/permissions/permissions.js';
 import type { PermissionsItemProps } from '../../components/permissions/PermissionsItem.js';
 

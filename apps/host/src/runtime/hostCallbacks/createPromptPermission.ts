@@ -8,14 +8,15 @@
 import { withActiveTld } from '@dotli/config';
 import type { PermissionDecision, Permissions, ProductContext } from '@parity/truapi-host';
 import type { HostDevicePermissionRequest, RemotePermission, RemotePermissionRequest } from '@parity/truapi';
+import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
   isDevicePermission,
   isEnforceableDevicePermission,
   type EnforceablePermissionName,
-  type PermissionAuthorizations,
   type PermissionStatus,
-} from '../permissions.js';
-import { throwIfAborted, type BlockingModalScope } from '../blockingModalQueue.js';
+} from '../permissionPolicy.js';
+import type { BlockingModalScope } from '../createBlockingModalCoordinator.js';
+import { throwIfModalAborted } from '../throwIfModalAborted.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './createSubmitRateLimiter.js';
 import type { Notify } from './createNotificationAdapters.js';
 import { ERRORS } from '../errors.js';
@@ -25,7 +26,7 @@ import type { HostPrompts, PermissionPromptDecision } from '../hostPrompts.js';
 /** The page's permissions, which a prompt reads before it asks and records the answer in. */
 export type PromptPermissionStores = {
   /** The core's permission store, whose status decides whether the user is asked at all. */
-  registry: Pick<PermissionAuthorizations, 'status'>;
+  registry: Pick<PermissionAuthorizations, 'getStatus'>;
   /** The product's permissions, which show the answer in the menu and rebuild the frame for a device grant. */
   product: Pick<ProductPermissions, 'recordPromptDecision'>;
 };
@@ -117,7 +118,7 @@ async function decidePromptPermission(
   modalScope: BlockingModalScope,
 ): Promise<PermissionDecision> {
   const { label, name, permissions } = request;
-  const stored = answerFromStoredStatus(request, await permissions.registry.status(label, name));
+  const stored = answerFromStoredStatus(request, await permissions.registry.getStatus(label, name));
   return stored ?? modalScope.enqueue(signal => decidePromptPermissionWhenActive(request, signal));
 }
 
@@ -160,8 +161,8 @@ async function decidePromptPermissionWhenActive(
   // A grant reloads the product.
   const gatedByIframe = isDevicePermission(name);
   // An earlier prompt for the same permission may have answered it while this one waited.
-  const status = await permissions.registry.status(label, name);
-  throwIfAborted(signal);
+  const status = await permissions.registry.getStatus(label, name);
+  throwIfModalAborted(signal);
   const stored = answerFromStoredStatus(request, status);
   if (stored !== null) {
     return stored;
@@ -169,10 +170,8 @@ async function decidePromptPermissionWhenActive(
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
-  const decision = await ask(label, name, signal, {
-    allowOnce: !gatedByIframe,
-  });
-  throwIfAborted(signal);
+  const decision = await ask({ label, permission: name, signal, allowOnce: !gatedByIframe });
+  throwIfModalAborted(signal);
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }

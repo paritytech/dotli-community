@@ -21,10 +21,10 @@ import type {
   WindowIntents,
   WindowView,
 } from '../../state/sessionWindow.js';
-import type { AuthCommands } from '../coreLogin.js';
-import type { LogoutOutcome } from '../signOut.js';
+import type { AuthCommands } from '../createAuthCommands.js';
+import type { LogoutOutcome } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';
-import { loginFailureView } from '../loginFailure.js';
+import { getLoginFailureView } from '../getLoginFailureView.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { HostCoreStorage } from '../session/createCoreStorage.js';
 import type { SignInFlag } from '../session/signInFlag.js';
@@ -39,7 +39,7 @@ export type WindowFlow = ReturnType<typeof createWindowFlow>;
 /** The recovery phrase check the phrase view loads before it shows. */
 export type PhraseCheck = {
   /** The phrase's entropy, or null for anything that is not a recovery phrase. */
-  phraseToEntropy: (phrase: string) => Uint8Array | null;
+  toEntropy: (phrase: string) => Uint8Array | null;
 };
 
 export type WindowFlowParams = {
@@ -129,8 +129,8 @@ const SPINNER: PairingView = { kind: 'spinner' };
 
 /** What a login the core ended says, when the core said nothing of its own about it. */
 const LOGIN_ENDED: Record<'failed' | 'cancelled', PairingView> = {
-  failed: loginFailureView('Other', 'The sign-in did not complete'),
-  cancelled: loginFailureView('Other', 'The sign-in was cancelled'),
+  failed: getLoginFailureView('Other', 'The sign-in did not complete'),
+  cancelled: getLoginFailureView('Other', 'The sign-in was cancelled'),
 };
 
 /** The sign-in window's flow over `responder`, which starts deciding once the responder knows its opener. */
@@ -460,7 +460,7 @@ export function createWindowFlow({
     if (check === null) {
       return;
     }
-    const entropy = check.phraseToEntropy(phrase);
+    const entropy = check.toEntropy(phrase);
     if (entropy === null) {
       const error = new Error('Not a valid recovery phrase');
       reportStepFailure(error, 'phrase');
@@ -567,7 +567,7 @@ export function createWindowFlow({
         },
         failure: 'step',
       }),
-    isValidPhrase: phrase => phraseCheck !== null && phraseCheck.phraseToEntropy(phrase) !== null,
+    isValidPhrase: phrase => phraseCheck !== null && phraseCheck.toEntropy(phrase) !== null,
     // Outside `runStep`, since the form shows the failure from the rejection, which is reported before it rejects. Only
     // a phrase that is not valid or a wallet that was not saved rejects to the form.
     importPhrase: phrase => steps.call(() => savePhraseWallet(phrase), { pool: STEPS }),
@@ -670,7 +670,7 @@ function getPairingView(shown: PairingView, state: DotliAuthState): PairingView 
     case 'Authenticating':
       return { kind: 'authenticating' };
     case 'LoginFailed':
-      return loginFailureView(state.kind, state.reason);
+      return getLoginFailureView(state.kind, state.reason);
     case 'Connected':
       return SPINNER;
     case 'Restoring':

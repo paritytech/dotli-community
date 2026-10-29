@@ -4,7 +4,7 @@
 // The runtime's product frame view answered with the page's frame layout, screens and loading screen.
 
 import { pageScreen } from '@dotli/ui';
-import type { ProductFrameView } from './runtime/productFrame.js';
+import type { ProductFrameView } from './runtime/createProductFrame.js';
 import { loadViolationPanelMount } from './lazy.js';
 import { hideLoading } from './loadingController.js';
 import { attachProductFrame } from './productFrameLayout.js';

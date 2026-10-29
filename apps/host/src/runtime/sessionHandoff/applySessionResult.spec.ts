@@ -28,7 +28,7 @@ const IDENTITY: LocalWalletIdentity = { identityAccountId: '5Alice', liteUsernam
  * session state started over it with no core booted, as on the landing page.
  */
 function createPage(stored: Params = {}) {
-  const shared = createFakeSharedSessionStore('available');
+  const shared = createFakeSharedSessionStore({ status: 'available' });
   if (stored.blob !== undefined) {
     shared.entries.set(SHARED_CORE_SESSION_KEY, stored.blob);
   }
@@ -38,7 +38,7 @@ function createPage(stored: Params = {}) {
   const storage = createCoreStorage({
     shared,
     flag: createNonOwnerSignInFlag({
-      presence: createFakeSessionPresence('present'),
+      presence: createFakeSessionPresence({ state: 'present' }),
       readStoredSignIn: () => Promise.resolve('none'),
     }),
   });
@@ -55,7 +55,7 @@ function createPage(stored: Params = {}) {
   });
   onTestFinished(session.start());
   const sessionChanges = vi.fn();
-  onTestFinished(storage.onStoredSessionChanged(sessionChanges));
+  onTestFinished(storage.subscribeStoredSession(sessionChanges));
   const saved: [Uint8Array, LocalWalletIdentity | null][] = [];
   const reload = vi.fn();
   const params = {

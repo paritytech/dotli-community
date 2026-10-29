@@ -6,7 +6,7 @@ import { createRoot, createSignal, flush } from 'solid-js';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createChatConnections } from '../runtime/chat/createChatConnections.js';
 import { createChatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
-import { labelToProductId } from '../runtime/runtimeConfig.js';
+import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
 import { authState } from '../runtime/state/authState.js';
 import { productState } from '../runtime/state/productState.js';
 import { createRecordingConnection } from '../runtime/chat/createChatConnections.fake.js';
@@ -15,7 +15,7 @@ import { chatPanelStore, startChatPanelState, openChatRoom, setChatPanelOpen } f
 import { useChatDock } from './chat.js';
 
 const LABEL = 'chatty';
-const PRODUCT = labelToProductId(LABEL);
+const PRODUCT = toProductId(LABEL);
 
 let chat: ChatStore;
 let local: Storage;

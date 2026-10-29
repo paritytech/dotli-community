@@ -18,9 +18,9 @@ import { createLocaleSubscribe } from './createLocaleSubscribe.js';
 import { createAuthStateChanged } from '../session/createAuthStateChanged.js';
 import { createChatPlatform } from './createChatPlatform.js';
 import { coreStorage } from '../session/createCoreStorage.js';
-import type { BlockingModalScope } from '../blockingModalQueue.js';
+import type { BlockingModalScope } from '../createBlockingModalCoordinator.js';
 import type { HostPrompts } from '../hostPrompts.js';
-import type { PhoneRequestTracker } from '../phoneRequests.js';
+import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 
 /** What one core's callbacks are built for: its label, pairing, queue scope, session and phone. */
 export type CoreCallbacksParams = {

@@ -5,7 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createChanges } from '../../testing/changes.js';
-import { CoreRedialError } from '../pageCore.js';
+import { CoreRedialError } from '../coreRedialError.js';
 import type { WalletMode } from '../state/walletModeState.js';
 import type { SessionRead } from './createCoreStorage.js';
 import { createSessionLease } from './createSessionLease.js';
@@ -40,7 +40,7 @@ function createLeaseHarness(initial: { blob: string | null; mode?: WalletMode })
   let nextDown = false;
 
   const lease = createSessionLease({
-    copy: { readSession, onStoredSessionChanged },
+    copy: { readSession, subscribeStoredSession },
     walletMode: () => mode,
     core: { acquire },
   });
@@ -82,7 +82,7 @@ function createLeaseHarness(initial: { blob: string | null; mode?: WalletMode })
     return Promise.resolve(answer);
   }
 
-  function onStoredSessionChanged(listener: () => void): () => void {
+  function subscribeStoredSession(listener: () => void): () => void {
     listeners.add(listener);
     changes.notify();
     return unsubscribe;

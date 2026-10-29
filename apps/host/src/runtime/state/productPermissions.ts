@@ -15,15 +15,15 @@ import {
   type ReadableStore,
   type Timers,
 } from '@dotli/shared';
+import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
   ALL_PERMISSIONS,
   isDevicePermission,
   type EnforceablePermissionName,
-  type PermissionAuthorizations,
   type PermissionStatus,
   type PermissionTargets,
-} from '../permissions.js';
-import { throwIfAborted } from '../blockingModalQueue.js';
+} from '../permissionPolicy.js';
+import { throwIfModalAborted } from '../throwIfModalAborted.js';
 import type { ProductState } from './productState.js';
 
 /** `statuses` follow the menu order of `ALL_PERMISSIONS`. */
@@ -59,7 +59,7 @@ export type ProductPermissions = ReturnType<typeof createProductPermissions>;
 
 type Params = {
   /** The core's permission store. */
-  registry: Pick<PermissionAuthorizations, 'statuses' | 'setStatus'>;
+  registry: Pick<PermissionAuthorizations, 'getStatuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
   product: ReadableStore<ProductState>;
   /** What a retry waits on. The page's own timers by default. */
@@ -257,7 +257,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
       return;
     }
     try {
-      const statuses = await registry.statuses(label, NAMES);
+      const statuses = await registry.getStatuses(label, NAMES);
       m.count(S.PERMISSIONS_READ, { outcome: 'ok' });
       land(label, { status: 'read', label, statuses: NAMES.map((_, i) => statuses[i] ?? 'ask') });
     } catch (error) {
@@ -288,7 +288,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
       return { failed: [], errors: [] };
     }
     if (prompt !== undefined) {
-      throwIfAborted(prompt);
+      throwIfModalAborted(prompt);
     }
     const names = NAMES.filter(name => targets[name] !== undefined);
     const before = readStatuses(label);
@@ -318,7 +318,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
     // A stop settles the call at once, but the writes already sent finish first.
     await sending;
     if (prompt !== undefined) {
-      throwIfAborted(prompt);
+      throwIfModalAborted(prompt);
     }
 
     const landed = names.filter(name => !failed.includes(name));
@@ -353,7 +353,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
     async function send(): Promise<void> {
       const results = await Promise.allSettled(
-        failed.map(name => registry.setStatus(label, name, targets[name] ?? 'ask')),
+        failed.map(name => registry.setStatus({ label, permission: name, status: targets[name] ?? 'ask' })),
       );
       errors = results.flatMap((result): unknown[] => (result.status === 'rejected' ? [result.reason] : []));
       failed = failed.filter((_, i) => results[i]?.status === 'rejected');
@@ -369,7 +369,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
      * Subscribes to every change this store makes and returns the unsubscribe. A listener that throws is reported, and
      * the others still hear the change.
      */
-    onChanged: changes.subscribe,
+    subscribeChanges: changes.subscribe,
     /**
      * Reads the statuses again. Calls that queue behind a read share the next one. Never rejects, as a failed read is
      * reported and the store shows it failed.

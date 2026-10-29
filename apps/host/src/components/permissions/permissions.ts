@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { EnforceablePermissionName, PermissionGroup } from '../../runtime/permissions.js';
+import type { EnforceablePermissionName, PermissionGroup } from '../../runtime/permissionPolicy.js';
 
 /** One permission as its row shows it. */
 export type PermissionEntry = {

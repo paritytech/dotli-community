@@ -2,31 +2,32 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { catchError } from '@dotli/shared/testing';
 import {
   createPageRoleSlot,
-  forgetsSiteGrants,
-  loadReader,
-  offersResume,
-  ownsFlag,
-  pairsOnly,
-  sharesFlag,
-  shellPageRole,
-  showsSession,
-  signInSurface,
+  isSiteGrantForgotten,
+  getLoadReader,
+  isResumeOffered,
+  isFlagOwner,
+  isPairingOnly,
+  isFlagShared,
+  getShellPageRole,
+  isSessionShown,
+  getSignInSurface,
   type PageRole,
 } from './pageRole.js';
 
 /** Everything a role supplies, read in one go. */
-function supplied(role: PageRole) {
+function readSupplies(role: PageRole) {
   return {
-    signIn: signInSurface(role),
-    sharesFlag: sharesFlag(role),
-    ownsFlag: ownsFlag(role),
-    pairsOnly: pairsOnly(role),
-    reader: loadReader(role),
-    showsSession: showsSession(role),
-    offersResume: offersResume(role),
-    forgetsSiteGrants: forgetsSiteGrants(role),
+    signIn: getSignInSurface(role),
+    isFlagShared: isFlagShared(role),
+    isFlagOwner: isFlagOwner(role),
+    isPairingOnly: isPairingOnly(role),
+    reader: getLoadReader(role),
+    isSessionShown: isSessionShown(role),
+    isResumeOffered: isResumeOffered(role),
+    isSiteGrantForgotten: isSiteGrantForgotten(role),
   };
 }
 
@@ -36,20 +37,21 @@ describe('page role', () => {
     const route = { kind: 'preview' } as const;
     const framed = true;
 
-    // When the boot picks the page's role
-    const role = shellPageRole(route, framed);
+    // When the boot picks the page's role and reads what it supplies
+    const role = getShellPageRole(route, framed);
+    const supplies = readSupplies(role);
 
     // Then the page pairs in place and neither shares nor owns the flag
     expect(role).toBe('framed-preview');
-    expect(supplied(role)).toEqual({
+    expect(supplies).toEqual({
       signIn: 'in-page',
-      sharesFlag: false,
-      ownsFlag: false,
-      pairsOnly: false,
+      isFlagShared: false,
+      isFlagOwner: false,
+      isPairingOnly: false,
       reader: 'load',
-      showsSession: true,
-      offersResume: false,
-      forgetsSiteGrants: false,
+      isSessionShown: true,
+      isResumeOffered: false,
+      isSiteGrantForgotten: false,
     });
   });
 
@@ -58,20 +60,21 @@ describe('page role', () => {
     const route = { kind: 'preview' } as const;
     const framed = false;
 
-    // When the boot picks the page's role
-    const role = shellPageRole(route, framed);
+    // When the boot picks the page's role and reads what it supplies
+    const role = getShellPageRole(route, framed);
+    const supplies = readSupplies(role);
 
     // Then the page pairs in place and owns the shared flag
     expect(role).toBe('preview');
-    expect(supplied(role)).toEqual({
+    expect(supplies).toEqual({
       signIn: 'in-page',
-      sharesFlag: true,
-      ownsFlag: true,
-      pairsOnly: false,
+      isFlagShared: true,
+      isFlagOwner: true,
+      isPairingOnly: false,
       reader: 'load',
-      showsSession: true,
-      offersResume: false,
-      forgetsSiteGrants: true,
+      isSessionShown: true,
+      isResumeOffered: false,
+      isSiteGrantForgotten: true,
     });
   });
 
@@ -80,18 +83,18 @@ describe('page role', () => {
     const role: PageRole = 'landing';
 
     // When the boot reads what the role supplies
-    const supplies = supplied(role);
+    const supplies = readSupplies(role);
 
     // Then the page pairs in place, owns the flag and offers no resume
     expect(supplies).toEqual({
       signIn: 'in-page',
-      sharesFlag: true,
-      ownsFlag: true,
-      pairsOnly: false,
+      isFlagShared: true,
+      isFlagOwner: true,
+      isPairingOnly: false,
       reader: 'load',
-      showsSession: true,
-      offersResume: false,
-      forgetsSiteGrants: true,
+      isSessionShown: true,
+      isResumeOffered: false,
+      isSiteGrantForgotten: true,
     });
   });
 
@@ -100,21 +103,22 @@ describe('page role', () => {
     const productRoute = { kind: 'product' } as const;
     const landingRoute = { kind: 'landing' } as const;
 
-    // When the boot picks each page's role
-    const product = shellPageRole(productRoute, false);
-    const leaving = shellPageRole(landingRoute, false);
+    // When the boot picks each page's role and reads what a product page supplies
+    const product = getShellPageRole(productRoute, false);
+    const leaving = getShellPageRole(landingRoute, false);
+    const supplies = readSupplies('page');
 
     // Then both are product pages that sign in through the window and offer a resume
     expect([product, leaving]).toEqual(['page', 'page']);
-    expect(supplied('page')).toEqual({
+    expect(supplies).toEqual({
       signIn: 'window',
-      sharesFlag: true,
-      ownsFlag: false,
-      pairsOnly: false,
+      isFlagShared: true,
+      isFlagOwner: false,
+      isPairingOnly: false,
       reader: 'load',
-      showsSession: true,
-      offersResume: true,
-      forgetsSiteGrants: false,
+      isSessionShown: true,
+      isResumeOffered: true,
+      isSiteGrantForgotten: false,
     });
   });
 
@@ -123,18 +127,18 @@ describe('page role', () => {
     const role = 'signin-window' as const;
 
     // When the window boots with the sign-in window's role
-    const supplies = supplied(role);
+    const supplies = readSupplies(role);
 
     // Then the window signs in itself, only pairs and owns the flag
     expect(supplies).toEqual({
       signIn: 'self',
-      sharesFlag: true,
-      ownsFlag: true,
-      pairsOnly: true,
+      isFlagShared: true,
+      isFlagOwner: true,
+      isPairingOnly: true,
       reader: 'window',
-      showsSession: true,
-      offersResume: false,
-      forgetsSiteGrants: false,
+      isSessionShown: true,
+      isResumeOffered: false,
+      isSiteGrantForgotten: false,
     });
   });
 
@@ -143,18 +147,18 @@ describe('page role', () => {
     const role = 'signout-window' as const;
 
     // When the window boots with the sign-out window's role
-    const supplies = supplied(role);
+    const supplies = readSupplies(role);
 
     // Then the window only pairs, owns no flag and shows no session
     expect(supplies).toEqual({
       signIn: 'self',
-      sharesFlag: true,
-      ownsFlag: false,
-      pairsOnly: true,
+      isFlagShared: true,
+      isFlagOwner: false,
+      isPairingOnly: true,
       reader: 'window',
-      showsSession: false,
-      offersResume: false,
-      forgetsSiteGrants: false,
+      isSessionShown: false,
+      isResumeOffered: false,
+      isSiteGrantForgotten: false,
     });
   });
 
@@ -163,7 +167,7 @@ describe('page role', () => {
     const roles: PageRole[] = ['page', 'landing', 'preview', 'framed-preview', 'signin-window', 'signout-window'];
 
     // When each role says whether its sign-out forgets the grants
-    const forgets = roles.filter(forgetsSiteGrants);
+    const forgets = roles.filter(isSiteGrantForgotten);
 
     // Then only the pages that pair in place in the main store forget them, and the sign-out window the rest
     expect(forgets).toEqual(['landing', 'preview']);
@@ -176,13 +180,14 @@ describe('page role', () => {
 
     // When the same role is chosen again and another is tried
     slot.choose('framed-preview');
-    const other = (): void => {
+    const error = catchError(() => {
       slot.choose('page');
-    };
+    });
+    const role = slot.get();
 
     // Then the other role throws and the first stays
-    expect(other).toThrow('Page role page chosen after framed-preview');
-    expect(slot.read()).toBe('framed-preview');
+    expect(error).toEqual(new Error('Page role page chosen after framed-preview'));
+    expect(role).toBe('framed-preview');
   });
 
   it('As an operator, I read the page role before the boot chose it and am told it is wired wrong', () => {
@@ -190,9 +195,9 @@ describe('page role', () => {
     const slot = createPageRoleSlot();
 
     // When the role is read
-    const read = (): PageRole => slot.read();
+    const error = catchError(() => slot.get());
 
     // Then the read throws
-    expect(read).toThrow('Page role read before the boot chose it');
+    expect(error).toEqual(new Error('Page role read before the boot chose it'));
   });
 });

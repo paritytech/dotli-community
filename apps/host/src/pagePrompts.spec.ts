@@ -61,18 +61,20 @@ describe('host prompts', () => {
         dismissOnBackdrop: false,
       },
       live(),
-      result => {
-        heard.push(result);
-        return {
-          view: {
-            title: 'Waiting',
-            fields: [],
-            buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
-            dismissOnBackdrop: false,
-          },
-          signal: live(),
-          closed: how => closed.push(how),
-        };
+      {
+        handoff: result => {
+          heard.push(result);
+          return {
+            view: {
+              title: 'Waiting',
+              fields: [],
+              buttons: [{ label: 'Wait in background', variant: 'secondary', result: 'background' }],
+              dismissOnBackdrop: false,
+            },
+            signal: live(),
+            closed: how => closed.push(how),
+          };
+        },
       },
     );
 
@@ -114,7 +116,7 @@ describe('host prompts', () => {
 describe('permission request', () => {
   it('As a dotli integrator, the host resolves granted when the user allows', async () => {
     // Given
-    const decision = prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
+    const decision = prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: live(), allowOnce: false });
 
     // When
     chooseModalButton('Allow');
@@ -125,7 +127,7 @@ describe('permission request', () => {
 
   it('As a dotli integrator, the host resolves denied when the user denies', async () => {
     // Given
-    const decision = prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
+    const decision = prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: live(), allowOnce: false });
 
     // When
     chooseModalButton('Deny');
@@ -136,7 +138,7 @@ describe('permission request', () => {
 
   it('As a dotli integrator, the host resolves dismissed when the backdrop is clicked', async () => {
     // Given
-    const decision = prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
+    const decision = prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: live(), allowOnce: false });
 
     // When
     dismissModal();
@@ -147,7 +149,12 @@ describe('permission request', () => {
 
   it('As a dotli user, choosing Allow once resolves a one-time grant', async () => {
     // Given
-    const decision = prompts.askPermission('myapp', 'ChainSubmit', live(), { allowOnce: true });
+    const decision = prompts.askPermission({
+      label: 'myapp',
+      permission: 'ChainSubmit',
+      signal: live(),
+      allowOnce: true,
+    });
 
     // When
     chooseModalButton('Allow once');
@@ -158,7 +165,12 @@ describe('permission request', () => {
 
   it('As a dotli user, choosing Always allow resolves a lasting grant', async () => {
     // Given
-    const decision = prompts.askPermission('myapp', 'ChainSubmit', live(), { allowOnce: true });
+    const decision = prompts.askPermission({
+      label: 'myapp',
+      permission: 'ChainSubmit',
+      signal: live(),
+      allowOnce: true,
+    });
 
     // When
     chooseModalButton('Always allow');
@@ -169,7 +181,7 @@ describe('permission request', () => {
 
   it('As a dotli user, the prompt names the app on the active network, and a device prompt says granting reloads it', () => {
     // When
-    void prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
+    void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: live(), allowOnce: false });
 
     // Then
     const { view } = shownModal();
@@ -179,7 +191,7 @@ describe('permission request', () => {
 
   it('As a dotli user, a prompt for an app permission says nothing of a reload', () => {
     // When
-    void prompts.askPermission('myapp', 'ChainSubmit', live(), { allowOnce: true });
+    void prompts.askPermission({ label: 'myapp', permission: 'ChainSubmit', signal: live(), allowOnce: true });
 
     // Then
     expect(shownModal().view.notice).toBeUndefined();
@@ -188,7 +200,12 @@ describe('permission request', () => {
   it('As a dotli integrator, aborting a queued dialog takes it down unanswered', async () => {
     // Given
     const controller = new AbortController();
-    const decision = prompts.askPermission('myapp', 'Camera', controller.signal, { allowOnce: false });
+    const decision = prompts.askPermission({
+      label: 'myapp',
+      permission: 'Camera',
+      signal: controller.signal,
+      allowOnce: false,
+    });
 
     // When
     controller.abort();
@@ -202,7 +219,7 @@ describe('permission request', () => {
 describe('preimage submit', () => {
   it('As a dotli user, I see the data size and can allow the submission', async () => {
     // Given
-    const decision = prompts.confirmPreimage('myapp', 2048, live());
+    const decision = prompts.confirmPreimage({ label: 'myapp', size: 2048, signal: live() });
 
     // Then
     expect(shownModal().view.title).toBe('Submit Preimage');
@@ -217,7 +234,7 @@ describe('preimage submit', () => {
 
   it('As a dotli user, cancelling refuses the submission, and the backdrop does nothing', async () => {
     // Given
-    const decision = prompts.confirmPreimage('myapp', 512, live());
+    const decision = prompts.confirmPreimage({ label: 'myapp', size: 512, signal: live() });
 
     // When
     dismissModal();
@@ -235,7 +252,7 @@ describe('preimage submit', () => {
   it('As a dotli integrator, an abort rejects with AbortError and closes the dialog', async () => {
     // Given
     const controller = new AbortController();
-    const decision = prompts.confirmPreimage('myapp', 10, controller.signal);
+    const decision = prompts.confirmPreimage({ label: 'myapp', size: 10, signal: controller.signal });
 
     // When
     controller.abort();
@@ -247,7 +264,7 @@ describe('preimage submit', () => {
 
   it('As the host, every dialog I ask through carries my own test id, so ui names none of mine', () => {
     // When
-    void prompts.askPermission('myapp', 'Camera', live(), { allowOnce: false });
+    void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: live(), allowOnce: false });
 
     // Then
     expect(shownModal().view.testId).toBe('host-prompt');

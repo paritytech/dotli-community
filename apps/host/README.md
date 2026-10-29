@@ -60,6 +60,10 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
   lease that pool, and the chain watcher watches it. A product's local storage is one factory whose page instance every
   core shares, so a write from one runtime reaches the subscriptions of the others.
+- The product frame, its wait for a device permission answer, the scheduled notifications and the diagnostics' finalized
+  block query take the clock and timers they run on as params that default to the page's own. The scheduler takes its
+  repeating poll the same way, so their specs move time themselves. The channel to the local server's shared store takes
+  its origin and its `fetch`, the page's own by default.
 - Each entry chooses the page's role once, before the boot reads anything: a page (a product), the landing page, a
   preview opened on its own, a preview its preview host frames, the sign-in window or the sign-out window. The role
   alone says where a sign-in runs, whether the page shares the signed-in flag or raises it, whether a stored wallet
@@ -92,7 +96,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   is up, so one blocking prompt shows at a time. Its sign-in, phrase import and sign-out are the one interface every
   page offers, the debug panel's wallet tab included: they open the sign-in window, or on a preview or the landing page,
   pair in place and take a recovery phrase in the modal. That phrase check and the phrase form load only when the phrase
-  view first opens.
+  view first opens. The page's controller sits in one slot that boot fills and the islands call. An island that fails
+  before boot disables the modal through the slot, and the controller boot starts later keeps it disabled.
 - The sign-in window is a page on the bare host, with settings of its own that it never stores. It answers only an
   opener on an origin its rule allows, and replies to that origin alone. The first vetted hello names the round's party
   and its origin, and a request the window cannot read for that party is refused with its reason. For dot.li's own page,

@@ -5,7 +5,7 @@
 // store owns the flag together with that store, and any other page drops it with the session its own core drops.
 
 import { createAsyncTaskPool, log } from '@dotli/shared';
-import { ownsFlag, type PageRole } from '../pageRole.js';
+import { isFlagOwner, type PageRole } from '../pageRole.js';
 import type { SessionPresence } from './types.js';
 
 export type SignInFlag = {
@@ -138,7 +138,7 @@ export function createPageSignInFlag({ role, ...params }: CreatePageSignInFlagPa
   let inner: SignInFlag | undefined;
 
   function getInner(): SignInFlag {
-    inner ??= ownsFlag(role()) ? createOwnerSignInFlag(params) : createNonOwnerSignInFlag(params);
+    inner ??= isFlagOwner(role()) ? createOwnerSignInFlag(params) : createNonOwnerSignInFlag(params);
     return inner;
   }
 

@@ -11,7 +11,7 @@ import { getNetwork, type Network } from '@dotli/config';
 import { m, spans as S } from '@dotli/metrics';
 import { getProtocolOrigin } from '@dotli/protocol';
 import { createDeferred, log, listenForPageReturn } from '@dotli/shared';
-import { signInSurface, type PageRole } from '../pageRole.js';
+import { getSignInSurface, type PageRole } from '../pageRole.js';
 import { sessionPresence } from '../session/createPagePresence.js';
 import type { SessionPresence } from '../session/types.js';
 import { createSignInWindowUrl, createSignOutWindowUrl } from './createSignInWindowUrl.js';
@@ -292,7 +292,7 @@ export function createSessionHandoff({ open, listen, onReturn, randomId, windowO
 
 /** The page's handoff when `role` signs in through the sign-in window, else null for a page that pairs in place. */
 export function getPageSignInHandoff(role: PageRole): SessionHandoff | null {
-  return signInSurface(role) === 'window' ? getPageSessionHandoff() : null;
+  return getSignInSurface(role) === 'window' ? getPageSessionHandoff() : null;
 }
 
 /** The page's one handoff, built on first use, so importing the module reads no page globals. */

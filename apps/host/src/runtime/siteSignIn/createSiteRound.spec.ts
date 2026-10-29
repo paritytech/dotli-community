@@ -8,7 +8,7 @@ import { createDeferred } from '@dotli/shared';
 import { must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
-import { CoreRedialError } from '../pageCore.js';
+import { CoreRedialError } from '../coreRedialError.js';
 import { createChanges } from '../../testing/changes.js';
 import { MainAccountError, type MainAccount } from './createMainAccountSource.js';
 import { createSiteRound, isUnsentGrantForgotten, type SiteAction, type SiteScreen } from './createSiteRound.js';

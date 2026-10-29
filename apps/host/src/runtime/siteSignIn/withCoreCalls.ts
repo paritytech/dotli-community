@@ -4,8 +4,8 @@
 /** Runs TrUAPI calls over one leased connection to the page core, and tells their failures apart. */
 
 import { createTransport, type CallErrorValue, type TrUApiTransport, type UnsupportedCallError } from '@parity/truapi';
-import { ownCoreConnection } from '../coreConnection.js';
-import type { CoreConnection } from '../pageCore.js';
+import { ownCoreConnection } from '../ownCoreConnection.js';
+import type { CoreConnection } from '../createPageCore.js';
 
 /** A call error whose domain error sits in a versioned envelope, as every TrUAPI method's does. */
 export type SiteCallError = CallErrorValue<{ tag: string; value: { tag: string } }> | UnsupportedCallError;

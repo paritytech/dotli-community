@@ -18,13 +18,13 @@ import { markContinuation } from './continuation.js';
 import { getBackend, isLocalhost, isSharedWorkerAvailable, setSettings, type Settings } from '@dotli/config';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { loadBridge, loadRecoveryPhrase, type BridgeModule } from './lazy.js';
-import { createBlockingModalCoordinator } from './runtime/blockingModalQueue.js';
+import { createBlockingModalCoordinator } from './runtime/createBlockingModalCoordinator.js';
 import { productState } from './runtime/state/productState.js';
-import { takePendingReset } from './runtime/pendingReset.js';
+import { pendingResets } from './runtime/createPendingResets.js';
 import { readSharedSettings, writeSharedSettings } from './runtime/sharedMode.js';
-import { disableAuthModal, initAuthController } from './runtime/authController.js';
+import { authControl } from './runtime/createAuthController.js';
 import { getPageSignInHandoff } from './runtime/sessionHandoff/createSessionHandoff.js';
-import { choosePageRole, showsSession, signInSurface, type PageRole } from './runtime/pageRole.js';
+import { pageRole, isSessionShown, getSignInSurface, type PageRole } from './runtime/pageRole.js';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
 import { bootSettings } from './bootSettings.js';
 import { initSettingsStore } from './state/settings.js';
@@ -50,7 +50,7 @@ export function startPage(options: { desktopOffer?: boolean } = {}): void {
   reportIslandErrors({
     offerReload,
     standIns: pageStandIns({
-      disableAuthModal,
+      disableAuthModal: authControl.disableModal,
       refuseModals: () => {
         modals.refuseAll();
       },
@@ -116,11 +116,11 @@ export type StartHostOptions = {
 export async function startHost(bootFlowId: string, options: StartHostOptions): Promise<HostStartup> {
   const { role, emitDotliDebugEvent = () => undefined, startShellState } = options;
   // First, as the presence, the wallet boot and core storage read it on first use.
-  choosePageRole(role);
+  pageRole.choose(role);
   // One id for the debug panel's flow and the Sentry trace, so the two line up.
   setResolutionId(bootFlowId);
   // Taken before the shared store's first read boots the frame, so that boot already purges.
-  const protocolPendingReset = takePendingReset('protocol');
+  const protocolPendingReset = pendingResets.take('protocol');
 
   const configureFrame = (settings: Settings): void => {
     getProtocolClient().frame.configure(protocolFrameConfig(settings, protocolPendingReset));
@@ -207,15 +207,15 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
     bridge.initBridge(blockingModalCoordinator);
     return bridge;
   });
-  if (signInSurface(role) !== 'self') {
-    initAuthController({
+  if (getSignInSurface(role) !== 'self') {
+    authControl.init({
       coordinator: blockingModalCoordinator,
       commands: async () => (await bridgeReady).authCommands,
       handoff: getPageSignInHandoff(role),
       applyResult: async result => (await bridgeReady).applyWindowResult(result),
       inPagePhrase: async () => {
-        const [{ phraseToEntropy }, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridgeReady]);
-        return { toEntropy: phraseToEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
+        const [{ toEntropy }, { walletSwitch }] = await Promise.all([loadRecoveryPhrase(), bridgeReady]);
+        return { toEntropy, useLocalWallet: entropy => walletSwitch.useLocalWallet(entropy) };
       },
     });
   }
@@ -226,7 +226,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
   boot.step = 'topbar';
   // At once, not on idle: the auth button spins until the saved session is read, and a busy boot can starve an idle
   // callback.
-  if (showsSession(role)) {
+  if (isSessionShown(role)) {
     bridgeModule.startSessionState();
   }
   emitDotliDebugEvent({

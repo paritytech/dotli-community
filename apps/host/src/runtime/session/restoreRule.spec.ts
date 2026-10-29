@@ -59,8 +59,8 @@ function stageFlagReads(...reads: FakeSessionPresence['state'][]): void {
 }
 
 beforeEach(() => {
-  shared = createFakeSharedSessionStore('available');
-  presence = createFakeSessionPresence('present');
+  shared = createFakeSharedSessionStore({ status: 'available' });
+  presence = createFakeSessionPresence({ state: 'present' });
   wallet = { record: null, readError: null };
   const coreStorage = createCoreStorage({
     shared,

@@ -4,29 +4,47 @@
 // How the runtime asks the user and tells them things, in the page's own dialogs and notifications.
 
 import type { ModalHandoff, ModalView, ShowNotification } from '@dotli/ui';
-import type { EnforceablePermissionName } from './permissions.js';
+import type { EnforceablePermissionName } from './permissionPolicy.js';
 
 /** `dismissed` stays apart from `denied` so a dismissal stores no denial. */
 export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
-/** Each ask settles with the user's answer, and rejects with an AbortError once `signal` aborts. */
+type AskPermissionParams = {
+  /** The product that asks. */
+  label: string;
+  permission: EnforceablePermissionName;
+  /** Ends the ask. */
+  signal: AbortSignal;
+  /** Whether the user may grant it for this execution only. */
+  allowOnce: boolean;
+};
+
+type ConfirmPreimageParams = {
+  /** The product that asks. */
+  label: string;
+  /** The preimage's size in bytes. */
+  size: number;
+  /** Ends the ask. */
+  signal: AbortSignal;
+};
+
+type ConfirmReviewParams<R extends string> = {
+  /** Sees every answer, and the step it returns takes the dialog's place until that step closes. */
+  handoff?: ((result: R) => ModalHandoff | undefined) | undefined;
+};
+
+/** Each ask settles with the user's answer, and rejects with an AbortError once its `signal` aborts. */
 export type HostPrompts = {
-  askPermission: (
-    label: string,
-    permission: EnforceablePermissionName,
-    signal: AbortSignal,
-    options: { allowOnce: boolean },
-  ) => Promise<PermissionPromptDecision>;
+  /** Resolves the user's decision on `label`'s ask for `permission`. */
+  askPermission: (params: AskPermissionParams) => Promise<PermissionPromptDecision>;
   /** Resolves true when the user allows `label` to store a preimage of `size` bytes. */
-  confirmPreimage: (label: string, size: number, signal: AbortSignal) => Promise<boolean>;
-  /**
-   * Resolves the result of the button the user chose. `handoff` sees every answer, and the step it returns takes the
-   * dialog's place until that step closes.
-   */
+  confirmPreimage: (params: ConfirmPreimageParams) => Promise<boolean>;
+  /** Resolves the result of the button the user chose. */
   confirmReview: <R extends string>(
     dialog: ModalView<R>,
     signal: AbortSignal,
-    handoff?: (result: R) => ModalHandoff | undefined,
+    options?: ConfirmReviewParams<R>,
   ) => Promise<R>;
+  /** Shows the user a notification. */
   notify: ShowNotification;
 };

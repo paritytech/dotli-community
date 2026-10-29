@@ -7,7 +7,7 @@
 import type { Notifications } from '@parity/truapi-host';
 import type { HostPushNotificationRequest, HostPushNotificationResponse } from '@parity/truapi';
 import { log } from '@dotli/shared';
-import type { ScheduledNotifications } from '../scheduledNotifications.js';
+import type { ScheduledNotifications } from '../createScheduledNotifications.js';
 import { ERRORS } from '../errors.js';
 import type { HostPrompts } from '../hostPrompts.js';
 

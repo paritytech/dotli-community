@@ -11,63 +11,40 @@ import { captureException, m, spans as S } from '@dotli/metrics';
 import { getErrorName, log } from '@dotli/shared';
 
 export type SharedChannel = {
+  /** The value under `key`, or null when none is stored. Rejects when the store cannot be reached. */
   read: (key: string) => Promise<string | null>;
+  /** Stores `value` under `key`. Rejects when the store cannot be reached or refuses the write. */
   write: (key: string, value: string) => Promise<void>;
+  /** Removes `key`. Rejects when the store cannot be reached. */
   clear: (key: string) => Promise<void>;
 };
 
-function devHttpChannel(): SharedChannel {
-  const baseUrl = `${getProtocolOrigin()}/__dotli-mode/`;
-  const url = (key: string): string => `${baseUrl}${encodeURIComponent(key)}`;
-  return {
-    read: async key => {
-      const res = await fetch(url(key), { cache: 'no-store' });
-      if (res.status === 204) {
-        return null;
-      }
-      if (!res.ok) {
-        throw new Error(`mode sync read ${key} failed with HTTP ${String(res.status)}`);
-      }
-      const text = await res.text();
-      return text === '' ? null : text;
-    },
-    write: async (key, value) => {
-      const res = await fetch(url(key), {
-        method: 'PUT',
-        body: value,
-        cache: 'no-store',
-      });
-      if (!res.ok) {
-        throw new Error(`mode sync write ${key} failed with HTTP ${String(res.status)}`);
-      }
-    },
-    clear: async key => {
-      const res = await fetch(url(key), {
-        method: 'DELETE',
-        cache: 'no-store',
-      });
-      if (!res.ok && res.status !== 404) {
-        throw new Error(`mode sync clear ${key} failed with HTTP ${String(res.status)}`);
-      }
-    },
-  };
-}
+type Params = {
+  /** Where the shared settings live, the page's shared store when left out. */
+  channel?: SharedChannel;
+};
 
-function iframeChannel(): SharedChannel {
-  return {
-    read: key => getProtocolClient().sharedMode.read(SITE_ID, key),
-    write: (key, value) => getProtocolClient().sharedMode.write({ siteId: SITE_ID, key, value }),
-    clear: key => getProtocolClient().sharedMode.clear(SITE_ID, key),
-  };
-}
+type CreateDevHttpChannelParams = {
+  /** The origin of the local server that keeps the shared store. */
+  origin: string;
+  /**
+   * Sends each request. The page's `fetch` by default, read at each call. Rejects when the server cannot be reached.
+   */
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
+};
 
-/** For state written on `<label>.<root>` but read on the bare root, where `localStorage` cannot carry it. */
+/**
+ * The page's channel to the store every subdomain shares, for state written on `<label>.<root>` but read on the bare
+ * root, where `localStorage` cannot carry it. Never throws.
+ */
 export function getSharedChannel(): SharedChannel {
-  return isLocalhost ? devHttpChannel() : iframeChannel();
+  return isLocalhost ? createDevHttpChannel({ origin: getProtocolOrigin() }) : createIframeChannel();
 }
 
 /** The settings other subdomains share, or null when the store cannot be read, which this reports. */
-export async function readSharedSettings(channel: SharedChannel = getSharedChannel()): Promise<SharedSettings | null> {
+export async function readSharedSettings({
+  channel = getSharedChannel(),
+}: Params = {}): Promise<SharedSettings | null> {
   try {
     const [backend, cache] = await Promise.all([channel.read(BACKEND_KEY), channel.read(CACHE_KEY)]);
     m.count(S.SHARED_MODE_READ, { outcome: 'ok' });
@@ -86,7 +63,7 @@ export async function readSharedSettings(channel: SharedChannel = getSharedChann
  */
 export async function writeSharedSettings(
   shared: SharedSettings,
-  channel: SharedChannel = getSharedChannel(),
+  { channel = getSharedChannel() }: Params = {},
 ): Promise<void> {
   const entries: [string, string | null][] = [
     [BACKEND_KEY, shared.backend],
@@ -101,13 +78,70 @@ export async function writeSharedSettings(
               () => {
                 m.count(S.SHARED_MODE_WRITE, { outcome: 'ok' });
               },
-              (err: unknown) => {
-                log.error(`[dot.li shared-mode] write of ${key} failed:`, err);
-                captureException(err, { flow: 'storage', step: 'shared_mode_write' });
-                m.count(S.SHARED_MODE_WRITE, { outcome: 'error', reason: getErrorName(err) ?? 'unknown' });
+              (error: unknown) => {
+                log.error(`[dot.li shared-mode] write of ${key} failed:`, error);
+                captureException(error, { flow: 'storage', step: 'shared_mode_write' });
+                m.count(S.SHARED_MODE_WRITE, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
               },
             ),
           ],
     ),
   );
+}
+
+/**
+ * Builds the channel to the shared store a local server keeps at `origin`, used on a local root. Never throws.
+ */
+export function createDevHttpChannel({ origin, fetch = fetchFromPage }: CreateDevHttpChannelParams): SharedChannel {
+  const baseUrl = `${origin}/__dotli-mode/`;
+
+  function getUrl(key: string): string {
+    return `${baseUrl}${encodeURIComponent(key)}`;
+  }
+
+  return {
+    async read(key) {
+      const response = await fetch(getUrl(key), { cache: 'no-store' });
+      if (response.status === 204) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`mode sync read ${key} failed with HTTP ${String(response.status)}`);
+      }
+      const text = await response.text();
+      return text === '' ? null : text;
+    },
+    async write(key, value) {
+      const response = await fetch(getUrl(key), {
+        method: 'PUT',
+        body: value,
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        throw new Error(`mode sync write ${key} failed with HTTP ${String(response.status)}`);
+      }
+    },
+    async clear(key) {
+      const response = await fetch(getUrl(key), {
+        method: 'DELETE',
+        cache: 'no-store',
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`mode sync clear ${key} failed with HTTP ${String(response.status)}`);
+      }
+    },
+  };
+}
+
+function createIframeChannel(): SharedChannel {
+  return {
+    read: key => getProtocolClient().sharedMode.read(SITE_ID, key),
+    write: (key, value) => getProtocolClient().sharedMode.write({ siteId: SITE_ID, key, value }),
+    clear: key => getProtocolClient().sharedMode.clear(SITE_ID, key),
+  };
+}
+
+/** The page's own `fetch`, read at each call. */
+function fetchFromPage(url: string, init: RequestInit): Promise<Response> {
+  return fetch(url, init);
 }

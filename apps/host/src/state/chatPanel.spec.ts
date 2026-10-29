@@ -6,7 +6,7 @@ import { createRecordingConnection } from '../runtime/chat/createChatConnections
 import { createMemoryChatRepo } from '../runtime/chat/createChatStore.fake.js';
 import { createChatConnections } from '../runtime/chat/createChatConnections.js';
 import { createChatStore, type ChatStore } from '../runtime/chat/createChatStore.js';
-import { labelToProductId } from '../runtime/runtimeConfig.js';
+import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { reportBlockingModals, setTopbarVisible } from './topbar.js';
@@ -33,13 +33,13 @@ let chat: ChatStore;
 let connections: ReturnType<typeof createChatConnections>;
 
 function showProduct(label: string): void {
-  productState.setLoaded({ label, productId: labelToProductId(label), details: { chat: true } });
+  productState.setLoaded({ label, productId: toProductId(label), details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
 }
 
 async function productMessage(label: string, roomId: string): Promise<void> {
   await chat.postProductMessage({
-    productId: labelToProductId(label),
+    productId: toProductId(label),
     roomId,
     content: { tag: 'Text', value: { text: 'hi' } },
   });
@@ -60,13 +60,13 @@ afterEach(() => {
 describe('chat panel state', () => {
   it('As a user, the chat button shows only for a chat-capable product while I am logged in', () => {
     // Given a product that declares no chat
-    productState.setLoaded({ label: 'first-app', productId: labelToProductId('first-app') });
+    productState.setLoaded({ label: 'first-app', productId: toProductId('first-app') });
 
     // Then
     expect(chatButtonVisible()).toBe(false);
 
     // When it loads again declaring chat
-    productState.setLoaded({ label: 'first-app', productId: labelToProductId('first-app'), details: { chat: true } });
+    productState.setLoaded({ label: 'first-app', productId: toProductId('first-app'), details: { chat: true } });
 
     // Then
     expect(chatButtonVisible()).toBe(false);
@@ -129,10 +129,10 @@ describe('chat panel state', () => {
   it('As a user, my own messages and messages for another product do not count as unread', async () => {
     // Given
     showProduct('app');
-    connections.register(labelToProductId('app'), createRecordingConnection());
+    connections.register(toProductId('app'), createRecordingConnection());
 
     // When
-    await chat.postUserMessage({ productId: labelToProductId('app'), roomId: 'a', text: 'hello' });
+    await chat.postUserMessage({ productId: toProductId('app'), roomId: 'a', text: 'hello' });
     await productMessage('other', 'a');
 
     // Then
@@ -165,7 +165,7 @@ describe('chat panel state', () => {
     openChatRoom('a');
 
     // When
-    productState.setLoaded({ label: 'app', productId: labelToProductId('app'), details: { chat: true } });
+    productState.setLoaded({ label: 'app', productId: toProductId('app'), details: { chat: true } });
 
     // Then
     expect(chatPanelStore.get().activeRoomId).toBe('a');
@@ -313,7 +313,7 @@ describe('chat panel state, rooms seen', () => {
     const stop = markFollowedRoomSeen(chat.view);
 
     // When
-    chat.follow({ productId: labelToProductId('app'), roomId: 'r1', loadId: 1 });
+    chat.follow({ productId: toProductId('app'), roomId: 'r1', loadId: 1 });
     await chat.settle();
 
     // Then
@@ -328,7 +328,7 @@ describe('chat panel state, rooms seen', () => {
     setChatPanelOpen(true);
     await productMessage('app', 'r1');
     const stop = markFollowedRoomSeen(chat.view);
-    chat.follow({ productId: labelToProductId('app'), roomId: 'r1', loadId: 1 });
+    chat.follow({ productId: toProductId('app'), roomId: 'r1', loadId: 1 });
 
     // When: the panel closes, then the read lands.
     setChatPanelOpen(false);
@@ -349,10 +349,10 @@ describe('chat panel state, rooms seen', () => {
     setChatPanelOpen(true);
     await productMessage('app', 'r1');
     const stop = markFollowedRoomSeen(chat.view);
-    chat.follow({ productId: labelToProductId('app'), roomId: 'r1', loadId: 1 });
+    chat.follow({ productId: toProductId('app'), roomId: 'r1', loadId: 1 });
 
     // When: back to the list, then the read lands.
-    chat.follow({ productId: labelToProductId('app'), roomId: null, loadId: 1 });
+    chat.follow({ productId: toProductId('app'), roomId: null, loadId: 1 });
     await reads.release();
     await chat.settle();
 

@@ -77,6 +77,8 @@ listener set, the sync store, the status cell and a few formatting helpers.
   `OriginWipeError`, `OriginStores`, `OriginWipePart`.
 - Shape guards: `isRecord(value)` (a non-null, non-array object) and `isStringArray(value)` (an array whose every item
   is a string), both type guards for a value read from an untyped source.
+- Typed keys: `getKeys(record)`, a record's own enumerable string keys typed by the record, so no caller casts what
+  `Object.keys` returns.
 - Byte counts as people read them: `formatSize`, `formatRate`.
 - Types: `Branded<Value, Name>`, a `Value` the compiler tells apart from others of its base type, made only by the
   constructor that casts to it.

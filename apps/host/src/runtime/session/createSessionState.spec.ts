@@ -10,13 +10,13 @@ import { createNonOwnerSignInFlag } from './signInFlag.js';
 import { createSessionState, type PairingPresentation, type SessionState } from './createSessionState.js';
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { createChanges } from '../../testing/changes.js';
-import type { LocalWalletBoot } from '../walletBoot.js';
+import type { LocalWalletBoot } from '../createWalletBoot.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
 import type { DotliAuthState, Presence } from './types.js';
 import { createFakeSessionPresence, getUnservedChannel, type FakeSessionPresence } from './createPagePresence.fake.js';
 import { createPagePresence } from './createPagePresence.js';
-import { offersResume, sharesFlag, type PageRole } from '../pageRole.js';
+import { isResumeOffered, isFlagShared, type PageRole } from '../pageRole.js';
 
 const SESSION_KEY = SHARED_CORE_SESSION_KEY;
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
@@ -83,7 +83,7 @@ function reportFromCore(state: AuthState, pairing: PairingPresentation = PAIRING
 describe('session state', () => {
   beforeEach(() => {
     shared = createFakeSharedSessionStore();
-    presence = createFakeSessionPresence('present');
+    presence = createFakeSessionPresence({ state: 'present' });
     coreStorage = createCoreStorage({
       shared,
       flag: createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('none') }),
@@ -109,7 +109,7 @@ describe('session state', () => {
       auth,
       setElsewhere,
       isLocalWallet: () => localWallet,
-      isResumeOffered: () => offersResume(role),
+      isResumeOffered: () => isResumeOffered(role),
     });
 
     async function restore() {
@@ -164,7 +164,7 @@ describe('session state', () => {
     shared.entries.set(SESSION_KEY, '0x010203');
     shared.entries.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     const coreNotified = vi.fn();
-    onTestFinished(coreStorage.onStoredSessionChanged(coreNotified));
+    onTestFinished(coreStorage.subscribeStoredSession(coreNotified));
 
     // When
     onTestFinished(session.start());
@@ -221,7 +221,7 @@ describe('session state', () => {
     shared.setStatus('unavailable');
     await waitForAuth(() => auth.get().tag === 'Unreachable');
     const coreNotified = vi.fn();
-    onTestFinished(coreStorage.onStoredSessionChanged(coreNotified));
+    onTestFinished(coreStorage.subscribeStoredSession(coreNotified));
 
     // When
     shared.readError = null;
@@ -717,7 +717,7 @@ describe('session state', () => {
         // The flag set on the site, as a framed preview's own presence reads it.
         readLoadFlag: () =>
           createPagePresence({
-            isShared: () => sharesFlag('framed-preview'),
+            isShared: () => isFlagShared('framed-preview'),
             localhost: false,
             channel: getUnservedChannel,
             jar: { read: () => 'has_session=1', write: () => undefined },

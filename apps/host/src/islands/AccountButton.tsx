@@ -3,7 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { authState } from '../runtime/state/authState.js';
-import { logout, startLogin } from '../runtime/authController.js';
+import { authControl } from '../runtime/createAuthController.js';
 import { sessionElsewhereState } from '../runtime/state/sessionElsewhereState.js';
 import { signingOutState } from '../runtime/state/signingOutState.js';
 import { walletModeState } from '../runtime/state/walletModeState.js';
@@ -29,10 +29,10 @@ export function AccountButton(props: { idPrefix?: string; showName?: boolean }):
       account={account}
       modalOpen={modalOpen}
       onSignIn={() => {
-        startLogin();
+        authControl.startLogin();
       }}
       onLogout={() => {
-        logout();
+        authControl.logout();
       }}
       handOver={setAuthModalTrigger}
       idPrefix={props.idPrefix}

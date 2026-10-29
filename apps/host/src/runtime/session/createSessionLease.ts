@@ -7,7 +7,8 @@
 
 import { m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool } from '@dotli/shared';
-import { CoreRedialError, type CoreLease } from '../pageCore.js';
+import { CoreRedialError } from '../coreRedialError.js';
+import type { CoreLease } from '../createPageCore.js';
 import type { WalletMode } from '../state/walletModeState.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import type { HostCoreStorage } from './createCoreStorage.js';
@@ -16,7 +17,7 @@ type HeldLease = Pick<CoreLease, 'subscribeDown' | 'release'>;
 
 type Params = {
   /** The page's copy, whose paired session the lease follows. */
-  copy: Pick<HostCoreStorage, 'readSession' | 'onStoredSessionChanged'>;
+  copy: Pick<HostCoreStorage, 'readSession' | 'subscribeStoredSession'>;
   /** The page's wallet mode, as only a page that pairs holds a lease. */
   walletMode: () => WalletMode;
   /**
@@ -94,7 +95,7 @@ export function createSessionLease({ copy, walletMode, core }: Params) {
         return stop;
       }
       void runs.call(run);
-      const stopChanges = copy.onStoredSessionChanged(() => {
+      const stopChanges = copy.subscribeStoredSession(() => {
         void runs.call(run);
       });
 

@@ -11,7 +11,7 @@ import { render } from '@solidjs/web';
 import { createMemoryStorage, resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { createChatConnections } from '../../src/runtime/chat/createChatConnections.js';
 import { createChatStore, type ChatStore } from '../../src/runtime/chat/createChatStore.js';
-import { labelToProductId } from '../../src/runtime/runtimeConfig.js';
+import { toProductId } from '../../src/runtime/createTruapiRuntimeConfig.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { createMemoryChatRepo } from '../../src/runtime/chat/createChatStore.fake.js';
@@ -26,7 +26,7 @@ import {
 import { appears, byId, byTestId } from '@dotli/ui/testing';
 
 const LABEL = 'chatty';
-const PRODUCT = labelToProductId(LABEL);
+const PRODUCT = toProductId(LABEL);
 
 let chat: ChatStore;
 let stopState: () => void = () => undefined;

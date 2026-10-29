@@ -15,7 +15,7 @@ import {
   type ReadableStore,
   type StatusCell,
 } from '@dotli/shared';
-import type { CoreLease } from '../pageCore.js';
+import type { CoreLease } from '../createPageCore.js';
 import type { DotliAuthState } from '../session/types.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
 

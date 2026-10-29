@@ -8,7 +8,7 @@ import { render, type JSX } from '@solidjs/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
 import { must, resetAllStoresForTests } from '@dotli/shared/testing';
-import { memorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
+import { createMemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
 import { pageScreen, showErrorPage } from '@dotli/ui';
 import { LandingAuth } from '../../src/islands/LandingAuth.js';
 import { LandingNav } from '../../src/islands/LandingNav.js';
@@ -29,7 +29,7 @@ let unmounts: (() => void)[] = [];
  * shown, or the error page. `nav` takes the name form's place.
  */
 async function mountIslands({ nav = LandingNav }: { nav?: () => JSX.Element } = {}): Promise<void> {
-  const shared = memorySharedChannel({ dotli_recent: '["alpha"]' });
+  const shared = createMemorySharedChannel({ entries: { dotli_recent: '["alpha"]' } });
   const islands = [
     [LandingAuth, SLOTS.auth, {}],
     [nav, SLOTS.nav, {}],

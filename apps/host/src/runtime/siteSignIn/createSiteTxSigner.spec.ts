@@ -16,7 +16,7 @@ import {
 } from '@parity/truapi';
 import { SIGNING_CREATE_TRANSACTION as CREATE } from '@parity/truapi/wire-table';
 import { must } from '@dotli/shared/testing';
-import { makeProvider } from '../pageCore.fake.js';
+import { createFakeProvider } from '../createPageCore.fake.js';
 import { createSiteTxSigner, SiteTxError } from './createSiteTxSigner.js';
 import { encodeResponseFrame } from '../../testing/encodeResponseFrame.js';
 import { toVersionedError } from '../../testing/toVersionedError.js';
@@ -77,7 +77,7 @@ function encodeCreateResponse(answer: CreateAnswer): Uint8Array {
 /** One core that answers each transaction request with the next queued answer, and records what it was asked. */
 function createFakeCore(answers: CreateAnswer[]) {
   const requests: ProductAccountTxPayload[] = [];
-  const provider = makeProvider({
+  const provider = createFakeProvider({
     onPostMessage(message) {
       const decoded = decodeWireMessage(message);
       if (decoded.isErr()) {

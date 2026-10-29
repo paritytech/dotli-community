@@ -15,7 +15,7 @@ import {
 
 /** The main store as the window's keeper sees it, with the order of every flag write and store change. */
 function createMainStore(initial: { session?: boolean; wallet?: boolean } = {}) {
-  const presence = createFakeSessionPresence('absent');
+  const presence = createFakeSessionPresence({ state: 'absent' });
   const store = { session: initial.session ?? false, wallet: initial.wallet ?? false };
   const steps: string[] = [];
   const set = presence.set.bind(presence);
@@ -137,7 +137,7 @@ describe('flag owner', () => {
 
   it('As a user in the sign-in window, I clear a store that cannot be read afterwards and the flag stays for what it may hold', async () => {
     // Given the window's flag keeper over a store that cannot be read
-    const presence = createFakeSessionPresence('present');
+    const presence = createFakeSessionPresence({ state: 'present' });
     const signIns = createOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('unread') });
 
     // When a clear runs
@@ -184,7 +184,7 @@ describe('flag owner', () => {
 describe('page flag keeper', () => {
   it('As a user on a product page, I let my core store a session and the flag is never raised', async () => {
     // Given a product page's flag keeper over an absent flag
-    const presence = createFakeSessionPresence('absent');
+    const presence = createFakeSessionPresence({ state: 'absent' });
     const flag = createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('none') });
     let stored = false;
 
@@ -200,7 +200,7 @@ describe('page flag keeper', () => {
 
   it('As a user on a product page, I clear through my core and the flag is deleted only once the clear dropped the session', async () => {
     // Given a page's flag keeper over a present flag
-    const presence = createFakeSessionPresence('present');
+    const presence = createFakeSessionPresence({ state: 'present' });
     const flag = createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('none') });
 
     // When a clear finds another sign-in stored since
@@ -219,7 +219,7 @@ describe('page flag keeper', () => {
 
   it('As a user on a product page whose copy cannot be read, I let my core drop its session and the flag goes down', async () => {
     // Given a page's flag keeper over a copy that cannot be read
-    const presence = createFakeSessionPresence('present');
+    const presence = createFakeSessionPresence({ state: 'present' });
     const flag = createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('unread') });
 
     // When the core's clear lands
@@ -232,7 +232,7 @@ describe('page flag keeper', () => {
 
   it('As a user on a product page whose store refuses the clear, I clear and the flag is still deleted so every page drops it on load', async () => {
     // Given a page's flag keeper over a store holding a sign-in
-    const presence = createFakeSessionPresence('present');
+    const presence = createFakeSessionPresence({ state: 'present' });
     const flag = createNonOwnerSignInFlag({ presence, readStoredSignIn: () => Promise.resolve('held') });
 
     // When the store refuses the clear
@@ -247,7 +247,7 @@ describe('page flag keeper', () => {
 describe('a page drop racing a sign-in on the shared store', () => {
   /** One shared store and flag, a page's keeper and an owner's, as two tabs in a browser that shares the store. */
   function createTwoTabs() {
-    const presence = createFakeSessionPresence('present');
+    const presence = createFakeSessionPresence({ state: 'present' });
     const store: { session: string | null } = { session: 'old' };
     const readStoredSignIn = (): Promise<StoredSignIn> => Promise.resolve(store.session === null ? 'none' : 'held');
     return {
@@ -313,7 +313,7 @@ describe('the page role picks the flag keeper', () => {
     ['framed-preview', false],
   ])('As a user on a %s page, I store a sign-in and the flag is raised: %s', async (role, raised) => {
     // Given the flag keeper for the role over an absent flag
-    const presence = createFakeSessionPresence('absent');
+    const presence = createFakeSessionPresence({ state: 'absent' });
     const flag = createPageSignInFlag({ role: () => role, presence, readStoredSignIn: () => Promise.resolve('held') });
 
     // When a sign-in is stored
@@ -339,7 +339,7 @@ describe('renewing the flag', () => {
     'As a user with the %s flag keeper, I renew the flag and it renews through the presence without a set',
     (_keeper, build) => {
       // Given the keeper over a set flag
-      const presence = createFakeSessionPresence('present');
+      const presence = createFakeSessionPresence({ state: 'present' });
       const flag = build(presence);
 
       // When the flag is renewed

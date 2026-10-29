@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { reportExpected } from '@dotli/metrics';
-import { CoreRedialError } from '../pageCore.js';
+import { CoreRedialError } from '../coreRedialError.js';
 import { reportWalletFailure } from '../walletFailure.js';
 import { MainAccountError } from './createMainAccountSource.js';
 import type { SiteRoundFailure } from './siteRoundErrors.js';

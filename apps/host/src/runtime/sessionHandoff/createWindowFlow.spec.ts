@@ -7,8 +7,8 @@ import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createSyncStore, createDeferred, createStoreStatus, isRecord, waitForStatus } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindow.js';
-import type { AuthCommands, LoginOutcome } from '../coreLogin.js';
-import type { LogoutOutcome } from '../signOut.js';
+import type { AuthCommands, LoginOutcome } from '../createAuthCommands.js';
+import type { LogoutOutcome } from '../createPageSignOut.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
 import { createOwnerSignInFlag } from '../session/signInFlag.js';
@@ -63,7 +63,7 @@ const PHRASE_ENTROPY = new Uint8Array(16).fill(9);
 const IDENTITY: LocalWalletIdentity = { identityAccountId: '5Grwva', liteUsername: 'bob.02' };
 
 /** A phrase check that knows only `PHRASE`. */
-const PHRASE_CHECK: PhraseCheck = { phraseToEntropy: phrase => (phrase === PHRASE ? PHRASE_ENTROPY : null) };
+const PHRASE_CHECK: PhraseCheck = { toEntropy: phrase => (phrase === PHRASE ? PHRASE_ENTROPY : null) };
 
 const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' };
 const PAIRED_ACCOUNT = { connected: true, publicKey: '0x02', liteUsername: 'carol.03' };
@@ -93,7 +93,7 @@ function openWindow(options: OpenWindowParams = {}) {
   if (options.vetted === true) {
     sayHello();
   }
-  const presence = createFakeSessionPresence('present');
+  const presence = createFakeSessionPresence({ state: 'present' });
   const auth = createSyncStore<DotliAuthState>({
     name: 'testAuth',
     initial: options.auth ?? { tag: 'Disconnected' },

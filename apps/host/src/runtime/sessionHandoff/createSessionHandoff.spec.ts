@@ -57,7 +57,7 @@ function createWindowRefusal(round: string) {
  */
 function createPage(options: Params = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-  const presence = createFakeSessionPresence('present');
+  const presence = createFakeSessionPresence({ state: 'present' });
   const opened: OpenedWindow[] = [];
   const windows: FakeWindowHandle[] = [];
   const messages = createFakeMessageBus();

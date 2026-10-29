@@ -13,7 +13,7 @@ import { markContinuation } from './continuation.js';
 import { trustedProviderHosts } from './errors.js';
 import { presentLoadFailure, type ErrorSightings } from './loadFailure.js';
 import type { LoaderFailureScreen } from './productLoader.js';
-import { schedulePendingReset } from './runtime/pendingReset.js';
+import { pendingResets } from './runtime/createPendingResets.js';
 import { pageSettingsActions } from './settingsActions.js';
 import { openSettings } from './settingsIntent.js';
 
@@ -30,7 +30,7 @@ function switchBackendAndReload(nextBackend: Backend): void {
 
 function resetProtocolOnReload(): void {
   try {
-    schedulePendingReset(['protocol']);
+    pendingResets.schedule(['protocol']);
   } catch (err: unknown) {
     // No session storage, as in a private window, so the reload comes up on the chain database it had.
     reportExpected(err, {

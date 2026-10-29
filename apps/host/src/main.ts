@@ -12,7 +12,7 @@ import { showLocalhostPill, showProductPill } from './state/urlPill.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbarAutohide.js';
 import { authState } from './runtime/state/authState.js';
 import { loadBridge, loadDebugPanelHost } from './lazy.js';
-import type { ProductFrame } from './runtime/productFrame.js';
+import type { ProductFrame } from './runtime/createProductFrame.js';
 import { fetchBitswapBlock, createSandboxBlockRelay, type SandboxBlockRelay } from '@dotli/bitswap';
 import { loadVerify } from '@dotli/content';
 import { getProtocolClient } from '@dotli/protocol';
@@ -49,7 +49,7 @@ import {
   type ShellRoute,
 } from './shellRoute.js';
 import { createBlockVerifier } from './blockVerifier.js';
-import { shellPageRole, type PageRole } from './runtime/pageRole.js';
+import { getShellPageRole, type PageRole } from './runtime/pageRole.js';
 import { reportLazyMiss } from './lazyMiss.js';
 import { startDebugPanel } from './debugPanel.js';
 import { startMainThreadMonitor } from './mainThreadMonitor.js';
@@ -95,7 +95,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
     debugBus.enableBuffering();
     // The describer reports its own failed load, and the boot reports the bridge's.
     void loadBridge()
-      .then(bridge => bridge.preloadWireDescriber())
+      .then(bridge => bridge.wireDescriber.preload())
       .catch(() => undefined);
     void startDebugPanel({
       load: loadTruapiDebugMount,
@@ -310,7 +310,7 @@ async function main(): Promise<void> {
   if (route.kind === 'preview' || route.kind === 'localhost') {
     showLocalhostPill(route.host);
   }
-  const shell = await startShell(route, shellPageRole(route, framed));
+  const shell = await startShell(route, getShellPageRole(route, framed));
   switch (route.kind) {
     case 'preview':
       await openLocalTarget(route, shell);

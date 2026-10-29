@@ -37,7 +37,7 @@ function openSignOutWindow(options: Params = {}) {
   const errors = recordLog({ onFinished: onTestFinished, level: 'error' });
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
-  const presence = createFakeSessionPresence(options.flag ?? 'absent');
+  const presence = createFakeSessionPresence({ state: options.flag ?? 'absent' });
   const main: { session: string | null; uiState: string | null; wallet: Uint8Array | null } = {
     session: options.session ?? null,
     uiState: options.session === undefined || options.session === null ? null : UI_STATE,

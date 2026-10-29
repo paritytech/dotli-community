@@ -3,8 +3,11 @@
 
 import { mnemonicToEntropy, validateMnemonic } from '@polkadot-labs/hdkd-helpers';
 
-/** Null for anything that is not a valid English BIP-39 phrase. The checksum catches a single mistyped word. */
-export function phraseToEntropy(phrase: string): Uint8Array | null {
+/**
+ * The entropy of a valid English BIP-39 phrase, or null for anything else. Never throws. The checksum catches a single
+ * mistyped word.
+ */
+export function toEntropy(phrase: string): Uint8Array | null {
   const normalized = phrase.trim().toLowerCase().split(/\s+/).join(' ');
   return validateMnemonic(normalized) ? mnemonicToEntropy(normalized) : null;
 }

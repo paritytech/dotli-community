@@ -23,7 +23,7 @@ import { SMOLDOT_DB_NAME } from '@dotli/chains';
 import { blockCache, cidCache, SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from '@dotli/storage';
 import { isDebugModeOn, leaveDebugMode } from '@dotli/truapi-debug';
 
-import { schedulePendingReset, type PendingResetTarget } from './runtime/pendingReset.js';
+import { pendingResets, type PendingResetTarget } from './runtime/createPendingResets.js';
 import { writeSharedSettings } from './runtime/sharedMode.js';
 import { THEME_KEY } from './themeController.js';
 
@@ -152,7 +152,7 @@ export const pageSettingsActions: SettingsActions = createSettingsActions({
   clearCidCache: cidCache.clear,
   clearBlockCache: blockCache.clear,
   wipeOrigin: wipeOriginState,
-  schedulePendingReset,
+  schedulePendingReset: pendingResets.schedule,
   reload: reason => {
     markContinuation(reason);
     window.location.reload();

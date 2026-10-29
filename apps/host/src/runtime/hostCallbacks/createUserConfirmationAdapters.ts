@@ -31,15 +31,15 @@ import type {
 import { withActiveTld } from '@dotli/config';
 import { createDeferred, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
-import type { BlockingModalScope, HoldSlot } from '../blockingModalQueue.js';
+import type { BlockingModalScope, HoldSlot } from '../createBlockingModalCoordinator.js';
 import type { ModalButton, ModalField, ModalHandoff, ModalView } from '@dotli/ui';
 import { SignIcon } from '../../components/icons/SignIcon.js';
 import { phoneWaitingView, WAITING_BACKGROUND } from '../../components/signing/phoneWaitingView.js';
 import type { HostPrompts } from '../hostPrompts.js';
 import { PHONE_METHODS } from '../phoneMethods.js';
 import { reportPhoneEnd } from '../phoneReport.js';
-import type { PhoneRequestTracker } from '../phoneRequests.js';
-import { phoneReviewMatch } from '../phoneReviewMatch.js';
+import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
+import { matchPhoneReview } from '../matchPhoneReview.js';
 
 /** The prompts a confirmation asks through and tells its outcome on. */
 type ConfirmationPrompts = Pick<HostPrompts, 'confirmPreimage' | 'confirmReview' | 'notify'>;
@@ -216,7 +216,7 @@ function showConfirmationModal({
       dismissResult: 'dismissed',
     },
     signal,
-    handoff,
+    { handoff },
   );
 }
 
@@ -532,7 +532,7 @@ function handlePreimageSubmitReview({
   signal,
   prompts,
 }: HandlePreimageSubmitReviewParams): Promise<boolean> {
-  return prompts.confirmPreimage(label, Number(review.size), signal);
+  return prompts.confirmPreimage({ label, size: Number(review.size), signal });
 }
 
 async function handleConfirmationReview(params: HandleConfirmationReviewParams): Promise<ConfirmationDecision> {
@@ -561,7 +561,7 @@ function createPhoneWaitHandoff({
     if (decision !== 'accepted' && decision !== 'accepted-once') {
       return undefined;
     }
-    const matches = phoneReviewMatch(review);
+    const matches = matchPhoneReview(review);
     const claim = matches === undefined ? undefined : requests.claim(matches);
     if (claim === undefined) {
       return undefined;

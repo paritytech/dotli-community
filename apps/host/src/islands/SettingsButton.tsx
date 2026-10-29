@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { dotliVersion } from '../runtime/runtimeConfig.js';
+import { getDotliVersion } from '../runtime/createTruapiRuntimeConfig.js';
 import { themeState } from '../runtime/state/themeState.js';
 import { SettingsItem } from '../components/settings/SettingsItem.js';
 import { isTruapiDebugEnabled, openInDebugMode, pageSettingsActions } from '../settingsActions.js';
@@ -24,7 +24,7 @@ export function SettingsButton(): JSX.Element {
     selectTheme: selectThemePref,
     apply: pageSettingsActions.applyAndReset,
     registerOpener: registerSettingsOpener,
-    version: dotliVersion(),
+    version: getDotliVersion(),
     debugMode: isTruapiDebugEnabled,
     openDebugMode: openInDebugMode,
   });

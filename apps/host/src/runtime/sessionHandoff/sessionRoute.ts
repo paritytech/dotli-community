@@ -6,6 +6,7 @@
  * in the URL fragment, so no server sees it.
  */
 
+import { getKeys } from '@dotli/shared';
 import { base64urlnopad, utf8 } from '@scure/base';
 import { SESSION_SEGMENT } from './sessionSegment.js';
 
@@ -32,8 +33,7 @@ const ROUTE_PATHS: Readonly<Record<SessionRoute, string>> = {
 
 /** The route a window path names, or null when it names none. */
 export function getRoute(pathname: string): SessionRoute | null {
-  // `Object.keys` types its keys as strings, and the table's keys are exactly the routes.
-  for (const route of Object.keys(ROUTE_PATHS) as SessionRoute[]) {
+  for (const route of getKeys(ROUTE_PATHS)) {
     if (ROUTE_PATHS[route] === pathname) {
       return route;
     }

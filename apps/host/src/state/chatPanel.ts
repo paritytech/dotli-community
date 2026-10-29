@@ -13,7 +13,7 @@ import {
   type SafeStorage,
 } from '@dotli/shared';
 import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
-import { labelToProductId } from '../runtime/runtimeConfig.js';
+import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
 import { productState } from '../runtime/state/productState.js';
 import { authState } from '../runtime/state/authState.js';
 import { getTopbarState, topbarStore } from './topbar.js';
@@ -66,7 +66,7 @@ export function currentChatProductId(state: ChatPanelState = panel.get()): strin
   if (state.runtimeProductId !== null) {
     return state.runtimeProductId;
   }
-  return state.label === null ? null : labelToProductId(state.label);
+  return state.label === null ? null : toProductId(state.label);
 }
 
 /** Every chat call needs a session, so a logged-out user gets no chat rather than denied calls. */
