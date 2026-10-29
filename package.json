@@ -44,24 +44,24 @@
     "@config/vite": "*",
     "@dotli/config": "*",
     "@dotli/ui": "*",
-    "@storybook/addon-a11y": "^10.6.2",
-    "@storybook/addon-docs": "^10.6.2",
-    "@storybook/addon-vitest": "^10.6.2",
+    "@storybook/addon-a11y": "^10.6.4",
+    "@storybook/addon-docs": "^10.6.4",
+    "@storybook/addon-vitest": "^10.6.4",
     "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
     "happy-dom": "^21.0.3",
     "husky": "^9.1.7",
-    "knip": "^6.42.0",
+    "knip": "^6.43.0",
     "lint-staged": "^17.6.0",
     "prettier": "3.9.10",
-    "prettier-plugin-astro": "1.1.1",
+    "prettier-plugin-astro": "1.1.2",
     "storybook": "^10.6.2",
-    "storybook-solidjs-vite": "^10.7.2",
+    "storybook-solidjs-vite": "^10.7.4",
     "terser": "^5.51.2",
-    "turbo": "^2.11.9",
-    "typescript": "~6.0.3",
-    "vite": "^8.3.4",
+    "turbo": "^2.11.10",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   },
   "packageManager": "npm@12.2.0",
@@ -71,7 +71,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.25.0"
+    "@parity/truapi": "0.26.0"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"
