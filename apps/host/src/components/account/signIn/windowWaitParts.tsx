@@ -5,7 +5,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { ExternalWindowIcon } from '@dotli/ui/icons';
-import type { AuthModalView } from '../../../state/authModal.js';
+import type { AuthModalView } from '../../../state/authModalState.js';
 import {
   SIGN_IN_CLOSE_ID,
   StatusScreen,

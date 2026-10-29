@@ -29,7 +29,7 @@ import {
   type LoaderFrame,
 } from '../../src/productLoader.js';
 import { productState } from '../../src/runtime/state/productState.js';
-import { urlPillStore } from '../../src/state/urlPill.js';
+import { urlPillState } from '../../src/state/urlPillState.js';
 
 const NO_MANIFESTS = { root: { kind: 'empty' as const }, app: { kind: 'empty' as const } };
 const NO_CACHED_MANIFESTS: CachedManifests = { root: null, app: null };
@@ -246,7 +246,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // Then
-    expect(urlPillStore.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'verified' });
+    expect(urlPillState.store.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'verified' });
   });
 
   it('As a visitor opening a name for the first time, it is remembered for next time', async () => {
@@ -493,7 +493,7 @@ describe('createProductLoader', () => {
     await loader.load('doom');
 
     // Then
-    expect(urlPillStore.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'trusted' });
+    expect(urlPillState.store.get()).toMatchObject({ kind: 'product', domain: 'doom', shield: 'trusted' });
     expect(debug.find(event => event.event === 'phase')?.payload).toEqual({
       label: 'doom',
       phase: 'asset-hub-syncing',

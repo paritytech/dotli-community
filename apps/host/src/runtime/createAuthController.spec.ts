@@ -10,7 +10,7 @@ import { authControl, createAuthControlSlot, createAuthController } from './crea
 import type { InPagePhrase } from './createInPageSignIn.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './createBlockingModalCoordinator.js';
 import type { DotliAuthState } from './session/types.js';
-import { authModalStore, resetAuthModal, type AuthModalState } from '../state/authModal.js';
+import { authModalState, type AuthModalState } from '../state/authModalState.js';
 import { authState } from './state/authState.js';
 import { createSyncStore, createDeferred } from '@dotli/shared';
 import { catchError, nth, resetAllStoresForTests } from '@dotli/shared/testing';
@@ -65,7 +65,7 @@ type RecordCommandsParams = {
 const LOGIN_CANCELLED: LoginOutcome = { kind: 'cancelled' };
 
 const CLOSED_MODAL: AuthModalState = { open: false, productLabel: null, reason: null, view: { kind: 'spinner' } };
-const getAuthModalState = authModalStore.get;
+const getAuthModalState = authModalState.store.get;
 
 const PHRASE = 'twelve good words';
 const ENTROPY = new Uint8Array(16).fill(7);
@@ -80,7 +80,7 @@ const RESULT: SessionResult = { session: { blob: '0xaa', uiState: null }, localW
 const SIGNED_IN: DotliAuthState = { tag: 'Connected', session: { connected: true } };
 
 afterEach(() => {
-  resetAuthModal();
+  authModalState.reset();
 });
 
 /** Pages without the sign-in window never write a result. */
@@ -136,7 +136,7 @@ function startController({
     equals: () => false,
   });
   const changes = createChanges();
-  onTestFinished(authModalStore.subscribe(changes.notify));
+  onTestFinished(authModalState.store.subscribe(changes.notify));
   const recorded = recordCommands({ changes });
   const controller = createAuthController({
     coordinator,
@@ -1294,7 +1294,7 @@ describe('auth controller: the sign-in window', () => {
     auth.set({ ...PAIRING, deeplink: '' });
     const writes: AuthModalState[] = [];
     onTestFinished(
-      authModalStore.subscribe(() => {
+      authModalState.store.subscribe(() => {
         writes.push(getAuthModalState());
       }),
     );

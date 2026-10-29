@@ -3,7 +3,7 @@
 
 // Imports no Solid, so the naming rules are unit tested apart from the views that show them.
 
-import type { ContinueOffer } from '../../state/sessionWindow.js';
+import type { ContinueOffer } from '../../state/sessionWindowState.js';
 import type { AccountSession } from './account.js';
 
 // A session can install without any username (the account has no dotNS record

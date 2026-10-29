@@ -8,8 +8,8 @@ import { authControl } from '../runtime/createAuthController.js';
 import { LayerTracker, ModalFocusFallback, RootBoundary, useStore } from '@dotli/ui';
 import { productFrameFocus } from '../productFrameLayout.js';
 import { AuthModal as Modal, type AuthModalPlacement } from '../components/account/AuthModal.js';
-import { authModalStore, getAuthModalTrigger } from '../state/authModal.js';
-import { registerTopbarSurface } from '../state/topbarSurfaces.js';
+import { authModalState } from '../state/authModalState.js';
+import { topbarSurfaces } from '../state/topbarSurfaces.js';
 import { revealTopbar } from '../topbarAutohide.js';
 import { closeWhenOpen, useRevealWhileOpen } from './useRevealWhileOpen.js';
 
@@ -33,25 +33,25 @@ export function AuthModal(props: { placement: AuthModalPlacement }): JSX.Element
 
 // Inside the boundary, so a store read that throws also disables the modal.
 function BoundModal(props: { placement: AuthModalPlacement }): JSX.Element {
-  const state = useStore(authModalStore);
+  const state = useStore(authModalState.store);
   useRevealWhileOpen(
-    useStore(authModalStore, modal => modal.open),
+    useStore(authModalState.store, modal => modal.open),
     revealTopbar,
   );
   return (
-    <LayerTracker value={registerTopbarSurface}>
+    <LayerTracker value={topbarSurfaces.register}>
       <ModalFocusFallback value={productFrameFocus}>
         <Modal
           placement={props.placement}
           state={state}
-          onClose={closeWhenOpen(authModalStore, authControl.closeAuthModal)}
+          onClose={closeWhenOpen(authModalState.store, authControl.closeAuthModal)}
           onRetry={() => {
             authControl.retryLogin();
           }}
           onFocusWindow={() => {
             authControl.focusSignInWindow();
           }}
-          restoreFocus={getAuthModalTrigger}
+          restoreFocus={authModalState.getTrigger}
           isValidPhrase={authControl.isValidPhrase}
           onImportPhrase={authControl.importPhraseInPage}
         />

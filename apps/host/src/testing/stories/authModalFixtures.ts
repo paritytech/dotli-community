@@ -5,7 +5,7 @@
 // it the way the page's auth controller does.
 
 import { createSignal, flush } from 'solid-js';
-import type { AuthModalState } from '../../state/authModal.js';
+import type { AuthModalState } from '../../state/authModalState.js';
 
 export const CLOSED_MODAL: AuthModalState = {
   open: false,

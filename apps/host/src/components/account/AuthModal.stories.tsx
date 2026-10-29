@@ -25,7 +25,7 @@ import {
   storyModal,
 } from '../../testing/stories/authModalFixtures.js';
 import { AuthButton } from './AuthButton.js';
-import type { AuthModalState, AuthModalView } from '../../state/authModal.js';
+import type { AuthModalState, AuthModalView } from '../../state/authModalState.js';
 import { AuthModal } from './AuthModal.js';
 import type { DrawQr } from './qrCode.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';

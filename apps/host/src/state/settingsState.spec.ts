@@ -2,31 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
-import { getSettingsState, initSettingsStore } from './settings.js';
 import { setSettings } from '@dotli/config';
-
 import { resetAllStoresForTests as resetStores } from '@dotli/shared/testing';
+import { settingsState } from './settingsState.js';
 
 describe('settings store', () => {
   afterEach(() => {
     resetStores();
   });
 
-  it('As the prerendered shell, the settings store is empty until the host seeds it', () => {
-    // When / Then
-    expect(getSettingsState()).toBeNull();
+  it('As a user loading the prerendered shell, I read the settings before init and find none', () => {
+    // When
+    const state = settingsState.get();
+
+    // Then
+    expect(state).toBeNull();
   });
 
-  it('As the settings popover, initSettingsStore snapshots the settings the page booted with', () => {
+  it('As a user, I open the settings popover and see the settings the page booted with', () => {
     // Given
     const cache = { skipCidCache: true, skipArchiveCache: false, skipWorkerCache: false };
     onTestFinished(setSettings({ network: 'previewnet', backend: 'rpc-gateway', cache }));
 
     // When
-    initSettingsStore();
+    settingsState.init();
 
     // Then
-    expect(getSettingsState()).toEqual({
+    expect(settingsState.get()).toEqual({
       backend: 'rpc-gateway',
       cache,
       network: 'previewnet',

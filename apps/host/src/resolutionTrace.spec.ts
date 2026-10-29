@@ -11,7 +11,7 @@ import {
   type ResolutionTrace,
   type ResolutionTraceOptions,
 } from './resolutionTrace.js';
-import { getLoadingState, updateLoading } from './state/loading.js';
+import { loadingState } from './state/loadingState.js';
 
 /** Records the span tree instead of sending it. `vitest.config.ts` turns metrics on so the real tree is built. */
 type RecordedSpan = {
@@ -82,7 +82,7 @@ function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTrace {
   return startOnPage(opts, {
     lifecycle: page.window,
     isVisible: () => true,
-    readProgress: () => getLoadingState().progress,
+    readProgress: () => loadingState.get().progress,
     peekContinuation: () => peekContinuation(session),
   });
 }
@@ -319,12 +319,12 @@ describe('A resolution reports how it ended', () => {
   it('As a maintainer, I see the progress the visitor actually saw, not a forced 100%', () => {
     // Given the bar at 62%, with no loading screen markup on the page, as
     // before the loading island mounts or when its chunk failed
-    updateLoading({ progress: 62 });
+    loadingState.update({ progress: 62 });
     const trace = startResolutionTrace(OPTS);
     trace.bytes(1_000);
 
     // When the load completes and the bar is forced full
-    updateLoading({ progress: 100 });
+    loadingState.update({ progress: 100 });
     trace.finish('rendered');
 
     // Then

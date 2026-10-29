@@ -14,7 +14,7 @@ import { authState } from '../../src/runtime/state/authState.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { createMemoryChatRepo } from '../../src/runtime/chat/createChatStore.fake.js';
 import type { NetworkHealth } from '../../src/networkVerdict.js';
-import { startChatPanelState } from '../../src/state/chatPanel.js';
+import { chatPanelState } from '../../src/state/chatPanelState.js';
 import { bindTopbarStatus } from '../../src/topbarStatus.js';
 import { byId } from '@dotli/ui/testing';
 
@@ -25,7 +25,7 @@ describe('bindTopbarStatus', () => {
     const bar = byId('topbar');
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
     const local = createMemoryStorage();
-    const stopChat = startChatPanelState(chat, local);
+    const stopChat = chatPanelState.start({ chat, storage: local });
     const product = toProductId('chatty');
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });

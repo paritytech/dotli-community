@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The network a story gives the network button and panel. Plays move it the way the page's monitor and health do.
+// The network a story gives the network button and panel, which a play moves.
 
 import { createSignal, onCleanup } from 'solid-js';
 import type { Backend } from '@dotli/config';
 import type { NetworkHealth } from '../../components/chains/networkHealth.js';
-import type { BlockHealth } from '../../state/networkMonitor.js';
+import type { BlockHealth } from '../../state/networkMonitorState.js';
 import type { ChainBar } from '../../components/chains/chain.js';
 import type { ChainView, NetworkView, TransferView } from '../../components/chains/chains.js';
 import type { LiveVerdict } from '../../networkVerdict.js';

@@ -11,14 +11,14 @@ import { BanIcon, CheckIcon, CircleAlertIcon, CircleCheckIcon } from '@dotli/ui/
 import type { DisplayAccount } from '../../runtime/siteSignIn/toDisplayAccount.js';
 import type { DisplayCall } from '../../runtime/siteSignIn/toDisplayCall.js';
 import type { ListedSite, SiteListScreen } from '../../runtime/siteSignIn/createSiteList.js';
-import type { PairingView } from '../../state/authModal.js';
+import type { PairingView } from '../../state/authModalState.js';
 import type {
   ContinueOffer,
   RedirectScreen,
   SiteWindowScreen,
   WindowFailure,
   WindowView,
-} from '../../state/sessionWindow.js';
+} from '../../state/sessionWindowState.js';
 import type { PhraseForm } from './phraseFormLoad.js';
 import type { DrawQr } from './qrCode.js';
 import { signInParts } from './signIn/signInParts.js';

@@ -6,10 +6,10 @@
 
 import type { ReadableStore } from '@dotli/shared';
 import { isPhoneViewport } from '@dotli/ui';
-import { topbarStore } from './state/topbar.js';
+import { topbarState } from './state/topbarState.js';
 import type { NetworkHealth } from './networkVerdict.js';
-import { chatPanelStore, totalChatUnread } from './state/chatPanel.js';
-import { needsAction } from './state/topbarSignals.js';
+import { chatPanelState } from './state/chatPanelState.js';
+import { isActionNeeded } from './state/isActionNeeded.js';
 
 /** Counts the bar's own running transitions, so what is laid out against its box waits for the morph to end. */
 export type MorphCount = {
@@ -105,7 +105,7 @@ export function capsuleStatus(health: NetworkHealth, action: boolean, online: bo
 
 /** Whether the page waits on the user, a prompt or unread chat, so the capsule leads with the action dot. */
 export function pageNeedsAction(): boolean {
-  return needsAction(topbarStore.get(), totalChatUnread(chatPanelStore.get()));
+  return isActionNeeded(topbarState.get(), chatPanelState.getTotalUnread(chatPanelState.store.get()));
 }
 
 // A fold or reveal morphs the bar's box every frame, so what is laid out against it is read once the
@@ -162,7 +162,7 @@ export function bindTopbarStatus(bar: HTMLElement, health: ReadableStore<Network
     root.style.setProperty('--topbar-bottom', `${String(box.bottom)}px`);
   });
   const place = (): void => {
-    publish(() => pillBox(bar.getBoundingClientRect(), root.clientWidth), !morphing() && topbarStore.get().visible);
+    publish(() => pillBox(bar.getBoundingClientRect(), root.clientWidth), !morphing() && topbarState.get().visible);
   };
   // Children's transitions bubble up here and are not the bar's box.
   const onMorphRun = (event: Event): void => {
@@ -181,8 +181,8 @@ export function bindTopbarStatus(bar: HTMLElement, health: ReadableStore<Network
   render();
   place();
   const offHealth = health.subscribe(render);
-  const offTopbar = topbarStore.subscribe(render);
-  const offChat = chatPanelStore.subscribe(render);
+  const offTopbar = topbarState.store.subscribe(render);
+  const offChat = chatPanelState.store.subscribe(render);
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place);
   observer?.observe(bar);
   window.addEventListener('resize', place);

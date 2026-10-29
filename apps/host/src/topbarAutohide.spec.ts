@@ -4,8 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './runtime/state/productState.js';
-import { getTopbarState, setTopbarPresent } from './state/topbar.js';
-import { registerTopbarSurface } from './state/topbarSurfaces.js';
+import { topbarState } from './state/topbarState.js';
+import { topbarSurfaces } from './state/topbarSurfaces.js';
 import { createTopbarAutoHide, HIDE_DELAY_MS, type TopbarAutoHide } from './topbarAutohide.js';
 
 /** An element of the page: where it sits, and focus moving to it. */
@@ -51,7 +51,7 @@ const app = element('app');
 const frame = element('app-frame', app);
 
 function isHidden(): boolean {
-  return !getTopbarState().visible;
+  return !topbarState.get().visible;
 }
 
 /** Focus moves to `el`, and the page hears it come in. */
@@ -111,14 +111,14 @@ const disposers: (() => void)[] = [];
 function surface(open = false): StandInSurface {
   const stand: StandInSurface = { element: element('surface'), open };
   disposers.push(
-    registerTopbarSurface({ element: () => stand.element as unknown as HTMLElement, open: () => stand.open }),
+    topbarSurfaces.register({ element: () => stand.element as unknown as HTMLElement, open: () => stand.open }),
   );
   return stand;
 }
 
 /** The page's auto-hide, started as the shell state starts it, with the bar registered. */
 function loadAutoHide(contentShown = true): TopbarAutoHide & { stop: () => void } {
-  setTopbarPresent();
+  topbarState.setPresent();
   const autoHide = createTopbarAutoHide({
     isMobile: () => device.mobile,
     isPhone: () => device.phone,

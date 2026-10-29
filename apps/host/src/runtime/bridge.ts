@@ -14,7 +14,7 @@ import { hostPrompts } from '../pagePrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
 import { pageNotifications } from '../pageNotifications.js';
 import { productFrameContainer, productFrameView } from '../productFrameView.js';
-import { recordBestBlock, recordChainActivity } from '../state/networkMonitor.js';
+import { networkMonitorState } from '../state/networkMonitorState.js';
 import { createBridge } from './createBridge.js';
 import type { AuthCommands } from './createAuthCommands.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
@@ -111,7 +111,10 @@ const bridge = createBridge({
   frameView: productFrameView,
   notify: hostPrompts.notify,
   watchChains: () => {
-    watchHostChains({ onActivity: recordChainActivity, onBestBlock: recordBestBlock });
+    watchHostChains({
+      onActivity: networkMonitorState.recordChainActivity,
+      onBestBlock: networkMonitorState.recordBestBlock,
+    });
   },
   session: sessionState,
 });

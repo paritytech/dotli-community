@@ -8,8 +8,8 @@ import type { ChainDetail, ChainPeer, ChainSyncEvent, ChainSyncKind } from '@dot
 import type { ChainRole } from '@dotli/config';
 import { m, type SpanHandle, type SpanValue } from '@dotli/metrics';
 import { peekContinuation, type Continuation } from './continuation.js';
-import { getLoadingState } from './state/loading.js';
-import type { ChainPhase } from './state/networkMonitor.js';
+import { loadingState } from './state/loadingState.js';
+import type { ChainPhase } from './state/networkMonitorState.js';
 import type { Attempt } from './journey.js';
 
 /**
@@ -163,7 +163,7 @@ function browserPage(): TracedPage {
   return {
     lifecycle: window,
     isVisible: () => document.visibilityState === 'visible',
-    readProgress: () => getLoadingState().progress,
+    readProgress: () => loadingState.get().progress,
     peekContinuation,
   };
 }

@@ -5,20 +5,20 @@
 // whenever it mounts.
 
 import { productPermissions } from './runtime/pagePermissions.js';
-import { setTopbarPresent } from './state/topbar.js';
-import { startChatPanelState } from './state/chatPanel.js';
-import { startNetworkStore } from './state/network.js';
+import { topbarState } from './state/topbarState.js';
+import { chatPanelState } from './state/chatPanelState.js';
+import { networkState } from './state/networkState.js';
 import { startTopbarAutoHide } from './topbarAutohide.js';
-import { startNetworkHealth } from './state/networkHealth.js';
+import { networkHealthState } from './state/networkHealthState.js';
 import { startTheme } from './themeController.js';
 
 /** Starts the theme, network, network health, chat panel, product permission and topbar auto-hide state, once a page. */
 export function startShellState(): void {
-  setTopbarPresent();
+  topbarState.setPresent();
   startTheme();
-  startNetworkStore();
-  startNetworkHealth();
-  startChatPanelState();
+  networkState.start();
+  networkHealthState.start();
+  chatPanelState.start();
   productPermissions.start();
   startTopbarAutoHide();
 }

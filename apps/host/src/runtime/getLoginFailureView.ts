@@ -3,7 +3,7 @@
 
 // The sign-in modal's error view for a failed sign-in, from the core's failure kind and raw reason.
 
-import type { PairingView } from '../state/authModal.js';
+import type { PairingView } from '../state/authModalState.js';
 import { getFriendlyAuthError, type FriendlyAuthError } from './getFriendlyAuthError.js';
 import type { DotliAuthState } from './session/types.js';
 

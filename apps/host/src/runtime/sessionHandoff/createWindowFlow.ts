@@ -12,7 +12,7 @@ import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol
 import { spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createSyncStore, log, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import { reportLazyMiss } from '../../lazyMiss.js';
-import type { PairingView } from '../../state/authModal.js';
+import type { PairingView } from '../../state/authModalState.js';
 import type {
   ContinueOffer,
   OfferedAccount,
@@ -20,7 +20,7 @@ import type {
   WindowFailure,
   WindowIntents,
   WindowView,
-} from '../../state/sessionWindow.js';
+} from '../../state/sessionWindowState.js';
 import type { AuthCommands } from '../createAuthCommands.js';
 import type { LogoutOutcome } from '../createPageSignOut.js';
 import { reportLocalWalletFailure, reportWalletFailure } from '../walletFailure.js';

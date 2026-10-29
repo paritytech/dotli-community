@@ -9,7 +9,7 @@ import type { JSX } from '@solidjs/web';
 import { ArrowRightIcon, CheckIcon, PhoneCheckIcon, QrCodeIcon, type IconProps } from '@dotli/ui/icons';
 import { LogoSymbol } from '@dotli/ui/brand';
 import { Button, ButtonLink, Chip, SectionLabel, Spinner, Well } from '@dotli/ui';
-import type { ContinueOffer } from '../../../state/sessionWindow.js';
+import type { ContinueOffer } from '../../../state/sessionWindowState.js';
 import { AccountAvatar } from '../AccountAvatar.js';
 import { offeredAccountName } from '../accountNames.js';
 import type { DrawQr } from '../qrCode.js';

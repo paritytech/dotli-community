@@ -11,8 +11,8 @@ import type { PageContent } from '@dotli/ui';
 import { createLoadingController, type LoadingPhase } from './loadingController.js';
 import { startLoadProgress, type ContentProgressFacts, type LoadingScreen, type LoadProgress } from './loadProgress.js';
 import { productState } from './runtime/state/productState.js';
-import { getLoadingState } from './state/loading.js';
-import { networkMonitor } from './state/networkMonitor.js';
+import { loadingState } from './state/loadingState.js';
+import { networkMonitorState } from './state/networkMonitorState.js';
 
 /** A report source the test sends on, as the protocol client and the content fetch would. */
 function source<T>(): { on: (listener: (event: T) => void) => () => void; send: (event: T) => void } {
@@ -37,12 +37,13 @@ let flows = 0;
 
 /** The line the loading screen shows for its running stage, the name drawn with its TLD. */
 function stepLine(): string {
-  return getLoadingState()
+  return loadingState
+    .get()
     .step.map(part => (typeof part === 'string' ? part : `${part.host}${part.tld}`))
     .join('');
 }
 
-const progressNow = (): number => getLoadingState().progress;
+const progressNow = (): number => loadingState.get().progress;
 
 function setup(backend: Backend): {
   progress: LoadProgress;
@@ -167,9 +168,9 @@ describe('startLoadProgress', () => {
     progress.resolvePhase('resolving-content');
     const resolving = band();
     progress.nameResolved();
-    const resolved = getLoadingState();
+    const resolved = loadingState.get();
     vi.advanceTimersByTime(5_000);
-    const held = getLoadingState();
+    const held = loadingState.get();
     progress.contentFetch();
 
     // Then
@@ -212,7 +213,7 @@ describe('startLoadProgress', () => {
     vi.advanceTimersByTime(10_000);
 
     // Then
-    expect(getLoadingState().warning).toBeNull();
+    expect(loadingState.get().warning).toBeNull();
     expect(afterReports).toBe(5);
     expect(trace.chainSync).toHaveBeenCalledWith({ chain: 'relay', kind: 'connecting' });
     expect(trace.chainDetail).toHaveBeenCalledWith({ chain: 'assethub', dbCache: 'hit' });
@@ -229,12 +230,12 @@ describe('startLoadProgress', () => {
     // When
     chainSync.send({ chain: 'relay', kind: 'connecting' });
     vi.advanceTimersByTime(3_000);
-    const warnedEarly = getLoadingState().warning;
+    const warnedEarly = loadingState.get().warning;
     vi.advanceTimersByTime(2_000);
 
     // Then
     expect(warnedEarly).toBeNull();
-    expect(getLoadingState().warning).toBe(
+    expect(loadingState.get().warning).toBe(
       'Still looking for computers that carry Polkadot. Nothing has answered yet.',
     );
     expect(trace.warningShown).toHaveBeenCalledTimes(1);
@@ -259,7 +260,7 @@ describe('startLoadProgress', () => {
     expect(warped).toBe(10);
     expect(hubFound).toEqual({ progress: 10, line: 'Looking up doom.paseo' });
     expect({ progress: progressNow(), line: stepLine() }).toEqual({ progress: 55, line: 'Found it' });
-    const chains = networkMonitor.getNetworkStatus();
+    const chains = networkMonitorState.getNetworkStatus();
     expect(chains.find(chain => chain.key === 'relay')?.phase).toBe('ready');
     expect(chains.find(chain => chain.key === 'assethub')?.phase).toBe('ready');
     expect(chains.find(chain => chain.key === 'bulletin')?.peers).toBe(3);
@@ -280,7 +281,7 @@ describe('startLoadProgress', () => {
     // Then
     expect(filling).toEqual({ progress: 78.5, line: 'Downloading the app' });
     expect({ progress: progressNow(), line: stepLine() }).toEqual({ progress: 95, line: 'Got everything' });
-    expect(networkMonitor.getTransfer()).toMatchObject({ fetched: 100, total: 100 });
+    expect(networkMonitorState.getTransfer()).toMatchObject({ fetched: 100, total: 100 });
   });
 
   it.each([
@@ -322,7 +323,7 @@ describe('startLoadProgress', () => {
     }
 
     // Then
-    expect(getLoadingState().warning).toBeNull();
+    expect(loadingState.get().warning).toBeNull();
   });
 
   it('As a visitor on a slow connection, I see the rate once the download parks the bar', () => {
@@ -338,7 +339,7 @@ describe('startLoadProgress', () => {
     }
 
     // Then
-    expect(getLoadingState().warning).toBe(
+    expect(loadingState.get().warning).toBe(
       'Still downloading at 2 kB/s. That is slower than this app usually needs, so give it a moment.',
     );
   });

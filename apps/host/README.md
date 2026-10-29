@@ -52,9 +52,15 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
   reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
   state (topbar, URL pill, chat panel, network) lives with the page. Each runtime state is one entity object: its
-  read-only store, its getters and the setters its writers call. The chat store and the product connections it reaches
-  the product through are each a factory with the page's instance beside it, and the store stamps messages with the
-  clock it is given.
+  read-only store, its getters and the setters its writers call. The sign-in modal, the sign-in window, the chat panel,
+  the loading screen, the settings snapshot, the topbar state and the URL pill are entity objects the same way, and the
+  topbar's floating surfaces register with one registry object. The first three keep what their islands cannot be handed
+  at hydration (the control focus returns to, the window's intents, the panel's element) as private slots behind their
+  members. The chat store and the product connections it reaches the product through are each a factory with the page's
+  instance beside it, and the store stamps messages with the clock it is given. The network monitor, the network state
+  and the network health are factories the same way, and measure block arrival, read times and rechecks on the timers
+  they are given. The chat panel, the network state and the network health each follow their sources once however many
+  callers start them, and stop with the last caller's stop.
 - Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
   the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
   The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers

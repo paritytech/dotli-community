@@ -8,8 +8,8 @@ import { isMobileDevice } from './device.js';
 import { productState } from './runtime/state/productState.js';
 import { focusables, isPhoneViewport, watchPhoneViewport } from '@dotli/ui';
 import { currentProductFrame, setTopbarLayout, type TopbarLayout } from './productFrameLayout.js';
-import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
-import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbarSurfaces.js';
+import { topbarState } from './state/topbarState.js';
+import { topbarSurfaces } from './state/topbarSurfaces.js';
 
 export const HIDE_DELAY_MS = 2000;
 
@@ -83,7 +83,7 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
 
   function setVisible(next: boolean): void {
     // The hidden bar keeps its tab stops, since tabbing into it is what reveals it for keyboard users.
-    setTopbarVisible(next);
+    topbarState.setVisible(next);
   }
 
   function cancelHide(): void {
@@ -102,15 +102,15 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
     if (active === null) {
       return false;
     }
-    return bar?.contains(active) === true || active === revealButton || topbarSurfaceContains(active);
+    return bar?.contains(active) === true || active === revealButton || topbarSurfaces.contains(active);
   }
 
   function isBusy(): boolean {
-    return topbarHoldsFocus() || anyTopbarSurfaceOpen();
+    return topbarHoldsFocus() || topbarSurfaces.isAnyOpen();
   }
 
   function canAutoHide(): boolean {
-    return getTopbarState().autoHide && contentShown && !deps.isMobile() && !deps.isPhone();
+    return topbarState.get().autoHide && contentShown && !deps.isMobile() && !deps.isPhone();
   }
 
   function scheduleHide(): void {
@@ -160,16 +160,16 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
 
   function onKeyDown(event: KeyboardEvent): void {
     // Bound from shell start, so before arm and on touch devices the key belongs to the page.
-    if (!getTopbarState().autoHide || !isRevealShortcut(event)) {
+    if (!topbarState.get().autoHide || !isRevealShortcut(event)) {
       return;
     }
     event.preventDefault();
-    if (!getTopbarState().visible) {
+    if (!topbarState.get().visible) {
       revealAndFocus();
       return;
     }
     // An open popover owns its own dismissal.
-    if (!canAutoHide() || anyTopbarSurfaceOpen()) {
+    if (!canAutoHide() || topbarSurfaces.isAnyOpen()) {
       return;
     }
     if (topbarHoldsFocus()) {
@@ -192,7 +192,7 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
   }
 
   function syncFocus(): void {
-    if (!getTopbarState().autoHide) {
+    if (!topbarState.get().autoHide) {
       return;
     }
     if (isBusy()) {
@@ -212,7 +212,7 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
   }
 
   function stop(): void {
-    setTopbarAutoHide(false);
+    topbarState.setAutoHide(false);
     cancelHide();
     if (focusoutTimer !== null) {
       clearTimeout(focusoutTimer);
@@ -290,10 +290,10 @@ export function createTopbarAutoHide(deps: TopbarAutoHideDeps): TopbarAutoHide {
   return {
     start,
     arm() {
-      if (deps.isMobile() || !getTopbarState().present) {
+      if (deps.isMobile() || !topbarState.get().present) {
         return;
       }
-      setTopbarAutoHide(true);
+      topbarState.setAutoHide(true);
       scheduleHide();
     },
     setContentShown,

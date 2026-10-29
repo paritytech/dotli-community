@@ -7,7 +7,7 @@ import type { JSX } from '@solidjs/web';
 import { LayerTracker, ModalFocusFallback, RootBoundary } from '@dotli/ui';
 import { productFrameFocus } from '../productFrameLayout.js';
 import { TopbarActions as Actions } from '../components/topbar/TopbarActions.js';
-import { registerTopbarSurface } from '../state/topbarSurfaces.js';
+import { topbarSurfaces } from '../state/topbarSurfaces.js';
 import { topbarActionRoom, topbarMorph } from '../topbarStatus.js';
 import { AccountButton } from './AccountButton.js';
 import { NetworkButton } from './NetworkButton.js';
@@ -20,7 +20,7 @@ import { SettingsButton } from './SettingsButton.js';
  */
 function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
   return (
-    <LayerTracker value={registerTopbarSurface}>
+    <LayerTracker value={topbarSurfaces.register}>
       <ModalFocusFallback value={productFrameFocus}>{props.children}</ModalFocusFallback>
     </LayerTracker>
   );

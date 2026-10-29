@@ -17,8 +17,7 @@ import {
 import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { nth, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { PageContent } from '@dotli/ui';
-import * as store from './state/loading.js';
-import type { StepPart } from './state/loading.js';
+import { loadingState, type StepPart } from './state/loadingState.js';
 
 /** A handler that throws fails the test. */
 const rethrow = (error: unknown): never => {
@@ -81,14 +80,14 @@ afterEach(() => {
 });
 
 describe('The loading controller drives the loading store', () => {
-  const progress = (): number => store.getLoadingState().progress;
-  const explanation = (): string => store.getLoadingState().explanation;
-  const step = (): readonly StepPart[] => store.getLoadingState().step;
+  const progress = (): number => loadingState.get().progress;
+  const explanation = (): string => loadingState.get().explanation;
+  const step = (): readonly StepPart[] => loadingState.get().step;
 
   /** Every distinct explanation the store held, in order. */
   function recordExplanations(): string[] {
     const seen: string[] = [explanation()];
-    store.loadingStore.subscribe(() => {
+    loadingState.store.subscribe(() => {
       const text = explanation();
       if (text !== seen[seen.length - 1]) {
         seen.push(text);
@@ -156,7 +155,7 @@ describe('The loading controller drives the loading store', () => {
     // Then the step line shows at once, with no explanation yet
     expect(step()).toEqual(['Connecting to Polkadot']);
     expect(explanation()).toBe('');
-    expect(store.getLoadingState().srText).toBe('Connecting to Polkadot');
+    expect(loadingState.get().srText).toBe('Connecting to Polkadot');
 
     // When
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
@@ -170,7 +169,7 @@ describe('The loading controller drives the loading store', () => {
       'Your browser does the checking itself, not a server',
       'Looking for other computers to talk to',
     ]);
-    expect(store.getLoadingState().srText).toBe('Looking for other computers to talk to');
+    expect(loadingState.get().srText).toBe('Looking for other computers to talk to');
   });
 
   it('As a visitor, the step line names the domain with its TLD apart, and a screen reader hears it whole', () => {
@@ -182,7 +181,7 @@ describe('The loading controller drives the loading store', () => {
 
     // Then
     expect(step()).toEqual(['Looking up ', { host: 'myapp', tld: getActiveTldSuffix() }]);
-    expect(store.getLoadingState().srText).toBe(`Looking up myapp${getActiveTldSuffix()}`);
+    expect(loadingState.get().srText).toBe(`Looking up myapp${getActiveTldSuffix()}`);
   });
 
   it('As a visitor on the preview path, the step line says "the name" when there is no domain', () => {
@@ -204,7 +203,7 @@ describe('The loading controller drives the loading store', () => {
     // Then it typed in a piece at a time from empty
     expect(seen).toContain('Look');
     expect(explanation()).toBe('Looking for other computers to talk to');
-    expect(store.getLoadingState().explanationOpacity).toBe(1);
+    expect(loadingState.get().explanationOpacity).toBe(1);
 
     // When the next turn has erased the line and typed the next one
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS + ERASE_MS);
@@ -227,8 +226,8 @@ describe('The loading controller drives the loading store', () => {
     // Then
     expect(step()).toEqual(['Found it']);
     expect(explanation()).toBe('');
-    expect(store.getLoadingState().explanationOpacity).toBe(1);
-    expect(store.getLoadingState().srText).toBe('Found it');
+    expect(loadingState.get().explanationOpacity).toBe(1);
+    expect(loadingState.get().srText).toBe('Found it');
 
     // When time passes short of the next turn
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS - 100);
@@ -247,7 +246,7 @@ describe('The loading controller drives the loading store', () => {
 
     // Then
     expect(explanation()).toBe('Looking for other computers to talk to');
-    expect(store.getLoadingState().srText).toBe('Looking for other computers to talk to');
+    expect(loadingState.get().srText).toBe('Looking for other computers to talk to');
   });
 
   it('As a visitor whose load parked, the stall watch fires with the percentage', () => {
@@ -285,13 +284,13 @@ describe('The loading controller drives the loading store', () => {
     ctl.setLoadingWarning('Still looking for peers');
 
     // Then
-    expect(store.getLoadingState().warning).toBe('Still looking for peers');
+    expect(loadingState.get().warning).toBe('Still looking for peers');
 
     // When
     ctl.setLoadingWarning(null);
 
     // Then
-    expect(store.getLoadingState().warning).toBeNull();
+    expect(loadingState.get().warning).toBeNull();
   });
 
   it('As a visitor whose app loaded, the loading screen fills, fades, then goes after 300 ms', () => {
@@ -303,20 +302,20 @@ describe('The loading controller drives the loading store', () => {
     ctl.dismissLoading();
 
     // Then
-    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(loadingState.get().phase).toBe('dismissing');
     expect(progress()).toBe(100);
 
     // When
     vi.advanceTimersByTime(FADE_MS - 1);
 
     // Then
-    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(loadingState.get().phase).toBe('dismissing');
 
     // When
     vi.advanceTimersByTime(1);
 
     // Then
-    expect(store.getLoadingState().phase).toBe('gone');
+    expect(loadingState.get().phase).toBe('gone');
   });
 
   it("As a visitor, the sandbox's done message dismisses the loading screen and runs the done callbacks with its outcome", () => {
@@ -334,7 +333,7 @@ describe('The loading controller drives the loading store', () => {
     );
 
     // Then
-    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(loadingState.get().phase).toBe('dismissing');
     expect(onDone).toHaveBeenCalledExactlyOnceWith('loaded', undefined);
   });
 
@@ -353,7 +352,7 @@ describe('The loading controller drives the loading store', () => {
     );
 
     // Then
-    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(loadingState.get().phase).toBe('dismissing');
     expect(onDone).toHaveBeenCalledExactlyOnceWith('failed', 'content_fetch');
   });
 
@@ -390,7 +389,7 @@ describe('The loading controller drives the loading store', () => {
     );
 
     // Then
-    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(loadingState.get().phase).toBe('dismissing');
     expect(onDone).not.toHaveBeenCalled();
   });
 
@@ -411,7 +410,7 @@ describe('The loading controller drives the loading store', () => {
     );
 
     // Then
-    expect(store.getLoadingState().phase).toBe('active');
+    expect(loadingState.get().phase).toBe('active');
     expect(onDone).not.toHaveBeenCalled();
   });
 
@@ -425,12 +424,12 @@ describe('The loading controller drives the loading store', () => {
 
     // When
     ctl.hideLoading();
-    const frozen = store.getLoadingState();
+    const frozen = loadingState.get();
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
 
     // Then
     expect(frozen.phase).toBe('gone');
-    expect(store.getLoadingState()).toEqual(frozen);
+    expect(loadingState.get()).toEqual(frozen);
     expect(onStall).not.toHaveBeenCalled();
   });
 
@@ -456,12 +455,12 @@ describe('The loading controller drives the loading store', () => {
     ctl.setLoadingStage('preparing');
     ctl.advancePhase(1);
     ctl.nudgePhaseProgress(0.5, 'content');
-    const afterSignals = store.getLoadingState();
+    const afterSignals = loadingState.get();
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 5);
 
     // Then time passing moves nothing: no rotation, typing frame, crawl or stall watch runs
     expect(afterSignals.phase).toBe('gone');
-    expect(store.getLoadingState()).toEqual(afterSignals);
+    expect(loadingState.get()).toEqual(afterSignals);
     expect(onStall).not.toHaveBeenCalled();
   });
 
@@ -472,7 +471,7 @@ describe('The loading controller drives the loading store', () => {
     pageContent.set('screen');
 
     // Then the screen is gone
-    expect(store.getLoadingState().phase).toBe('gone');
+    expect(loadingState.get().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -488,12 +487,12 @@ describe('The loading controller drives the loading store', () => {
     vi.advanceTimersByTime(FADE_MS);
 
     // Then nothing is left running and the line no longer changes
-    expect(store.getLoadingState().phase).toBe('gone');
+    expect(loadingState.get().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
     const settled = explanation();
     vi.advanceTimersByTime(MESSAGE_ROTATE_MS * 3);
     expect(explanation()).toBe(settled);
-    expect(store.getLoadingState().explanationOpacity).toBe(1);
+    expect(loadingState.get().explanationOpacity).toBe(1);
     expect(midTurn).not.toBe('');
   });
 
@@ -518,7 +517,7 @@ describe('The loading controller drives the loading store', () => {
 
     // Then
     expect(onDone).toHaveBeenCalledTimes(1);
-    expect(store.getLoadingState().phase).toBe('gone');
+    expect(loadingState.get().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -612,7 +611,7 @@ describe('The loading bar never stands still', () => {
   });
 
   function shownPercent(): number {
-    return Math.round(store.getLoadingState().progress);
+    return Math.round(loadingState.get().progress);
   }
 
   it('As a user whose download reports nothing at all, the number still moves every 3 seconds', () => {
@@ -671,12 +670,12 @@ describe('Restarting the loading phases', () => {
     ctl.initPhases(ROOT_PHASES);
 
     // Then
-    expect(store.getLoadingState().phase).toBe('active');
+    expect(loadingState.get().phase).toBe('active');
 
     // When
     ctl.hideLoading();
 
     // Then
-    expect(store.getLoadingState().phase).toBe('gone');
+    expect(loadingState.get().phase).toBe('gone');
   });
 });

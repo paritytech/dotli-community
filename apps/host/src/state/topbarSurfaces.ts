@@ -1,28 +1,38 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Topbar popovers, menus and the pairing modal register here so auto-hide keeps the bar up
-// while one is open or focused, even when it is portalled outside `#topbar`.
+import { registerStoreStateReset } from '@dotli/shared';
+import type { TrackedLayer } from '@dotli/ui';
 
-export type TopbarSurface = {
-  element: () => HTMLElement | undefined;
-  /** Open as last set (not as last rendered). */
-  open: () => boolean;
+// A floating surface of the topbar, such as a popover, a menu or a modal, may be portalled outside the bar.
+const surfaces = new Set<TrackedLayer>();
+
+/** The topbar's registered surfaces, so the bar can tell whether one is open or holds an element. */
+export const topbarSurfaces = {
+  /** Tracks `surface` until the returned function runs. Never throws. */
+  register,
+  /** Returns whether any registered surface is open. Never throws. */
+  isAnyOpen,
+  /** Returns whether `element` sits inside any registered surface. Never throws. */
+  contains,
 };
 
-const surfaces = new Set<TopbarSurface>();
+registerStoreStateReset(() => {
+  surfaces.clear();
+});
 
-export function registerTopbarSurface(surface: TopbarSurface): () => void {
+function register(surface: TrackedLayer): () => void {
   surfaces.add(surface);
-  return () => {
+  function unregister(): void {
     surfaces.delete(surface);
-  };
+  }
+  return unregister;
 }
 
-export function anyTopbarSurfaceOpen(): boolean {
+function isAnyOpen(): boolean {
   return [...surfaces].some(surface => surface.open());
 }
 
-export function topbarSurfaceContains(el: Element): boolean {
-  return [...surfaces].some(surface => surface.element()?.contains(el) === true);
+function contains(element: Element): boolean {
+  return [...surfaces].some(surface => surface.element()?.contains(element) === true);
 }

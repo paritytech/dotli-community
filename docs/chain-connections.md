@@ -418,7 +418,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/createFrameChainTransport.ts` |
 | Host pool's chain gates | `apps/host/src/runtime/hostCallbacks/createRedialGate.ts` |
 | Settings probe | `apps/host/src/runtime/diagnostics.ts` (`queryFinalizedBlock`) |
-| Network panel | `apps/host/src/state/networkMonitor.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
+| Network panel | `apps/host/src/state/networkMonitorState.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
 | Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
 | Protocol engine, a scope per tab | `apps/protocol/src/createEngine.ts` |
 | Watched chains | `apps/protocol/src/observeChains.ts` (`observeChains`) |

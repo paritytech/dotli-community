@@ -1,15 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Live per-chain state for the network panel. The host chain pool pushes who holds each chain and its best blocks,
-// the protocol frame pushes phases and peers, and the monitor opens nothing itself. Arrival time is measured, not the
-// block timestamp, because arrival is what this session actually has.
+// Live per-chain state. It is told who holds each chain, its best blocks, phases and peers, and opens nothing itself.
+// Arrival time is measured, not the block timestamp, because arrival is what this session actually has.
 
 import { getActiveChainRoles, type ChainRole } from '@dotli/config';
 import type { ChainActivity } from '@dotli/chains';
 import { reportListener } from '@dotli/metrics';
 import { isRemoteChainConnectable } from '@dotli/protocol';
-import { createListenerSet } from '@dotli/shared';
+import { createListenerSet, realTimers, registerStoreStateReset, type Timers } from '@dotli/shared';
 
 export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
@@ -41,22 +40,36 @@ export type ChainStatus = {
   /** Null where the backend never reports peers, such as a trusted provider. */
   readonly peers: number | null;
   readonly state: ChainUse;
-  /** Stalled, or down again after it was up. Overdue blocks are the verdict's to judge. */
+  /** True when the chain is stalled, or down again after it was up. Never set by overdue blocks. */
   readonly alarm: boolean;
 };
 
-// Only a memory ceiling. The panel renders as many as its width fits, and this must never decide that.
-const MAX_BARS = 120;
+/** A chain's phase as it comes up, or `stalled` once it stops making progress. */
+export type ChainPhase = 'connecting' | 'syncing' | 'ready' | 'stalled';
 
-/** Chains outside the known roles report no block time, so they are judged against a typical parachain's. */
-const EXTRA_BLOCK_TIME_MS = 6000;
+export type TransferState = {
+  /** Across every chain socket, over a short window. */
+  readonly bytesPerSecond: number | null;
+  /** Bytes of the product archive fetched so far. */
+  readonly fetched: number | null;
+  /** Known once the content phase starts, null on a load served from cache. */
+  readonly total: number | null;
+};
 
-export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
-  if (gapMs <= blockTimeMs * 1.5) {
-    return 'onTime';
-  }
-  return gapMs <= blockTimeMs * 3 ? 'late' : 'veryLate';
-}
+export type ChainClock = Pick<
+  ChainStatus,
+  'label' | 'latest' | 'sinceLast' | 'blockTimeMs' | 'reachable' | 'state' | 'alarm'
+>;
+
+/** The live state of each chain and of the transfer. */
+export type NetworkMonitor = ReturnType<typeof createNetworkMonitorState>;
+
+type Params = {
+  /** Whether the protocol frame can serve a known chain on the active network and backend. */
+  isConnectable: (genesisHash: string) => boolean;
+  /** The clock each block's arrival and each chain's time since its last block are measured on. */
+  timers?: Pick<Timers, 'now'>;
+};
 
 type PoolStatus = ChainActivity['status'];
 
@@ -77,82 +90,84 @@ type ChainState = {
   poolWasConnected: boolean;
 };
 
-/** `stalled` comes from the watchdog, alongside the light client's lifecycle phase. */
-export type ChainPhase = 'connecting' | 'syncing' | 'ready' | 'stalled';
-
-export type TransferState = {
-  /** Across every chain socket, over a short window. */
-  readonly bytesPerSecond: number | null;
-  /** Bytes of the product archive fetched so far. */
-  readonly fetched: number | null;
-  /** Known once the content phase starts, null on a load served from cache. */
-  readonly total: number | null;
-};
-
-export type ChainClock = Pick<
-  ChainStatus,
-  'label' | 'latest' | 'sinceLast' | 'blockTimeMs' | 'reachable' | 'state' | 'alarm'
+type ChainUseState = Pick<
+  ChainState,
+  'bars' | 'latest' | 'lastAt' | 'consumers' | 'status' | 'following' | 'poolWasConnected'
 >;
 
-/** The live chain state the network panel and the health verdict read. */
-export type NetworkMonitor = {
-  /** From the host chain pool. A chain outside the known roles is listed only while something holds it. */
-  recordChainActivity: (activity: ChainActivity) => void;
-  /** Ignored for a chain nobody holds, so a late block cannot revive a released chain's history. */
-  recordBestBlock: (genesisHash: string, blockNumber: number) => void;
-  /** Unchanged counts are dropped, since a steady connection reports the same number every second. */
-  recordPeerCount: (role: ChainRole, peers: number) => void;
-  /** Merges, because speed and download report on different schedules and one must not blank the other. */
-  recordTransfer: (next: Partial<TransferState>) => void;
-  recordChainPhase: (role: ChainRole, phase: ChainPhase) => void;
-  subscribe: (listener: () => void) => () => void;
-  getTransfer: () => TransferState;
-  /** Copies no bars, because the health judges on every notify, content chunks included. */
-  getChainClocks: (now?: number) => ChainClock[];
-  getNetworkStatus: () => ChainStatus[];
-};
+/** The most bars a chain keeps. Only a memory ceiling, never how many are drawn. */
+export const MAX_BARS = 120;
 
-export type NetworkMonitorDeps = {
-  /** Whether the protocol frame can serve a known chain on the active network and backend. */
-  isConnectable: (genesisHash: string) => boolean;
-};
+/** Chains outside the known roles report no block time, so they are judged against a typical parachain's. */
+const EXTRA_BLOCK_TIME_MS = 6000;
 
-export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
+export function createNetworkMonitorState({ isConnectable, timers = realTimers }: Params) {
   let known: Map<string, ChainState> | null = null;
   const extras = new Map<string, ChainState>();
   const peerCounts = new Map<ChainRole, number>();
   const phases = new Map<ChainRole, ChainPhase>();
-  // Never cleared, because the frame's chains live on whether or not this tab holds them.
+  // Not cleared on release, because the frame's chains live on whether or not this tab holds them.
   const frameWasReady = new Set<ChainRole>();
-  let transfer: TransferState = {
-    bytesPerSecond: null,
-    fetched: null,
-    total: null,
-  };
-  // A throwing renderer is a defect in the panel, so it is reported, and the other renderers still hear the change.
+  let transfer = createIdleTransfer();
+  // A throwing listener is a defect in its reader, so it is reported, and the other listeners still hear the change.
   const listeners = createListenerSet<undefined>({ onListenerError: reportListener('ui', 'network_monitor') });
+  registerStoreStateReset(() => {
+    known = null;
+    extras.clear();
+    peerCounts.clear();
+    phases.clear();
+    frameWasReady.clear();
+    transfer = createIdleTransfer();
+  });
+
+  return {
+    /**
+     * Records who holds a chain and how its connection stands. A chain outside the known roles is listed only while
+     * something holds it. Never throws.
+     */
+    recordChainActivity,
+    /**
+     * Records a chain's best block. Ignored for a chain nobody holds, so a late block cannot revive a released chain's
+     * history. Never throws.
+     */
+    recordBestBlock,
+    /**
+     * Records a known chain's peer count. Unchanged counts are dropped, since a steady connection reports the same
+     * number every second. Never throws.
+     */
+    recordPeerCount,
+    /**
+     * Merges `next` into the transfer, because speed and download report on different schedules and one must not blank
+     * the other. An unchanged transfer is dropped. Never throws.
+     */
+    recordTransfer,
+    /** Records a known chain's phase. An unchanged phase is dropped. Never throws. */
+    recordChainPhase,
+    /**
+     * Calls `listener` on every change until the returned unsubscribe. A listener that throws is reported, and the
+     * others still hear the change.
+     */
+    subscribe,
+    /** Returns the transfer as last merged. Never throws. */
+    getTransfer,
+    /**
+     * Returns each chain's clock at `now`, the current time unless given. Copies no bars, so it stays cheap to read on
+     * every change, content chunks included. Never throws.
+     */
+    getChainClocks,
+    /**
+     * Returns every known chain, then each other chain something holds, each with its own frozen copy of the bars.
+     * Never throws.
+     */
+    getNetworkStatus,
+  };
 
   function notify(): void {
     listeners.emit(undefined);
   }
 
-  function idleUse(): Pick<
-    ChainState,
-    'bars' | 'latest' | 'lastAt' | 'consumers' | 'status' | 'following' | 'poolWasConnected'
-  > {
-    return {
-      bars: [],
-      latest: null,
-      lastAt: null,
-      consumers: 0,
-      status: 'disconnected',
-      following: false,
-      poolWasConnected: false,
-    };
-  }
-
   /** Seeded on first use, so a network chosen before boot is the one listed. */
-  function knownChains(): Map<string, ChainState> {
+  function getKnownChains(): Map<string, ChainState> {
     known ??= new Map(
       getActiveChainRoles().map(role => {
         const genesis = role.genesis.toLowerCase();
@@ -165,7 +180,7 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
             genesis,
             blockTimeMs: role.blockTimeMs,
             hasEndpoint: role.hasEndpoint,
-            ...idleUse(),
+            ...createIdleUse(),
           },
         ];
       }),
@@ -175,11 +190,7 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
 
   function findChain(genesisHash: string): ChainState | undefined {
     const genesis = genesisHash.toLowerCase();
-    return knownChains().get(genesis) ?? extras.get(genesis);
-  }
-
-  function shortGenesis(genesis: string): string {
-    return `${genesis.slice(0, 6)}…${genesis.slice(-4)}`;
+    return getKnownChains().get(genesis) ?? extras.get(genesis);
   }
 
   function recordBlock(state: ChainState, blockNumber: number): void {
@@ -187,7 +198,7 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
     if (state.latest !== null && blockNumber <= state.latest) {
       return;
     }
-    const now = Date.now();
+    const now = timers.now();
     // The first block has no gap to judge, so it only anchors the next one.
     if (state.lastAt !== null) {
       const gapMs = now - state.lastAt;
@@ -215,11 +226,11 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
       state = {
         key: genesis,
         role: null,
-        label: shortGenesis(genesis),
+        label: shortenGenesis(genesis),
         genesis,
         blockTimeMs: EXTRA_BLOCK_TIME_MS,
         hasEndpoint: true,
-        ...idleUse(),
+        ...createIdleUse(),
       };
       extras.set(genesis, state);
     }
@@ -296,14 +307,14 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
   }
 
   function isReachable(state: ChainState): boolean {
-    return state.hasEndpoint && (state.role === null || deps.isConnectable(state.genesis));
+    return state.hasEndpoint && (state.role === null || isConnectable(state.genesis));
   }
 
   /**
    * How a chain counts toward the verdict, and whether it is stalled or down again after it was up. Overdue blocks are
-   * left to the verdict, which also schedules the recheck.
+   * not judged here.
    */
-  function useOf(state: ChainState, sinceLast: number | null): Pick<ChainStatus, 'state' | 'alarm'> {
+  function judgeUse(state: ChainState, sinceLast: number | null): Pick<ChainStatus, 'state' | 'alarm'> {
     if (!isReachable(state)) {
       return { state: 'unused', alarm: false };
     }
@@ -328,11 +339,11 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
     return { state: phaseDown || poolDown ? 'pending' : 'live', alarm: false };
   }
 
-  function allChains(): ChainState[] {
-    return [...knownChains().values(), ...extras.values()];
+  function listChains(): ChainState[] {
+    return [...getKnownChains().values(), ...extras.values()];
   }
 
-  function clockOf(state: ChainState, now: number): ChainClock {
+  function readClock(state: ChainState, now: number): ChainClock {
     const sinceLast = state.lastAt === null ? null : now - state.lastAt;
     return {
       label: state.label,
@@ -340,18 +351,18 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
       sinceLast,
       blockTimeMs: state.blockTimeMs,
       reachable: isReachable(state),
-      ...useOf(state, sinceLast),
+      ...judgeUse(state, sinceLast),
     };
   }
 
-  function getChainClocks(now: number = Date.now()): ChainClock[] {
-    return allChains().map(state => clockOf(state, now));
+  function getChainClocks(now: number = timers.now()): ChainClock[] {
+    return listChains().map(state => readClock(state, now));
   }
 
   function getNetworkStatus(): ChainStatus[] {
-    const now = Date.now();
-    return allChains().map(state => ({
-      ...clockOf(state, now),
+    const now = timers.now();
+    return listChains().map(state => ({
+      ...readClock(state, now),
       key: state.key,
       role: state.role,
       // A copy, since the monitor mutates its own array in place.
@@ -360,21 +371,37 @@ export function createNetworkMonitor(deps: NetworkMonitorDeps): NetworkMonitor {
       phase: state.role === null ? null : (phases.get(state.role) ?? null),
     }));
   }
+}
 
+/** The page's, on the page's own clock. */
+export const networkMonitorState: NetworkMonitor = createNetworkMonitorState({
+  isConnectable: isRemoteChainConnectable,
+});
+
+/** Returns how a block arrival `gapMs` after the previous one reads against `blockTimeMs`. Never throws. */
+export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
+  if (gapMs <= blockTimeMs * 1.5) {
+    return 'onTime';
+  }
+  return gapMs <= blockTimeMs * 3 ? 'late' : 'veryLate';
+}
+
+function createIdleUse(): ChainUseState {
   return {
-    recordChainActivity,
-    recordBestBlock,
-    recordPeerCount,
-    recordTransfer,
-    recordChainPhase,
-    subscribe,
-    getTransfer,
-    getChainClocks,
-    getNetworkStatus,
+    bars: [],
+    latest: null,
+    lastAt: null,
+    consumers: 0,
+    status: 'disconnected',
+    following: false,
+    poolWasConnected: false,
   };
 }
 
-export const networkMonitor: NetworkMonitor = createNetworkMonitor({ isConnectable: isRemoteChainConnectable });
+function createIdleTransfer(): TransferState {
+  return { bytesPerSecond: null, fetched: null, total: null };
+}
 
-export const { recordChainActivity, recordBestBlock, recordPeerCount, recordTransfer, recordChainPhase } =
-  networkMonitor;
+function shortenGenesis(genesis: string): string {
+  return `${genesis.slice(0, 6)}…${genesis.slice(-4)}`;
+}

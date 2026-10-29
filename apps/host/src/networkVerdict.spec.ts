@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { ChainClock } from './state/networkMonitor.js';
+import type { ChainClock } from './state/networkMonitorState.js';
 import { describeLiveNetwork, judgeNetworkHealth, nextOverdueAt } from './networkVerdict.js';
 
 function chain(overrides: Partial<ChainClock> = {}): ChainClock {

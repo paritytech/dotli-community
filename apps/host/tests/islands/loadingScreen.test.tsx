@@ -17,7 +17,7 @@ bindCaptureSink(captures);
 import { LoadingScreen } from '../../src/islands/LoadingScreen.js';
 import { createLoadingController, type LoadingController } from '../../src/loadingController.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { getLoadingState, updateLoading } from '../../src/state/loading.js';
+import { loadingState } from '../../src/state/loadingState.js';
 import { pageScreen, prefersReducedMotion } from '@dotli/ui';
 import { byId, settle } from '@dotli/ui/testing';
 
@@ -87,14 +87,14 @@ describe('Loading screen island', () => {
 
     // When
     await mountScreen();
-    const before = getLoadingState().progress;
+    const before = loadingState.get().progress;
     vi.advanceTimersByTime(1_000);
     await settle();
 
     // Then the crawl goes on, into the live screen
-    expect(getLoadingState().phase).toBe('active');
-    expect(getLoadingState().progress).toBeGreaterThan(before);
-    expect(byId('loading-progress-pct').textContent).toBe(`${String(Math.round(getLoadingState().progress))}%`);
+    expect(loadingState.get().phase).toBe('active');
+    expect(loadingState.get().progress).toBeGreaterThan(before);
+    expect(byId('loading-progress-pct').textContent).toBe(`${String(Math.round(loadingState.get().progress))}%`);
   });
 
   it('As the shell, content written over `#app` leaves the live screen, which still follows the store', async () => {
@@ -104,7 +104,7 @@ describe('Loading screen island', () => {
 
     // When the bridge clears `#app` for the product frame
     app().innerHTML = '';
-    updateLoading({ progress: 80 });
+    loadingState.update({ progress: 80 });
     await settle();
 
     // Then

@@ -4,7 +4,7 @@
 // Which sign-in view shows each step of a pairing, and what its buttons ask of the place that shows it.
 
 import { CircleAlertIcon, CircleXIcon } from '@dotli/ui/icons';
-import type { PairingView } from '../../../state/authModal.js';
+import type { PairingView } from '../../../state/authModalState.js';
 import type { DrawQr } from '../qrCode.js';
 import { ApprovingScreen, PairingScreen, StatusScreen, type HeadingLevel, type SignInParts } from './SignInViews.js';
 

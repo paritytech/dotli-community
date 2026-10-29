@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { getTopbarState, setTopbarPresent } from '../../src/state/topbar.js';
+import { topbarState } from '../../src/state/topbarState.js';
 import {
   browserTopbarPage,
   createTopbarAutoHide,
@@ -41,7 +41,7 @@ function topbar(): HTMLElement {
 }
 
 function isHidden(): boolean {
-  return !getTopbarState().visible;
+  return !topbarState.get().visible;
 }
 
 /** happy-dom does not raise focusin from focus(), so drive it explicitly. */
@@ -69,7 +69,7 @@ const disposers: (() => void)[] = [];
 
 /** The page's auto-hide, started as the shell state starts it, with the bar registered. */
 function loadAutoHide(contentShown = true): TopbarAutoHide & { stop: () => void } {
-  setTopbarPresent();
+  topbarState.setPresent();
   const autoHide = createTopbarAutoHide({
     isMobile: () => device.mobile,
     isPhone: () => device.phone,

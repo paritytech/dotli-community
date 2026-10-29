@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { bindUrlPill } from '../../src/urlPill.js';
-import { showLocalhostPill, showProductPill } from '../../src/state/urlPill.js';
+import { urlPillState } from '../../src/state/urlPillState.js';
 import { byId, byTestId } from '@dotli/ui/testing';
 
 let unbind: (() => void) | undefined;
@@ -48,7 +48,7 @@ describe('URL bar', () => {
 
   it('As a visitor of a product, the URL bar shows its name and TLD, whenever the host sets them', () => {
     // Given
-    showProductPill('early', '.dot.li');
+    urlPillState.showProduct('early', '.dot.li');
 
     // When
     const bar = bind();
@@ -60,7 +60,7 @@ describe('URL bar', () => {
     expect(byId('url-pill').hasAttribute('data-localhost')).toBe(false);
 
     // When
-    showProductPill('later', '.dot.li');
+    urlPillState.showProduct('later', '.dot.li');
 
     // Then
     expect(text()).toBe('later.dot.li');
@@ -71,7 +71,7 @@ describe('URL bar', () => {
     bind();
 
     // When
-    showLocalhostPill('<b>localhost:3000</b>');
+    urlPillState.showLocalhost('<b>localhost:3000</b>');
 
     // Then
     expect(byId('topbar-url').hidden).toBe(false);
@@ -87,7 +87,7 @@ describe('URL bar', () => {
     unbind = undefined;
 
     // When
-    showProductPill('app', '.dot.li');
+    urlPillState.showProduct('app', '.dot.li');
 
     // Then
     expect(byId('topbar-url').hidden).toBe(true);

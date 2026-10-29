@@ -10,8 +10,8 @@ import { flush } from 'solid-js';
 import { render } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { UrlPillShield } from '../../src/islands/UrlPillShield.js';
-import { anyTopbarSurfaceOpen } from '../../src/state/topbarSurfaces.js';
-import { setVerificationShieldState, showProductPill } from '../../src/state/urlPill.js';
+import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
+import { urlPillState } from '../../src/state/urlPillState.js';
 import { byId } from '@dotli/ui/testing';
 
 let unmount: (() => void) | undefined;
@@ -37,8 +37,8 @@ afterEach(() => {
 describe('UrlPillShield island', () => {
   it("As a dApp user, the shield shows the product's state, and its open explainer keeps the auto-hiding bar up", async () => {
     // Given
-    showProductPill('app', '.dot.li');
-    setVerificationShieldState('trusted');
+    urlPillState.showProduct('app', '.dot.li');
+    urlPillState.setVerificationShield('trusted');
     mountIsland();
     await waitForDom(() => document.getElementById('verification-shield')?.dataset['state'] === 'trusted');
 
@@ -47,13 +47,13 @@ describe('UrlPillShield island', () => {
 
     // Then
     await waitForDom(() => tooltipOpen());
-    expect(anyTopbarSurfaceOpen()).toBe(true);
+    expect(topbarSurfaces.isAnyOpen()).toBe(true);
 
     // When
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
     // Then
     await waitForDom(() => !tooltipOpen());
-    expect(anyTopbarSurfaceOpen()).toBe(false);
+    expect(topbarSurfaces.isAnyOpen()).toBe(false);
   });
 });

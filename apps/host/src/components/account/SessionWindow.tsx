@@ -4,7 +4,7 @@
 import { createMemo, merge, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isShallowEqual } from '@dotli/shared';
-import type { SignInScreen, WindowScreen } from '../../state/sessionWindow.js';
+import type { SignInScreen, WindowScreen } from '../../state/sessionWindowState.js';
 import { isMobileDevice } from '../../device.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 import { createPhraseFormLoad } from './phraseFormLoad.js';

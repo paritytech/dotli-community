@@ -26,7 +26,7 @@ import { authState } from './state/authState.js';
 import { sessionElsewhereState } from './state/sessionElsewhereState.js';
 import { walletModeState, type WalletMode } from './state/walletModeState.js';
 import { createWindowSignIn } from './createWindowSignIn.js';
-import { authModalStore, resetAuthModal, updateAuthModal } from '../state/authModal.js';
+import { authModalState } from '../state/authModalState.js';
 import { getLoginFailureView, type LoginFailureKind } from './getLoginFailureView.js';
 
 type Params = {
@@ -121,7 +121,7 @@ export function createAuthController({
             }
             releaseAuthModal = finish;
             signal.addEventListener('abort', finish, { once: true });
-            updateAuthModal({ open: true });
+            authModalState.update({ open: true });
           }),
       )
       .catch((error: unknown) => {
@@ -142,7 +142,7 @@ export function createAuthController({
     if (label !== undefined && label.length > 0) {
       productLabel = label.startsWith('localhost:') || dotSuffix === false ? label : withActiveTld(label);
     }
-    updateAuthModal({
+    authModalState.update({
       productLabel,
       reason: reason !== undefined && reason.length > 0 ? reason : null,
       view: { kind: 'spinner' },
@@ -153,7 +153,7 @@ export function createAuthController({
 
   /** Takes the modal off screen and gives up its lease, leaving any login it showed running. */
   function releaseModal(): void {
-    resetAuthModal();
+    authModalState.reset();
     const scope = authModalScope;
     const release = releaseAuthModal;
     authModalScope = null;
@@ -174,7 +174,7 @@ export function createAuthController({
 
   function showFailure(kind: LoginFailureKind, reason: string): void {
     openAuthModal();
-    updateAuthModal({ view: getLoginFailureView(kind, reason) });
+    authModalState.update({ view: getLoginFailureView(kind, reason) });
   }
 
   /** `Disconnected` leaves the modal alone, so an unrelated disconnect never closes an active pairing. */
@@ -187,7 +187,7 @@ export function createAuthController({
     });
     // A phrase the user is typing stays on show. The core's login waits behind it, and the modal's Cancel ends both.
     const login = state.tag === 'Pairing' || state.tag === 'Authenticating' || state.tag === 'LoginFailed';
-    if (login && authModalScope !== null && authModalStore.get().view.kind === 'phrase') {
+    if (login && authModalScope !== null && authModalState.store.get().view.kind === 'phrase') {
       return;
     }
     switch (state.tag) {
@@ -201,7 +201,7 @@ export function createAuthController({
       case 'Authenticating':
         // The core's own states must not cover the route's wait.
         if (!route.isWaiting()) {
-          updateAuthModal({ view: { kind: 'authenticating' } });
+          authModalState.update({ view: { kind: 'authenticating' } });
         }
         break;
       case 'Connected':
@@ -228,9 +228,9 @@ export function createAuthController({
   const modal: AuthModalPort = {
     open: openAuthModal,
     getLease: () => authModalScope,
-    getViewKind: () => authModalStore.get().view.kind,
+    getViewKind: () => authModalState.store.get().view.kind,
     show(view) {
-      updateAuthModal({ view });
+      authModalState.update({ view });
     },
     showFailure,
     close: closeAuthModal,

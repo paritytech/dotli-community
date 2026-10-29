@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { Tooltip } from '@dotli/ui';
 import { TrustedShieldIcon } from '../icons/TrustedShieldIcon.js';
 import { VerifiedShieldIcon } from '../icons/VerifiedShieldIcon.js';
-import type { ShieldState } from '../../state/urlPill.js';
+import type { ShieldState } from '../../state/urlPillState.js';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verificationShieldIds.js';
 import { VerificationContent } from './VerificationContent.js';
 import s from './VerificationShield.module.css';

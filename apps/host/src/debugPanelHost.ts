@@ -10,7 +10,7 @@ import { readArchiveFiles } from '@dotli/content';
 import { blockCache } from '@dotli/storage';
 import type { DebugPanelHost } from '@dotli/truapi-debug-ui';
 import { setDockInset } from './productFrameLayout.js';
-import { getTopbarState } from './state/topbar.js';
+import { topbarState } from './state/topbarState.js';
 import { closeDebugMode } from './settingsActions.js';
 import { authControl } from './runtime/createAuthController.js';
 import { authState } from './runtime/state/authState.js';
@@ -40,7 +40,7 @@ export const debugPanelHost: DebugPanelHost = {
   diagnostics: pageDiagnostics,
   archive: cid => readArchiveFiles(cid, archiveTransport(getBackend(), relayBlock)),
   contentInsets: { top: 'var(--content-top)', bottom: 'var(--content-bottom)' },
-  topbarPresent: () => getTopbarState().present,
+  topbarPresent: () => topbarState.get().present,
   reportDockInset: inset => {
     setDockInset(inset, 'debug');
   },

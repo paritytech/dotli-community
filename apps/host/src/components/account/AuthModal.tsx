@@ -5,7 +5,7 @@ import { createMemo, merge, onCleanup, untrack, useContext, type Accessor } from
 import type { JSX } from '@solidjs/web';
 import { isShallowEqual } from '@dotli/shared';
 import { Button, LayerTracker, Modal } from '@dotli/ui';
-import type { AuthModalState, AuthModalView, PairingView } from '../../state/authModal.js';
+import type { AuthModalState, AuthModalView, PairingView } from '../../state/authModalState.js';
 import { isMobileDevice } from '../../device.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 import { createPhraseFormLoad, type PhraseForm } from './phraseFormLoad.js';

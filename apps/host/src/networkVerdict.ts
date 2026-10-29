@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The one verdict over the chains in use. The status capsule, the network badge and the network menu all read it, so
-// they never disagree, and the health rechecks at the deadline the verdict judges overdue by.
+// The one verdict over the chains in use, and the deadline at which a chain in use turns overdue, so every reader of
+// the network agrees.
 
-import type { ChainClock } from './state/networkMonitor.js';
+import type { ChainClock } from './state/networkMonitorState.js';
 
 /** The tones of a status dot the network health takes. */
 export type NetworkHealth = 'ok' | 'idle' | 'warn' | 'err' | 'quiet';

@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { setTopbarPresent } from './state/topbar.js';
+import { topbarState } from './state/topbarState.js';
 import {
   attachProductFrame,
   currentProductFrame,
@@ -32,7 +32,7 @@ function attach(recording: ReturnType<typeof recordingFrame>): void {
 }
 
 beforeEach(() => {
-  setTopbarPresent();
+  topbarState.setPresent();
 });
 
 afterEach(() => {

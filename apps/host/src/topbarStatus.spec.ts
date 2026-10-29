@@ -9,7 +9,7 @@ import { toProductId } from './runtime/createTruapiRuntimeConfig.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
 import { createMemoryChatRepo } from './runtime/chat/createChatStore.fake.js';
-import { startChatPanelState } from './state/chatPanel.js';
+import { chatPanelState } from './state/chatPanelState.js';
 import {
   actionRoom,
   capsuleStatus,
@@ -70,7 +70,7 @@ describe('pageNeedsAction', () => {
     // Given a loaded chat product, logged in, with the panel closed
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
     const local = createMemoryStorage();
-    stopChatState = startChatPanelState(chat, local);
+    stopChatState = chatPanelState.start({ chat, storage: local });
     const product = toProductId('chatty');
     productState.setLoaded({ label: 'chatty', productId: product, details: { chat: true } });
     authState.set({ tag: 'Connected', session: { connected: true } });

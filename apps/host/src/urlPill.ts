@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { urlPillStore } from './state/urlPill.js';
+import { urlPillState } from './state/urlPillState.js';
 
 function part(bar: HTMLElement, selector: string): HTMLElement {
   const el = bar.querySelector<HTMLElement>(selector);
@@ -17,12 +17,12 @@ export function bindUrlPill(bar: HTMLElement): () => void {
   const domain = part(bar, '#url-pill-domain');
   const tld = part(bar, '#url-pill-tld');
   const render = (): void => {
-    const state = urlPillStore.get();
+    const state = urlPillState.store.get();
     bar.hidden = state.kind === 'none';
     pill.toggleAttribute('data-localhost', state.kind === 'localhost');
     domain.textContent = state.kind === 'localhost' ? state.host : state.kind === 'product' ? state.domain : '';
     tld.textContent = state.kind === 'product' ? state.tld : '';
   };
   render();
-  return urlPillStore.subscribe(render);
+  return urlPillState.store.subscribe(render);
 }

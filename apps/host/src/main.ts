@@ -8,7 +8,7 @@ import './boot.js';
 import { startPwa } from './pwa.js';
 import { boot, reportBootFailure, startHost, startPage, T0, type HostStartup } from './startup.js';
 import { listenForSandboxStatus, onSandboxDone } from './loadingController.js';
-import { showLocalhostPill, showProductPill } from './state/urlPill.js';
+import { urlPillState } from './state/urlPillState.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbarAutohide.js';
 import { authState } from './runtime/state/authState.js';
 import { loadBridge, loadDebugPanelHost } from './lazy.js';
@@ -128,7 +128,7 @@ async function startShell(route: ShellRoute, role: PageRole): Promise<Shell> {
       // Drawn from this origin's settings and the link's, set just before and with no await since, so the URL bar
       // paints with the page. The product's load draws it again once the shared store has answered.
       if (route.kind === 'product') {
-        showProductPill(route.label, getActiveTldSuffix());
+        urlPillState.showProduct(route.label, getActiveTldSuffix());
       }
     },
   });
@@ -308,7 +308,7 @@ async function main(): Promise<void> {
   performance.mark('dotli:main:start');
   // From the URL alone, before any await, so the URL bar paints with the page.
   if (route.kind === 'preview' || route.kind === 'localhost') {
-    showLocalhostPill(route.host);
+    urlPillState.showLocalhost(route.host);
   }
   const shell = await startShell(route, getShellPageRole(route, framed));
   switch (route.kind) {

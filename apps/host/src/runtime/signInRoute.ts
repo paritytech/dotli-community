@@ -4,7 +4,7 @@
 // The seam between the auth controller, which owns the sign-in modal, and the one route a page signs in by. A route
 // reaches the modal only through the port it is given.
 
-import type { AuthModalView } from '../state/authModal.js';
+import type { AuthModalView } from '../state/authModalState.js';
 import type { LoginFailureKind } from './getLoginFailureView.js';
 import type { DotliAuthState } from './session/types.js';
 import type { PageCancelReason } from './sessionHandoff/createSessionHandoff.js';

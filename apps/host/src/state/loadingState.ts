@@ -3,13 +3,13 @@
 
 import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 
-/** `gone` is terminal: the controller starts no timer once it is reached. */
+/** `gone` is terminal: no phase follows it. */
 export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
 
 /** A piece of the step line. The name being loaded is drawn with its TLD dimmed. */
 export type StepPart = string | { host: string; tld: string };
 
-/** Written only by `loadingController.ts`. */
+/** What the loading screen draws. */
 export type LoadingState = {
   /** 0 to 100, fractional. The shown number is rounded. */
   progress: number;
@@ -26,7 +26,6 @@ export type LoadingState = {
   phase: LoadingScreenPhase;
 };
 
-// Matches the host page's build-time render, which paints first.
 const loading = createSyncStore<LoadingState>({
   name: 'loading',
   initial: {
@@ -38,13 +37,25 @@ const loading = createSyncStore<LoadingState>({
     warning: null,
     phase: 'active',
   },
-  // The typing loop writes every frame, and an unchanged frame notifies nobody.
+  // A write can come every frame, and an unchanged frame notifies nobody.
   equals: isShallowEqual,
 });
+const store: ReadableStore<LoadingState> = loading;
 
-export const loadingStore: ReadableStore<LoadingState> = loading;
-export const getLoadingState = loading.get;
+/** The loading screen's progress, step line, explanation and phase. */
+export const loadingState = {
+  /** What the loading screen draws. Notifies only when a field changes. */
+  store,
+  /** Returns the current state. Never throws. */
+  get,
+  /** Writes `patch` over the current state, keeping the fields it leaves out. Never throws. */
+  update,
+};
 
-export function updateLoading(patch: Partial<LoadingState>): void {
+function get(): LoadingState {
+  return loading.get();
+}
+
+function update(patch: Partial<LoadingState>): void {
   loading.set({ ...loading.get(), ...patch });
 }

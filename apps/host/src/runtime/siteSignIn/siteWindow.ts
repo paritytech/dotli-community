@@ -9,7 +9,7 @@
 
 import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
 import type { SiteGrantStore } from '@dotli/storage';
-import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindow.js';
+import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindowState.js';
 import type { Responder } from '../sessionHandoff/createResponder.js';
 import type { WindowFlow, WindowFlowParams } from '../sessionHandoff/createWindowFlow.js';
 import { refuseRound } from '../sessionHandoff/roundAnswer.js';

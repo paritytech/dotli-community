@@ -11,7 +11,7 @@ import { debugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingPhase } from './loadingController.js';
 import { log } from '@dotli/shared';
 import { productState } from './runtime/state/productState.js';
-import { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './state/networkMonitor.js';
+import { networkMonitorState, type ChainPhase } from './state/networkMonitorState.js';
 import { chainTelemetryName, createChainPhaseTracker } from './resolutionTrace.js';
 import {
   describeProgressStall,
@@ -288,7 +288,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
       }
     }
     if (phase !== undefined) {
-      recordChainPhase(role, phase);
+      networkMonitorState.recordChainPhase(role, phase);
       const now = Date.now();
       const warpMoved =
         phase === 'syncing' &&
@@ -341,7 +341,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
           return;
         }
         // Every chain, including those the loading screen has no stall wording for.
-        recordPeerCount(role, event.peers);
+        networkMonitorState.recordPeerCount(role, event.peers);
         if (isCriticalChain(event.chain)) {
           livePeers.set(event.chain, event.peers);
         }
@@ -399,7 +399,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
     const span = now - oldest.at;
     if (span > 0) {
       liveBytesPerSecond = ((chainBytes - oldest.total) / span) * 1000;
-      recordTransfer({ bytesPerSecond: liveBytesPerSecond });
+      networkMonitorState.recordTransfer({ bytesPerSecond: liveBytesPerSecond });
     }
   };
   // Closes once the product is on screen, or it pushes the load's own events out of the debug panel's ring buffer.
@@ -439,7 +439,7 @@ function followDirectChains(options: LoadProgressOptions, loading: LoadingScreen
 
   // Every block the sandbox needs passes through this window, measured against the total the DAG root declares.
   options.events.onContentProgress(({ bytesFetched, totalBytes }) => {
-    recordTransfer({ fetched: bytesFetched, total: totalBytes });
+    networkMonitorState.recordTransfer({ fetched: bytesFetched, total: totalBytes });
     if (totalBytes === null) {
       // No declared total, so no percentage: the clock takes the bar back.
       loading.releasePhaseProgress();

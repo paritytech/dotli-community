@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { TopbarState } from './topbar.js';
+import type { TopbarState } from './topbarState.js';
 
-/** Whether the collapsed capsule leads with the pulsing action dot. */
-export function needsAction(
+/** Returns whether the collapsed capsule leads with the pulsing action dot. Never throws. */
+export function isActionNeeded(
   state: Pick<TopbarState, 'visible' | 'blockingModalActive' | 'blockingModalsWaiting'>,
   chatUnread: number,
 ): boolean {

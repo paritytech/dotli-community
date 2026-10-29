@@ -7,7 +7,7 @@ import { getActiveTldSuffix } from '@dotli/config';
 import type { SandboxChannel } from '@dotli/sandbox-wire';
 import type { ReadableStore } from '@dotli/shared';
 import { pageScreen, prefersReducedMotion, type PageContent } from '@dotli/ui';
-import { getLoadingState, updateLoading, type StepPart } from './state/loading.js';
+import { loadingState, type StepPart } from './state/loadingState.js';
 
 /** A loading step owning the `[base, target]` band of the bar, crossed in about `expectedMs`. */
 export type LoadingPhase = {
@@ -172,7 +172,7 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
     if (moved) {
       armProgressWatch(pct);
     }
-    updateLoading({ progress: pct });
+    loadingState.update({ progress: pct });
   }
 
   function startProgressCrawl(): void {
@@ -260,17 +260,17 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
       frames.cancel(typingFrame);
       typingFrame = null;
       // An interrupted fade would otherwise leave the line stranded dim.
-      updateLoading({ explanationOpacity: 1 });
+      loadingState.update({ explanationOpacity: 1 });
     }
   }
 
   function writeExplanation(next: string): void {
     cancelTyping();
     // Screen readers get the whole sentence once, from an element the typing never touches.
-    updateLoading({ srText: next });
-    const previous = getLoadingState().explanation;
+    loadingState.update({ srText: next });
+    const previous = loadingState.get().explanation;
     if (next === previous || reducedMotion() || !live()) {
-      updateLoading({ explanation: next });
+      loadingState.update({ explanation: next });
       return;
     }
     const eraseMs = previous === '' ? 0 : ERASE_MS;
@@ -281,18 +281,18 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
       if (eraseMs > 0 && elapsedMs < eraseMs) {
         const gone = easeInOut(elapsedMs / eraseMs);
         // Only a shallow dip, since deeper opacity once sank this block's contrast below AA.
-        updateLoading({
+        loadingState.update({
           explanation: previous.slice(0, Math.ceil(previous.length * (1 - gone))),
           explanationOpacity: 1 - 0.25 * gone,
         });
       } else if (elapsedMs < eraseMs + TYPE_MS) {
         const shown = easeInOut((elapsedMs - eraseMs) / TYPE_MS);
-        updateLoading({
+        loadingState.update({
           explanation: next.slice(0, Math.ceil(next.length * shown)),
           explanationOpacity: 0.75 + 0.25 * shown,
         });
       } else {
-        updateLoading({ explanation: next, explanationOpacity: 1 });
+        loadingState.update({ explanation: next, explanationOpacity: 1 });
         typingFrame = null;
         return;
       }
@@ -311,7 +311,7 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
     const [opening, ...explanations] = STAGE_MESSAGES[stage];
     stopStageMessages();
     const step = stepParts(opening);
-    updateLoading({ step, explanation: '', explanationOpacity: 1, srText: stepSentence(step) });
+    loadingState.update({ step, explanation: '', explanationOpacity: 1, srText: stepSentence(step) });
     // The opening step line has been up since first paint, so its first explanation is due from then.
     const firstDelay = openingLine ? Math.max(500, MESSAGE_ROTATE_MS - frames.now()) : MESSAGE_ROTATE_MS;
     openingLine = false;
@@ -403,13 +403,13 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
 
   /** False once the screen is gone for good, so a late signal starts no orphan timer. */
   function live(): boolean {
-    return getLoadingState().phase !== 'gone';
+    return loadingState.get().phase !== 'gone';
   }
 
   /** Without the fade, for a page that replaces the screen. */
   function hideLoading(): void {
     stopStatusTick();
-    updateLoading({ phase: 'gone' });
+    loadingState.update({ phase: 'gone' });
   }
 
   pageContent.subscribe(() => {
@@ -420,20 +420,20 @@ export function createLoadingController({ reducedMotion, frames, pageContent }: 
 
   /** Null hides it. */
   function setLoadingWarning(message: string | null): void {
-    updateLoading({ warning: message });
+    loadingState.update({ warning: message });
   }
 
   function dismissLoading(): void {
     completeProgress();
     stopProgressWatch();
     stopStageMessages();
-    if (getLoadingState().phase !== 'active') {
+    if (loadingState.get().phase !== 'active') {
       return;
     }
-    updateLoading({ phase: 'dismissing' });
+    loadingState.update({ phase: 'dismissing' });
     // The screen is removed only once its fade has finished.
     setTimeout(() => {
-      if (getLoadingState().phase === 'dismissing') {
+      if (loadingState.get().phase === 'dismissing') {
         hideLoading();
       }
     }, FADE_MS);

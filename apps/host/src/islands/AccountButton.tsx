@@ -11,7 +11,7 @@ import { getProtocolOrigin } from '@dotli/protocol';
 import { getRouteUrl } from '../runtime/sessionHandoff/sessionRoute.js';
 import { useStore } from '@dotli/ui';
 import { AccountItem } from '../components/account/AuthButton.js';
-import { authModalStore, setAuthModalTrigger } from '../state/authModal.js';
+import { authModalState } from '../state/authModalState.js';
 import { useAccount } from './account.js';
 
 /** The account button bound to the session, as the topbar and the landing page's corner show it. */
@@ -23,7 +23,7 @@ export function AccountButton(props: { idPrefix?: string; showName?: boolean }):
     signingOut: signingOutState.store,
     elsewhere: sessionElsewhereState.store,
   });
-  const modalOpen = useStore(authModalStore, state => state.open);
+  const modalOpen = useStore(authModalState.store, state => state.open);
   return (
     <AccountItem
       account={account}
@@ -34,7 +34,7 @@ export function AccountButton(props: { idPrefix?: string; showName?: boolean }):
       onLogout={() => {
         authControl.logout();
       }}
-      handOver={setAuthModalTrigger}
+      handOver={authModalState.setTrigger}
       idPrefix={props.idPrefix}
       showName={props.showName}
       sitesUrl={getRouteUrl(getProtocolOrigin(), 'manage')}

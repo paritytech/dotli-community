@@ -6,7 +6,7 @@ import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createSyncStore, createDeferred, createStoreStatus, isRecord, waitForStatus } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
-import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindow.js';
+import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindowState.js';
 import type { AuthCommands, LoginOutcome } from '../createAuthCommands.js';
 import type { LogoutOutcome } from '../createPageSignOut.js';
 import type { DotliAuthState } from '../session/types.js';

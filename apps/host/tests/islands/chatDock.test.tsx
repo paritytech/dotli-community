@@ -15,14 +15,9 @@ import { toProductId } from '../../src/runtime/createTruapiRuntimeConfig.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { productState } from '../../src/runtime/state/productState.js';
 import { createMemoryChatRepo } from '../../src/runtime/chat/createChatStore.fake.js';
-import { setTopbarVisible } from '../../src/state/topbar.js';
+import { topbarState } from '../../src/state/topbarState.js';
 import { ChatDock } from '../../src/islands/ChatDock.js';
-import {
-  chatPanelStore,
-  getChatPanelElement,
-  startChatPanelState,
-  setChatPanelOpen,
-} from '../../src/state/chatPanel.js';
+import { chatPanelState } from '../../src/state/chatPanelState.js';
 import { appears, byId, byTestId } from '@dotli/ui/testing';
 
 const LABEL = 'chatty';
@@ -43,7 +38,7 @@ function mountIsland(): void {
 beforeEach(() => {
   chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
   const local = createMemoryStorage();
-  stopState = startChatPanelState(chat, local);
+  stopState = chatPanelState.start({ chat, storage: local });
   productState.setLoaded({ label: LABEL, productId: PRODUCT, details: { chat: true } });
   authState.set({ tag: 'Connected', session: { connected: true } });
 });
@@ -63,7 +58,7 @@ describe('ChatDock island', () => {
     mountIsland();
 
     // When
-    setChatPanelOpen(true);
+    chatPanelState.setOpen(true);
 
     // Then
     await waitForDom(() => document.querySelector('[data-testid="chat-room-name"]')?.textContent === 'Main');
@@ -76,17 +71,17 @@ describe('ChatDock island', () => {
     mountIsland();
 
     // Then the dock handed its panel to the page, so the button can tell whether focus was inside
-    expect(getChatPanelElement()).toBe(byId('chat-panel'));
+    expect(chatPanelState.getElement()).toBe(byId('chat-panel'));
 
     // When
-    setChatPanelOpen(true);
+    chatPanelState.setOpen(true);
     await appears('#chat-panel-close');
     byId('chat-panel-close').focus();
     byId('chat-panel-close').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     // Then
     await waitForDom(() => byId('chat-panel').hidden === true);
-    expect(chatPanelStore.get().open).toBe(false);
+    expect(chatPanelState.store.get().open).toBe(false);
   });
 
   it('As a user, the panel stretches to the top while the topbar hides', async () => {
@@ -94,13 +89,13 @@ describe('ChatDock island', () => {
     mountIsland();
 
     // When
-    setTopbarVisible(false);
+    topbarState.setVisible(false);
 
     // Then
     await waitForDom(() => byId('chat-panel').hasAttribute('data-topbar-hidden'));
 
     // When
-    setTopbarVisible(true);
+    topbarState.setVisible(true);
 
     // Then
     await waitForDom(() => !byId('chat-panel').hasAttribute('data-topbar-hidden'));

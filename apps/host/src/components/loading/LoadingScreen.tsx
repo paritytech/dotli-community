@@ -5,7 +5,7 @@ import { createMemo, For, Show, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { PetalMark } from '@dotli/ui/brand';
 import { AlertTriangleIcon } from '@dotli/ui/icons';
-import type { LoadingState } from '../../state/loading.js';
+import type { LoadingState } from '../../state/loadingState.js';
 import s from './LoadingScreen.module.css';
 
 export type LoadingScreenProps = {

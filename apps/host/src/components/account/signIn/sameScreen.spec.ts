@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import type { AuthModalView } from '../../../state/authModal.js';
+import type { AuthModalView } from '../../../state/authModalState.js';
 import { pairingPayload, sameSignInScreen } from './sameScreen.js';
 
 const SPINNER: AuthModalView = { kind: 'spinner' };

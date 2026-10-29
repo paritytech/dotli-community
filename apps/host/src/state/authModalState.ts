@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
+import { createSyncStore, isShallowEqual, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
 
 /**
  * How far a pairing got: the code being made, the code to scan, the phone approving, or a failure. `error` carries the
@@ -55,44 +55,65 @@ const INITIAL: AuthModalState = {
   view: { kind: 'spinner' },
 };
 
-/** The view is rebuilt per write, so it is compared one level deeper. */
-function sameAuthModal(a: AuthModalState, b: AuthModalState): boolean {
-  return (
-    a.open === b.open && a.productLabel === b.productLabel && a.reason === b.reason && isShallowEqual(a.view, b.view)
-  );
-}
-
 const authModal = createSyncStore<AuthModalState>({
   name: 'auth_modal',
   initial: INITIAL,
-  equals: sameAuthModal,
+  equals: isSameAuthModal,
+});
+const store: ReadableStore<AuthModalState> = authModal;
+
+// The modal hydrates as an island of its own, so the control focus returns to is handed over here, not passed in.
+let trigger: HTMLElement | undefined;
+
+/** The sign-in modal's presentation, and the control focus returns to as it closes. */
+export const authModalState = {
+  /** What the modal shows. Notifies only when a field or the view changes. */
+  store,
+  /** Writes `patch` over the current state, keeping the fields it leaves out. Never throws. */
+  update,
+  /** Closes the modal and clears what it shows. Never throws. */
+  reset,
+  /** Returns the control focus returns to as the modal closes, or undefined when none is handed over. Never throws. */
+  getTrigger,
+  /**
+   * Hands over the control focus returns to as the modal closes. Returns a release that clears it, unless another
+   * control was handed over since. Never throws.
+   */
+  setTrigger,
+};
+
+registerStoreStateReset(() => {
+  trigger = undefined;
 });
 
-export const authModalStore: ReadableStore<AuthModalState> = authModal;
-
-// Written only by the auth controller.
-
-export function updateAuthModal(patch: Partial<AuthModalState>): void {
+function update(patch: Partial<AuthModalState>): void {
   authModal.set({ ...authModal.get(), ...patch });
 }
 
-export function resetAuthModal(): void {
+function reset(): void {
   authModal.set(INITIAL);
 }
 
-// The account button gets focus back as the modal closes. They are separate islands, so the button
-// hands itself over here.
-let trigger: HTMLElement | undefined;
-
-export function getAuthModalTrigger(): HTMLElement | undefined {
+function getTrigger(): HTMLElement | undefined {
   return trigger;
 }
 
-export function setAuthModalTrigger(el: HTMLElement): () => void {
-  trigger = el;
-  return () => {
-    if (trigger === el) {
+function setTrigger(element: HTMLElement): () => void {
+  trigger = element;
+  function releaseTrigger(): void {
+    if (trigger === element) {
       trigger = undefined;
     }
-  };
+  }
+  return releaseTrigger;
+}
+
+/** The view is rebuilt per write, so it is compared one level deeper. */
+function isSameAuthModal(previous: AuthModalState, next: AuthModalState): boolean {
+  return (
+    previous.open === next.open &&
+    previous.productLabel === next.productLabel &&
+    previous.reason === next.reason &&
+    isShallowEqual(previous.view, next.view)
+  );
 }

@@ -12,7 +12,7 @@ import {
   type LoadingController,
   type LoadingPhase,
 } from '../../src/loadingController.js';
-import { getLoadingState } from '../../src/state/loading.js';
+import { loadingState } from '../../src/state/loadingState.js';
 
 bindCaptureSink({ exception: vi.fn(), expected: vi.fn() });
 
@@ -45,7 +45,7 @@ describe('A full-page screen ends the loading screen', () => {
     vi.useRealTimers();
   });
 
-  const progress = (): number => getLoadingState().progress;
+  const progress = (): number => loadingState.get().progress;
 
   it.each([
     [
@@ -107,7 +107,7 @@ describe('A full-page screen ends the loading screen', () => {
     vi.advanceTimersByTime(PROGRESS_STALL_MS * 5);
 
     // Then the bar never moves and no stall fires
-    expect(getLoadingState().phase).toBe('gone');
+    expect(loadingState.get().phase).toBe('gone');
     expect(progress()).toBe(frozen);
     expect(onStall).not.toHaveBeenCalled();
     expect(document.querySelector('[data-testid="error-page-title"]')).not.toBeNull();

@@ -37,7 +37,7 @@ import type { ProductFrame } from './runtime/createProductFrame.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
 import { startShieldAutoHide } from './shieldAutohide.js';
-import { setVerificationShieldState, showProductPill, type ShieldState } from './state/urlPill.js';
+import { urlPillState, type ShieldState } from './state/urlPillState.js';
 import { armTopbarAutoHide, setProductContentShown } from './topbarAutohide.js';
 
 /** The sandbox's one report on the content it was handed. */
@@ -135,13 +135,13 @@ async function loadProduct(label: string, options: ProductLoaderOptions): Promis
     return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
   });
 
-  showProductPill(label, getActiveTldSuffix());
+  urlPillState.showProduct(label, getActiveTldSuffix());
 
   // The shield shows how the content was checked, and the topbar may fold from then on.
   const shieldState: ShieldState = isVerifiedSession(backend) ? 'verified' : 'trusted';
   const autoHide = startShieldAutoHide({ loggedIn: authState.loggedInStore, arm: armTopbarAutoHide });
   const settleShield = (): void => {
-    setVerificationShieldState(shieldState);
+    urlPillState.setVerificationShield(shieldState);
     autoHide.settle();
   };
 

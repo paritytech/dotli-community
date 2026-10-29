@@ -7,7 +7,7 @@
 import '@dotli/ui/styles.css';
 import { RotateCwIcon } from '@dotli/ui/icons';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
-import { reportBlockingModals } from './state/topbar.js';
+import { topbarState } from './state/topbarState.js';
 import { createReloadOffer, listenForChunkFailures, modals, showError, showNotification } from '@dotli/ui';
 import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
 import { isMobileDevice } from './device.js';
@@ -27,7 +27,7 @@ import { getPageSignInHandoff } from './runtime/sessionHandoff/createSessionHand
 import { pageRole, isSessionShown, getSignInSurface, type PageRole } from './runtime/pageRole.js';
 import { describeError, RELOAD_BTN_LABEL } from './errors.js';
 import { bootSettings } from './bootSettings.js';
-import { initSettingsStore } from './state/settings.js';
+import { settingsState } from './state/settingsState.js';
 import { pageSettingsActions } from './settingsActions.js';
 
 export const T0 = performance.now();
@@ -152,7 +152,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
   // island mounts on a store not yet started.
   startShellState?.();
   const settings = await settingsBoot;
-  initSettingsStore();
+  settingsState.init();
 
   emitDotliDebugEvent({
     layer: 'boot',
@@ -201,7 +201,7 @@ export async function startHost(bootFlowId: string, options: StartHostOptions): 
     payload: { subMode: settings.backend },
   });
 
-  const blockingModalCoordinator = createBlockingModalCoordinator({ report: reportBlockingModals });
+  const blockingModalCoordinator = createBlockingModalCoordinator({ report: topbarState.reportBlockingModals });
   // The bridge chunk brings the dialogs it asks with, so they never join the boot chunk.
   const bridgeReady = loadBridge().then(bridge => {
     bridge.initBridge(blockingModalCoordinator);

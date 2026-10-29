@@ -11,7 +11,7 @@ import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { TopbarActions } from '../../src/islands/TopbarActions.js';
 import { createProductFrameView } from '../../src/productFrameView.js';
-import { anyTopbarSurfaceOpen, topbarSurfaceContains } from '../../src/state/topbarSurfaces.js';
+import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
 import { byId } from '@dotli/ui/testing';
 import { resetViewport, setPhoneViewport } from '../happyDom.js';
 
@@ -47,15 +47,15 @@ describe('TopbarActions island', () => {
     await until('chains-popover', true);
 
     // Then
-    expect(anyTopbarSurfaceOpen()).toBe(true);
-    expect(topbarSurfaceContains(byId('chains-popover'))).toBe(true);
+    expect(topbarSurfaces.isAnyOpen()).toBe(true);
+    expect(topbarSurfaces.contains(byId('chains-popover'))).toBe(true);
 
     // When
     byId('chains-popover').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await until('chains-popover', false);
 
     // Then
-    expect(anyTopbarSurfaceOpen()).toBe(false);
+    expect(topbarSurfaces.isAnyOpen()).toBe(false);
   });
 
   it('As a phone user, closing a sheet of the bar whose trigger left the page hands focus to the product frame', async () => {

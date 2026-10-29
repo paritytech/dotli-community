@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { isShallowEqual } from '@dotli/shared';
-import type { AuthModalView } from '../../../state/authModal.js';
+import type { AuthModalView } from '../../../state/authModalState.js';
 
 function pairs(view: AuthModalView): boolean {
   return view.kind === 'spinner' || view.kind === 'pairing';

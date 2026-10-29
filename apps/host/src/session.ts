@@ -57,14 +57,7 @@ import { isUnsentGrantForgotten } from './runtime/siteSignIn/createSiteRound.js'
 import { openSiteSignIn, openSiteTransaction, type SiteWindowParams } from './runtime/siteSignIn/siteWindow.js';
 import { authState } from './runtime/state/authState.js';
 import { windowSettings } from './sessionSettings.js';
-import {
-  setCloseIntent,
-  setSiteIntents,
-  setSiteListIntents,
-  setWindowIntents,
-  setWindowScreen,
-  showWindowScreen,
-} from './state/sessionWindow.js';
+import { sessionWindowState } from './state/sessionWindowState.js';
 import { reportBootFailure, startHost, startPage, type StartHostOptions } from './startup.js';
 
 /** The sign-in window restores and pairs, while the sign-out window ends the stored session on a core of its own. */
@@ -91,7 +84,7 @@ function judgeOpener(origin: string): OpenerParty {
 /** A request the window cannot read as dot.li's own has no round it answers, so it listens to nobody. */
 function refuseUnreadable(): void {
   log.event('Session window refused: no readable request', { flow: 'boot' });
-  setWindowScreen(getResponderScreen({ kind: 'refused' }));
+  sessionWindowState.setScreen(getResponderScreen({ kind: 'refused' }));
 }
 
 /**
@@ -108,7 +101,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
     return;
   }
   const { notified } = request;
-  setWindowScreen({ view: 'signing-out' });
+  sessionWindowState.setScreen({ view: 'signing-out' });
   // Before the boot, so the handshake runs while the frame comes up. A refused opener leaves the sign-out views as
   // they are.
   const responder = startPageResponder<typeof SIGNED_OUT_RESULT>(request.round, judgeOpener);
@@ -157,7 +150,7 @@ async function runSignOut(
     forgetGrants: () => siteGrants.forgetAll(),
     close: closeWindow,
     showSignedOut: () => {
-      setWindowScreen({ view: 'signed-out' });
+      sessionWindowState.setScreen({ view: 'signed-out' });
     },
   });
 }
@@ -177,7 +170,7 @@ function startFlow(
     loadPhrase: loadRecoveryPhrase,
     ...flow,
   });
-  setWindowIntents(started);
+  sessionWindowState.setWindowIntents(started);
   return started;
 }
 
@@ -194,7 +187,7 @@ function openFlow(responder: Responder<unknown>, intent: SignInIntent, bridgeMod
     },
     close: closeWindow,
   });
-  showWindowScreen(screen);
+  sessionWindowState.showScreen(screen);
 }
 
 // One per page, so the suffix list loads at most once, and only for a site that asks for a group.
@@ -251,8 +244,8 @@ function openSiteFlow(
     ...siteWindowDeps(responder, round, null, close),
     request: round.request,
   });
-  setSiteIntents(site);
-  return showWindowScreen(screen);
+  sessionWindowState.setSiteIntents(site);
+  return sessionWindowState.showScreen(screen);
 }
 
 /**
@@ -277,15 +270,15 @@ async function openSiteTransactionFlow(
     return;
   }
   stopShowingResponder();
-  setSiteIntents(opened.site);
-  showWindowScreen(opened.screen);
+  sessionWindowState.setSiteIntents(opened.site);
+  sessionWindowState.showScreen(opened.screen);
 }
 
 /** Shows where the responder stands until the returned function stops it. */
 function showResponder(responder: Responder<unknown>): () => void {
-  setWindowScreen(getResponderScreen(responder.state()));
+  sessionWindowState.setScreen(getResponderScreen(responder.state()));
   return responder.subscribe(state => {
-    setWindowScreen(getResponderScreen(state));
+    sessionWindowState.setScreen(getResponderScreen(state));
   });
 }
 
@@ -308,7 +301,7 @@ async function redirectSignIn(
   enabled: readonly Network[],
   fields: RedirectFields,
 ): Promise<void> {
-  setWindowScreen(getResponderScreen({ kind: 'connecting' }));
+  sessionWindowState.setScreen(getResponderScreen({ kind: 'connecting' }));
   const verdict = await vetRedirect(fields, {
     self: window.location.origin,
     probe: sitePublicKey => probeSeal(sitePublicKey),
@@ -321,7 +314,7 @@ async function redirectSignIn(
     const { view, reason } = verdict;
     log.event('redirect sign-in refused', { flow: 'wallet', reason });
     m.count(S.SITE_SIGN_IN, { outcome: 'refused', reason });
-    setWindowScreen(view === 'refused' ? getResponderScreen({ kind: 'refused' }) : { view });
+    sessionWindowState.setScreen(view === 'refused' ? getResponderScreen({ kind: 'refused' }) : { view });
     return;
   }
   // Stops showing the round's screen once the round opened, and does nothing before.
@@ -346,13 +339,13 @@ async function redirectSignIn(
         metric: S.SITE_SIGN_IN,
       });
       stopShowingRound();
-      setWindowScreen({ view: 'site-unsupported' });
+      sessionWindowState.setScreen({ view: 'site-unsupported' });
       if (siteToken !== undefined) {
         void forgetUnsentGrant(siteToken);
       }
     },
   });
-  setCloseIntent(() => {
+  sessionWindowState.setCloseIntent(() => {
     // Closing or going back in history while the sealed answer is on its way would leave the site unanswered.
     const delivery = responder.delivery();
     if (delivery !== 'pending' && delivery !== 'sent') {
@@ -390,7 +383,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
     const fields = readRedirectFields(taken.params);
     if (fields === 'invalid') {
       log.event('Session window refused: invalid redirect fields', { flow: 'boot' });
-      setWindowScreen(getResponderScreen({ kind: 'refused' }));
+      sessionWindowState.setScreen(getResponderScreen({ kind: 'refused' }));
       return;
     }
     if (fields !== 'none') {
@@ -438,8 +431,8 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
 function manageSites(): void {
   log.event('Route: site list', { flow: 'boot' });
   const list = createSiteList({ grants: siteGrants });
-  setSiteListIntents(list);
-  showWindowScreen(list.screen);
+  sessionWindowState.setSiteListIntents(list);
+  sessionWindowState.showScreen(list.screen);
 }
 
 async function main(): Promise<void> {

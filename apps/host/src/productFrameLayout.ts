@@ -6,7 +6,7 @@
 
 import { registerStoreStateReset } from '@dotli/shared';
 import { productIframeBox } from './productIframeBox.js';
-import { getTopbarState } from './state/topbar.js';
+import { topbarState } from './state/topbarState.js';
 
 export type TopbarLayout = {
   /** The frame keeps clear of the bar. Otherwise it takes the full height and the bar floats over it. */
@@ -95,7 +95,7 @@ function write(): void {
   state.apply(
     frame,
     frameBox({
-      topbarOffset: state.topbarOffset && getTopbarState().present,
+      topbarOffset: state.topbarOffset && topbarState.get().present,
       chatWidth: state.chatWidth,
       docks: state.docks,
     }),

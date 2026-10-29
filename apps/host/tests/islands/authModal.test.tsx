@@ -14,11 +14,11 @@ import type { AuthCommands } from '../../src/runtime/createAuthCommands.js';
 import { createBlockingModalCoordinator } from '../../src/runtime/createBlockingModalCoordinator.js';
 import { authControl } from '../../src/runtime/createAuthController.js';
 import { authState } from '../../src/runtime/state/authState.js';
-import { getTopbarState, reportBlockingModals, setTopbarVisible } from '../../src/state/topbar.js';
+import { topbarState } from '../../src/state/topbarState.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
 import { createProductFrameView } from '../../src/productFrameView.js';
-import { anyTopbarSurfaceOpen } from '../../src/state/topbarSurfaces.js';
-import { authModalStore, setAuthModalTrigger } from '../../src/state/authModal.js';
+import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
+import { authModalState } from '../../src/state/authModalState.js';
 
 /** What the controller asked of the bridge chunk's commands. */
 const asked = { logins: 0, cancels: 0 };
@@ -44,7 +44,7 @@ async function untilModal(open: boolean): Promise<void> {
 /** The island mounted as Astro hydrates it, with no saved session and the page's controller started. */
 function mountIsland(placement: 'center' | 'topbar-end' = 'topbar-end'): void {
   authControl.init({
-    coordinator: createBlockingModalCoordinator({ report: reportBlockingModals }),
+    coordinator: createBlockingModalCoordinator({ report: topbarState.reportBlockingModals }),
     commands: () => Promise.resolve(commands),
     // The in-page pairing, as on a preview its preview host frames.
     handoff: null,
@@ -74,7 +74,7 @@ afterEach(() => {
 describe('AuthModal island', () => {
   it('As a dApp user with the bar folded, a sign-in brings the bar back and holds it while open, and Cancel cancels the login', async () => {
     // Given
-    setTopbarVisible(false);
+    topbarState.setVisible(false);
     mountIsland();
 
     // When
@@ -82,18 +82,18 @@ describe('AuthModal island', () => {
     await untilModal(true);
 
     // Then
-    expect(authModalStore.get().open).toBe(true);
+    expect(authModalState.store.get().open).toBe(true);
     expect(byTestId('auth-modal-backdrop').dataset['layout']).toBe('topbar-end');
-    expect(getTopbarState().visible).toBe(true);
-    expect(anyTopbarSurfaceOpen()).toBe(true);
+    expect(topbarState.get().visible).toBe(true);
+    expect(topbarSurfaces.isAnyOpen()).toBe(true);
 
     // When
     byId('auth-modal-close').click();
     await untilModal(false);
 
     // Then
-    expect(authModalStore.get().open).toBe(false);
-    expect(anyTopbarSurfaceOpen()).toBe(false);
+    expect(authModalState.store.get().open).toBe(false);
+    expect(topbarSurfaces.isAnyOpen()).toBe(false);
     expect(asked.cancels).toBe(1);
   });
 
@@ -116,7 +116,7 @@ describe('AuthModal island', () => {
     await untilModal(false);
 
     // Then the modal closes and the login is cancelled once
-    expect(authModalStore.get().open).toBe(false);
+    expect(authModalState.store.get().open).toBe(false);
     expect(asked.cancels).toBe(1);
   });
 
@@ -131,7 +131,7 @@ describe('AuthModal island', () => {
       clearScreen: () => undefined,
       hideLoading: () => undefined,
     }).attachFrame(frame);
-    const handBack = setAuthModalTrigger(button);
+    const handBack = authModalState.setTrigger(button);
     mountIsland();
     button.focus();
     authControl.startLogin();

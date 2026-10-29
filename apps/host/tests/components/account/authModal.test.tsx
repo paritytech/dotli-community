@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSignal } from 'solid-js';
 import { render } from '@solidjs/web';
-import type { AuthModalState } from '../../../src/state/authModal.js';
+import type { AuthModalState } from '../../../src/state/authModalState.js';
 import { AuthModal } from '../../../src/components/account/AuthModal.js';
 import { waitForDom } from '@dotli/shared/testing';
 import { appears, byId } from '@dotli/ui/testing';

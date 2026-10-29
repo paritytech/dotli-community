@@ -6,13 +6,13 @@
 import type { JSX } from '@solidjs/web';
 import { RootBoundary, useStore } from '@dotli/ui';
 import { LoadingScreen as Screen } from '../components/loading/LoadingScreen.js';
-import { loadingStore } from '../state/loading.js';
+import { loadingState } from '../state/loadingState.js';
 
 /** The screen the host page paints first, bound to the loading store, so progress made before hydration shows. */
 export function LoadingScreen(): JSX.Element {
   return (
     <RootBoundary root="island:LoadingScreen">
-      <Screen state={useStore(loadingStore)} />
+      <Screen state={useStore(loadingState.store)} />
     </RootBoundary>
   );
 }
