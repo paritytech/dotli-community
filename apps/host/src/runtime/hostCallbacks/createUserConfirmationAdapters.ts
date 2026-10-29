@@ -206,8 +206,8 @@ function showConfirmationModal({
       result: 'accepted-once',
     });
   }
-  return prompts.confirmReview<ConfirmationDecision>(
-    {
+  return prompts.confirmReview<ConfirmationDecision>({
+    dialog: {
       ...(copy.icon === undefined ? {} : { icon: copy.icon }),
       title: copy.title,
       fields: getConfirmationFields(label, review),
@@ -216,8 +216,8 @@ function showConfirmationModal({
       dismissResult: 'dismissed',
     },
     signal,
-    { handoff },
-  );
+    handoff,
+  });
 }
 
 function getConfirmationFields(label: string, review: ModalReview): ConfirmationField[] {

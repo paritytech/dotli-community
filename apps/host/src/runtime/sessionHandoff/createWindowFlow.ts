@@ -11,7 +11,7 @@
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createSyncStore, log, isShallowEqual, type ReadableStore } from '@dotli/shared';
-import { reportLazyMiss } from '../../lazyMiss.js';
+import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type {
   ContinueOffer,
@@ -434,7 +434,7 @@ export function createWindowFlow({
         try {
           phraseCheck = await loadPhrase();
         } catch (error) {
-          reportLazyMiss('wallet', 'phrase_import', error);
+          reportLazyMiss({ flow: 'wallet', step: 'phrase_import', error });
           showFailed();
           return;
         }

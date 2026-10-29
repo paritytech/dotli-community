@@ -13,7 +13,7 @@ import {
   type Timers,
 } from '@dotli/shared';
 import { networkMonitorState, type NetworkMonitor } from './networkMonitorState.js';
-import { judgeNetworkHealth, nextOverdueAt, type NetworkHealth } from '../networkVerdict.js';
+import { getNextOverdueAt, judgeNetworkHealth, type NetworkHealth } from '../networkVerdict.js';
 
 /** What the health reads from the page around the chains. */
 type HealthPage = {
@@ -110,7 +110,7 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
       const now = timers.now();
       const clocks = monitor.getChainClocks(now);
       health.set(judgeNetworkHealth(clocks, page.isOnline()));
-      const at = nextOverdueAt(clocks, now);
+      const at = getNextOverdueAt(clocks, now);
       if (at === recheckAt) {
         return;
       }

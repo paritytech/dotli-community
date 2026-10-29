@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { ActionGroup, type MoreIds } from '@dotli/ui';
-import type { TopbarMorph } from '../../topbarStatus.js';
+import { ActionGroup, type ActionGroupMorph, type MoreIds } from '@dotli/ui';
 
 /** The topbar's More, which the page's tests and stories address. */
 export const TOPBAR_MORE: MoreIds = { buttonId: 'more-button', menuId: 'more-popover' };
@@ -16,7 +15,7 @@ export type TopbarActionsProps = {
   /** The group's room, or undefined to take the group's own width. The bar knows better on a content-sized pill. */
   room: (group: HTMLElement, row: HTMLElement | null) => number | undefined;
   /** The bar's own morph, during which the group waits and measures once it ends. */
-  morph: TopbarMorph;
+  morph: ActionGroupMorph;
 };
 
 /**

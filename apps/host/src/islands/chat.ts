@@ -5,7 +5,7 @@ import { createEffect, onCleanup } from 'solid-js';
 import type { ChatStore } from '../runtime/chat/createChatStore.js';
 import { productState } from '../runtime/state/productState.js';
 import { useStore } from '@dotli/ui';
-import { setChatWidth } from '../productFrameLayout.js';
+import { productFrameLayout } from '../createProductFrameLayout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';
 import type { ChatDockProps } from '../components/chat/ChatDock.js';
 import { chatPanelState } from '../state/chatPanelState.js';
@@ -76,7 +76,10 @@ function useChatConversation(chat: ChatStore): ChatConversation {
  * The docked panel's props, for an island's own lifetime. It keeps the product frame clear of the open panel through
  * `reserveRight`, which takes the px the panel covers at the page's right edge.
  */
-export function useChatDock(chat: ChatStore, reserveRight: (px: number) => void = setChatWidth): ChatDockProps {
+export function useChatDock(
+  chat: ChatStore,
+  reserveRight: (px: number) => void = productFrameLayout.setChatWidth,
+): ChatDockProps {
   const open = useStore(chatPanelState.store, state => state.open);
   const width = useStore(chatPanelState.store, state => state.width);
   createEffect(

@@ -5,18 +5,9 @@
 
 import type { ChainRole } from '@dotli/config';
 import { formatRate } from '@dotli/shared';
-
-/** How long a chain may sit in one lifecycle state before it owes an explanation. */
-export const STALL_WARNING_MS = 3_000;
-
-/** The chains the load waits on. A stall elsewhere is not the visitor's problem. */
-export const CRITICAL_CHAINS = ['relay', 'assethub', 'bulletin'] as const satisfies readonly ChainRole[];
+import { STILL_WORKING } from './stillWorking.js';
 
 export type CriticalChain = (typeof CRITICAL_CHAINS)[number];
-
-export function isCriticalChain(chain: ChainRole): chain is CriticalChain {
-  return (CRITICAL_CHAINS as readonly ChainRole[]).includes(chain);
-}
 
 export type StallFacts = {
   chain: CriticalChain;
@@ -27,6 +18,9 @@ export type StallFacts = {
   /** The word smoldot itself uses for why it stalled, on `stalled` only. */
   reason?: string | undefined;
 };
+
+/** The chains the load waits on. A stall elsewhere is not the visitor's problem. */
+export const CRITICAL_CHAINS = ['relay', 'assethub', 'bulletin'] as const satisfies readonly ChainRole[];
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {
   relay: 'Polkadot',
@@ -40,21 +34,15 @@ const CHAIN_WORDS: Record<CriticalChain, string> = {
  */
 export const SLOW_BYTES_PER_SECOND = 128 * 1024;
 
-function isFast(bytesPerSecond: number | null): boolean {
-  return bytesPerSecond !== null && bytesPerSecond >= SLOW_BYTES_PER_SECOND;
-}
-
-function throughput(bytesPerSecond: number | null): string | null {
-  // The "connected but nothing arriving" sentence covers under a byte a second.
-  if (bytesPerSecond === null || bytesPerSecond < 1) {
-    return null;
-  }
-  return formatRate(bytesPerSecond);
+/** Returns whether the load waits on `chain`. Never throws. */
+export function isCriticalChain(chain: ChainRole): chain is CriticalChain {
+  return CRITICAL_CHAINS.some(critical => critical === chain);
 }
 
 /**
  * Null when nothing is wrong, the common case: healthy chains dwell in `connecting` for seconds. Only no peers, a
  * stall smoldot reports, or a peered chain with little or no data earns a warning. A missing peer sample is not one.
+ * Never throws.
  */
 export function describeStall(facts: StallFacts): string | null {
   const what = CHAIN_WORDS[facts.chain];
@@ -72,7 +60,7 @@ export function describeStall(facts: StallFacts): string | null {
   if (isFast(facts.bytesPerSecond)) {
     return null;
   }
-  const rate = throughput(facts.bytesPerSecond);
+  const rate = formatThroughput(facts.bytesPerSecond);
   if (rate === null) {
     return `Connected to ${peerWords} for ${what}, but no data is arriving yet.`;
   }
@@ -80,26 +68,30 @@ export function describeStall(facts: StallFacts): string | null {
 }
 
 /**
- * Early warnings read as failure on loads that would succeed. A condition that fires earlier is shown at this mark if
- * it still stands.
- */
-export const WARNING_MIN_LOAD_MS = 5_000;
-
-/** The slow-load line that names no cause, also for a shown warning whose cause has passed. */
-export const STILL_WORKING = 'Still working. This is taking longer than usual.';
-
-/**
  * For a parked bar, which the per-chain watchdog misses when a chain never reaches a peer and so emits nothing. No
  * percentage, since one baked into a sentence goes stale as the bar moves. With nothing arriving it names no cause:
  * the bar also parks while the light client starts or verifies, and a lost connection is the topbar's to announce.
+ * Never throws.
  */
 export function describeProgressStall(bytesPerSecond: number | null): string | null {
   if (isFast(bytesPerSecond)) {
     return null;
   }
-  const rate = throughput(bytesPerSecond);
+  const rate = formatThroughput(bytesPerSecond);
   if (rate !== null) {
     return `Still downloading at ${rate}. That is slower than this app usually needs, so give it a moment.`;
   }
   return STILL_WORKING;
+}
+
+function isFast(bytesPerSecond: number | null): boolean {
+  return bytesPerSecond !== null && bytesPerSecond >= SLOW_BYTES_PER_SECOND;
+}
+
+function formatThroughput(bytesPerSecond: number | null): string | null {
+  // The "connected but nothing arriving" sentence covers under a byte a second.
+  if (bytesPerSecond === null || bytesPerSecond < 1) {
+    return null;
+  }
+  return formatRate(bytesPerSecond);
 }

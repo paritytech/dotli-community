@@ -7,7 +7,7 @@ import { decodeWireMessage } from '@parity/truapi';
 import { createLazyLoad } from '@dotli/shared';
 import { debugBus } from '@dotli/truapi-debug';
 import { loadWireDescriber } from '../lazy.js';
-import { reportLazyMiss } from '../lazyMiss.js';
+import { reportLazyMiss } from '../reportLazyMiss.js';
 import { walletModeState } from './state/walletModeState.js';
 
 type Params = {
@@ -32,7 +32,7 @@ export function createWireDescriber({ load }: Params) {
     preload: createLazyLoad({
       load,
       onFirstMiss: error => {
-        reportLazyMiss('ui', 'wire_describe_load', error);
+        reportLazyMiss({ flow: 'ui', step: 'wire_describe_load', error });
       },
     }),
   };

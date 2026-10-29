@@ -61,6 +61,29 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   and the network health are factories the same way, and measure block arrival, read times and rechecks on the timers
   they are given. The chat panel, the network state and the network health each follow their sources once however many
   callers start them, and stop with the last caller's stop.
+- The shell's own module state is entities the same way, each a factory with the page's instance beside it: the boot
+  tracker that says where a boot failure happened, the product frame layout that writes the frame's geometry through the
+  writer it is given, the bar's morph that what is laid out against the bar waits out, the reload reason over the
+  storage it is given, the way into Settings from outside the bar, and the page's recently visited names. One that keeps
+  state registers its own reset as it is built. The page's start is a clock read of its own, taken once the shell's
+  startup has loaded.
+- Each shell module holds one concept and is named after what it exports, with the page's instance beside its factory.
+  The page start, the host start and the boot failure report are separate steps every entry imports, page start first,
+  as it brings in the shared stylesheet. A lazy chunk keeps the module name it loads by.
+- Each shell factory takes one params object, with the page's own parts as defaults, and the type of what it builds
+  comes from the factory. Other shell functions take at most two positional inputs, with options in a trailing object.
+  The runtime's prompts take one object per question.
+- The product loader, the loading screen, the load progress, the resolution trace, the main-thread monitor, the bar's
+  auto-hide, the product branding, the sandbox content's report and the failure screen wait and measure on the timers,
+  the monotonic clock, the repeating tick and the randomness they are given, the page's own by default. The page's
+  monotonic clock and its repeating tick each have one owner. The loader hands its clocks on to the parts of a load it
+  starts. It reads the protocol frame's telemetry and fetches the product's icon through the clients it is given, the
+  page's own by default. The journey and the failure sightings read the session storage they are given.
+- Every reload that tells the next boot why goes through one step. The topbar's binding, the service worker's update
+  offer, the main-thread monitor, the loading screen, the load progress, the bar's auto-hide on the shield, the sandbox
+  watch and the resolution trace each hand back the cleanup of what they listen to and the timers they hold. The trace
+  releases its own once it ends, and the sandbox watch once the sandbox speaks. A load that fails stops waiting for the
+  sandbox's outcome on its content and stops hearing a refused wire version. The page keeps the rest for its life.
 - Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
   the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
   The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers

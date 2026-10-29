@@ -5,8 +5,10 @@
 
 /** The parts of a window its page closes with. */
 export type ClosablePage = {
+  /** Asks the browser to close the page, which it may refuse without a word. Never throws. */
   close(): void;
   readonly closed: boolean;
+  /** Goes back to the page this one came from. Never throws. */
   history: { back(): void };
 };
 

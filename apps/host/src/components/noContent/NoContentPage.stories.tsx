@@ -3,7 +3,7 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
-import { showNoContentError } from '../../noContentPage.js';
+import { showNoContentError } from '../../showNoContentError.js';
 
 // The page mounts its own root, so each play shows it in the story's `#app` as the host page does.
 

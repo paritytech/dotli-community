@@ -7,7 +7,8 @@ import type { JSX } from '@solidjs/web';
 import { RootBoundary, useStore } from '@dotli/ui';
 import { topbarState } from '../state/topbarState.js';
 import { TopbarReveal as Reveal } from '../components/topbar/TopbarReveal.js';
-import { pageTopbarAutoHide, TOPBAR_REVEAL_SHORTCUT } from '../topbarAutohide.js';
+import { pageTopbarAutoHide } from '../createTopbarAutoHide.js';
+import { TOPBAR_REVEAL_SHORTCUT } from '../topbarRevealShortcut.js';
 
 /** The auto-hiding topbar's ways back, bound to the page's auto-hide. */
 export function TopbarReveal(): JSX.Element {

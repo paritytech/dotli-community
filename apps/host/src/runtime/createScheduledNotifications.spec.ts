@@ -4,8 +4,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ScheduledNotificationRecord } from '@dotli/storage';
 import { createDeferred } from '@dotli/shared';
-import { createFakePage, createManualTimers, type ManualTimers } from '@dotli/shared/testing';
+import { createFakePage, createManualTimers } from '@dotli/shared/testing';
 import { bindReports } from '../testing/bindReports.js';
+import { createManualPoll } from '../testing/createManualPoll.js';
 import {
   createScheduledNotifications,
   SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS,
@@ -65,7 +66,7 @@ function createPollerHarness() {
       visibility: page.document,
       lifecycle: page.window,
       timers,
-      poll: createManualPoll(timers),
+      poll: createManualPoll({ timers }),
       ...overrides,
     });
     notifications.init({ label: 'acme' });
@@ -89,25 +90,6 @@ function createRecordStore({ records }: CreateRecordStoreParams) {
     listAll: vi.fn<ScheduledNotificationStore['listAll']>(() => Promise.resolve([...held.values()])),
     removeStale: vi.fn<ScheduledNotificationStore['removeStale']>(() => Promise.resolve(0)),
     removeById: vi.fn<ScheduledNotificationStore['removeById']>(hostId => Promise.resolve(held.delete(hostId))),
-  };
-}
-
-/** A poll on the spec's clock, whose ticks fire as the spec moves the clock on. */
-function createManualPoll(clock: ManualTimers): NonNullable<ScheduledNotificationsParams['poll']> {
-  return {
-    start(tick, ms) {
-      let waiting = clock.setTimeout(fire, ms);
-      return stop;
-
-      function fire(): void {
-        waiting = clock.setTimeout(fire, ms);
-        tick();
-      }
-
-      function stop(): void {
-        clock.clearTimeout(waiting);
-      }
-    },
   };
 }
 

@@ -5,10 +5,11 @@ import type { JSX } from '@solidjs/web';
 import { getDotliVersion } from '../runtime/createTruapiRuntimeConfig.js';
 import { themeState } from '../runtime/state/themeState.js';
 import { SettingsItem } from '../components/settings/SettingsItem.js';
-import { isTruapiDebugEnabled, openInDebugMode, pageSettingsActions } from '../settingsActions.js';
-import { registerSettingsOpener } from '../settingsIntent.js';
+import { pageSettingsActions } from '../createSettingsActions.js';
+import { isTruapiDebugEnabled, openInDebugMode } from '../debugMode.js';
+import { settingsIntent } from '../createSettingsIntent.js';
 import { settingsState } from '../state/settingsState.js';
-import { selectThemePref } from '../themeController.js';
+import { pageTheme } from '../createThemeController.js';
 import { useSettingsPanel } from './settings.js';
 
 /**
@@ -21,9 +22,9 @@ export function SettingsButton(): JSX.Element {
   const panel = useSettingsPanel({
     settings: settingsState.store,
     theme: themeState.store,
-    selectTheme: selectThemePref,
+    selectTheme: pageTheme.selectThemePref,
     apply: pageSettingsActions.applyAndReset,
-    registerOpener: registerSettingsOpener,
+    registerOpener: settingsIntent.registerOpener,
     version: getDotliVersion(),
     debugMode: isTruapiDebugEnabled,
     openDebugMode: openInDebugMode,

@@ -7,8 +7,13 @@ import { createSyncStore } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import type { ThemePreference } from '../runtime/state/themeState.js';
 import type { SavedSettings } from '../components/settings/settings.js';
-import { openSettings, registerSettingsOpener } from '../settingsIntent.js';
+import { createSettingsIntent } from '../createSettingsIntent.js';
 import { useSettingsPanel } from './settings.js';
+
+type Params = {
+  /** The intent the panel opens through, a fresh one by default. */
+  intent?: ReturnType<typeof createSettingsIntent>;
+};
 
 const SAVED: SavedSettings = {
   backend: 'smoldot-direct',
@@ -23,8 +28,11 @@ afterEach(() => {
   resetAllStoresForTests();
 });
 
-/** The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner. */
-function mount() {
+/**
+ * The page's settings and theme, as boot left them, and the panel's props read from them under a fresh owner, opened
+ * through `intent`.
+ */
+function mount({ intent = createSettingsIntent() }: Params = {}) {
   const settings = createSyncStore<SavedSettings | null>({ name: 'settings-test-settings', initial: null });
   const theme = createSyncStore<{ preference: ThemePreference }>({
     name: 'settings-test-theme',
@@ -36,7 +44,7 @@ function mount() {
       theme,
       selectTheme: () => undefined,
       apply: () => Promise.resolve(),
-      registerOpener: registerSettingsOpener,
+      registerOpener: intent.registerOpener,
       version: '1.2.3',
       debugMode: () => false,
       openDebugMode: () => undefined,
@@ -44,16 +52,17 @@ function mount() {
     dispose: d,
   }));
   flush();
-  return { panel, dispose, settings, theme };
+  return { panel, dispose, settings, theme, intent };
 }
 
 describe('useSettingsPanel', () => {
   it('As a visitor whose load failed, an Open settings asked before the button mounted opens it once mounted', () => {
     // Given
-    openSettings();
+    const intent = createSettingsIntent();
+    intent.open();
 
     // When
-    const { panel, dispose } = mount();
+    const { panel, dispose } = mount({ intent });
 
     // Then
     expect(panel.open()).toBe(true);
@@ -62,12 +71,12 @@ describe('useSettingsPanel', () => {
 
   it('As a visitor, Open settings opens the panel I closed, and stops reaching it once the button is gone', () => {
     // Given
-    const { panel, dispose } = mount();
+    const { panel, dispose, intent } = mount();
     panel.onOpenChange(false);
     flush();
 
     // When
-    openSettings();
+    intent.open();
     flush();
 
     // Then
@@ -76,7 +85,7 @@ describe('useSettingsPanel', () => {
     // When
     dispose();
     panel.onOpenChange(false);
-    openSettings();
+    intent.open();
     flush();
 
     // Then

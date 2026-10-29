@@ -29,6 +29,10 @@ type ConfirmPreimageParams = {
 };
 
 type ConfirmReviewParams<R extends string> = {
+  /** The review the user answers. */
+  dialog: ModalView<R>;
+  /** Ends the ask. */
+  signal: AbortSignal;
   /** Sees every answer, and the step it returns takes the dialog's place until that step closes. */
   handoff?: ((result: R) => ModalHandoff | undefined) | undefined;
 };
@@ -40,11 +44,7 @@ export type HostPrompts = {
   /** Resolves true when the user allows `label` to store a preimage of `size` bytes. */
   confirmPreimage: (params: ConfirmPreimageParams) => Promise<boolean>;
   /** Resolves the result of the button the user chose. */
-  confirmReview: <R extends string>(
-    dialog: ModalView<R>,
-    signal: AbortSignal,
-    options?: ConfirmReviewParams<R>,
-  ) => Promise<R>;
+  confirmReview: <R extends string>(params: ConfirmReviewParams<R>) => Promise<R>;
   /** Shows the user a notification. */
   notify: ShowNotification;
 };

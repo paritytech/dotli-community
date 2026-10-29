@@ -5,7 +5,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { mountRoot } from '@dotli/ui';
-import { setDockInset } from '../../productFrameLayout.js';
+import { productFrameLayout } from '../../createProductFrameLayout.js';
 import { ViolationPanel, type ViolationPanelProps } from './ViolationPanel.js';
 
 const ROOT = 'sandbox-checker';
@@ -28,7 +28,7 @@ export function mountViolationPanel(iframe: HTMLIFrameElement, View: ViolationPa
       <View
         iframe={iframe}
         onReserve={bottom => {
-          setDockInset({ right: 0, bottom }, 'sandbox-checker');
+          productFrameLayout.setDockInset({ right: 0, bottom }, 'sandbox-checker');
         }}
       />
     ),

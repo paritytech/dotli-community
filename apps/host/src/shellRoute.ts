@@ -7,31 +7,18 @@
 import { BASE_DOMAIN } from '@dotli/config';
 import { dotNsUrl, isValidDotName } from '@dotli/resolver';
 import { log } from '@dotli/shared';
-import { parseDotLabel } from './dotLabel.js';
-import { parsePreviewTargetUrl } from './previewRoute.js';
-
-const DOTLI_PRODUCT_ID_PARAM = 'dotliProductId';
-
-const RESERVED_HOST_PARAMS = [
-  'network',
-  'chainBackend',
-  'skipArchiveCache',
-  'skipCidCache',
-  'skipWorkerCache',
-  'fullReset',
-  'v',
-  DOTLI_PRODUCT_ID_PARAM,
-] as const;
+import { parseDotLabel } from './parseDotLabel.js';
+import { parsePreviewTargetUrl } from './parsePreviewTargetUrl.js';
 
 export type ShellLocation = Pick<Location, 'hostname' | 'pathname' | 'search' | 'hash'>;
 
-export type RouteOptions = {
+export type ReadShellRouteParams = {
   /** The shell is served from localhost, the only place a product id override is read. */
   localhost: boolean;
   /** The page runs inside another frame. */
   framed: boolean;
   /** Reads the localhost URL to proxy. Only debug builds give one. */
-  localhostProxy: ((location: ShellLocation) => string | null) | undefined;
+  readLocalhostProxyUrl: ((location: ShellLocation) => string | null) | undefined;
 };
 
 /** A target the shell renders by URL rather than by name. */
@@ -54,20 +41,49 @@ export type ShellRoute =
   | { kind: 'nested' }
   | { kind: 'landing' };
 
-export function readShellRoute(location: ShellLocation, options: RouteOptions): ShellRoute {
+export type LeaveForLandingParams = {
+  /** The page's URL, which the landing page replaces. */
+  location: Pick<Location, 'protocol' | 'port' | 'pathname' | 'search' | 'origin' | 'replace'>;
+  /** The local root the shell is served under, or `null` when deployed. */
+  localRoot: string | null;
+  /** The service workers registered on this origin. */
+  workers: () => Promise<readonly { unregister: () => Promise<boolean> }[]>;
+};
+
+type GetLandingOriginParams = Pick<LeaveForLandingParams['location'], 'protocol' | 'port'> &
+  Pick<LeaveForLandingParams, 'localRoot'>;
+
+const DOTLI_PRODUCT_ID_PARAM = 'dotliProductId';
+
+const RESERVED_HOST_PARAMS = [
+  'network',
+  'chainBackend',
+  'skipArchiveCache',
+  'skipCidCache',
+  'skipWorkerCache',
+  'fullReset',
+  'v',
+  DOTLI_PRODUCT_ID_PARAM,
+] as const;
+
+/** Returns the page `location` names. Throws only as `readLocalhostProxyUrl` does. */
+export function readShellRoute(
+  location: ShellLocation,
+  { localhost, framed, readLocalhostProxyUrl }: ReadShellRouteParams,
+): ShellRoute {
   const previewUrl = parsePreviewTargetUrl(location);
-  if (options.framed && previewUrl === null) {
+  if (framed && previewUrl === null) {
     return { kind: 'nested' };
   }
   const label = parseDotLabel(location.hostname);
   if (label !== null) {
     return { kind: 'product', label, base: '' };
   }
-  const productId = options.localhost ? readProductIdOverride(location.search) : undefined;
+  const productId = localhost ? readProductIdOverride(location.search) : undefined;
   if (previewUrl !== null) {
     return { kind: 'preview', url: previewUrl, host: new URL(previewUrl).host, productId };
   }
-  const localhostUrl = options.localhostProxy?.(location) ?? null;
+  const localhostUrl = readLocalhostProxyUrl?.(location) ?? null;
   if (localhostUrl !== null) {
     return { kind: 'localhost', url: localhostUrl, host: new URL(localhostUrl).host, productId };
   }
@@ -98,8 +114,9 @@ function readProductIdOverride(search: string): string | undefined {
 }
 
 /**
- * Debug builds only: proxying a visitor's localhost into the trusted host origin is dangerous in production. The entry
- * passes this reader under the compile-time flag, so release bundles drop it.
+ * Returns the localhost URL a `/localhost[:port]` path names, without the host's own params, or null for any other
+ * path. Never throws. Debug builds only: proxying a visitor's localhost into the trusted host origin is dangerous in
+ * production.
  */
 export function readLocalhostUrl(location: ShellLocation): string | null {
   const match = /^\/(localhost(?::\d+)?)(.*)$/.exec(location.pathname);
@@ -119,8 +136,11 @@ export function readLocalhostUrl(location: ShellLocation): string | null {
   return `http://${host}${rest}${query ? `?${query}` : ''}${location.hash}`;
 }
 
-/** The URL bar once the target renders. The product got the deep path, so the bar must not show it stale. */
-export function localTargetPath(target: LocalTarget): string {
+/**
+ * Returns the URL bar's path once the target renders. The product got the deep path, so the bar must not show it
+ * stale. Never throws.
+ */
+export function getLocalTargetPath(target: LocalTarget): string {
   if (target.kind === 'preview') {
     const search = new URLSearchParams({ url: target.url });
     if (target.productId !== undefined) {
@@ -133,30 +153,28 @@ export function localTargetPath(target: LocalTarget): string {
     : `/${target.host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(target.productId)}`;
 }
 
-export type LandingDeps = {
-  location: Pick<Location, 'protocol' | 'port' | 'pathname' | 'search' | 'origin' | 'replace'>;
-  /** The local root the shell is served under, or `null` when deployed. */
-  localRoot: string | null;
-  /** The service workers registered on this origin. */
-  workers: () => Promise<readonly { unregister: () => Promise<boolean> }[]>;
-};
-
 /**
  * The server answers the bare host's root with the landing page, so the shell gets a URL with no product only from a
- * service worker an older release registered there, or from a host or path that names none. Fails rather than reloads
- * when neither applies, as a server serving the shell for the landing URL would loop.
+ * service worker an older release registered there, or from a host or path that names none. Rejects rather than
+ * reloads when neither applies, as a server serving the shell for the landing URL would loop, and rejects as `workers`
+ * or an unregister does.
  */
-export async function leaveForLanding(deps: LandingDeps): Promise<void> {
-  const { protocol, port, pathname, search } = deps.location;
-  const origin =
-    deps.localRoot !== null
-      ? `${protocol}//${deps.localRoot}${port === '' ? '' : `:${port}`}`
-      : `${protocol}//${BASE_DOMAIN}`;
-  const registrations = await deps.workers();
-  if (registrations.length === 0 && origin === deps.location.origin && pathname === '/') {
-    throw new Error('the server answered the landing page URL with the shell');
+export async function leaveForLanding({ location, localRoot, workers }: LeaveForLandingParams): Promise<void> {
+  const { protocol, port, pathname, search } = location;
+  const origin = getLandingOrigin({ protocol, port, localRoot });
+  const registrations = await workers();
+  if (registrations.length === 0 && origin === location.origin && pathname === '/') {
+    throw new Error(`leaveForLanding: ${origin}/ answered with the shell, not the landing page`);
   }
   await Promise.all(registrations.map(registration => registration.unregister()));
   log.event('Route: landing page elsewhere', { flow: 'boot', stale_workers: registrations.length });
-  deps.location.replace(`${origin}/${search}`);
+  location.replace(`${origin}/${search}`);
+}
+
+function getLandingOrigin({ protocol, port, localRoot }: GetLandingOriginParams): string {
+  if (localRoot === null) {
+    return `${protocol}//${BASE_DOMAIN}`;
+  }
+  const portSuffix = port === '' ? '' : `:${port}`;
+  return `${protocol}//${localRoot}${portSuffix}`;
 }

@@ -6,7 +6,7 @@ import { render, type JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
 import { RootBoundary } from '@dotli/ui';
 import { settle } from '@dotli/ui/testing';
-import { reportIslandErrors } from '../../src/islandErrors.js';
+import { reportIslandErrors } from '../../src/reportIslandErrors.js';
 
 afterEach(() => {
   document.body.replaceChildren();

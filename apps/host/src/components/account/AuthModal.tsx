@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isShallowEqual } from '@dotli/shared';
 import { Button, LayerTracker, Modal } from '@dotli/ui';
 import type { AuthModalState, AuthModalView, PairingView } from '../../state/authModalState.js';
-import { isMobileDevice } from '../../device.js';
+import { isMobileDevice } from '../../isMobileDevice.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
 import { createPhraseFormLoad, type PhraseForm } from './phraseFormLoad.js';
 import type { DrawQr } from './qrCode.js';

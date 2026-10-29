@@ -413,7 +413,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | RPC transport | `packages/chains/src/createCoreRpcChainProvider.ts` |
 | smoldot transport | `packages/chains/src/createLightClient.ts` |
 | Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/createDotnsResolver.ts` |
-| Host error page classification | `apps/host/src/errors.ts` |
+| Host error page classification | `apps/host/src/describeError.ts` |
 | Host pool, TrUAPI chain connections, `getHostChainProvider` | `apps/host/src/runtime/hostCallbacks/createHostChainPool.ts`, `apps/host/src/runtime/hostCallbacks/createChainConnect.ts`, `apps/host/src/runtime/hostCallbacks/getHostChainProvider.ts` |
 | Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/createFrameChainTransport.ts` |
 | Host pool's chain gates | `apps/host/src/runtime/hostCallbacks/createRedialGate.ts` |

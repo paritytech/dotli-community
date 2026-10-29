@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { query } from '@dotli/ui/testing';
-import { attachProductFrame, setChatWidth } from '../../productFrameLayout.js';
+import { productFrameLayout } from '../../createProductFrameLayout.js';
 import { mountViolationPanel } from './mount.js';
 import violatingProduct from '../../testing/stories/violatingProduct.js?inline-script';
 
@@ -23,7 +23,7 @@ function Checker() {
   frame.title = 'Product';
   frame.srcdoc = PRODUCT;
   frame.dataset['testid'] = 'product-frame';
-  attachProductFrame(frame);
+  productFrameLayout.attach(frame);
   const close = mountViolationPanel(frame);
   onCleanup(close);
   return (
@@ -169,9 +169,9 @@ export const ShowCollapseExpandResizesFrame: Story = {
       await waitFor(() => frameClearsPanel(canvasElement));
     });
     await step('When chat opens, the frame keeps clear of the panel', async () => {
-      setChatWidth(360);
+      productFrameLayout.setChatWidth(360);
       await frameClearsPanel(canvasElement);
-      setChatWidth(0);
+      productFrameLayout.setChatWidth(0);
     });
     await step('When I drag the handle of the collapsed panel, nothing resizes', () => {
       const handle = canvas.getByTestId('sc-resize-handle');

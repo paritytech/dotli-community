@@ -6,11 +6,11 @@
 import type { JSX } from '@solidjs/web';
 import { authControl } from '../runtime/createAuthController.js';
 import { LayerTracker, ModalFocusFallback, RootBoundary, useStore } from '@dotli/ui';
-import { productFrameFocus } from '../productFrameLayout.js';
+import { productFrameLayout } from '../createProductFrameLayout.js';
 import { AuthModal as Modal, type AuthModalPlacement } from '../components/account/AuthModal.js';
 import { authModalState } from '../state/authModalState.js';
 import { topbarSurfaces } from '../state/topbarSurfaces.js';
-import { revealTopbar } from '../topbarAutohide.js';
+import { pageTopbarAutoHide } from '../createTopbarAutoHide.js';
 import { closeWhenOpen, useRevealWhileOpen } from './useRevealWhileOpen.js';
 
 /**
@@ -36,11 +36,11 @@ function BoundModal(props: { placement: AuthModalPlacement }): JSX.Element {
   const state = useStore(authModalState.store);
   useRevealWhileOpen(
     useStore(authModalState.store, modal => modal.open),
-    revealTopbar,
+    pageTopbarAutoHide.reveal,
   );
   return (
     <LayerTracker value={topbarSurfaces.register}>
-      <ModalFocusFallback value={productFrameFocus}>
+      <ModalFocusFallback value={productFrameLayout.getFocusFallback}>
         <Modal
           placement={props.placement}
           state={state}

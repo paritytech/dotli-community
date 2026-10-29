@@ -14,8 +14,13 @@ import { LandingAuth } from '../../src/islands/LandingAuth.js';
 import { LandingNav } from '../../src/islands/LandingNav.js';
 import { LandingPart } from '../../src/islands/LandingPart.js';
 import { LandingRecents } from '../../src/islands/LandingRecents.js';
-import { createRecentLabels } from '../../src/recentLabels.js';
+import { createRecentLabels } from '../../src/createRecentLabels.js';
 import { appears, byTestId } from '@dotli/ui/testing';
+
+type Params = {
+  /** The island that takes the name form's place, the name form by default. */
+  nav?: () => JSX.Element;
+};
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -28,12 +33,12 @@ let unmounts: (() => void)[] = [];
  * The three islands, settled as hydration leaves them: the name form and the one recent name the shared store holds
  * shown, or the error page. `nav` takes the name form's place.
  */
-async function mountIslands({ nav = LandingNav }: { nav?: () => JSX.Element } = {}): Promise<void> {
+async function mountIslands({ nav = LandingNav }: Params = {}): Promise<void> {
   const shared = createMemorySharedChannel({ entries: { dotli_recent: '["alpha"]' } });
   const islands = [
     [LandingAuth, SLOTS.auth, {}],
     [nav, SLOTS.nav, {}],
-    [LandingRecents, SLOTS.recents, { recents: createRecentLabels(shared) }],
+    [LandingRecents, SLOTS.recents, { recents: createRecentLabels({ channel: shared }) }],
   ] as const;
   for (const [island, id, props] of islands) {
     // As in Astro, an island an error page already removed never hydrates.
@@ -57,7 +62,7 @@ function slot(id: string): HTMLElement {
 
 beforeEach(() => {
   captures.exception.mockReset();
-  // Shaped like the landing page (src/components/Landing.astro), which has no `#app`.
+  // Shaped like the landing page, which has no `#app`.
   document.body.innerHTML = `<div data-testid="landing"><div id="${SLOTS.auth}"></div><div id="${SLOTS.nav}"></div><div id="${SLOTS.recents}"></div></div>`;
 });
 

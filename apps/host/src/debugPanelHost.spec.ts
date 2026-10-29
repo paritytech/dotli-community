@@ -3,8 +3,9 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { archiveTransport, debugPanelHost } from './debugPanelHost.js';
-import { attachProductFrame, setDockInset, type ApplyFrameBox } from './productFrameLayout.js';
+import { createDebugPanelHost } from './debugPanelHost.js';
+import { createProductFrameLayout } from './createProductFrameLayout.js';
+import type { FrameBox } from './getFrameBox.js';
 import { createFakeIframe } from './runtime/createProductFrame.fake.js';
 
 afterEach(() => {
@@ -12,28 +13,16 @@ afterEach(() => {
 });
 
 describe('the debug panel host', () => {
-  it("As a dotli developer on the light client, the Archive tab reads blocks from the host's sandbox relay", () => {
-    // Given
-    const blockSource = vi.fn(() => Promise.resolve(new Uint8Array()));
-
-    // Then
-    expect(archiveTransport('smoldot-direct', blockSource)).toEqual({ blockSource });
-    expect(archiveTransport('smoldot-shared-worker', blockSource)).toEqual({ blockSource });
-  });
-
-  it('As a dotli developer on rpc-gateway, the Archive tab reads from the IPFS gateway, as the sandbox reads it', () => {
-    // Then
-    expect(archiveTransport('rpc-gateway', () => Promise.resolve(new Uint8Array()))).toEqual({ gateway: true });
-  });
-
-  it("As the debug panel, the room I report docks beside the sandbox checker's at the bottom edge, not over it", () => {
+  it("As a dotli developer, I dock the debug panel and its room sits beside the sandbox checker's at the bottom edge, not over it", () => {
     // Given a frame on the page and the checker docked below it
-    const apply = vi.fn<ApplyFrameBox>();
-    attachProductFrame(createFakeIframe(), apply);
-    setDockInset({ right: 0, bottom: 100 }, 'sandbox-checker');
+    const apply = vi.fn<(frame: HTMLIFrameElement, box: FrameBox) => void>();
+    const layout = createProductFrameLayout({ apply });
+    layout.attach(createFakeIframe());
+    layout.setDockInset({ right: 0, bottom: 100 }, 'sandbox-checker');
+    const host = createDebugPanelHost({ layout });
 
     // When
-    debugPanelHost.reportDockInset({ right: 0, bottom: 360 });
+    host.reportDockInset({ right: 0, bottom: 360 });
 
     // Then
     expect(apply.mock.lastCall?.[1].bottom).toBe(460);

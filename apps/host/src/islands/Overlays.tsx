@@ -5,7 +5,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { ModalFocusFallback, modals, Overlays as PageOverlays, RootBoundary } from '@dotli/ui';
-import { productFrameFocus } from '../productFrameLayout.js';
+import { productFrameLayout } from '../createProductFrameLayout.js';
 
 /**
  * The page's toasts and dialogs. Its stores hold what boot queued before it hydrated, so that shows once it does. A
@@ -15,7 +15,7 @@ import { productFrameFocus } from '../productFrameLayout.js';
 export function Overlays(): JSX.Element {
   return (
     <RootBoundary root="island:Overlays" onBroken={modals.refuseAll}>
-      <ModalFocusFallback value={productFrameFocus}>
+      <ModalFocusFallback value={productFrameLayout.getFocusFallback}>
         <PageOverlays />
       </ModalFocusFallback>
     </RootBoundary>

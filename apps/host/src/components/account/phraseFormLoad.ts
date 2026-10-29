@@ -4,7 +4,7 @@
 import { createEffect, createMemo, createSignal, untrack, type Accessor } from 'solid-js';
 import { createAsyncTaskPool } from '@dotli/shared';
 import type { PhraseScreenModule } from '../../lazy.js';
-import { reportLazyMiss } from '../../lazyMiss.js';
+import { reportLazyMiss } from '../../reportLazyMiss.js';
 
 /** Where the phrase form's chunk stands on a phrase view: on its way, failed, or loaded. */
 export type PhraseForm = 'loading' | 'failed' | PhraseScreenModule;
@@ -34,7 +34,7 @@ export function createPhraseFormLoad(load: () => Promise<PhraseScreenModule>, on
       try {
         setState(await load());
       } catch (error: unknown) {
-        reportLazyMiss('wallet', 'phrase_screen', error);
+        reportLazyMiss({ flow: 'wallet', step: 'phrase_screen', error });
         setState('failed');
       }
     });

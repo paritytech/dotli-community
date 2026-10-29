@@ -5,7 +5,7 @@
 // recovery phrase in the modal.
 
 import { getErrorMessage } from '@dotli/shared';
-import { reportLazyMiss } from '../lazyMiss.js';
+import { reportLazyMiss } from '../reportLazyMiss.js';
 import type { AuthModalPort, SignInRoute } from './signInRoute.js';
 import { reportLocalWalletFailure } from './walletFailure.js';
 import type { WalletSwitchOutcome } from './createWalletSwitch.js';
@@ -50,7 +50,7 @@ export function createInPageSignIn({ inPagePhrase, modal, login }: Params): Sign
         }
       },
       (error: unknown) => {
-        reportLazyMiss('wallet', 'phrase_import', error);
+        reportLazyMiss({ flow: 'wallet', step: 'phrase_import', error });
         if (modal.getLease() === scope) {
           retryImportsPhrase = true;
           modal.showFailure('Other', getErrorMessage(error));

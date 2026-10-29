@@ -15,6 +15,7 @@ import {
   type VisibilitySource,
 } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
+import { pagePoll, type Poll } from '../pagePoll.js';
 
 export type ScheduleNotificationResult =
   { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
@@ -33,15 +34,6 @@ type ScheduleRequest = {
 };
 
 export type ScheduledNotificationStore = typeof scheduledNotifications;
-
-/** A repeating tick, as the poller runs it. */
-type Poll = {
-  /**
-   * Calls `tick` every `ms` and returns the function that stops it. Never throws, and stopping a poll already stopped
-   * does nothing.
-   */
-  start(tick: () => void, ms: number): () => void;
-};
 
 export type ScheduledNotificationsParams = {
   /** Where scheduled notifications persist. */
@@ -79,18 +71,6 @@ const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 
 const BROADCAST_CHANNEL_NAME = 'dotli:scheduled-notifications';
 
-/** The page's own interval, read at each call. */
-const PAGE_POLL: Poll = {
-  start(tick, ms) {
-    const interval = setInterval(tick, ms);
-    return stop;
-
-    function stop(): void {
-      clearInterval(interval);
-    }
-  },
-};
-
 /** Builds the scheduler over `store`, showing each due notification through `show`. Building it never throws. */
 export function createScheduledNotifications({
   store,
@@ -100,7 +80,7 @@ export function createScheduledNotifications({
   visibility,
   lifecycle,
   timers = realTimers,
-  poll = PAGE_POLL,
+  poll = pagePoll,
 }: ScheduledNotificationsParams) {
   let initialized = false;
   let shuttingDown = false;
@@ -273,6 +253,7 @@ export function createScheduledNotifications({
       ensurePolling();
     });
 
+    // Set up once for the page's life, so its stop goes unused.
     listenForDocumentVisible(visibility, ensurePolling);
 
     // IDB starts closing as unload begins, so a later tick throws `InvalidStateError`. `pagehide`, not

@@ -10,14 +10,19 @@ import { flush } from 'solid-js';
 import { render, type JSX } from '@solidjs/web';
 import { resetAllStoresForTests, waitForDom } from '@dotli/shared/testing';
 import { TopbarActions } from '../../src/islands/TopbarActions.js';
-import { createProductFrameView } from '../../src/productFrameView.js';
+import { createProductFrameView } from '../../src/createProductFrameView.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
 import { byId } from '@dotli/ui/testing';
 import { resetViewport, setPhoneViewport } from '../happyDom.js';
 
+type Params = {
+  /** The island to render into a fresh slot. */
+  island: () => JSX.Element;
+};
+
 let unmount: (() => void) | undefined;
 
-function mount(island: () => JSX.Element): void {
+function mount({ island }: Params): void {
   const slot = document.createElement('div');
   document.body.append(slot);
   unmount = render(island, slot);
@@ -40,7 +45,7 @@ afterEach(() => {
 describe('TopbarActions island', () => {
   it('As a dApp user, an open popover of the bar keeps the auto-hiding bar up, and closing it lets the bar go', async () => {
     // Given
-    mount(() => <TopbarActions />);
+    mount({ island: () => <TopbarActions /> });
 
     // When
     byId('chains-button').click();
@@ -69,7 +74,7 @@ describe('TopbarActions island', () => {
       clearScreen: () => undefined,
       hideLoading: () => undefined,
     }).attachFrame(frame);
-    mount(() => <TopbarActions />);
+    mount({ island: () => <TopbarActions /> });
     const trigger = byId('chains-button');
     trigger.focus();
     trigger.click();

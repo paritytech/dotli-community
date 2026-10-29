@@ -19,7 +19,7 @@ import { moreRow, moreRowNames, openMore } from '../../testing/stories/frames.js
 import { givenApp, resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
 import { resetStorySettings, storySettings } from '../../testing/stories/settingsFixtures.js';
 import { resetStoryNetwork, setHealth, storyNetwork } from '../../testing/stories/networkFixtures.js';
-import type { TopbarMorph } from '../../topbarStatus.js';
+import type { ActionGroupMorph } from '@dotli/ui';
 import { NetworkItem } from '../chains/NetworkItem.js';
 import { PermissionsItem } from '../permissions/PermissionsItem.js';
 import { SettingsItem } from '../settings/SettingsItem.js';
@@ -40,7 +40,7 @@ function givenGrant(): void {
 }
 
 /** A bar that never morphs. */
-const STILL: TopbarMorph = { running: () => false, onEnd: () => () => undefined };
+const STILL: ActionGroupMorph = { running: () => false, onEnd: () => () => undefined };
 
 /** The actions as the host's island renders them, with the story's network, permissions, settings and account. */
 function Actions(): JSX.Element {

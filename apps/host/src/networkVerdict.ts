@@ -22,13 +22,6 @@ const OVERDUE_BLOCK_TIMES = 3;
 /** What the verdict reads of a chain. */
 type ChainTiming = Pick<ChainClock, 'label' | 'sinceLast' | 'blockTimeMs' | 'state' | 'alarm'>;
 
-/** Live but overdue, which the monitor leaves to the verdict so overdue is judged in one place. */
-function isOverdue(chain: ChainTiming): boolean {
-  return (
-    chain.state === 'live' && chain.sinceLast !== null && chain.sinceLast > chain.blockTimeMs * OVERDUE_BLOCK_TIMES
-  );
-}
-
 /**
  * The overall verdict, over the chains in use or pending only. Lifecycle milestones reach it through the monitor's
  * state and alarm, never directly, so a verdict cannot latch on a dead connection.
@@ -52,12 +45,16 @@ export function describeLiveNetwork(status: readonly ChainTiming[]): LiveVerdict
   return { text: 'Your connection is good', tone: 'ok' };
 }
 
+/** Returns the status dot's tone: the live verdict's, or `err` while the browser is offline. Never throws. */
 export function judgeNetworkHealth(status: readonly ChainTiming[], online: boolean): NetworkHealth {
   return online ? describeLiveNetwork(status).tone : 'err';
 }
 
-/** When the verdict next changes with no event, the first on-time chain going overdue. Null when none can. */
-export function nextOverdueAt(status: readonly ChainClock[], now: number): number | null {
+/**
+ * Returns when the verdict next changes with no event, the first on-time chain going overdue. Null when none can.
+ * Never throws.
+ */
+export function getNextOverdueAt(status: readonly ChainClock[], now: number): number | null {
   let at: number | null = null;
   for (const chain of status) {
     if (chain.state !== 'live' || chain.alarm || chain.latest === null || chain.sinceLast === null) {
@@ -70,4 +67,11 @@ export function nextOverdueAt(status: readonly ChainClock[], now: number): numbe
     }
   }
   return at;
+}
+
+/** Returns whether a live chain is past its overdue deadline, judged here alone so every reader agrees. */
+function isOverdue(chain: ChainTiming): boolean {
+  return (
+    chain.state === 'live' && chain.sinceLast !== null && chain.sinceLast > chain.blockTimeMs * OVERDUE_BLOCK_TIMES
+  );
 }

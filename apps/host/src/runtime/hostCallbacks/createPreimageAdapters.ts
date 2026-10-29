@@ -7,7 +7,7 @@ import type { PreimageHost } from '@parity/truapi-host';
 import { createCidFromHash, loadVerify as loadContentVerify } from '@dotli/content';
 import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createLazyLoad, serializeError, log, noop, toHex } from '@dotli/shared';
-import { reportLazyMiss } from '../../lazyMiss.js';
+import { reportLazyMiss } from '../../reportLazyMiss.js';
 import { fetchContentBlock, type PreimageBlock, type PreimageFetch } from './createBlockFetch.js';
 import { createResultStream } from './createResultStream.js';
 
@@ -55,7 +55,7 @@ function createPreimageLookupSubscribe(
   const verify = createLazyLoad({
     load: loadVerify,
     onFirstMiss: error => {
-      reportLazyMiss('content', 'preimage_verify_load', error);
+      reportLazyMiss({ flow: 'content', step: 'preimage_verify_load', error });
     },
   });
   const polls = createAsyncTaskPool({

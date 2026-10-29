@@ -15,7 +15,7 @@ const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
 
 import { LoadingScreen } from '../../src/islands/LoadingScreen.js';
-import { createLoadingController, type LoadingController } from '../../src/loadingController.js';
+import { createLoadingController, type LoadingController } from '../../src/createLoadingController.js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { loadingState } from '../../src/state/loadingState.js';
 import { pageScreen, prefersReducedMotion } from '@dotli/ui';
@@ -51,7 +51,7 @@ beforeEach(() => {
   });
   frames = new Map();
   ctl = createLoadingController({
-    reducedMotion: prefersReducedMotion,
+    prefersReducedMotion,
     frames: {
       request: step => {
         nextFrame += 1;
@@ -73,7 +73,7 @@ afterEach(() => {
   for (const dispose of mounted.splice(0).reverse()) {
     dispose();
   }
-  ctl.stopStatusTick();
+  ctl.dispose();
   resetAllStoresForTests();
   app().innerHTML = '';
   vi.useRealTimers();

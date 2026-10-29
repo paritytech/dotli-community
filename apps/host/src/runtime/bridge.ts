@@ -10,10 +10,10 @@ import { m, spans as S } from '@dotli/metrics';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { createAsyncTaskPool, createLazyLoad, fromHex, listenForPageReturn } from '@dotli/shared';
 import { siteGrants } from '@dotli/storage';
-import { hostPrompts } from '../pagePrompts.js';
+import { hostPrompts } from '../createHostPrompts.js';
 import { loadHostRuntimeChunk, loadLocalWalletCore, loadPolkadotApi, loadTxFillers } from '../lazy.js';
 import { pageNotifications } from '../pageNotifications.js';
-import { productFrameContainer, productFrameView } from '../productFrameView.js';
+import { getProductFrameContainer, productFrameView } from '../createProductFrameView.js';
 import { networkMonitorState } from '../state/networkMonitorState.js';
 import { createBridge } from './createBridge.js';
 import type { AuthCommands } from './createAuthCommands.js';
@@ -105,12 +105,13 @@ const bridge = createBridge({
   bootRuntime,
   subscribeStoredSession: coreStorage.subscribeStoredSession,
   createIframeHost: async params =>
-    (await hostRuntime()).web.createIframeHost({ ...params, container: productFrameContainer() }),
+    (await hostRuntime()).web.createIframeHost({ ...params, container: getProductFrameContainer() }),
   subscribePermissionChanges: productPermissions.subscribeChanges,
   permissions: pagePermissions,
   frameView: productFrameView,
   notify: hostPrompts.notify,
   watchChains: () => {
+    // The watch lasts the page's life, so its stop goes unused.
     watchHostChains({
       onActivity: networkMonitorState.recordChainActivity,
       onBestBlock: networkMonitorState.recordBestBlock,

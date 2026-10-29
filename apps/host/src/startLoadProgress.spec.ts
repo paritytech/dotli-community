@@ -1,0 +1,436 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
+import type { Backend } from '@dotli/config';
+import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
+import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
+import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
+import { createSyncStore } from '@dotli/shared';
+import type { PageContent } from '@dotli/ui';
+import { createLoadingController, type LoadingPhase } from './createLoadingController.js';
+import {
+  startLoadProgress,
+  type ContentProgressFacts,
+  type LoadingScreen,
+  type LoadProgress,
+} from './startLoadProgress.js';
+import { productState } from './runtime/state/productState.js';
+import { loadingState } from './state/loadingState.js';
+import { createManualPoll } from './testing/createManualPoll.js';
+import { networkMonitorState } from './state/networkMonitorState.js';
+
+/** A report source the test sends on, as the protocol client and the content fetch would. */
+type ReportSource<Report> = {
+  on: (listener: (report: Report) => void) => () => void;
+  send: (report: Report) => void;
+};
+
+/** A load's progress over a page of its own, the sources it hears and what it reported, until the case ends. */
+type LoadStand = {
+  progress: LoadProgress;
+  timers: ManualTimers;
+  chainSync: ReportSource<ChainSyncEvent>;
+  chainDetail: ReportSource<ChainDetail>;
+  netBytes: ReportSource<{ received: number }>;
+  content: ReportSource<ContentProgressFacts>;
+  /** Returns the bands the load gave the loading screen. */
+  getBands: () => LoadingPhase[];
+  trace: {
+    recordChainSync: Mock;
+    recordChainDetail: Mock;
+    recordBytes: Mock;
+    recordContent: Mock;
+    markWarningShown: Mock;
+  };
+  debug: DotliDebugEvent[];
+};
+
+/** The bar and the line the loading screen shows. */
+type Band = { progress: number; line: string };
+
+type Params = {
+  /** The backend the load runs on. */
+  backend: Backend;
+};
+
+/** The debug panel's flow every load reports under. */
+const FLOW_ID = 'load-flow';
+
+/** When the page opened, on the wall clock. */
+const PAGE_OPENED_AT = Date.UTC(2026, 0, 1);
+
+describe('startLoadProgress', () => {
+  it('As a visitor on the per-tab light client, I see four bands open on the first, and the download counts its bytes', async () => {
+    // Given
+    const { progress, content, getBands, timers } = setupLoad({ backend: 'smoldot-direct' });
+    const opened = readBand();
+
+    // When the download starts and a second passes with no byte counted, then half the bytes land
+    progress.enterContentFetch();
+    await timers.advance(1_000);
+    const waiting = readProgress();
+    content.send({ bytesFetched: 50, totalBytes: 100 });
+
+    // Then
+    expect(getBands().map(band => band.stage)).toEqual(['starting', 'assetHub', 'resolving', 'content']);
+    expect(opened).toEqual({ progress: 2, line: 'Reaching out' });
+    expect(waiting).toBe(62);
+    expect(readProgress()).toBe(78.5);
+    expect(readStepLine()).toBe('Downloading the app');
+  });
+
+  it('As a visitor on the shared light client, I wait through the download and it runs on the clock', async () => {
+    // Given
+    const { progress, timers } = setupLoad({ backend: 'smoldot-shared-worker' });
+
+    // When a second of the download passes with no byte counted
+    progress.enterContentFetch();
+    await timers.advance(1_000);
+
+    // Then
+    // Five crawl ticks through the 62 to 95 band, which expects ten seconds.
+    expect(readProgress()).toBeCloseTo(65.3);
+  });
+
+  it('As a visitor on a light client, I see resolver milestones move the bar, the bar hold once the name resolves, and the download take the last band', async () => {
+    // Given
+    const { progress, timers } = setupLoad({ backend: 'smoldot-shared-worker' });
+
+    // When
+    progress.resolvePhase('asset-hub-connecting');
+    const connecting = readBand();
+    progress.resolvePhase('asset-hub-syncing');
+    const syncing = readBand();
+    progress.resolvePhase('resolving-content');
+    const resolving = readBand();
+    progress.markNameResolved();
+    const resolved = loadingState.get();
+    await timers.advance(5_000);
+    const held = loadingState.get();
+    progress.enterContentFetch();
+
+    // Then
+    expect(connecting).toEqual({ progress: 10, line: 'Looking up doom.paseo' });
+    expect(syncing).toEqual(connecting);
+    expect(resolving).toEqual({ progress: 55, line: 'Found it' });
+    expect(held).toEqual(resolved);
+    expect(readBand()).toEqual({ progress: 62, line: 'Downloading the app' });
+  });
+
+  it('As a visitor on a gateway, I see three bands that resolver milestones leave alone, and the download takes the third', () => {
+    // Given
+    const { progress, getBands } = setupLoad({ backend: 'rpc-gateway' });
+    const opened = readBand();
+
+    // When
+    progress.resolvePhase('asset-hub-syncing');
+    const afterMilestone = readBand();
+    progress.enterContentFetch();
+
+    // Then
+    expect(getBands().map(band => band.stage)).toEqual(['relay', 'resolving', 'content']);
+    expect(opened).toEqual({ progress: 5, line: 'Connecting to Polkadot' });
+    expect(afterMilestone).toEqual(opened);
+    expect(readBand()).toEqual({ progress: 62, line: 'Downloading the app' });
+  });
+
+  it('As a visitor on a gateway, I get chain reports and see no chain warnings while the resolution trace still hears every report', async () => {
+    // Given
+    const { chainSync, chainDetail, netBytes, content, trace, debug, timers } = setupLoad({ backend: 'rpc-gateway' });
+
+    // When the relay finds no peers, and Asset Hub finds one, which would move a light client's bar
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    chainSync.send({ chain: 'assethub', kind: 'firstPeer' });
+    chainDetail.send({ chain: 'assethub', dbCache: 'hit' });
+    netBytes.send({ received: 2048 });
+    content.send({ bytesFetched: 10, totalBytes: 100 });
+    const afterReports = readProgress();
+    await timers.advance(10_000);
+
+    // Then
+    expect(loadingState.get().warning).toBeNull();
+    expect(afterReports).toBe(5);
+    expect(trace.recordChainSync).toHaveBeenCalledWith({ chain: 'relay', kind: 'connecting' });
+    expect(trace.recordChainDetail).toHaveBeenCalledWith({ chain: 'assethub', dbCache: 'hit' });
+    expect(trace.recordBytes).toHaveBeenCalledWith(2048);
+    expect(trace.recordContent).toHaveBeenCalledWith(10, 100);
+    expect(debug.map(event => event.event)).toEqual(['dbcache']);
+  });
+
+  it('As a visitor in direct mode, I wait on a chain with no peers and am told only once the load is old enough to be slow', async () => {
+    // Given
+    const { chainSync, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+
+    // When
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    await timers.advance(3_000);
+    const warnedEarly = loadingState.get().warning;
+    await timers.advance(2_000);
+
+    // Then
+    expect(warnedEarly).toBeNull();
+    expect(loadingState.get().warning).toBe(
+      'Still looking for computers that carry Polkadot. Nothing has answered yet.',
+    );
+    expect(trace.markWarningShown).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a visitor in direct mode, I see the bar follow the relay warp and Asset Hub, and the network monitor follows each chain', () => {
+    // Given
+    const { chainSync, debug } = setupLoad({ backend: 'smoldot-direct' });
+
+    // When
+    chainSync.send({ chain: 'relay', kind: 'warpSyncProgress', at: 50, target: 100 });
+    const warping = readProgress();
+    chainSync.send({ chain: 'relay', kind: 'warpSyncFinished' });
+    const warped = readProgress();
+    chainSync.send({ chain: 'assethub', kind: 'firstPeer' });
+    const hubFound = readBand();
+    chainSync.send({ chain: 'assethub', kind: 'bootstrapComplete' });
+    chainSync.send({ chain: 'bulletin', kind: 'peers', peers: 3 });
+    const chains = networkMonitorState.getNetworkStatus();
+
+    // Then: half the warp is half of the starting band, from 2 to 10
+    expect(warping).toBe(6);
+    expect(warped).toBe(10);
+    expect(hubFound).toEqual({ progress: 10, line: 'Looking up doom.paseo' });
+    expect(readBand()).toEqual({ progress: 55, line: 'Found it' });
+    expect(chains.find(chain => chain.key === 'relay')?.phase).toBe('ready');
+    expect(chains.find(chain => chain.key === 'assethub')?.phase).toBe('ready');
+    expect(chains.find(chain => chain.key === 'bulletin')?.peers).toBe(3);
+    expect(debug.map(event => event.event)).toEqual(['phase', 'phase', 'phase', 'peers']);
+  });
+
+  it('As a visitor in direct mode, I see the download fill its band by bytes and hand over to preparing once complete', () => {
+    // Given
+    const { progress, content } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+
+    // When
+    content.send({ bytesFetched: 0, totalBytes: null });
+    content.send({ bytesFetched: 50, totalBytes: 100 });
+    const filling = readBand();
+    content.send({ bytesFetched: 100, totalBytes: 100 });
+
+    // Then
+    expect(filling).toEqual({ progress: 78.5, line: 'Downloading the app' });
+    expect(readBand()).toEqual({ progress: 95, line: 'Got everything' });
+    expect(networkMonitorState.getTransfer()).toMatchObject({ fetched: 100, total: 100 });
+  });
+
+  it.each([
+    [
+      'Bulletin finds a peer',
+      (load: LoadStand) => {
+        load.chainSync.send({ chain: 'bulletin', kind: 'peers', peers: 3 });
+      },
+    ],
+    [
+      'the download declares no total',
+      (load: LoadStand) => {
+        load.content.send({ bytesFetched: 0, totalBytes: null });
+      },
+    ],
+  ])(
+    'As a visitor in direct mode, I wait through the download once %s and it runs on the clock',
+    async (_case, release) => {
+      // Given
+      const load = setupLoad({ backend: 'smoldot-direct' });
+      load.progress.enterContentFetch();
+
+      // When a second of the download passes with no byte counted
+      release(load);
+      await load.timers.advance(1_000);
+
+      // Then: five crawl ticks through the 62 to 95 band, where waiting on bytes would hold it at 62
+      expect(readProgress()).toBeCloseTo(65.3);
+    },
+  );
+
+  it('As a visitor on a fast connection, I wait while the download parks the bar and see no warning', async () => {
+    // Given
+    const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+
+    // When the bar holds for ten seconds while 2 MB arrive every second
+    for (let tick = 1; tick <= 20; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_000_000 });
+    }
+
+    // Then
+    expect(loadingState.get().warning).toBeNull();
+  });
+
+  it('As a visitor on a slow connection, I wait while the download parks the bar and see the rate', async () => {
+    // Given
+    const { progress, netBytes, content, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+
+    // When the bar holds for ten seconds while 2 kB arrive every second
+    for (let tick = 1; tick <= 20; tick++) {
+      await timers.advance(500);
+      netBytes.send({ received: tick * 1_024 });
+    }
+
+    // Then
+    expect(loadingState.get().warning).toBe(
+      'Still downloading at 2 kB/s. That is slower than this app usually needs, so give it a moment.',
+    );
+  });
+
+  it('As a developer with the debug panel, I see the product on screen and byte totals stop, the last total included', async () => {
+    // Given
+    const { netBytes, debug, timers } = setupLoad({ backend: 'smoldot-direct' });
+    netBytes.send({ received: 100 });
+    netBytes.send({ received: 200 });
+
+    // When
+    productState.setLoaded({ label: 'doom', productId: 'doom.dot' });
+    await timers.advance(5_000);
+    netBytes.send({ received: 300 });
+
+    // Then
+    expect(debug.filter(event => event.event === 'bytes').map(event => event.payload)).toEqual([
+      { received: 100 },
+      { received: 200 },
+    ]);
+  });
+
+  it('As a developer, I dispose the load progress and hear no more of its byte totals or its chain warnings', async () => {
+    // Given a relay that finds no peers, and a first byte total
+    const { progress, chainSync, netBytes, debug, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
+    chainSync.send({ chain: 'relay', kind: 'peers', peers: 0 });
+    chainSync.send({ chain: 'relay', kind: 'connecting' });
+    netBytes.send({ received: 100 });
+
+    // When
+    progress.dispose();
+    await timers.advance(5_000);
+    netBytes.send({ received: 200 });
+
+    // Then
+    expect(loadingState.get().warning).toBeNull();
+    expect(debug.filter(event => event.event === 'bytes').map(event => event.payload)).toEqual([{ received: 100 }]);
+    expect(trace.recordBytes.mock.calls).toEqual([[100]]);
+  });
+
+  it('As a visitor whose download parks after the load progress was disposed, I wait and see no slow-load warning', async () => {
+    // Given a download that counts its bytes, parked halfway
+    const { progress, content, trace, timers } = setupLoad({ backend: 'smoldot-direct' });
+    progress.enterContentFetch();
+    content.send({ bytesFetched: 500, totalBytes: 1_000 });
+
+    // When
+    progress.dispose();
+    await timers.advance(10_000);
+
+    // Then
+    expect(loadingState.get().warning).toBeNull();
+    expect(trace.markWarningShown).not.toHaveBeenCalled();
+  });
+});
+
+/** Starts a load on `backend` over fresh stores, the page's own timers and a loading screen, until the case ends. */
+function setupLoad({ backend }: Params): LoadStand {
+  const timers = createManualTimers({ start: PAGE_OPENED_AT });
+  resetAllStoresForTests();
+  // The bus has no way back to off, so it stays on for the rest of the file.
+  debugBus.enableBuffering();
+  const chainSync = createReportSource<ChainSyncEvent>();
+  const chainDetail = createReportSource<ChainDetail>();
+  const netBytes = createReportSource<{ received: number }>();
+  const content = createReportSource<ContentProgressFacts>();
+  // The page's loading screen, which writes the loading store, with motion off so no typing frame is asked for.
+  const controller = createLoadingController({
+    prefersReducedMotion: () => true,
+    frames: { request: () => 0, cancel: () => undefined, now: readPageClock },
+    pageContent: createSyncStore<PageContent>({ name: 'load-progress-spec-page-content', initial: 'page' }),
+    timers,
+    poll: createManualPoll({ timers }),
+  });
+  onTestFinished(controller.dispose);
+  let given: LoadingPhase[] = [];
+  const loading: LoadingScreen = {
+    ...controller,
+    initPhases(phases) {
+      given = phases;
+      controller.initPhases(phases);
+    },
+  };
+  const trace = {
+    recordChainSync: vi.fn(),
+    recordChainDetail: vi.fn(),
+    recordBytes: vi.fn(),
+    recordContent: vi.fn(),
+    markWarningShown: vi.fn(),
+  };
+  const debug: DotliDebugEvent[] = [];
+  onTestFinished(
+    debugBus.watch(event => {
+      if ('layer' in event && event.flowId === FLOW_ID) {
+        debug.push(event);
+      }
+    }),
+  );
+  const progress = startLoadProgress({
+    label: 'doom',
+    backend,
+    flowId: FLOW_ID,
+    events: {
+      onChainSync: chainSync.on,
+      onChainDetail: chainDetail.on,
+      onNetBytes: netBytes.on,
+      onContentProgress: content.on,
+    },
+    loading,
+    trace,
+    timers,
+    now: readPageClock,
+  });
+  onTestFinished(progress.dispose);
+  return { progress, timers, chainSync, chainDetail, netBytes, content, getBands: () => given, trace, debug };
+
+  /** Reads the page's monotonic clock, which starts at zero as the page opens. */
+  function readPageClock(): number {
+    return timers.now() - PAGE_OPENED_AT;
+  }
+}
+
+function createReportSource<Report>(): ReportSource<Report> {
+  const listeners = new Set<(report: Report) => void>();
+  return {
+    on(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    send(report) {
+      for (const listener of [...listeners]) {
+        listener(report);
+      }
+    },
+  };
+}
+
+function readProgress(): number {
+  return loadingState.get().progress;
+}
+
+/** Reads the line the loading screen shows for its running stage, the name drawn with its TLD. */
+function readStepLine(): string {
+  return loadingState
+    .get()
+    .step.map(part => (typeof part === 'string' ? part : `${part.host}${part.tld}`))
+    .join('');
+}
+
+function readBand(): Band {
+  return { progress: readProgress(), line: readStepLine() };
+}

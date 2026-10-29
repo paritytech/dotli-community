@@ -43,7 +43,7 @@ export function createFakePrompts() {
     askPermission: ({ label, permission, signal, allowOnce }) =>
       ask({ kind: 'permission', label, permission, allowOnce }, signal),
     confirmPreimage: ({ label, size, signal }) => ask({ kind: 'preimage', label, size }, signal),
-    async confirmReview(dialog, signal, { handoff } = {}) {
+    async confirmReview({ dialog, signal, handoff }) {
       const opened = modals.open(dialog, { signal, handoff: outcome => handoff?.(outcome.result) });
       const id = modals.store.get().at(-1)?.id;
       if (id !== undefined && !signal.aborted) {

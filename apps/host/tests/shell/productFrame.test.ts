@@ -2,76 +2,83 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Without the option above, happy-dom fetches the never-navigated product frames from a dev server. The frame's rules
-// are unit tested beside productFrame.ts. This one is the error page in `#app` meeting the frame's container swap.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// Without the option above, happy-dom fetches the never-navigated product frames from a dev server. This is the error
+// page in `#app` meeting the frame's container swap.
+import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { isSandboxOrigin } from '@dotli/config';
-import { startSandboxChannel, type StartedSandboxChannel } from '@dotli/sandbox-wire';
-import type { FrameProduct, ProductFrame } from '../../src/runtime/createProductFrame.js';
-import { answerConnection, createFakePageCore, type FakePageCore } from '../../src/runtime/createPageCore.fake.js';
+import { startSandboxChannel } from '@dotli/sandbox-wire';
+import type { FrameHostParams, FrameProduct } from '../../src/runtime/createProductFrame.js';
+import { answerConnection, createFakePageCore } from '../../src/runtime/createPageCore.fake.js';
 import { createProductFrame } from '../../src/runtime/createProductFrame.js';
 import { createPermissionAuthorizations } from '../../src/runtime/createPermissionAuthorizations.js';
 import { pageScreen, showErrorPage } from '@dotli/ui';
-import { createProductFrameView } from '../../src/productFrameView.js';
+import { createProductFrameView } from '../../src/createProductFrameView.js';
 import { nth } from '@dotli/shared/testing';
-
-/** What the frame asks of an iframe host. */
-type IframeHostOptions = Parameters<Parameters<typeof createProductFrame>[0]['createIframeHost']>[0];
-
-/** A handler that throws fails the test. */
-const rethrow = (error: unknown): never => {
-  throw error;
-};
+import { rethrow } from '../../src/testing/rethrow.js';
 
 type FakeIframeHost = {
-  options: IframeHostOptions;
+  params: FrameHostParams;
   iframe: HTMLIFrameElement;
-  dispose: ReturnType<typeof vi.fn<() => void>>;
+  dispose: Mock<() => void>;
 };
 
-type Harness = {
-  frame: ProductFrame;
-  container: HTMLElement;
-  hosts: FakeIframeHost[];
-} & FakePageCore;
+type ProductFramePage = ReturnType<typeof setupProductFramePage>;
 
-let channel: StartedSandboxChannel | null = null;
+type RenderProductParams = {
+  product: FrameProduct;
+  /** The core connection the render asks for, by its index. */
+  connection: number;
+};
 
-afterEach(() => {
-  pageScreen.clear();
-  channel?.stop();
-  channel = null;
+describe('product frame rebuilds on the page', () => {
+  it('As a dApp user, I see a failed product ask to be rebuilt and only its new frame is left over the error page', async () => {
+    // Given a product whose load failed after its frame went up
+    const page = setupProductFramePage();
+    await renderProduct(page, { product: createSubdomainProduct('reloaded'), connection: 0 });
+    showErrorPage({ title: 'Failed' });
+
+    // When its sandbox asks to be rebuilt
+    askToRecover(page);
+    await answerConnection(page, 1);
+    await page.changes.until(() => (page.hosts[0]?.dispose.mock.calls.length ?? 0) > 0);
+
+    // Then only the new frame is left
+    expect(page.container.children).toHaveLength(1);
+    expect(page.container.firstElementChild).toBe(nth(page.hosts, 1).iframe);
+  });
 });
 
-beforeEach(() => {
+/** The page's frame over `#app`, with fake frames the test can see, torn down with its channel when the case ends. */
+function setupProductFramePage() {
   document.body.innerHTML = `<div id="app"></div>`;
   window.history.replaceState(null, '', '/');
-});
-
-/** The page's frame over `#app`, with fake frames the test can see. */
-function harness(fakes: FakePageCore = createFakePageCore()): Harness {
+  const fakes = createFakePageCore();
   const container = document.getElementById('app');
   if (container === null) {
     throw new Error('fixture has no #app');
   }
   const hosts: FakeIframeHost[] = [];
-  channel = startSandboxChannel({ target: window, isTrustedOrigin: isSandboxOrigin, report: rethrow });
+  const channel = startSandboxChannel({ target: window, isTrustedOrigin: isSandboxOrigin, report: rethrow });
+  onTestFinished(() => {
+    pageScreen.clear();
+    channel.stop();
+  });
   const frame = createProductFrame({
     core: fakes.core,
-    createIframeHost: options => {
+    createIframeHost(params) {
       const iframe = document.createElement('iframe');
       container.appendChild(iframe);
       const dispose = vi.fn(() => {
         iframe.remove();
         fakes.changes.notify();
       });
-      hosts.push({ options, iframe, dispose });
+      hosts.push({ params, iframe, dispose });
       return Promise.resolve({ iframe, dispose });
     },
     channel,
     subscribePermissionChanges: () => () => undefined,
     permissions: createPermissionAuthorizations(),
-    // The page around the frame, as the host wires it.
+    // The real view over `#app`, so the error page meets the container swap.
     view: createProductFrameView({
       body: () => document.body,
       container: () => container,
@@ -80,49 +87,35 @@ function harness(fakes: FakePageCore = createFakePageCore()): Harness {
     }),
     notify: () => undefined,
   });
-  return { ...fakes, frame, container, hosts };
+  return {
+    ...fakes,
+    frame,
+    /** The page's `#app`, which holds the frames. */
+    container,
+    /** Each iframe host the frame built, in order. */
+    hosts,
+  };
 }
 
 /** Renders `product` and answers the core connection it asks for. */
-async function settle(fakes: Harness, product: FrameProduct, connection: number): Promise<void> {
-  const rendered = fakes.frame.render(product);
-  await answerConnection(fakes, connection);
+async function renderProduct(page: ProductFramePage, { product, connection }: RenderProductParams): Promise<void> {
+  const rendered = page.frame.render(product);
+  await answerConnection(page, connection);
   await rendered;
 }
 
-/** The sandbox in frame `host` asking to be rebuilt, as it does after a reload. */
-function askToRecover(fakes: Harness, host = 0): void {
-  const asking = nth(fakes.hosts, host);
+/** The sandbox in the first frame asking to be rebuilt. */
+function askToRecover(page: ProductFramePage): void {
+  const asking = nth(page.hosts, 0);
   window.dispatchEvent(
     new MessageEvent('message', {
       data: { type: 'dotli:sandbox-recover' },
-      origin: asking.options.allowedOrigin ?? '',
+      origin: asking.params.allowedOrigin ?? '',
       source: asking.iframe.contentWindow,
     }),
   );
 }
 
-const subdomainProduct = (label: string, cid = 'cid'): FrameProduct => ({
-  mode: 'subdomain',
-  label,
-  cid,
-  chat: Promise.resolve(false),
-});
-
-describe('product frame rebuilds on the page', () => {
-  it('As a dApp user, an error page shown over a live product is cleared when its sandbox asks to be rebuilt', async () => {
-    // Given a product whose load failed after its frame went up
-    const fakes = harness();
-    await settle(fakes, subdomainProduct('reloaded'), 0);
-    showErrorPage({ title: 'Failed' });
-
-    // When its sandbox asks to be rebuilt
-    askToRecover(fakes);
-    await answerConnection(fakes, 1);
-    await fakes.changes.until(() => (fakes.hosts[0]?.dispose.mock.calls.length ?? 0) > 0);
-
-    // Then only the new frame is left
-    expect(fakes.container.children).toHaveLength(1);
-    expect(fakes.container.firstElementChild).toBe(nth(fakes.hosts, 1).iframe);
-  });
-});
+function createSubdomainProduct(label: string): FrameProduct {
+  return { mode: 'subdomain', label, cid: 'cid', chat: Promise.resolve(false) };
+}

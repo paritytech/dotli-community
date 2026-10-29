@@ -16,20 +16,25 @@ import { authControl } from '../../src/runtime/createAuthController.js';
 import { authState } from '../../src/runtime/state/authState.js';
 import { topbarState } from '../../src/state/topbarState.js';
 import { AuthModal } from '../../src/islands/AuthModal.js';
-import { createProductFrameView } from '../../src/productFrameView.js';
+import { createProductFrameView } from '../../src/createProductFrameView.js';
 import { topbarSurfaces } from '../../src/state/topbarSurfaces.js';
 import { authModalState } from '../../src/state/authModalState.js';
+
+type Params = {
+  /** Where the modal sits, beside the topbar's end by default. */
+  placement?: 'center' | 'topbar-end';
+};
 
 /** What the controller asked of the bridge chunk's commands. */
 const asked = { logins: 0, cancels: 0 };
 
 const commands: AuthCommands = {
-  login: () => {
+  login() {
     asked.logins += 1;
     return Promise.resolve({ kind: 'cancelled' });
   },
   logout: () => Promise.resolve({ phone: 'told' as const }),
-  cancelLogin: () => {
+  cancelLogin() {
     asked.cancels += 1;
   },
 };
@@ -42,7 +47,7 @@ async function untilModal(open: boolean): Promise<void> {
 }
 
 /** The island mounted as Astro hydrates it, with no saved session and the page's controller started. */
-function mountIsland(placement: 'center' | 'topbar-end' = 'topbar-end'): void {
+function mountIsland({ placement = 'topbar-end' }: Params = {}): void {
   authControl.init({
     coordinator: createBlockingModalCoordinator({ report: topbarState.reportBlockingModals }),
     commands: () => Promise.resolve(commands),
@@ -99,7 +104,7 @@ describe('AuthModal island', () => {
 
   it('As a landing page visitor, I sign in and a dialog opens in the middle of the page whose Cancel cancels the login', async () => {
     // Given the modal island mounted in the middle
-    mountIsland('center');
+    mountIsland({ placement: 'center' });
 
     // When a sign-in starts
     authControl.startLogin();

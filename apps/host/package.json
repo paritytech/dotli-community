@@ -9,7 +9,7 @@
     "./src/landing.ts",
     "./src/main.ts",
     "./src/session.ts",
-    "./src/startup.ts"
+    "./src/startPage.ts"
   ],
   "scripts": {
     "build": "astro build",
