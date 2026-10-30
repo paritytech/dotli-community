@@ -20,7 +20,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-astro": "^3.2.1",
     "eslint-plugin-solid": "0.18.1",
-    "eslint-plugin-turbo": "^2.11.9",
-    "typescript-eslint": "^8.71.2"
+    "eslint-plugin-turbo": "^2.11.10",
+    "typescript-eslint": "^8.72.1"
   }
 }
