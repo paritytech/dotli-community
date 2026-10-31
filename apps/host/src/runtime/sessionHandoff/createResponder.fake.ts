@@ -53,7 +53,7 @@ export function createRecordingResponder({ origin, onHeld }: CreateRecordingResp
     posts.push(post);
     round.set(state);
   }
-  const responder: Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state' | 'subscribe'> = {
+  const responder: Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state' | 'subscribe' | 'dispose'> = {
     state: status.get,
     subscribe: status.subscribe,
     send(result, { siteToken } = {}) {
@@ -75,6 +75,7 @@ export function createRecordingResponder({ origin, onHeld }: CreateRecordingResp
     cancel() {
       end({ type: 'dotli:s:cancelled' }, { kind: 'answered' });
     },
+    dispose: () => undefined,
   };
   /** The window comes back from the back-forward cache and waits to be vetted again. */
   function restore(): void {

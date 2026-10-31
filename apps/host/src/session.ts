@@ -148,7 +148,7 @@ async function signOut(taken: SessionRequest, enabled: readonly Network[]): Prom
   const { notified } = request;
   sessionWindowState.setScreen({ view: 'signing-out' });
   // Before the boot, so the handshake runs while the frame comes up. A refused opener leaves the sign-out views as
-  // they are.
+  // they are. The responder lives as long as the window's page, so nothing disposes it.
   const responder = startPageResponder<typeof SIGNED_OUT_RESULT>(request.round, judgeOpener);
   const read = createDeferred<undefined>();
   function release(): void {
@@ -217,6 +217,7 @@ function startFlow(
 
 /** Shows the sign-in flow for `intent`, which delivers to the responder's opener. */
 function openFlow({ responder, intent, bridgeModule }: OpenFlowParams): void {
+  // The flow lives as long as the window's page, so nothing disposes it.
   const { screen } = startFlow(bridgeModule, {
     responder,
     intent,
@@ -277,6 +278,7 @@ function getSiteWindowParams({
  * stops it.
  */
 function openSiteFlow({ responder, round, close }: OpenSiteFlowParams): () => void {
+  // The site window lives as long as the window's page, so nothing disposes it.
   const { site, screen } = openSiteSignIn({
     ...getSiteWindowParams({ responder, round, account: null, close }),
     request: round.request,
@@ -295,6 +297,7 @@ async function openSiteTransactionFlow({
   stopShowingResponder,
 }: OpenSiteTransactionFlowParams): Promise<void> {
   const { booted: bridgeModule } = round;
+  // The site window lives as long as the window's page, so nothing disposes it.
   const opened = await openSiteTransaction({
     ...getSiteWindowParams({ responder, round, account: round.request.account, close: closeWindow }),
     request: round.request,
@@ -352,6 +355,7 @@ async function redirectSignIn({ taken, enabled, fields }: RedirectSignInParams):
   }
   // Stops showing the round's screen once the round opened, and does nothing before.
   let stopShowingRound = (): void => undefined;
+  // The responder lives as long as the window's page, so nothing disposes it.
   const responder = createRedirectResponder({
     origin: verdict.origin,
     returnTo: fields.returnTo,
@@ -425,7 +429,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
     }
   }
   // Before the boot, so the handshake runs while the frame comes up. Until the window knows the flow it runs, it shows
-  // Connecting.
+  // Connecting. The responder lives as long as the window's page, so nothing disposes it.
   const responder = startPageResponder<unknown>(taken.round, judgeOpener);
   if (responder.state().kind === 'no-opener') {
     // No hello names a party, so the request is read at once as dot.li's own.

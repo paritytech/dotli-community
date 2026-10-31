@@ -42,6 +42,7 @@ import { createFrameBoot } from './createFrameBoot.js';
 import { createRefusalReporter } from './createRefusalReporter.js';
 import { createSharedStoreHandler } from './createSharedStoreHandler.js';
 import { createTelemetryHandler } from './createTelemetryHandler.js';
+import { disposeOnPageHide } from './disposeOnPageHide.js';
 import { FRAME_LOG_TAG } from './frameLogTag.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
 import { toWorkerName } from './parseWorkerNetwork.js';
@@ -124,6 +125,7 @@ const sharedStores = createSharedStoreHandler({
   serving: served,
   readStorage: () => localStorage,
 });
+// The frame serves the wallet as long as its page, so the stop goes unused.
 serveLocalWallet({
   serving: served,
   onChange: siteId => {
@@ -231,6 +233,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
     onIssue: wire.onIssue,
   });
+  // The link and the relay live as long as the frame's page, so their stops go unused.
   // Relayed calls skip this frame's refusal report, since the refusals they carry are not this frame's own.
   registerWorkerRelay({ serving, worker: link.transport, workerStatus: link.status, boot });
   await link.ready;
@@ -238,14 +241,14 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 }
 
 /**
- * Serves `engine` and reports the frame ready. The iframe serves its one parent, so one scope holds every connection.
+ * Serves `engine`, reports the frame ready, and disposes `engine` once the page is hidden for good. The iframe serves
+ * its one parent, so one scope holds every connection.
  */
 function serveEngine(engine: ProtocolEngine): void {
+  // The frame serves its engine as long as its page, so both stops go unused.
   serveEngineScope(served, engine);
+  disposeOnPageHide({ target: window, dispose: engine.dispose });
   boot.markReady();
-  window.addEventListener('beforeunload', () => {
-    engine.dispose();
-  });
 }
 
 async function initDirectMode(): Promise<void> {
@@ -265,7 +268,8 @@ async function initDirectMode(): Promise<void> {
     },
     services: getActiveServicesConfig(),
   });
-  window.addEventListener('pagehide', service.dispose);
+  // The service lives as long as the frame's page, so the stop goes unused.
+  disposeOnPageHide({ target: window, dispose: service.dispose });
 
   lightClient.subscribe(change => {
     if (change.kind === 'fatal') {

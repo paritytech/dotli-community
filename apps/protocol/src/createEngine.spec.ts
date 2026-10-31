@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { must } from '@dotli/shared/testing';
+import { catchError, must } from '@dotli/shared/testing';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -12,7 +12,16 @@ import type {
 import { createChainPool, type ChainTransportHooks } from '@dotli/chains';
 import { TIMEOUTS } from '@dotli/config';
 import { getBudget, protocolSchema, type RemoteFailure } from '@dotli/protocol';
-import { domain, err, hostFailure, ok, type Failure, type MethodTypes, type ResultPayload } from '@dotli/transport';
+import {
+  domain,
+  err,
+  hostFailure,
+  ok,
+  type Failure,
+  type MethodTypes,
+  type ResultPayload,
+  unsupported,
+} from '@dotli/transport';
 import {
   createEngine,
   MAX_CONNECTIONS,
@@ -84,12 +93,14 @@ function createTransports() {
 /** Opens a host page on a new scope of `engine`. */
 function openTab(engine: ProtocolEngine) {
   const { serving, host } = linkHost();
-  const scope = serveEngineScope(serving, engine);
+  const { scope, stop } = serveEngineScope(serving, engine);
   return {
     /** The host page's end. */
     host,
     /** The page's scope on the engine. */
     scope,
+    /** Stops serving the page's scope. */
+    stop,
     /** Settles once the chain is connected or the connect ended. Never rejects. */
     async connect(genesisHash: string, connectionId: string): Promise<ChainRecording> {
       const connected = record({ transport: host, method: chain.connect, start: { genesisHash, connectionId } });
@@ -154,6 +165,22 @@ describe('createEngine chain connections', () => {
       CONNECTED,
       { tag: 'message', value: JSON.stringify({ jsonrpc: '2.0', id: 'q1', result: '0xaa' }) },
     ]);
+  });
+
+  it("As the frame, I stop serving a page's scope and its open connection ends and its next call is refused", async () => {
+    // Given a page with an open connection
+    const { tab } = startEngine();
+    const chain = await tab.connect('0xaa', 'c1');
+
+    // When the frame stops serving the page's scope, and again
+    tab.stop();
+    const thrown = catchError(tab.stop);
+    const send = await tab.send('c1', '{}');
+
+    // Then the connection ended, the next call is refused as unserved, and the second stop did not throw
+    expect(await chain.ended).toEqual(ok());
+    expect(send).toEqual(err(unsupported()));
+    expect(thrown).toBeUndefined();
   });
 
   it('As a product, I send on a connection that does not exist and the send fails', async () => {

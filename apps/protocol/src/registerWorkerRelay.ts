@@ -34,12 +34,15 @@ type Params = {
  * Forwards the chain and name calls of `serving` to `worker`, and feeds `boot` the worker's telemetry. When the worker
  * stops serving this tab, `boot` ends the status with the worker's own end, and the calls the worker still holds fail,
  * since it will answer nothing more.
+ *
+ * Returns a stop that stops forwarding and removes the status listener, leaving the calls already forwarded to run to
+ * their end. The telemetry stays served, since `boot.serveTelemetry` cannot be undone. The stop is safe to call twice.
  */
-export function registerWorkerRelay({ serving, worker, workerStatus, boot }: Params): void {
-  serving.forward(ENGINE_METHODS, worker);
+export function registerWorkerRelay({ serving, worker, workerStatus, boot }: Params): () => void {
+  const stopForwarding = serving.forward(ENGINE_METHODS, worker);
   // Before the status can end, so no telemetry subscription waits for a source when it does.
   boot.serveTelemetry(relaySubscription(worker, protocolSchema.sections.frame.telemetry));
-  workerStatus.onEnd(end => {
+  const stopListening = workerStatus.onEnd(end => {
     // The status ends first, so the forwarded calls fail after it.
     switch (end.kind) {
       case 'interrupt':
@@ -52,6 +55,10 @@ export function registerWorkerRelay({ serving, worker, workerStatus, boot }: Par
     // A worker that stopped serving this tab answers nothing more, so a call it held would wait for good.
     worker.dispose(getWorkerEndError(end));
   });
+  return function stop(): void {
+    stopForwarding();
+    stopListening();
+  };
 }
 
 /**

@@ -32,11 +32,11 @@ type Params = {
   onReady: () => void;
 };
 
-/** Subscribes to the worker's status once, and tells each listener its end. */
+/** Subscribes to the worker's status once, and tells each listener its end until it is disposed. */
 export function watchWorkerStatus({ transport, onReady }: Params) {
   const ends = createListenerSet<WorkerEnd>({ onListenerError: reportListener('protocol', 'protocol.worker_status') });
   let ended: WorkerEnd | null = null;
-  transport.subscribe({
+  const unsubscribe = transport.subscribe({
     method: protocolSchema.sections.frame.status,
     start: undefined,
     listeners: {
@@ -56,6 +56,10 @@ export function watchWorkerStatus({ transport, onReady }: Params) {
      * is a no-op, since nothing is left to hear. A listener that throws is reported, never thrown.
      */
     onEnd,
+    /** Ends the subscription, safe to call twice and after the status ended. A listener still waiting hears no end. */
+    dispose(): void {
+      unsubscribe();
+    },
   };
 
   // The transport ends a subscription once.

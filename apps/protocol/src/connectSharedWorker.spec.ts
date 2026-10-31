@@ -15,7 +15,13 @@ import {
   type FrameStatusEnd,
 } from '@dotli/protocol';
 import { createDeferred } from '@dotli/shared';
-import { createFakePage, type FakePage, createManualTimers, type ManualTimers } from '@dotli/shared/testing';
+import {
+  catchError,
+  createFakePage,
+  type FakePage,
+  createManualTimers,
+  type ManualTimers,
+} from '@dotli/shared/testing';
 import {
   createPortProvider,
   createTransport,
@@ -159,6 +165,25 @@ function link(
     readyTimeoutMs: READY_TIMEOUT_MS,
     timers,
   });
+}
+
+/** Counts the `pagehide` listeners attached to `page`'s window, so a case can see each one removed. */
+function countPageHideListeners(page: FakePage): () => number {
+  const attached = new Set<unknown>();
+  const original = { ...page.window };
+  page.window.addEventListener = (...args: Parameters<EventTarget['addEventListener']>): void => {
+    if (args[0] === 'pagehide') {
+      attached.add(args[1]);
+    }
+    original.addEventListener(...args);
+  };
+  page.window.removeEventListener = (...args: Parameters<EventTarget['removeEventListener']>): void => {
+    if (args[0] === 'pagehide') {
+      attached.delete(args[1]);
+    }
+    original.removeEventListener(...args);
+  };
+  return () => attached.size;
 }
 
 /** Settles with the first end a frame status hears. */
@@ -427,6 +452,104 @@ describe('connectSharedWorker', () => {
 
     // Then its transport is closed, and the worker hears its port close
     await expect(answer).rejects.toThrow(PROTOCOL_APP_ERRORS.PORT_CLOSED);
+    await worker.portClosed;
+  });
+
+  it("As a tab that let go of its link, I answer no more beats and my page's pagehide does nothing more", async () => {
+    // Given a tab on a ready worker that answered one beat
+    const page = createFakePage();
+    const worker = createFakeWorker();
+    const linked = link(worker, { page });
+    worker.status.markReady();
+    await linked.ready;
+    await worker.beatsHeard;
+    const answered = worker.waitForHeartbeat();
+    worker.beatTab();
+    await answered;
+
+    // When the tab lets go of its link twice, the worker beats once its port closed, and the page hides for good
+    linked.dispose();
+    const thrownByDispose = catchError(() => {
+      linked.dispose();
+    });
+    await worker.portClosed;
+    worker.beatTab();
+    const thrownByPageHide = catchError(() => {
+      page.hide(false);
+    });
+
+    // Then the later beat went unanswered, and neither the second dispose nor the pagehide threw
+    expect(worker.heartbeats).toHaveLength(1);
+    expect(thrownByDispose).toBeUndefined();
+    expect(thrownByPageHide).toBeUndefined();
+  });
+
+  it('As a tab that let go of its link, I leave no pagehide listener on my page, whether I let go once or twice', async () => {
+    // Given a tab linked to a ready worker, whose page listeners are counted
+    const page = createFakePage();
+    const countListeners = countPageHideListeners(page);
+    const worker = createFakeWorker();
+    const linked = link(worker, { page });
+    worker.status.markReady();
+    await linked.ready;
+    const whileLinked = countListeners();
+
+    // When the tab lets go of its link twice
+    linked.dispose();
+    linked.dispose();
+
+    // Then the page listened while the tab was linked, and no listener is left
+    expect(whileLinked).toBe(1);
+    expect(countListeners()).toBe(0);
+  });
+
+  it('As a tab whose ready wait failed, I let go of my link and nothing throws', async () => {
+    // Given a tab whose worker never said ready, so the link failed
+    const timers = createManualTimers();
+    const worker = createFakeWorker();
+    const linked = link(worker, { timers });
+    const failed = linked.ready.catch((error: unknown) => error);
+    await worker.statusHeard;
+    await timers.advance(READY_TIMEOUT_MS);
+    await failed;
+
+    // When the tab lets go of its link
+    const thrown = catchError(() => {
+      linked.dispose();
+    });
+
+    // Then nothing throws
+    expect(thrown).toBeUndefined();
+  });
+
+  it('As a dotli maintainer, I watch a SharedWorker fail after its tab let go of the link and see nothing reported', async () => {
+    // Given a tab that let go of its link to a ready worker
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const worker = createFakeWorker();
+    const linked = link(worker);
+    worker.status.markReady();
+    await linked.ready;
+    linked.dispose();
+
+    // When the worker's script then fails
+    worker.failToStart('late script error');
+
+    // Then nothing is captured
+    expect(captured.map(capture => capture.step)).toEqual([]);
+  });
+
+  it('As a tab that let go of its link before the worker was ready, I hear the ready wait fail', async () => {
+    // Given a tab whose worker still syncs
+    const worker = createFakeWorker();
+    const linked = link(worker);
+    const failed = linked.ready.catch((error: unknown) => error);
+    await worker.statusHeard;
+
+    // When the tab lets go of its link
+    linked.dispose();
+
+    // Then the ready wait failed as the port closed, and the worker hears its port close
+    await expect(failed).resolves.toMatchObject({ message: PROTOCOL_APP_ERRORS.PORT_CLOSED });
     await worker.portClosed;
   });
 

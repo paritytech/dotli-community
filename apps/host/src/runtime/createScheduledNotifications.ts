@@ -9,6 +9,7 @@ import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   log,
+  listen,
   listenForDocumentVisible,
   realTimers,
   type Timers,
@@ -84,7 +85,10 @@ export function createScheduledNotifications({
 }: ScheduledNotificationsParams) {
   let initialized = false;
   let shuttingDown = false;
+  // Aborts on dispose, after which the scheduler starts no poller, opens no channel and claims no record.
+  const lifetime = new AbortController();
   let stopPoll: (() => void) | null = null;
+  let stopListening: (() => void) | null = null;
   let broadcastChannel: BroadcastChannel | null = null;
   const failing = new Set<PollStep>();
   // One claim per record at a time. A claim that queued behind another finds the record gone and fires nothing.
@@ -144,6 +148,10 @@ export function createScheduledNotifications({
 
   async function claim(record: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): Promise<void> {
     async function claimAndFire(): Promise<void> {
+      // A disposed scheduler leaves the record in the store for another tab or the next load to fire.
+      if (lifetime.signal.aborted) {
+        return;
+      }
       const removed = await store.removeById(record.hostId);
       if (!removed) {
         return;
@@ -212,7 +220,7 @@ export function createScheduledNotifications({
   }
 
   function ensurePolling(): void {
-    if (shuttingDown || stopPoll !== null) {
+    if (shuttingDown || lifetime.signal.aborted || stopPoll !== null) {
       return;
     }
     stopPoll = poll.start(() => {
@@ -233,6 +241,11 @@ export function createScheduledNotifications({
     }
   }
 
+  function closeBroadcast(): void {
+    broadcastChannel?.close();
+    broadcastChannel = null;
+  }
+
   async function rehydrate(): Promise<void> {
     const records = await listPendingRecords();
     const now = timers.now();
@@ -245,7 +258,7 @@ export function createScheduledNotifications({
   }
 
   function init({ label }: InitParams): void {
-    if (initialized) {
+    if (initialized || lifetime.signal.aborted) {
       return;
     }
     initialized = true;
@@ -258,30 +271,49 @@ export function createScheduledNotifications({
       ensurePolling();
     });
 
-    // Set up once for the page's life, so its stop goes unused.
-    listenForDocumentVisible(visibility, ensurePolling);
+    stopListening = listenForPage();
+  }
+
+  /** Follows the page as it shows, hides and comes back from the back-forward cache, until the returned stop. */
+  function listenForPage(): () => void {
+    const stopVisible = listenForDocumentVisible(visibility, ensurePolling);
 
     // IDB starts closing as unload begins, so a later tick throws `InvalidStateError`. `pagehide`, not
     // `beforeunload`, because it also fires on the bfcache path.
-    lifecycle.addEventListener('pagehide', () => {
-      shuttingDown = true;
-      stopPolling();
-      broadcastChannel?.close();
-      broadcastChannel = null;
+    const stopHide = listen({
+      target: lifecycle,
+      type: 'pagehide',
+      handler: () => {
+        shuttingDown = true;
+        stopPolling();
+        closeBroadcast();
+      },
     });
 
     // A page restored from the back-forward cache runs on where `pagehide` stopped it, so the channel and the
     // poller come back, and a record that fell due meanwhile fires. The first load's `pageshow` is not a restore.
-    lifecycle.addEventListener('pageshow', event => {
-      if (!('persisted' in event) || event.persisted !== true) {
-        return;
-      }
-      shuttingDown = false;
-      openBroadcast();
-      void rehydrate().then(() => {
-        ensurePolling();
-      });
+    const stopShow = listen({
+      target: lifecycle,
+      type: 'pageshow',
+      handler: event => {
+        if (!('persisted' in event) || event.persisted !== true) {
+          return;
+        }
+        shuttingDown = false;
+        openBroadcast();
+        void rehydrate().then(() => {
+          ensurePolling();
+        });
+      },
     });
+
+    return stop;
+
+    function stop(): void {
+      stopVisible();
+      stopHide();
+      stopShow();
+    }
   }
 
   async function schedule(request: ScheduleRequest): Promise<ScheduleNotificationResult> {
@@ -318,18 +350,37 @@ export function createScheduledNotifications({
     return removed;
   }
 
+  function dispose(): void {
+    lifetime.abort(new Error('The notification scheduler was disposed'));
+    stopListening?.();
+    stopListening = null;
+    stopPolling();
+    closeBroadcast();
+  }
+
   return {
-    /** Opens the channel, fires what fell due and starts the poller. Idempotent, and never throws. */
+    /**
+     * Opens the channel, fires what fell due and starts the poller. Idempotent, never throws, and does nothing after
+     * `dispose`.
+     */
     init,
     /**
      * Schedules a notification. An immediate fire (null or past `scheduledAt`) only allocates an id and is not
-     * persisted. Rejects when the store cannot allocate or write it.
+     * persisted. After `dispose` it still persists the notification for another tab or the next load to fire, but
+     * starts no poller. Rejects when the store cannot allocate or write it.
      */
     schedule,
     /**
-     * Idempotent. False when the record had already fired or never existed. Rejects when the store cannot remove it.
+     * Idempotent, also after `dispose`. False when the record had already fired or never existed. Rejects when the
+     * store cannot remove it.
      */
     cancel,
+    /**
+     * Stops the poller, closes the channel and stops hearing the page, so a round in flight claims nothing more, an
+     * `init` or a restore after it starts nothing, a `schedule` or `cancel` still settles as the store answers, and it
+     * is safe to call twice or after a failed round and never throws.
+     */
+    dispose,
   };
 }
 

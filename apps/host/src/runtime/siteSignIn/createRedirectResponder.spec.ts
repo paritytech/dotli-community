@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createDeferred } from '@dotli/shared';
+import { catchError } from '@dotli/shared/testing';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import type { ResponderState } from '../sessionHandoff/createResponder.js';
 import { createRedirectResponder, type RedirectDelivery, type RedirectResponder } from './createRedirectResponder.js';
@@ -254,5 +255,51 @@ describe('redirect responder', () => {
 
     // Then the subscriber saw the refusal
     expect(seen).toEqual(['refused']);
+  });
+
+  it('As a site whose answer is still sealing when the responder is disposed, I still get that answer', async () => {
+    // Given a redirect responder whose seal has not finished
+    const seal = createDeferred<string>();
+    const { responder, events, navigated } = openRedirectResponder(() => seal.promise);
+    responder.send({ account: 'a' });
+
+    // When it is disposed and the seal then finishes
+    responder.dispose();
+    seal.resolve(SEALED);
+    await navigated;
+
+    // Then the window forgot its request and navigated with the answer
+    expect(events).toEqual(['forget', `navigate ${SEALED}`]);
+    expect(responder.delivery()).toBe('sent');
+  });
+
+  it('As a dotli integrator, I dispose a redirect responder whose seal failed and see no error', async () => {
+    // Given a redirect responder whose seal failed
+    const { responder, failure } = openRedirectResponder(() => Promise.reject(new Error('seal failed')));
+    responder.send({ account: 'a' });
+    await failure;
+
+    // When it is disposed
+    const thrown = catchError(() => {
+      responder.dispose();
+    });
+
+    // Then nothing threw, and the delivery stays failed
+    expect(thrown).toBeUndefined();
+    expect(responder.delivery()).toBe('failed');
+  });
+
+  it('As a dotli integrator, I dispose a redirect responder twice and see no error', () => {
+    // Given a redirect responder disposed once
+    const { responder } = openRedirectResponder();
+    responder.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(() => {
+      responder.dispose();
+    });
+
+    // Then nothing threw
+    expect(thrown).toBeUndefined();
   });
 });

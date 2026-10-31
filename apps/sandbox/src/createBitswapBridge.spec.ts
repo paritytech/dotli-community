@@ -6,9 +6,10 @@ import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, type RecordingSentry } from '@dotli/metrics/testing';
 import { isRecord } from '@dotli/shared';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { createManualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
+import { catchError, createManualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 
 import { createBitswapBridge, createHostOriginRule, type BitswapBridge } from './createBitswapBridge.js';
+import { createCountingEventTarget } from './testing/createCountingEventTarget.js';
 
 type Harness = {
   bridge: BitswapBridge;
@@ -26,15 +27,18 @@ const BLOCK_REQUEST = 'dotli:bitswap-get';
 const BLOCK_ABORT = 'dotli:bitswap-abort';
 const BLOCK_RESULT = 'dotli:bitswap-result';
 
+/** The sandbox's window as the bridge and the harness use it. */
+type SandboxWindow = Pick<EventTarget, 'addEventListener' | 'removeEventListener' | 'dispatchEvent'>;
+
 /**
- * The sandbox's window and its host parent, as fakes the test drives. `refuseAborts` makes posting an abort throw, and
- * `timers` are the clock and timers the bridge runs on.
+ * The sandbox's window and its host parent, as fakes the test drives. `refuseAborts` makes posting an abort throw.
+ * `timers` are the clock and timers the bridge runs on. `target` is the sandbox's window.
  */
 function createHarness({
   refuseAborts = false,
   timers = createManualTimers(),
-}: { refuseAborts?: boolean; timers?: ManualTimers } = {}): Harness {
-  const target = new EventTarget();
+  target = new EventTarget(),
+}: { refuseAborts?: boolean; timers?: ManualTimers; target?: SandboxWindow } = {}): Harness {
   const posted: unknown[] = [];
   const parent: Pick<Window, 'postMessage'> = {
     postMessage(message: unknown) {
@@ -118,6 +122,22 @@ describe('sandbox bitswap bridge', () => {
     // Then the host was told which fetches to drop
     await settled;
     expect(filterPosted(sandbox.posted, BLOCK_ABORT)).toMatchObject([{ type: BLOCK_ABORT, ids: [id] }]);
+  });
+
+  it('As a user whose host cannot be told to stop, I leave the page and my open read aborts and the failed abort is logged and counted', async () => {
+    // Given a block request the host has not answered, on a parent that refuses the abort
+    const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const sandbox = createHarness({ refuseAborts: true });
+    const pending = sandbox.bridge.requestBlock('bafyX');
+    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+    // When the frame goes away for good
+    sandbox.hidePage(false);
+
+    // Then the read was aborted and the failed abort was reported
+    await settled;
+    expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
+    expect(sentry.counted(S.SANDBOX_BITSWAP_ABORT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a user, I leave the page and its abort names this frame as its requests do, since the host reads it after the frame is gone', async () => {
@@ -248,6 +268,114 @@ describe('sandbox bitswap bridge', () => {
 
     // Then the host is not messaged at all
     expect(sandbox.posted).toEqual([]);
+  });
+
+  it('As a sandbox that let go of its bridge, I stop hearing the host and no message listener is left', () => {
+    // Given a bridge listening on the sandbox's window for the host's answers
+    const target = createCountingEventTarget({ type: 'message' });
+    const sandbox = createHarness({ target });
+
+    // When the sandbox lets go of the bridge
+    sandbox.bridge.dispose();
+
+    // Then no listener for the host's answers is left
+    expect(target.countListening()).toBe(0);
+  });
+
+  it('As a sandbox that let go of its bridge, I stop hearing my page hide and no pagehide listener is left', () => {
+    // Given a bridge listening on the sandbox's window for the page going away
+    const target = createCountingEventTarget({ type: 'pagehide' });
+    const sandbox = createHarness({ target });
+
+    // When the sandbox lets go of the bridge
+    sandbox.bridge.dispose();
+
+    // Then no listener for the page going away is left
+    expect(target.countListening()).toBe(0);
+  });
+
+  it('As a sandbox that let go of its bridge while a block was on its way, I hear that read abort and the host hears the abort', async () => {
+    // Given a block request the host has not answered
+    const sandbox = createHarness();
+    const pending = sandbox.bridge.requestBlock('bafyD');
+    const id = getRequestId(sandbox.posted);
+    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+    // When the sandbox lets go of the bridge
+    sandbox.bridge.dispose();
+
+    // Then the read was aborted and the host was told which fetch to drop
+    await settled;
+    expect(filterPosted(sandbox.posted, BLOCK_ABORT)).toMatchObject([{ type: BLOCK_ABORT, ids: [id] }]);
+  });
+
+  it('As a sandbox that let go of its bridge while a block was on its way to a host that cannot be told to stop, I hear that read abort and the failed abort is logged and counted', async () => {
+    // Given a block request the host has not answered, on a parent that refuses the abort
+    const logs = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const sandbox = createHarness({ refuseAborts: true });
+    const pending = sandbox.bridge.requestBlock('bafyD');
+    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+    // When the sandbox lets go of the bridge
+    const thrown = catchError(() => {
+      sandbox.bridge.dispose();
+    });
+
+    // Then the read was aborted without the dispose throwing, and the failed abort was reported
+    await settled;
+    expect(thrown).toBeUndefined();
+    expect(logs.map(line => line.args?.[0])).toEqual(['[dot.li sandbox] bitswap bridge abort postMessage failed:']);
+    expect(sentry.counted(S.SANDBOX_BITSWAP_ABORT)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+  });
+
+  it('As a sandbox that let go of its bridge twice, I see no error and the host hears one abort', async () => {
+    // Given a block request the host has not answered, on a bridge already let go of
+    const target = createCountingEventTarget({ type: 'message' });
+    const sandbox = createHarness({ target });
+    const pending = sandbox.bridge.requestBlock('bafyD');
+    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    sandbox.bridge.dispose();
+
+    // When the sandbox lets go of it again
+    const thrown = catchError(() => {
+      sandbox.bridge.dispose();
+    });
+
+    // Then nothing threw, no listener is left and the host heard the abort once
+    await settled;
+    expect(thrown).toBeUndefined();
+    expect(target.countListening()).toBe(0);
+    expect(filterPosted(sandbox.posted, BLOCK_ABORT)).toHaveLength(1);
+  });
+
+  it('As a sandbox that let go of its bridge, I ask it for a block and the read aborts at once while the host hears nothing', async () => {
+    // Given a bridge the sandbox let go of with nothing in flight
+    const sandbox = createHarness();
+    sandbox.bridge.dispose();
+
+    // When the sandbox asks it for a block
+    const pending = sandbox.bridge.requestBlock('bafyD');
+
+    // Then the read aborts without waiting on the host, and the host was not messaged at all
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(sandbox.posted).toEqual([]);
+  });
+
+  it('As a sandbox that let go of its bridge, I hear a late answer from the host and nothing changes', async () => {
+    // Given a block request aborted by letting go of the bridge
+    const sandbox = createHarness();
+    const pending = sandbox.bridge.requestBlock('bafyD');
+    const id = getRequestId(sandbox.posted);
+    const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    sandbox.bridge.dispose();
+
+    // When the host's answer and the page going away both arrive afterwards
+    sandbox.receive({ type: BLOCK_RESULT, id, ok: true, bytes: new Uint8Array([1]) }, sandbox.parent);
+    sandbox.hidePage(false);
+
+    // Then the read keeps its abort and the host heard no second abort
+    await settled;
+    expect(filterPosted(sandbox.posted, BLOCK_ABORT)).toHaveLength(1);
   });
 });
 

@@ -82,8 +82,7 @@ export function createSessionState({
     },
   };
   let lastReadFailed = false;
-  // The page's session state lives as long as the page, so its read listener is never released.
-  store.subscribeSessionReads(failed => {
+  const stopSessionReads = store.subscribeSessionReads(failed => {
     lastReadFailed = failed;
   });
 
@@ -186,6 +185,11 @@ export function createSessionState({
   function reportCore(next: DotliAuthState): void {
     coreReportStore.set(next);
     auth.set(next);
+  }
+
+  function dispose(): void {
+    stopSessionReads();
+    stop?.();
   }
 
   return {
@@ -309,9 +313,16 @@ export function createSessionState({
      * one.
      */
     reportFlag,
+    /**
+     * Stops hearing the store's session reads and ends the follow `start` began, is safe to call twice and never
+     * throws, and leaves a state that is not started again, while a read already queued still settles and writes the
+     * auth state once.
+     */
+    dispose,
   };
 }
 
+// The page's session state lives as long as the page, so nothing disposes it.
 /** The page's session state, the one writer of the auth store. */
 export const sessionState = createSessionState({
   store: coreStorage,

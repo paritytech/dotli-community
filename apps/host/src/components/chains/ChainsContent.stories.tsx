@@ -615,12 +615,14 @@ export const TransferFooterEmpties: Story = {
     await open(ctx);
     await ctx.step('Given the speed and download rows', async () => {
       await expect(rows()).toEqual(['Speed2 kB/s', 'Downloading1 kB / 4 kB']);
+      await expect(query(document, '[data-testid="chains-transfer"]')).not.toHaveAttribute('data-empty');
     });
     await ctx.step('When the product loads', () => {
       setProductLoaded(true);
     });
     await ctx.step('Then the rows are empty', async () => {
       await waitFor(() => expect(rows()).toEqual(['', '']));
+      await expect(query(document, '[data-testid="chains-transfer"]')).toHaveAttribute('data-empty');
     });
   },
 };

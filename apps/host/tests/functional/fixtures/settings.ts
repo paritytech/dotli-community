@@ -3,9 +3,9 @@
 
 import type { BrowserContext, Page } from '@playwright/test';
 
-export const BACKENDS = ['smoldot-shared-worker', 'smoldot-direct', 'rpc-gateway'] as const;
+export type Backend = 'smoldot-shared-worker' | 'smoldot-direct' | 'rpc-gateway';
 
-export type Backend = (typeof BACKENDS)[number];
+export const BACKENDS: readonly Backend[] = ['smoldot-shared-worker', 'smoldot-direct', 'rpc-gateway'];
 
 export type CacheSeed = {
   skipCidCache: boolean;

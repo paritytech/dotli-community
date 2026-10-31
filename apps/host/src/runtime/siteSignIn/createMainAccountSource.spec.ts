@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { hashBlake2b, createSyncStore, fromHex, toHex, type ReadableStore } from '@dotli/shared';
-import { must } from '@dotli/shared/testing';
+import { hashBlake2b, createDeferred, createSyncStore, fromHex, toHex, type ReadableStore } from '@dotli/shared';
+import { catchError, must } from '@dotli/shared/testing';
 import { createChanges } from '../../testing/changes.js';
 import type { TruapiSessionUiState } from '../session/parseUiStateCache.js';
 import type { DotliAuthState } from '../session/types.js';
@@ -18,6 +18,8 @@ import {
 /** One lease the fake core handed out, which the test takes down. */
 type FakeLease = {
   released: number;
+  /** How many down listeners the source keeps on this lease. */
+  countListeners: () => number;
   /** The core under this lease goes down, as the page core tells its holders. */
   goDown: () => void;
 };
@@ -25,6 +27,8 @@ type FakeLease = {
 type Params = {
   /** What the first acquires reject with, one per call, where `undefined` lets that acquire succeed. */
   acquireFailures?: (Error | undefined)[];
+  /** Holds every lease that is taken until it resolves, as a core still booting does. */
+  booted?: Promise<unknown>;
 };
 
 const MAIN_KEY = `0x${'a'.repeat(64)}`;
@@ -36,7 +40,7 @@ const CONNECTED: DotliAuthState = {
 };
 
 /** A main-account source over a core whose leases the test counts and takes down, and a core report the test sets. */
-function createSourceOverCore({ acquireFailures = [] }: Params = {}) {
+function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve() }: Params = {}) {
   const changes = createChanges();
   const report = createSyncStore<DotliAuthState | null>({ name: 'testCoreReport', initial: null });
   let waits = 0;
@@ -62,6 +66,7 @@ function createSourceOverCore({ acquireFailures = [] }: Params = {}) {
       const listeners = new Set<() => void>();
       const lease: FakeLease = {
         released: 0,
+        countListeners: () => listeners.size,
         goDown() {
           for (const listener of [...listeners]) {
             listener();
@@ -70,7 +75,7 @@ function createSourceOverCore({ acquireFailures = [] }: Params = {}) {
       };
       leases.push(lease);
       changes.notify();
-      return Promise.resolve({
+      return booted.then(() => ({
         subscribeDown(listener: () => void) {
           listeners.add(listener);
           return () => {
@@ -79,8 +84,9 @@ function createSourceOverCore({ acquireFailures = [] }: Params = {}) {
         },
         release() {
           lease.released += 1;
+          changes.notify();
         },
-      });
+      }));
     },
     coreReport,
   });
@@ -93,6 +99,8 @@ function createSourceOverCore({ acquireFailures = [] }: Params = {}) {
     waitUntilReadWaits: () => changes.until(() => waits > 0),
     /** Resolves once the source took `count` leases. */
     waitForLeases: (count: number) => changes.until(() => leases.length >= count),
+    /** Resolves once the source let go of a lease. */
+    waitForRelease: () => changes.until(() => leases.some(lease => lease.released > 0)),
   };
 }
 
@@ -286,5 +294,105 @@ describe('main account', () => {
     expect(failed).toMatchObject({ kind: 'unavailable', cause: boot });
     expect(core.leases.map(lease => lease.released)).toEqual([1]);
     expect(core.countAcquires()).toBe(2);
+  });
+
+  it('As a dotli integrator, I dispose the main account source and it lets go of its lease and hears no more of its core', async () => {
+    // Given a source that holds a lease on a core that reported a session
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    await core.source.read(createLiveSignal());
+    const lease = must(core.leases[0], 'a held lease');
+
+    // When the source is disposed, and its core goes down after
+    core.source.dispose();
+    lease.goDown();
+
+    // Then the lease was let go once, and the source keeps no down listener on it
+    expect(lease.released).toBe(1);
+    expect(lease.countListeners()).toBe(0);
+  });
+
+  it('As a dotli integrator, I dispose the main account source after its core could not boot and see no error', async () => {
+    // Given a source whose read failed because its core could not boot
+    const boot = new Error('The wallet core could not boot');
+    const core = createSourceOverCore({ acquireFailures: [boot] });
+    core.report.set(CONNECTED);
+    await core.source.read(createLiveSignal()).catch((error: unknown) => error);
+
+    // When the source is disposed
+    const thrown = catchError(() => {
+      core.source.dispose();
+    });
+
+    // Then nothing threw, and no lease was taken
+    expect(thrown).toBeUndefined();
+    expect(core.leases).toEqual([]);
+  });
+
+  it('As a dotli integrator, I dispose the main account source twice and see no error, and its lease is let go once', async () => {
+    // Given a source that holds a lease and was disposed once
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    await core.source.read(createLiveSignal());
+    core.source.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(() => {
+      core.source.dispose();
+    });
+
+    // Then nothing threw, and the lease was let go once
+    expect(thrown).toBeUndefined();
+    expect(core.leases.map(lease => lease.released)).toEqual([1]);
+  });
+
+  it('As a dotli integrator, I dispose the main account source while it takes a lease, and the lease is let go when it lands', async () => {
+    // Given a read that takes a lease on a core still booting
+    const booted = createDeferred<undefined>();
+    const core = createSourceOverCore({ booted: booted.promise });
+    const reading = core.source.read(createLiveSignal()).catch((error: unknown) => error);
+    await core.waitForLeases(1);
+
+    // When the source is disposed, and the core boots after
+    core.source.dispose();
+    booted.resolve(undefined);
+    await core.waitForRelease();
+    const failed = await reading;
+
+    // Then the lease was let go once with no down listener kept on it, and the read failed as unavailable
+    const lease = must(core.leases[0], 'the lease taken');
+    expect(lease.released).toBe(1);
+    expect(lease.countListeners()).toBe(0);
+    expect(failed).toMatchObject({ name: 'MainAccountError', kind: 'unavailable' });
+  });
+
+  it('As a dotli integrator, I dispose the main account source while a read waits and the read fails as unavailable, with no new lease taken', async () => {
+    // Given a read that waits on the report of a core
+    const core = createSourceOverCore();
+    const reading = core.source.read(createLiveSignal()).catch((error: unknown) => error);
+    await core.waitUntilReadWaits();
+
+    // When the source is disposed, and the core reports a session after
+    core.source.dispose();
+    core.report.set(CONNECTED);
+    const failed = await reading;
+
+    // Then the read failed as unavailable, and no lease was taken after the first
+    expect(failed).toMatchObject({ name: 'MainAccountError', kind: 'unavailable' });
+    expect(core.countAcquires()).toBe(1);
+  });
+
+  it('As a dotli integrator, I read from a disposed main account source and the read fails as unavailable, with no lease taken', async () => {
+    // Given a disposed source over a core that reported a session
+    const core = createSourceOverCore();
+    core.report.set(CONNECTED);
+    core.source.dispose();
+
+    // When the round reads
+    const failed: unknown = await core.source.read(createLiveSignal()).catch((error: unknown) => error);
+
+    // Then the read failed as unavailable, and no lease was taken
+    expect(failed).toMatchObject({ name: 'MainAccountError', kind: 'unavailable' });
+    expect(core.countAcquires()).toBe(0);
   });
 });

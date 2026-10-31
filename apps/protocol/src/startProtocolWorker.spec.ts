@@ -5,7 +5,7 @@
 // Each tab is a real transport on its own port pair, so the worker is driven over the wire as an iframe drives it.
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
-import { createManualTimers, must } from '@dotli/shared/testing';
+import { catchError, createManualTimers, must } from '@dotli/shared/testing';
 import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getNetwork } from '@dotli/config';
 import { bindCaptureSink, spans as S, type m } from '@dotli/metrics';
@@ -100,6 +100,8 @@ type SpyOnPortParams = {
   onReceived: () => void;
   /** Runs when the worker closes the port. */
   onClosed: () => void;
+  /** Each listener the worker has on the port, which the spy adds and removes as the worker does. */
+  listeners: Set<unknown>;
   /** Whether the port fires `close`. */
   closeEvent: boolean;
 };
@@ -145,11 +147,18 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
   let fatal: string | null = null;
   let resolverParams: ResolverParams | null = null;
   let peopleWarms = 0;
+  let disconnectFailure: Error | null = null;
   const defaultPresync = Promise.resolve();
   const lightClient: LightClient = {
     createChainProvider(genesisHash) {
       chains.push(genesisHash);
-      const disconnect = vi.fn<() => void>();
+      const disconnect = vi.fn<() => void>(() => {
+        const failure = disconnectFailure;
+        disconnectFailure = null;
+        if (failure !== null) {
+          throw failure;
+        }
+      });
       disconnects.push(disconnect);
       return (): JsonRpcConnection => ({ send: () => undefined, disconnect });
     },
@@ -232,6 +241,12 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
     presyncDone: presync === undefined ? defaultPresync : Promise.resolve(),
     /** How many times the worker started warming People. Never throws. */
     countPeopleWarms: (): number => peopleWarms,
+    /** How many listeners hear the light client change. Never throws. */
+    countListeners: (): number => listeners.size,
+    /** The next chain disconnect throws `failure`, once. */
+    failNextDisconnect(failure: Error): void {
+      disconnectFailure = failure;
+    },
   };
 
   function tellListeners(change: LightClientChange): void {
@@ -261,7 +276,7 @@ async function endPresync(presync: Presync, failure?: Error): Promise<void> {
  * The worker's end of a port, spying on each buffer it posts before the transfer detaches it, and calling `onReceived`
  * after the worker handled each message the tab sent. Without `closeEvent` it never fires `close`.
  */
-function spyOnPort({ port, posted, onReceived, onClosed, closeEvent }: SpyOnPortParams): WorkerPort {
+function spyOnPort({ port, posted, onReceived, onClosed, listeners, closeEvent }: SpyOnPortParams): WorkerPort {
   type Listener = (event: { readonly data: unknown }) => void;
   const wrapped = new Map<Listener, (event: Event) => void>();
   return {
@@ -285,6 +300,7 @@ function spyOnPort({ port, posted, onReceived, onClosed, closeEvent }: SpyOnPort
       return;
     }
     wrapped.set(listener, forwardEvent);
+    listeners.add(listener);
     port.addEventListener(type, forwardEvent);
 
     function forwardEvent(event: Event): void {
@@ -298,6 +314,7 @@ function spyOnPort({ port, posted, onReceived, onClosed, closeEvent }: SpyOnPort
     if (wrapper !== undefined) {
       port.removeEventListener(type, wrapper);
     }
+    listeners.delete(listener);
   }
 }
 
@@ -322,14 +339,17 @@ async function bootWorker(
       },
     }),
   );
-  const connectListeners: ((event: { readonly ports: readonly WorkerPort[] }) => void)[] = [];
+  const connectListeners = new Set<(event: { readonly ports: readonly WorkerPort[] }) => void>();
   const closing = createDeferred<undefined>();
   const close = vi.fn<() => void>(() => {
     closing.resolve(undefined);
   });
   const scope: WorkerScope = {
     addEventListener: (_type, listener) => {
-      connectListeners.push(listener);
+      connectListeners.add(listener);
+    },
+    removeEventListener: (_type, listener) => {
+      connectListeners.delete(listener);
     },
     close,
   };
@@ -340,7 +360,7 @@ async function bootWorker(
     },
     end: () => undefined,
   }));
-  startProtocolWorker({
+  const started = startProtocolWorker({
     scope,
     network: parseWorkerNetwork(name),
     lightClient: light.lightClient,
@@ -385,6 +405,10 @@ async function bootWorker(
     waitForLog: (message: string): Promise<void> => logWaits.waitFor(() => logs.some(line => line.message === message)),
     /** Opens the worker's spans. */
     open,
+    /** How many listeners the worker has for tabs that connect. Never throws. */
+    countConnectListeners: (): number => connectListeners.size,
+    /** Disposes the worker, as `startProtocolWorker` returned it. */
+    dispose: started.dispose,
   };
 
   function attach({ closeEvent = true }: AttachParams = {}) {
@@ -392,10 +416,11 @@ async function bootWorker(
     openPorts.add(channel.port1);
     openPorts.add(channel.port2);
     const posted: ArrayBuffer[] = [];
+    const listeners = new Set<unknown>();
     let closes = 0;
     let received = 0;
     const receivedWaits = createWaitList();
-    for (const listener of connectListeners) {
+    for (const listener of [...connectListeners]) {
       listener({
         ports: [
           spyOnPort({
@@ -408,6 +433,7 @@ async function bootWorker(
             onClosed: () => {
               closes += 1;
             },
+            listeners,
             closeEvent,
           }),
         ],
@@ -433,6 +459,8 @@ async function bootWorker(
           posted,
           /** How many times the worker closed its end of this tab's port. Never throws. */
           countCloses: (): number => closes,
+          /** How many listeners the worker has on its end of this tab's port. Never throws. */
+          countListeners: (): number => listeners.size,
           /** The tab's end of the port closes without its transport saying goodbye, as when the renderer crashes. */
           crash(): void {
             channel.port2.close();
@@ -442,7 +470,7 @@ async function bootWorker(
       /** The iframe speaks through its real link, whose timers never run, as in a page hidden for long. */
       link() {
         const linked = connectSharedWorker({
-          worker: { port: channel.port2, addEventListener: () => undefined },
+          worker: { port: channel.port2, addEventListener: () => undefined, removeEventListener: () => undefined },
           page: new EventTarget(),
           resolutionId: null,
           readyTimeoutMs: 30_000,
@@ -496,6 +524,7 @@ function openSession(lifecycle: WorkerLifecycle): PortSession {
     posted: [],
     onReceived: () => undefined,
     onClosed: () => undefined,
+    listeners: new Set(),
     closeEvent: true,
   });
   const transport = createTransport({
@@ -1312,6 +1341,194 @@ describe('protocol SharedWorker', () => {
     // Then the tab heard the fatal on its status, and no byte report reached it after the baseline
     await expect(tab.status.ended).resolves.toEqual(FATAL_END);
     expect(telemetry.events).toEqual([{ tag: 'netBytes', value: 1_000 }]);
+  });
+
+  it('As a worker that was disposed, I admit no tab that connects', async () => {
+    // Given a worker that was disposed
+    const worker = await bootWorker(createFakeLightClient());
+    worker.dispose();
+
+    // When a tab's port reaches it, and its iframe speaks
+    const tab = worker.connect();
+
+    // Then the worker hears no tab connect, and never served the port
+    expect(worker.countConnectListeners()).toBe(0);
+    expect(tab.countListeners()).toBe(0);
+    expect(tab.posted).toEqual([]);
+    expect(worker.logs.map(line => line.message)).not.toContain('Port connected');
+  });
+
+  it('As a worker disposed while a tab is connected, I let go of its port', async () => {
+    // Given a ready tab on a synced worker
+    const worker = await bootWorker(createFakeLightClient());
+    const tab = worker.connect();
+    await waitForReady(tab);
+
+    // When the worker is disposed
+    worker.dispose();
+
+    // Then it closed its end of the port at once and stopped listening on it, and did not close itself
+    expect(tab.countCloses()).toBe(1);
+    expect(tab.countListeners()).toBe(0);
+    expect(worker.close).not.toHaveBeenCalled();
+  });
+
+  it('As a worker disposed while it holds a released port, I close that port too', async () => {
+    // Given a frozen tab whose port the worker released and still holds open
+    const worker = await bootWorker(createFakeLightClient());
+    const tab = worker.connect();
+    const status = await waitForReady(tab);
+    outlastHeartbeat(worker);
+    await status.ended;
+
+    // When the worker is disposed
+    worker.dispose();
+
+    // Then it closed the released port once and stopped listening on it
+    expect(tab.countCloses()).toBe(1);
+    expect(tab.countListeners()).toBe(0);
+  });
+
+  it('As a failed worker disposed before my close timer runs, I never close', async () => {
+    // Given a ready tab on a worker whose light client died, with its close queued
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light);
+    await waitForReady(worker.connect());
+    light.die(FATAL);
+
+    // When the worker is disposed, and its timers then run
+    worker.dispose();
+    const pendingAfterDispose = worker.timers.countPending();
+    await worker.timers.advance(0);
+
+    // Then its queued close was cleared, and the worker never closed
+    expect(pendingAfterDispose).toBe(0);
+    expect(worker.close).not.toHaveBeenCalled();
+  });
+
+  it('As a failed and flushed worker whose tab has not heard its status, I never close after my dispose', async () => {
+    // Given a tab whose port reached the worker but never subscribed to its status, on a worker that failed and flushed
+    // its telemetry
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light);
+    worker.attach();
+    light.die(FATAL);
+    await worker.timers.advance(0);
+
+    // When the worker is disposed, which lets go of that port
+    worker.dispose();
+
+    // Then the worker never closed
+    expect(worker.close).not.toHaveBeenCalled();
+  });
+
+  it('As a failed worker disposed while my flush is pending, I never close once it settles', async () => {
+    // Given a ready tab on a worker whose light client died, whose close timer ran and whose flush holds
+    const light = createFakeLightClient();
+    const flushing = createDeferred<undefined>();
+    const worker = await bootWorker(light, { flush: () => flushing.promise });
+    await waitForReady(worker.connect());
+    light.die(FATAL);
+    await worker.timers.advance(0);
+
+    // When the worker is disposed, and the flush then settles
+    worker.dispose();
+    flushing.resolve(undefined);
+    await flushing.promise;
+
+    // Then the worker never closed
+    expect(worker.close).not.toHaveBeenCalled();
+  });
+
+  it('As a worker disposed during its pre-sync, I report nothing more when it fails', async () => {
+    // Given a tab that subscribed to its status on a worker whose pre-sync is under way
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const presync = createDeferred<undefined>();
+    const worker = await bootWorker(createFakeLightClient({ presync: () => presync.promise }));
+    const tab = worker.connect();
+    await tab.transport.request(frame.heartbeat, undefined);
+
+    // When the worker is disposed, its pre-sync then fails, and its timers run
+    worker.dispose();
+    await endPresync(presync, new Error('chainHead follow stopped'));
+    await worker.timers.advance(0);
+
+    // Then it counted no pre-sync, logged no failure and never closed
+    expect(metrics.counted(S.SMOLDOT_PRESYNC)).toEqual([]);
+    expect(worker.logs.filter(line => line.level === 'error')).toEqual([]);
+    expect(worker.close).not.toHaveBeenCalled();
+  });
+
+  it('As a worker disposed during its pre-sync, I report nothing more when it completes', async () => {
+    // Given a worker whose pre-sync is under way
+    const presync = createDeferred<undefined>();
+    const light = createFakeLightClient({ presync: () => presync.promise });
+    const worker = await bootWorker(light);
+
+    // When the worker is disposed, and its pre-sync then completes
+    worker.dispose();
+    await endPresync(presync);
+
+    // Then it logged no completion and warmed no People
+    expect(worker.logs.map(line => line.message)).not.toContain('Pre-sync complete');
+    expect(light.countPeopleWarms()).toBe(0);
+  });
+
+  it('As a worker disposed after its pre-sync, I let go of the chains', async () => {
+    // Given a synced worker, which opened the relay and Bulletin
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light);
+
+    // When the worker is disposed
+    worker.dispose();
+
+    // Then each chain it opened was disconnected once
+    expect(light.disconnects.map(disconnect => disconnect.mock.calls.length)).toEqual([1, 1]);
+  });
+
+  it('As a worker whose chain disconnect throws, I am disposed, the throw reaches my caller and my tab was freed first', async () => {
+    // Given a tab holding a chain connection on a synced worker, and a light client whose next chain disconnect throws
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light);
+    const tab = worker.connect();
+    await connectChain(tab, 'c1');
+    const failure = new Error('chain disconnect failed');
+    light.failNextDisconnect(failure);
+
+    // When the worker is disposed
+    const thrown = catchError(worker.dispose);
+
+    // Then the throw reached the caller, and the tab's connection and port were freed before it
+    expect(thrown).toBe(failure);
+    expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
+    expect(tab.countCloses()).toBe(1);
+  });
+
+  it('As a worker that was disposed, I no longer hear the light client', async () => {
+    // Given a worker that was disposed
+    const light = createFakeLightClient();
+    const worker = await bootWorker(light);
+    worker.dispose();
+
+    // When the light client dies
+    light.die(FATAL);
+
+    // Then nothing hears it, and the worker logged nothing of it
+    expect(light.countListeners()).toBe(0);
+    expect(worker.logs.filter(line => line.level === 'error')).toEqual([]);
+  });
+
+  it('As a worker that was disposed, I am disposed again and nothing throws', async () => {
+    // Given a worker serving a tab, which was disposed
+    const worker = await bootWorker(createFakeLightClient());
+    await waitForReady(worker.connect());
+    worker.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(worker.dispose);
+
+    // Then nothing threw
+    expect(thrown).toBeUndefined();
   });
 });
 

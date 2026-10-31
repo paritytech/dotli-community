@@ -37,7 +37,7 @@
   padding: 0 var(--sp-1);
 }
 /* Both rows empty (the product is on screen): no gap left behind. */
-.transfer:not(:has(> .transfer-row:not(:empty))) {
+.transfer[data-empty] {
   display: none;
 }
 .transfer-row {

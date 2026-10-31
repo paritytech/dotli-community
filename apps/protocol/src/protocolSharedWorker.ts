@@ -31,6 +31,7 @@ if (network.success) {
 // Before the light client starts, or its first sockets go uncounted.
 byteMeter.install();
 
+// The worker lives as long as its global, so the `dispose` it returns goes unused.
 startProtocolWorker({
   scope: self,
   network,

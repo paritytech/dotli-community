@@ -12,6 +12,7 @@ import { createSyncStore, type SyncStore } from '@dotli/shared';
 import { createChanges } from '../../testing/changes.js';
 import type { LocalWalletBoot } from '../createWalletBoot.js';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
+import { catchError } from '@dotli/shared/testing';
 import { createFakeSharedSessionStore, type FakeSharedSessionStore } from './createCoreStorage.fake.js';
 import type { DotliAuthState, Presence } from './types.js';
 import { createFakeSessionPresence, getUnservedChannel, type FakeSessionPresence } from './createPagePresence.fake.js';
@@ -302,6 +303,48 @@ describe('session state', () => {
 
     // Then
     expect(shared.statusListenerCount()).toBe(0);
+  });
+
+  it('As a dotli integrator, I dispose session state and a session read that failed after it leaves a core sign-out a plain logout', async () => {
+    // Given a disposed session state
+    const storage = coreStorage.createAdapters();
+    session.dispose();
+
+    // When the saved session cannot be read and the core then reports signed out
+    shared.readError = UNREACHABLE;
+    await storage.readCoreStorage(AUTH_SESSION_KEY);
+    reportFromCore({ tag: 'Disconnected' });
+
+    // Then the page shows a plain logout rather than an unreachable store
+    expect(auth.get()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a dotli integrator, I dispose started session state and it no longer follows the shared store or its stored session', async () => {
+    // Given started session state on a signed-out page
+    session.start();
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+
+    // When it is disposed and the shared store goes down after it
+    session.dispose();
+    shared.setStatus('unavailable');
+
+    // Then the page stays signed out and no listener of the store's status or stored-session changes is left
+    expect(auth.get()).toEqual({ tag: 'Disconnected' });
+    expect(shared.statusListenerCount()).toBe(0);
+  });
+
+  it('As a dotli integrator, I dispose started session state twice and see no error', () => {
+    // Given started session state disposed once
+    session.start();
+    session.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(() => {
+      session.dispose();
+    });
+
+    // Then nothing threw
+    expect(thrown).toBeUndefined();
   });
 
   it.each<{ label: string; state: AuthState; pairing: PairingPresentation; published: DotliAuthState }>([

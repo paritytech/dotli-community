@@ -22,7 +22,7 @@ import {
   type Timers,
 } from '@dotli/shared';
 import type { CachedManifests } from '@dotli/storage';
-import { debugBus } from '@dotli/truapi-debug';
+import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { readChatCapability } from './readChatCapability.js';
 import { describeError } from './describeError.js';
 import { beginAttempt, endJourney } from './journey.js';
@@ -149,6 +149,8 @@ type Params = {
   fetchBlock?: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
   /** The protocol frame's reports on its light client. The page's protocol client's by default, read as a load starts. */
   telemetry?: LoaderTelemetry;
+  /** Where the load's debug events go. The page's bus by default. */
+  debugBus?: DebugBus;
 };
 
 /** Builds the page's loader. Never throws. */
@@ -184,6 +186,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     now: readClock = readPageClock,
     fetchBlock = fetchBitswapBlock,
     telemetry = getProtocolClient().telemetry,
+    debugBus = pageDebugBus,
   } = options;
   const attempt = beginAttempt(label);
   log.event('Route: app', { flow: 'boot', label, attempt: attempt.attemptNumber, entry: attempt.entry });
@@ -234,7 +237,7 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     onContentProgress: frame.onContentProgress,
   };
   // Kept past the load, as the chain reports go on feeding the network monitor, so the cleanup goes unused.
-  const progress = startLoadProgress({ label, backend, flowId, events, trace, timers, now: readClock });
+  const progress = startLoadProgress({ label, backend, flowId, events, trace, timers, now: readClock, debugBus });
 
   // Read in the catch below, so a warm-path failure is not counted against the cold path.
   let cidCacheResult: CidCacheResult | 'unknown' = 'unknown';

@@ -58,6 +58,11 @@ export type Responder<Result> = {
    * arrived. It never settles when none comes.
    */
   payload(): Promise<string>;
+  /**
+   * Stops hearing the opener's messages and the page's return from the back-forward cache, is safe to call twice and
+   * never throws, and leaves a round still open hearing nothing more, while a payload already taken stays kept.
+   */
+  dispose(): void;
 };
 
 type SendParams = {
@@ -191,12 +196,16 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
     sayReady();
   }
 
-  // A responder answers the one round of its window's page and lives as long as that page, so it keeps both listeners
-  // and has no dispose.
+  const stops: (() => void)[] = [];
   if (opener !== null) {
-    listen(handleMessage);
-    onPageRestore(restore);
+    stops.push(listen(handleMessage), onPageRestore(restore));
     sayReady();
+  }
+
+  function dispose(): void {
+    for (const stop of stops.splice(0)) {
+      stop();
+    }
   }
 
   const status = createStoreStatus(store);
@@ -237,6 +246,7 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
       store.set({ kind: 'answered' });
     },
     payload: () => call.promise,
+    dispose,
   };
 }
 

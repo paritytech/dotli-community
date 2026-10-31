@@ -110,7 +110,11 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           </div>
         </Accordion>
       </Show>
-      <div class={s['transfer']}>
+      <div
+        class={s['transfer']}
+        data-testid="chains-transfer"
+        data-empty={speed() === null && size() === null ? '' : undefined}
+      >
         <p class={s['transferRow']} data-testid="chains-transfer-row">
           <Show when={speed()}>
             {rate => (

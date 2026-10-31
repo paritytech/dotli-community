@@ -125,6 +125,7 @@ export function createBridge({
   }
 
   function startProductFrame(channel: SandboxChannel): ProductFrame {
+    // The page's one product frame lives as long as the page, so nothing disposes it.
     productFrame ??= createProductFrame({
       core: requireInitialised().core,
       createIframeHost,

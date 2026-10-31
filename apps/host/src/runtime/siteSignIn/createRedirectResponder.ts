@@ -113,6 +113,11 @@ export function createRedirectResponder({
       sendAnswer({ state: { kind: 'answered' }, message: createCancelledMessage(round) });
     },
     payload: () => NO_PAYLOAD,
+    /**
+     * Does nothing, since the responder holds no listener or timer, is safe to call twice, and leaves an answer already
+     * being sealed to navigate the window once sealed.
+     */
+    dispose: () => undefined,
   };
 
   return {

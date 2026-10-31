@@ -15,12 +15,12 @@ import {
   toHex,
   waitForStatus,
 } from '@dotli/shared';
-import { must, recordLog } from '@dotli/shared/testing';
+import { catchError, must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
 import type { AuthCommands } from '../createAuthCommands.js';
 import { createVettedResponder } from '../sessionHandoff/createResponder.fake.js';
-import { createWindowFlow } from '../sessionHandoff/createWindowFlow.js';
+import { createWindowFlow, type WindowFlow } from '../sessionHandoff/createWindowFlow.js';
 import type { DotliAuthState } from '../session/types.js';
 import { createFakeSessionPresence } from '../session/createPagePresence.fake.js';
 import { createOwnerSignInFlag } from '../session/signInFlag.js';
@@ -37,6 +37,10 @@ import { openSiteSignIn, openSiteTransaction, type SiteWindow, type SiteWindowPa
 type CreateWindowPartsParams = {
   /** How the window's core reports the main account, as `MAIN` by default. */
   mainAccount?: SiteWindowParams['mainAccount'];
+  /** Makes each window flow's own `dispose` do nothing, so only the window's own release of the flow is left. */
+  leaveFlowsRunning?: boolean;
+  /** Holds each read of the main session until it settles, which keeps a window flow open. */
+  sessionReadHeld?: Promise<void>;
 };
 
 type OpenTransactionWindowParams = {
@@ -68,6 +72,7 @@ const TOKEN = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE';
 const OLD_TOKEN = 'AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI';
 
 const CONNECTED: DotliAuthState = { tag: 'Connected', session: { connected: true, publicKey: MAIN_KEY } };
+const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' };
 
 const CALL = '0x0a0300010203';
 const PAYLOAD_CALL = '0x0a0300040506';
@@ -83,10 +88,14 @@ const ACCOUNT_READER: SiteAccountReader = {
 /**
  * A session window over fakes for a site's round: the opener and its messages, a main store that holds a paired
  * session and a local wallet, the window's auth state, the main account its core reports through `mainAccount` and an
- * in-memory grants store, with the window's real responder and real window flow. The site said hello, so the window is
- * vetted.
+ * in-memory grants store, with the window's real responder and real window flows, each kept in `flows`. The site said
+ * hello, so the window is vetted.
  */
-function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: CreateWindowPartsParams = {}) {
+function createWindowParts({
+  mainAccount = () => Promise.resolve(MAIN),
+  leaveFlowsRunning = false,
+  sessionReadHeld = Promise.resolve(),
+}: CreateWindowPartsParams = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   recordLog({ onFinished: onTestFinished, level: 'error' });
   const { responder, opener, post } = createVettedResponder({ origin: ORIGIN, self: SELF });
@@ -101,17 +110,24 @@ function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: Create
     cancelLogin: () => undefined,
   };
   const closed = createDeferred<undefined>();
+  const auth = createSyncStore<DotliAuthState>({ name: 'testSiteWindowAuth', initial: CONNECTED });
+  const flows: WindowFlow[] = [];
+  // The listeners on the screens of the window flows the window started.
+  const flowScreenListeners = new Set<() => void>();
   const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
     responder,
-    createWindowFlow: flow =>
-      createWindowFlow({
+    createWindowFlow(flow) {
+      const started = createWindowFlow({
         signIns,
-        auth: createSyncStore<DotliAuthState>({ name: 'testSiteWindowAuth', initial: CONNECTED }),
+        auth,
         commands,
         store: {
-          readSession: () => Promise.resolve({ status: 'ok', blob: MAIN_BLOB }),
+          readSession: async () => {
+            await sessionReadHeld;
+            return { status: 'ok', blob: MAIN_BLOB };
+          },
           readUiCache: () => Promise.resolve(MAIN_UI_STATE),
           writeUiCache: () => Promise.resolve(),
         },
@@ -128,7 +144,21 @@ function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: Create
         },
         loadPhrase: () => Promise.reject(new Error('The window loaded the phrase check')),
         ...flow,
-      }),
+      });
+      flows.push(started);
+      const screen: WindowFlow['screen'] = {
+        ...started.screen,
+        subscribe(listener) {
+          flowScreenListeners.add(listener);
+          const stop = started.screen.subscribe(listener);
+          return () => {
+            flowScreenListeners.delete(listener);
+            stop();
+          };
+        },
+      };
+      return { ...started, screen, dispose: leaveFlowsRunning ? () => undefined : started.dispose };
+    },
     grants: createSiteGrantStore({ idb: createMemorySiteGrantsIdb() }),
     groups: {
       registrable: () => Promise.reject(new Error('The window loaded the suffix list for a site of no group')),
@@ -143,6 +173,10 @@ function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: Create
   return {
     params,
     metrics,
+    auth,
+    flows,
+    /** How many listeners the window flows' screens hold for the window. */
+    countFlowScreenListeners: (): number => flowScreenListeners.size,
     closed: closed.promise,
     /** Every message the opener got, ready included. */
     readPosted: () => opener.posted.map(({ message }) => message),
@@ -155,7 +189,7 @@ function createWindowParts({ mainAccount = () => Promise.resolve(MAIN) }: Create
 }
 
 /** What the window showed of `window`, each view with the page or route it names, from now on. */
-function watchWindow({ site, screen }: SiteWindow) {
+function watchWindow({ site, screen, dispose }: SiteWindow) {
   const shown: ShownView[] = [];
   function record(): void {
     shown.push(getShownView(screen.get()));
@@ -165,6 +199,7 @@ function watchWindow({ site, screen }: SiteWindow) {
   return {
     site,
     screen,
+    dispose,
     shown,
     /** Resolves once the window shows `view`. */
     waitForView: (view: string) => waitForStatus(createStoreStatus(screen), current => current.view === view),
@@ -312,6 +347,111 @@ describe('site sign-in window', () => {
     expect(page.shown.filter(shown => shown.view === 'connecting')).toHaveLength(2);
     expect(page.readPosted().filter(message => JSON.stringify(message).includes('dotli:s:result'))).toHaveLength(1);
   });
+
+  it("As a dotli integrator, I dispose a site's sign-in window as it opens and it shows none of its round's views after it", async () => {
+    // Given a site's sign-in window that has just opened
+    const page = openSignInWindow();
+
+    // When it is disposed and the round then reaches its consent view
+    page.dispose();
+    await waitForStatus(createStoreStatus(page.site.screen), current => current.view === 'consent');
+
+    // Then the window still shows only what it showed as it opened
+    expect(page.shown).toEqual([{ view: 'site-signing', route: 'auth' }]);
+  });
+
+  it('As a dotli integrator, I dispose a site window after a Try again and neither window flow shows a pairing after it, while its responder still takes a payload', async () => {
+    // Given a window whose stored session was gone, so Try again started a second window flow, and whose round ended
+    let reads = 0;
+    const page = openSignInWindow({
+      mainAccount: () => {
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new MainAccountError('signed_out', 'The main session ended'))
+          : Promise.resolve(MAIN);
+      },
+    });
+    await page.waitForView('consent');
+    await page.site.consent();
+    await page.waitForView('site-failed');
+    await page.site.retry();
+    await page.closed;
+    const changes = page.flows.map(flow => {
+      const seen: unknown[] = [];
+      onTestFinished(
+        flow.screen.subscribe(() => {
+          seen.push(flow.screen.get());
+        }),
+      );
+      return seen;
+    });
+
+    // When the window is disposed, then the core starts pairing and the site posts a payload
+    page.dispose();
+    page.auth.set(PAIRING);
+    page.postPayload(CALL);
+    const payload = await Promise.race([page.params.responder.payload(), Promise.resolve('unsettled')]);
+
+    // Then neither flow changed its screen, since each was disposed, and the responder the window does not own took the
+    // payload
+    expect(page.flows).toHaveLength(2);
+    expect(changes).toEqual([[], []]);
+    expect(payload).toBe(CALL);
+  });
+
+  it('As a dotli integrator, I dispose a site window whose stored session is gone and Try again on its round starts no window flow after it', async () => {
+    // Given a window whose stored session was gone after its first window flow, so its round offers Try again
+    const page = openSignInWindow({
+      mainAccount: () => Promise.reject(new MainAccountError('signed_out', 'The main session ended')),
+    });
+    await page.waitForView('consent');
+    await page.site.consent();
+    await page.waitForView('site-failed');
+    const shown = [...page.shown];
+
+    // When the window is disposed, then the user presses Try again and the core starts pairing
+    page.dispose();
+    await page.site.retry();
+    page.auth.set(PAIRING);
+
+    // Then no second window flow started, and the window shows nothing more
+    expect(page.flows).toHaveLength(1);
+    expect(page.shown).toEqual(shown);
+  });
+
+  it('As a dotli integrator, I dispose a site window whose window flow keeps running and the window listens to its screen no more', async () => {
+    // Given a window that started a window flow on its consent, whose own dispose does nothing and whose session read
+    // is held
+    const read = createDeferred<undefined>();
+    const page = openSignInWindow({ leaveFlowsRunning: true, sessionReadHeld: read.promise });
+    await page.waitForView('consent');
+    const consenting = page.site.consent();
+    await page.waitForView('connecting');
+    const whileOpen = page.countFlowScreenListeners();
+
+    // When the window is disposed, and the flow's session read then settles
+    page.dispose();
+    read.resolve(undefined);
+    await consenting;
+
+    // Then the window followed the flow while it was open, and listens to its screen no more
+    expect(whileOpen).toBe(1);
+    expect(page.countFlowScreenListeners()).toBe(0);
+  });
+
+  it("As a dotli integrator, I dispose a site's window twice and see no error", () => {
+    // Given a site's sign-in window disposed once
+    const page = openSignInWindow();
+    page.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(() => {
+      page.dispose();
+    });
+
+    // Then nothing threw
+    expect(thrown).toBeUndefined();
+  });
 });
 
 describe('site group window', () => {
@@ -407,5 +547,20 @@ describe('site transaction window', () => {
     expect(page.metrics.counted('session_pages.site_transaction')).toEqual([
       { outcome: 'refused', reason: 'bad_request' },
     ]);
+  });
+
+  it("As a dotli integrator, I dispose a site's transaction window before its consent and it shows none of its round's views after it", async () => {
+    // Given a site's transaction window whose token's grant is still being read
+    const grantRead = createDeferred<undefined>();
+    const page = openTransactionWindow(CALL, { grantRead: grantRead.promise });
+    const watched = watchWindow(must(await page.opening, 'an opened transaction window'));
+
+    // When it is disposed and the round then reaches its consent view
+    watched.dispose();
+    grantRead.resolve(undefined);
+    await waitForStatus(createStoreStatus(watched.site.screen), current => current.view === 'consent');
+
+    // Then the window still shows only what it showed as it opened
+    expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }]);
   });
 });

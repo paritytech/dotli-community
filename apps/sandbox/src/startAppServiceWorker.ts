@@ -42,9 +42,14 @@ type SetArchiveRequest = {
   directory?: unknown;
 };
 
+/** The types of a page's message the worker acts on. */
+type PageMessageType =
+  | typeof APP_SERVICE_WORKER_MESSAGES.CLAIM
+  | typeof APP_SERVICE_WORKER_MESSAGES.GET_VERSION
+  | typeof APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE;
+
 /** A page's message the worker acts on. */
-type PageMessage =
-  { type: Exclude<(typeof PAGE_MESSAGE_TYPES)[number], SetArchiveRequest['type']> } | SetArchiveRequest;
+type PageMessage = { type: Exclude<PageMessageType, SetArchiveRequest['type']> } | SetArchiveRequest;
 
 /** The worker's answer to a page's message. */
 type WorkerReply =
@@ -52,11 +57,11 @@ type WorkerReply =
   | { type: typeof APP_SERVICE_WORKER_MESSAGES.ARCHIVE_READY }
   | { type: typeof APP_SERVICE_WORKER_MESSAGES.ARCHIVE_ERROR; reason: string };
 
-const PAGE_MESSAGE_TYPES = [
+const PAGE_MESSAGE_TYPES: readonly PageMessageType[] = [
   APP_SERVICE_WORKER_MESSAGES.CLAIM,
   APP_SERVICE_WORKER_MESSAGES.GET_VERSION,
   APP_SERVICE_WORKER_MESSAGES.SET_ARCHIVE,
-] as const;
+];
 
 // The build the worker names when a page asks for its version. A build inlines it as a literal, so the worker's bytes
 // change between releases and the browser never skips the update as byte-identical.

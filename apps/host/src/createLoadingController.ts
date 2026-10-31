@@ -22,7 +22,7 @@ export type LoadingPhase = {
   reportsProgress?: boolean;
 };
 
-export type LoadingStage = (typeof LOADING_STAGES)[number];
+export type LoadingStage = 'starting' | 'relay' | 'assetHub' | 'resolving' | 'content' | 'preparing';
 
 export type SandboxOutcome = 'loaded' | 'failed';
 
@@ -77,7 +77,7 @@ export const MESSAGE_ROTATE_MS = 9_000;
 const DOMAIN_TOKEN = '{domain}';
 
 /** In the order they happen. */
-export const LOADING_STAGES = ['starting', 'relay', 'assetHub', 'resolving', 'content', 'preparing'] as const;
+const LOADING_STAGES: readonly LoadingStage[] = ['starting', 'relay', 'assetHub', 'resolving', 'content', 'preparing'];
 
 /**
  * The first line is the step line, up for the whole stage. The rest are explanations only a slow load

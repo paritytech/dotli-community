@@ -7,7 +7,7 @@ import type { ChainRole } from '@dotli/config';
 import { formatRate } from '@dotli/shared';
 import { STILL_WORKING } from './stillWorking.js';
 
-export type CriticalChain = (typeof CRITICAL_CHAINS)[number];
+export type CriticalChain = Extract<ChainRole, 'relay' | 'assethub' | 'bulletin'>;
 
 export type StallFacts = {
   chain: CriticalChain;
@@ -20,7 +20,7 @@ export type StallFacts = {
 };
 
 /** The chains the load waits on. A stall elsewhere is not the visitor's problem. */
-export const CRITICAL_CHAINS = ['relay', 'assethub', 'bulletin'] as const satisfies readonly ChainRole[];
+const CRITICAL_CHAINS: readonly CriticalChain[] = ['relay', 'assethub', 'bulletin'];
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {
   relay: 'Polkadot',

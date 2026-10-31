@@ -28,16 +28,21 @@ import { logWorkerEvent } from './logWorkerEvent.js';
 import type { WorkerNetwork } from './parseWorkerNetwork.js';
 import { serveEngineMethods } from './serveEngineMethods.js';
 import { shareNetBytes } from './shareNetBytes.js';
-import { startLightClientService } from './startLightClientService.js';
+import { startLightClientService, type LightClientService } from './startLightClientService.js';
 import { toLightClientDb } from './toLightClientDb.js';
 import { withRefusalReports } from './withRefusalReports.js';
 import { withRequestSpan, withSubscriptionSpan } from './withRequestSpan.js';
 import { WORKER_LOG_TAG } from './workerLogTag.js';
 
+/** A tab that connects to the worker, with its port first. */
+type ConnectEvent = { readonly ports: readonly WorkerPort[] };
+
 /** The worker global, narrowed to what the worker uses. */
 export type WorkerScope = {
   /** Hears each tab that connects, with its port first. Never throws. */
-  addEventListener: (type: 'connect', listener: (event: { readonly ports: readonly WorkerPort[] }) => void) => void;
+  addEventListener: (type: 'connect', listener: (event: ConnectEvent) => void) => void;
+  /** Stops hearing tabs that connect through `listener`. Never throws. */
+  removeEventListener: (type: 'connect', listener: (event: ConnectEvent) => void) => void;
   /** Closes the worker, which then serves no tab. Never throws. */
   close: () => void;
 };
@@ -74,7 +79,10 @@ type Params = {
 
 const { frame, resolve, chain } = protocolSchema.sections;
 
-/** Serves every tab that connects to `scope`, and pre-syncs the light client unless the network is unknown. */
+/**
+ * Serves every tab that connects to `scope`, and pre-syncs the light client unless the network is unknown. Returns an
+ * object with the worker's `dispose`.
+ */
 export function startProtocolWorker({
   scope,
   network,
@@ -86,10 +94,24 @@ export function startProtocolWorker({
   flush,
   timers,
   now = () => performance.now(),
-}: Params): void {
+}: Params): {
+  /**
+   * Lets go of every tab's port, stops hearing the light client and tabs that connect, and releases the chains the
+   * pre-sync took, and never closes the worker or disposes the light client. Safe to call more than once and after
+   * the worker failed. Throws only what releasing a chain throws, after every tab's port is let go and with the
+   * engine's dispose still run. A tab's status ends with the port closed, an end the port may drop as it
+   * closes at once, nothing else open on the port hears from the worker, and a pre-sync still under way reports
+   * nothing more.
+   */
+  dispose: () => void;
+} {
   // What each port's transport cannot handle itself, counted as the worker's.
   const wire = createWireReport({ side: 'worker', count: m.count });
+  // Built by the pre-sync, unless the network is unknown.
+  let service: LightClientService | null = null;
   let engine: ProtocolEngine | null = null;
+  // Aborted by `dispose`, so a pre-sync still under way reports nothing more.
+  const disposed = new AbortController();
   // What every port hears through its `frame.status` subscription, each on its own transport.
   const status = createFrameStatus();
 
@@ -148,6 +170,7 @@ export function startProtocolWorker({
     const reporting = withRefusalReports(transport, ({ method, error }) => {
       log.warn(`${WORKER_LOG_TAG} ${method} failed`, error);
     });
+    // The stop is dropped, since the port's transport takes its handlers with it when it is disposed.
     serveEngineMethods(reporting, {
       warmup: withRequestSpan({
         openSpan,
@@ -202,7 +225,8 @@ export function startProtocolWorker({
     });
     port.addEventListener('close', handleClose);
     const session = lifecycle.admit({ port, transport, unwatch, serve });
-    // Any message shows the tab is alive, not only its heartbeat.
+    // Any message shows the tab is alive, not only its heartbeat. The provider drops this listener when the transport
+    // is disposed, so its stop is not kept.
     provider.subscribe(() => {
       lifecycle.markAlive(session);
     });
@@ -220,22 +244,25 @@ export function startProtocolWorker({
   }
 
   // No retries by design. A failed pre-sync tells every port and closes the worker, so a retry is a new worker.
-  async function presync(): Promise<void> {
+  async function presync(signal: AbortSignal): Promise<void> {
     const startedAt = now();
     logWorkerEvent('Pre-sync started');
 
     try {
-      // Nothing calls `dispose`, since the observed chains live as long as the worker, which closes as a whole.
-      const service = startLightClientService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
-      const { dotns } = service;
+      const started = startLightClientService({ lightClient, resolver, services: getActiveFixedServicesConfig() });
+      service = started;
+      const { dotns } = started;
       engine = createEngine({
-        pool: service.pool,
+        pool: started.pool,
         isChainSupported: lightClient.isChainSupported,
         resolver: dotns,
         log: logWorkerEvent,
       });
 
       await dotns.waitForAssetHubFinalized();
+      if (signal.aborted) {
+        return;
+      }
 
       // The fatal already ended every port's status, so no port may hear ready.
       if (lifecycle.getPhase().name === 'failed') {
@@ -245,8 +272,11 @@ export function startProtocolWorker({
       lifecycle.markReady();
 
       // Warmed in the background, so a later People read does not wait on a cold warp sync. Ready never waits on it.
-      service.warmPeople(WORKER_LOG_TAG);
+      started.warmPeople(WORKER_LOG_TAG);
     } catch (error: unknown) {
+      if (signal.aborted) {
+        return;
+      }
       const message = serializeError(error);
       log.error(`${WORKER_LOG_TAG} Pre-sync failed: ${message}`, error);
       m.count(S.SMOLDOT_PRESYNC, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
@@ -257,7 +287,7 @@ export function startProtocolWorker({
 
   // A fatal ends every port's status at once, and a port that connects before the close lands still hears the cause.
   // No chain opens before pre-sync, so no change came earlier.
-  lightClient.subscribe(change => {
+  const stopHearingLightClient = lightClient.subscribe(change => {
     if (change.kind !== 'fatal') {
       return;
     }
@@ -266,18 +296,37 @@ export function startProtocolWorker({
     lifecycle.fail(new ProtocolFatalError(message));
   });
 
-  scope.addEventListener('connect', event => {
+  scope.addEventListener('connect', handleConnectEvent);
+
+  if (network.success) {
+    logWorkerEvent('Worker started', { network: network.value });
+    void presync(disposed.signal);
+  } else {
+    // Every tab hears this as the reason the worker never became ready.
+    log.error(`${WORKER_LOG_TAG} ${network.value}`);
+  }
+
+  return {
+    dispose,
+  };
+
+  function handleConnectEvent(event: ConnectEvent): void {
     const port = event.ports[0];
     if (port !== undefined) {
       handleConnect(port);
     }
-  });
-
-  if (!network.success) {
-    // Every tab hears this as the reason the worker never became ready.
-    log.error(`${WORKER_LOG_TAG} ${network.value}`);
-    return;
   }
-  logWorkerEvent('Worker started', { network: network.value });
-  void presync();
+
+  function dispose(): void {
+    disposed.abort();
+    scope.removeEventListener('connect', handleConnectEvent);
+    stopHearingLightClient();
+    lifecycle.dispose();
+    // The observed chains go before the pool they lease from, and a release that throws still lets the pool go.
+    try {
+      service?.dispose();
+    } finally {
+      engine?.dispose();
+    }
+  }
 }

@@ -514,15 +514,21 @@ export function createWindowFlow({
     const { intent } = phase;
     void runStep({ name: 'decide', run: () => decide(intent), failure: 'view' });
   }
-  // A flow lives as long as its window's page, and one whose phase ended only closes the window when the round ends, so
-  // it keeps both listeners and has no dispose.
-  responder.subscribe(handleResponderState);
+  const stops = [responder.subscribe(handleResponderState)];
   handleResponderState(responder.state());
 
   // Shown only: the login's answer, not the auth state, decides how a pairing ends.
-  auth.subscribe(() => {
-    change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
-  });
+  stops.push(
+    auth.subscribe(() => {
+      change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
+    }),
+  );
+
+  function dispose(): void {
+    for (const stop of stops.splice(0)) {
+      stop();
+    }
+  }
 
   const intents: WindowIntents = {
     continueWithStored: () =>
@@ -616,6 +622,11 @@ export function createWindowFlow({
     /** Resolves once no step is queued or running. Never rejects. */
     settled: () => steps.settle(STEPS),
     ...intents,
+    /**
+     * Stops watching the responder and the auth state, never disposes the responder, which is its caller's, is safe to
+     * call twice and never throws, and lets a step or login already under way run to its end.
+     */
+    dispose,
   };
 }
 

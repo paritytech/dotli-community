@@ -120,8 +120,10 @@ function configure(params: SandboxParams): void {
   }
   setActiveNetwork(params.network);
   m.setDefaults({ chain_backend: params.backend, network: params.network });
+  // The listener lives as long as the sandbox page, so its stop goes unused.
   listenForArchiveFailures(appWorker.container);
   if (params.backend !== 'rpc-gateway') {
+    // The bridge lives as long as the sandbox page, so nothing disposes it.
     blockSource = createBitswapBridge({
       window,
       parent: window.parent,

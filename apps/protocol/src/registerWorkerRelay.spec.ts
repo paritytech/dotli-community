@@ -18,6 +18,7 @@ import {
   createFrameStatus,
 } from '@dotli/protocol';
 import { createDeferred, toHex } from '@dotli/shared';
+import { catchError } from '@dotli/shared/testing';
 import {
   TransportUnsupportedProtocolVersionError,
   denied,
@@ -60,12 +61,22 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
   const status = createFrameStatus();
   iframe.serving.handleSubscription(frame.status, status.handler);
   // The iframe's link holds the one status subscription to the worker and shares it with the relay.
-  registerWorkerRelay({
+  const watched = watchWorkerStatus({ transport: toWorker, onReady: () => undefined });
+  const bootEnds: string[] = [];
+  const stop = registerWorkerRelay({
     serving: iframe.serving,
     worker: toWorker,
-    workerStatus: watchWorkerStatus({ transport: toWorker, onReady: () => undefined }),
+    workerStatus: watched,
     boot: {
       ...status,
+      fail(error) {
+        bootEnds.push('fail');
+        status.fail(error);
+      },
+      interrupt(outcome) {
+        bootEnds.push('interrupt');
+        status.interrupt(outcome);
+      },
       serveTelemetry: source => {
         iframe.serving.handleSubscription(frame.telemetry, source);
       },
@@ -81,6 +92,12 @@ function linkHops(serveWorker: (worker: ProtocolTransport, contexts: Map<string,
     link: toWorker,
     /** The worker's own status, which every subscription of the iframe's hears. */
     workerStatus,
+    /** The iframe's one subscription to that status, which a case listens to after the relay. */
+    watched,
+    /** What stops the relay. */
+    stop,
+    /** Which end the relay handed the frame's boot, in order. */
+    bootEnds,
     /** Each call context the worker saw, by method. */
     contexts,
     /** Settles once the iframe's status subscription reached the worker, which reports itself ready. */
@@ -512,5 +529,43 @@ describe('the worker relay', () => {
       { call: 'frame.status', end: closed },
       { call: 'chain.connect', end: closed },
     ]);
+  });
+
+  it('As a frame that stopped relaying, I forward no more calls to the worker and its end reaches no one', async () => {
+    // Given a relay whose worker answers a name call (an owner read), and a host that heard its frame is ready
+    const { host, workerStatus, watched, stop, bootEnds, workerStatusHeard } = linkHops(worker => {
+      worker.handleRequest(resolve.owner, () => ok('0xowner'));
+    });
+    const status = record({ transport: host, method: frame.status, start: undefined });
+    await Promise.all([status.waitFor(1), workerStatusHeard]);
+    const forwarded = await host.request(resolve.owner, { label: 'doom' });
+
+    // When the frame stops relaying, and the worker then ends its status
+    stop();
+    const refused = await host.request(resolve.owner, { label: 'doom' });
+    const heard = new Promise<void>(resolve => {
+      watched.onEnd(() => {
+        resolve();
+      });
+    });
+    workerStatus.fail(new ProtocolPortReleasedError('The worker released this tab'));
+    await heard;
+
+    // Then the name call was forwarded before the stop and refused as unserved after it, and the boot heard no end
+    expect(forwarded).toEqual(ok('0xowner'));
+    expect(refused).toEqual(err(unsupported()));
+    expect(bootEnds).toEqual([]);
+  });
+
+  it('As a frame that stops relaying twice, I stop it again and nothing throws', () => {
+    // Given a relay that was stopped
+    const { stop } = linkHops(() => undefined);
+    stop();
+
+    // When the frame stops it again
+    const thrown = catchError(stop);
+
+    // Then nothing throws
+    expect(thrown).toBeUndefined();
   });
 });

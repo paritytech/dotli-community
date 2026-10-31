@@ -45,6 +45,21 @@ function useChatConversation(chat: ChatStore): ChatConversation {
   const displayName = useStore(productState.store, state =>
     state.status === 'loaded' ? state.displayName : undefined,
   );
+
+  function claimComposerFocus(): boolean {
+    if (!chatPanelState.store.get().focusComposer) {
+      return false;
+    }
+    chatPanelState.consumeComposerFocus();
+    return true;
+  }
+
+  function send(roomId: string, text: string): Promise<void> {
+    const productId = chatPanelState.getCurrentProductId();
+    // The panel only opens for a loaded product, so there is always one while it can send.
+    return productId === null ? Promise.resolve() : chat.postUserMessage({ productId, roomId, text });
+  }
+
   return {
     loggedIn: useStore(chatPanelState.store, state => state.loggedIn),
     productName: () => displayName() ?? label(),
@@ -55,19 +70,9 @@ function useChatConversation(chat: ChatStore): ChatConversation {
     openRoom: chatPanelState.openRoom,
     backToRooms: chatPanelState.backToRooms,
     roomGone: chatPanelState.clearActiveRoom,
-    claimComposerFocus: () => {
-      if (!chatPanelState.store.get().focusComposer) {
-        return false;
-      }
-      chatPanelState.consumeComposerFocus();
-      return true;
-    },
+    claimComposerFocus,
     setComposerError: chatPanelState.setComposerError,
-    send: (roomId, text) => {
-      const productId = chatPanelState.getCurrentProductId();
-      // The panel only opens for a loaded product, so there is always one while it can send.
-      return productId === null ? Promise.resolve() : chat.postUserMessage({ productId, roomId, text });
-    },
+    send,
     actions: chat,
   };
 }

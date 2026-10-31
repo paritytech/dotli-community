@@ -15,7 +15,8 @@ import { ProtocolVersionMismatchError } from '@dotli/protocol';
 import type { ExecutableManifest, ManifestResult } from '@dotli/resolver';
 import { createManualTimers, resetAllStoresForTests } from '@dotli/shared/testing';
 import type { CachedManifests } from '@dotli/storage';
-import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
+import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { pageScreen } from '@dotli/ui';
 import { beginAttempt } from '../../src/journey.js';
 import type { LoadFailure } from '../../src/presentLoadFailure.js';
@@ -405,8 +406,9 @@ function setupLoader(params: Params = {}) {
   resetAllStoresForTests();
   const captured: CaptureContext[] = [];
   const debug: DotliDebugEvent[] = [];
-  debugBus.enableBuffering();
-  const unwatch = debugBus.watch(event => {
+  const bus = createDebugBus();
+  bus.enableBuffering();
+  const unwatch = bus.watch(event => {
     if ('layer' in event) {
       debug.push(event);
     }
@@ -513,6 +515,7 @@ function setupLoader(params: Params = {}) {
     },
     timers,
     now: timers.now,
+    debugBus: bus,
   });
   return {
     loader,

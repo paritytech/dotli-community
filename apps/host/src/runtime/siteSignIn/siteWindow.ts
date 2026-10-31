@@ -118,9 +118,15 @@ export async function openSiteTransaction({
 function openSiteWindow({ origin, responder, createWindowFlow, route, createRound }: OpenSiteWindowParams) {
   // The window flow's screen, while a flow the site started has not stored its sign-in.
   const flowScreen = createSyncStore<SignInScreen | null>({ name: 'siteWindowFlow', initial: null });
+  const stops: (() => void)[] = [];
+  // Aborts on dispose, after which the round starts no flow, as nothing would release it.
+  const lifetime = new AbortController();
   const site = createRound((stored, close) => {
-    // A round whose stored session is gone starts a flow again on Try again. The flow before it is left to go with the
-    // window, since closing the window twice is harmless.
+    if (lifetime.signal.aborted) {
+      return;
+    }
+    // A round whose stored session is gone starts a flow again on Try again. The flow before it is left until the
+    // window is disposed, since closing the window twice is harmless.
     let stopFollowing = (): void => undefined;
     const flow = createWindowFlow({
       responder,
@@ -140,6 +146,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     stopFollowing = flow.screen.subscribe(() => {
       flowScreen.set(flow.screen.get());
     });
+    stops.push(stopFollowing, flow.dispose);
   });
 
   const screen = createSyncStore<SignInScreen | SiteWindowScreen>({
@@ -157,16 +164,27 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     }
   }
 
-  // A site's window answers the one round of its page and lives as long as that page, so it keeps both listeners and
-  // has no dispose.
-  site.screen.subscribe(showCurrent);
-  flowScreen.subscribe(showCurrent);
+  stops.push(site.screen.subscribe(showCurrent), flowScreen.subscribe(showCurrent));
   showCurrent();
+
+  function dispose(): void {
+    lifetime.abort();
+    for (const stop of stops.splice(0)) {
+      stop();
+    }
+  }
+
   const shownScreen: ReadableStore<SignInScreen | SiteWindowScreen> = screen;
   return {
     /** The site's round, with the intents of its views. */
     site,
     /** What the window shows: the site's view, or the window flow's while the site hands the window to it. */
     screen: shownScreen,
+    /**
+     * Stops showing the site's round, disposes every window flow it started and starts none after it, never disposes
+     * the responder, which is its caller's, is safe to call twice and never throws, and leaves the site's round open,
+     * where a Try again then starts no flow and nothing more of it shows.
+     */
+    dispose,
   };
 }

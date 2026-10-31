@@ -142,6 +142,7 @@ export function serveSite(account: ProductAccountId | null): void {
   pageWalletBoot.serveSites();
 }
 
+// The main account source lives as long as the page, so nothing disposes it.
 /**
  * The main account a site's round runs for, as the session window's core reports it. It holds a lease of its own, so
  * the core stays up for a local wallet as for a paired session.

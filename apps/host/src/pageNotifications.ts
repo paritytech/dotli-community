@@ -13,6 +13,7 @@ let page: ScheduledNotifications | null = null;
 
 /** Built on first use, so importing this module reads no browser global. */
 export function pageNotifications(): ScheduledNotifications {
+  // The page's scheduler lives as long as the page, so nothing disposes it.
   page ??= createPageScheduledNotifications({ show: showNotification });
   return page;
 }

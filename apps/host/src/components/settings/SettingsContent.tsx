@@ -103,16 +103,16 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
     );
   });
 
-  const clearAll = (): void => {
+  function clearAll(): void {
     if (untrack(clearing)) {
       return;
     }
     setClearing(true);
     // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
     void props.onApply(persisted, persisted, { forceFullWipe: true });
-  };
+  }
 
-  const apply = (): void => {
+  function apply(): void {
     if (!untrack(dirty) || untrack(applying)) {
       return;
     }
@@ -125,7 +125,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
       },
       persisted,
     );
-  };
+  }
 
   const networks = saved.enabledNetworks;
   const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;

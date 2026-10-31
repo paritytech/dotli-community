@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ScheduledNotificationRecord } from '@dotli/storage';
 import { createDeferred } from '@dotli/shared';
-import { createFakePage, createManualTimers } from '@dotli/shared/testing';
+import { catchError, createFakePage, createManualTimers } from '@dotli/shared/testing';
 import { bindReports } from '../testing/bindReports.js';
 import { createManualPoll } from '../testing/createManualPoll.js';
 import {
@@ -41,18 +41,30 @@ function createPollerHarness() {
   const timers = createManualTimers();
   const page = createFakePage();
   const { captures, counted } = bindReports();
+  const lifecycle = createCountingTarget(page.window);
+  const documentEvents = createCountingTarget(page.document);
+  const visibility = {
+    ...documentEvents,
+    get visibilityState(): DocumentVisibilityState {
+      return page.document.visibilityState;
+    },
+  };
   return {
     timers,
     page,
     captures,
     counted,
+    /** Builds the scheduler of a lone tab over `store`, with `overrides` in its params, without starting it. */
+    build,
     /** Starts the poller of a lone tab over `store` for `acme`, with `overrides` in its params. */
     start,
     /** Moves the clock on by `count` poll intervals. */
     advanceTicks,
+    /** How many listeners the scheduler holds on the page's window and document. */
+    countListening: (): number => lifecycle.countListening() + documentEvents.countListening(),
   };
 
-  function start({ store, overrides = {} }: StartParams) {
+  function build({ store, overrides = {} }: StartParams) {
     const show = vi.fn<ScheduledNotificationsParams['show']>();
     const notifications = createScheduledNotifications({
       store,
@@ -64,14 +76,19 @@ function createPollerHarness() {
           run({})) as LockManager['request'],
       },
       openChannel: () => null,
-      visibility: page.document,
-      lifecycle: page.window,
+      visibility,
+      lifecycle,
       timers,
       poll: createManualPoll({ timers }),
       ...overrides,
     });
-    notifications.init({ label: 'acme' });
     return { notifications, show };
+  }
+
+  function start(params: StartParams) {
+    const built = build(params);
+    built.notifications.init({ label: 'acme' });
+    return built;
   }
 
   async function advanceTicks(count: number): Promise<void> {
@@ -92,6 +109,31 @@ function createRecordStore({ records }: CreateRecordStoreParams) {
     removeStale: vi.fn<ScheduledNotificationStore['removeStale']>(() => Promise.resolve(0)),
     removeById: vi.fn<ScheduledNotificationStore['removeById']>(hostId => Promise.resolve(held.delete(hostId))),
   };
+}
+
+/** Forwards to `target`, counting the listeners still attached, so a spec can check each one is removed. */
+function createCountingTarget(target: EventTarget) {
+  const attached: Parameters<EventTarget['removeEventListener']>[] = [];
+  return {
+    addEventListener,
+    removeEventListener,
+    dispatchEvent: (event: Event): boolean => target.dispatchEvent(event),
+    /** The listeners still attached. */
+    countListening: (): number => attached.length,
+  };
+
+  function addEventListener(...args: Parameters<EventTarget['addEventListener']>): void {
+    attached.push([args[0], args[1]]);
+    target.addEventListener(...args);
+  }
+
+  function removeEventListener(...args: Parameters<EventTarget['removeEventListener']>): void {
+    const index = attached.findIndex(([type, listener]) => type === args[0] && listener === args[1]);
+    if (index !== -1) {
+      attached.splice(index, 1);
+    }
+    target.removeEventListener(...args);
+  }
 }
 
 function createClosingError(): DOMException {
@@ -257,5 +299,191 @@ describe('scheduled notifications poller', () => {
 
     // Then
     expect(opened).toEqual(['dotli:scheduled-notifications']);
+  });
+});
+
+describe('scheduled notifications disposed', () => {
+  it('As a user who left the page, I see no notification shown by its scheduler when one falls due afterwards', async () => {
+    // Given a polling tab with a notification due in two seconds
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 2_000 }] });
+    const { notifications, show } = start({ store });
+    await advanceTicks(1);
+
+    // When the scheduler is disposed and the notification falls due
+    notifications.dispose();
+    await advanceTicks(3);
+
+    // Then nothing is shown, and no tick waits on the clock
+    expect(show).not.toHaveBeenCalled();
+    expect(timers.countPending()).toBe(0);
+  });
+
+  it('As a user who left the page, I see its scheduler hold no listener on the page', async () => {
+    // Given a polling tab
+    const { timers, start, advanceTicks, countListening } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 3_600_000 }] });
+    const { notifications } = start({ store });
+    await advanceTicks(1);
+    const listeningBeforeDispose = countListening();
+
+    // When the scheduler is disposed
+    notifications.dispose();
+
+    // Then the page's window and document hold none of its listeners
+    expect(listeningBeforeDispose).toBe(3);
+    expect(countListening()).toBe(0);
+  });
+
+  it('As a user back on a page from the back-forward cache, I come back after its scheduler was disposed and its poller stays stopped', async () => {
+    // Given a page with a notification due in two seconds, put into the back-forward cache and its scheduler disposed
+    const { timers, page, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 2_000 }] });
+    const { notifications, show } = start({ store });
+    await advanceTicks(1);
+    page.hide(true);
+    notifications.dispose();
+
+    // When the page is restored and the notification falls due
+    page.window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    await advanceTicks(3);
+
+    // Then nothing is shown, and no tick waits on the clock
+    expect(show).not.toHaveBeenCalled();
+    expect(timers.countPending()).toBe(0);
+  });
+
+  it('As a user who left the page, I see the channel to its other tabs closed', () => {
+    // Given a scheduler with its channel to the other tabs open
+    const { start } = createPollerHarness();
+    const channel = new BroadcastChannel('dotli:scheduled-notifications');
+    onTestFinished(() => {
+      channel.close();
+    });
+    const close = vi.spyOn(channel, 'close');
+    const { notifications } = start({
+      store: createRecordStore({ records: [] }),
+      overrides: { openChannel: () => channel },
+    });
+
+    // When the scheduler is disposed
+    notifications.dispose();
+
+    // Then the channel is closed
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a user who left the page, I see a round already reading the store claim and show nothing', async () => {
+    // Given a polling tab with a notification due in two seconds, whose next read is held
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const record = { ...DUE, scheduledAt: timers.now() + 2_000 };
+    const store = createRecordStore({ records: [record] });
+    const { notifications, show } = start({ store });
+    await advanceTicks(1);
+    const read = createDeferred<ScheduledNotificationRecord[]>();
+    store.listAll.mockReturnValueOnce(read.promise);
+    await advanceTicks(1);
+
+    // When the scheduler is disposed while the round reads, and the read then finds the notification due
+    notifications.dispose();
+    read.resolve([record]);
+    await advanceTicks(1);
+
+    // Then it is not claimed, so it stays for another tab or the next load, and nothing is shown
+    expect(store.removeById).not.toHaveBeenCalled();
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it('As a dApp user, I start a scheduler already disposed and it opens no channel, fires nothing and starts no poller', async () => {
+    // Given a scheduler disposed before it started, over a store holding a due notification
+    const { timers, build, advanceTicks, countListening } = createPollerHarness();
+    const opened: string[] = [];
+    const store = createRecordStore({ records: [DUE] });
+    const { notifications, show } = build({
+      store,
+      overrides: {
+        openChannel: name => {
+          opened.push(name);
+          return null;
+        },
+      },
+    });
+    notifications.dispose();
+
+    // When it is started
+    notifications.init({ label: 'acme' });
+    await advanceTicks(2);
+
+    // Then no channel opens, nothing is read or shown, and nothing listens or waits on the clock
+    expect(opened).toEqual([]);
+    expect(store.listAll).not.toHaveBeenCalled();
+    expect(show).not.toHaveBeenCalled();
+    expect(countListening()).toBe(0);
+    expect(timers.countPending()).toBe(0);
+  });
+
+  it('As a dApp user, I schedule a notification after the scheduler was disposed and it is stored, while the scheduler shows nothing', async () => {
+    // Given a disposed scheduler over a store holding a notification due in two seconds
+    const { timers, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 2_000 }] });
+    store.schedule.mockResolvedValue({ ok: true, id: 2 });
+    const { notifications, show } = start({ store });
+    await advanceTicks(1);
+    notifications.dispose();
+
+    // When a notification is scheduled and both fall due
+    const result = await notifications.schedule({ ...DUE, scheduledAt: timers.now() + 2_000 });
+    await advanceTicks(3);
+
+    // Then the store holds it, and no poller starts to show either
+    expect(result).toEqual({ ok: true, id: 2, immediate: false });
+    expect(store.schedule).toHaveBeenCalledTimes(1);
+    expect(show).not.toHaveBeenCalled();
+    expect(timers.countPending()).toBe(0);
+  });
+
+  it('As a dApp user, I cancel a notification after the scheduler was disposed and it is removed from the store', async () => {
+    // Given a disposed scheduler over a store that holds the notification
+    const { start } = createPollerHarness();
+    const store = createRecordStore({ records: [] });
+    store.cancel.mockResolvedValue(true);
+    const { notifications } = start({ store });
+    notifications.dispose();
+
+    // When the notification is cancelled
+    const removed = await notifications.cancel('acme.dot', 1);
+
+    // Then the store removed it
+    expect(removed).toBe(true);
+    expect(store.cancel).toHaveBeenCalledWith('acme.dot', 1);
+  });
+
+  it('As a user who leaves the page twice over, I dispose the scheduler again and it does not throw', () => {
+    // Given a disposed scheduler
+    const { start } = createPollerHarness();
+    const { notifications } = start({ store: createRecordStore({ records: [] }) });
+    notifications.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(notifications.dispose);
+
+    // Then it does not throw
+    expect(thrown).toBeUndefined();
+  });
+
+  it('As a user whose notifications failed to load, I leave the page and the scheduler is disposed without throwing', async () => {
+    // Given a scheduler whose every read of the store failed
+    const { start, advanceTicks, countListening } = createPollerHarness();
+    const store = createRecordStore({ records: [] });
+    store.listAll.mockRejectedValue(new Error('disk gone'));
+    const { notifications } = start({ store });
+    await advanceTicks(1);
+
+    // When the scheduler is disposed
+    const thrown = catchError(notifications.dispose);
+
+    // Then it does not throw, and holds no listener on the page
+    expect(thrown).toBeUndefined();
+    expect(countListening()).toBe(0);
   });
 });

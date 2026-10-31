@@ -204,6 +204,8 @@ export function createProductFrame({
     retryIf: error => error instanceof CoreWentDownError,
     timers,
   });
+  // Aborts on dispose, after which no wait of the frame's runs on.
+  const frameLifetime = new AbortController();
   let rendering = new AbortController();
   // The recover ask queued behind the running one. A newer ask takes its place, so at most one waits.
   let waitingRecover: AbortController | null = null;
@@ -234,6 +236,10 @@ export function createProductFrame({
 
   /** Resolves true when this render put the product on screen, false when a newer render or a core loss took over. */
   function start(product: FrameProduct): Promise<boolean> {
+    // A disposed frame mounts nothing again.
+    if (frameLifetime.signal.aborted) {
+      return Promise.resolve(false);
+    }
     rendering.abort(new Error('A newer render superseded this one'));
     const controller = new AbortController();
     rendering = controller;
@@ -300,9 +306,13 @@ export function createProductFrame({
         }
         replacedAt = timers.now();
         await rerender('replacement');
-        await sleep(RECOVER_MIN_INTERVAL_MS, { timers });
+        await sleep(RECOVER_MIN_INTERVAL_MS, { signal: frameLifetime.signal, timers });
       })
       .catch((error: unknown) => {
+        // A disposed frame ended the wait.
+        if (frameLifetime.signal.aborted) {
+          return;
+        }
         reportRerenderFailure(error, 'replacement');
       });
   }
@@ -547,18 +557,25 @@ export function createProductFrame({
   }
 
   function activate(host: MountedHost, keepLoading: boolean): void {
-    panelDispose?.();
-    panelDispose = null;
-    mounted?.dispose();
+    takeDown();
     view.clearScreens({ loading: !keepLoading });
     mounted = host;
   }
 
-  // The frame lives as long as the page, so it never unsubscribes from either source below.
+  /** Takes down the product on screen and the panel watching it. Throws when the product's own dispose throws. */
+  function takeDown(): void {
+    const stopPanel = panelDispose;
+    const taken = mounted;
+    // Cleared first, so a dispose that throws is not repeated by a second take down.
+    panelDispose = null;
+    mounted = null;
+    stopPanel?.();
+    taken?.dispose();
+  }
 
   // A new `allow` attribute only takes effect in a fresh iframe. A frame still being built may have read its policy
   // before the change, so it is built again at once rather than after an answer for the frame it replaces.
-  subscribePermissionChanges(change => {
+  const stopPermissionChanges = subscribePermissionChanges(change => {
     if (!change.allowChanged || change.label !== target?.label) {
       return;
     }
@@ -573,7 +590,7 @@ export function createProductFrame({
   });
 
   // The sandbox strips its contract params after boot, so a reloaded sandbox asks the host to rebuild it.
-  channel.on('dotli:sandbox-recover', (_message, { origin, source }) => {
+  const stopRecoverAsks = channel.on('dotli:sandbox-recover', (_message, { origin, source }) => {
     const product = target;
     const asking = mounted;
     // The exact origin of the product on screen, so one product's sandbox cannot rebuild another, and the frame on
@@ -590,6 +607,7 @@ export function createProductFrame({
     waitingRecover?.abort(new Error('A newer recover ask replaced this one'));
     const ask = new AbortController();
     waitingRecover = ask;
+    const signal = AbortSignal.any([ask.signal, frameLifetime.signal]);
     recovers
       .call(
         async () => {
@@ -601,13 +619,13 @@ export function createProductFrame({
             return;
           }
           await rerender('recover');
-          await sleep(RECOVER_MIN_INTERVAL_MS, { signal: ask.signal, timers });
+          await sleep(RECOVER_MIN_INTERVAL_MS, { signal, timers });
         },
-        { signal: ask.signal },
+        { signal },
       )
       .catch((error: unknown) => {
-        // A newer ask took the place of this one while it waited.
-        if (!ask.signal.aborted) {
+        // A newer ask took the place of this one while it waited, or a disposed frame ended the wait.
+        if (!signal.aborted) {
           reportRerenderFailure(error, 'recover');
         }
       });
@@ -622,6 +640,18 @@ export function createProductFrame({
     mounted?.releaseCore();
   }
 
+  function dispose(): void {
+    frameLifetime.abort(new Error('The product frame was disposed'));
+    rendering.abort(new Error('The product frame was disposed'));
+    waitingRecover?.abort(new Error('The product frame was disposed'));
+    waitingRecover = null;
+    // Every render the frame starts on its own reads the product from here.
+    target = null;
+    stopPermissionChanges();
+    stopRecoverAsks();
+    takeDown();
+  }
+
   return {
     /**
      * Replaces the product on screen once the new one has connected. Resolves when it is on screen or a newer render
@@ -634,6 +664,13 @@ export function createProductFrame({
      * it without its core, and a render asked from above starts afresh. Never throws.
      */
     halt,
+    /**
+     * Stops hearing permission changes and recover asks, takes down the product on screen with its core and ends every
+     * render and wait in flight, so a render asked from above resolves as superseded and neither it nor a later render
+     * mounts anything, is safe to call twice or after a failed render, and throws only when the product on screen's
+     * own dispose throws.
+     */
+    dispose,
   };
 }
 

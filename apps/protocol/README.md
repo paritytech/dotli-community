@@ -102,7 +102,8 @@ to the network on the host's behalf. Every page loads it from `/p/` on the root 
   subscribe. The worker closes once every connected port has heard it. One unit owns the ports and this close, since a
   release, a port hearing why and the close each lead to the others. The close waits a task on the timers the worker is
   given, so connects already queued for it are served first, and sends the worker's buffered telemetry before it. A send
-  that fails is captured, logged and counted, and the close goes on.
+  that fails is captured, logged and counted, and the close goes on. A disposed worker closes every port at once,
+  released ones too, and never closes itself, even after a failure.
 - One setup starts the light client's chains, the idle leases that let the relay and Bulletin sync be watched, a watcher
   that takes a halted chain again after a short wait, and the name resolver, for the iframe and the SharedWorker alike.
   Each keeps its own transport. Both warm People through the setup without holding ready, and a warm that fails is

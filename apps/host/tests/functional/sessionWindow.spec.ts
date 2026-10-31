@@ -52,7 +52,20 @@ const SANDBOX_ORIGIN = `http://x.app.localhost:${PORT}`;
 /** The main store's paired session and its cached account, under the local site id the frame keys them by. */
 const STORED_SESSION_KEY = 'TRUAPI_local.li_session';
 const STORED_UI_STATE_KEY = 'TRUAPI_local.li_session:ui-state';
-const STORED_ACCOUNT = { connected: true, publicKey: '0x01', liteUsername: 'alice.01' };
+const STORED_PUBLIC_KEY = `0x${'11'.repeat(32)}`;
+const STORED_LITE_USERNAME = 'alice.01';
+/** The record's version byte. */
+const SESSION_VERSION = '01';
+/** An absent optional field of the record. */
+const NONE = '00';
+/** A present optional text field: its presence byte, its length as a one-byte compact integer, then its text. */
+const STORED_LITE_USERNAME_FIELD = `01${(STORED_LITE_USERNAME.length * 4).toString(16)}${Buffer.from(STORED_LITE_USERNAME).toString('hex')}`;
+/**
+ * A record of the paired session with its key and lite username only, built the way the wallet core decodes it. The
+ * wallet core deletes a stored session it cannot decode, and the signed-in flag goes with it.
+ */
+const STORED_SESSION_BLOB = `0x${SESSION_VERSION}${STORED_PUBLIC_KEY.slice(2)}${NONE.repeat(5)}${STORED_LITE_USERNAME_FIELD}${NONE}`;
+const STORED_ACCOUNT = { connected: true, publicKey: STORED_PUBLIC_KEY, liteUsername: STORED_LITE_USERNAME };
 /** The site list, which reads the grants on the root origin. */
 const SITE_LIST_URL = `${ROOT_ORIGIN}/s/manage`;
 
@@ -163,11 +176,11 @@ async function seedSiteGrant(page: Page): Promise<void> {
 /** A paired sign-in and its cached account in the main store, written through a document on the root origin. */
 async function storePairedSignIn(target: Frame): Promise<void> {
   await target.evaluate(
-    ([sessionKey, uiStateKey, account]) => {
-      localStorage.setItem(sessionKey, '0x0102');
+    ([sessionKey, uiStateKey, account, blob]) => {
+      localStorage.setItem(sessionKey, blob);
       localStorage.setItem(uiStateKey, JSON.stringify(account));
     },
-    [STORED_SESSION_KEY, STORED_UI_STATE_KEY, STORED_ACCOUNT] as const,
+    [STORED_SESSION_KEY, STORED_UI_STATE_KEY, STORED_ACCOUNT, STORED_SESSION_BLOB] as const,
   );
 }
 
@@ -308,7 +321,8 @@ test.describe('Signing in through the window', () => {
     // Given a product that loaded signed out, and a paired sign-in stored since by another page, written here through
     // the protocol frame, whose document is on the root origin
     await openProduct(page);
-    await storePairedSignIn(await waitForFrame(page, isProtocolFrameUrl, TIMEOUT_MS));
+    const protocolFrame = await waitForFrame(page, isProtocolFrameUrl, TIMEOUT_MS);
+    await storePairedSignIn(protocolFrame);
     await setSessionFlag(request);
     await markDocument(page);
 
@@ -317,9 +331,12 @@ test.describe('Signing in through the window', () => {
     await expect(sessionWindow(window)).toHaveAttribute('data-view', 'continue', { timeout: TIMEOUT_MS });
     await Promise.all([untilClosed(window), window.getByTestId('session-window-continue-button').click()]);
 
-    // Then the account shows with no reload
+    // Then the account shows with no reload, and the core kept the stored session
     await expect(page.getByTestId('user-badge')).toBeVisible({ timeout: TIMEOUT_MS });
     await expect(page.locator('html')).toHaveAttribute('data-test-no-reload', '1');
+    expect(await protocolFrame.evaluate(key => localStorage.getItem(key), STORED_SESSION_KEY)).toBe(
+      STORED_SESSION_BLOB,
+    );
   });
 
   test('As a user on a product whose sign-in made elsewhere waits, I press Continue session and see my account at once', async ({

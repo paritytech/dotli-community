@@ -18,7 +18,7 @@ import {
 
 type Params = {
   /** The sandbox's own window, where the host's answers and `pagehide` arrive. */
-  window: Pick<Window, 'addEventListener'>;
+  window: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   /** The host page that framed this sandbox. */
   parent: Pick<Window, 'postMessage'>;
   /** Whether a message from `origin` may come from the host. Never throws. */
@@ -38,18 +38,53 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
   // Each abort names this frame, since it may be read after this document is gone.
   const frame = createRandomId();
   const replies = createPendingReplies<string, Uint8Array>();
+  // Aborted by `dispose`, so a disposed bridge starts no new request.
+  const lifetime = new AbortController();
 
+  sandboxWindow.addEventListener('message', onMessage);
   // The only notice that this frame went. Without it, each open request keeps running for tens of seconds.
-  sandboxWindow.addEventListener('pagehide', event => {
+  sandboxWindow.addEventListener('pagehide', onPageHide);
+
+  return {
+    /**
+     * Reads the block `cid` names through the host. Rejects with the host's error, with a timeout when the host never
+     * answers, or with an `AbortError` when the frame goes away or the bridge is disposed. A call after `dispose()`
+     * rejects at once with an `AbortError` and asks the host nothing.
+     */
+    requestBlock,
+    /**
+     * Stops listening on the sandbox's window and aborts the open requests as a frame torn down does, so each rejects
+     * with an `AbortError` and the host drops its fetch, safe to call more than once and never throwing.
+     */
+    dispose,
+  };
+
+  function dispose(): void {
+    lifetime.abort();
+    abortOpenRequests();
+    sandboxWindow.removeEventListener('pagehide', onPageHide);
+    sandboxWindow.removeEventListener('message', onMessage);
+  }
+
+  function onPageHide(event: PageTransitionEvent): void {
     // A frame entering the back/forward cache can come back, still awaiting fetches the host would have aborted.
-    if (event.persisted || replies.listIds().length === 0) {
+    if (event.persisted) {
       return;
     }
-    postToHost(parent, { type: 'dotli:bitswap-abort', ids: replies.listIds(), frame });
+    abortOpenRequests();
+  }
+
+  function abortOpenRequests(): void {
+    const ids = replies.listIds();
+    if (ids.length === 0) {
+      return;
+    }
+    postAbort(ids);
     // Rejected rather than dropped, or the promises never settle: the reply listener ignores unknown ids.
-    replies.rejectAll(() => new DOMException('bitswap-relay: aborted, the sandbox frame was torn down', 'AbortError'));
-  });
-  sandboxWindow.addEventListener('message', (event: MessageEvent<unknown>) => {
+    replies.rejectAll(createAbortError);
+  }
+
+  function onMessage(event: MessageEvent<unknown>): void {
     // Only the host that framed this sandbox answers its fetches.
     if (event.source !== parent || !isHostOrigin(event.origin)) {
       return;
@@ -63,17 +98,12 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
     } else {
       replies.reject(reply.id, toHostError(reply));
     }
-  });
-
-  return {
-    /**
-     * Reads the block `cid` names through the host. Rejects with the host's error, with a timeout when the host never
-     * answers, or with an `AbortError` when the frame goes away.
-     */
-    requestBlock,
-  };
+  }
 
   function requestBlock(cid: string): Promise<Uint8Array> {
+    if (lifetime.signal.aborted) {
+      return Promise.reject(createAbortError());
+    }
     const id = `bitswap-${String(nextId++)}-${String(timers.now())}`;
     const reply = replies.wait(id);
     try {
@@ -90,21 +120,26 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
       timeoutError: () => {
         const timeout = new BitswapBridgeTimeoutError(`bitswap-bridge: no reply for ${cid} from the host`);
         replies.reject(id, timeout);
-        // The abort is best effort: the request fails with the timeout even when the abort cannot be posted.
-        try {
-          postToHost(parent, { type: 'dotli:bitswap-abort', ids: [id], frame });
-        } catch (error) {
-          reportDefect(error, {
-            flow: 'content',
-            step: 'bitswap_abort',
-            metric: S.SANDBOX_BITSWAP_ABORT,
-            message: `${BRIDGE_LOG_TAG} bitswap bridge abort postMessage failed:`,
-            tags: { surface: 'sandbox_main' },
-          });
-        }
+        postAbort([id]);
         return timeout;
       },
     });
+  }
+
+  /** Tells the host to drop the fetches `ids` name. Never throws. */
+  function postAbort(ids: string[]): void {
+    // The abort is best effort: each request fails as it would even when the abort cannot be posted.
+    try {
+      postToHost(parent, { type: 'dotli:bitswap-abort', ids, frame });
+    } catch (error) {
+      reportDefect(error, {
+        flow: 'content',
+        step: 'bitswap_abort',
+        metric: S.SANDBOX_BITSWAP_ABORT,
+        message: `${BRIDGE_LOG_TAG} bitswap bridge abort postMessage failed:`,
+        tags: { surface: 'sandbox_main' },
+      });
+    }
   }
 }
 
@@ -118,6 +153,11 @@ export function createHostOriginRule(baseDomain: string): (origin: string) => bo
     }
     return isSiteOrigin(origin, baseDomain);
   }
+}
+
+/** The `AbortError` a read hears when the bridge stops serving it. */
+function createAbortError(): DOMException {
+  return new DOMException('bitswap-relay: aborted, the bridge stopped', 'AbortError');
 }
 
 /** Keeps the host error's name and code, since every rebuilt error shares this stack and Sentry splits them by name. */

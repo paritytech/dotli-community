@@ -4,7 +4,7 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { isRecord } from '@dotli/shared';
-import { must, recordLog } from '@dotli/shared/testing';
+import { catchError, must, recordLog } from '@dotli/shared/testing';
 import type { SessionResult } from './parseSessionResult.js';
 import { SIGNED_OUT_RESULT } from './roundAnswer.js';
 import { createFakeMessageBus, createFakeWindowHandle, type FakeWindowHandle } from './listenToMessages.fake.js';
@@ -317,6 +317,23 @@ describe('session window responder', () => {
     expect(opener.posted).toHaveLength(2);
   });
 
+  it('As a dotli integrator, I dispose a responder that refused its opener and see no error, and it stays refused', () => {
+    // Given a window that refused an app origin
+    const window = openWindow();
+    const opener = must(window.opener, 'an opener');
+    window.post({ data: createHello('r1'), origin: PRODUCT, source: opener });
+
+    // When it is disposed
+    const thrown = catchError(() => {
+      window.responder.dispose();
+    });
+
+    // Then nothing threw, and it stays refused with no listener left
+    expect(thrown).toBeUndefined();
+    expect(window.responder.state()).toEqual({ kind: 'refused' });
+    expect(window.countListeners()).toBe(0);
+  });
+
   it('As a site, I say hello to the session window and it vets me as a third party, naming that party', () => {
     // Given an open window and its opener
     const window = openWindow();
@@ -623,5 +640,55 @@ describe('session window responder', () => {
 
     // Then it counts, since the window was vetted once
     expect(call).toBe('0x0a03');
+  });
+
+  it('As a dotli integrator, I dispose a responder waiting for its opener and it hears no hello or return to the page after it', () => {
+    // Given a window waiting for its opener's hello
+    const window = openWindow();
+    const opener = must(window.opener, 'an opener');
+
+    // When it is disposed, then its opener says hello and the page comes back from the back-forward cache
+    window.responder.dispose();
+    window.post({ data: createHello('r1'), origin: PAGE, source: opener });
+    window.restorePage();
+
+    // Then nothing changed, nothing more was said and no listener is left
+    expect(window.responder.state()).toEqual({ kind: 'connecting' });
+    expect(window.states).toEqual([]);
+    expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
+    expect(window.countListeners()).toBe(0);
+  });
+
+  it('As a dotli integrator, I dispose a vetted responder and a payload its site sends after it never counts', async () => {
+    // Given a window vetted for a site
+    const window = openWindow<unknown>();
+    const opener = must(window.opener, 'an opener');
+    window.post({ data: createHello('r1'), origin: SITE, source: opener });
+
+    // When it is disposed and the site then sends its payload
+    window.responder.dispose();
+    window.post({ data: createPayload('r1', '0x0a03'), origin: SITE, source: opener });
+    const settled = await Promise.race([window.responder.payload(), Promise.resolve('unsettled')]);
+
+    // Then the call never arrived
+    expect(settled).toBe('unsettled');
+  });
+
+  it.each<{ name: string; opener: FakeWindowHandle | null }>([
+    { name: 'with an opener', opener: createFakeWindowHandle() },
+    { name: 'with no opener', opener: null },
+  ])('As a dotli integrator, I dispose a responder $name twice and see no error', ({ opener }) => {
+    // Given a responder disposed once
+    const window = openWindow({ opener });
+    window.responder.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(() => {
+      window.responder.dispose();
+    });
+
+    // Then nothing threw and no listener is left
+    expect(thrown).toBeUndefined();
+    expect(window.countListeners()).toBe(0);
   });
 });

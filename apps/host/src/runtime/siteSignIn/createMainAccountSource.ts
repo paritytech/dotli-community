@@ -10,6 +10,7 @@ import {
   createAsyncTaskPool,
   createDeferred,
   fromHex,
+  noop,
   toHex,
   waitForStatus,
   type ReadableStore,
@@ -52,8 +53,10 @@ const HEX_KEY = /^0x(?:[0-9a-fA-F]{2})+$/;
 export function createMainAccountSource({ acquire, coreReport }: Params) {
   // One lease at a time, so overlapping reads share the one the first read takes.
   const leases = createAsyncTaskPool({ poolSize: 1 });
-  // The lease held, with its own signal that aborts once its core goes down.
-  let held: { lease: HeldLease; down: AbortSignal } | null = null;
+  // Aborts on dispose, which ends every read open then or started after.
+  const lifetime = new AbortController();
+  // The lease held, with its own signal that aborts once its core goes down, and the removal of its down listener.
+  let held: { lease: HeldLease; down: AbortSignal; unsubscribeDown: () => void } | null = null;
 
   /** Takes a lease unless one is held, and lets it go once its core goes down. Resolves with the lease's down signal. */
   async function holdLease(): Promise<AbortSignal> {
@@ -61,12 +64,16 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
       return held.down;
     }
     const lease = await acquire();
+    // The read that took it has already failed, so a lease landing after dispose is let go and never held.
+    if (lifetime.signal.aborted) {
+      lease.release();
+      throw new MainAccountError('unavailable', 'The main account source was disposed while it took a lease');
+    }
     const down = new AbortController();
-    const current = { lease, down: down.signal };
+    const current = { lease, down: down.signal, unsubscribeDown: noop };
     // Held before the subscribe, which calls the listener at once for a core that went down since it was acquired.
     held = current;
-    // The source lives as long as its window's page, so it keeps this listener and has no dispose.
-    lease.subscribeDown(() => {
+    current.unsubscribeDown = lease.subscribeDown(() => {
       if (held === current) {
         held = null;
       }
@@ -74,6 +81,17 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
       lease.release();
     });
     return down.signal;
+  }
+
+  function dispose(): void {
+    lifetime.abort(new Error('The main account source was disposed'));
+    if (held === null) {
+      return;
+    }
+    const { lease, unsubscribeDown } = held;
+    held = null;
+    unsubscribeDown();
+    lease.release();
   }
 
   /** The core's report while the leased core is up, and `down` once it went down, since a replacement reports anew. */
@@ -136,15 +154,17 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
     /**
      * The main account once the core reports a session, on a core lease the source holds from the first read. Rejects
      * with a {@link MainAccountError}: `signed_out` once the core reports no session or a failed login, `unavailable`
-     * for a core that cannot boot, a session without a readable key, or `signal` aborting first.
+     * for a core that cannot boot, a session without a readable key, `signal` aborting first, or the source disposed
+     * while the read is open or before it starts, which then takes no new lease.
      */
     async read(signal: AbortSignal): Promise<MainAccount> {
+      const ended = AbortSignal.any([signal, lifetime.signal]);
       try {
         for (;;) {
           // A core that went down while the read waited is leased again, and a replacement that cannot boot fails the
           // read with its error.
-          const down = await leases.call(holdLease, { signal });
-          const session = await waitForSession(down, signal);
+          const down = await leases.call(holdLease, { signal: ended });
+          const session = await waitForSession(down, ended);
           if (session === null) {
             continue;
           }
@@ -161,6 +181,11 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
         throw new MainAccountError('unavailable', 'The main account could not be read', { cause: error });
       }
     },
+    /**
+     * Removes the down listener of the held lease and lets the lease go, lets go of a lease still being taken as soon
+     * as it lands, fails every open read as `unavailable`, is safe to call twice and never throws.
+     */
+    dispose,
   };
 }
 

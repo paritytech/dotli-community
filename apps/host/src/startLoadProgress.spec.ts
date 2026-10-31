@@ -4,7 +4,8 @@
 import { describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import type { Backend } from '@dotli/config';
 import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@dotli/shared/testing';
-import { debugBus, type DotliDebugEvent } from '@dotli/truapi-debug';
+import type { DotliDebugEvent } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
 import { createSyncStore } from '@dotli/shared';
 import type { PageContent } from '@dotli/ui';
@@ -340,7 +341,7 @@ describe('startLoadProgress', () => {
 function setupLoad({ backend }: Params): LoadStand {
   const timers = createManualTimers({ start: PAGE_OPENED_AT });
   resetAllStoresForTests();
-  // The bus has no way back to off, so it stays on for the rest of the file.
+  const debugBus = createDebugBus();
   debugBus.enableBuffering();
   const chainSync = createReportSource<ChainSyncEvent>();
   const chainDetail = createReportSource<ChainDetail>();
@@ -373,7 +374,7 @@ function setupLoad({ backend }: Params): LoadStand {
   const debug: DotliDebugEvent[] = [];
   onTestFinished(
     debugBus.watch(event => {
-      if ('layer' in event && event.flowId === FLOW_ID) {
+      if ('layer' in event) {
         debug.push(event);
       }
     }),
@@ -392,6 +393,7 @@ function setupLoad({ backend }: Params): LoadStand {
     trace,
     timers,
     now: readPageClock,
+    debugBus,
   });
   onTestFinished(progress.dispose);
   return { progress, timers, chainSync, chainDetail, netBytes, content, getBands: () => given, trace, debug };

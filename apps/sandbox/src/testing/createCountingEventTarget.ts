@@ -12,7 +12,7 @@ type Params = {
 export function createCountingEventTarget({ type }: Params) {
   const target = new EventTarget();
   const heard = createDeferred<undefined>();
-  let listening = 0;
+  const listening = new Set<unknown>();
 
   return {
     /** Adds `args`' listener, counting it when it is for `type`. Never throws. */
@@ -22,14 +22,14 @@ export function createCountingEventTarget({ type }: Params) {
     /** Dispatches `event` to the listeners for its type. Returns false when a listener cancelled it. */
     dispatchEvent: (event: Event): boolean => target.dispatchEvent(event),
     /** The listeners for `type` still attached. */
-    countListening: (): number => listening,
+    countListening: (): number => listening.size,
     /** Resolves once a listener for `type` attaches. Never rejects. */
     listened: heard.promise,
   };
 
   function addEventListener(...args: Parameters<EventTarget['addEventListener']>): void {
     if (args[0] === type) {
-      listening += 1;
+      listening.add(args[1]);
       heard.resolve(undefined);
     }
     target.addEventListener(...args);
@@ -37,7 +37,7 @@ export function createCountingEventTarget({ type }: Params) {
 
   function removeEventListener(...args: Parameters<EventTarget['removeEventListener']>): void {
     if (args[0] === type) {
-      listening -= 1;
+      listening.delete(args[1]);
     }
     target.removeEventListener(...args);
   }

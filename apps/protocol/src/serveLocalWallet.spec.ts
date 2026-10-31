@@ -4,9 +4,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SITE_ID } from '@dotli/config';
 import { protocolSchema } from '@dotli/protocol';
+import { catchError } from '@dotli/shared/testing';
 import { createLocalWalletStore, LocalWalletUnreadableError, type LocalWalletStore } from '@dotli/storage';
 import { createMemoryWalletIdb } from '@dotli/storage/testing';
-import { err, hostFailure, ok, type MethodTypes } from '@dotli/transport';
+import { err, hostFailure, ok, unsupported, type MethodTypes } from '@dotli/transport';
 import { serveLocalWallet } from './serveLocalWallet.js';
 import { closeHostLinks, linkHost, type HostLink } from './testing/linkHost.js';
 
@@ -36,16 +37,16 @@ beforeEach(() => {
   walletChanges = [];
 });
 
-function serveWallet(walletStore: LocalWalletStore = store): HostLink {
+function serveWallet(walletStore: LocalWalletStore = store): HostLink & { stop: () => void } {
   const link = linkHost();
-  serveLocalWallet({
+  const stop = serveLocalWallet({
     serving: link.serving,
     onChange: siteId => {
       walletChanges.push(siteId);
     },
     store: walletStore,
   });
-  return link;
+  return { ...link, stop };
 }
 
 describe('the local wallet', () => {
@@ -197,5 +198,35 @@ describe('the local wallet', () => {
     // Then
     expect(result).toEqual(ok({ tag: 'unreadable', value: undefined }));
     expect(await store.load()).toBeNull();
+  });
+
+  it('As a frame that stopped serving the wallet, I answer no more wallet calls', async () => {
+    // Given a served wallet that answered a read
+    const { host, stop } = serveWallet();
+    const served = await host.request(wallet.read, { siteId: SITE_ID });
+
+    // When the frame stops serving the wallet
+    stop();
+    const refused = await host.request(wallet.read, { siteId: SITE_ID });
+    const saved = await host.request(wallet.save, { siteId: SITE_ID, entropy: ENTROPY, identity: null });
+
+    // Then the next calls are refused as unserved methods, and nothing was saved
+    expect(served).toEqual(ok({ tag: 'none', value: undefined }));
+    expect(refused).toEqual(err(unsupported()));
+    expect(saved).toEqual(err(unsupported()));
+    expect(await store.load()).toBeNull();
+    expect(walletChanges).toEqual([]);
+  });
+
+  it('As a frame that stops serving the wallet twice, I stop it again and nothing throws', () => {
+    // Given a wallet that was stopped
+    const { stop } = serveWallet();
+    stop();
+
+    // When the frame stops it again
+    const thrown = catchError(stop);
+
+    // Then nothing throws
+    expect(thrown).toBeUndefined();
   });
 });

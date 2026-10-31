@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
@@ -57,56 +57,66 @@ function mount({ intent = createSettingsIntent() }: Params = {}) {
 
 describe('useSettingsPanel', () => {
   it('As a visitor whose load failed, an Open settings asked before the button mounted opens it once mounted', () => {
-    // Given
+    // Given an Open settings asked before the button mounted
     const intent = createSettingsIntent();
     intent.open();
 
-    // When
+    // When the settings button mounts
     const { panel, dispose } = mount({ intent });
+    onTestFinished(dispose);
 
-    // Then
+    // Then the panel is open
     expect(panel.open()).toBe(true);
-    dispose();
   });
 
   it('As a visitor, Open settings opens the panel I closed, and stops reaching it once the button is gone', () => {
-    // Given
+    // Given a mounted settings button whose panel I closed
     const { panel, dispose, intent } = mount();
     panel.onOpenChange(false);
     flush();
 
-    // When
+    // When Open settings is asked
     intent.open();
     flush();
 
-    // Then
+    // Then the panel is open
     expect(panel.open()).toBe(true);
 
-    // When
+    // When the button is gone, and the panel is closed and asked to open again
     dispose();
     panel.onOpenChange(false);
     intent.open();
     flush();
 
-    // Then
+    // Then the panel stays closed
     expect(panel.open()).toBe(false);
   });
 
-  it('As the settings button, I follow the settings once boot has read them, and the theme the page applies', () => {
-    // Given
-    const { panel, dispose, settings, theme } = mount();
+  it('As the settings button, I show no settings and the system theme before boot has read them', () => {
+    // Given a page whose boot has not read the settings
+
+    // When the settings button mounts
+    const { panel, dispose } = mount();
+    onTestFinished(dispose);
+
+    // Then it shows no settings and the system theme
     expect(panel.settings()).toBeNull();
     expect(panel.theme()).toBe('system');
+  });
 
-    // When
+  it('As the settings button, I follow the settings once boot has read them, and the theme the page applies', () => {
+    // Given a mounted settings button
+    const { panel, dispose, settings, theme } = mount();
+    onTestFinished(dispose);
+
+    // When boot reads the settings and the page applies a dark theme
     settings.set(SAVED);
     theme.set({ preference: 'dark' });
     flush();
 
-    // Then
+    // Then the button follows both
     expect(panel.settings()).toEqual(SAVED);
     expect(panel.theme()).toBe('dark');
     expect(panel.version).toBe('1.2.3');
-    dispose();
   });
 });

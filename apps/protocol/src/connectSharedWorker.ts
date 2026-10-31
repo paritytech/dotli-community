@@ -9,15 +9,16 @@ import { getFailure, ProtocolInitFailedError, protocolSchema, type ProtocolTrans
 import { createDeferred, getErrorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { createPortProvider, createTransport, type TransportIssue } from '@dotli/transport';
 
+import { disposeOnPageHide } from './disposeOnPageHide.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { FRAME_LOG_TAG } from './frameLogTag.js';
 import { getWorkerEndError, watchWorkerStatus, type WorkerStatus } from './watchWorkerStatus.js';
 
 type Params = {
   /** The protocol SharedWorker, whose port the link speaks on. */
-  worker: Pick<SharedWorker, 'port' | 'addEventListener'>;
+  worker: Pick<SharedWorker, 'port' | 'addEventListener' | 'removeEventListener'>;
   /** The iframe's page, whose `pagehide` lets go of the worker. */
-  page: Pick<Window, 'addEventListener'>;
+  page: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   /** The page load this tab names in its hello. */
   resolutionId: string | null;
   /** How long the worker has to say it is ready. */
@@ -28,15 +29,6 @@ type Params = {
   now?: () => number;
   /** Hears what the link's transport cannot handle itself. Logged by the transport when unset. */
   onIssue?: (issue: TransportIssue) => void;
-};
-
-type DisposeOnPageHideParams = {
-  /** The page whose `pagehide` disposes the transport. */
-  target: Pick<Window, 'addEventListener'>;
-  /** The link's transport. */
-  transport: { dispose: (reason: Error) => void };
-  /** What the transport is disposed with. */
-  reason: Error;
 };
 
 /** A tab's link to the worker, handed over before the worker is ready so what it reports while it syncs is heard. */
@@ -73,20 +65,7 @@ export function connectSharedWorker({
   let waiting = true;
   let timedOut: Error | undefined;
 
-  // Fires only when the worker script cannot be fetched or evaluated.
-  worker.addEventListener('error', event => {
-    const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
-    const error = new ProtocolInitFailedError(`SharedWorker failed to start${detail}`);
-    log.error(`${FRAME_LOG_TAG} SharedWorker error event`, error);
-    if (waiting) {
-      // Fails now with the cause instead of at the ready timeout. The failure leaves as the ready wait's rejection.
-      failReadyWait(error, 'load_failed');
-      return;
-    }
-    // After ready nothing waits on the worker's start, so the host would never hear of it.
-    captureException(error, { flow: 'protocol', step: 'shared_worker_error' });
-    m.count(S.PROTOCOL_SHARED_WORKER_ERROR, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
-  });
+  worker.addEventListener('error', onWorkerError);
 
   const waited = withTimeout({
     work: ready.promise,
@@ -108,8 +87,14 @@ export function connectSharedWorker({
       throw error;
     },
   );
-  // Bound at once, not once ready, so a frame removed while the worker syncs still closes its port at once.
-  disposeOnPageHide({ target: page, transport, reason: new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED) });
+  // Bound at once, not once ready, so a frame removed while the worker syncs still closes its port at once. The
+  // transport posts nothing as it closes, so the closed port alone says the tab left.
+  const stopPageHide = disposeOnPageHide({
+    target: page,
+    dispose: () => {
+      transport.dispose(new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
+    },
+  });
 
   // One subscription serves the ready wait and the caller alike, since a second one may never be answered. It is the
   // link's first call, so it starts the handshake.
@@ -121,7 +106,7 @@ export function connectSharedWorker({
     },
   });
   // At once too, since beats arrive while the worker syncs as well.
-  answerBeats(transport, status);
+  const stopAnsweringBeats = answerBeats(transport, status);
 
   status.onEnd(end => {
     failReadyWait(getWorkerEndError(end), 'worker_reported');
@@ -134,7 +119,34 @@ export function connectSharedWorker({
     status,
     /** Resolves once the worker says it is ready, and rejects with why it never will be. */
     ready: waited,
+    /**
+     * Lets go of the worker as a page hidden for good does, safe to call twice and after the link failed. Every open
+     * request and the status hear the port closed, and so does a ready wait still open.
+     */
+    dispose(): void {
+      // The transport goes first, since its close is what ends the status, and an unsubscribe tells no listener.
+      transport.dispose(new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
+      status.dispose();
+      stopAnsweringBeats();
+      worker.removeEventListener('error', onWorkerError);
+      stopPageHide();
+    },
   };
+
+  /** Fires only when the worker script cannot be fetched or evaluated. */
+  function onWorkerError(event: Event): void {
+    const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
+    const error = new ProtocolInitFailedError(`SharedWorker failed to start${detail}`);
+    log.error(`${FRAME_LOG_TAG} SharedWorker error event`, error);
+    if (waiting) {
+      // Fails now with the cause instead of at the ready timeout. The failure leaves as the ready wait's rejection.
+      failReadyWait(error, 'load_failed');
+      return;
+    }
+    // After ready nothing waits on the worker's start, so the host would never hear of it.
+    captureException(error, { flow: 'protocol', step: 'shared_worker_error' });
+    m.count(S.PROTOCOL_SHARED_WORKER_ERROR, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+  }
 
   function failReadyWait(error: Error, why: string): void {
     if (waiting) {
@@ -158,10 +170,11 @@ export function connectSharedWorker({
 
 /**
  * Answers each of the worker's beats with a heartbeat until the worker's status ends, since a worker that stopped
- * serving this tab has nothing left to keep. The beat arrives as a message event, which a page hidden for long still
- * handles at once, while its own timers are throttled to about one a minute.
+ * serving this tab has nothing left to keep, and returns the stop that ends it, safe to call twice. The beat arrives
+ * as a message event, which a page hidden for long still handles at once, while its own timers are throttled to about
+ * one a minute.
  */
-function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
+function answerBeats(transport: ProtocolTransport, status: WorkerStatus): () => void {
   let answering = true;
   const unsubscribeBeats = transport.subscribe({
     method: protocolSchema.sections.frame.beat,
@@ -190,7 +203,13 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
       },
     },
   });
-  status.onEnd(stopAnswering);
+  const stopHearingEnd = status.onEnd(stopAnswering);
+  return stop;
+
+  function stop(): void {
+    stopHearingEnd();
+    stopAnswering();
+  }
 
   function stopAnswering(): void {
     answering = false;
@@ -210,17 +229,4 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
       message: `${FRAME_LOG_TAG} Worker heartbeat failed`,
     });
   }
-}
-
-/**
- * Disposes the iframe's worker transport once its page is hidden for good, which closes its port. The transport posts
- * nothing as it closes, so the closed port alone says the tab left. `pagehide` and not `beforeunload`, because a
- * removed frame fires only the former. A page kept in the back-forward cache may come back, so it keeps its transport.
- */
-function disposeOnPageHide({ target, transport, reason }: DisposeOnPageHideParams): void {
-  target.addEventListener('pagehide', event => {
-    if (!event.persisted) {
-      transport.dispose(reason);
-    }
-  });
 }

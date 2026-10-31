@@ -5,7 +5,7 @@ import { describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createSyncStore, createDeferred, createStoreStatus, isRecord, waitForStatus } from '@dotli/shared';
-import { recordLog } from '@dotli/shared/testing';
+import { catchError, must, recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindowState.js';
 import type { AuthCommands, LoginOutcome } from '../createAuthCommands.js';
 import type { LogoutOutcome } from '../createPageSignOut.js';
@@ -260,6 +260,7 @@ function openWindow(options: OpenWindowParams = {}) {
 
   return {
     flow,
+    responder,
     presence,
     auth,
     main,
@@ -1429,5 +1430,71 @@ describe('session window flow', () => {
       // Then the stored session is sent
       expect(readSent()).toEqual([{ session: { blob: BLOB, uiState: UI_STATE }, localWallet: null }]);
     });
+  });
+
+  it('As a dotli integrator, I dispose a flow waiting for its opener and it shows nothing of a hello or a pairing after it, while its responder still hears the hello', () => {
+    // Given a window flow whose opener has not said hello
+    const { flow, responder, auth, vet, calls } = openWindow({ stored: { session: BLOB, uiState: UI_STATE } });
+    const shown = flow.screen.get();
+
+    // When it is disposed, then the opener is vetted and the core starts pairing
+    flow.dispose();
+    vet();
+    auth.set(PAIRING);
+
+    // Then the flow shows what it showed and started nothing, while the responder it does not own was vetted
+    expect(flow.screen.get()).toBe(shown);
+    expect(calls).toEqual([]);
+    expect(responder.state()).toMatchObject({ kind: 'vetted', origin: PAGE });
+  });
+
+  it('As a dotli integrator, I dispose a flow that delivered and it closes nothing when its responder answers after it', async () => {
+    // Given a flow that sent the stored session to its opener and is held on, with the result not passed on yet
+    const { flow, responder, vet, calls, delivered } = openWindow({
+      stored: { session: BLOB, uiState: UI_STATE },
+      forward: false,
+    });
+    vet();
+    await waitForView(flow, 'continue');
+    await flow.continueWithStored();
+
+    // When it is disposed and its responder then answers the opener
+    flow.dispose();
+    responder.send(must(delivered[0], 'a delivered result'));
+
+    // Then the window was not closed by the flow
+    expect(responder.state()).toEqual({ kind: 'answered' });
+    expect(calls).toEqual([]);
+  });
+
+  it('As a dotli integrator, I dispose a flow whose first step failed and see no error, and it keeps its failed view', async () => {
+    // Given a window flow whose first step failed on a store that cannot be read
+    const { flow, vet, failures } = openWindow({ stored: { session: BLOB } });
+    failures.read = new Error('store down');
+    vet();
+    await flow.settled();
+
+    // When it is disposed
+    const thrown = catchError(() => {
+      flow.dispose();
+    });
+
+    // Then nothing threw, and the failed view stays
+    expect(thrown).toBeUndefined();
+    expect(flow.screen.get().view).toBe('failed');
+  });
+
+  it('As a dotli integrator, I dispose a flow twice and see no error', () => {
+    // Given a flow disposed once
+    const { flow } = openWindow();
+    flow.dispose();
+
+    // When it is disposed again
+    const thrown = catchError(() => {
+      flow.dispose();
+    });
+
+    // Then nothing threw
+    expect(thrown).toBeUndefined();
   });
 });

@@ -73,8 +73,8 @@ type Params = {
   flush: () => Promise<void>;
   /** Beats each port. Defaults to a `HEARTBEAT_INTERVAL_MS` interval. */
   startHeartbeat?: Ticker | undefined;
-  /** Runs the zero-delay close. Defaults to the page's own timers. */
-  timers?: Pick<Timers, 'setTimeout'> | undefined;
+  /** Runs the zero-delay close, which a dispose clears. Defaults to the page's own timers. */
+  timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'> | undefined;
   /** A failure the worker starts with, which every port hears on subscribe. */
   initialFailure: Error | null;
 };
@@ -95,10 +95,8 @@ type Phase = { readonly name: 'syncing' | 'ready' } | { readonly name: 'failed';
 
 /** A released port the worker still holds open. */
 type ReleasedPort = {
-  /** Closes the port and lets go of it. Never throws. */
+  /** Stops listening on the port, closes it and lets go of it. Never throws. */
   close: () => void;
-  /** Stops noting that the port's tab spoke. Never throws. */
-  stopListening: () => void;
 };
 
 /**
@@ -126,8 +124,11 @@ export function createWorkerLifecycle({
   const spoke = new Set<WorkerPort>();
   // The tab that starts the worker connects in a later task, so a failure before then waits for it to close.
   let reached = false;
-  // Owned by `closeDeadWorker` and `closeOnceHeard` alone, so however many failures ask for it the worker closes once.
-  let closing: 'none' | 'on_connect' | 'scheduled' | 'flushed' | 'closed' = 'none';
+  // Owned by `closeDeadWorker`, `closeOnceHeard` and `dispose` alone, so however many failures ask for it the worker
+  // closes once, and a disposed worker never does.
+  let closing: 'none' | 'on_connect' | 'scheduled' | 'flushed' | 'closed' | 'disposed' = 'none';
+  // The zero-delay close `closeDeadWorker` scheduled, which a dispose clears.
+  let closeTimer: unknown = null;
   // Ports that connected and have not yet subscribed to their status.
   const unheard = new Set<SessionRecord>();
   let phase: Phase = { name: 'syncing' };
@@ -213,14 +214,22 @@ export function createWorkerLifecycle({
     },
     /** Latches the first failure, tells every port and closes the worker. A later failure does nothing. Never throws. */
     fail,
-    /** Stops the heartbeat and stops listening on the released ports. Safe to call more than once. Never throws. */
-    dispose(): void {
-      stopHeartbeat();
-      for (const { stopListening } of released.values()) {
-        stopListening();
-      }
-    },
+    /**
+     * Releases every served port and closes every released one at once, stops the heartbeat and clears a scheduled
+     * close, and never closes the worker. Safe to call more than once and after the worker failed. Never throws. A
+     * tab's status ends with the port closed, an end the port may drop as it closes at once, and nothing else open on
+     * the port hears from the worker.
+     */
+    dispose,
   };
+
+  function dispose(): void {
+    // First, so neither a release below nor a flush that settles later closes the worker.
+    closing = 'disposed';
+    letGoOfEveryPort(new Error(PROTOCOL_APP_ERRORS.PORT_CLOSED));
+    stopHeartbeat();
+    timers.clearTimeout(closeTimer);
+  }
 
   /**
    * Stops serving the port, once. Its status ends with why, typed, before its transport goes, which posts nothing as it
@@ -245,7 +254,7 @@ export function createWorkerLifecycle({
    * that speaks may have done so before the release reached it, so the end posted at the release gets a beat to arrive.
    */
   function holdReleased({ port, unwatch }: SessionRecord): void {
-    released.set(port, { close: closeReleased, stopListening });
+    released.set(port, { close: closeReleased });
     port.addEventListener('message', markSpoke);
 
     function markSpoke(): void {
@@ -324,7 +333,7 @@ export function createWorkerLifecycle({
     // A worker cannot see the connects queued for it, and a close drops them unserved. Closing in a later task lets
     // each queued connect run first. A worker has no page-hide flush, so the telemetry of the failure goes out before
     // the close drops it.
-    timers.setTimeout(() => {
+    closeTimer = timers.setTimeout(() => {
       // A flush that fails still closes, after it is reported.
       void flush().then(markFlushed, (error: unknown) => {
         reportDefect(error, {
@@ -337,7 +346,11 @@ export function createWorkerLifecycle({
       });
     }, 0);
 
+    // A flush that settles after a dispose closes nothing.
     function markFlushed(): void {
+      if (closing !== 'scheduled') {
+        return;
+      }
       closing = 'flushed';
       closeOnceHeard();
     }
@@ -355,13 +368,18 @@ export function createWorkerLifecycle({
     logWorkerEvent('Worker closing', { ports: sessions.size });
     stopHeartbeat();
     // Each tab hears why everything still open on its port ended.
+    letGoOfEveryPort(phase.error);
+    scope.close();
+  }
+
+  /** Releases every served port with `reason` and closes every released one at once. */
+  function letGoOfEveryPort(reason: Error): void {
     for (const session of [...sessions]) {
-      release(session, phase.error);
+      release(session, reason);
     }
     for (const { close } of [...released.values()]) {
       close();
     }
-    scope.close();
   }
 
   /** Latches the first failure, tells every port and closes the worker. A later failure is only its symptom. */

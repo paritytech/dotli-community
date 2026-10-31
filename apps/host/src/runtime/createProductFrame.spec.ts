@@ -4,9 +4,9 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { PERMISSIONS_REQUEST_DEVICE_PERMISSION } from '@parity/truapi/wire-table';
 import { isSandboxOrigin } from '@dotli/config';
-import { startSandboxChannel } from '@dotli/sandbox-wire';
+import { startSandboxChannel, type SandboxChannel } from '@dotli/sandbox-wire';
 import { createDeferred, createSyncStore, realTimers, type Timers } from '@dotli/shared';
-import { catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
+import { catchError, catchRejection, createManualTimers, nth, readOutcome } from '@dotli/shared/testing';
 import { encodeResponseFrame } from '../testing/encodeResponseFrame.js';
 import { bindReports } from '../testing/bindReports.js';
 import { rethrow } from '../testing/rethrow.js';
@@ -114,10 +114,25 @@ function createHarness({
   const frameView = createFakeProductFrameView();
   /** The window the sandbox posts to. */
   const sandboxWindow = new EventTarget();
-  const channel = startSandboxChannel({ target: sandboxWindow, isTrustedOrigin: isSandboxOrigin, report: rethrow });
+  const started = startSandboxChannel({ target: sandboxWindow, isTrustedOrigin: isSandboxOrigin, report: rethrow });
   onTestFinished(() => {
-    channel.stop();
+    started.stop();
   });
+  // One token per handler the frame registered and has not removed.
+  const channelHandlers = new Set<object>();
+  const channel: SandboxChannel = {
+    on(type, handler) {
+      const token = {};
+      channelHandlers.add(token);
+      const stopHandler = started.on(type, handler);
+      return stop;
+
+      function stop(): void {
+        channelHandlers.delete(token);
+        stopHandler();
+      }
+    },
+  };
   const pageLocation = { ...ROOT_LOCATION, ...location };
   const frame = createProductFrame({
     core: fakes.core,
@@ -173,6 +188,10 @@ function createHarness({
     reconnect,
     /** Puts up both screens the way the shell does, as disposers the test can count. */
     putUpScreens,
+    /** How many listeners the permission store holds. */
+    countPermissionListeners: () => permissionListeners.size,
+    /** How many handlers the sandbox channel holds. */
+    countChannelHandlers: () => channelHandlers.size,
   };
 
   async function createRecordingHost(options: FrameHostParams) {
@@ -722,6 +741,185 @@ describe('product frame halted', () => {
     expect(disposePage).not.toHaveBeenCalled();
     expect(fakes.listOnScreen()).toEqual([nth(fakes.hosts, 0)]);
     expect(fakes.readLastStatus()).toBe('failed');
+  });
+});
+
+describe('product frame disposed', () => {
+  it('As a dApp user who leaves the page, I see the product on screen go with its connection and core', async () => {
+    // Given a product on screen
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const live = await answerConnection(fakes, 0);
+    await rendered;
+
+    // When the frame is disposed
+    fakes.frame.dispose();
+
+    // Then the frame, its connection and its core go
+    expect(fakes.listOnScreen()).toEqual([]);
+    expect(live.dispose).toHaveBeenCalledTimes(1);
+    expect(fakes.runtimes[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dApp user who left the page, I change a device permission of the product that was on screen and nothing is rebuilt or listens for it', async () => {
+    // Given a product on screen, then the frame disposed
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('product'), 0);
+    fakes.frame.dispose();
+
+    // When a device permission of the product changes
+    fakes.announce({ label: 'product', permissions: ['Camera'] });
+
+    // Then no frame is asked for, and the permission store holds no listener of the frame
+    expect(fakes.countFramesAsked()).toBe(1);
+    expect(fakes.connections).toHaveLength(1);
+    expect(fakes.countPermissionListeners()).toBe(0);
+  });
+
+  it('As a dApp user who left the page, I see the sandbox that was on screen ask to be rebuilt and nothing is rebuilt or listens for it', async () => {
+    // Given a product on screen, then the frame disposed
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('product'), 0);
+    fakes.frame.dispose();
+
+    // When its sandbox asks to be rebuilt
+    fakes.askToRecover();
+
+    // Then no frame is asked for, and the sandbox channel holds no handler of the frame
+    expect(fakes.countFramesAsked()).toBe(1);
+    expect(fakes.connections).toHaveLength(1);
+    expect(fakes.countChannelHandlers()).toBe(0);
+  });
+
+  it('As a dApp user who leaves the page while a product connects, I see nothing mounted and its connection go', async () => {
+    // Given a render waiting for its connection to the core
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    await fakes.changes.until(() => fakes.connections.length === 1);
+
+    // When the frame is disposed, then the connection opens and the frame comes up
+    fakes.frame.dispose();
+    const connection = await answerConnection(fakes, 0);
+    const outcome = await readOutcome(rendered);
+    await fakes.changes.until(
+      () => fakes.hosts.length === 1 && (fakes.frameView.attached.length > 0 || fakes.listOnScreen().length === 0),
+    );
+
+    // Then the render resolves, and the frame goes with its connection without being attached
+    expect(outcome).toBe('resolved');
+    expect(fakes.frameView.attached).toEqual([]);
+    expect(fakes.listOnScreen()).toEqual([]);
+    expect(connection.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As an operator, I watch a frame disposed while a render on a replacement core waits out its interval and see no failure reported', async () => {
+    // Given a product rendered again on a replacement core, whose render waits out the interval
+    const timers = createManualTimers();
+    const fakes = createHarness({ timers });
+    const { counted } = bindReports({ onReport: fakes.changes.notify });
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const first = await answerConnection(fakes, 0);
+    await rendered;
+    crash(first);
+    await fakes.reconnect(1);
+    await fakes.changes.until(() => counted('product.rerender').length === 1);
+    await timers.advance(0);
+    const pendingBeforeDispose = timers.countPending();
+
+    // When the frame is disposed
+    fakes.frame.dispose();
+    await timers.advance(0);
+
+    // Then the wait ended at once, and only the render that was shown is counted
+    expect(pendingBeforeDispose).toBe(1);
+    expect(timers.countPending()).toBe(0);
+    expect(counted('product.rerender')).toEqual([{ outcome: 'ok', reason: 'replacement' }]);
+  });
+
+  it('As an operator, I watch a frame disposed while a rebuild at the sandbox ask waits out its interval and see no failure reported', async () => {
+    // Given a product rebuilt at its sandbox's ask, whose rebuild waits out the interval
+    const timers = createManualTimers();
+    const fakes = createHarness({ timers });
+    const { counted } = bindReports({ onReport: fakes.changes.notify });
+    await fakes.settle(buildSubdomainProduct('product'), 0);
+    fakes.askToRecover();
+    await answerConnection(fakes, 1);
+    await fakes.changes.until(() => counted('product.rerender').length === 1);
+    await timers.advance(0);
+    const pendingBeforeDispose = timers.countPending();
+
+    // When the frame is disposed
+    fakes.frame.dispose();
+    await timers.advance(0);
+
+    // Then the wait ended at once, and only the rebuild that was shown is counted
+    expect(pendingBeforeDispose).toBe(1);
+    expect(timers.countPending()).toBe(0);
+    expect(counted('product.rerender')).toEqual([{ outcome: 'ok', reason: 'recover' }]);
+  });
+
+  it('As a dApp user who left the page, I see a product rendered after it resolve with nothing mounted', async () => {
+    // Given a disposed frame
+    const fakes = createHarness();
+    fakes.frame.dispose();
+
+    // When a product is rendered
+    const outcome = await readOutcome(fakes.frame.render(buildSubdomainProduct('product')));
+
+    // Then the render resolves, and no connection or frame is asked for
+    expect(outcome).toBe('resolved');
+    expect(fakes.connections).toHaveLength(0);
+    expect(fakes.countFramesAsked()).toBe(0);
+    expect(fakes.frameView.attached).toEqual([]);
+  });
+
+  it('As a dApp user who leaves the page twice over, I dispose the frame again and it does not throw', async () => {
+    // Given a product on screen, then the frame disposed
+    const fakes = createHarness();
+    await fakes.settle(buildSubdomainProduct('product'), 0);
+    fakes.frame.dispose();
+
+    // When the frame is disposed again
+    const thrown = catchError(fakes.frame.dispose);
+
+    // Then it does not throw
+    expect(thrown).toBeUndefined();
+  });
+
+  it('As a dApp user whose product fails to go as I leave the page, I dispose the frame again and its failed dispose is not repeated', async () => {
+    // Given a product on screen whose connection throws as it goes
+    const fakes = createHarness();
+    const rendered = fakes.frame.render(buildSubdomainProduct('product'));
+    const live = await answerConnection(fakes, 0);
+    await rendered;
+    const failure = new Error('connection dispose failed');
+    live.dispose.mockImplementationOnce(() => {
+      throw failure;
+    });
+
+    // When the frame is disposed, and then disposed again
+    const first = catchError(fakes.frame.dispose);
+    const second = catchError(fakes.frame.dispose);
+
+    // Then the first dispose threw the product's failure, the second threw nothing, and the connection went once
+    expect(first).toBe(failure);
+    expect(second).toBeUndefined();
+    expect(live.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dApp user whose app failed to render, I leave the page and the frame is disposed without throwing', async () => {
+    // Given a render that failed as the core never booted
+    const fakes = createHarness();
+    fakes.nextBoots.push(() => new Error('worker fatal error: boot'));
+    await catchRejection(fakes.frame.render(buildSubdomainProduct('product')));
+
+    // When the frame is disposed
+    const thrown = catchError(fakes.frame.dispose);
+
+    // Then it does not throw, and the frame holds no listener or handler
+    expect(thrown).toBeUndefined();
+    expect(fakes.countPermissionListeners()).toBe(0);
+    expect(fakes.countChannelHandlers()).toBe(0);
   });
 });
 

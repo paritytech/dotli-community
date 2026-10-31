@@ -7,7 +7,7 @@
 import type { Backend, ChainRole } from '@dotli/config';
 import type { ChainDetail, ChainSyncEvent, ChainSyncKind } from '@dotli/chains';
 import type { ResolvePhase } from '@dotli/resolver';
-import { debugBus } from '@dotli/truapi-debug';
+import { debugBus as pageDebugBus, type DebugBus } from '@dotli/truapi-debug';
 import { pageLoading, type LoadingController, type LoadingPhase } from './createLoadingController.js';
 import type { ResolutionTrace } from './startResolutionTrace.js';
 import { log, realTimers, type Timers } from '@dotli/shared';
@@ -70,6 +70,8 @@ type Params = {
   timers?: Pick<Timers, 'now' | 'setTimeout' | 'clearTimeout'>;
   /** The monotonic clock the load's age and download rate are measured on, in milliseconds. The page's by default. */
   now?: () => number;
+  /** Where the load's chain events go. The page's bus by default. */
+  debugBus?: DebugBus;
 };
 
 type FollowDirectChainsParams = {
@@ -80,6 +82,7 @@ type FollowDirectChainsParams = {
   timers: Pick<Timers, 'now' | 'setTimeout' | 'clearTimeout'>;
   /** The monotonic clock, in milliseconds. */
   readClock: () => number;
+  debugBus: DebugBus;
 };
 
 type CreateStallWarningsParams = Pick<FollowDirectChainsParams, 'trace' | 'loading' | 'timers' | 'readClock'> & {
@@ -87,11 +90,11 @@ type CreateStallWarningsParams = Pick<FollowDirectChainsParams, 'trace' | 'loadi
   readBytesPerSecond: () => number | null;
 };
 
-type CreateChainReporterParams = Pick<FollowDirectChainsParams, 'flowId' | 'timers'>;
+type CreateChainReporterParams = Pick<FollowDirectChainsParams, 'flowId' | 'timers' | 'debugBus'>;
 
 type CreateThroughputMeterParams = Pick<FollowDirectChainsParams, 'readClock'>;
 
-type CreateByteTotalsReporterParams = Pick<FollowDirectChainsParams, 'flowId' | 'timers'>;
+type CreateByteTotalsReporterParams = Pick<FollowDirectChainsParams, 'flowId' | 'timers' | 'debugBus'>;
 
 type FollowContentProgressParams = Pick<FollowDirectChainsParams, 'events' | 'loading'>;
 
@@ -141,6 +144,7 @@ export function startLoadProgress({
   loading = pageLoading,
   timers = realTimers,
   now: readClock = readPageClock,
+  debugBus = pageDebugBus,
 }: Params) {
   const gateway = backend === 'rpc-gateway';
   loading.initPhases(getLoadingPhases(backend));
@@ -177,7 +181,7 @@ export function startLoadProgress({
   // Typed lifecycle milestones from the protocol iframe drive the bar in direct mode. The other backends forward
   // none, so only the resolver's phases move it.
   if (backend === 'smoldot-direct') {
-    releases.push(followDirectChains({ events, trace, flowId, loading, timers, readClock }));
+    releases.push(followDirectChains({ events, trace, flowId, loading, timers, readClock, debugBus }));
   }
 
   function resolvePhase(phase: ResolvePhase): void {
@@ -254,6 +258,7 @@ function followDirectChains({
   loading,
   timers,
   readClock,
+  debugBus,
 }: FollowDirectChainsParams): () => void {
   const throughput = createThroughputMeter({ readClock });
   const warnings = createStallWarnings({
@@ -263,13 +268,13 @@ function followDirectChains({
     readClock,
     readBytesPerSecond: throughput.readBytesPerSecond,
   });
-  const chains = createChainReporter({ flowId, timers });
+  const chains = createChainReporter({ flowId, timers, debugBus });
   const stopChainSync = events.onChainSync(event => {
     chains.record(event);
     warnings.record(event);
     moveBarOnChainSync(event, loading);
   });
-  const byteTotals = createByteTotalsReporter({ flowId, timers });
+  const byteTotals = createByteTotalsReporter({ flowId, timers, debugBus });
   const stopNetBytes = events.onNetBytes(({ received }) => {
     throughput.record(received);
     byteTotals.record(received);
@@ -412,7 +417,7 @@ function createStallWarnings({ trace, loading, timers, readClock, readBytesPerSe
  * when the phase changes, since Bulletin's two taps would otherwise emit every block twice. Warp progress stays in
  * `syncing`, so it passes on a slow tick.
  */
-function createChainReporter({ flowId, timers }: CreateChainReporterParams) {
+function createChainReporter({ flowId, timers, debugBus }: CreateChainReporterParams) {
   const emittedPhase = new Map<ChainRole, ChainPhase>();
   const emittedWarpAt = new Map<ChainRole, number>();
   const lastWarpEmit = new Map<ChainRole, number>();
@@ -571,7 +576,7 @@ function createThroughputMeter({ readClock }: CreateThroughputMeterParams) {
  * Builds the sampled report of the load's byte totals to the debug panel. It closes once the product is on screen, or
  * it pushes the load's own events out of the panel's ring buffer.
  */
-function createByteTotalsReporter({ flowId, timers }: CreateByteTotalsReporterParams) {
+function createByteTotalsReporter({ flowId, timers, debugBus }: CreateByteTotalsReporterParams) {
   let latest = 0;
   let lastAt = 0;
   let lastTotal = -1;

@@ -15,14 +15,14 @@ import { PROTOCOL_VERSION } from './sessionMessages.js';
  * What a round asks the window for. `resume` takes a sign-in the page knows exists elsewhere, which the window sends at
  * once when the main store holds one, and starts a new sign-in when it holds none.
  */
-export type SignInIntent = (typeof SIGN_IN_INTENTS)[number];
+export type SignInIntent = 'signin' | 'phrase' | 'resume';
 
 /** What a first-party window reads from its request URL. */
 export type WindowRequest =
   | { route: 'auth'; network: Network; round: string; intent: SignInIntent }
   | { route: 'signout'; network: Network; round: string; notified: boolean };
 
-const SIGN_IN_INTENTS = ['signin', 'phrase', 'resume'] as const;
+const SIGN_IN_INTENTS: readonly SignInIntent[] = ['signin', 'phrase', 'resume'];
 
 /** The first-party request `request` makes, or null when it breaks the contract. Unknown fields are ignored. */
 export function parseWindowRequest(request: SessionRequest): WindowRequest | null {
