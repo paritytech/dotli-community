@@ -34,14 +34,28 @@ Project agent. Otherwise:
 3. Tell the owner in one line that the change runs in the project agent, then stop.
 
 **The `architect` agent** runs every step from the frame to `DONE`, in one context. That context holds the frame, the
-probe, the design decisions and the rejected options, and step 6 rules on findings with it.
+probe, the design decisions and the rejected options, and step 6 rules on findings with it. In a staged change its
+change is the roadmap or one stage (see "A staged change").
 
 - Each "ask the owner", "stop" or "owner approves" in this skill is a message with the matching tag of its agent
   definition.
 - A gate ends the agent's turn, never its run. The owner's answer wakes the same agent. Neither the main session nor the
   agent stops it, replaces it or hands the plan to a new session or agent.
 - "Written for an empty session" is about the subagents it dispatches, not about the agent itself.
-- A fork of `architect` inherits this skill and still never runs it (see "Subagents").
+
+### A staged change
+
+When the owner stages a change at step 2, the architect writes `docs/_plans/<topic>-roadmap.md` before any design: the
+stages in order, each as one frame sentence with its layers, and a `Carries` section for what a later stage needs to
+know. The roadmap is a gate the owner approves. The agent that wrote it then ends with `DONE`.
+
+Each stage is its own change with its own `architect`, which runs steps 1 to 9 for that stage alone. Its first message
+names the roadmap and the stage, with the owner's roadmap approval. That approval starts the stage and passes none of
+its gates. Before `DONE` it marks the stage done in the roadmap and adds to `Carries` what later stages need. The main
+session then starts the next stage without asking the owner, who approved the roadmap (`CLAUDE.md` § Project agent).
+
+One context per stage keeps every turn small. A context that spans stages is re-sent on every turn and rebuilt after
+every long wait, so each stage costs more than the last.
 
 ## The lifecycle
 
@@ -80,14 +94,14 @@ flowchart TD
     Amend["HARD STOP: owner picks one of<br/>2 or 3 options, amend the plan"]
     PreSweep["Fix the collected minor findings<br/>in one sweep"]
 
-    subgraph ReviewLoop["Steps 7 and 8, at most 7 reviewer runs"]
-        Review["reviewer run"]
+    subgraph ReviewLoop["Steps 7 and 8, at most 4 reviewer runs, full and scoped"]
+        Review["Full reviewer run"]
         ReviewGate{"Findings?"}
         Beyond{"A fix beyond a ruling?"}
         Fix["Fix all findings of the run<br/>in one fresh dispatch"]
         MinorOnly{"Only minor findings?"}
         DocsOnly{"The sweep changed<br/>only docs or comments?"}
-        Scoped["Scoped re-review<br/>of the sweep's diff"]
+        Scoped["Scoped re-review<br/>of the fix's diff"]
         ScopedGate{"Findings?"}
     end
 
@@ -100,7 +114,8 @@ flowchart TD
     Frame --> Probe
     Probe -- no --> Place
     Probe -- yes --> ProbeStop
-    ProbeStop -- "go on, as framed or staged" --> Place
+    ProbeStop -- "go on, as framed" --> Place
+    ProbeStop -- staged --> Roadmap["Write the roadmap, owner approves, DONE.<br/>Each stage starts at step 1<br/>in its own agent"]
     ProbeStop -- "decomplect first" --> Frame
     Place -- no --> Ask
     Ask --> Place
@@ -136,19 +151,20 @@ flowchart TD
     Review --> ReviewGate
     ReviewGate -- no --> Extract
     ReviewGate -- "yes, under the cap" --> Beyond
-    ReviewGate -- "yes, at run 7" --> ReviewStop
+    ReviewGate -- "yes, at run 4" --> ReviewStop
     ReviewStop --> Extract
     Beyond -- yes --> Amend
     Beyond -- no --> Fix
     Fix --> MinorOnly
-    MinorOnly -- no --> Review
+    MinorOnly -- no --> Scoped
     MinorOnly -- yes --> DocsOnly
     DocsOnly -- yes --> Extract
     DocsOnly -- no --> Scoped
     Scoped --> ScopedGate
     ScopedGate -- no --> Extract
-    ScopedGate -- "minor only" --> Fix
-    ScopedGate -- "blocking or major" --> Review
+    ScopedGate -- "minor only, under the cap" --> Fix
+    ScopedGate -- "blocking or major, under the cap" --> Beyond
+    ScopedGate -- "yes, at run 4" --> ReviewStop
     Extract --> Done
 ```
 
@@ -181,7 +197,7 @@ change:
 
 If the radius contradicts the frame or the change adds braid, stop and give the owner 2 or 3 options with costs. Do it
 even when the diff would be tiny, because nothing downstream catches this case. A stop is a report, not a refusal. The
-owner decides whether to stage the change, decomplect first or accept it.
+owner decides whether to stage the change (see "A staged change"), decomplect first or accept it.
 
 ## Step 3: Place
 
@@ -244,6 +260,9 @@ Brainstorming and planning both carry it:
   layout.
 - **Files split by responsibility.** Name each file by the one responsibility it holds, so no task produces a module
   that later has to be split.
+- **Tasks sized for one short run.** A task rewrites at most four files by hand, or applies one mechanical rewrite
+  across many files through one script. Split anything larger. Every turn re-sends everything the implementer has read,
+  so one long task costs more than two short ones.
 - **Code shape** (`docs/code/style.md`). The design names its building blocks in that doc's terms: the factories and
   their params, the wrappers, the error classes, the cross-boundary message formats. Every code snippet in the plan
   follows the doc, because implementers copy plan code. Each task's Context `Rules` cite the style sections that shape
@@ -257,6 +276,9 @@ Brainstorming and planning both carry it:
   - **Precedent**: an existing module, fake or spec that shows the pattern to follow, when one exists.
   - **Rules**: the sections that bind the task, as `(<doc> § <heading>)`. Never "follow AGENTS.md".
   - **Skip** (MAY): code that looks related and is not, with one line on why.
+  - **Model**: `sonnet` when the entry fully defines the task's scope, such as a rename, a reshape to a named style rule
+    or a spec rewrite. `session` otherwise, such as a task that creates a new seam, module or interface across layers. A
+    task without the line runs on the session's model.
 
   The entry is part of the task text, so the brief carries it to the implementer and the batch reviewer.
 
@@ -291,7 +313,8 @@ Each pass checks `docs/_plans/<topic>-plan.md` against the actual repo:
 6. **Sized honestly?** Compare the plan's file list against the step 2 probe and the frame. Flag a file or layer count
    that contradicts the frame. Flag braid the design never named, such as a new flag on a shared path or a parameter
    threaded through callers that don't use it. Step 2 measured the radius from the frame, and here it is enumerated
-   (docs/abstract/simple-vs-easy.md § The classification).
+   (docs/abstract/simple-vs-easy.md § The classification). Flag a task that rewrites more than four files by hand, and a
+   `Model: sonnet` tag on a task whose Context entry does not fully define its scope.
 7. **Faithful to the approved design?** A plan can be self-contained, real, complete and sound while solving a different
    problem. Flag every divergence: a dropped requirement, an added one, a swapped approach, a design value (copy, px,
    tokens) not copied verbatim.
@@ -370,8 +393,12 @@ Every implementer brief also says, in words:
   "Context misses" in the report, with that need.
 - Resolve a stale entry, such as a moved file or a renamed symbol, with one LSP lookup. If that fails, report
   `NEEDS_CONTEXT` instead of searching the repo.
+- A rewrite that repeats one shape across many sites is one `perl -pi` or `node` script that fails when a pattern
+  matches nothing, followed by a read of its diff. Never one Edit per site.
 
 The controller copies each context miss to the ledger, and passes it on to every later task that touches the same files.
+It also writes into each brief what earlier tasks and batch reviews found that this task needs. An implementer reads no
+other task's report and no batch review. No brief bans scripts for a repeated rewrite.
 
 ### Review batches
 
@@ -390,6 +417,8 @@ Batches replace the per-task review of `superpowers:subagent-driven-development`
 - The fix loop runs per batch, up to five rounds. Rounds 1 to 3 resume the implementer of the task a finding points at,
   and rounds 4 and 5 dispatch a fresh one. A finding across tasks goes to a fresh implementer with the briefs of those
   tasks. The re-review covers only the fix diff.
+- A fix made only for a reviewer-run finding, an amendment included, skips the batch review, since the next reviewer run
+  covers it.
 - Findings still open after round 5 are not parked, unlike that skill's breaker. They go to the owner with your read on
   each, and the owner amends the plan or accepts them. Record an accepted finding in the ledger with the owner's words.
 
@@ -419,7 +448,8 @@ On a hard stop:
    that only corrects details, such as a renamed symbol, a corrected path or an added test, gets a pass over the changed
    sections.
 5. The owner approves the amendment after its review clears, so the owner approves the text that gets implemented.
-6. Resume `superpowers:subagent-driven-development` from the affected task.
+6. Resume `superpowers:subagent-driven-development` from the affected task. A fix made only for a reviewer-run finding,
+   an amendment included, skips the batch review, since the next reviewer run covers it.
 
 ## Reviewing and fixing
 
@@ -433,11 +463,13 @@ and `out_of_scope`. That is why it replaces the generic superpowers final review
 brief names by hash any commit on the branch that this change did not make. It writes `docs/_reviews/<topic>-review.md`
 (the same `<topic>` as the plan) and returns blocking, major and minor counts.
 
-It runs at least once on every non-trivial change, whatever the sweep touched, and again after each fix of its blocking
-or major findings. A sweep of minor findings gets the scoped re-review in step 8.
+The first run audits the whole branch, on every non-trivial change, whatever the sweep touched. A run after a fix is a
+scoped re-review of that fix (step 8). A full run comes again only after an amendment is implemented, since the
+amendment changed the plan the branch is audited against.
 
-**Cap: seven runs**, counted across the whole lifecycle. If run 7 still has findings, stop. Give them to the owner with
-your read on each. The owner decides: fix them in one fresh dispatch with no eighth run, or accept them.
+**Cap: four runs**, full and scoped together, counted across the whole lifecycle. If run 4 still has findings, stop.
+Give them to the owner with your read on each. The owner decides: fix them in one fresh dispatch with no fifth run, or
+accept them.
 
 ### Step 8: Fix
 
@@ -447,18 +479,19 @@ list. The one exception is the open findings at a cap, which only the owner can 
 1. The minor findings collected from batch reviews are fixed in one sweep after the last task. That sweep always goes on
    to step 7.
 2. A blocking or major step 7 finding whose fix goes beyond a ruling goes through the hard stop steps in "Ruling or hard
-   stop". Once the amendment is implemented, step 7 runs again.
-3. Other blocking and major step 7 findings are fixed together with that run's minor findings in one fresh dispatch.
-   Then step 7 runs again.
-4. A step 7 run with only minor findings gets one sweep. A sweep that changes only docs or comments gets no re-review.
-   Any other sweep gets a scoped re-review, not a full step 7 run, because a full run takes ten minutes to re-audit a
-   branch that already passed. A fresh reviewer gets the minor findings and the sweep's diff. It checks that each
-   finding is fixed and that the diff breaks no checklist row it touches. A blocking or major finding sends the branch
-   back to a full step 7 run. Minor ones get one more sweep and re-review the same way. A scoped re-review counts toward
-   the seven-run cap.
+   stop". Once the amendment is implemented, a full step 7 run follows.
+3. Other blocking and major findings are fixed together with that run's minor findings in one fresh dispatch. A scoped
+   re-review of the fix follows.
+4. A run with only minor findings gets one sweep. A sweep that changes only docs or comments gets no re-review. Any
+   other sweep gets a scoped re-review.
 
-A blocking or major fix still gets a full run, never a scoped one. Such a fix can open a hole outside its own diff, and
-only a fresh audit of the whole branch finds it.
+**Scoped re-review.** A full run takes ten minutes to re-audit a branch that already passed, so a fix gets a re-review
+of its own diff. A fresh subagent runs the `reviewer` skill on the fix's commit range, with the findings the fix answers
+as a file. It checks that each finding is fixed and audits the fix's diff against both checklists. After a blocking or
+major fix it also reads every file that uses a symbol the fix changed, found with LSP `findReferences`, because such a
+fix can open a hole outside its own diff. After a minor sweep it checks only the checklist rows the diff touches. Its
+blocking or major findings go through item 2 or 3, and its minor ones get one more sweep and re-review. Every scoped
+re-review counts toward the four-run cap.
 
 The lifecycle ends at a step 7 run with no findings, a docs-only sweep, a clean scoped re-review, or the owner's
 decision at the step 7 cap. Step 9 follows. Finishing the branch (merge or PR) is a separate step the owner starts.
@@ -492,52 +525,37 @@ Vite plugin in `config/vite` (docs/code/placement.md § Cut rules).
 
 ### Subagents
 
-Every subagent this lifecycle dispatches is one of two kinds. The seat decides which, never the moment of dispatch.
+Every subagent this lifecycle dispatches is fresh: `Agent` with a named type, such as `general-purpose` or `Explore`. It
+starts empty and knows only its brief and the `CLAUDE.md` files every session loads. No seat is a fork. A fork starts
+with this agent's whole context, so even a short question re-sends all of it on every turn.
 
-- **Fresh**: `Agent` with a named type, such as `general-purpose` or `Explore`. It starts empty and knows only its brief
-  and the `CLAUDE.md` files every session loads.
-- **Fork**: `Agent` with `subagent_type: "fork"`. It inherits this whole conversation, including this skill and the step
-  in progress, and runs on the session model.
+| Seat                                                                                        | Kind                                                                                                                   | Model                                                                    | Inputs                                                                                                                      |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Steps 1 to 5: a side investigation, such as call sites of a symbol or how a module recovers | Fresh `Explore` to locate code, fresh `general-purpose` to read how it behaves, or inline                              | Its own default for `Explore`, the session's for `general-purpose`       | One question, the paths to start from, and the answer format                                                                |
+| `document-review` of the design or the plan                                                 | Inline                                                                                                                 |                                                                          | None                                                                                                                        |
+| Step 5: a plan review pass                                                                  | Fresh                                                                                                                  | The session's                                                            | The plan path, the design path, the seven criteria, the severities. From pass 2, the previous pass's plan copy and findings |
+| Step 6: an implementer                                                                      | Fresh                                                                                                                  | The task's `Model` tag                                                   | The `superpowers:subagent-driven-development` dispatch, plus the rules in "Briefs"                                          |
+| Step 6: a fix round                                                                         | Resume the implementer of the finding's task in rounds 1 to 3. Fresh in rounds 4 and 5, and for a finding across tasks | A resumed implementer keeps its model. A fresh one runs on the session's | The open findings, and for a fresh one the briefs of the tasks they point at                                                |
+| Step 6: a batch review or re-review                                                         | Fresh                                                                                                                  | The session's                                                            | The brief and report paths of each task in the batch, the review package path, the global constraints                       |
+| Step 6: a question the controller needs answered to rule on a conflict                      | Inline or fresh `Explore`                                                                                              | Its own default                                                          | One question                                                                                                                |
+| Step 7: the `reviewer` skill                                                                | Fresh                                                                                                                  | The session's                                                            | The branch and the plan path                                                                                                |
+| Step 8: a fix of blocking or major findings                                                 | Fresh                                                                                                                  | The session's                                                            | The findings as a file                                                                                                      |
+| Step 8: a minor sweep                                                                       | Fresh                                                                                                                  | `sonnet`                                                                 | The findings as a file                                                                                                      |
+| Step 8: a scoped re-review                                                                  | Fresh                                                                                                                  | The session's                                                            | The findings the fix answers as a file, the fix's commit range, and whether the fix was a minor sweep                       |
+| Step 9: rule extraction                                                                     | Inline                                                                                                                 |                                                                          | None                                                                                                                        |
 
-A seat is fresh when its value comes from not knowing this session: it is a gate, or it executes a plan written for an
-empty session. A seat MAY be a fork only when it does work this agent would otherwise do inline, before the plan is
-written, and only this agent reads its output. A seat missing from the table is fresh.
-
-| Seat                                                                                                                   | Kind                                                                                                                   | Inputs                                                                                                                      |
-| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Steps 1 to 5, until the plan is written: a side investigation, such as call sites of a symbol or how a module recovers | Fork or inline                                                                                                         | One question and the answer format                                                                                          |
-| `document-review` of the design or the plan                                                                            | Inline                                                                                                                 | None                                                                                                                        |
-| Step 5: a plan review pass                                                                                             | Fresh                                                                                                                  | The plan path, the design path, the seven criteria, the severities. From pass 2, the previous pass's plan copy and findings |
-| Step 6: an implementer                                                                                                 | Fresh                                                                                                                  | The `superpowers:subagent-driven-development` dispatch, plus the rules in "Briefs"                                          |
-| Step 6: a fix round                                                                                                    | Resume the implementer of the finding's task in rounds 1 to 3. Fresh in rounds 4 and 5, and for a finding across tasks | The open findings, and for a fresh one the briefs of the tasks they point at                                                |
-| Step 6: a batch review or re-review                                                                                    | Fresh                                                                                                                  | The brief and report paths of each task in the batch, the review package path, the global constraints                       |
-| Step 6: a question the controller needs answered to rule on a conflict                                                 | Inline or fresh `Explore`                                                                                              | One question                                                                                                                |
-| Step 7: the `reviewer` skill                                                                                           | Fresh                                                                                                                  | The branch and the plan path                                                                                                |
-| Step 8: a fix of step 7 findings or a minor sweep                                                                      | Fresh                                                                                                                  | The findings as a file                                                                                                      |
-| Step 8: a scoped re-review of a minor sweep                                                                            | Fresh                                                                                                                  | The minor findings as a file, the sweep's diff range                                                                        |
-| Step 9: rule extraction                                                                                                | Inline                                                                                                                 | None                                                                                                                        |
-
-Forks stop where the plan review starts. From then on every seat is a gate or an executor of the plan. A fork knows what
-the plan meant, reads its gaps as filled, and so hides the defects those seats exist to find. A fork in step 6 also
-inherits the controller's ledger, todos and wave state, and can start acting as the controller.
-
-**Fork rules.**
-
-- The brief opens with: "You are a fork of the architecture session, not its controller. Your one job: <question>."
-  Without this line a fork reads the inherited skill as its own and carries on with the lifecycle.
-- A fork is read-only. It MUST NOT edit a file, write the design or the plan, commit, ask the owner, dispatch a subagent
-  or invoke a skill.
-- It answers in at most 30 lines, or writes a longer answer to a scratchpad file and returns the path.
-- Forks run in parallel only when their questions are independent.
+"The session's" model means passing no `model`, so the seat runs on this agent's model. Every review seat stays on it,
+since a review needs judgment. `sonnet` is only for work whose scope is fully defined.
 
 **Fresh rules.**
 
 - The brief carries paths, the seat's template and the inputs the table names, never this agent's verdicts. "I think it
   is fine", an answer to one of the seat's own criteria, or a hint about what to ignore anchors the seat on the author's
   reading.
-- Every fresh dispatch names its model, as `superpowers:subagent-driven-development` § Model Selection sets it.
+- Every fresh dispatch takes its model from the table, which overrides `superpowers:subagent-driven-development` § Model
+  Selection.
 
-No seat dispatches a subagent, fresh or fork. Only the controller dispatches.
+No seat dispatches a subagent. Only the controller dispatches.
 
 ### Without superpowers
 
@@ -566,7 +584,7 @@ You are skipping the process when you see any of these.
 - **A plan handed to implementation without a clean review pass.** A pass with blocking or major findings counts only
   once the fixed plan clears one. Reviewing it yourself does not count.
 - **Several plan review passes at once.** Pass, fix, pass.
-- **Running past a cap**: a fourth plan pass, a sixth fix round on a batch, an eighth `reviewer` run. Past the cap, the
+- **Running past a cap**: a fourth plan pass, a sixth fix round on a batch, a fifth `reviewer` run. Past the cap, the
   owner decides.
 - **Another plan pass after minor findings only.** Apply them, and the gate is clear.
 - **A later plan pass that audits the whole plan again.** It reviews the revision and the previous pass's findings.
@@ -585,8 +603,11 @@ You are skipping the process when you see any of these.
   Anything that changes what gets built stops for the owner.
 - **Stopping the agent at the plan gate, or handing the plan to a new session or agent.** The agent that wrote the plan
   runs step 6. Its context is the reason it exists.
-- **A fork from the plan review on, a fork brief without the not-the-controller line, or a fork that edits, asks or
-  dispatches.**
+- **One agent running more than one stage of a roadmap.** Each stage gets its own agent (see "A staged change").
+- **A fork for any seat.** A side question goes to a fresh `Explore`.
+- **A task that rewrites more than four files by hand, or a brief that bans scripts for a repeated rewrite.**
+- **A dispatch on a model the seat table does not name**, such as a review on `sonnet`, or a task on it whose tag is not
+  `sonnet`.
 - **A fresh brief that carries this agent's verdict.** Paths and the seat's inputs, nothing more.
 - **A brief without the Architecture gate, or an implementer brief without the bans in words.**
 - **A per-task review, or a batch review before the batch's last task committed.**
@@ -594,7 +615,7 @@ You are skipping the process when you see any of these.
   a requirement.** That is an amendment.
 - **Amending the plan for a plain code bug.** A step 7 finding amends the plan only when its fix goes beyond a ruling.
 - **Finishing without running `reviewer`.** The generic superpowers final review does not replace it.
-- **A full `reviewer` run after a minor-only sweep, or a scoped re-review after a blocking or major fix.**
+- **A full `reviewer` run after a fix that needed no amendment.** The fix gets a scoped re-review.
 - **Parking a finding as a follow-up, or asking the owner whether to fix a minor one.** Only the owner accepts an open
   finding, and only at a cap.
 - **Treating the one-sentence frame as an estimate.** The cost is the braid it sits in. Measure the radius with

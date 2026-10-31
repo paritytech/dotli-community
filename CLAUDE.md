@@ -31,7 +31,14 @@ From the agent, show `QUESTION`, `APPROVAL`, `BLOCKED` and `DONE` verbatim. Offe
 through `AskUserQuestion` and relay the chosen label and any notes. Show a `STATUS` as one line. A finished turn of the
 agent only means it is waiting, unless its message is `DONE`. Never stop or replace the agent before `DONE`, not even at
 a gate, unless the owner stops the change. After `DONE`, or when the owner stops the change, delete
-`docs/_plans/project-agent.md`.
+`docs/_plans/project-agent.md`, except between the stages of a staged change.
+
+A staged change (.claude/skills/architecture/SKILL.md § A staged change) runs one agent per stage, and
+`project-agent.md` also records the roadmap path and the current stage. After the roadmap's or a stage's `DONE`, show
+it, then start the next stage's agent without asking the owner, who approved the roadmap. Dispatch it as that skill's
+"Who runs this skill" does, with the owner's roadmap approval verbatim as `OWNER: <text>` plus
+`Stage: <roadmap path> § <stage>`, and update `project-agent.md`. Delete the file only after the last stage's `DONE`, or
+when the owner stops the change.
 
 ## Code navigation
 

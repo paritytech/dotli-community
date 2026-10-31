@@ -35,6 +35,8 @@ rule, flag it and propose a row.
   does not report its status to the layer above.
 - **major** (AGENTS.md § Architecture, Tools:): A hand-rolled queue, in-flight flag, retry timer or concurrency limit
   instead of `createAsyncTaskPool` from `@dotli/shared`.
+- **major** (AGENTS.md § Architecture, Tools:): A hand-rolled caller count for work several callers start and stop,
+  instead of `createSharedRun` from `@dotli/shared`.
 - **major** (AGENTS.md § Code style, General:): Special build, startup or packaging machinery a plain website would not
   need, outside the sandbox, product isolation, iframe messaging and chain connections.
 

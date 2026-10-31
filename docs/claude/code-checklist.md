@@ -53,36 +53,51 @@ above the linter: semantics, data flow and naming.
   the main logic unindented.
 - **major** (docs/code/style.md § `for...of` over `forEach` and `for...in`): A `forEach` with a callback, or `for...in`.
 - **major** (docs/code/style.md § Branch on a union in its own function): A union mapped by a ternary chain or an `if`
-  ladder inline, or a `switch` over a closed union with a `default`.
+  ladder inline, or a `switch` over a closed union with a `default`, unless it reads only some members and gives a
+  one-line reason.
 - **major** (docs/code/style.md § Brand values that look alike): An identifier or encoded value passed as a bare
   `string` or `Uint8Array` where another kind could be passed in its place.
 - **major** (docs/code/style.md § Parse at the boundary): Data from the network, storage or another context used without
-  a schema parse where it enters, or defensive checks on data already parsed.
+  a schema parse where it enters, or defensive checks on data already parsed. A change to a stored record's shape
+  without its guard or migration.
 - **major** (docs/code/style.md § Every cross-boundary message has a versioned format): A message across a frame, a
   worker or the network without a versioned schema or codec, built by hand by the sender, or a receiver that guesses at
-  an unknown version.
+  an unknown version. An error across one that reaches its consumer as a name or message to match instead of a decoded
+  error class instance.
 - **major** (docs/code/style.md § Strict everywhere, escape hatches only in library code): `as`, `as never`,
   `as unknown as X` or `@ts-expect-error` in application code, one in library code without a one-line reason, or an
   exported function without a return type other than a factory whose type is derived from it.
-- **major** (docs/code/style.md § Throw errors, catch at the boundary): A result wrapper inside a layer, a catch that
-  adds context without `{ cause }`, or failures told apart by their message instead of `instanceof`.
+- **major** (docs/code/style.md § Throw errors, catch at the boundary): A result wrapper for a failure inside a layer (a
+  domain outcome union is fine), a catch that adds context without `{ cause }`, or failures told apart by their message
+  instead of `instanceof`.
 - **major** (docs/code/style.md § Thread an `AbortSignal`): An async API that waits on the network, a timer or another
-  context and takes no optional `signal`.
+  context that a caller can stop but that takes no optional `signal`, or an abort that rejects with anything but
+  `signal.reason`.
+- **major** (AGENTS.md § Code style, General): A build value that gates code read through an import instead of a static
+  `import.meta.env.X` at its site.
 - **major** (docs/code/style.md § Serial when order matters): Independent steps awaited one after another, or steps run
   in parallel where one reads what another writes.
 - **major** (docs/code/style.md § One concept per file, named after its export): A file with more than one factory or
   concept, or a file not named after its main export in camelCase.
+- **major** (docs/code/style.md § One concept per file, named after its export): A helper, table, constant or piece of
+  state split into its own file although only one module's main export uses it.
+- **minor** (docs/code/style.md § Unions, not enums): A union derived from an `as const` list (`(typeof LIST)[number]`)
+  instead of written first and typing the list.
+- **minor** (docs/code/style.md § Comments): An exported generic helper, combinator or multi-step API with no usage
+  example in its JSDoc.
 - **major** (docs/code/style.md § Named exports and one explicit barrel): A default export, `export *`, a nested barrel,
   or type and value exports on one line.
 - **major** (docs/code/style.md § Tests): Three or more inputs of one behaviour as separate tests instead of `it.each`,
   an event stream asserted event by event, or a cache hit asserted with `toEqual`.
 - **minor** (docs/code/style.md § Main export before its helpers): Private helpers above the main export.
-- **minor** (docs/code/style.md § Function names start with a verb): A function name that starts with no verb, or a
-  factory, predicate, wrapper or escape hatch without its `createX`, `isX`, `hasX`, `withX` or `unsafe_` form.
+- **minor** (docs/code/style.md § Function names start with a verb): A function name that starts with no verb (a role
+  callback slot or a third-party-fixed name aside), or a factory, predicate, wrapper or escape hatch without its
+  `createX`, `isX`, `hasX`, `withX` or `unsafe_` form.
 - **minor** (docs/code/style.md § Generic names are words): A type parameter named by a letter where it is not the one
   obvious parameter, or a type extractor not named `InferX`.
 - **minor** (docs/code/style.md § Naming): An abbreviation other than a single-letter callback parameter, a type not
-  named for its role, or a module-level primitive or static table not in SCREAMING_CASE.
+  named for its role, a helper's params type not named `<FunctionName>Params`, or a module-level primitive or static
+  table not in SCREAMING_CASE.
 - **minor** (docs/code/style.md § Messages name the value and the place): An error message without the failing value or
   the place it failed.
 - **minor** (docs/code/style.md § Comments): An exported library function without a one-sentence JSDoc and a usage
@@ -91,7 +106,8 @@ above the linter: semantics, data flow and naming.
 ## Errors and logging
 
 - **major** (AGENTS.md § Code style, TypeScript:): A `catch` that drops the error, with neither a rethrow with
-  `{ cause }` nor `captureException`, `log.error` and an outcome metric.
+  `{ cause }` nor `captureException`, `log.error` and an outcome metric. In a context with no logger, a `catch` that
+  neither posts the failure to its pages nor calls `console.error` with a reason.
 - **major** (AGENTS.md § Code style, TypeScript:): `log.warn` for progress or status. It is for real failures, and
   progress breadcrumbs use `log.event`.
 - **major** (AGENTS.md § Code style, TypeScript:): A free-standing wrapper that makes a dependency safe to call, where
@@ -101,6 +117,8 @@ above the linter: semantics, data flow and naming.
 
 - **major** (AGENTS.md § Code style, TypeScript:): More than one metric name for one event, or an outcome metric without
   `{ outcome, reason }`.
+- **major** (AGENTS.md § Code style, TypeScript:): An expected failure recorded as a breadcrumb alone (`recordExpected`)
+  instead of counted through `reportExpected`.
 
 ## Async and lifecycle
 

@@ -16,6 +16,10 @@ controller: every "this session" in that skill means you. Your context holds thi
 You run from your first message to `DONE`. A gate ends your turn, never your run: the owner's plan approval wakes you to
 control step 6 yourself. Never hand the plan to a new session or agent.
 
+In a staged change your change is one stage, named with the roadmap in your first message. The owner's roadmap approval
+in that message starts the stage and passes none of its gates. The roadmap's `Carries` section holds what earlier stages
+found (the skill's "A staged change").
+
 The owner never reads your output directly. The main session relays between you and the owner, and you have no
 `AskUserQuestion`.
 

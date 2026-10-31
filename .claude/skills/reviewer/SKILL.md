@@ -26,6 +26,13 @@ and no finding parked as a follow-up (.claude/skills/architecture/SKILL.md § Re
 1. **Get the diff.**
    - A PR number is given: `gh pr diff <N>` plus `gh pr view <N> --json files,title,body` for context.
    - Otherwise: `git diff main...HEAD` and `git log main..HEAD --oneline`.
+   - A scoped re-review: the brief gives a commit range, the findings the fix answers, and whether the fix was a minor
+     sweep. The diff is `git diff <range>`. Check that each finding is fixed and audit the diff. After a fix of blocking
+     or major findings, also read every file that uses a symbol the fix changed, found with LSP `findReferences`. Skip
+     step 5b.
+
+**Cost of a run.** The time of a run is model turns. Read the diff once. Open a file beyond the diff only to settle a
+finding. Check named paths, symbols and exports in a few batched commands, never one lookup per name.
 
 2. **Recover the intent, the frame first, then the scope.** Two different yardsticks, and the plan gives you only the
    second.
@@ -93,6 +100,7 @@ and no finding parked as a follow-up (.claude/skills/architecture/SKILL.md § Re
   `docs/_reviews/<topic>-review.md`, so a later reader can line up intent against findings.
 - No plan? Derive `<topic>` from the PR (`pr-<N>`) or the branch name without its `feat/` or `fix/` prefix. Overwrite an
   existing file for the same topic. The latest review supersedes it.
+- A scoped re-review appends a `### Re-review <n>` section to the existing file instead of overwriting it.
 - After writing, print a one-line pointer and the verdict to the console, such as
   `Review written to docs/_reviews/<topic>-review.md, 1 blocking, 4 major`. Don't restate the full body in chat.
 

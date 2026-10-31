@@ -152,6 +152,9 @@ export function createLoader(fetch: Fetch, retries?: number, delay?: number, cac
 a wrapper that returns the same interface with added behaviour is `withX`. Prefix an escape hatch that bypasses a check
 with `unsafe_`. A library combinator is named after its pattern (`pipe`, `memo`, `first`).
 
+A callback slot named for its role (`onMessage`, `handler`) and a member whose name a third-party interface fixes keep
+their names. A read accessor on an entity object is still `getX`.
+
 Why: the name tells the reader what kind of thing it is before they read the body.
 
 ### One job per function
@@ -376,6 +379,8 @@ Handle each member of a union that one module owns in a function that takes the 
 it, one `case` per member. Leave out `default`, so a new member fails the type check. A set that other modules extend is
 composed instead (see "Inject through a framework only where the architecture defines it").
 
+A function that reads only some members of a large union lists those and ends with a `default`, with a one-line reason.
+
 Why: the mapping has a name and one place to change, and the compiler finds every function a new member must reach.
 
 ```ts
@@ -407,6 +412,10 @@ Why: one construct for every shape, and unions and intersections read the same a
 
 Model a closed set as a string literal union, and a variant as a discriminated union on one tag field (`kind`, `status`,
 `tag`).
+
+When the set is also needed at run time, write the union first and type the list or set by it
+(`const NETWORK_NAMES: readonly Network[] = ['paseo-next-v2', 'previewnet']`). Never derive the union from an
+`as const` list.
 
 Why: unions erase to plain strings, narrow with `switch`, and need no import at the call site.
 
@@ -445,6 +454,9 @@ export function createAccountId(raw: string): AccountId {
 Data from the network, storage or another context is parsed by a schema once, where it enters. Inside, code trusts the
 types.
 
+A store read back only by the module that writes it may trust its records. The change that alters a record's shape adds
+its guard or migration.
+
 Why: validation lives in one place, and the inner code carries no defensive checks.
 
 ### Every cross-boundary message has a versioned format
@@ -456,6 +468,10 @@ A message that crosses a frame, a worker or the network follows "Parse at the bo
 - The sender builds the message through the format.
 - A message with an unknown version or shape is rejected with an error, never guessed at.
 - A change to the shape is a new version. The receiver handles each version it supports explicitly.
+- An error that crosses is an error codec: a class extending `Error` with a name and a typed payload, plus its encode
+  and decode pair. A family of them is one enum codec. The transport decodes it back into an instance of its class
+  before any consumer sees it, so consumers tell failures apart with `instanceof`. Never hand consumers a name or a
+  message to match.
 
 Why: the two sides ship and update separately. A versioned format turns a mismatch into a clear error at the edge
 instead of a wrong value deep inside.
@@ -516,6 +532,9 @@ one and its meaning is obvious. A type helper that extracts is `InferX`.
 A failure throws an `Error` or a class derived from it. Code in between lets it pass, and the layer boundary that can
 act on it catches it there. No result wrappers inside a layer. A catch that adds context wraps the error with
 `{ cause }`, and a catch that only filters rethrows the original unchanged.
+
+A union of expected answers that the caller presents differently (a name with no content, an unsupported version) is a
+domain outcome, not a result wrapper. A failure of the code or the transport still throws.
 
 Give a failure its own class (`class TimeoutError extends Error`) when a caller handles it differently from other
 failures, or needs data about it. Callers tell failures apart with `instanceof` and read typed fields, never match
@@ -604,7 +623,9 @@ throw new Error('Unsupported');
 
 ### Thread an `AbortSignal`
 
-An async API that waits on the network, a timer or another context takes an optional `signal` and stops when it fires.
+An async API that waits on the network, a timer or another context takes an optional `signal` once a caller can stop
+the work, and stops when it fires. With no such caller, leave the `signal` out and add it in the change that brings
+one. On an abort it rejects with `signal.reason`, so a timeout or a caller's own reason reaches the caller.
 
 Why: the caller that started the work can stop it, without a flag on the side.
 
@@ -625,6 +646,11 @@ parallel otherwise.
 
 A file holds one factory or one concept, and is named after its main export in camelCase (`createLoader.ts`). A feature
 folder may add `types.ts` and `constants.ts` for what several of its files share.
+
+- The file keeps the private helpers, types, constants and state that serve its main export. A getter that reads state
+  the main export keeps stays beside it.
+- Split a piece into its own file only when it is a concept of its own that other modules build on, never because it is
+  a separate function, table or value.
 
 - A camelCase module never shares its name with a PascalCase component in the same folder (`authModal.ts` beside
   `AuthModal.tsx`), because a case-insensitive file system resolves an import of one to the other. Name the module
@@ -662,7 +688,8 @@ export default createLoader;
 - The larger the scope, the shorter the name. A module-level entity is `accounts`, and a local in a filter function is
   `activeAccounts`.
 - Name a type after the role it plays (`XParams`, `XResult`, `XHandler`, `XAdapter`). A function's options type is
-  `Params` while it is local, and `XParams` once exported.
+  `Params` while it is local, and `XParams` once exported. In a file with several, the main export's is `Params` and
+  each other function's is `<FunctionName>Params`.
 - Name a module-level primitive or static table in SCREAMING_CASE (`DEFAULT_TIMEOUT`, `MAX_RETRIES`). A module's API
   object (`accounts`), a schema or codec (`itemSchema`) and every local stay camelCase.
 
@@ -670,7 +697,8 @@ export default createLoader;
 
 - A comment explains a quirk, a workaround or a constraint, never what the code does. Code with none of these has no
   comment.
-- An exported library function gets a one-sentence JSDoc and a short usage example.
+- An exported library function gets a one-sentence JSDoc. Add a short usage example only when the signature does not
+  show the use, such as a generic helper, a combinator or a multi-step API.
 
 ## Tests
 
