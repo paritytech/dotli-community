@@ -33,7 +33,13 @@ type Params<T> = {
 
 const registry = new Set<() => void>();
 
-/** A plain store that notifies its subscribers synchronously on each change. */
+/**
+ * A plain store that notifies its subscribers synchronously on each change.
+ *
+ * @example
+ * const view = createSyncStore<View>({ name: 'view', initial, equals });
+ * const stop = view.subscribe(() => render(view.get())); // a listener reads the value with get
+ */
 export function createSyncStore<T>({
   name,
   initial,

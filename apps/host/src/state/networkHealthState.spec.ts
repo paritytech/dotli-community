@@ -249,6 +249,34 @@ describe('The network health store', () => {
       pending: 0,
     });
   });
+
+  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
+    // Given a follow on a monitor whose subscription counts its unsubscribes
+    let unsubscribes = 0;
+    const counting: HealthMonitor = {
+      ...monitor,
+      subscribe(listener) {
+        const unsubscribe = monitor.subscribe(listener);
+        return () => {
+          unsubscribes += 1;
+          unsubscribe();
+        };
+      },
+    };
+    const stop = startHealth(counting);
+
+    // When the stores reset, then the stop left from the ended follow runs
+    resetStores();
+    const afterReset = unsubscribes;
+    stop();
+
+    // Then the reset ended the follow once, the stop added nothing and the health stays quiet
+    expect({ afterReset, total: unsubscribes, health: health.store.get() }).toEqual({
+      afterReset: 1,
+      total: 1,
+      health: 'quiet',
+    });
+  });
 });
 
 /** Starts the health over `on`, on a page whose visibility and connectivity the test sets. */

@@ -4,6 +4,7 @@
 // Outside Solid, since islands that hydrate apart read it. It keeps no rooms, bots or messages.
 
 import {
+  createSharedRun,
   createSyncStore,
   pageLocalStorage,
   registerStoreStateReset,
@@ -43,14 +44,6 @@ type Params = {
   storage?: WidthStorage;
 };
 
-/** One run of the panel's follows, which every caller of `start` shares until the last one stops. */
-type Following = {
-  /** Ends every subscription of the run. Never throws. */
-  unsubscribe: () => void;
-  /** How many callers of `start` have not stopped yet. */
-  callers: number;
-};
-
 const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';
 const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 560;
@@ -84,7 +77,7 @@ let widthStorage: WidthStorage = pageLocalStorage;
 let panelElement: HTMLElement | undefined;
 
 // A second subscription would count each product message twice as unread.
-let following: Following | null = null;
+const run = createSharedRun<Required<Params>>({ begin: beginFollowing });
 
 /** What the chat panel and its button show. */
 export const chatPanelState = {
@@ -137,9 +130,7 @@ export const chatPanelState = {
 // let go.
 registerStoreStateReset(() => {
   widthStorage = pageLocalStorage;
-  if (following !== null) {
-    endFollowing(following);
-  }
+  run.end();
   panelElement = undefined;
 });
 
@@ -231,21 +222,7 @@ function persistWidth(): void {
 }
 
 function start({ chat = chatStore, storage = pageLocalStorage }: Params = {}): () => void {
-  const run = following ?? beginFollowing({ chat, storage });
-  following = run;
-  run.callers += 1;
-  let stopped = false;
-  function stopFollowing(): void {
-    if (stopped) {
-      return;
-    }
-    stopped = true;
-    run.callers -= 1;
-    if (run.callers === 0) {
-      endFollowing(run);
-    }
-  }
-  return stopFollowing;
+  return run.join({ chat, storage });
 }
 
 function getElement(): HTMLElement | undefined {
@@ -262,7 +239,7 @@ function setElement(element: HTMLElement): () => void {
   return releaseElement;
 }
 
-function beginFollowing({ chat, storage }: Required<Params>): Following {
+function beginFollowing({ chat, storage }: Required<Params>): () => void {
   widthStorage = storage;
   followSessionAndTopbar();
   followProduct();
@@ -277,14 +254,7 @@ function beginFollowing({ chat, storage }: Required<Params>): Following {
       unsubscribeOne();
     }
   }
-  return { unsubscribe, callers: 0 };
-}
-
-function endFollowing(run: Following): void {
-  run.unsubscribe();
-  if (following === run) {
-    following = null;
-  }
+  return unsubscribe;
 }
 
 function followSessionAndTopbar(): void {

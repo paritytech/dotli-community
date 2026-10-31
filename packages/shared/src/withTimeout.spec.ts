@@ -198,7 +198,7 @@ describe('withTimeout with a signal', () => {
     controller.abort('the visitor left');
 
     // Then
-    await expect(timed).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
+    await expect(timed).rejects.toBe('the visitor left');
     expect(timers.countPending()).toBe(0);
   });
 
@@ -218,7 +218,7 @@ describe('withTimeout with a signal', () => {
     });
 
     // Then
-    await expect(timed).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
+    await expect(timed).rejects.toBe('the visitor left');
     expect(timers.countPending()).toBe(0);
   });
 
@@ -240,7 +240,7 @@ describe('withTimeout with a signal', () => {
     reject(new Error('the work failed late'));
 
     // Then
-    await expect(timed).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
+    await expect(timed).rejects.toBe('the visitor left');
     expect(then.mock.calls.some(([, onRejected]) => typeof onRejected === 'function')).toBe(true);
   });
 

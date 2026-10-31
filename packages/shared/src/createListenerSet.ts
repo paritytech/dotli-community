@@ -11,7 +11,13 @@ export type ListenerSetParams<T> = {
 
 export type ListenerSet<T> = ReturnType<typeof createListenerSet<T>>;
 
-/** A set of listeners that each hear every value, so one that throws cannot keep it from the others. */
+/**
+ * A set of listeners that each hear every value, so one that throws cannot keep it from the others.
+ *
+ * @example
+ * const changes = createListenerSet<Change>({ onListenerError: report });
+ * const stop = changes.subscribe(render); // each changes.emit(value) reaches it
+ */
 export function createListenerSet<T>({ onListenerError }: ListenerSetParams<T>) {
   const listeners = new Set<(value: T) => void>();
   let delivering = false;
@@ -21,8 +27,8 @@ export function createListenerSet<T>({ onListenerError }: ListenerSetParams<T>) 
     /** A listener subscribed twice is two subscriptions. The returned unsubscribe may run more than once. */
     subscribe,
     /**
-     * Every listener subscribed now hears `value`, in order. A value emitted while listeners hear another waits for that
-     * round, so every listener hears the values in order, and only those subscribed when the value was emitted.
+     * Every listener subscribed now hears `value`, in order. A value emitted while listeners hear another waits for
+     * that round, so every listener hears the values in order, and only those subscribed when the value was emitted.
      */
     emit,
     /** One listener hears `value` at once, under the same report, as a replay to a late subscriber does. */

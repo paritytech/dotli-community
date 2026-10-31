@@ -27,17 +27,18 @@ listener set, the sync store, the status cell and a few formatting helpers.
   passes its own report.
 - IndexedDB's callbacks become promises, one helper each: an open that rejects when an older tab blocks the upgrade, a
   request, a transaction that resolves once it commits and rejects on an abort, and a delete that rejects when a
-  connection blocks it or its signal aborts.
+  connection blocks it past its timeout.
 - An origin wipe empties the databases, caches and service workers of one origin, each whatever happened to the one
-  before, and rejects naming every part it left behind. A browser that cannot list its databases fails that part, and so
-  does a caller's signal that aborts the database deletes.
+  before, and rejects naming every part it left behind. A browser that cannot list its databases fails that part.
 - Web storage that the browser blocks or that is full reads as empty and drops writes, in one adapter, so no module
   wraps storage itself.
 - A pending-replies table pairs a request with the reply that carries its id. A settled id leaves the table, so a late
-  reply settles nothing, a caller's signal ends its own wait, and a dead channel fails every open wait at once.
+  reply settles nothing, and a dead channel fails every open wait at once.
 - A lazy load runs one load at a time and keeps what it loaded for every later caller. A failed load rejects the caller
   that ran it and is not kept, so the next caller loads again, and only the first failure is passed to the caller's
   report hook.
+- A shared run begins with its first join and ends with its last stop or an `end`. A stop left over from an ended run
+  does nothing, so a reset never ends a later run.
 - A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
 - A timeout counts only time the page runs. A timer that fires seconds after it was due means the page was frozen, as a
   backgrounded phone tab is, and the work with it, so the wait starts its budget again. A caller's signal ends the wait
@@ -59,8 +60,9 @@ listener set, the sync store, the status cell and a few formatting helpers.
   `createStatusCell({ initial, onListenerError })`, `StatusCell`, `waitForStatus(cell, verdict, { signal? })` (a wait on
   a status cell until a verdict, which settles at once on the status there is now and leaves through a signal),
   `createStoreStatus` (a sync store read as a status, for `waitForStatus`), `toAbortError`, `createPendingReplies` (its
-  `wait(id, { meta?, signal? })`, `getMeta(id)` and `listIds()`), `PendingReplies`, `createDeferred()` (a promise with
-  its resolve and reject).
+  `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its
+  resolve and reject), `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by
+  the last stop or `end`).
 - Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
   `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
   `getErrorChain`, `getErrorName`, `getErrorMessage`, `toError`, `setErrorName` (sets an error's `name` in place and
@@ -69,11 +71,11 @@ listener set, the sync store, the status cell and a few formatting helpers.
   which adds `keys` and is what `createSafeStorage` returns.
 - IndexedDB: `openIdb({ factory, name, version, upgrade })` (rejects with `IdbOpenBlockedError`, which carries the
   `databaseName`, when an older tab blocks the upgrade), `waitForIdbRequest(request)`,
-  `runIdbTransaction({ db, stores, mode, body })`, `deleteIdb(factory, name, { timeoutMs?, signal?, timers? })`.
+  `runIdbTransaction({ db, stores, mode, body })`, `deleteIdb(factory, name, { timeoutMs?, timers? })`.
 - Events: `listen({ target, type, handler })`, `listenForDocumentVisible(visibility, handler)` and
   `listenForPageReturn({ visibility, target, handler })` (focus or turning visible), each returning its stop, and
   `VisibilitySource` (a document as far as its visibility goes).
-- Origin wipe: `wipeOriginStores(stores, { keepDatabases?, signal? })` (which keeps the databases it is told to),
+- Origin wipe: `wipeOriginStores(stores, { keepDatabases? })` (which keeps the databases it is told to),
   `OriginWipeError`, `OriginStores`, `OriginWipePart`.
 - Shape guards: `isRecord(value)` (a non-null, non-array object) and `isStringArray(value)` (an array whose every item
   is a string), both type guards for a value read from an untyped source.

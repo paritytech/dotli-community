@@ -18,13 +18,15 @@ type Params<T> = {
  */
 const FROZEN_LATENESS_MS = 5_000;
 
-const ABORT_MESSAGE = 'The timed work was aborted';
-
 /**
- * `work`'s outcome, or the error `timeoutError` makes once `ms` pass first, or an AbortError as soon as `signal` aborts.
- * The timer is cleared either way. `work` is not cancelled, so a caller that owns it stops it on the timeout or the
- * abort. Time the page spends frozen does not count, since the work was frozen too: a timer that fires well after it was
- * due waits a whole `ms` again.
+ * `work`'s outcome, or the error `timeoutError` makes once `ms` pass first, or `signal.reason` as soon as `signal`
+ * aborts. The timer is cleared either way. `work` is not cancelled, so a caller that owns it stops it on the timeout or
+ * the abort. Time the page spends frozen does not count, since the work was frozen too: a timer that fires well after
+ * it was due waits a whole `ms` again.
+ *
+ * @example
+ * await withTimeout({ work: fetchBlock(), ms: 10_000,
+ *   timeoutError: () => new Error('The block fetch took over 10s') }); // work runs on after a timeout
  */
 export function withTimeout<T>({ work, ms, timeoutError, timers = realTimers, signal }: Params<T>): Promise<T> {
   let timer: unknown;
@@ -39,7 +41,7 @@ export function withTimeout<T>({ work, ms, timeoutError, timers = realTimers, si
       settleRace?.reject(error);
     },
   );
-  return raceAbort({ signal, abortMessage: ABORT_MESSAGE, start });
+  return raceAbort({ signal, start });
 
   function start(settle: Settle<T>): () => void {
     settleRace = settle;

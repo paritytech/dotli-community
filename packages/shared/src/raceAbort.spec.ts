@@ -5,53 +5,51 @@ import { describe, expect, it, vi } from 'vitest';
 import { raceAbort, type Settle } from './raceAbort.js';
 
 describe('raceAbort', () => {
-  it('As a helper on an aborted signal, I call raceAbort and it rejects at once without starting the work', async () => {
-    // Given
-    const controller = new AbortController();
-    controller.abort(new Error('gone'));
-    const start = vi.fn(() => () => undefined);
+  const reasons = [
+    { label: 'an AbortError', reason: new DOMException('stop', 'AbortError') },
+    { label: 'an Error', reason: new Error('gone') },
+    { label: 'a string', reason: 'the visitor left' },
+    { label: 'a TimeoutError', reason: new DOMException('t', 'TimeoutError') },
+  ];
 
-    // When
-    const raced = raceAbort({ signal: controller.signal, abortMessage: 'The work was aborted', start });
+  it.each(reasons)(
+    'As a helper on a signal aborted with $label, I call raceAbort and it rejects at once with that reason',
+    async ({ reason }) => {
+      // Given
+      const controller = new AbortController();
+      controller.abort(reason);
+      const start = vi.fn(() => () => undefined);
 
-    // Then
-    await expect(raced).rejects.toMatchObject({ name: 'AbortError', message: 'The work was aborted' });
-    expect(start).not.toHaveBeenCalled();
-  });
+      // When
+      const raced = raceAbort({ signal: controller.signal, start });
 
-  it('As a helper whose signal fires, I call raceAbort and it rejects and runs the cleanup', async () => {
-    // Given
-    const controller = new AbortController();
-    const cleanup = vi.fn();
-    const raced = raceAbort<string>({
-      signal: controller.signal,
-      abortMessage: 'The work was aborted',
-      start: () => cleanup,
-    });
+      // Then
+      await expect(raced).rejects.toBe(reason);
+      expect(start).not.toHaveBeenCalled();
+    },
+  );
 
-    // When
-    controller.abort('the visitor left');
+  it.each(reasons)(
+    'As a helper whose signal aborts with $label, I call raceAbort and it rejects with that reason',
+    async ({ reason }) => {
+      // Given
+      const controller = new AbortController();
+      const { signal } = controller;
+      const added = vi.spyOn(signal, 'addEventListener');
+      const removed = vi.spyOn(signal, 'removeEventListener');
+      const cleanup = vi.fn();
+      const raced = raceAbort<string>({ signal, start: () => cleanup });
 
-    // Then
-    await expect(raced).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
-    expect(cleanup).toHaveBeenCalledTimes(1);
-  });
+      // When
+      controller.abort(reason);
 
-  it('As a helper that maps the abort reason, I call raceAbort and it rejects with what toRejection makes of it', async () => {
-    // Given
-    const controller = new AbortController();
-    const lost = new Error('the layer was lost');
-    const mapped = new Error('the wait was lost', { cause: lost });
-    const toRejection = vi.fn((reason: unknown) => (reason === lost ? mapped : new Error('unexpected reason')));
-    const raced = raceAbort<string>({ signal: controller.signal, toRejection, start: () => vi.fn() });
-
-    // When
-    controller.abort(lost);
-
-    // Then
-    await expect(raced).rejects.toBe(mapped);
-    expect(toRejection).toHaveBeenCalledTimes(1);
-  });
+      // Then
+      await expect(raced).rejects.toBe(reason);
+      expect(cleanup).toHaveBeenCalledTimes(1);
+      expect(added).toHaveBeenCalledTimes(1);
+      expect(removed.mock.calls).toEqual(added.mock.calls.map(([type, listener]) => [type, listener]));
+    },
+  );
 
   it('As a helper whose work settles, I call raceAbort and it leaves no abort listener', async () => {
     // Given
@@ -62,7 +60,6 @@ describe('raceAbort', () => {
     let settle: Settle<string> | undefined;
     const raced = raceAbort<string>({
       signal,
-      abortMessage: 'The work was aborted',
       start: settleRace => {
         settle = settleRace;
         return cleanup;
@@ -88,7 +85,6 @@ describe('raceAbort', () => {
     // When
     const raced = raceAbort<string>({
       signal,
-      abortMessage: 'The work was aborted',
       start: settle => {
         settle.resolve('done');
         return cleanup;
@@ -108,7 +104,6 @@ describe('raceAbort', () => {
 
     // When
     const raced = raceAbort<string>({
-      abortMessage: 'The work was aborted',
       start: settle => {
         settle.reject(failure);
         return cleanup;
@@ -130,7 +125,6 @@ describe('raceAbort', () => {
     // When
     const raced = raceAbort<string>({
       signal,
-      abortMessage: 'The work was aborted',
       start: () => {
         throw thrown;
       },

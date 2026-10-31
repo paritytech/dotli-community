@@ -21,7 +21,12 @@ type EventMapOf<Target> = Target extends Window
 /** The event `Type` on `Target`, or a plain `Event` for a name its map does not know. */
 type EventOf<Target, Type extends string> = Type extends keyof EventMapOf<Target> ? EventMapOf<Target>[Type] : Event;
 
-/** Calls `handler` for each `type` event on `target` until the returned stop. */
+/**
+ * Calls `handler` for each `type` event on `target` until the returned stop.
+ *
+ * @example
+ * const stop = listen({ target: cookieStore, type: 'change', handler: event => report(event.changed) });
+ */
 export function listen<Target extends EventTarget, Type extends string>({
   target,
   type,

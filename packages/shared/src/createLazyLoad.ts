@@ -12,6 +12,10 @@ type Params<T> = {
  * Loads a value on the first call and keeps it for every later one. A failed load rejects the caller that ran it and is
  * not kept, so the next caller, queued behind it or later, loads again itself. `onFirstMiss` hears the first failure
  * of this loader only, so a chunk a deploy removed is reported once.
+ *
+ * @example
+ * const getRuntime = createLazyLoad({ load: () => import('./runtime.js') });
+ * const runtime = await getRuntime(); // later calls get the kept value
  */
 export function createLazyLoad<T>({ load, onFirstMiss }: Params<T>): () => Promise<T> {
   // One load at a time, so callers that overlap a load wait for it and then find it kept, in the order they asked.

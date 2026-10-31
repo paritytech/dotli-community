@@ -47,7 +47,13 @@ export type AsyncTaskPool = ReturnType<typeof createAsyncTaskPool>;
 
 const DEFAULT_POOL = 'default';
 
-/** Runs tasks in named pools of bounded size, with retries and abort. */
+/**
+ * Runs tasks in named pools of bounded size, with retries and abort.
+ *
+ * @example
+ * const steps = createAsyncTaskPool({ poolSize: 1 });
+ * await steps.call(() => refresh()); // a call made meanwhile waits its turn
+ */
 export function createAsyncTaskPool({
   poolSize,
   retryCount = 0,

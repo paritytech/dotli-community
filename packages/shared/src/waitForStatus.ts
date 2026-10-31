@@ -3,7 +3,6 @@
 
 import { noop } from './noop.js';
 import { raceAbort, type Settle } from './raceAbort.js';
-import { toError } from './toError.js';
 import type { StatusCell } from './createStatusCell.js';
 
 type Params = {
@@ -13,13 +12,16 @@ type Params = {
 /**
  * Waits on the status until `verdict` settles the wait with `true` or fails it with an error, and fails with the
  * signal's reason when `signal` aborts first.
+ *
+ * @example
+ * await waitForStatus(createStoreStatus(store), shown => shown.phase === 'ready', { signal });
  */
 export function waitForStatus<T>(
   cell: Pick<StatusCell<T>, 'get' | 'subscribe'>,
   verdict: (status: T) => boolean | Error,
   { signal }: Params = {},
 ): Promise<void> {
-  return raceAbort({ signal, toRejection: toError, start });
+  return raceAbort({ signal, start });
 
   function start(settle: Settle<void>): () => void {
     // The status there is now settles the wait at once, so a cell already there costs no subscription.

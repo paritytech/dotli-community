@@ -270,6 +270,31 @@ describe('chat panel state', () => {
     expect(chatPanelState.store.get().topbarVisible).toBe(false);
   });
 
+  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
+    // Given a follow whose chat subscription counts its unsubscribes
+    remove();
+    let unsubscribes = 0;
+    const counting: typeof chat = {
+      ...chat,
+      subscribe(listener) {
+        const unsubscribe = chat.subscribe(listener);
+        return () => {
+          unsubscribes += 1;
+          unsubscribe();
+        };
+      },
+    };
+    remove = chatPanelState.start({ chat: counting, storage: local });
+
+    // When the stores reset, then the stop left from the ended follow runs
+    resetStores();
+    const afterReset = unsubscribes;
+    remove();
+
+    // Then the reset ended the follow once and the stop added nothing
+    expect({ afterReset, total: unsubscribes }).toEqual({ afterReset: 1, total: 1 });
+  });
+
   it('As a user who logged in and hid the topbar early, I wait for the chat panel state to start and see it know both at once', () => {
     // Given
     remove();

@@ -10,7 +10,13 @@ type Params = {
   upgrade: (db: IDBDatabase) => void;
 };
 
-/** Opens `name` at `version`, rejecting rather than hanging when an older tab blocks the upgrade. */
+/**
+ * Opens `name` at `version`, rejecting rather than hanging when an older tab blocks the upgrade.
+ *
+ * @example
+ * const db = await openIdb({ factory: indexedDB, name: 'cache', version: 1,
+ *   upgrade: next => next.createObjectStore('items') });
+ */
 export function openIdb({ factory, name, version, upgrade }: Params): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = factory.open(name, version);

@@ -9,9 +9,9 @@ type Params = {
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
 
-/** Resolves after `ms`, or rejects with an AbortError as soon as `signal` aborts, clearing its timer. */
+/** Resolves after `ms`, or rejects with `signal.reason` as soon as `signal` aborts, clearing its timer. */
 export function sleep(ms: number, { signal, timers = realTimers }: Params = {}): Promise<void> {
-  return raceAbort({ signal, abortMessage: 'The wait was aborted', start });
+  return raceAbort({ signal, start });
 
   function start(settle: Settle<void>): () => void {
     const timer = timers.setTimeout(() => {

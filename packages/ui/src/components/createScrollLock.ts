@@ -1,36 +1,32 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSharedRun } from '@dotli/shared';
+
 type Params = {
   /** Locks the page's scroll on `true` and gives it back on `false`. */
   setLocked: (locked: boolean) => void;
 };
 
 /**
- * A refcounted page lock: each lock holds it, and `setLocked(false)` runs when the last returned unlock does.
- * An unlock that runs twice counts once. Returns the lock function, and neither it nor an unlock throws unless
+ * A refcounted page lock. `setLocked(true)` runs when the first lock takes the page, and `setLocked(false)` when the
+ * last unlock runs. An unlock acts once. Returns the lock function, and neither it nor an unlock throws unless
  * `setLocked` does.
  */
 export function createScrollLock({ setLocked }: Params): () => () => void {
-  let locks = 0;
+  const run = createSharedRun({ begin: lockPage });
+
+  function lockPage(): () => void {
+    setLocked(true);
+    return unlockPage;
+  }
+
+  function unlockPage(): void {
+    setLocked(false);
+  }
 
   function lock(): () => void {
-    locks += 1;
-    setLocked(true);
-    let locked = true;
-
-    function unlock(): void {
-      if (!locked) {
-        return;
-      }
-      locked = false;
-      locks -= 1;
-      if (locks === 0) {
-        setLocked(false);
-      }
-    }
-
-    return unlock;
+    return run.join();
   }
 
   return lock;

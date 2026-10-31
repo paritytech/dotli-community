@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createPendingReplies } from './createPendingReplies.js';
 import { catchError } from './testing/catchError.js';
 
@@ -99,90 +99,5 @@ describe('createPendingReplies', () => {
     // Then
     expect(error).toMatchObject({ message: 'A reply to id 1 is already awaited' });
     expect(replies.listIds()).toEqual([1]);
-  });
-});
-
-describe('createPendingReplies with a signal', () => {
-  it('As a caller with an aborted signal, I wait for a reply and the wait rejects at once without an entry', async () => {
-    // Given
-    const replies = createPendingReplies<number, string>();
-    const controller = new AbortController();
-    controller.abort('the visitor left');
-
-    // When
-    const reply = replies.wait(1, { signal: controller.signal });
-
-    // Then
-    await expect(reply).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
-    expect(replies.listIds()).toEqual([]);
-  });
-
-  it('As a caller that aborts, I stop waiting for a reply and a late reply finds nothing', async () => {
-    // Given
-    const replies = createPendingReplies<number, string>();
-    const controller = new AbortController();
-    const reply = replies.wait(1, { signal: controller.signal });
-
-    // When
-    controller.abort(new Error('the fetch was cancelled'));
-    const late = replies.resolve(1, 'block');
-
-    // Then
-    await expect(reply).rejects.toMatchObject({ name: 'AbortError', message: 'The reply wait was aborted' });
-    expect(late).toBe(false);
-    expect(replies.listIds()).toEqual([]);
-  });
-
-  it('As a caller whose reply arrives, I wait with a signal and leave no abort listener on it', async () => {
-    // Given
-    const replies = createPendingReplies<number, string>();
-    const { signal } = new AbortController();
-    const added = vi.spyOn(signal, 'addEventListener');
-    const removed = vi.spyOn(signal, 'removeEventListener');
-    const reply = replies.wait(1, { signal });
-
-    // When
-    replies.resolve(1, 'block');
-
-    // Then
-    await expect(reply).resolves.toBe('block');
-    expect(added).toHaveBeenCalledTimes(1);
-    expect(removed.mock.calls).toEqual(added.mock.calls.map(([type, listener]) => [type, listener]));
-  });
-
-  it('As a caller whose wait is rejected, I wait with a signal and leave no abort listener on it', async () => {
-    // Given
-    const replies = createPendingReplies<number, string>();
-    const { signal } = new AbortController();
-    const added = vi.spyOn(signal, 'addEventListener');
-    const removed = vi.spyOn(signal, 'removeEventListener');
-    const reply = replies.wait(1, { signal });
-    const timeout = new Error('no reply in time');
-
-    // When
-    replies.reject(1, timeout);
-
-    // Then
-    await expect(reply).rejects.toBe(timeout);
-    expect(added).toHaveBeenCalledTimes(1);
-    expect(removed.mock.calls).toEqual(added.mock.calls.map(([type, listener]) => [type, listener]));
-  });
-
-  it('As a channel that died, I fail every wait made with a signal and leave no abort listener on it', async () => {
-    // Given
-    const replies = createPendingReplies<number, string>();
-    const { signal } = new AbortController();
-    const added = vi.spyOn(signal, 'addEventListener');
-    const removed = vi.spyOn(signal, 'removeEventListener');
-    const reply = replies.wait(1, { signal });
-    const lost = new Error('channel lost');
-
-    // When
-    replies.rejectAll(() => lost);
-
-    // Then
-    await expect(reply).rejects.toBe(lost);
-    expect(added).toHaveBeenCalledTimes(1);
-    expect(removed.mock.calls).toEqual(added.mock.calls.map(([type, listener]) => [type, listener]));
   });
 });

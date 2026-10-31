@@ -33,13 +33,15 @@ const cleanups: (() => void)[] = [];
 // Each test builds its own registry and store, so no registration or read carries over.
 let registry: PermissionAuthorizations;
 let permissions: ProductPermissions;
+let stopSetupFollow: () => void;
 
 beforeEach(() => {
   captures.exception.mockClear();
   cleanups.push(bindCaptureSink(captures));
   registry = createPermissionAuthorizations();
   permissions = createProductPermissions({ registry, product: productState.store });
-  cleanups.push(permissions.start());
+  stopSetupFollow = permissions.start();
+  cleanups.push(stopSetupFollow);
 });
 
 afterEach(() => {
@@ -679,15 +681,64 @@ describe('product permissions store', () => {
     expect(permissions.state.get()).toMatchObject({ statuses: buildStatuses({ Camera: 'granted' }) });
   });
 
-  it('As a dotli integrator, I start the store again and get back the one already following the product', () => {
-    // Given
-    const running = permissions.start();
+  it('As one of two callers following the product, I stop and the other still reads on each load', async () => {
+    // Given two callers following, with the setup's follow ended
+    stopSetupFollow();
+    createFakeCore(LABEL);
+    createFakeCore('other');
+    const stopFirst = permissions.start();
+    const stopSecond = permissions.start();
+    cleanups.push(stopFirst, stopSecond);
 
-    // When
-    const again = permissions.start();
+    // When the first caller stops and a product loads
+    stopFirst();
+    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    const shown = permissions.state.get();
+    await permissions.refresh();
 
-    // Then
-    expect(again).toBe(running);
+    // Then the store shows it reading the other product
+    expect(shown).toEqual({ status: 'reading', label: 'other' });
+  });
+
+  it('As a caller holding a stop from an earlier follow, I call it and the newer follow keeps reading', async () => {
+    // Given a follow stopped and a newer one started
+    stopSetupFollow();
+    createFakeCore(LABEL);
+    createFakeCore('other');
+    const stopEarlier = permissions.start();
+    stopEarlier();
+    const stopNewer = permissions.start();
+    cleanups.push(stopEarlier, stopNewer);
+
+    // When the old stop is called again and a product loads
+    stopEarlier();
+    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    const shown = permissions.state.get();
+    await permissions.refresh();
+
+    // Then the store shows it reading the other product
+    expect(shown).toEqual({ status: 'reading', label: 'other' });
+  });
+
+  it('As the last caller, I stop and the store stops following loads', async () => {
+    // Given two callers following, with the setup's follow ended
+    stopSetupFollow();
+    createFakeCore(LABEL);
+    createFakeCore('other');
+    const stopFirst = permissions.start();
+    const stopSecond = permissions.start();
+    cleanups.push(stopFirst, stopSecond);
+
+    // When both callers stop and a product loads
+    stopFirst();
+    stopSecond();
+    const before = permissions.state.get();
+    productState.setLoaded({ label: 'other', productId: 'other.dot' });
+    const shown = permissions.state.get();
+    await permissions.refresh();
+
+    // Then the store shows no change from before the load
+    expect(shown).toEqual(before);
   });
 });
 

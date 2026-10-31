@@ -12,6 +12,10 @@ type Params = {
  * Runs `body` in one transaction and resolves once it commits, so a reload right after never loses a write. A body that
  * reads keeps what it read in its own variables. Opening the transaction on a closing connection rejects, and so does a
  * body that throws, which also aborts the transaction.
+ *
+ * @example
+ * await runIdbTransaction({ db, stores: 'items', mode: 'readwrite',
+ *   body: transaction => transaction.objectStore('items').put(value, key) });
  */
 export function runIdbTransaction({ db, stores, mode, body }: Params): Promise<void> {
   return new Promise((resolve, reject) => {

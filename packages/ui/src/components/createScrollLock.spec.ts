@@ -23,4 +23,17 @@ describe('createScrollLock', () => {
     expect(states.at(-1)).toBe(false);
     expect(states.filter(locked => !locked)).toHaveLength(1);
   });
+
+  it('As two dialogs sharing the scroll lock, I lock twice and the page is locked once', () => {
+    // Given one scroll lock on a page
+    const states: boolean[] = [];
+    const lockScroll = createScrollLock({ setLocked: locked => states.push(locked) });
+
+    // When two dialogs lock it
+    lockScroll();
+    lockScroll();
+
+    // Then the page was locked once
+    expect(states).toEqual([true]);
+  });
 });

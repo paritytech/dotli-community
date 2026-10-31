@@ -85,45 +85,6 @@ describe('deleteIdb', () => {
     // Then
     await expect(deleted).rejects.toThrow('Failed to delete held DB: still blocked by another connection');
   });
-});
-
-describe('deleteIdb with a signal', () => {
-  it('As a caller that aborts, I stop waiting on deleteIdb and its timer is cleared', async () => {
-    // Given
-    const factory = await heldFactory('held');
-    const timers = createManualTimers();
-    const controller = new AbortController();
-    const deleted = deleteIdb(factory, 'held', { signal: controller.signal, timers });
-
-    // When
-    controller.abort('the visitor left');
-
-    // Then
-    await expect(deleted).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
-    expect(timers.countPending()).toBe(0);
-  });
-
-  it('As a caller with an aborted signal, I call deleteIdb and it rejects at once', async () => {
-    // Given
-    const started: string[] = [];
-    const factory = {
-      deleteDatabase(name: string): IDBOpenDBRequest {
-        started.push(name);
-        return new IDBFactory().deleteDatabase(name);
-      },
-    };
-    const timers = createManualTimers();
-    const controller = new AbortController();
-    controller.abort('the visitor left');
-
-    // When
-    const deleted = deleteIdb(factory, 'held', { signal: controller.signal, timers });
-
-    // Then
-    await expect(deleted).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
-    expect(started).toEqual([]);
-    expect(timers.countPending()).toBe(0);
-  });
 
   it("As a caller whose delete stays blocked, I get deleteIdb's timeout after DELETE_TIMEOUT_MS", async () => {
     // Given

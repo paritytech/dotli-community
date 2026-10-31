@@ -3,7 +3,6 @@
 
 // The table that pairs a request with the reply carrying its id, for any channel that answers out of band.
 
-import { raceAbort } from './raceAbort.js';
 import { toError } from './toError.js';
 
 type Wait<Value, Meta> = {
@@ -14,39 +13,32 @@ type Wait<Value, Meta> = {
 
 type WaitParams<Meta> = {
   meta?: Meta;
-  signal?: AbortSignal;
 };
 
 export type PendingReplies<Id, Value, Meta = undefined> = ReturnType<typeof createPendingReplies<Id, Value, Meta>>;
 
-/** A table of waits keyed by request id. A settled id leaves the table, so a late reply finds nothing. */
+/**
+ * A table of waits keyed by request id. A settled id leaves the table, so a late reply finds nothing.
+ *
+ * @example
+ * const replies = createPendingReplies<number, Uint8Array>();
+ * const reply = replies.wait(id); // later, the message handler calls replies.resolve(id, bytes)
+ */
 export function createPendingReplies<Id, Value, Meta = undefined>() {
   const waits = new Map<Id, Wait<Value, Meta>>();
 
   return {
     /**
-     * Waits for the reply to `id`. `meta` is what the reply handler reads back with `getMeta(id)`. Throws when a wait on
-     * `id` is already open. Rejects with an AbortError as soon as `signal` aborts, and `id` leaves the table, so a late
-     * reply finds nothing.
+     * Waits for the reply to `id`. `meta` is what the reply handler reads back with `getMeta(id)`. Throws when a wait
+     * on `id` is already open. Rejects with the error `reject` or `rejectAll` gives it.
      */
-    wait(id: Id, { meta, signal }: WaitParams<Meta> = {}): Promise<Value> {
+    wait(id: Id, { meta }: WaitParams<Meta> = {}): Promise<Value> {
       // A second wait would orphan the first, which then never settles.
       if (waits.has(id)) {
         throw new Error(`A reply to id ${String(id)} is already awaited`);
       }
-      return raceAbort<Value>({
-        signal,
-        abortMessage: 'The reply wait was aborted',
-        start: settle => {
-          const wait = { resolve: settle.resolve, reject: settle.reject, meta };
-          waits.set(id, wait);
-          return () => {
-            // A wait opened on the same id after this one settled is not this one to remove.
-            if (waits.get(id) === wait) {
-              waits.delete(id);
-            }
-          };
-        },
+      return new Promise<Value>((resolve, reject) => {
+        waits.set(id, { resolve, reject, meta });
       });
     },
     /** What the wait on `id` carries, or `undefined` once nothing waits on it. */

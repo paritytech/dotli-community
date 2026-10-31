@@ -112,26 +112,6 @@ describe('wipeOriginStores', () => {
     // Then
     expect(wiped).toEqual(['db:dotli']);
   });
-
-  it('As a user whose signal has aborted, I wipe the origin and the database part fails with the abort error while no database delete starts', async () => {
-    // Given
-    const { stores, wiped } = origin(['dotli', 'smoldot']);
-    const controller = new AbortController();
-    controller.abort('the visitor left');
-
-    // When
-    const error: unknown = await wipeOriginStores(stores, { signal: controller.signal }).catch(
-      (caught: unknown) => caught,
-    );
-
-    // Then
-    expect(error).toBeInstanceOf(OriginWipeError);
-    if (!(error instanceof OriginWipeError)) {
-      throw new Error('Expected an OriginWipeError', { cause: error });
-    }
-    expect(error.failures.get('indexeddb')).toMatchObject({ name: 'AbortError', message: 'the visitor left' });
-    expect(wiped).toEqual(['cache:shell', 'worker']);
-  });
 });
 
 describe('deleteAllDatabases', () => {
@@ -147,19 +127,5 @@ describe('deleteAllDatabases', () => {
     // Then
     expect(deleted).toEqual(['smoldot-paseo']);
     expect(wiped).toEqual(['db:smoldot-paseo']);
-  });
-
-  it('As a protocol frame whose signal has aborted, I delete every database and it rejects with the abort error while no delete starts', async () => {
-    // Given
-    const { stores, wiped } = origin(['dotli', 'smoldot-paseo']);
-    const controller = new AbortController();
-    controller.abort('the visitor left');
-
-    // When
-    const deleted = deleteAllDatabases(must(stores.indexedDB, 'a database factory'), { signal: controller.signal });
-
-    // Then
-    await expect(deleted).rejects.toMatchObject({ name: 'AbortError', message: 'the visitor left' });
-    expect(wiped).toEqual([]);
   });
 });

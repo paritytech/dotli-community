@@ -12,7 +12,13 @@ type Params<T> = ListenerSetParams<T> & {
 
 export type StatusCell<T> = ReturnType<typeof createStatusCell<T>>;
 
-/** A status a layer sets and the layer above reads and hears. */
+/**
+ * A status a layer sets and the layer above reads and hears.
+ *
+ * @example
+ * const status = createStatusCell<'idle' | 'ready'>({ initial: 'idle', onListenerError: report });
+ * status.set('ready');
+ */
 export function createStatusCell<T>({ initial, ...listenerSetParams }: Params<T>) {
   let value = initial;
   const listeners = createListenerSet<T>(listenerSetParams);

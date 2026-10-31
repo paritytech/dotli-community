@@ -1,7 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, realTimers, registerStoreStateReset, type ReadableStore, type Timers } from '@dotli/shared';
+import {
+  createSharedRun,
+  createSyncStore,
+  realTimers,
+  registerStoreStateReset,
+  type ReadableStore,
+  type Timers,
+} from '@dotli/shared';
 import {
   networkMonitorState,
   type ChainStatus,
@@ -32,14 +39,6 @@ type StartParams = {
   monitor?: NetworkFeed;
 };
 
-/** The one follow of a monitor, shared by every caller of `start` until the last one stops. */
-type Following = {
-  /** Ends the follow's subscription. Never throws. */
-  unsubscribe: () => void;
-  /** How many callers of `start` have not stopped yet. */
-  callers: number;
-};
-
 export function createNetworkState({ timers = realTimers }: Params = {}) {
   const network = createSyncStore<NetworkState>({
     name: 'network',
@@ -55,11 +54,9 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
   let feed: NetworkFeed | null = null;
   /** The monitor changed while nobody was subscribed, so `get` rebuilds. */
   let stale = false;
-  let following: Following | null = null;
+  const run = createSharedRun<Required<StartParams>>({ begin: beginFollowing });
   registerStoreStateReset(() => {
-    if (following !== null) {
-      endFollowing(following);
-    }
+    run.end();
     readers.clear();
     feed = null;
     stale = false;
@@ -100,28 +97,13 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
   }
 
   function start({ monitor = networkMonitorState }: StartParams = {}): () => void {
-    const run = following ?? beginFollowing(monitor);
-    following = run;
-    run.callers += 1;
-    let stopped = false;
-    return stopFollowing;
-
-    function stopFollowing(): void {
-      if (stopped) {
-        return;
-      }
-      stopped = true;
-      run.callers -= 1;
-      if (run.callers === 0) {
-        endFollowing(run);
-      }
-    }
+    return run.join({ monitor });
   }
 
-  function beginFollowing(monitor: NetworkFeed): Following {
+  function beginFollowing({ monitor }: Required<StartParams>): () => void {
     feed = monitor;
     sync();
-    return { unsubscribe: monitor.subscribe(sync), callers: 0 };
+    return monitor.subscribe(sync);
 
     function sync(): void {
       if (readers.size === 0) {
@@ -130,13 +112,6 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
       }
       stale = false;
       network.set(readSnapshot(monitor));
-    }
-  }
-
-  function endFollowing(run: Following): void {
-    run.unsubscribe();
-    if (following === run) {
-      following = null;
     }
   }
 

@@ -15,6 +15,7 @@ export { createPendingReplies } from './createPendingReplies.js';
 export { createRandomId } from './createRandomId.js';
 export type { ListableStorage, SafeStorage } from './createSafeStorage.js';
 export { createSafeStorage } from './createSafeStorage.js';
+export { createSharedRun } from './createSharedRun.js';
 export type { StatusCell } from './createStatusCell.js';
 export { createStatusCell } from './createStatusCell.js';
 export { createStoreStatus } from './createStoreStatus.js';

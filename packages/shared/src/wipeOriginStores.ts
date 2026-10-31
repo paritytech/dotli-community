@@ -18,23 +18,17 @@ export type OriginStores = {
 
 type Params = {
   keepDatabases?: readonly string[];
-  signal?: AbortSignal | undefined;
 };
 
 /**
  * Empties each store in turn, except the databases in `keepDatabases`, whatever happened to the one before, then
- * rejects with an `OriginWipeError` naming every part that failed. `signal` stops the wait of each database delete,
- * which fails the database part with the AbortError of `deleteIdb`. With no database to delete the wipe is not affected,
- * and an abort during the database listing takes effect once the listing returns.
+ * rejects with an `OriginWipeError` naming every part that failed.
  */
-export async function wipeOriginStores(
-  stores: OriginStores,
-  { keepDatabases = [], signal }: Params = {},
-): Promise<void> {
+export async function wipeOriginStores(stores: OriginStores, { keepDatabases = [] }: Params = {}): Promise<void> {
   const failures = new Map<OriginWipePart, unknown>();
   const { indexedDB: idb, caches, serviceWorker } = stores;
   if (idb !== null) {
-    await run('indexeddb', () => deleteAllDatabases(idb, { keepDatabases, signal }));
+    await run('indexeddb', () => deleteAllDatabases(idb, { keepDatabases }));
   }
   if (caches !== null) {
     await run('cache_storage', async () => {
@@ -74,13 +68,11 @@ export class OriginWipeError extends AggregateError {
 
 /**
  * Deletes every database but those named in `keepDatabases`, and resolves the names it deleted. Rejects when this browser
- * cannot list its databases, as older Firefox and Safari cannot, and when a delete fails or stays blocked. `signal`
- * stops the wait of each database delete, which rejects with the AbortError of `deleteIdb`. With no database to delete
- * it resolves, and an abort during the listing takes effect once the listing returns.
+ * cannot list its databases, as older Firefox and Safari cannot, and when a delete fails or stays blocked.
  */
 export async function deleteAllDatabases(
   factory: Pick<IDBFactory, 'databases' | 'deleteDatabase'>,
-  { keepDatabases = [], signal }: Params = {},
+  { keepDatabases = [] }: Params = {},
 ): Promise<readonly string[]> {
   if (typeof factory.databases !== 'function') {
     throw new Error('This browser cannot list its IndexedDB databases');
@@ -88,6 +80,6 @@ export async function deleteAllDatabases(
   const names = (await factory.databases())
     .map(database => database.name)
     .filter((name): name is string => name !== undefined && name !== '' && !keepDatabases.includes(name));
-  await Promise.all(names.map(name => deleteIdb(factory, name, { signal })));
+  await Promise.all(names.map(name => deleteIdb(factory, name)));
   return names;
 }

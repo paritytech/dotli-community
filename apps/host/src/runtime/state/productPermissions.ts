@@ -9,6 +9,7 @@ import { captureException, m, reportListener, spans as S } from '@dotli/metrics'
 import {
   createAsyncTaskPool,
   createListenerSet,
+  createSharedRun,
   createSyncStore,
   log,
   realTimers,
@@ -136,7 +137,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
   let covered = 0;
   // The latest panel change, which any newer one supersedes.
   let latest: AbortController | null = null;
-  let stopFollowing: (() => void) | null = null;
+  const run = createSharedRun({ begin: beginFollowing });
 
   function refresh(): Promise<void> {
     const ticket = ++requested;
@@ -195,18 +196,12 @@ export function createProductPermissions({ registry, product, timers = realTimer
   }
 
   function start(): () => void {
-    if (stopFollowing !== null) {
-      return stopFollowing;
-    }
-    followProduct();
-    const unsubscribe = product.subscribe(followProduct);
-    stopFollowing = stopFollowingProduct;
-    return stopFollowing;
+    return run.join();
+  }
 
-    function stopFollowingProduct(): void {
-      unsubscribe();
-      stopFollowing = null;
-    }
+  function beginFollowing(): () => void {
+    followProduct();
+    return product.subscribe(followProduct);
   }
 
   function followProduct(): void {
@@ -386,8 +381,8 @@ export function createProductPermissions({ registry, product, timers = realTimer
      */
     recordPromptDecision,
     /**
-     * Reads on every load, a reload of the same product included, until the returned stop. A second call returns it
-     * too. Never throws.
+     * Reads on every load, a reload of the same product included. Each call returns its own stop, a call while
+     * following joins the follow, and the follow ends with the last stop. Never throws.
      */
     start,
   };

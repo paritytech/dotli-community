@@ -5,6 +5,7 @@
 // judged when it shows.
 
 import {
+  createSharedRun,
   createSyncStore,
   listen,
   realTimers,
@@ -39,25 +40,15 @@ type StartParams = {
   page?: HealthPage;
 };
 
-/** The one run of judging, shared by every caller of `start` until the last one stops. */
-type Following = {
-  /** Ends every subscription of the run. Never throws. */
-  unsubscribe: () => void;
-  /** How many callers of `start` have not stopped yet. */
-  callers: number;
-};
-
 export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   const health = createSyncStore<NetworkHealth>({ name: 'network-health', initial: 'quiet' });
   const store: ReadableStore<NetworkHealth> = health;
-  let following: Following | null = null;
   let recheck: unknown = null;
   /** Lets a notify that moves no deadline leave `recheck` be. */
   let recheckAt: number | null = null;
+  const run = createSharedRun<Required<StartParams>>({ begin: beginFollowing });
   registerStoreStateReset(() => {
-    if (following !== null) {
-      endFollowing(following);
-    }
+    run.end();
     disarm();
     health.set('quiet');
   });
@@ -74,25 +65,10 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   };
 
   function start({ monitor = networkMonitorState, page = createBrowserHealthPage() }: StartParams = {}): () => void {
-    const run = following ?? beginFollowing({ monitor, page });
-    following = run;
-    run.callers += 1;
-    let stopped = false;
-    return stopFollowing;
-
-    function stopFollowing(): void {
-      if (stopped) {
-        return;
-      }
-      stopped = true;
-      run.callers -= 1;
-      if (run.callers === 0) {
-        endFollowing(run);
-      }
-    }
+    return run.join({ monitor, page });
   }
 
-  function beginFollowing({ monitor, page }: Required<StartParams>): Following {
+  function beginFollowing({ monitor, page }: Required<StartParams>): () => void {
     judge();
     const unsubscribes = [
       monitor.subscribe(judge),
@@ -100,7 +76,7 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
       listen({ target: page.connectivity, type: 'offline', handler: judge }),
       listen({ target: page.visibility, type: 'visibilitychange', handler: judge }),
     ];
-    return { unsubscribe, callers: 0 };
+    return stopJudging;
 
     function judge(): void {
       if (page.isHidden()) {
@@ -128,17 +104,10 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
       judge();
     }
 
-    function unsubscribe(): void {
+    function stopJudging(): void {
       for (const unsubscribeOne of unsubscribes) {
         unsubscribeOne();
       }
-    }
-  }
-
-  function endFollowing(run: Following): void {
-    run.unsubscribe();
-    if (following === run) {
-      following = null;
       disarm();
     }
   }

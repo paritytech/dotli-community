@@ -109,6 +109,31 @@ describe('network store', () => {
     // Then
     expect(getRelayPhase(store.get())).toBe('syncing');
   });
+
+  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
+    // Given a follow on a monitor whose subscription counts its unsubscribes
+    const { start } = createNetworkState({ timers });
+    let unsubscribes = 0;
+    const counting: NetworkMonitor = {
+      ...monitor,
+      subscribe(listener) {
+        const unsubscribe = monitor.subscribe(listener);
+        return () => {
+          unsubscribes += 1;
+          unsubscribe();
+        };
+      },
+    };
+    const stop = start({ monitor: counting });
+
+    // When the stores reset, then the stop left from the ended follow runs
+    resetStores();
+    const afterReset = unsubscribes;
+    stop();
+
+    // Then the reset ended the follow once and the stop added nothing
+    expect({ afterReset, total: unsubscribes }).toEqual({ afterReset: 1, total: 1 });
+  });
 });
 
 function getRelayPhase(state: NetworkState): ChainPhase | null | undefined {
