@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { CONTENT_ERRORS } from '@dotli/content';
 import { ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
+import { setErrorName } from '@dotli/shared';
 
 import { HOST_ERRORS } from './errorCopy.js';
 import { describeError } from './describeError.js';
@@ -126,6 +128,29 @@ describe('host error classification', () => {
       expect(described.tips).toEqual(['Contacting the app maintainer.']);
     },
   );
+
+  it.each([
+    [
+      'the named unreachable gateway',
+      setErrorName(new Error('IPFS gateway gw.example unreachable for bafy'), CONTENT_ERRORS.GATEWAY_UNREACHABLE),
+      'failed-to-fetch',
+    ],
+    [
+      'a chunk that failed to load',
+      new TypeError('Failed to fetch dynamically imported module: https://x.example/a.js'),
+      'module-fetch-failed',
+    ],
+    ['a raw browser fetch failure', new TypeError('Failed to fetch'), 'unknown'],
+  ])('As a dotli user on the gateway backend, I hit %s and get its own error kind', (_case, failure, kind) => {
+    // Given a visitor on the gateway backend
+    const context = { isP2p: false, readBackend: () => 'rpc-gateway' as const };
+
+    // When the failure is described
+    const described = describeError(failure, context);
+
+    // Then it gets the error kind of its own cause
+    expect(described.kind).toBe(kind);
+  });
 });
 
 /** Returns an error as the protocol client rebuilds it from a failed response. */

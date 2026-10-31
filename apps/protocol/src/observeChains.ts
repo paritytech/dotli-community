@@ -60,7 +60,7 @@ export function observeChains({
     if (leases.has(genesisHash)) {
       return;
     }
-    const provider = pool.getLocalProvider(genesisHash, 'sync-observer');
+    const provider = pool.getLocalProvider(genesisHash, { holder: 'sync-observer' });
     if (provider === null) {
       return;
     }

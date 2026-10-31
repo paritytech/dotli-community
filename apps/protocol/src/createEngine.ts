@@ -157,17 +157,17 @@ export function createEngine({
       // Only the first message is noted, later ones would push the load's steps out of the breadcrumb trail.
       let answered = false;
       let held: Connection | null = null;
-      const connection = pool.connectRemote(
+      const connection = pool.connectRemote({
         genesisHash,
-        `${scopeId} ${connectionId}`,
-        message => {
+        connectionId: `${scopeId} ${connectionId}`,
+        onMessage: message => {
           if (!answered) {
             answered = true;
             log(`First chain message for ${connectionId} (${String(message.length)} bytes)`);
           }
           sink.send({ tag: 'message', value: message });
         },
-        () => {
+        onHalt: () => {
           // The broker has already answered pending requests and stopped follows, so there is nothing to disconnect.
           if (held === null || !forget(held)) {
             return;
@@ -175,7 +175,7 @@ export function createEngine({
           log(`Chain halted: ${connectionId} (${String(countConnections())} remaining)`);
           sink.interrupt(ok());
         },
-      );
+      });
       if (connection === null) {
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }

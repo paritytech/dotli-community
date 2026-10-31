@@ -50,24 +50,25 @@ type Params = {
   destroyDelay?: number;
 };
 
+type ConnectRemoteParams = Parameters<ChainBrokerManager['connectRemote']>[0] & {
+  /** Hears the chain's halt. */
+  onHalt?: (error?: unknown) => void;
+};
+type GetLocalProviderParams = NonNullable<Parameters<ChainBrokerManager['getLocalProvider']>[1]>;
+
 export type ChainPool = {
   /**
    * Leases the chain for a remote session under `connectionId`, with its messages sent to `onMessage` as JSON text
    * and its halt to `onHalt`. Returns `null` when this context cannot reach the chain, and throws when
    * `connectionId` already has a session.
    */
-  connectRemote(
-    genesisHash: string,
-    connectionId: string,
-    onMessage: (message: string) => void,
-    onHalt?: (error?: unknown) => void,
-  ): StringJsonRpcConnection | null;
+  connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
    * A provider whose connections are leases on the chain, or `null` when this context cannot reach it. Calling the
    * provider throws when the chain's transport is gone and cannot be built again by then. `holder` names the lease in
    * debug logs.
    */
-  getLocalProvider(genesisHash: string, holder?: string): LeaseProvider | null;
+  getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): LeaseProvider | null;
   /** The chain's transport status, `disconnected` for a chain the pool does not hold. */
   status(genesisHash: string): ConnectionStatus;
   /** Hears each change of the chain's status, and returns the unsubscribe. */
@@ -109,7 +110,13 @@ const DEFAULT_DESTROY_DELAY_MS = 60_000;
 // Debug level, so lease traffic prints only with VITE_APP_DEBUG.
 const POOL_TAG = '[dot.li chain-pool]';
 
-/** A pool that shares one transport per chain among its leases, and closes it `destroyDelay` after the last one. */
+/**
+ * A pool that shares one transport per chain among its leases, and closes it `destroyDelay` after the last one.
+ *
+ * @example
+ * const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: 10_000 });
+ * const connection = pool.getLocalProvider(genesisHash, { holder: 'balances' })?.(onMessage);
+ */
 export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTROY_DELAY_MS }: Params): ChainPool {
   const entries = new Map<string, Entry>();
   // Outlives the entries, so a chain that halts and is rebuilt keeps its warning count.
@@ -317,7 +324,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
   }
 
   return {
-    connectRemote(genesisHash, connectionId, onMessage, onHalt) {
+    connectRemote({ genesisHash, connectionId, onMessage, onHalt }) {
       const entry = acquire(genesisHash);
       if (entry === null) {
         return null;
@@ -341,7 +348,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       }
     },
 
-    getLocalProvider(genesisHash, holder = 'local') {
+    getLocalProvider(genesisHash, { holder = 'local' } = {}) {
       const entry = acquire(genesisHash);
       if (entry === null) {
         return null;

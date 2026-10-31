@@ -13,7 +13,13 @@ type Params = {
   offerReload: () => void;
 };
 
-/** Offers a reload when a chunk fails to load, until the returned stop. Never throws unless `offerReload` does. */
+/**
+ * Offers a reload when a chunk fails to load, until the returned stop. Never throws unless `offerReload` does.
+ *
+ * @example
+ * const offerReload = createReloadOffer({ notify: showNotification, reload: reloadPage });
+ * const stop = listenForChunkFailures({ target: window, offerReload });
+ */
 export function listenForChunkFailures({ target, offerReload }: Params): () => void {
   function handlePreloadError(event: Event): void {
     const error = readPayload(event) ?? new Error('vite:preloadError');

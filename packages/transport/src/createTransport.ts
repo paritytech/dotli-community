@@ -59,7 +59,13 @@ type WaitParams = {
 /** Calls and serves the methods of one schema, whose hello is `Hello`. A method is passed as the schema holds it. */
 export type Transport<Hello> = ReturnType<typeof createTransport<Hello, Sections>>;
 
-/** A transport over `provider` that calls and serves the methods of `schema`. Throws for a hello its codec refuses. */
+/**
+ * A transport over `provider` that calls and serves the methods of `schema`. Throws for a hello its codec refuses.
+ *
+ * @example
+ * const transport = createTransport({ schema, provider, handshake: 'offer', hello: undefined });
+ * const result = await transport.request(getAccount, 'alice');
+ */
 export function createTransport<Hello, T extends Sections>({
   schema,
   provider,

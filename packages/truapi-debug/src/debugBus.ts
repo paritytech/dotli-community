@@ -3,5 +3,11 @@
 
 import { createDebugBus } from './createDebugBus.js';
 
-/** The page's one debug bus. Emitters publish to it and subscribers receive what it holds. */
+/**
+ * The page's one debug bus. Emitters publish to it and subscribers receive what it holds.
+ *
+ * @example
+ * debugBus.enableBuffering(); // a bus that is off delivers and holds nothing
+ * const unsubscribe = debugBus.subscribe(showEvent);
+ */
 export const debugBus = createDebugBus();

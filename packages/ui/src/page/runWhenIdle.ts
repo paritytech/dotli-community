@@ -19,6 +19,9 @@ type Params = {
 /**
  * Run `run` once the browser is idle, or after `timeoutMs` on `timers` where it cannot say. Returns the cancel
  * function, which is safe to call after the run. Never throws.
+ *
+ * @example
+ * const cancel = runWhenIdle(warmUp, 2000); // cancel() drops the run if it has not happened yet
  */
 export function runWhenIdle(
   run: () => void,

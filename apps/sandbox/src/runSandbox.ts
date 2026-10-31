@@ -5,11 +5,13 @@
 // visitor asks for, up to a limit. Every failure is reported and shown.
 
 import { getLocalRoot } from '@dotli/config';
+import { CONTENT_ERRORS } from '@dotli/content';
 import { SandboxContractError, validateSandboxParams } from '@dotli/sandbox-wire';
 import { captureException, m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   getErrorMessage,
+  getErrorName,
   describeGatewayUnreachable,
   log,
   realTimers,
@@ -191,10 +193,9 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
       tags: { surface: 'sandbox_main', dependency, attempt: String(attempt) },
     });
     const raw = getErrorMessage(error);
-    // The gateway path's commonest failure reads as an app bug verbatim, so it gets plain words. A failed dynamic
-    // import starts the same way but means a missing chunk, not an unreachable gateway.
+    // An unreachable gateway names a host the visitor can check, so it gets visitor copy.
     const message =
-      dependency === 'ipfs-gateway' && raw.includes('Failed to fetch') && !raw.includes('dynamically imported module')
+      dependency === 'ipfs-gateway' && getErrorName(error) === CONTENT_ERRORS.GATEWAY_UNREACHABLE
         ? describeGatewayUnreachable(deps.getGatewayHost())
         : `${raw} (via ${dependency})`;
     fail({ step, title: 'Failed to load content', message, retry });

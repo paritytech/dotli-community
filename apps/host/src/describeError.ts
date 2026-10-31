@@ -4,7 +4,8 @@
 import { ProtocolFatalError, ProtocolInitFailedError, ProtocolVersionMismatchError } from '@dotli/protocol';
 import { getActiveServicesConfig, getBackend, BACKEND_LABELS, type Backend } from '@dotli/config';
 
-import { getEndpointHost, getErrorMessage, describeGatewayUnreachable } from '@dotli/shared';
+import { CONTENT_ERRORS } from '@dotli/content';
+import { getEndpointHost, getErrorMessage, getErrorName, describeGatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './errorCopy.js';
 import { ManifestRejectedError } from './manifestRejectedError.js';
@@ -192,9 +193,8 @@ function classifyError(
       tips: BITSWAP_TIPS,
     };
   }
-  // The browser never opened the connection, which only the gateway's HTTPS fetch raises, never the `wss://` RPC.
-  // Must stay below the dynamic-import branch, whose message starts the same way.
-  if (!isP2p && message.includes('Failed to fetch')) {
+  // The gateway copy and its `switch-backend` recovery advise the gateway backend, where content comes over HTTPS.
+  if (!isP2p && getErrorName(error) === CONTENT_ERRORS.GATEWAY_UNREACHABLE) {
     return {
       kind: 'failed-to-fetch',
       title: ERROR_TITLES.CONTENT_UNAVAILABLE,

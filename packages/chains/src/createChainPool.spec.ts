@@ -265,7 +265,7 @@ describe('createChainPool', () => {
 
     // When
     const local = pool.getLocalProvider('0xbb');
-    const remote = pool.connectRemote('0xbb', 'conn-1', () => undefined);
+    const remote = pool.connectRemote({ genesisHash: '0xbb', connectionId: 'conn-1', onMessage: () => undefined });
 
     // Then
     expect(local).toBeNull();
@@ -279,12 +279,14 @@ describe('createChainPool', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
     const remote = must(
-      pool.connectRemote('0xaa', 'conn-1', () => undefined),
+      pool.connectRemote({ genesisHash: '0xaa', connectionId: 'conn-1', onMessage: () => undefined }),
       'remote connection',
     );
 
     // When
-    const duplicate = catchError(() => pool.connectRemote('0xaa', 'conn-1', () => undefined));
+    const duplicate = catchError(() =>
+      pool.connectRemote({ genesisHash: '0xaa', connectionId: 'conn-1', onMessage: () => undefined }),
+    );
     remote.disconnect();
 
     // Then
@@ -402,7 +404,7 @@ describe('createChainPool', () => {
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport });
     const remote = must(
-      pool.connectRemote('0xaa', 'local:0', () => undefined),
+      pool.connectRemote({ genesisHash: '0xaa', connectionId: 'local:0', onMessage: () => undefined }),
       'remote connection',
     );
 

@@ -117,6 +117,11 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
     setExpanded,
     /** Drops every toast without calling its `onDismiss`, for when overlays cannot render. Never throws. */
     clear,
+    /**
+     * Drops every toast without calling its `onDismiss` and stops the countdowns and the page listener. Never
+     * throws. Safe to repeat. The stack works as a fresh one afterwards.
+     */
+    dispose,
   };
 
   function show(): () => void {
@@ -231,6 +236,11 @@ export function createToasts({ page, timers = realTimers }: Params = {}) {
     pauseAll();
     countdowns.clear();
     state.set(INITIAL);
+  }
+
+  function dispose(): void {
+    clear();
+    unbindPage();
   }
 
   /** The page the countdowns pause with, bound on first use so building the stack never reads the document. */

@@ -92,7 +92,13 @@ const HEARTBEAT_DEFAULT_MS = 60_000;
 const LOG_LEVEL_KEY = 'dotli:truapi-provider-log';
 const HEARTBEAT_KEY = 'dotli:smoldot-heartbeat-ms';
 
-/** A light client whose engine starts on the first chain it opens, with a failed start retried by the next open. */
+/**
+ * A light client whose engine starts on the first chain it opens, with a failed start retried by the next open.
+ *
+ * @example
+ * const lightClient = createLightClient(createLightClientDeps(null, false)); // no session store, not local
+ * const provider = lightClient.createChainProvider(genesisHash); // null for a genesis the network does not define
+ */
 export function createLightClient({
   db,
   logLevel,

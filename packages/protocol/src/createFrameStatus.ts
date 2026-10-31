@@ -18,7 +18,13 @@ export type FrameStatus = ReturnType<typeof createFrameStatus>;
 
 type State = { name: 'booting' | 'ready' } | { name: 'ended'; end: FrameStatusEnd };
 
-/** A frame's status, booting until it is told ready or ended. */
+/**
+ * A frame's status, booting until it is told ready or ended.
+ *
+ * @example
+ * const status = createFrameStatus();
+ * transport.handleSubscription(frame.status, status.handler); // then status.markReady() once the frame can serve
+ */
 export function createFrameStatus() {
   let state: State = { name: 'booting' };
   // A transport's sink never throws, so each host hears in turn.

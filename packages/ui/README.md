@@ -83,14 +83,16 @@ and no data source.
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar` and `ActionEntry`.
 - Stores: the page's dialog queue `modals` (`modals.store`, `modals.open(view, { signal, handoff })`,
   `modals.settle(id, result, { value })`, and `modals.refuseAll`, which answers every dialog with its refusal while the
-  overlays cannot render, with the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
+  overlays cannot render, and `modals.dispose`, which drops the open dialogs unanswered and tells a handed-off view it
+  was aborted, with the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
   `ModalButtonVariant`, `ModalHandoff`) and the page's toasts `toasts` (`store`, `show`, `push`, `dismiss`, `remove`,
-  `dismissAll`, `setExpanded`, `clear`, and the type `ToastEntry`). `modals.open` takes an optional handoff: once the
-  dialog is answered it returns the view that takes the dialog's place without closing it, until a button, Escape, the
-  scrim or its signal closes that view. The new view starts with an empty password field and focus on the dialog, not a
-  button, so a second press cannot answer it at once. A view's own `body` describes the dialog, so a screen reader reads
-  the new step when focus lands there. A handoff that throws is reported and the dialog closes as without one. A view
-  may draw its own `body` and set `closable: false` to hide the sheet's close button.
+  `dismissAll`, `setExpanded`, `clear`, `dispose`, which also stops the page listener, and the type `ToastEntry`).
+  `modals.open` takes an optional handoff: once the dialog is answered it returns the view that takes the dialog's place
+  without closing it, until a button, Escape, the scrim or its signal closes that view. The new view starts with an
+  empty password field and focus on the dialog, not a button, so a second press cannot answer it at once. A view's own
+  `body` describes the dialog, so a screen reader reads the new step when focus lands there. A handoff that throws is
+  reported and the dialog closes as without one. A view may draw its own `body` and set `closable: false` to hide the
+  sheet's close button.
 - Page helpers: `focusables`, `runWhenIdle(run, timeoutMs, { scheduler, timers })` and
   `preloadWhenIdle(component, { scheduler, timers })`, `isPhoneViewport`, `watchPhoneViewport`, `prefersReducedMotion`
   and the type `StatusTone`.
@@ -100,8 +102,8 @@ and no data source.
 - Roots: `mountRoot({ name, container, view, removeContainer, onBroken })`, `RootBoundary`, `ensureOverlayRoot`.
 - Screens and overlays: `showErrorPage` and `showError(title, { detail, action, tips })` with the types `ErrorAction`,
   `ErrorPageContent`, `ErrorText` and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, the page's
-  screen slot `pageScreen` (`pageScreen.store`, `pageScreen.show`, `pageScreen.clear`) and the type `PageContent`,
-  `Overlays`, `showNotification` with the types `NotificationParams` and `ShowNotification`,
+  screen slot `pageScreen` (`pageScreen.store`, `pageScreen.show`, `pageScreen.clear`, `pageScreen.dispose`) and the
+  type `PageContent`, `Overlays`, `showNotification` with the types `NotificationParams` and `ShowNotification`,
   `createReloadOffer({ notify, reload })`, the page's one reload offer, and
   `listenForChunkFailures({ target, offerReload })` (a failure is counted as `chunk.preload`).
 

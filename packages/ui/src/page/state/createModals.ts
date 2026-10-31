@@ -96,6 +96,8 @@ type Pending = {
   handoff?: ((outcome: ModalOutcome<string>) => ModalHandoff | undefined) | undefined;
   resolve: (outcome: ModalOutcome<string>) => void;
   detach: () => void;
+  /** Tells a handed-off view that its dialog was disposed. */
+  abandon?: () => void;
 };
 
 // An AbortError reason passes through and a string reason becomes the message, so this text shows only for others.
@@ -117,8 +119,9 @@ export function createModals() {
     store,
     /**
      * Queues `view` and resolves with its answer. Rejects with an AbortError when `signal` has fired or fires before
-     * the answer, and with nothing else. Once answered, `handoff` may return the view that takes the dialog's place
-     * without closing it. It sees every answer, refusals from `refuseAll` included, so return `undefined` for those.
+     * the answer, and with nothing else. A dialog `dispose` drops never settles. Once answered, `handoff` may return
+     * the view that takes the dialog's place without closing it. It sees every answer, refusals from `refuseAll`
+     * included, so return `undefined` for those.
      */
     open,
     /**
@@ -132,6 +135,12 @@ export function createModals() {
      * with no refusal stays open. Calling it again is safe: a dialog settles once.
      */
     refuseAll,
+    /**
+     * Drops every open dialog unanswered, so their promises stay unsettled, and tells a handed-off view `aborted`.
+     * Safe to repeat. A handed-off view's `closed` that
+     * throws propagates. The queue works as a fresh one afterwards.
+     */
+    dispose,
   };
 
   function open<R extends string>(
@@ -231,16 +240,33 @@ export function createModals() {
       detach: () => {
         next.signal.removeEventListener('abort', closeOnAbort);
       },
+      abandon: () => {
+        next.closed('aborted');
+      },
     });
     entries.set(entries.get().map(shown => (shown.id === id ? { id, view: next.view } : shown)));
   }
 
+  function dispose(): void {
+    const dropped = detachAll();
+    entries.set([]);
+    for (const entry of dropped) {
+      entry.abandon?.();
+    }
+  }
+
   function resetState(): void {
-    for (const entry of pending.values()) {
+    detachAll();
+    nextId = 0;
+  }
+
+  function detachAll(): Pending[] {
+    const all = [...pending.values()];
+    pending.clear();
+    for (const entry of all) {
       entry.detach();
     }
-    pending.clear();
-    nextId = 0;
+    return all;
   }
 }
 

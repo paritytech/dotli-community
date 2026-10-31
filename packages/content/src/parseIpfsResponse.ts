@@ -45,9 +45,10 @@ async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<Arc
 
   let blocks = 0;
   let bytes = 0;
-  const files = await walkUnixFsDag(
+  const files = await walkUnixFsDag({
     rootCid,
-    createVerifyingBlockSource(async (cid: CID) => {
+    parseInnerArchive: parseIpfsResponse,
+    blockSource: createVerifyingBlockSource(async (cid: CID) => {
       const block = await reader.get(cid);
       if (!block) {
         throw new Error(`CAR is missing block for ${cid.toString()}`);
@@ -56,7 +57,7 @@ async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<Arc
       bytes += block.bytes.length;
       return block.bytes;
     }),
-  );
+  });
   log.event(`CAR ${rootCid.toString()} verified: ${String(blocks)} blocks`, { flow: 'content', blocks, bytes });
   return files;
 }

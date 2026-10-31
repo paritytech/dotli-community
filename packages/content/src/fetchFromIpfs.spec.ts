@@ -6,6 +6,7 @@ import { fetchCarFromIpfs, fetchFromIpfs } from './fetchFromIpfs.js';
 
 const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 const GATEWAY = 'https://gw.example';
+const TIGHT = { stallMs: 1, maxBytes: 4 };
 
 let fetchMock: Mock<typeof fetch>;
 
@@ -115,8 +116,6 @@ describe('fetchCarFromIpfs', () => {
 });
 
 describe('gateway limits', () => {
-  const TIGHT = { stallMs: 1, maxBytes: 4 };
-
   it('As a visitor, I load from a gateway that never answers and the load fails as stalled, so I can retry', async () => {
     // Given a gateway that never sends its headers
     fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
@@ -164,5 +163,62 @@ describe('gateway limits', () => {
 
     // Then every byte arrives
     expect(Array.from(data)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('an unreachable gateway', () => {
+  it.each([
+    ['Chromium', 'Failed to fetch'],
+    ['Firefox', 'NetworkError when attempting to fetch resource.'],
+    ['Safari', 'Load failed'],
+  ])(
+    'As a visitor on %s, I load from a gateway my browser cannot reach and the load fails as unreachable, whatever the browser says',
+    async (_browser, message) => {
+      // Given a browser that could not send the request, in its own words
+      const sendFailure = new TypeError(message);
+      fetchMock.mockRejectedValue(sendFailure);
+
+      // When the block is fetched
+      const fetched = fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
+
+      // Then the fetch fails as unreachable, naming the gateway and the CID, with the browser's error as its cause
+      await expect(fetched).rejects.toMatchObject({
+        name: 'ContentGatewayUnreachableError',
+        message: `IPFS gateway gw.example unreachable for ${CID}`,
+        cause: sendFailure,
+      });
+      // toMatchObject compares errors by value, so pin the very object the browser threw
+      await expect(fetched).rejects.toSatisfy((error: Error) => error.cause === sendFailure);
+    },
+  );
+
+  it('As a visitor, I leave while the gateway request is open and the load fails as a teardown, not as unreachable', async () => {
+    // Given a frame torn down while its request is open
+    const teardown = new DOMException('The frame went away', 'AbortError');
+    fetchMock.mockRejectedValue(teardown);
+
+    // When the block is fetched
+    const fetched = fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock });
+
+    // Then the fetch fails with the teardown itself
+    await expect(fetched).rejects.toBe(teardown);
+  });
+
+  it('As a visitor, I load from a gateway that never answers and then drops the connection, and the load fails as stalled', async () => {
+    // Given a gateway that never answers and drops the connection once the request is given up
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new TypeError('Failed to fetch'));
+          });
+        }),
+    );
+
+    // When the block is fetched
+    const fetched = fetchFromIpfs(CID, { gateway: GATEWAY, fetch: fetchMock, limits: TIGHT });
+
+    // Then the fetch fails as stalled
+    await expect(fetched).rejects.toMatchObject({ name: 'ContentGatewayStalledError' });
   });
 });

@@ -46,7 +46,9 @@ export async function readViaBitswap({
 
   if (rootCid.code === DAG_PB) {
     onStatus?.('Walking dag-pb via bitswap...');
-    return toFetchResult(await walkUnixFsDag(rootCid, verifiedSource));
+    return toFetchResult(
+      await walkUnixFsDag({ rootCid, blockSource: verifiedSource, parseInnerArchive: parseIpfsResponse }),
+    );
   }
 
   throw new Error(`bitswap-rpc: unsupported root CID codec 0x${rootCid.code.toString(16)} (${rootCid.toString()})`);

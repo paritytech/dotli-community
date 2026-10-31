@@ -19,6 +19,9 @@ type Params<Selected> = {
  *
  * The accessor lags a synchronous `set` until Solid's next flush. Handlers acting on a value just written
  * read `store.get()`.
+ *
+ * @example
+ * const slice = useStore(store, state => ({ a: state.a, b: state.b }), { equals: isShallowEqual });
  */
 export function useStore<Value>(store: ReadableStore<Value>): Accessor<Value>;
 export function useStore<Value, Selected>(

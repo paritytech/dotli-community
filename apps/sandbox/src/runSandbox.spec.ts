@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vit
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
 import { bindCaptureSink, spans as S, type CaptureContext } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { bindLogSink, createDeferred } from '@dotli/shared';
+import { CONTENT_ERRORS } from '@dotli/content';
+import { bindLogSink, createDeferred, setErrorName } from '@dotli/shared';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 
 import type { LoadInput, LoadOutcome } from './loadProduct.js';
@@ -269,7 +270,14 @@ describe('runSandbox load failures', () => {
   it('As a visitor on the gateway backend, I hit an unreachable gateway and see it named in plain words', async () => {
     // Given
     const sandbox = createHarness([
-      { outcome: 'failed', step: 'content_fetch', error: new TypeError('Failed to fetch') },
+      {
+        outcome: 'failed',
+        step: 'content_fetch',
+        error: setErrorName(
+          new Error('IPFS gateway ipfs.example unreachable for bafy'),
+          CONTENT_ERRORS.GATEWAY_UNREACHABLE,
+        ),
+      },
     ]);
 
     // When
@@ -280,6 +288,27 @@ describe('runSandbox load failures', () => {
       { message: "Your browser couldn't connect to the trusted provider ipfs.example." },
     ]);
   });
+
+  it.each([
+    ['a bare fetch TypeError', new TypeError('Failed to fetch'), 'Failed to fetch (via ipfs-gateway)'],
+    [
+      'a failed dynamic import',
+      new TypeError('Failed to fetch dynamically imported module: https://x.example/a.js'),
+      'Failed to fetch dynamically imported module: https://x.example/a.js (via ipfs-gateway)',
+    ],
+  ])(
+    'As a visitor on the gateway backend, I hit %s and see its own words, not the gateway advice',
+    async (_label, error, message) => {
+      // Given a content load that fails with an error that is not the gateway's
+      const sandbox = createHarness([{ outcome: 'failed', step: 'content_fetch', error }]);
+
+      // When the sandbox runs
+      await runSandbox(toFramedPage(createSandboxUrl()), sandbox.deps);
+
+      // Then the failure screen shows the error's own message
+      expect(sandbox.failures).toMatchObject([{ message }]);
+    },
+  );
 
   it('As a visitor leaving mid-load, I tear the frame down and the load shows and reports nothing', async () => {
     // Given

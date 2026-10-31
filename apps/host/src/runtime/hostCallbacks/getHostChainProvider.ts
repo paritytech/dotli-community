@@ -24,7 +24,7 @@ export function getHostChainProvider(
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
-  const lease = pool.getLocalProvider(genesisHash, 'host');
+  const lease = pool.getLocalProvider(genesisHash, { holder: 'host' });
   if (lease === null) {
     return null;
   }

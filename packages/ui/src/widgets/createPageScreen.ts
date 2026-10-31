@@ -36,6 +36,8 @@ export function createPageScreen({ page }: Params = {}) {
     show,
     /** Takes the shown screen down, for the page's own content to come back. Never throws. */
     clear,
+    /** Takes the shown screen down, for the page's own content to come back. Never throws. Safe to repeat. */
+    dispose,
   };
 
   function show(view: (standalone: boolean) => JSX.Element): void {
@@ -66,6 +68,10 @@ export function createPageScreen({ page }: Params = {}) {
     disposeShown?.();
     disposeShown = undefined;
     content.set('page');
+  }
+
+  function dispose(): void {
+    clear();
   }
 }
 

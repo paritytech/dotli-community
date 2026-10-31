@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /** The networks this build knows, by the name the settings and the URL carry. */
-export const NETWORK_NAMES = ['paseo-next-v2', 'previewnet'] as const;
+export type Network = 'paseo-next-v2' | 'previewnet';
 
-export type Network = (typeof NETWORK_NAMES)[number];
+export const NETWORK_NAMES: readonly Network[] = ['paseo-next-v2', 'previewnet'];
 
 /** The settings key under which the chosen network's name is stored. */
 export const NETWORK_KEY = 'dotli:network';

@@ -88,14 +88,22 @@ describe('chain pool brokering', () => {
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = must(
-      manager.connectRemote('asset-hub', 'conn-a', message => {
-        messagesA.push(message);
+      manager.connectRemote({
+        genesisHash: 'asset-hub',
+        connectionId: 'conn-a',
+        onMessage: message => {
+          messagesA.push(message);
+        },
       }),
       'connection A',
     );
     const connectionB = must(
-      manager.connectRemote('asset-hub', 'conn-b', message => {
-        messagesB.push(message);
+      manager.connectRemote({
+        genesisHash: 'asset-hub',
+        connectionId: 'conn-b',
+        onMessage: message => {
+          messagesB.push(message);
+        },
       }),
       'connection B',
     );
@@ -135,11 +143,19 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => {
-      messagesA.push(message);
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => {
+        messagesA.push(message);
+      },
     });
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => {
-      messagesB.push(message);
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => {
+        messagesB.push(message);
+      },
     });
 
     // When
@@ -206,7 +222,7 @@ describe('chain pool brokering', () => {
     // Given
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
-    const connection = manager.connectRemote('asset-hub', 'conn-a', () => {});
+    const connection = manager.connectRemote({ genesisHash: 'asset-hub', connectionId: 'conn-a', onMessage: () => {} });
 
     connection?.send(
       JSON.stringify({
@@ -240,7 +256,7 @@ describe('chain pool brokering', () => {
     // Given
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
-    const connection = manager.connectRemote('asset-hub', 'conn-a', () => {});
+    const connection = manager.connectRemote({ genesisHash: 'asset-hub', connectionId: 'conn-a', onMessage: () => {} });
 
     // When
     connection?.send(
@@ -271,7 +287,11 @@ describe('chain pool brokering', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
     const messages: string[] = [];
-    const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
+    const connection = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => messages.push(message),
+    });
 
     connection?.send(
       JSON.stringify({
@@ -321,8 +341,16 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', m => messagesA.push(m));
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', m => messagesB.push(m));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: m => messagesA.push(m),
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: m => messagesB.push(m),
+    });
 
     connectionA?.send(
       JSON.stringify({
@@ -411,8 +439,16 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', m => messagesA.push(m));
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', m => messagesB.push(m));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: m => messagesA.push(m),
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: m => messagesB.push(m),
+    });
 
     connectionA?.send(
       JSON.stringify({
@@ -520,14 +556,22 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
 
     // When
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => {});
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: () => {},
+    });
     connectionA?.disconnect();
 
     // Then
     expect(harness.disconnect).not.toHaveBeenCalled();
 
     // When
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', () => {});
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: () => {},
+    });
     connectionB?.send(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -556,11 +600,19 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => {
-      messagesA.push(message);
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => {
+        messagesA.push(message);
+      },
     });
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => {
-      messagesB.push(message);
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => {
+        messagesB.push(message);
+      },
     });
 
     connectionA?.send(
@@ -691,31 +743,39 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesB: string[] = [];
     let tokenA = '';
-    const connectionA = manager.connectRemote('bulletin', 'conn-a', raw => {
-      // The string wire carries the JSON-RPC message the broker built.
-      const message = JSON.parse(raw) as {
-        id?: number;
-        result?: string;
-        params?: { result?: Record<string, unknown> };
-      };
-      if (message.id === 1) {
-        tokenA = message.result ?? '';
-      }
-      const result = message.params?.result;
-      if (result?.['event'] === 'initialized') {
-        // An initialized event lists its finalized blocks by hash.
-        const hashes = result['finalizedBlockHashes'] as string[];
-        connectionA?.send(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: 2,
-            method: 'chainHead_v1_unpin',
-            params: [tokenA, hashes.slice(0, -1)],
-          }),
-        );
-      }
+    const connectionA = manager.connectRemote({
+      genesisHash: 'bulletin',
+      connectionId: 'conn-a',
+      onMessage: raw => {
+        // The string wire carries the JSON-RPC message the broker built.
+        const message = JSON.parse(raw) as {
+          id?: number;
+          result?: string;
+          params?: { result?: Record<string, unknown> };
+        };
+        if (message.id === 1) {
+          tokenA = message.result ?? '';
+        }
+        const result = message.params?.result;
+        if (result?.['event'] === 'initialized') {
+          // An initialized event lists its finalized blocks by hash.
+          const hashes = result['finalizedBlockHashes'] as string[];
+          connectionA?.send(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: 2,
+              method: 'chainHead_v1_unpin',
+              params: [tokenA, hashes.slice(0, -1)],
+            }),
+          );
+        }
+      },
     });
-    const connectionB = manager.connectRemote('bulletin', 'conn-b', message => messagesB.push(message));
+    const connectionB = manager.connectRemote({
+      genesisHash: 'bulletin',
+      connectionId: 'conn-b',
+      onMessage: message => messagesB.push(message),
+    });
     connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     harness.emit({ jsonrpc: '2.0', id: readUpstreamRequest(harness.sent[0]).id, result: 'up-a' });
@@ -743,8 +803,16 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => messagesA.push(message));
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => messagesA.push(message),
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => messagesB.push(message),
+    });
     connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     harness.emit({ jsonrpc: '2.0', id: readUpstreamRequest(harness.sent[0]).id, result: 'up-a' });
     const localTokenA = readAnswer(JSON.parse(messagesA[0] ?? '{}')).result;
@@ -788,8 +856,16 @@ describe('chain pool brokering', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: () => undefined,
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => messagesB.push(message),
+    });
     connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     harness.emit({ jsonrpc: '2.0', id: readUpstreamRequest(harness.sent[0]).id, result: 'up-a' });
     function emitFollowEvent(result: Record<string, unknown>): void {
@@ -878,8 +954,12 @@ describe('chain pool brokering', () => {
     const localConnection = localProvider(message => {
       localMessages.push(message);
     });
-    const remoteConnection = manager.connectRemote('asset-hub', 'conn-a', message => {
-      remoteMessages.push(message);
+    const remoteConnection = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => {
+        remoteMessages.push(message);
+      },
     });
 
     // When
@@ -1008,11 +1088,19 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => {
-      messagesA.push(message);
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => {
+        messagesA.push(message);
+      },
     });
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => {
-      messagesB.push(message);
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => {
+        messagesB.push(message);
+      },
     });
 
     // When
@@ -1113,8 +1201,16 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', m => messagesA.push(m));
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', m => messagesB.push(m));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: m => messagesA.push(m),
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: m => messagesB.push(m),
+    });
 
     connectionA?.send(
       JSON.stringify({
@@ -1189,8 +1285,16 @@ describe('chain pool brokering', () => {
     const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => messagesA.push(message));
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => messagesA.push(message),
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => messagesB.push(message),
+    });
     connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] }));
     const refusal = { code: -32800, message: 'Too many follows' };
@@ -1242,7 +1346,11 @@ describe('chain pool brokering', () => {
       // Given a subscription in flight
       const harness = createProviderHarness();
       const manager = createManager(() => harness.provider);
-      const connection = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+      const connection = manager.connectRemote({
+        genesisHash: 'asset-hub',
+        connectionId: 'conn-a',
+        onMessage: () => undefined,
+      });
       connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: subscribe, params }));
       const request = readUpstreamRequest(harness.sent[0]);
 
@@ -1262,8 +1370,16 @@ describe('chain pool brokering', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: () => undefined,
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => messagesB.push(message),
+    });
     const subscribe = JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -1295,7 +1411,11 @@ describe('chain pool brokering', () => {
       const harness = createProviderHarness();
       const manager = createManager(() => harness.provider);
       const messages: string[] = [];
-      const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
+      const connection = manager.connectRemote({
+        genesisHash: 'asset-hub',
+        connectionId: 'conn-a',
+        onMessage: message => messages.push(message),
+      });
       connection?.send(
         JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] }),
       );
@@ -1365,7 +1485,11 @@ describe('chain pool brokering', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
     const messages: string[] = [];
-    const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
+    const connection = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: message => messages.push(message),
+    });
     connection?.send(
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] }),
     );
@@ -1395,7 +1519,11 @@ describe('chain pool brokering', () => {
     // Given an answered watch
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
-    const connection = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    const connection = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: () => undefined,
+    });
     connection?.send(
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0x0102'] }),
     );
@@ -1422,7 +1550,11 @@ describe('chain pool brokering', () => {
     // Given a follow in flight
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
-    const connection = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    const connection = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: () => undefined,
+    });
     connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     const follow = readUpstreamRequest(harness.sent[0]);
 
@@ -1441,8 +1573,16 @@ describe('chain pool brokering', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
     const messagesB: string[] = [];
-    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
-    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    const connectionA = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-a',
+      onMessage: () => undefined,
+    });
+    const connectionB = manager.connectRemote({
+      genesisHash: 'asset-hub',
+      connectionId: 'conn-b',
+      onMessage: message => messagesB.push(message),
+    });
     connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
     connectionA?.disconnect();
 
@@ -1473,7 +1613,7 @@ describe('broker warnings', () => {
     // Given a broker on a pool
     const harness = createProviderHarness();
     const pool = createManager(() => harness.provider);
-    pool.connectRemote('asset-hub', 'conn-a', () => undefined);
+    pool.connectRemote({ genesisHash: 'asset-hub', connectionId: 'conn-a', onMessage: () => undefined });
 
     // When the upstream answers a thousand requests nobody sent
     const warnings = collectWarningsDuring(() => {

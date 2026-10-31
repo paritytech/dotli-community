@@ -19,6 +19,9 @@ const PRELOAD_STEP = 'idle_preload';
  * Preload a lazy component's chunk once the browser is idle, so its first render skips the network.
  * A failed preload is counted as an expected miss and left to the first render, which loads it again and reports a
  * failure that persists. Returns the cancel function. Never throws or rejects.
+ *
+ * @example
+ * const cancel = preloadWhenIdle(LazyPanel); // LazyPanel is a lazy component, so it has `preload`
  */
 export function preloadWhenIdle(
   component: { preload: () => Promise<unknown> },

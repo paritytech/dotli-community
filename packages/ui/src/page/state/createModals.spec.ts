@@ -319,3 +319,35 @@ describe('a dialog that hands its place to a second view', () => {
     expect(modals.store.get()).toEqual([]);
   });
 });
+
+describe('a dialog queue that is disposed', () => {
+  it('As a page that ends, I dispose the dialog queue and an open dialog stops listening to its signal', () => {
+    // Given an open dialog bound to a caller's abort signal
+    const controller = new AbortController();
+    const removed = vi.spyOn(controller.signal, 'removeEventListener');
+    void modals.open(buildView('Review'), { signal: controller.signal });
+
+    // When the queue is disposed twice
+    modals.dispose();
+    modals.dispose();
+
+    // Then the signal listener is removed and the queue is empty
+    expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(modals.store.get()).toEqual([]);
+  });
+
+  it('As a host, I dispose the dialog queue while a handed-off view is open and it hears that it was aborted, once', () => {
+    // Given a dialog handed off to the host and still open there
+    const closed = vi.fn();
+    void modals.open(buildView('Review'), { handoff: () => buildHandoff(new AbortController().signal, closed) });
+    modals.settle(readFirstId(), 'yes');
+
+    // When the queue is disposed twice
+    modals.dispose();
+    modals.dispose();
+
+    // Then the host hears the abort once and the queue is empty
+    expect(closed).toHaveBeenCalledExactlyOnceWith('aborted');
+    expect(modals.store.get()).toEqual([]);
+  });
+});

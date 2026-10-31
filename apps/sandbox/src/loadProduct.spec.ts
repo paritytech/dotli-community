@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 
-import type { ArchiveFiles, FetchResult } from '@dotli/content';
+import { CONTENT_ERRORS, type ArchiveFiles, type FetchResult } from '@dotli/content';
+import { setErrorName } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
 
 import { loadProduct, type LoadProductDeps, type SandboxParams } from './loadProduct.js';
@@ -179,7 +180,10 @@ describe('loadProduct', () => {
 
   it('As an operator, I load from an unreachable gateway and see it fail at the content fetch step', async () => {
     // Given a gateway the browser cannot reach
-    const unreachable = new TypeError('Failed to fetch');
+    const unreachable = setErrorName(
+      new Error('IPFS gateway ipfs.example unreachable for bafy'),
+      CONTENT_ERRORS.GATEWAY_UNREACHABLE,
+    );
     const page = createHarness(unreachable);
 
     // When the first attempt loads it
@@ -265,7 +269,9 @@ describe('loadProduct', () => {
 
   it('As a visitor asking for a full reset, I get the origin wiped and a fresh worker awaited on the first attempt only', async () => {
     // Given a full reset whose fetch fails
-    const page = createHarness(new TypeError('Failed to fetch'));
+    const page = createHarness(
+      setErrorName(new Error('IPFS gateway ipfs.example unreachable for bafy'), CONTENT_ERRORS.GATEWAY_UNREACHABLE),
+    );
 
     // When the first attempt fails and the visitor retries
     await loadProduct({ params: createParams({ fullReset: true }), attempt: 1 }, page.deps);

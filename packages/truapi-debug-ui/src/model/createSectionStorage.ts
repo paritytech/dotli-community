@@ -7,7 +7,7 @@ import { pageLocalStorage } from '@dotli/shared';
 import type { PanelStorage } from './panelStorage.js';
 
 /** The panel's top-level tabs. Only `truapi` shows the captured events. */
-export type PanelSection = (typeof PANEL_SECTIONS)[number];
+export type PanelSection = 'truapi' | 'resolution' | 'archive' | 'diagnostics' | 'wallet';
 
 type Params = {
   /** Where the tab is kept. */
@@ -17,7 +17,7 @@ type Params = {
 const SECTION_STORAGE_KEY = 'truapi-debug:section';
 
 /** Every panel section, in display order. */
-export const PANEL_SECTIONS = ['truapi', 'resolution', 'archive', 'diagnostics', 'wallet'] as const;
+export const PANEL_SECTIONS: readonly PanelSection[] = ['truapi', 'resolution', 'archive', 'diagnostics', 'wallet'];
 
 /** The panel's open tab, kept in `storage` from one mount to the next. */
 export function createSectionStorage({ storage = pageLocalStorage }: Params = {}) {

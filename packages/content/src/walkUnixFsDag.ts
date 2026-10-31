@@ -8,8 +8,16 @@ import { concatBytes } from '@noble/hashes/utils.js';
 import { createAsyncTaskPool } from '@dotli/shared';
 import { DAG_PB, RAW } from './codecs.js';
 import { isCarFile } from './isCarFile.js';
-import { parseIpfsResponse } from './parseIpfsResponse.js';
 import type { ArchiveFiles, BlockSource } from './types.js';
+
+type Params = {
+  /** The root of the DAG. */
+  rootCid: CID;
+  /** Where each block comes from. */
+  blockSource: BlockSource;
+  /** Unpacks a root that holds a whole CAR into its files. */
+  parseInnerArchive: (bytes: Uint8Array) => Promise<ArchiveFiles>;
+};
 
 type ShardParams = {
   node: dagPb.PBNode;
@@ -24,7 +32,7 @@ const MAX_PARALLEL_BLOCK_FETCHES = 8;
  * Walk a UnixFS DAG into a flat map of path to bytes. Plain and HAMT-sharded directories are read, and a file is read
  * through every level of its chunk tree and must come to the size it declares. Missing blocks and unknown codecs throw.
  */
-export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
+export async function walkUnixFsDag({ rootCid, blockSource, parseInnerArchive }: Params): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
   // The pool bounds only the fetches, so a node waiting on its children never holds a slot they need.
   const fetches = createAsyncTaskPool({ poolSize: MAX_PARALLEL_BLOCK_FETCHES });
@@ -96,7 +104,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
     // A CAR at the root is a whole site packed as one block. Deeper CAR-shaped blocks stay content.
     if (cid.code === RAW) {
       if (isRoot && isCarFile(bytes)) {
-        const inner = await parseIpfsResponse(bytes);
+        const inner = await parseInnerArchive(bytes);
         for (const [innerPath, data] of Object.entries(inner)) {
           files[innerPath] = data;
         }
@@ -127,7 +135,7 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
       const content = await readFileNode(cid, node);
       // A CAR at the root, uploaded as a chunked file.
       if (isRoot && isCarFile(content)) {
-        const inner = await parseIpfsResponse(content);
+        const inner = await parseInnerArchive(content);
         for (const [innerPath, data] of Object.entries(inner)) {
           files[innerPath] = data;
         }

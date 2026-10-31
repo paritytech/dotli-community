@@ -6,13 +6,13 @@ import { Bar } from './shared/Bar.js';
 import { Tabs, type TabOption } from './shared/Tabs.js';
 
 /** How the TrUAPI tab shows the captured events. */
-export type PanelView = (typeof PANEL_VIEWS)[number];
+export type PanelView = 'list' | 'timeline';
 
 export const VIEW_TABS_ID = 'td-view-tab';
 export const VIEW_PANEL_ID = 'td-view-panel';
 
 /** Every view, in display order. */
-const PANEL_VIEWS = ['list', 'timeline'] as const;
+const PANEL_VIEWS: readonly PanelView[] = ['list', 'timeline'];
 
 const VIEW_LABELS: Record<PanelView, string> = {
   list: 'List',

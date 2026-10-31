@@ -11,22 +11,32 @@ export type StringJsonRpcConnection = {
   disconnect: () => void;
 };
 
+type ConnectRemoteParams = {
+  /** The chain to open a session on. */
+  genesisHash: string;
+  /** Names the session. One id has one session at a time. */
+  connectionId: string;
+  /** Hears each message of the session as JSON text. */
+  onMessage: (message: string) => void;
+};
+
+type GetLocalProviderParams = {
+  /** Names the lease in debug logs. `local` without one. */
+  holder?: string;
+};
+
 /** What owns the brokered chain connections of a context. */
 export type ChainBrokerManager = {
   /**
    * Opens a session on the chain under `connectionId`, with its messages sent to `onMessage` as JSON text. Returns
    * `null` when this context cannot reach the chain, and throws when `connectionId` already has a session.
    */
-  connectRemote(
-    genesisHash: string,
-    connectionId: string,
-    onMessage: (message: string) => void,
-  ): StringJsonRpcConnection | null;
+  connectRemote(params: ConnectRemoteParams): StringJsonRpcConnection | null;
   /**
    * A provider whose connections are sessions on the chain, or `null` when this context cannot reach it. `holder`
    * names the lease in debug logs.
    */
-  getLocalProvider(genesisHash: string, holder?: string): JsonRpcProvider | null;
+  getLocalProvider(genesisHash: string, params?: GetLocalProviderParams): JsonRpcProvider | null;
   /** Closes every chain and its sessions, without telling them of a halt. */
   disconnectAll(): void;
 };
@@ -45,7 +55,7 @@ type Params = {
  * manager cannot reach the chain.
  */
 export function requireBrokerLocalProvider({ manager, genesisHash, label }: Params): JsonRpcProvider {
-  const provider = manager.getLocalProvider(genesisHash, 'resolver');
+  const provider = manager.getLocalProvider(genesisHash, { holder: 'resolver' });
   if (provider === null) {
     throw new Error(`No broker provider available for ${label}`);
   }

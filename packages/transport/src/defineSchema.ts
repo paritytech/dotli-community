@@ -30,6 +30,11 @@ const MAX_VERSION = 255;
 /**
  * Checks a schema and fixes its wire ids from the order of `sections` and of each section's methods. Each method may
  * sit in one place only, since the transport finds its place by the method itself.
+ *
+ * @example
+ * const sections = { account: { get: getAccount, watch: watchAccount } };
+ * const schema = defineSchema({ version: 1, hello: _void, sections });
+ * schema.addressOf(getAccount); // { section: 'account', method: 'get', sectionId: 0, methodId: 0 }
  */
 export function defineSchema<Hello, T extends Sections>(definition: {
   version: number;

@@ -4,13 +4,13 @@
 // Calls are paired on the tag suffix, not `direction`, which depends on who initiated the call.
 
 /** The role a suffix gives its tag in the call. */
-export type TagSuffixKind = TagSuffix['kind'];
+export type TagSuffixKind = 'request' | 'response' | 'subscription';
 
-type TagSuffix = (typeof TAG_SUFFIXES)[number];
+type TagSuffix = Readonly<{ suffix: string; kind: TagSuffixKind; closesCall: boolean }>;
 
 // No suffix ends with another, so a tag matches one entry at most. `closesCall` marks a suffix that ends its call,
 // from either side.
-const TAG_SUFFIXES = [
+const TAG_SUFFIXES: readonly TagSuffix[] = [
   { suffix: '_request', kind: 'request', closesCall: false },
   { suffix: '_start', kind: 'request', closesCall: false },
   { suffix: '_submit', kind: 'request', closesCall: false },
@@ -19,7 +19,7 @@ const TAG_SUFFIXES = [
   { suffix: '_interrupt', kind: 'subscription', closesCall: true },
   { suffix: '_stop', kind: 'subscription', closesCall: true },
   { suffix: '_subscribe', kind: 'subscription', closesCall: false },
-] as const;
+];
 
 /** Whether `tag` names a call's request. Never throws. */
 export function isRequestTag(tag: string): boolean {

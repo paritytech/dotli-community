@@ -32,6 +32,10 @@ const MAX_CAUSE_CHARS = 200;
  * threw on and a listener that threw are reported as every side of the protocol reports them. Only the first bytes from
  * a refused origin are counted and logged, so the metric reads as "this origin tried the wire" and a hostile page that
  * keeps posting floods neither the log nor the metrics.
+ *
+ * @example
+ * // wire.onIssue goes to the transport, the rest to the window provider
+ * const wire = createWireReport({ side: 'frame', count: m.count });
  */
 export function createWireReport({ side, count, warn = log.warn }: Params) {
   const reportIssue = createIssueReporter({ side, count });

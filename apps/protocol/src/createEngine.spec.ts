@@ -242,7 +242,7 @@ describe('createEngine chain pool', () => {
     // Given the resolver already holds a lease on the chain
     const { createChainProvider, built } = createTransports();
     const pool = createChainPool({ createTransport: createChainProvider, destroyDelay: Infinity });
-    must(pool.getLocalProvider('0xaa', 'resolver'), 'resolver lease')(() => undefined);
+    must(pool.getLocalProvider('0xaa', { holder: 'resolver' }), 'resolver lease')(() => undefined);
     const engine = createEngine({ pool, isChainSupported: () => true });
 
     // When

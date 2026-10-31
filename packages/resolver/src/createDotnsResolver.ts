@@ -81,7 +81,13 @@ const HUB_CHAIN: Record<Params['source'], string> = {
  */
 const MAX_HALT_ATTEMPTS = 4;
 
-/** Builds the dotNS reads on the connections it is given. Each instance keeps its own clients. */
+/**
+ * Builds the dotNS reads on the connections it is given. Each instance keeps its own clients.
+ *
+ * @example
+ * const dotns = createDotnsResolver({ assetHub: openAssetHub, dotns: contracts, source: 'rpc-gateway' });
+ * const cid = await dotns.resolveDotName('alice'); // null when the name has no contenthash
+ */
 export function createDotnsResolver({ assetHub, people, dotns, source, open = openRawClient }: Params) {
   const hubChain = HUB_CHAIN[source];
   // A gateway's timings would skew the light client's dashboards.

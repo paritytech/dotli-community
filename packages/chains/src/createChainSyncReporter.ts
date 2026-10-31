@@ -11,17 +11,15 @@ import { getChainRoleForGenesis, type ChainRole } from '@dotli/config/fixed';
 import { SYSTEM_PEERS } from './jsonRpcMethods.js';
 
 /** `warpSyncProgress` is the only true percentage, and a chain that never warped emits no warp kinds. */
-export const CHAIN_SYNC_KINDS = [
-  'firstPeer',
-  'bootstrapComplete',
-  'stalled',
-  'recovered',
-  'peers',
-  'connecting',
-  'warpSyncProgress',
-  'warpSyncFinished',
-] as const;
-export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
+export type ChainSyncKind =
+  | 'firstPeer'
+  | 'bootstrapComplete'
+  | 'stalled'
+  | 'recovered'
+  | 'peers'
+  | 'connecting'
+  | 'warpSyncProgress'
+  | 'warpSyncFinished';
 
 export type ChainSyncEvent = {
   chain: ChainRole;

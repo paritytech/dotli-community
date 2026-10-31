@@ -7,9 +7,10 @@ import { UnixFS } from 'ipfs-unixfs';
 import type { CID } from 'multiformats/cid';
 import { must } from '@dotli/shared/testing';
 import { RAW } from './codecs.js';
+import { createPackedSite } from './testing/createPackedSite.js';
 import { createSha256Cid } from './testing/createSha256Cid.js';
 import { decodeText, encodeText } from './testing/textCodec.js';
-import type { BlockSource } from './types.js';
+import type { ArchiveFiles, BlockSource } from './types.js';
 import { walkUnixFsDag } from './walkUnixFsDag.js';
 
 type Blocks = Map<string, Uint8Array>;
@@ -151,6 +152,10 @@ async function drive<T>(walk: Promise<T>, held: HeldSource, discovery: readonly 
   return walk;
 }
 
+function rejectInnerArchive(): Promise<ArchiveFiles> {
+  return Promise.reject(new Error('no inner archive expected'));
+}
+
 describe('walkUnixFsDag', () => {
   it('As a visitor, I load a site of several chunked files and at most 8 blocks download at once across the whole walk', async () => {
     // Given
@@ -160,7 +165,12 @@ describe('walkUnixFsDag', () => {
     const held = createHeldSource(blocks);
 
     // When the root, then the file nodes, then the chunks are released wave by wave
-    const walked = await drive(walkUnixFsDag(root.Hash, held.source), held, [1, 3], 8);
+    const walked = await drive(
+      walkUnixFsDag({ rootCid: root.Hash, blockSource: held.source, parseInnerArchive: rejectInnerArchive }),
+      held,
+      [1, 3],
+      8,
+    );
 
     // Then
     expect(held.maxInFlight()).toBe(8);
@@ -174,7 +184,12 @@ describe('walkUnixFsDag', () => {
     const held = createHeldSource(blocks);
 
     // When
-    const files = await drive(walkUnixFsDag(big.Hash, held.source), held, [1], 8);
+    const files = await drive(
+      walkUnixFsDag({ rootCid: big.Hash, blockSource: held.source, parseInnerArchive: rejectInnerArchive }),
+      held,
+      [1],
+      8,
+    );
 
     // Then
     expect(held.maxInFlight()).toBe(8);
@@ -188,7 +203,11 @@ describe('walkUnixFsDag', () => {
     const { root, blocks, paths } = createDeepSite(4);
 
     // When
-    const files = await walkUnixFsDag(root, createBlockSource(blocks));
+    const files = await walkUnixFsDag({
+      rootCid: root,
+      blockSource: createBlockSource(blocks),
+      parseInnerArchive: rejectInnerArchive,
+    });
 
     // Then
     expect(Object.keys(files).sort()).toEqual(paths.sort());
@@ -199,7 +218,11 @@ describe('walkUnixFsDag', () => {
     const { root, blocks, paths } = createDeepSite(16);
 
     // When the walk runs
-    const files = await walkUnixFsDag(root, createBlockSource(blocks));
+    const files = await walkUnixFsDag({
+      rootCid: root,
+      blockSource: createBlockSource(blocks),
+      parseInnerArchive: rejectInnerArchive,
+    });
 
     // Then every file arrives
     expect(Object.keys(files).sort()).toEqual(paths.sort());
@@ -214,7 +237,11 @@ describe('walkUnixFsDag', () => {
     ]);
 
     // When the walk reads it
-    const files = await walkUnixFsDag(file.Hash, createBlockSource(blocks));
+    const files = await walkUnixFsDag({
+      rootCid: file.Hash,
+      blockSource: createBlockSource(blocks),
+      parseInnerArchive: rejectInnerArchive,
+    });
 
     // Then the leaves arrive whole and in order
     expect(decodeText(must(files['index.html'], 'index.html'))).toBe('a1;a2;b1;b2;b3;');
@@ -226,7 +253,11 @@ describe('walkUnixFsDag', () => {
     const file = putTwoLevelFile(blocks, 'big.bin', [['a1;'], ['b1;']], [3n, 100n]);
 
     // When the walk reads it
-    const walk = walkUnixFsDag(file.Hash, createBlockSource(blocks));
+    const walk = walkUnixFsDag({
+      rootCid: file.Hash,
+      blockSource: createBlockSource(blocks),
+      parseInnerArchive: rejectInnerArchive,
+    });
 
     // Then the walk fails naming the declared size
     await expect(walk).rejects.toThrow(/declares 103/);
@@ -239,7 +270,11 @@ describe('walkUnixFsDag', () => {
     const root = putShard(blocks, '', [putRaw(blocks, 'A3index.html', encodeText('<h1>hi</h1>')), deeper]);
 
     // When the walk reads it
-    const files = await walkUnixFsDag(root.Hash, createBlockSource(blocks));
+    const files = await walkUnixFsDag({
+      rootCid: root.Hash,
+      blockSource: createBlockSource(blocks),
+      parseInnerArchive: rejectInnerArchive,
+    });
 
     // Then each file arrives under its name, without the shard prefix
     expect(Object.keys(files).sort()).toEqual(['app.js', 'index.html']);
@@ -256,9 +291,34 @@ describe('walkUnixFsDag', () => {
     ]);
 
     // When the walk reads it
-    const files = await walkUnixFsDag(root.Hash, createBlockSource(blocks));
+    const files = await walkUnixFsDag({
+      rootCid: root.Hash,
+      blockSource: createBlockSource(blocks),
+      parseInnerArchive: rejectInnerArchive,
+    });
 
     // Then the sharded files sit under the folder
     expect(Object.keys(files).sort()).toEqual(['docs/intro.html', 'index.html']);
+  });
+
+  it('As a visitor, I load a site packed as one CAR at its root and the walk unpacks it with the parser it was given', async () => {
+    // Given a raw root block that holds a whole CAR
+    const { root, car } = createPackedSite({ 'index.html': 'hi' });
+    const received: Uint8Array[] = [];
+    function parseInnerArchive(bytes: Uint8Array): Promise<ArchiveFiles> {
+      received.push(bytes);
+      return Promise.resolve({ 'a.txt': encodeText('a') });
+    }
+
+    // When the walk reads it
+    const files = await walkUnixFsDag({
+      rootCid: root,
+      blockSource: createBlockSource(new Map([[root.toString(), car]])),
+      parseInnerArchive,
+    });
+
+    // Then the files come from the given parser, which got the CAR's bytes
+    expect(Object.keys(files)).toEqual(['a.txt']);
+    expect(received).toEqual([car]);
   });
 });

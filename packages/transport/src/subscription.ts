@@ -25,6 +25,9 @@ export const wholeSubscriptionLeg = createWholeDecoder(voidSubscriptionLegs);
 /**
  * Declares a subscription. `interrupt` is the method's own interrupt reason, which crosses as it is with nothing added,
  * and one without it has an empty one. A schema that wants truapi's layout declares `Result(_void, callError(reason))`.
+ *
+ * @example
+ * const watchAccount = subscription({ start: str, receive: u32, interrupt: Result(_void, callError(str)) });
  */
 export function subscription<Start, Value>(definition: {
   start: Codec<Start>;

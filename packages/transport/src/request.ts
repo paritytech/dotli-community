@@ -8,7 +8,12 @@ import { createMethod, type Request } from './method.js';
 // A leg's payload is read as nothing, so reading a message's leg reads only its tag and copies no payload.
 const requestLeg = createRequestLegs(_void, _void).dec;
 
-/** Declares a request. `error` is the method's own error, and a method without one has an empty one. */
+/**
+ * Declares a request. `error` is the method's own error, and a method without one has an empty one.
+ *
+ * @example
+ * const getAccount = request({ request: str, response: u32, error: str });
+ */
 export function request<Payload, Response>(definition: {
   request: Codec<Payload>;
   response: Codec<Response>;

@@ -7,6 +7,9 @@ import type { SubscriptionEnd } from './schema.js';
 /**
  * The `interrupt` and `fail` listeners of a protocol subscription as one end. A failure of the library's ends it as
  * `err(failure)`, the `CallError` a protocol interrupt carries.
+ *
+ * @example
+ * const listeners = { receive: onReady, ...createEndListeners(onEnd) };
  */
 export function createEndListeners<E>(
   end: (outcome: SubscriptionEnd<E>) => void,

@@ -354,3 +354,25 @@ describe('toast views', () => {
     expect(readLeaving()).toEqual([true]);
   });
 });
+
+describe('a toast stack that is disposed', () => {
+  it('As a page that ends, I dispose the toasts and no countdown or page listener outlives them', async () => {
+    // Given a stack with an open countdown and a bound page listener
+    const listened = vi.spyOn(page.document, 'addEventListener');
+    toasts.show();
+    const onDismiss = vi.fn();
+    toasts.push(buildInput({ dismissMs: 1000, onDismiss }));
+    const options = listened.mock.calls.find(([type]) => type === 'visibilitychange')?.[2] as
+      AddEventListenerOptions | undefined;
+
+    // When
+    toasts.dispose();
+    toasts.dispose();
+    await timers.advance(5000);
+
+    // Then
+    expect(options?.signal?.aborted).toBe(true);
+    expect(toasts.store.get().items).toEqual([]);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+});

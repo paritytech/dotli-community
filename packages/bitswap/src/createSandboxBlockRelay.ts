@@ -87,7 +87,14 @@ type FrameAddress = {
  */
 const VERIFICATION_ERROR = 'ContentVerificationError';
 
-/** Creates the host side of the sandbox's block channel, which serves, verifies and caches the blocks the sandbox asks for. */
+/**
+ * Creates the host side of the sandbox's block channel, which serves, verifies and caches the blocks the sandbox asks
+ * for.
+ *
+ * @example
+ * const relay = createSandboxBlockRelay({ channel, blocks: fetchBlock, cache: null, verify: verifyBlock });
+ * const stop = relay.onProgress(showProgress);
+ */
 export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = () => performance.now() }: Params) {
   // A listener's throw must not fail a block the sandbox already got, nor keep the next listener from hearing it.
   const progressListeners = createListenerSet<ContentProgress>({

@@ -18,6 +18,10 @@ const reportDragEnd = reportListener('ui', 'drag.end');
 /**
  * One owner for a component's drags. A handle that leaves the page under a held pointer loses its capture, so its
  * pointerup never comes, and only its owner can end that drag.
+ *
+ * @example
+ * const drags = createDrags(); // onCleanup(drags.stopAll)
+ * drags.start({ target: handle, down: event, handlers: { move: onMove, end: onEnd } });
  */
 export function createDrags({ selection = bodySelection }: Params = {}) {
   const live = new Set<() => void>();

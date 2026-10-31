@@ -36,7 +36,7 @@ const GATEWAY_LIMITS: GatewayLimits = { stallMs: 30_000, maxBytes: 256 * 1024 * 
 
 /**
  * The response body, read part by part so a stall or an oversized body ends the read. Rejects on a non-ok status, a
- * stall or a body over the byte limit.
+ * stall, an unreachable gateway or a body over the byte limit.
  */
 export async function readGatewayBody({
   url,
@@ -60,6 +60,21 @@ export async function readGatewayBody({
     return error;
   }
 
+  async function sendRequest(): Promise<Response> {
+    try {
+      return await fetchResource(url, { headers: { Accept: accept }, signal: transfer.signal });
+    } catch (error) {
+      // Every browser rejects a request it could not send with a TypeError, each with its own text.
+      if (error instanceof TypeError) {
+        throw setErrorName(
+          new Error(`IPFS gateway ${host} unreachable for ${cid}`, { cause: error }),
+          CONTENT_ERRORS.GATEWAY_UNREACHABLE,
+        );
+      }
+      throw error;
+    }
+  }
+
   function createTooLargeError(): Error {
     const error = setErrorName(
       new Error(`IPFS gateway ${host} sent more than ${String(limits.maxBytes)} bytes for ${cid}`),
@@ -70,7 +85,7 @@ export async function readGatewayBody({
   }
 
   const response = await withTimeout({
-    work: fetchResource(url, { headers: { Accept: accept }, signal: transfer.signal }),
+    work: sendRequest(),
     ms: limits.stallMs,
     timeoutError: createStalledError,
   });

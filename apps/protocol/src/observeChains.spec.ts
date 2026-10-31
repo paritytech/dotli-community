@@ -51,7 +51,7 @@ describe('observeChains', () => {
 
     // When a dApp connects to a watched chain and leaves
     observeChains({ pool, genesisHashes: ['0xaa', '0xbb'] });
-    pool.connectRemote('0xbb', 'c1', () => undefined)?.disconnect();
+    pool.connectRemote({ genesisHash: '0xbb', connectionId: 'c1', onMessage: () => undefined })?.disconnect();
 
     // Then
     expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xbb']);

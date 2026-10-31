@@ -142,7 +142,7 @@ function getChainGate(pool: ChainPool, genesisHash: string): RedialGate {
 
 /** Takes one lease at once and another on the first send after a halt. */
 function createConnection({ genesisHash, pool, frame }: CreateConnectionParams): PlatformJsonRpcConnection {
-  const first = pool.getLocalProvider(genesisHash, 'truapi-core');
+  const first = pool.getLocalProvider(genesisHash, { holder: 'truapi-core' });
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -211,7 +211,7 @@ function createConnection({ genesisHash, pool, frame }: CreateConnectionParams):
       return null;
     }
     try {
-      const provider = pool.getLocalProvider(genesisHash, 'truapi-core');
+      const provider = pool.getLocalProvider(genesisHash, { holder: 'truapi-core' });
       if (provider === null) {
         // The backend no longer serves this chain, as after a switch, so the product is answered at once.
         log.event('chain has no transport after a halt', { flow: 'protocol', genesisHash });

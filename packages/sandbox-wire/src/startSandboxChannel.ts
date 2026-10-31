@@ -41,6 +41,10 @@ type AnyHandler = (message: SandboxToHostMessage, sender: SandboxSender) => void
  * The channel hands each trusted, well-formed message to the handlers registered for its type. `stop` removes the
  * window listener and drops every handler, and is safe to call again. It never throws: a handler that throws goes to
  * `report` and the rest still run.
+ *
+ * @example
+ * const channel = startSandboxChannel({ target: window, isTrustedOrigin, report: reportHandlerError });
+ * const stop = channel.on('dotli:bitswap-abort', (message, sender) => cancelFetches(message.ids, sender.origin));
  */
 export function startSandboxChannel({ target, isTrustedOrigin, onUntrusted, report }: Params) {
   const handlers = new Map<SandboxMessageType, Set<AnyHandler>>();

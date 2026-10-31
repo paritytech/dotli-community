@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Visitor copy for a trusted-provider HTTPS endpoint that refused the connection outright (`Failed to fetch`, not a
- * timeout), one sentence wherever the visitor meets it. Names the host because a visitor can check a hostname, not "the
- * trusted provider".
+ * Visitor copy for a trusted-provider HTTPS endpoint that refused the connection outright (a request the browser could
+ * not send, not a timeout), one sentence wherever the visitor meets it. Names the host because a visitor can check a
+ * hostname, not "the trusted provider".
  */
 export function describeGatewayUnreachable(host: string | undefined): string {
   return host === undefined || host === ''

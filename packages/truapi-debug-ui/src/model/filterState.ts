@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export type DirectionFilter = (typeof DIRECTION_FILTERS)[number];
+export type DirectionFilter = 'both' | 'outgoing' | 'incoming';
 
 export type FilterState = {
   direction: DirectionFilter;
@@ -16,7 +16,7 @@ export type FilterState = {
 };
 
 /** Every direction filter, in display order. `both` hides no direction. */
-export const DIRECTION_FILTERS = ['both', 'outgoing', 'incoming'] as const;
+export const DIRECTION_FILTERS: readonly DirectionFilter[] = ['both', 'outgoing', 'incoming'];
 
 /** The filters a new panel starts with, which hide nothing. Never throws. */
 export function createInitialFilterState(): FilterState {

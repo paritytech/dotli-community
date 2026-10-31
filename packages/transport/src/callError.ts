@@ -9,7 +9,13 @@ import { failures, type Failure } from './failure.js';
 /** Why a call did not return its value: the method's own `Domain` error, or a failure of the library's. */
 export type CallError<Domain> = { tag: 'Domain'; value: Domain } | Failure;
 
-/** truapi's `CallError`, with `Domain` first. A request's answer carries one, as does an interrupt that chooses it. */
+/**
+ * truapi's `CallError`, with `Domain` first. A request's answer carries one, as does an interrupt that chooses it.
+ *
+ * @example
+ * const interrupt = Result(_void, callError(str));
+ * const failed: CallError<string> = domain('no such account');
+ */
 export function callError<Domain>(domain: Codec<Domain>): Codec<CallError<Domain>> {
   return Enum({ Domain: domain, ...failures });
 }

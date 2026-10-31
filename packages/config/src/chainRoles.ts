@@ -6,8 +6,10 @@ import { getActiveFixedServicesConfig, getActiveServicesConfig } from './activeN
 /**
  * The four chains, named by what they do for the visitor. Every package names a chain by its role.
  */
-export const CHAIN_ROLES = ['relay', 'assethub', 'bulletin', 'people'] as const;
-export type ChainRole = (typeof CHAIN_ROLES)[number];
+export type ChainRole = 'relay' | 'assethub' | 'bulletin' | 'people';
+
+/** Every chain role, in the order a visitor should read them. */
+export const CHAIN_ROLES: readonly ChainRole[] = ['relay', 'assethub', 'bulletin', 'people'];
 
 /** What the visitor is told each chain is for. */
 export const CHAIN_ROLE_LABELS: Record<ChainRole, string> = {
