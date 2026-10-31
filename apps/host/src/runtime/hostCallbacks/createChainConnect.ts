@@ -19,8 +19,8 @@ import {
   type LeaseProvider,
   type RemoteChainHalt,
 } from '@dotli/chains';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { getErrorName, isRecord, log, toHex } from '@dotli/shared';
+import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { isRecord, log, toHex } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import {
   hostChainPool,
@@ -222,9 +222,12 @@ function createConnection({ genesisHash, pool, frame }: CreateConnectionParams):
       m.count(S.TRUAPI_CHAIN_REOPEN, lease === null ? { outcome: 'error', reason: 'halted' } : { outcome: 'ok' });
       return lease;
     } catch (error: unknown) {
-      log.error(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
-      captureException(error, { flow: 'protocol', step: 'chain_reopen' });
-      m.count(S.TRUAPI_CHAIN_REOPEN, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+      reportDefect(error, {
+        flow: 'protocol',
+        step: 'chain_reopen',
+        metric: S.TRUAPI_CHAIN_REOPEN,
+        message: `[dot.li truapi-chain] re-leasing ${genesisHash} failed:`,
+      });
       return null;
     }
   }

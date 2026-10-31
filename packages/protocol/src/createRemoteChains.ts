@@ -4,8 +4,8 @@
 // JSON-RPC connections to the chains the protocol frame serves.
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { getErrorName, log, setErrorName, createRandomId, serializeError } from '@dotli/shared';
+import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { log, setErrorName, createRandomId, serializeError } from '@dotli/shared';
 import { createChainHaltedError, createJsonRpcError, type RemoteChainHalt } from '@dotli/chains';
 import type { FrameRpc } from './createFrameRpc.js';
 import { isRemoteChainConnectable } from './isRemoteChainConnectable.js';
@@ -60,9 +60,12 @@ export function createRemoteChains({ rpc }: Params) {
       // The frame relays the chain's JSON-RPC text as it is, and the consumer reads it as a JSON-RPC message.
       parsed = JSON.parse(message) as JsonRpcMessage;
     } catch (error: unknown) {
-      captureException(error, { flow: 'protocol', step: 'chain_message_parse' });
-      log.error(`[dot.li protocol] chain-message JSON parse failed (conn=${connectionId.slice(-8)}):`, error);
-      m.count(S.PROTOCOL_CHAIN_MESSAGE, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+      reportDefect(error, {
+        flow: 'protocol',
+        step: 'chain_message_parse',
+        metric: S.PROTOCOL_CHAIN_MESSAGE,
+        message: `[dot.li protocol] chain-message JSON parse failed (conn=${connectionId.slice(-8)}):`,
+      });
       return;
     }
     guardConsumer('message', () => {

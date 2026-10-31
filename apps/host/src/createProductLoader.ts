@@ -8,7 +8,7 @@
 
 import { getActiveTldSuffix, getNetwork, isVerifiedSession, withActiveTld, type Backend } from '@dotli/config';
 import { fetchBitswapBlock } from '@dotli/bitswap';
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
 import { getProtocolClient, type ProtocolClient, type ProtocolVersionMismatchError } from '@dotli/protocol';
 import {
   createAsyncTaskPool,
@@ -301,8 +301,12 @@ async function loadProduct(label: string, options: Params): Promise<void> {
     try {
       failLoad(error);
     } catch (screenError: unknown) {
-      captureException(screenError, { flow: 'resolve', step: 'failure_screen' });
-      log.error(`[dot.li] The failure screen for ${failure} failed:`, screenError);
+      reportDefect(screenError, {
+        flow: 'resolve',
+        step: 'failure_screen',
+        metric: S.RESOLVE_FAILURE_SCREEN,
+        message: `[dot.li] The failure screen for ${failure} failed:`,
+      });
     }
   }
   // The content fetch outlives the handoff, so the trace waits for the sandbox's report. Subscribed before the

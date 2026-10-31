@@ -83,6 +83,7 @@ function createIssueReporter({ side, count }: IssueReporterParams): (issue: Wire
       case 'post_failed': {
         const { error, call } = issue;
         const method = call === undefined ? null : getCallNameAt(call.section, call.method);
+        // Captured, logged and counted by hand, since the count is the injected one.
         captureException(error, {
           flow: 'protocol',
           step: 'serve_post',

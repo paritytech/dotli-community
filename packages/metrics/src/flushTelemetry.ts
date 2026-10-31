@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as Sentry from '@sentry/browser';
-import { getErrorName, log } from '@dotli/shared';
 
-import { captureException } from './captureException.js';
-import { m } from './metrics.js';
+import { reportDefect } from './reportDefect.js';
 import { spans as S } from './spans.js';
 
 // Read in this module, not shared, so the metrics-off build drops the SDK.
@@ -22,8 +20,11 @@ export async function flushTelemetry(timeoutMs: number): Promise<void> {
   try {
     await Sentry.flush(timeoutMs);
   } catch (error: unknown) {
-    log.error('[dot.li sentry] flush failed', error);
-    captureException(error, { flow: 'protocol', step: 'flush_telemetry' });
-    m.count(S.TELEMETRY_FLUSH, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'protocol',
+      step: 'flush_telemetry',
+      metric: S.TELEMETRY_FLUSH,
+      message: '[dot.li sentry] flush failed',
+    });
   }
 }

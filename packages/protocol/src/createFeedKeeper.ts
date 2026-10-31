@@ -5,7 +5,7 @@
 // fails, so an end is reported and the feed reopened on the same transport. A transport that closes under the feed
 // ends it for good, since the frame that owned it was lost and reported, and following the next one opens it again.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { m, reportDefect, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, getErrorName, log, setErrorName, type Timers } from '@dotli/shared';
 import type { ProtocolFrame, ProtocolStatus } from './frameTypes.js';
 import type { FrameSubscriber } from './subscribe.js';
@@ -190,9 +190,19 @@ function hasFrame(status: ProtocolStatus): boolean {
 
 /** Counts and logs each end, and captures it when `capture` says so. */
 function reportEnd({ feed, error, capture }: ReportEndParams): void {
+  const message = `[dot.li protocol] The frame ended the ${feed} feed, reopening it:`;
+  const attributes = { feed };
   if (capture) {
-    captureException(error, { flow: 'protocol', step: 'feed_end', tags: { feed } });
+    reportDefect(error, {
+      flow: 'protocol',
+      step: 'feed_end',
+      tags: { feed },
+      attributes,
+      metric: S.PROTOCOL_FEED_END,
+      message,
+    });
+    return;
   }
-  log.error(`[dot.li protocol] The frame ended the ${feed} feed, reopening it:`, error);
-  m.count(S.PROTOCOL_FEED_END, { outcome: 'error', feed, reason: getErrorName(error) ?? 'unknown' });
+  log.error(message, error);
+  m.count(S.PROTOCOL_FEED_END, { outcome: 'error', ...attributes, reason: getErrorName(error) ?? 'unknown' });
 }

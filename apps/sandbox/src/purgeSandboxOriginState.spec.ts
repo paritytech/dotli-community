@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { bindCaptureSink } from '@dotli/metrics';
+import { bindCaptureSink, spans as S } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 
 import { purgeSandboxOriginState, type SandboxOrigin } from './purgeSandboxOriginState.js';
 
@@ -70,6 +71,21 @@ function createOrigin(): Origin {
   return { stores, wiped };
 }
 
+/** An `indexedDB` whose database delete fails with an `UnknownError`. */
+function createRefusingIndexedDb(): SandboxOrigin['indexedDB'] {
+  return {
+    databases: () => Promise.resolve([{ name: 'app-db', version: 1 }]),
+    deleteDatabase() {
+      // The wipe reads only the request's error and handlers.
+      const request = { error: new DOMException('refused', 'UnknownError') } as unknown as IDBOpenDBRequest;
+      queueMicrotask(() => {
+        request.onerror?.call(request, new Event('error'));
+      });
+      return request;
+    },
+  };
+}
+
 describe('purgeSandboxOriginState', () => {
   it('As a visitor, I ask for a full reset and every store the sandbox origin holds is wiped even when one of them fails', async () => {
     // Given an origin whose local storage the browser blocks
@@ -104,17 +120,7 @@ describe('purgeSandboxOriginState', () => {
     const { stores, wiped } = createOrigin();
     const refusing: SandboxOrigin = {
       ...stores,
-      indexedDB: {
-        databases: () => Promise.resolve([{ name: 'app-db', version: 1 }]),
-        deleteDatabase() {
-          // The wipe reads only the request's error and handlers.
-          const request = { error: new DOMException('refused', 'UnknownError') } as unknown as IDBOpenDBRequest;
-          queueMicrotask(() => {
-            request.onerror?.call(request, new Event('error'));
-          });
-          return request;
-        },
-      },
+      indexedDB: createRefusingIndexedDb(),
       getLocalStorage: () => ({ clear: () => undefined }),
     };
     const refusals: string[] = [];
@@ -133,5 +139,37 @@ describe('purgeSandboxOriginState', () => {
     // Then
     expect(wiped).toEqual(['caches:assets-v1', 'serviceWorker', 'sessionStorage', 'cookie:theme=', 'cookie:theme=']);
     expect(refusals).toEqual(['Failed to delete app-db DB: UnknownError']);
+  });
+
+  it('As an operator, I watch a clean purge and it is counted once as ok', async () => {
+    // Given an origin whose stores all wipe
+    const { stores } = createOrigin();
+    const open: SandboxOrigin = { ...stores, getLocalStorage: () => ({ clear: () => undefined }) };
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+
+    // When the origin is purged
+    await purgeSandboxOriginState(open);
+
+    // Then the purge is counted once as ok
+    expect(sentry.counted(S.APP_ORIGIN_PURGE)).toEqual([{ outcome: 'ok' }]);
+  });
+
+  it('As an operator, I watch a purge fail to wipe stores and each is counted with that store as the reason', async () => {
+    // Given an origin whose database delete is refused and whose local storage is blocked
+    const { stores } = createOrigin();
+    const refusing: SandboxOrigin = {
+      ...stores,
+      indexedDB: createRefusingIndexedDb(),
+    };
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+
+    // When the origin is purged
+    await purgeSandboxOriginState(refusing);
+
+    // Then one error per refused store, in refusal order, and no ok
+    expect(sentry.counted(S.APP_ORIGIN_PURGE)).toEqual([
+      { outcome: 'error', reason: 'indexeddb' },
+      { outcome: 'error', reason: 'local_storage' },
+    ]);
   });
 });

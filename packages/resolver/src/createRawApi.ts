@@ -9,16 +9,8 @@ import type { SubstrateClient } from '@polkadot-api/substrate-client';
 import { DisjointError, OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
 import { mergeUint8 } from '@polkadot-api/utils';
-import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import {
-  createAsyncTaskPool,
-  createDeferred,
-  createListenerSet,
-  getErrorName,
-  fromHex,
-  log,
-  toHex,
-} from '@dotli/shared';
+import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createAsyncTaskPool, createDeferred, createListenerSet, fromHex, toHex } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
 
 /** Raw contract storage reads over one chainHead follow. */
@@ -116,9 +108,12 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       if (error instanceof DisjointError) {
         return;
       }
-      captureException(error, { flow: 'resolve', step: 'unpin' });
-      log.error('[dot.li resolver] the light client refused an unpin:', error);
-      m.count(S.RESOLVE_UNPIN, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+      reportDefect(error, {
+        flow: 'resolve',
+        step: 'unpin',
+        metric: S.RESOLVE_UNPIN,
+        message: '[dot.li resolver] the light client refused an unpin:',
+      });
     });
   }
 

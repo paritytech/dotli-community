@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
+import { bindReports } from './testing/bindReports.js';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import { createManualTimers } from '@dotli/shared/testing';
 import { applyProductBranding } from './applyProductBranding.js';
@@ -82,6 +83,25 @@ describe('applyProductBranding', () => {
 
     // Then
     expect(abandoned).toBe(true);
+    expect(tab.favicons).toEqual([]);
+  });
+
+  it('As an operator, I watch an icon read fail and it is counted as expected under the icon metric', async () => {
+    // Given an icon read that fails
+    const { captures, counted } = bindReports();
+    const tab = createTab();
+
+    // When the product's icon is applied
+    await applyProductBranding({
+      label: 'doom',
+      manifests: { root: createRootManifest('png'), app: APP },
+      fetchBlock: () => Promise.reject(new TypeError('Failed to fetch')),
+      setFavicon: tab.setFavicon,
+    });
+
+    // Then the failure is counted under the icon metric and nothing is captured as an exception
+    expect(counted('product.icon')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(captures.exception).not.toHaveBeenCalled();
     expect(tab.favicons).toEqual([]);
   });
 

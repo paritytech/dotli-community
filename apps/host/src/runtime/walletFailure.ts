@@ -25,6 +25,7 @@ export function reportWalletFailure<Reason extends string>(
   error: unknown,
   { what, step, reason, metric }: WalletFailure<Reason>,
 ): void {
+  // By hand, since the count is optional.
   log.error(`[dot.li wallet] ${what} failed:`, error);
   captureException(error, { flow: 'wallet', step, tags: { reason } });
   if (metric !== undefined) {

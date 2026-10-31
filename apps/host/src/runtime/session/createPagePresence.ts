@@ -5,7 +5,7 @@
 // session per origin, so this flag is how a page learns about a sign-out it never saw.
 
 import { BASE_DOMAIN, isLocalhost } from '@dotli/config';
-import { recordExpected } from '@dotli/metrics';
+import { reportExpected, spans as S } from '@dotli/metrics';
 import { listen } from '@dotli/shared';
 import { pageRole, isFlagShared } from '../pageRole.js';
 import { getSharedChannel, type SharedChannel } from '../sharedMode.js';
@@ -54,7 +54,7 @@ const unsharedPresence: SessionPresence = {
 /**
  * The page's flag, built on first use, so creating it reads no page globals. It never rejects and records each failure
  * once. A read that fails is unknown, so a restore never fails on the flag, and an unreadable flag is the environment's
- * failure, so the miss is only a breadcrumb. A write that fails is reported and settles, so awaiting a write never
+ * failure, so the miss is counted as expected. A write that fails is reported and settles, so awaiting a write never
  * rejects. Each call reaches the flag in the caller's turn.
  */
 export function createPagePresence({
@@ -86,7 +86,7 @@ export function createPagePresence({
       callSettled(
         () => getPresence().read(),
         (error): Presence => {
-          recordExpected(error, { flow: 'wallet', step: 'presence_read' });
+          reportExpected(error, { flow: 'wallet', step: 'presence_read', metric: S.SESSION_PRESENCE_READ });
           return 'unknown';
         },
       ),

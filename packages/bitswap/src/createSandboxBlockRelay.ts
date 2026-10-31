@@ -5,8 +5,8 @@
 // origin loses its storage on every reload, so the host fetches and keeps the blocks.
 
 import type { BitswapResultMessage, SandboxChannel } from '@dotli/sandbox-wire';
-import { captureException, m, recordExpected, reportListener, spans as S } from '@dotli/metrics';
-import { createListenerSet, getErrorName, log, setErrorName, serializeError } from '@dotli/shared';
+import { reportDefect, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { createListenerSet, getErrorName, setErrorName, serializeError } from '@dotli/shared';
 
 import { readDagTotal } from './readDagTotal.js';
 import { errorCode } from './errors.js';
@@ -130,9 +130,13 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
     try {
       return (await verify(cid, bytes)) ? { kind: 'match' } : { kind: 'mismatch' };
     } catch (error) {
-      // The verifier reported why it could not run, so each block it leaves unchecked is a breadcrumb and a count.
-      recordExpected(error, { flow: 'content', step: 'relay_verify' });
-      m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: getErrorName(error) ?? 'unknown', step: 'verify' });
+      // The verifier reported why it could not run, so each block it leaves unchecked is expected and counted.
+      reportExpected(error, {
+        flow: 'content',
+        step: 'relay_verify',
+        metric: S.CONTENT_BLOCK_RELAY,
+        attributes: { step: 'verify' },
+      });
       return { kind: 'unknown', cause: error };
     }
   }
@@ -275,8 +279,14 @@ export function createSandboxBlockRelay({ channel, blocks, cache, verify, now = 
 }
 
 /** A relay step that failed and was worked around, reported so the workaround does not hide it. */
-function reportRelayFailure({ step, error, cid, reason = getErrorName(error) }: ReportRelayFailureParams): void {
-  captureException(error, { flow: 'content', step: `relay_${step}`, ...(cid === undefined ? {} : { tags: { cid } }) });
-  log.error(`[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}: ${serializeError(error)}`);
-  m.count(S.CONTENT_BLOCK_RELAY, { outcome: 'error', reason: reason ?? 'unknown', step });
+function reportRelayFailure({ step, error, cid, reason }: ReportRelayFailureParams): void {
+  reportDefect(error, {
+    flow: 'content',
+    step: `relay_${step}`,
+    ...(cid === undefined ? {} : { tags: { cid } }),
+    metric: S.CONTENT_BLOCK_RELAY,
+    attributes: { step },
+    message: `[dot.li bitswap-relay] ${step} failed${cid === undefined ? '' : ` for ${cid}`}:`,
+    ...(reason === undefined ? {} : { reason }),
+  });
 }

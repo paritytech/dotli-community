@@ -3,7 +3,8 @@
 
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { describe, expect, it } from 'vitest';
-import { readWalletOrFailed, type WalletRead } from './siteWallet.js';
+import { bindReports } from '../../testing/bindReports.js';
+import { readWalletOrFailed, recordPresenceWalletReadFailure, type WalletRead } from './siteWallet.js';
 
 const REJECTION = new Error('frame unreachable');
 const THROW = new Error('frame missing');
@@ -35,5 +36,19 @@ describe('readWalletOrFailed', () => {
 
     // Then the read answers as the frame did, or as failed carrying the rejection or the throw
     expect(result).toEqual(expected);
+  });
+});
+
+describe('recordPresenceWalletReadFailure', () => {
+  it('As an operator, I watch a wallet read made to check sign-in fail and it is counted as expected', () => {
+    // Given a recorder of the page's counts and captures
+    const { captures, counted } = bindReports();
+
+    // When a wallet read made to check sign-in fails
+    recordPresenceWalletReadFailure(new TypeError('frame unreachable'));
+
+    // Then the failure is counted under the wallet read metric and nothing is captured as an exception
+    expect(counted('session.wallet_read')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(captures.exception).not.toHaveBeenCalled();
   });
 });

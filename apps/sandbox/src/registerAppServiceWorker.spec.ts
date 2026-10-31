@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { spans as S } from '@dotli/metrics';
+import { bindCaptureSink, spans as S } from '@dotli/metrics';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { createDeferred } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
@@ -145,6 +145,44 @@ describe('registerAppServiceWorker', () => {
     expect(logs.map(line => line.args)).toEqual([['[dot.li app] Service worker update failed:', failure]]);
     expect(sentry.counted(S.SANDBOX_SW_UPDATE)).toEqual([{ outcome: 'error', reason: 'RangeError' }]);
   });
+
+  it.each([
+    ['TypeError', new TypeError('the update was refused')],
+    ['InvalidStateError', new DOMException('the update was refused', 'InvalidStateError')],
+  ])(
+    'As an operator, I watch the browser refuse an update with %s and it is counted as expected under the service worker update metric',
+    async (name, refusal) => {
+      // Given a page controlled by a worker from the build before, whose update the browser refuses as expected
+      const captured: unknown[] = [];
+      onTestFinished(
+        bindCaptureSink({
+          exception: error => {
+            captured.push(error);
+          },
+          expected: () => undefined,
+        }),
+      );
+      const counted = createDeferred<undefined>();
+      const sentry = bindRecordingSentry({
+        onFinished: onTestFinished,
+        onRecord: () => {
+          counted.resolve(undefined);
+        },
+      });
+      const container = createControlledContainer({
+        active: createWorkerAt('old-build'),
+        update: () => Promise.reject(refusal),
+      });
+
+      // When the page registers, and the refusal is counted
+      await registerAppServiceWorker({ container, version: 'new-build', offerReload: () => undefined });
+      await counted.promise;
+
+      // Then it is counted by its name and no exception is captured
+      expect(sentry.counted(S.SANDBOX_SW_UPDATE)).toEqual([{ outcome: 'error', reason: name }]);
+      expect(captured).toEqual([]);
+    },
+  );
 
   it('As an operator, I watch a worker that cannot take the version check fail it and see it logged and counted by its error name', async () => {
     // Given a page controlled by a worker that throws on every post

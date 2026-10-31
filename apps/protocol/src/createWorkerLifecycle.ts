@@ -4,7 +4,7 @@
 // The worker's ports and its close. A port is served, released or forgotten here, and a dead worker closes here once
 // every port heard why. Releasing a port, hearing one and closing the worker call each other, so one unit owns them.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { reportDefect, spans as S } from '@dotli/metrics';
 import {
   toFrameStatusEnd,
   ProtocolPortReleasedError,
@@ -13,7 +13,7 @@ import {
   type ProtocolTransport,
   type SubscriptionEnd,
 } from '@dotli/protocol';
-import { getErrorName, log, realTimers, type Timers } from '@dotli/shared';
+import { realTimers, type Timers } from '@dotli/shared';
 import { err, type PortLike, type Sink } from '@dotli/transport';
 
 import type { EngineScope } from './createEngine.js';
@@ -327,9 +327,12 @@ export function createWorkerLifecycle({
     timers.setTimeout(() => {
       // A flush that fails still closes, after it is reported.
       void flush().then(markFlushed, (error: unknown) => {
-        captureException(error, { flow: 'protocol', step: 'worker_flush' });
-        log.error(`${WORKER_LOG_TAG} Telemetry flush failed`, error);
-        m.count(S.TELEMETRY_FLUSH, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+        reportDefect(error, {
+          flow: 'protocol',
+          step: 'worker_flush',
+          metric: S.TELEMETRY_FLUSH,
+          message: `${WORKER_LOG_TAG} Telemetry flush failed`,
+        });
         markFlushed();
       });
     }, 0);

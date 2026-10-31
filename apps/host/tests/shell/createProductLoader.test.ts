@@ -306,6 +306,27 @@ describe('createProductLoader', () => {
     expect(readResolution()).toMatchObject({ outcome: 'error', error_kind: 'protocol-version-mismatch' });
   });
 
+  it('As an operator, I see a failure screen that throws after the app was on screen captured and counted', async () => {
+    // Given a loader whose failure screen throws, and an app that was on screen
+    const { loader, refuseWire, captured, counted } = setupLoader({
+      published: { doom: 'bafy-base' },
+      failToShow: new TypeError('the failure screen threw'),
+    });
+    await loader.load('doom');
+
+    // When the frame refuses the wire and the failure screen throws
+    refuseWire(new ProtocolVersionMismatchError('the frame speaks a newer wire'));
+
+    // Then the throw is captured once and counted with its error name
+    expect(captured.filter(context => context.step === 'failure_screen')).toEqual([
+      expect.objectContaining({ flow: 'resolve', step: 'failure_screen' }),
+    ]);
+    // The page sets its journey as defaults on every count
+    expect(counted('resolve.failure_screen')).toEqual([
+      expect.objectContaining({ outcome: 'error', reason: 'TypeError' }),
+    ]);
+  });
+
   it('As a visitor with the app open, I meet a failure that ends the load and it stops waiting for the content', async () => {
     // Given
     const { loader, refuseWire, countContentCallbacks } = setupLoader({ published: { doom: 'bafy-base' } });
@@ -509,6 +530,8 @@ function setupLoader(params: Params = {}) {
     debug,
     /** Every distribution the page sent. */
     distributions: recording.distributions,
+    /** The attributes of each count named `dotli.<name>`, in order. */
+    counted: recording.counted,
     /** Returns the resolution span's attributes as the trace last set them, or undefined before it starts. */
     readResolution: () => recording.spans.filter(span => span.name === 'dotli.resolution').at(-1)?.attributes,
     /** Returns each debug panel event as `layer:event`, in order. */

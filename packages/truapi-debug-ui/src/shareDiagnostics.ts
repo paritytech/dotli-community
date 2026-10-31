@@ -3,8 +3,7 @@
 
 // Sharing the Diagnostics tab as a pre-filled GitHub issue, apart from the view so it is tested without a DOM.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { log } from '@dotli/shared';
+import { m, reportDefect, spans as S } from '@dotli/metrics';
 import type { DiagnosticsRow, DiagnosticsSource } from './host.js';
 
 /** A closed set, so the metric's `reason` tag stays bounded. */
@@ -47,7 +46,12 @@ function buildIssueUrl(report: string): string {
 }
 
 function reportShareFailure(error: unknown, reason: ShareFailureReason): void {
-  log.error(`[dot.li debug] diagnostics ${reason} failed:`, error);
-  captureException(error, { flow: 'ui', step: 'diagnostics_share', tags: { reason } });
-  m.count(S.DIAGNOSTICS_SHARE, { outcome: 'error', reason });
+  reportDefect(error, {
+    flow: 'ui',
+    step: 'diagnostics_share',
+    tags: { reason },
+    metric: S.DIAGNOSTICS_SHARE,
+    reason,
+    message: `[dot.li debug] diagnostics ${reason} failed:`,
+  });
 }

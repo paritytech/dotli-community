@@ -73,4 +73,50 @@ describe('reportExpected', () => {
     expect(reports.breadcrumbs).toEqual([[timeout, { flow: 'ui', step: 'diagnostics_block' }]]);
     expect(reports.counted('diagnostics.finalized_block')).toEqual([{ outcome: 'timeout', reason: 'timeout' }]);
   });
+
+  it('As a dotli developer, I report an expected failure with attributes and the count keeps them beside its outcome and reason', () => {
+    // Given a recorder and a failure the browser caused
+    const reports = recordReports();
+
+    // When the failure is reported with count attributes and its own reason
+    reportExpected(new Error('quota'), {
+      flow: 'storage',
+      step: 'block_cache',
+      metric: 'cache.storage',
+      reason: 'QuotaExceededError',
+      attributes: { surface: 'block_cache', step: 'read' },
+    });
+
+    // Then the count carries the attributes beside the outcome and the reason
+    expect(reports.counted('cache.storage')).toEqual([
+      { outcome: 'error', reason: 'QuotaExceededError', surface: 'block_cache', step: 'read' },
+    ]);
+  });
+
+  it('As a dotli developer, I report a thrown non-error as expected and it is counted with an unknown reason', () => {
+    // Given a recorder
+    const reports = recordReports();
+
+    // When a string is reported as the failure
+    reportExpected('refused', { flow: 'ui', step: 'icon', metric: 'product.icon' });
+
+    // Then the count has the default outcome and the unknown reason
+    expect(reports.counted('product.icon')).toEqual([{ outcome: 'error', reason: 'unknown' }]);
+  });
+
+  it("As a dotli developer, I pass attributes named outcome and reason and the report's own win", () => {
+    // Given a recorder
+    const reports = recordReports();
+
+    // When the failure is reported with attributes that name an outcome and a reason
+    reportExpected(new TypeError('refused'), {
+      flow: 'ui',
+      step: 'icon',
+      metric: 'product.icon',
+      attributes: { outcome: 'ok', reason: 'x' },
+    });
+
+    // Then the count keeps the default outcome and the class name
+    expect(reports.counted('product.icon')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+  });
 });

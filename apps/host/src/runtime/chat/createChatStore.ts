@@ -7,15 +7,13 @@
 
 import type { ChatMessageContent, HostRendererActionSubscribeItem, ProductRendererRenderRequest } from '@parity/truapi';
 import type { RenderSink } from '@parity/truapi-host';
-import { captureException, m, reportExpected, reportListener, spans as S } from '@dotli/metrics';
+import { reportDefect, reportExpected, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
   createSyncStore,
   createRandomId,
-  getErrorName,
   isShallowEqual,
-  log,
   realTimers,
   type ReadableStore,
   type Timers,
@@ -182,9 +180,13 @@ export function createChatStore({ repo, connections, timers = realTimers }: Para
       reportExpected(error, { flow: 'chat', step, metric: S.CHAT_READ });
       return;
     }
-    log.error(`[dot.li chat] ${step} failed:`, error);
-    captureException(error, { flow: 'chat', step, tags: { kind: 'chat_panel_read_error' } });
-    m.count(S.CHAT_READ, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'chat',
+      step,
+      metric: S.CHAT_READ,
+      message: `[dot.li chat] ${step} failed:`,
+      tags: { kind: 'chat_panel_read_error' },
+    });
   }
 
   // A read for a product or room the panel has since left never reaches the view, but a failure of it is still reported.

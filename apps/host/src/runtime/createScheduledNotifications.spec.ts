@@ -40,11 +40,12 @@ const DUE: ScheduledNotificationRecord = {
 function createPollerHarness() {
   const timers = createManualTimers();
   const page = createFakePage();
-  const { captures } = bindReports();
+  const { captures, counted } = bindReports();
   return {
     timers,
     page,
     captures,
+    counted,
     /** Starts the poller of a lone tab over `store` for `acme`, with `overrides` in its params. */
     start,
     /** Moves the clock on by `count` poll intervals. */
@@ -156,6 +157,41 @@ describe('scheduled notifications poller', () => {
     // Then the failure is captured once, under the claim step
     expect(captures.exception).toHaveBeenCalledTimes(1);
     expect(captures.exception).toHaveBeenCalledWith(failure, { flow: 'notifications', step: 'claim' });
+  });
+
+  it('As an operator, I watch a poll step fail with a browser-caused database error and it is counted as expected under the poll metric', async () => {
+    // Given a polling tab whose list step starts failing on a closing database connection
+    const { timers, captures, counted, start, advanceTicks } = createPollerHarness();
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 3_600_000 }] });
+    start({ store });
+    await advanceTicks(1);
+    store.listAll.mockRejectedValue(createClosingError());
+
+    // When the poller ticks for several seconds
+    await advanceTicks(3);
+
+    // Then the step is counted once as an expected failure, and nothing is captured
+    expect(counted('notifications.poll')).toEqual([
+      { outcome: 'error', reason: 'InvalidStateError', step: 'list_pending' },
+    ]);
+    expect(captures.exception).not.toHaveBeenCalled();
+  });
+
+  it('As an operator, I see a poll step that fails with a fault captured and counted under the poll metric', async () => {
+    // Given a polling tab whose list step starts failing on a fault
+    const { timers, captures, counted, start, advanceTicks } = createPollerHarness();
+    const failure = new Error('disk gone');
+    const store = createRecordStore({ records: [{ ...DUE, scheduledAt: timers.now() + 3_600_000 }] });
+    start({ store });
+    await advanceTicks(1);
+    store.listAll.mockRejectedValue(failure);
+
+    // When the poller ticks for several seconds
+    await advanceTicks(3);
+
+    // Then the step is captured and counted once
+    expect(captures.exception.mock.calls).toEqual([[failure, { flow: 'notifications', step: 'list_pending' }]]);
+    expect(counted('notifications.poll')).toEqual([{ outcome: 'error', reason: 'Error', step: 'list_pending' }]);
   });
 
   it('As a user, I load a page with a due notification the poller also reaches and it shows once', async () => {

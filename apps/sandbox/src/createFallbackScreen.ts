@@ -4,7 +4,7 @@
 // The failure screen for when the sandbox's own UI chunk cannot load. Its markup is static in the page, so it needs no
 // chunk, and it is hidden until something shows it.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { reportDefect, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import { APP_LOG_TAG } from './appLogTag.js';
 import s from './createFallbackScreen.module.css';
@@ -52,9 +52,14 @@ export function createFallbackScreen({ page, reload }: Params) {
     const button = page.getElementById('sandbox-fallback-reload');
     if (section === null || message === null || button === null) {
       const error = new Error('The sandbox page has no fallback screen');
-      captureException(error, { flow: 'content', step: 'fallback_show' });
-      contentLog.error(`${APP_LOG_TAG} Could not show the fallback screen`, error);
-      m.count(S.APP_RUN, { outcome: 'error', reason: 'fallback_missing' });
+      reportDefect(error, {
+        flow: 'content',
+        step: 'fallback_show',
+        metric: S.APP_RUN,
+        reason: 'fallback_missing',
+        message: `${APP_LOG_TAG} Could not show the fallback screen`,
+        logger: contentLog,
+      });
       return;
     }
     section.className = s['screen'] ?? '';

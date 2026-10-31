@@ -4,7 +4,7 @@
 // Temporary: the core does not report phone requests to the host, so this infers them from relayed frames. Remove once https://github.com/paritytech/trinity-user-agents/issues/1552 lands.
 
 import type { ShowNotification } from '@dotli/ui';
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
 import { log } from '@dotli/shared';
 import type { PhoneMethod } from './phoneMethods.js';
 import { getPhoneMetricOutcome, type PhoneOutcome } from './phoneOutcome.js';
@@ -45,8 +45,14 @@ export function reportPhoneEnd(end: PhoneEnd, notify: ShowNotification): void {
       notify(notice);
     }
   } catch (error) {
-    captureException(error, { flow: 'wallet', step: 'phone_request_notice', tags: { method: end.method } });
-    log.error(`[dot.li phone request] ${end.method} toast failed:`, error);
+    reportDefect(error, {
+      flow: 'wallet',
+      step: 'phone_request_notice',
+      tags: { method: end.method },
+      metric: S.PHONE_REQUEST_NOTICE,
+      attributes: { method: end.method },
+      message: `[dot.li phone request] ${end.method} toast failed:`,
+    });
   }
 }
 
@@ -55,6 +61,7 @@ export function reportPhoneEnd(end: PhoneEnd, notify: ShowNotification): void {
  * throws.
  */
 export function reportUndecodablePhoneFrame({ method, error, leg }: Params): void {
+  // Captured, logged and counted by hand, since only a request leg is counted here.
   captureException(error, { flow: 'wallet', step: 'phone_request', tags: { method } });
   log.error(`[dot.li phone request] ${method} ${leg} did not decode:`, error);
   if (leg === 'request') {
@@ -64,7 +71,13 @@ export function reportUndecodablePhoneFrame({ method, error, leg }: Params): voi
 
 /** Reports a review or request that would not encode, so the review cannot be matched to its request. Never throws. */
 export function reportUnmatchablePhoneReview(method: PhoneMethod, error: unknown): void {
-  captureException(error, { flow: 'wallet', step: 'phone_review_match', tags: { method } });
-  log.error(`[dot.li phone review] ${method} did not encode for matching:`, error);
-  m.count(S.PHONE_REQUEST, { outcome: 'unmatchable', reason: method });
+  reportDefect(error, {
+    flow: 'wallet',
+    step: 'phone_review_match',
+    tags: { method },
+    metric: S.PHONE_REQUEST,
+    outcome: 'unmatchable',
+    reason: method,
+    message: `[dot.li phone review] ${method} did not encode for matching:`,
+  });
 }

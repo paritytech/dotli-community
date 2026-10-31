@@ -4,6 +4,7 @@
 // Whether the product declares `includes.chat` in its worker manifest. The product frame picks the connection's
 // execution kind from it, so the last answer is cached per label to keep warm loads off a dotNS read.
 
+import { reportDefect, spans as S } from '@dotli/metrics';
 import { log, pageLocalStorage, type SafeStorage } from '@dotli/shared';
 
 /** Keeps the last answer per label for the next load. */
@@ -40,7 +41,13 @@ export function readChatCapability(
       return chat;
     },
     (error: unknown) => {
-      chatLog.error('[dot.li chat] worker manifest unreadable, chat is off for this load:', error);
+      reportDefect(error, {
+        flow: 'chat',
+        step: 'capability_read',
+        metric: S.CHAT_CAPABILITY,
+        message: '[dot.li chat] worker manifest unreadable, chat is off for this load:',
+        logger: chatLog,
+      });
       return false;
     },
   );

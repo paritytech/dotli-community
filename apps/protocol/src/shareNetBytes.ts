@@ -3,8 +3,8 @@
 
 // The light client's inbound byte total, reported for the host's speed readout from wherever the light client runs.
 
-import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
-import { createListenerSet, getErrorName, log } from '@dotli/shared';
+import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
+import { createListenerSet } from '@dotli/shared';
 
 import { createIntervalTicker, type Ticker } from './createIntervalTicker.js';
 
@@ -82,7 +82,10 @@ export function shareNetBytes({
 }
 
 function reportFailedRead(error: unknown): void {
-  captureException(error, { flow: 'protocol', step: 'net_bytes_read' });
-  log.error('[dot.li] The net bytes meter could not be read', error);
-  m.count(S.PROTOCOL_NET_BYTES_READ, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+  reportDefect(error, {
+    flow: 'protocol',
+    step: 'net_bytes_read',
+    metric: S.PROTOCOL_NET_BYTES_READ,
+    message: '[dot.li] The net bytes meter could not be read',
+  });
 }

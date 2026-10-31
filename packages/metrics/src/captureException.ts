@@ -59,7 +59,13 @@ export function recordExpected(error: unknown, context: Pick<CaptureContext, 'fl
   });
 }
 
-/** Send captures to `next`. Returns a function that restores the sink bound before, so unbind in reverse order. */
+/**
+ * Send captures to `next`. Returns a function that restores the sink bound before, so unbind in reverse order.
+ *
+ * @example
+ * const restore = bindCaptureSink({ exception: report, expected: () => undefined });
+ * restore();
+ */
 export function bindCaptureSink(next: CaptureSink): () => void {
   const previous = sink;
   sink = next;

@@ -10,16 +10,16 @@ import { createMemorySharedChannel } from '../sharedMode.fake.js';
 import { isFlagShared } from '../pageRole.js';
 import type { CookieJar } from './createCookiePresence.js';
 import { createFakeCookieJar } from './createCookiePresence.fake.js';
+import { bindReports } from '../../testing/bindReports.js';
 import { getUnservedChannel } from './createPagePresence.fake.js';
 import { createPagePresence } from './createPagePresence.js';
 
 const DOMAIN = 'dot.li';
 
 describe('guarded presence', () => {
-  it('As a user whose flag read rejects, I read the flag and get unknown with a breadcrumb for the restore to count', async () => {
+  it('As a user whose flag read rejects, I read the flag and get unknown, and it is counted as expected', async () => {
     // Given a flag whose read rejects
-    const captures = { exception: vi.fn(), expected: vi.fn() };
-    onTestFinished(bindCaptureSink(captures));
+    const { captures, counted } = bindReports();
     const failure = new Error('cookie blocked');
     const jar: CookieJar = {
       read() {
@@ -32,10 +32,11 @@ describe('guarded presence', () => {
     // When the page reads it
     const result = await presence.read();
 
-    // Then it reads unknown and the miss is a breadcrumb, not an issue
+    // Then it reads unknown, the miss is a breadcrumb, not an issue, and it is counted with its class name
     expect(result).toBe('unknown');
     expect(captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'presence_read' });
     expect(captures.exception).not.toHaveBeenCalled();
+    expect(counted('session.presence_read')).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a user whose flag write throws, I set the flag and go on while the failure is counted', async () => {

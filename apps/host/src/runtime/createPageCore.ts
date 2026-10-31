@@ -7,7 +7,7 @@
 
 import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
-import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { m, reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
@@ -247,9 +247,14 @@ export function createPageCore({
           log.warn('[dot.li page-core] wallet core failed to boot:', error);
         } else {
           // Nobody asked for a redial, so the page core is the only one to report that it gave up.
-          log.error('[dot.li page-core] wallet core redial failed:', error);
-          captureException(error, { flow: 'wallet', step: 'core_redial', tags: { reason: redial } });
-          m.count(S.WALLET_CORE_REDIAL, { outcome: 'error', reason: redial });
+          reportDefect(error, {
+            flow: 'wallet',
+            step: 'core_redial',
+            tags: { reason: redial },
+            metric: S.WALLET_CORE_REDIAL,
+            reason: redial,
+            message: '[dot.li page-core] wallet core redial failed:',
+          });
           // The page core has reported it, so a caller that hears of it must not report it again.
           throw new CoreRedialError(error);
         }
@@ -342,8 +347,14 @@ export function createPageCore({
             break;
         }
       } catch (error) {
-        captureException(error, { flow: 'wallet', step: 'phone_request_tap', tags: { side } });
-        log.error(`[dot.li page-core] phone request tap failed on a frame from the ${side}:`, error);
+        reportDefect(error, {
+          flow: 'wallet',
+          step: 'phone_request_tap',
+          tags: { side },
+          metric: S.PHONE_REQUEST_TAP,
+          attributes: { side },
+          message: `[dot.li page-core] phone request tap failed on a frame from the ${side}:`,
+        });
       }
     }
     const unsubscribeTap = provider.subscribe(message => {

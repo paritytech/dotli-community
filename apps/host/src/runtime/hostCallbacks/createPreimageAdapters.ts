@@ -5,7 +5,7 @@
 
 import type { PreimageHost } from '@parity/truapi-host';
 import { createCidFromHash, loadVerify as loadContentVerify } from '@dotli/content';
-import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
+import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import { createAsyncTaskPool, createLazyLoad, serializeError, log, noop, toHex } from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import { fetchContentBlock, type PreimageBlock, type PreimageFetch } from './createBlockFetch.js';
@@ -128,9 +128,13 @@ function createPreimageLookupSubscribe(
         (error: unknown) => {
           if (error instanceof PreimageMismatch) {
             // A backend served bytes that do not hash to the key, which no retry fixes.
-            log.error(`[${label}] preimage lookup got the wrong bytes:`, error);
-            captureException(error, { flow: 'content', step: 'preimage_lookup' });
-            m.count(S.PREIMAGE_LOOKUP, { outcome: 'error', reason: 'mismatch' });
+            reportDefect(error, {
+              flow: 'content',
+              step: 'preimage_lookup',
+              metric: S.PREIMAGE_LOOKUP,
+              reason: 'mismatch',
+              message: `[${label}] preimage lookup got the wrong bytes:`,
+            });
             pushError({ reason: error.message });
           }
           // The poll retries every other failure, so any other end is the abort of a subscription that has gone.

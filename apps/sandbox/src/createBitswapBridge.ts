@@ -5,10 +5,9 @@
 
 import { parseHostToSandboxMessage, postToHost, type BitswapResultMessage } from '@dotli/sandbox-wire';
 import { TIMEOUTS, isSiteOrigin } from '@dotli/config';
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { reportDefect, spans as S } from '@dotli/metrics';
 import {
   createPendingReplies,
-  getErrorName,
   log,
   createRandomId,
   realTimers,
@@ -95,9 +94,13 @@ export function createBitswapBridge({ window: sandboxWindow, parent, isHostOrigi
         try {
           postToHost(parent, { type: 'dotli:bitswap-abort', ids: [id], frame });
         } catch (error) {
-          captureException(error, { flow: 'content', step: 'bitswap_abort', tags: { surface: 'sandbox_main' } });
-          log.error(`${BRIDGE_LOG_TAG} bitswap bridge abort postMessage failed:`, error);
-          m.count(S.SANDBOX_BITSWAP_ABORT, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+          reportDefect(error, {
+            flow: 'content',
+            step: 'bitswap_abort',
+            metric: S.SANDBOX_BITSWAP_ABORT,
+            message: `${BRIDGE_LOG_TAG} bitswap bridge abort postMessage failed:`,
+            tags: { surface: 'sandbox_main' },
+          });
         }
         return timeout;
       },

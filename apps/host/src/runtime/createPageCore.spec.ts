@@ -555,6 +555,26 @@ describe('page core', () => {
     expect(captures.exception).toHaveBeenCalledTimes(2);
   });
 
+  it('As an operator, I see a phone request tap that throws on a frame captured and counted', async () => {
+    // Given a connection on a core whose tracker taps throw
+    const recording = createRecordingTracker({ broken: true });
+    const { core, captures, counted } = createReportingHarness({ createPhoneRequests: () => recording.tracker });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    const lease = await core.acquire();
+    const connection = await lease.connect();
+
+    // When the product sends a request
+    connection.provider.postMessage(
+      encodePhoneRequestFrame({ requestId: 'r1', method: 'signRaw', body: SIGN_RAW_BODY }),
+    );
+
+    // Then the throw is captured once and counted under the product side
+    expect(captures.exception.mock.calls).toEqual([
+      [new Error('tap broke'), { flow: 'wallet', step: 'phone_request_tap', tags: { side: 'product' } }],
+    ]);
+    expect(counted('signing.phone_request_tap')).toEqual([{ outcome: 'error', reason: 'Error', side: 'product' }]);
+  });
+
   it('As a dApp user whose core is redialed, I get a new tracker and the old one ends its claims as gone', async () => {
     // Given a request in flight on the first core, claimed
     const { core, runtimes, requests, changes } = createHarness();

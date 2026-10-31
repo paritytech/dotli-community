@@ -16,16 +16,18 @@ type Params = {
   outcome?: MetricOutcome;
   /** Logged as a warning with the error. Leave it out when the failure needs no line in the log. */
   message?: string;
+  /** Extra count attributes beside `outcome` and `reason`, from a closed set. */
+  attributes?: Record<string, string>;
 } & Pick<CaptureContext, 'flow' | 'step'>;
 
 /** Report an environment failure: an optional warning, its breadcrumb and one count of its outcome metric. */
 export function reportExpected(
   error: unknown,
-  { flow, step, metric, reason, outcome = 'error', message }: Params,
+  { flow, step, metric, reason, outcome = 'error', message, attributes }: Params,
 ): void {
   if (message !== undefined) {
     log.warn(message, error);
   }
   recordExpected(error, { flow, step });
-  m.count(metric, { outcome, reason: reason ?? getErrorName(error) ?? 'unknown' });
+  m.count(metric, { ...attributes, outcome, reason: reason ?? getErrorName(error) ?? 'unknown' });
 }

@@ -5,13 +5,12 @@
 // Every write, from the panel or a prompt, goes through one path that retries and announces once, and the work runs one
 // at a time, so a read never lands over a newer write.
 
-import { captureException, m, reportListener, spans as S } from '@dotli/metrics';
+import { m, reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
   createSharedRun,
   createSyncStore,
-  log,
   realTimers,
   type ReadableStore,
   type Timers,
@@ -256,18 +255,27 @@ export function createProductPermissions({ registry, product, timers = realTimer
       m.count(S.PERMISSIONS_READ, { outcome: 'ok' });
       land(label, { status: 'read', label, statuses: NAMES.map((_, i) => statuses[i] ?? 'ask') });
     } catch (error) {
-      log.error('[dot.li] permissions read failed:', error);
-      captureException(error, { flow: 'wallet', step: 'permissions_read' });
-      m.count(S.PERMISSIONS_READ, { outcome: 'error', reason: 'read' });
+      reportDefect(error, {
+        flow: 'wallet',
+        step: 'permissions_read',
+        metric: S.PERMISSIONS_READ,
+        message: '[dot.li] permissions read failed:',
+        reason: 'read',
+      });
       land(label, { status: 'failed', label });
     }
   }
 
   function reportFailure(errors: readonly unknown[]): void {
     const error = errors.length === 1 ? errors[0] : new AggregateError(errors, 'some permissions kept their status');
-    log.error('[dot.li] permissions change failed:', error);
-    captureException(error, { flow: 'wallet', step: 'permissions_change', tags: { reason: 'write' } });
-    m.count(S.PERMISSIONS_CHANGE, { outcome: 'error', reason: 'write' });
+    reportDefect(error, {
+      flow: 'wallet',
+      step: 'permissions_change',
+      metric: S.PERMISSIONS_CHANGE,
+      message: '[dot.li] permissions change failed:',
+      reason: 'write',
+      tags: { reason: 'write' },
+    });
   }
 
   /** Runs in the pool's slot. Writes every target, retries the failed, then shows and announces what landed. */

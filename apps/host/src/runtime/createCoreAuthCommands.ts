@@ -4,8 +4,8 @@
 // The topbar's login, logout and cancel, run on the page core. A login reports its own failures, and session state
 // hears what the core could not say for itself. A logout runs the end it is given through the commands' queue.
 
-import { captureException, recordExpected } from '@dotli/metrics';
-import { createDeferred, getErrorMessage, log, type ReadableStore } from '@dotli/shared';
+import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { createDeferred, getErrorMessage, getErrorName, log, type ReadableStore } from '@dotli/shared';
 import {
   CANCELLED,
   createAuthCommands,
@@ -56,7 +56,7 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
           return CANCELLED;
         }
       } catch (error) {
-        captureLoginFailure(error);
+        reportCoreLoginFailure(error);
         // The core already rendered a `LoginRequestError`, or stayed silent on purpose. Report a failure
         // only when it never saw one.
         if (!(error instanceof LoginRequestError)) {
@@ -205,17 +205,21 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
  * A cancelled or denied login is an outcome, not a fault, and the page core already captured a redial it gave up on.
  * The core's other refusals are still reported.
  */
-function captureLoginFailure(error: unknown): void {
+function reportCoreLoginFailure(error: unknown): void {
+  const reason = error instanceof LoginRequestError ? error.error.tag : (getErrorName(error) ?? 'unknown');
   if (
     error instanceof CoreRedialError ||
     (error instanceof LoginRequestError && (error.error.tag === 'Cancelled' || error.error.tag === 'Denied'))
   ) {
-    recordExpected(error, { flow: 'wallet', step: 'login' });
+    reportExpected(error, { flow: 'wallet', step: 'login', metric: S.WALLET_LOGIN, reason });
     return;
   }
-  captureException(error, {
+  reportDefect(error, {
     flow: 'wallet',
     step: 'login',
     ...(error instanceof LoginRequestError ? { tags: { login_error: error.error.tag } } : {}),
+    metric: S.WALLET_LOGIN,
+    message: '[dot.li wallet] login failed:',
+    reason,
   });
 }

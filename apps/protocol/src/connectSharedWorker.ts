@@ -4,7 +4,7 @@
 // The iframe's link to the protocol SharedWorker: a transport on the worker's port that waits until the worker is
 // ready, answers the worker's beats so it keeps the port, and lets go of the port when the tab leaves.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { captureException, m, reportDefect, spans as S } from '@dotli/metrics';
 import { getFailure, ProtocolInitFailedError, protocolSchema, type ProtocolTransport } from '@dotli/protocol';
 import { createDeferred, getErrorName, log, realTimers, toError, withTimeout, type Timers } from '@dotli/shared';
 import { createPortProvider, createTransport, type TransportIssue } from '@dotli/transport';
@@ -203,9 +203,12 @@ function answerBeats(transport: ProtocolTransport, status: WorkerStatus): void {
       return;
     }
     stopAnswering();
-    captureException(error, { flow: 'protocol', step: 'worker_heartbeat' });
-    log.error(`${FRAME_LOG_TAG} Worker heartbeat failed`, error);
-    m.count(S.PROTOCOL_WORKER_HEARTBEAT, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'protocol',
+      step: 'worker_heartbeat',
+      metric: S.PROTOCOL_WORKER_HEARTBEAT,
+      message: `${FRAME_LOG_TAG} Worker heartbeat failed`,
+    });
   }
 }
 

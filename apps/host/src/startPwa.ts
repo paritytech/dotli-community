@@ -3,7 +3,7 @@
 
 // Updates are prompted, not auto-applied, unless one was already waiting at page load, when nothing is in use yet.
 
-import { captureException, recordExpected } from '@dotli/metrics';
+import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import { listenForDocumentVisible, log, type VisibilitySource } from '@dotli/shared';
 import { showNotification, type ShowNotification } from '@dotli/ui';
 import { markAndReload } from './createContinuation.js';
@@ -107,8 +107,13 @@ export function startPwa(
       registerShellWorker({ workbox, updates, signal: lifetime.signal });
     },
     (error: unknown) => {
-      captureException(error, { flow: 'pwa', step: 'sw_load' });
-      pwaLog.error('[dot.li pwa] the service worker could not load:', error);
+      reportDefect(error, {
+        flow: 'pwa',
+        step: 'sw_load',
+        metric: S.PWA_SW_LOAD,
+        message: '[dot.li pwa] the service worker could not load:',
+        logger: pwaLog,
+      });
     },
   );
   return dispose;
@@ -147,8 +152,13 @@ function registerShellWorker({ workbox, updates, signal }: RegisterShellWorkerPa
       offerUpdates({ workbox, registration, updates, signal });
     })
     .catch((error: unknown) => {
-      captureException(error, { flow: 'pwa', step: 'sw_register' });
-      pwaLog.error('[dot.li pwa] the service worker could not register:', error);
+      reportDefect(error, {
+        flow: 'pwa',
+        step: 'sw_register',
+        metric: S.PWA_SW_REGISTER,
+        message: '[dot.li pwa] the service worker could not register:',
+        logger: pwaLog,
+      });
     });
 }
 
@@ -200,13 +210,13 @@ function offerUpdates({ workbox, registration, updates, signal }: OfferUpdatesPa
   // The navigation's own check may have found one before the shell listened.
   offerInstalling();
 
-  // A check fails when offline, mid-deploy or after storage is cleared. The next one retries, so it is a crumb.
+  // A check fails when offline, mid-deploy or after storage is cleared. The next one retries, so it is expected.
   function checkForUpdate(): void {
     if (!updates.page.isOnline()) {
       return;
     }
     registration.update().catch((error: unknown) => {
-      recordExpected(error, { flow: 'pwa', step: 'sw_update' });
+      reportExpected(error, { flow: 'pwa', step: 'sw_update', metric: S.PWA_SW_UPDATE });
     });
   }
   // Registering the unchanged worker checks nothing, and the browser's own check after a navigation has no set time.

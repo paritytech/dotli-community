@@ -4,7 +4,7 @@
 // What every page runs once its own start is done: settings, the protocol iframe, the bridge and, on a page with a
 // sign-in modal, the auth controller.
 
-import { m, recordExpected, setResolutionId } from '@dotli/metrics';
+import { m, reportExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import { topbarState } from './state/topbarState.js';
 import { showNotification } from '@dotli/ui';
 import { getProtocolClient, type ProtocolFrameConfig } from '@dotli/protocol';
@@ -122,16 +122,16 @@ export async function startHost({
   });
 
   // On every backend, so a sandboxed app's `chainConnect` finds a handler waiting. The boot configured the frame.
-  // The first request that needs the frame awaits these again and reports a failure there, so here it is a crumb.
+  // The first request that needs the frame awaits these again and reports a failure there, so here it is expected.
   getProtocolClient()
     .frame.ensureReady()
     .catch((error: unknown) => {
-      recordExpected(error, { flow: 'protocol', step: 'frame_prewarm' });
+      reportExpected(error, { flow: 'protocol', step: 'frame_prewarm', metric: S.PROTOCOL_FRAME_PREWARM });
     });
   getProtocolClient()
     .resolve.warmup()
     .catch((error: unknown) => {
-      recordExpected(error, { flow: 'protocol', step: 'warmup' });
+      reportExpected(error, { flow: 'protocol', step: 'warmup', metric: S.RESOLVE_WARMUP });
     });
   emitDotliDebugEvent({
     layer: 'boot',

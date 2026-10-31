@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 
 import { SANDBOX_CONTRACT_PARAMS, SANDBOX_SCHEMA_VERSION } from '@dotli/sandbox-wire';
-import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
+import { bindCaptureSink, spans as S, type CaptureContext } from '@dotli/metrics';
+import { bindRecordingSentry } from '@dotli/metrics/testing';
 import { bindLogSink, createDeferred } from '@dotli/shared';
 import { createManualTimers, type ManualTimers } from '@dotli/shared/testing';
 
@@ -156,6 +157,7 @@ describe('runSandbox contract', () => {
   it('As a visitor who opened the sandbox URL itself, I am sent to the host and no defect is reported', async () => {
     // Given
     const sandbox = createHarness([{ outcome: 'loaded' }]);
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
 
     // When
     await runSandbox({ href: createSandboxUrl(), framed: false }, sandbox.deps);
@@ -163,6 +165,7 @@ describe('runSandbox contract', () => {
     // Then
     expect(sandbox.failures).toMatchObject([{ step: 'contract_top_level', title: 'Sandbox URL not supported' }]);
     expect(expected.map(entry => entry.step)).toEqual(['contract_top_level']);
+    expect(sentry.counted(S.APP_RUN)).toEqual([{ outcome: 'error', reason: 'top_level' }]);
     expect(captured).toEqual([]);
     expect(sandbox.loads).toEqual([]);
   });

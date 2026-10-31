@@ -1,12 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createSyncStore } from '@dotli/shared';
-import { nth } from '@dotli/shared/testing';
+import { nth, recordLog } from '@dotli/shared/testing';
 import { bindReports } from '../testing/bindReports.js';
 import { CoreRedialError } from './coreRedialError.js';
 import { createCoreAuthCommands } from './createCoreAuthCommands.js';
+import { LoginRequestError } from './loginRequestError.js';
 import { buildLoginResponseFrame } from '../testing/buildLoginResponseFrame.js';
 import { getFrameRequestId } from '../testing/getFrameRequestId.js';
 import { answerConnection, createFakePageCore, createFakeProvider } from './createPageCore.fake.js';
@@ -298,6 +299,47 @@ describe('topbar login over the page core', () => {
     expect(fakes.captures.expected).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
     expect(fakes.captures.exception).not.toHaveBeenCalled();
     expect(fakes.session.reportLoginFailure).toHaveBeenCalledWith(failure.message);
+  });
+
+  it.each([
+    { name: 'a cancelled login', failure: new LoginRequestError({ tag: 'Cancelled' }), reason: 'Cancelled' },
+    { name: 'a denied login', failure: new LoginRequestError({ tag: 'Denied' }), reason: 'Denied' },
+    {
+      name: 'a redial the core gave up on',
+      failure: new CoreRedialError(new Error('worker fatal error: boot')),
+      reason: 'CoreRedialError',
+    },
+  ])('As an operator, I see $name counted as an expected login and not captured', async ({ failure, reason }) => {
+    // Given a core that fails the login with an expected failure
+    const fakes = createHarness();
+    fakes.nextBoots.push(() => failure);
+
+    // When the user logs in
+    await fakes.commands.login();
+
+    // Then the login is counted once with its reason and nothing is captured as an exception
+    expect(fakes.counted('wallet.login')).toEqual([{ outcome: 'error', reason }]);
+    expect(fakes.captures.exception).not.toHaveBeenCalled();
+  });
+
+  it('As an operator, I see another login refusal captured, logged and counted with its tag', async () => {
+    // Given a core that refuses the login as unsupported, and a log that keeps its error lines
+    const fakes = createHarness();
+    const lines = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const failure = new LoginRequestError({ tag: 'Unsupported' });
+    fakes.nextBoots.push(() => failure);
+
+    // When the user logs in
+    await fakes.commands.login();
+
+    // Then the refusal is captured with its tag, logged once and counted with its tag
+    expect(fakes.captures.exception).toHaveBeenCalledExactlyOnceWith(failure, {
+      flow: 'wallet',
+      step: 'login',
+      tags: { login_error: 'Unsupported' },
+    });
+    expect(lines.map(line => line.args)).toEqual([['[dot.li wallet] login failed:', failure]]);
+    expect(fakes.counted('wallet.login')).toEqual([{ outcome: 'error', reason: 'Unsupported' }]);
   });
 
   it('As a user, I close the sign-in while the wallet core still starts and no pairing starts once it is up', async () => {

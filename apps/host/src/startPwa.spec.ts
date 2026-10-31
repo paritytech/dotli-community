@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { bindCaptureSink, type CaptureContext } from '@dotli/metrics';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { createDeferred } from '@dotli/shared';
 import { createFakePage } from '@dotli/shared/testing';
 import { startPwa, type PwaParams, type PwaRegistration, type PwaWorkbox, type PwaWorker } from './startPwa.js';
+import { bindReports } from './testing/bindReports.js';
 
 type NotificationAction = NonNullable<Parameters<PwaParams['showNotification']>[0]['action']>;
 
@@ -25,6 +25,11 @@ type CreateFakeWorkerParams = {
 type CreateFakeWorkboxParams = {
   /** The registration `register` resolves with. */
   registration: PwaRegistration;
+};
+
+type CreateFakeRegistrationParams = {
+  /** The registration's update check. Resolves when left out. */
+  update?: Mock<() => Promise<void>>;
 };
 
 type PwaStand = ReturnType<typeof start>;
@@ -234,29 +239,67 @@ describe('where the shell registers no service worker', () => {
   });
 });
 
-describe('the service worker code', () => {
-  it('As a dotli user whose connection drops before the worker code loads, I open the page and the failure is reported', async () => {
-    // Given
-    const captured: CaptureContext[] = [];
-    const reported = createDeferred<undefined>();
-    onTestFinished(
-      bindCaptureSink({
-        exception(_error, context) {
-          captured.push(context);
-          reported.resolve(undefined);
-        },
-        expected: () => undefined,
-      }),
-    );
+describe('a shell worker that fails', () => {
+  it('As an operator, I see a shell worker that cannot load captured and counted', async () => {
+    // Given the connection drops before the worker code loads
+    const reports = bindPwaReports();
 
-    // When
-    start({ createWorkbox: () => Promise.reject(new Error('Failed to fetch dynamically imported module')) });
-    await reported.promise;
+    // When the page starts and the load rejects
+    start({ createWorkbox: () => Promise.reject(new TypeError('Failed to fetch dynamically imported module')) });
+    await reports.reported;
 
-    // Then
-    expect(captured).toEqual([expect.objectContaining({ flow: 'pwa', step: 'sw_load' })]);
+    // Then the load failure is captured as one issue and counted with its error name
+    expect(reports.captures.exception.mock.calls.map(([, context]) => context)).toEqual([
+      { flow: 'pwa', step: 'sw_load' },
+    ]);
+    expect(reports.counted('pwa.sw_load')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+  });
+
+  it('As an operator, I see a shell worker that cannot register captured and counted', async () => {
+    // Given a browser that refuses the worker's registration
+    const reports = bindPwaReports();
+    const { workbox } = createFakeWorkbox({ registration: createFakeRegistration().registration });
+    const refusing: PwaWorkbox = {
+      ...workbox,
+      register: () => Promise.reject(new DOMException('The operation is insecure.', 'SecurityError')),
+    };
+
+    // When the page starts and the registration is refused
+    start({ createWorkbox: () => Promise.resolve(refusing) });
+    await reports.reported;
+
+    // Then the registration failure is captured as one issue and counted with its error name
+    expect(reports.captures.exception.mock.calls.map(([, context]) => context)).toEqual([
+      { flow: 'pwa', step: 'sw_register' },
+    ]);
+    expect(reports.counted('pwa.sw_register')).toEqual([{ outcome: 'error', reason: 'SecurityError' }]);
+  });
+
+  it('As an operator, I watch an update check fail and it is counted as expected', async () => {
+    // Given a server that cannot answer mid-deploy
+    const reports = bindPwaReports();
+    const update = vi.fn<() => Promise<void>>(() => Promise.reject(new TypeError('Failed to update a ServiceWorker')));
+
+    // When the page starts and its first check rejects
+    start({}, { update });
+    await reports.reported;
+
+    // Then the failure is counted as expected and not captured as an issue
+    expect(reports.counted('pwa.sw_update')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+    expect(reports.captures.exception).not.toHaveBeenCalled();
   });
 });
+
+/** Binds the test's reports, with `reported` settling on the first capture or count. */
+function bindPwaReports() {
+  const reported = createDeferred<undefined>();
+  const reports = bindReports({
+    onReport() {
+      reported.resolve(undefined);
+    },
+  });
+  return { ...reports, reported: reported.promise };
+}
 
 /** Builds a new release's worker, which moves through `registration` as the browser would move it. */
 function createFakeWorker({ registration, state }: CreateFakeWorkerParams) {
@@ -292,9 +335,8 @@ function createFakeWorker({ registration, state }: CreateFakeWorkerParams) {
 }
 
 /** Builds the shell's registration on a visit that already runs a worker. */
-function createFakeRegistration() {
+function createFakeRegistration({ update = vi.fn(() => Promise.resolve()) }: CreateFakeRegistrationParams = {}) {
   const found: (() => void)[] = [];
-  const update = vi.fn(() => Promise.resolve());
   const registration: Registration = {
     active: {},
     installing: null,
@@ -348,8 +390,8 @@ function createFakeWorkbox({ registration }: CreateFakeWorkboxParams) {
 }
 
 /** Starts a product host in production. Change its registration before awaiting, as the page found it on load. */
-function start(overrides: Partial<PwaParams> = {}) {
-  const registrationStand = createFakeRegistration();
+function start(overrides: Partial<PwaParams> = {}, registration: CreateFakeRegistrationParams = {}) {
+  const registrationStand = createFakeRegistration(registration);
   const workboxStand = createFakeWorkbox({ registration: registrationStand.registration });
   const page = createFakePage();
   const actions: NotificationAction[] = [];

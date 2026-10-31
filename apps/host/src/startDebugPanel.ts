@@ -3,8 +3,8 @@
 
 // The debug panel's chunk loads only in debug mode, so its load is the one place a failure to start it shows.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { getErrorName, log } from '@dotli/shared';
+import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { log } from '@dotli/shared';
 import type { DebugPanelHost, TruapiDebugMountModule } from '@dotli/truapi-debug-ui';
 
 type Params = {
@@ -21,9 +21,12 @@ export async function startDebugPanel({ load, host, startCollapsed }: Params): P
     const [{ setupTruapiDebugPanel }, panelHost] = await Promise.all([load(), host()]);
     setupTruapiDebugPanel({ startCollapsed, host: panelHost });
   } catch (error: unknown) {
-    log.error('[dot.li] debug panel failed to start:', error);
-    captureException(error, { flow: 'ui', step: 'debug_panel_load' });
-    m.count(S.DEBUG_PANEL_LOAD, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'ui',
+      step: 'debug_panel_load',
+      metric: S.DEBUG_PANEL_LOAD,
+      message: '[dot.li] debug panel failed to start:',
+    });
     return;
   }
   log.event('TrUAPI debug panel enabled', { flow: 'boot' });

@@ -4,8 +4,8 @@
 // A product served from the CID cache is checked against the network after it renders, so the cache stays honest
 // without holding the render back.
 
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { getErrorName, log } from '@dotli/shared';
+import { m, reportDefect, spans as S } from '@dotli/metrics';
+import { log } from '@dotli/shared';
 import type { ShowNotification } from '@dotli/ui';
 import { compareCachedCid } from './compareCachedCid.js';
 import { judgeRedeploy } from './judgeRedeploy.js';
@@ -99,13 +99,13 @@ export async function revalidateCachedCopy({
     });
     await adopted;
   } catch (error: unknown) {
-    captureException(error, {
+    reportDefect(error, {
       flow: 'resolve',
       step: 'cache_revalidate',
+      metric: S.CACHE_REVALIDATE,
+      message: '[dot.li] Cached copy revalidation failed:',
       tags: { kind: 'cid_cache_revalidate_error', surface: 'host_cache_revalidate' },
     });
-    log.error('[dot.li] Cached copy revalidation failed:', error);
-    m.count(S.CACHE_REVALIDATE, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
   }
 }
 

@@ -7,7 +7,7 @@
 // bridge chunk, reached through `commands`.
 
 import { withActiveTld } from '@dotli/config';
-import { captureException } from '@dotli/metrics';
+import { reportDefect, spans as S } from '@dotli/metrics';
 import { getErrorMessage, log, type ReadableStore, registerStoreStateReset } from '@dotli/shared';
 import type { AuthCommands } from './createAuthCommands.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
@@ -71,23 +71,32 @@ export function createAuthController({
   let releaseAuthModal: (() => void) | null = null;
   let authModalDisabled = false;
 
-  // The getter resolves to the chunk boot already awaited, so a failure here is a wiring fault boot reported first.
   function runCommand(step: CommandStep, run: (commands: AuthCommands) => unknown): void {
-    function fail(error: unknown): void {
-      log.error(`[dot.li auth] ${step} failed:`, error);
+    const message = `[dot.li auth] ${step} failed:`;
+
+    function showLoginFailure(error: unknown): void {
       if (step === 'login') {
         showFailure('Other', getErrorMessage(error));
       }
     }
+
+    // The getter resolves to the chunk boot already awaited, so a failure here is a wiring fault boot reported first.
+    function failToLoad(error: unknown): void {
+      log.error(message, error);
+      showLoginFailure(error);
+    }
+
+    function failCommand(error: unknown): void {
+      reportDefect(error, { flow: 'wallet', step, metric: S.AUTH_COMMAND, message, attributes: { step } });
+      showLoginFailure(error);
+    }
+
     void commands().then(
       loaded =>
         Promise.resolve()
           .then(() => run(loaded))
-          .catch((error: unknown) => {
-            captureException(error, { flow: 'wallet', step });
-            fail(error);
-          }),
-      fail,
+          .catch(failCommand),
+      failToLoad,
     );
   }
 
@@ -127,7 +136,12 @@ export function createAuthController({
       .catch((error: unknown) => {
         // Closing the modal disposes its lease, which rejects with an AbortError.
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          log.warn('[dot.li auth] authentication modal lease failed:', error);
+          reportDefect(error, {
+            flow: 'wallet',
+            step: 'auth_modal_lease',
+            metric: S.AUTH_MODAL_LEASE,
+            message: '[dot.li auth] authentication modal lease failed:',
+          });
         }
       });
   }

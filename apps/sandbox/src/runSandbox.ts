@@ -6,7 +6,7 @@
 
 import { getLocalRoot } from '@dotli/config';
 import { SandboxContractError, validateSandboxParams } from '@dotli/sandbox-wire';
-import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
+import { captureException, m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   getErrorMessage,
@@ -106,7 +106,12 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
   // A top-level load has no bridge for account, signing or storage calls, so it fails rather than half-works.
   if (!page.framed) {
     // A bookmark or a pasted link: the visitor's doing, not a defect.
-    recordExpected(new Error('Sandbox loaded as a top-level page'), { flow: 'content', step: 'contract_top_level' });
+    reportExpected(new Error('Sandbox loaded as a top-level page'), {
+      flow: 'content',
+      step: 'contract_top_level',
+      metric: S.APP_RUN,
+      reason: 'top_level',
+    });
     fail({
       step: 'contract_top_level',
       title: 'Sandbox URL not supported',
@@ -160,13 +165,15 @@ export function runSandbox(page: SandboxPage, deps: RunSandboxDeps): Promise<voi
       deps.notifyFailed(step);
       deps.show(title, message, { retry });
     } catch (error) {
-      captureException(error, {
+      reportDefect(error, {
         flow: 'content',
         step: 'failure_show',
+        metric: S.APP_RUN,
+        reason: 'show_threw',
+        message: `${APP_LOG_TAG} Could not show the ${step} failure`,
         tags: { surface: 'sandbox_main', failed_step: step },
+        logger: contentLog,
       });
-      contentLog.error(`${APP_LOG_TAG} Could not show the ${step} failure`, error);
-      m.count(S.APP_RUN, { outcome: 'error', reason: 'show_threw' });
     }
   }
 

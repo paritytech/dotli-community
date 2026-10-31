@@ -3,6 +3,7 @@
 
 // The product's icon from its root manifest. Applied after the product renders, so it never blocks first paint.
 
+import { reportExpected, spans as S } from '@dotli/metrics';
 import { log, realTimers, type Timers } from '@dotli/shared';
 import { withActiveTld } from '@dotli/config';
 import type { ProductManifests } from './cachedManifest.js';
@@ -53,6 +54,8 @@ export async function applyProductBranding({
   } catch (error: unknown) {
     // Cosmetic: a failure must not affect the app, so the tab keeps its icon.
     resolveLog.warn(`[dot.li manifest] icon fetch failed for ${withActiveTld(label)}:`, error);
+    // Warned through the resolve logger, so the report writes no line of its own.
+    reportExpected(error, { flow: 'resolve', step: 'product_icon', metric: S.PRODUCT_ICON });
   } finally {
     timers.clearTimeout(iconDeadline);
   }

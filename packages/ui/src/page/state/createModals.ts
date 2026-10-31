@@ -4,15 +4,8 @@
 // The overlays render the first entry. Everything that decides how a dialog settles lives
 // here, outside Solid.
 
-import {
-  createSyncStore,
-  getErrorName,
-  log,
-  registerStoreStateReset,
-  toAbortError,
-  type ReadableStore,
-} from '@dotli/shared';
-import { captureException, m, spans as S } from '@dotli/metrics';
+import { createSyncStore, registerStoreStateReset, toAbortError, type ReadableStore } from '@dotli/shared';
+import { reportDefect, spans as S } from '@dotli/metrics';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/iconProps.js';
 
@@ -180,9 +173,13 @@ export function createModals() {
       next = entry.handoff?.(outcome);
     } catch (error) {
       // The answer still reaches the caller, and the dialog closes as without a handoff.
-      captureException(error, { flow: 'ui', step: 'modal_handoff', tags: { kind: 'modal_handoff_error' } });
-      log.error('[dot.li modal] handoff failed, closing the dialog:', error);
-      m.count(S.MODAL_HANDOFF, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+      reportDefect(error, {
+        flow: 'ui',
+        step: 'modal_handoff',
+        tags: { kind: 'modal_handoff_error' },
+        metric: S.MODAL_HANDOFF,
+        message: '[dot.li modal] handoff failed, closing the dialog:',
+      });
     }
     if (next !== undefined && !next.signal.aborted) {
       entry.detach();

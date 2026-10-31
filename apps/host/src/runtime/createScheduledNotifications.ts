@@ -5,7 +5,7 @@
 // Web Lock only avoids redundant work. A hidden tab lags by an offset so a visible sibling wins the lock.
 
 import { scheduledNotifications, isExpectedDbError, type ScheduledNotificationRecord } from '@dotli/storage';
-import { captureException, recordExpected } from '@dotli/metrics';
+import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   log,
@@ -101,11 +101,16 @@ export function createScheduledNotifications({
     }
     failing.add(step);
     if (isExpectedDbError(error)) {
-      recordExpected(error, { flow: 'notifications', step });
+      reportExpected(error, { flow: 'notifications', step, metric: S.NOTIFICATIONS_POLL, attributes: { step } });
       return;
     }
-    log.error(`[scheduled notifications] ${step} failed:`, error);
-    captureException(error, { flow: 'notifications', step });
+    reportDefect(error, {
+      flow: 'notifications',
+      step,
+      metric: S.NOTIFICATIONS_POLL,
+      message: `[scheduled notifications] ${step} failed:`,
+      attributes: { step },
+    });
   }
 
   /** Null when listing failed. */

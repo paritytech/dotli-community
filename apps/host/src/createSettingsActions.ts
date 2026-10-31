@@ -4,8 +4,8 @@
 // Settings persistence and the reset that applies them. Imports no Solid and loads eagerly because the host's boot
 // resets through it when a URL changes the settings, before any island has loaded.
 
-import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
-import { log, pageLocalStorage } from '@dotli/shared';
+import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { pageLocalStorage } from '@dotli/shared';
 import { markAndReload, type Continuation } from './createContinuation.js';
 import { getSharedSettings, writeLocalSettings, writeSettingsToSearch, type Settings } from '@dotli/config';
 import { blockCache, cidCache } from '@dotli/storage';
@@ -126,10 +126,14 @@ export function createSettingsActions({
     try {
       await apply({ next, prior, forceFullWipe });
     } catch (error: unknown) {
-      captureException(error, { flow: 'ui', step: 'settings_apply' });
-      log.error('[dot.li settings] Save & Apply failed:', error);
       // Beside the steps that count themselves. The error's class is in the capture.
-      m.count(S.SETTINGS_APPLY, { outcome: 'error', reason: 'fault' });
+      reportDefect(error, {
+        flow: 'ui',
+        step: 'settings_apply',
+        metric: S.SETTINGS_APPLY,
+        message: '[dot.li settings] Save & Apply failed:',
+        reason: 'fault',
+      });
     } finally {
       // The settings the user chose take effect only on the reload, so it runs whatever failed.
       reload(reason);

@@ -39,6 +39,15 @@ export const spans = {
   /** Count. An unpin the light client refused while the follow ran, so pins pile up. Tag `outcome` and `reason`. */
   RESOLVE_UNPIN: 'resolve.unpin',
 
+  /** Count. The boot's resolver warm-up failed. Expected. Tagged `outcome` (error) and `reason` (the error's name). */
+  RESOLVE_WARMUP: 'resolve.warmup',
+
+  /**
+   * Count. The failure screen of a load whose product was already on screen threw. Tagged `outcome` (error) and
+   * `reason` (the error's name).
+   */
+  RESOLVE_FAILURE_SCREEN: 'resolve.failure_screen',
+
   /** A cache read. Tag `outcome` (`hit, miss`) and `surface` (`cid_cache, block_cache`). */
   CACHE_READ: 'cache.read',
 
@@ -89,17 +98,27 @@ export const spans = {
 
   APP_SW_REGISTER: 'app.sw_register',
 
-  /** Count. A full reset's wipe of the sandbox origin, with the stores it could not wipe as the reason. */
+  /**
+   * Count. A full reset's wipe of the sandbox origin: `ok` once for a clean wipe, else one `error` per store it could
+   * not wipe, with the store as the `reason`.
+   */
   APP_ORIGIN_PURGE: 'app.origin_purge',
 
   /**
    * A sandbox run whose load rejected or whose failure could not be shown, both outside the load's own handling. Tagged
-   * `outcome` and `reason` (`load_rejected`, `show_threw` or `fallback_missing`).
+   * `outcome` and `reason` (`load_rejected`, `show_threw`, `fallback_missing` or `top_level`). `top_level` is a top-level
+   * load of the sandbox, which is expected.
    */
   APP_RUN: 'app.run',
 
   /** Protocol iframe creation plus the wait for ready. */
   PROTOCOL_IFRAME_READY: 'protocol.iframe_ready',
+
+  /**
+   * Count. The boot's early start of the protocol frame failed. Expected. Tagged `outcome` (error) and `reason` (the
+   * error's name).
+   */
+  PROTOCOL_FRAME_PREWARM: 'protocol.frame_prewarm',
 
   /**
    * A protocol frame lost after it was ready, so the host rebuilds it. Tagged `outcome` (error) and `reason` (the error's
@@ -185,7 +204,7 @@ export const spans = {
 
   /**
    * A failed freshness check or update of the sandbox service worker. Tagged `outcome` (error) and `reason` (the
-   * error's name).
+   * error's name). An update the browser refuses as expected (`TypeError`, `InvalidStateError`) is counted too.
    */
   SANDBOX_SW_UPDATE: 'sandbox.sw_update',
 
@@ -194,6 +213,29 @@ export const spans = {
    * and `reason` (the error's name).
    */
   SANDBOX_BITSWAP_ABORT: 'sandbox.bitswap_abort',
+
+  /**
+   * Count. The shell's service worker module could not load. Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PWA_SW_LOAD: 'pwa.sw_load',
+
+  /**
+   * Count. The shell's service worker could not register. Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PWA_SW_REGISTER: 'pwa.sw_register',
+
+  /**
+   * Count. An update check of the shell's service worker failed, offline, mid-deploy or after storage was cleared.
+   * Expected, since the next check retries. Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PWA_SW_UPDATE: 'pwa.sw_update',
+
+  /**
+   * Count. A step of the scheduled notifications poll failed, once per failing run of the step. Tagged `outcome`
+   * (error), `reason` (the error's name) and `step` (`remove_stale, list_pending, claim`). An IndexedDB failure the
+   * browser causes is expected, the rest captured.
+   */
+  NOTIFICATIONS_POLL: 'notifications.poll',
 
   /** Dynamic import of the container chunk. */
   BRIDGE_CHUNK_LOAD: 'bridge.chunk_load',
@@ -246,6 +288,19 @@ export const spans = {
   PRODUCT_RERENDER: 'product.rerender',
 
   /**
+   * Count. A login on the page core failed. Tagged `outcome` (error) and `reason`: the core's refusal tag for a
+   * `LoginRequestError`, else the error's name. A cancel, a deny and a redial the page core gave up on are expected,
+   * the rest captured.
+   */
+  WALLET_LOGIN: 'wallet.login',
+
+  /**
+   * Count. The product's icon could not be read within its budget, so the tab keeps its icon. Expected. Tagged
+   * `outcome` (error) and `reason` (the error's name).
+   */
+  PRODUCT_ICON: 'product.icon',
+
+  /**
    * A frame on the topbar login's own connection that the login skipped and survived. Tagged `outcome` (error) and
    * `reason` (`undecodable_frame`, a frame that did not decode, counted once per login).
    */
@@ -277,6 +332,12 @@ export const spans = {
   CHAT_READ: 'chat.read',
 
   /**
+   * Count. The worker manifest read that tells whether a product declares chat failed, so chat is off for that load.
+   * Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  CHAT_CAPABILITY: 'chat.capability',
+
+  /**
    * One Share diagnostic click in the debug panel. Tagged `outcome` and, on error, `reason`, as a failed one opens no
    * issue.
    */
@@ -287,6 +348,18 @@ export const spans = {
    * its spinner with nothing to scan.
    */
   AUTH_QR_RENDER: 'auth.qr_render',
+
+  /**
+   * Count. A sign-in command threw after the bridge chunk loaded. Tagged `outcome` (error), `reason` (the error's
+   * name) and `step` (`login, logout, cancel_login`).
+   */
+  AUTH_COMMAND: 'auth.command',
+
+  /**
+   * Count. The sign-in modal's lease failed other than by its own abort. Tagged `outcome` (error) and `reason` (the
+   * error's name).
+   */
+  AUTH_MODAL_LEASE: 'auth.modal_lease',
 
   /**
    * One settings reset: Save & Apply or Clear all in the settings, a link that changes a saved choice, or the failure
@@ -396,6 +469,18 @@ export const spans = {
   PHONE_REQUEST: 'signing.phone_request',
 
   /**
+   * Count. The phone request tap threw on a frame, so that frame went untracked. Tagged `outcome` (error), `reason`
+   * (the error's name) and `side` (`product, core`).
+   */
+  PHONE_REQUEST_TAP: 'signing.phone_request_tap',
+
+  /**
+   * Count. The notice of a phone request's end threw. Tagged `outcome` (error), `reason` (the error's name) and
+   * `method`.
+   */
+  PHONE_REQUEST_NOTICE: 'signing.phone_request_notice',
+
+  /**
    * A view an answered dialog was to hand its place to that could not be built, so the dialog closed instead. Tagged
    * `outcome` (error) and `reason` (the error's name).
    */
@@ -417,6 +502,19 @@ export const spans = {
    * `error` for a sign-out that failed after its retries. Tagged `reason` (`visible`).
    */
   SESSION_PRESENCE_WATCH: 'session.presence_watch',
+
+  /**
+   * Count. A read of the signed-in flag threw, so presence answered unknown. Counted once for each read that threw,
+   * whoever read it, so one page may count several. Expected. Tagged `outcome` (error) and `reason` (the error's
+   * name).
+   */
+  SESSION_PRESENCE_READ: 'session.presence_read',
+
+  /**
+   * Count. A wallet read made to check the page's sign-in failed. Expected. Tagged `outcome` (error) and `reason` (the
+   * error's name).
+   */
+  SESSION_WALLET_READ: 'session.wallet_read',
 
   /**
    * Count. A write of the signed-in flag that failed, so other subdomains read the old flag. Tagged `outcome` (`error`)

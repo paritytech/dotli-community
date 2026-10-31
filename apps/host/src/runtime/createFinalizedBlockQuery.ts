@@ -3,9 +3,9 @@
 
 // A chain's finalized block height for the diagnostics report.
 
-import { captureException, m, reportExpected, spans as S } from '@dotli/metrics';
+import { m, reportDefect, reportExpected, spans as S } from '@dotli/metrics';
 import { isRemoteChainSupported, type RemoteChainProvider } from '@dotli/protocol';
-import { getErrorName, log, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
+import { getErrorName, realTimers, setErrorName, withTimeout, type Timers } from '@dotli/shared';
 import { loadBridge, loadPolkadotApi } from '../lazy.js';
 
 export type FinalizedBlockClient = {
@@ -76,9 +76,13 @@ export function createFinalizedBlockQuery(source: FinalizedBlockSource, { timers
         });
       } else {
         const reason = getErrorName(error) ?? 'unknown';
-        log.error('[dot.li diagnostics] finalized block query failed:', error);
-        captureException(error, { flow: 'ui', step: 'diagnostics_block', tags: { reason } });
-        m.count(S.DIAGNOSTICS_FINALIZED_BLOCK, { outcome: 'error', reason });
+        reportDefect(error, {
+          flow: 'ui',
+          step: 'diagnostics_block',
+          metric: S.DIAGNOSTICS_FINALIZED_BLOCK,
+          message: '[dot.li diagnostics] finalized block query failed:',
+          tags: { reason },
+        });
       }
       return null;
     }

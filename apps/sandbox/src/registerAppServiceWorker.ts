@@ -7,8 +7,8 @@ import { APP_LOG_TAG } from './appLogTag.js';
 import { APP_SERVICE_WORKER_MESSAGES } from './appServiceWorkerMessages.js';
 import { APP_SERVICE_WORKER_NAME } from './appServiceWorkerName.js';
 import { SANDBOX_TIMEOUTS } from './timeouts.js';
-import { captureException, m, recordExpected, spans as S } from '@dotli/metrics';
-import { getErrorName, isRecord, log, withTimeout } from '@dotli/shared';
+import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
+import { isRecord, log, withTimeout } from '@dotli/shared';
 
 import { SANDBOX_ERRORS } from './errors.js';
 
@@ -95,24 +95,34 @@ export async function registerAppServiceWorker(
     void ensureFreshServiceWorker({ app, container, registration });
   } catch (error) {
     // The page goes on, since a worker from an earlier visit may still control it and serve the archive.
-    captureException(error, { flow: 'content', step: 'sw_register', tags: { surface: 'sandbox_main' } });
-    contentLog.error(`${APP_LOG_TAG} Service worker registration failed; continuing without one:`, error);
-    m.count(S.SANDBOX_SW_REGISTER, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'content',
+      step: 'sw_register',
+      metric: S.SANDBOX_SW_REGISTER,
+      message: `${APP_LOG_TAG} Service worker registration failed; continuing without one:`,
+      tags: { surface: 'sandbox_main' },
+      logger: contentLog,
+    });
   }
 }
 
 /**
  * Updates a worker whose build is not `app.version` and offers the visitor a reload. Never rejects: a failed version
- * check, update or offer is logged, captured and counted, and an update failure the browser expects is recorded as
+ * check, update or offer is logged, captured and counted, and an update failure the browser expects is counted as
  * expected.
  */
 async function ensureFreshServiceWorker(params: EnsureFreshServiceWorkerParams): Promise<void> {
   try {
     await updateIfOutdated(params);
   } catch (error) {
-    captureException(error, { flow: 'content', step: 'sw_update', tags: { surface: 'sandbox_main' } });
-    contentLog.error(`${APP_LOG_TAG} Service worker freshness check failed:`, error);
-    m.count(S.SANDBOX_SW_UPDATE, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'content',
+      step: 'sw_update',
+      metric: S.SANDBOX_SW_UPDATE,
+      message: `${APP_LOG_TAG} Service worker freshness check failed:`,
+      tags: { surface: 'sandbox_main' },
+      logger: contentLog,
+    });
   }
 }
 
@@ -137,12 +147,16 @@ async function updateIfOutdated({ app, container, registration }: EnsureFreshSer
   registration.update().catch((error: unknown) => {
     // A failed download rejects with TypeError, a registration a full reset removed with InvalidStateError.
     if (error instanceof Error && (error.name === 'TypeError' || error.name === 'InvalidStateError')) {
-      recordExpected(error, { flow: 'content', step: 'sw_update' });
+      reportExpected(error, { flow: 'content', step: 'sw_update', metric: S.SANDBOX_SW_UPDATE });
       return;
     }
-    captureException(error, { flow: 'content', step: 'sw_update' });
-    contentLog.error(`${APP_LOG_TAG} Service worker update failed:`, error);
-    m.count(S.SANDBOX_SW_UPDATE, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+    reportDefect(error, {
+      flow: 'content',
+      step: 'sw_update',
+      metric: S.SANDBOX_SW_UPDATE,
+      message: `${APP_LOG_TAG} Service worker update failed:`,
+      logger: contentLog,
+    });
   });
   app.offerReload();
 }

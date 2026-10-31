@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { SandboxMessageType } from '@dotli/sandbox-wire';
-import { captureException, m, spans as S } from '@dotli/metrics';
-import { getErrorName, log } from '@dotli/shared';
+import { reportDefect, spans as S } from '@dotli/metrics';
 
 /** Reports a sandbox message handler that threw. The sandbox gets no answer, so this is the only report. */
 export function reportSandboxHandlerFailure(error: unknown, type: SandboxMessageType): void {
-  captureException(error, { flow: 'ui', step: 'sandbox_handler', tags: { type } });
-  log.error(`[dot.li] A ${type} handler threw`, error);
-  m.count(S.SANDBOX_HANDLER, { outcome: 'error', reason: getErrorName(error) ?? 'unknown' });
+  reportDefect(error, {
+    flow: 'ui',
+    step: 'sandbox_handler',
+    metric: S.SANDBOX_HANDLER,
+    message: `[dot.li] A ${type} handler threw`,
+    tags: { type },
+  });
 }

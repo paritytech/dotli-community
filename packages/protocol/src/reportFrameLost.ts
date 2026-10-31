@@ -18,6 +18,7 @@ type Params = {
  */
 export function reportFrameLost({ error, count, capture }: Params): boolean {
   const reason = error.name;
+  // Captured, logged and counted by hand, since the count is the injected one.
   count(S.PROTOCOL_FRAME_LOST, { outcome: 'error', reason });
   if (reason === 'ProtocolPortReleasedError') {
     log.event('protocol frame released', { flow: 'protocol', reason });

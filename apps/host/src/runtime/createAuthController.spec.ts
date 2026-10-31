@@ -13,7 +13,7 @@ import type { DotliAuthState } from './session/types.js';
 import { authModalState, type AuthModalState } from '../state/authModalState.js';
 import { authState } from './state/authState.js';
 import { createSyncStore, createDeferred } from '@dotli/shared';
-import { catchError, nth, resetAllStoresForTests } from '@dotli/shared/testing';
+import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './state/productState.js';
 import { createChanges, type Changes } from '../testing/changes.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
@@ -219,6 +219,29 @@ function createManualCoordinator() {
     coordinator,
     /** Every task enqueued, in order, each run by the test. */
     tasks,
+  };
+}
+
+/** Rejects every lease with `error`, keeping each rejected lease so a test can wait for it to settle. */
+function createRejectingCoordinator(error: Error) {
+  const leases: Promise<never>[] = [];
+  const coordinator: BlockingModalCoordinator = {
+    createScope() {
+      return {
+        enqueue() {
+          const lease = Promise.reject(error);
+          leases.push(lease);
+          return lease;
+        },
+        dispose: () => undefined,
+      };
+    },
+  };
+  return {
+    /** The coordinator to give the controller. */
+    coordinator,
+    /** Every lease asked for, in order, each already rejected. */
+    leases,
   };
 }
 
@@ -462,6 +485,7 @@ describe('auth controller: login requests', () => {
 
   it('As a user whose bridge chunk failed at boot, I click Sign in and see the failure while no new issue opens', async () => {
     // Given a bridge chunk that failed to load
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const exceptions = captureExceptions();
     const failure = new TypeError('Failed to fetch dynamically imported module');
     const { controller, auth, changes } = startController({ commands: () => Promise.reject(failure) });
@@ -471,15 +495,17 @@ describe('auth controller: login requests', () => {
     controller.startLogin();
     await changes.until(() => getAuthModalState().view.kind === 'error');
 
-    // Then the failure shows and nothing is captured
+    // Then the failure shows and nothing is captured or counted
     expect(getAuthModalState().view).toMatchObject({ kind: 'error', title: 'The sign-in service did not start' });
     expect(exceptions).toEqual([]);
+    expect(metrics.counted('auth.command')).toEqual([]);
   });
 
-  it('As a user whose sign-in fails inside the bridge, I click Sign in and the failure is still reported', async () => {
+  it('As an operator, I see a command that throws once the chunk loaded captured and counted under the command metric', async () => {
     // Given commands whose login rejects
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const exceptions = captureExceptions();
-    const failure = new Error('login exploded');
+    const failure = new TypeError('login exploded');
     const failing: AuthCommands = {
       login: () => Promise.reject(failure),
       logout: () => Promise.resolve({ phone: 'told' as const }),
@@ -488,12 +514,13 @@ describe('auth controller: login requests', () => {
     const { controller, auth, changes } = startController({ commands: () => Promise.resolve(failing) });
     auth.set({ tag: 'Disconnected' });
 
-    // When Sign in is clicked
+    // When Sign in is clicked and the login fails
     controller.startLogin();
-    await changes.until(() => exceptions.length === 1);
+    await changes.until(() => getAuthModalState().view.kind === 'error');
 
-    // Then the failure is captured under the wallet flow
+    // Then the failure is captured and counted under the login step
     expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'login' }]]);
+    expect(metrics.counted('auth.command')).toEqual([{ outcome: 'error', reason: 'TypeError', step: 'login' }]);
   });
 
   it('As a user, I press Sign out in the account popover and the core is asked to log out', async () => {
@@ -678,6 +705,43 @@ describe('auth controller: blocking-modal lease', () => {
 
     // Then: the logout ran, and no cancel came before it
     expect(calls.cancels).toBe(0);
+  });
+
+  it('As an operator, I see a modal lease that fails captured, logged as an error and counted', async () => {
+    // Given a coordinator whose leases fail
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const exceptions = captureExceptions();
+    const logged = recordLog({ onFinished: onTestFinished, level: 'error' });
+    const failure = new TypeError('the prompt queue broke');
+    const { coordinator, leases } = createRejectingCoordinator(failure);
+    const { controller } = startController({ coordinator });
+
+    // When the modal is asked for and its lease fails
+    controller.openAuthModal();
+    await nth(leases, 0).catch(() => undefined);
+
+    // Then the failure is captured, logged as an error and counted
+    expect(exceptions).toEqual([[failure, { flow: 'wallet', step: 'auth_modal_lease' }]]);
+    expect(logged.map(line => line.args)).toEqual([['[dot.li auth] authentication modal lease failed:', failure]]);
+    expect(metrics.counted('auth.modal_lease')).toEqual([{ outcome: 'error', reason: 'TypeError' }]);
+  });
+
+  it("As a user, I close the modal and its lease's abort reports nothing", async () => {
+    // Given a coordinator whose leases end in an abort, as a closed modal's do
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const exceptions = captureExceptions();
+    const { coordinator, leases } = createRejectingCoordinator(
+      new DOMException('Authentication modal closed', 'AbortError'),
+    );
+    const { controller } = startController({ coordinator });
+
+    // When the modal is asked for and its lease aborts
+    controller.openAuthModal();
+    await nth(leases, 0).catch(() => undefined);
+
+    // Then nothing is captured or counted
+    expect(exceptions).toEqual([]);
+    expect(metrics.counted('auth.modal_lease')).toEqual([]);
   });
 });
 

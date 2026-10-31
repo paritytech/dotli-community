@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDeferred } from '@dotli/shared';
 import { createMemoryStorage } from '@dotli/shared/testing';
 import { createStorageCapabilityCache, readChatCapability, type CapabilityCache } from './readChatCapability.js';
+import { bindReports } from './testing/bindReports.js';
 import { createBlockedStorage } from './testing/createBlockedStorage.js';
 
 type Params = {
@@ -63,6 +64,22 @@ describe('chat capability', () => {
     // Then
     expect(chat).toBe(false);
     expect(stored.getItem('dotli:chat-capable:myapp')).toBeNull();
+  });
+
+  it('As an operator, I see a worker manifest that cannot be read captured and counted under the chat capability metric', async () => {
+    // Given a manifest read that rejects
+    const { captures, counted } = bindReports();
+    const { cache } = createPage();
+    const failure = new TypeError('offline');
+
+    // When the capability is read
+    await readChatCapability('myapp', () => Promise.reject(failure), { cache });
+
+    // Then the failure is captured once and counted with its class name
+    expect({ captured: captures.exception.mock.calls, counted: counted('chat.capability') }).toEqual({
+      captured: [[failure, { flow: 'chat', step: 'capability_read' }]],
+      counted: [{ outcome: 'error', reason: 'TypeError' }],
+    });
   });
 
   it('As a visitor whose browser blocks storage, I load my product and it still answers from its manifest', async () => {
