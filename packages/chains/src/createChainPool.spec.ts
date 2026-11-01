@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { catchError, must } from '@dotli/shared/testing';
+import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type {
   JsonRpcConnection,
@@ -310,6 +311,86 @@ describe('createChainPool', () => {
     // Then
     expect(built.map(record => record.disconnect.mock.calls.length)).toEqual([1, 1]);
     expect(onHalt).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, I disconnect all while one chain fails to close and every other chain still closes', () => {
+    // Given two chains, the first of which throws when its transport closes
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    const errors: string[] = [];
+    onTestFinished(
+      bindLogSink({
+        emit: ({ level, message }) => {
+          if (level === 'error') {
+            errors.push(message);
+          }
+        },
+      }),
+    );
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+    lease(pool, '0xbb');
+    must(built[0], 'transport').disconnect.mockImplementation(() => {
+      throw new Error('close failed');
+    });
+
+    // When every chain is disconnected
+    const error = catchError(() => {
+      pool.disconnectAll();
+    });
+
+    // Then nothing throws, both transports were asked to close and the failure is reported once
+    expect(error).toBeUndefined();
+    expect(built.map(record => record.disconnect.mock.calls.length)).toEqual([1, 1]);
+    expect(pool.status('0xbb')).toBe('disconnected');
+    expect(captured).toEqual([{ flow: 'protocol', step: 'chain_pool_close' }]);
+    expect(errors).toHaveLength(captured.length);
+    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+  });
+
+  it('As a dotli integrator, I release a chain whose transport fails to close and the idle timer closes it without throwing', async () => {
+    // Given a released chain whose transport throws when it closes
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    const held = lease(pool, '0xaa');
+    must(built[0], 'transport').disconnect.mockImplementation(() => {
+      throw new Error('close failed');
+    });
+    held.disconnect();
+
+    // When the destroy delay passes
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then the chain is disconnected and the close failure is reported
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
+  });
+
+  it("As a dotli integrator, I see a chain's transport halt while it fails to close and the halt still reaches its lease", () => {
+    // Given a leased chain whose transport throws when it closes
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
+    onTestFinished(bindLogSink({ emit: () => undefined }));
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const onHalt = vi.fn();
+    lease(pool, '0xaa', { onHalt });
+    must(built[0], 'transport').disconnect.mockImplementation(() => {
+      throw new Error('close failed');
+    });
+
+    // When the transport halts
+    const error = catchError(() => {
+      must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+    });
+
+    // Then the halt reaches the lease, nothing throws and the close failure is reported
+    expect(error).toBeUndefined();
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
   });
 
   it('As a dotli integrator, I watch a transaction and hear it dropped when the transport disconnects', () => {

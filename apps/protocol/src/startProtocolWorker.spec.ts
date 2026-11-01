@@ -1486,8 +1486,9 @@ describe('protocol SharedWorker', () => {
     expect(light.disconnects.map(disconnect => disconnect.mock.calls.length)).toEqual([1, 1]);
   });
 
-  it('As a worker whose chain disconnect throws, I am disposed, the throw reaches my caller and my tab was freed first', async () => {
+  it('As a worker whose chain disconnect throws, I am disposed without a throw, the failure is reported and my tab was freed', async () => {
     // Given a tab holding a chain connection on a synced worker, and a light client whose next chain disconnect throws
+    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
     const light = createFakeLightClient();
     const worker = await bootWorker(light);
     const tab = worker.connect();
@@ -1498,8 +1499,9 @@ describe('protocol SharedWorker', () => {
     // When the worker is disposed
     const thrown = catchError(worker.dispose);
 
-    // Then the throw reached the caller, and the tab's connection and port were freed before it
-    expect(thrown).toBe(failure);
+    // Then nothing threw, the failed close was counted, and the tab's connection and port were freed
+    expect(thrown).toBeUndefined();
+    expect(metrics.counted(S.CHAIN_POOL_CLOSE)).toEqual([{ outcome: 'error', reason: 'Error' }]);
     expect(worker.logs.map(line => line.message)).toContain('Chain disconnected: c1 (0 remaining)');
     expect(tab.countCloses()).toBe(1);
   });

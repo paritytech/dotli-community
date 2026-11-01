@@ -2310,3 +2310,115 @@ describe('createChainBroker local tokens', () => {
     ]);
   });
 });
+
+describe('createChainBroker teardown', () => {
+  /** An upstream provider that counts its openings, and whose sends and close throw while their flag is set. */
+  function createFailingProviderHarness() {
+    const sent: JsonRpcRequest<unknown>[] = [];
+    let onMessage: ((message: JsonRpcMessage) => void) | null = null;
+    const flags = { failSends: false, failClose: false };
+    let opened = 0;
+    const disconnect = vi.fn(() => {
+      if (flags.failClose) {
+        throw new Error('close failed');
+      }
+    });
+
+    const provider: JsonRpcProvider = (listener): JsonRpcConnection => {
+      opened += 1;
+      onMessage = listener;
+      return {
+        send(message) {
+          sent.push(message);
+          if (flags.failSends) {
+            throw new Error('send failed');
+          }
+        },
+        disconnect,
+      };
+    };
+
+    return {
+      provider,
+      sent,
+      disconnect,
+      flags,
+      getOpened: () => opened,
+      emit(message: JsonRpcMessage) {
+        onMessage?.(message);
+      },
+    };
+  }
+
+  /**
+   * Connects session `'a'`, which follows and gets upstream token `'up-1'`, then session `'b'`, which only
+   * connects.
+   */
+  function connectFollowerAndIdle(harness: ReturnType<typeof createFailingProviderHarness>, broker: ChainBroker) {
+    const follower = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+    follower.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    harness.emit({ jsonrpc: '2.0', id: must(harness.sent.at(-1)?.id, 'follow id'), result: 'up-1' });
+    // Identical follows share one upstream follow, so a second follower would leave `'a'`'s release nothing to send.
+    broker.connect({ sessionId: 'b', onMessage: () => undefined, wireMode: 'object' });
+  }
+
+  it("As a dotli integrator, I disconnect all while a session's release fails upstream and every other session ends and the upstream still closes", () => {
+    // Given a following session and an idle one, and an upstream whose sends throw
+    const harness = createFailingProviderHarness();
+    const broker = createChainBroker({ provider: harness.provider });
+    connectFollowerAndIdle(harness, broker);
+    harness.flags.failSends = true;
+
+    // When every session is closed, and the idle session's id is used again
+    const error = catchError(() => {
+      broker.disconnectAll();
+    });
+    const reconnectError = catchError(() =>
+      broker.connect({ sessionId: 'b', onMessage: () => undefined, wireMode: 'object' }),
+    );
+
+    // Then the release's failure is thrown as is, the upstream closed once, and the idle session's id is free
+    expect(error).toEqual(new Error('send failed'));
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+    expect(reconnectError).toBeUndefined();
+  });
+
+  it('As a dotli integrator, I disconnect all while the upstream fails to close and a later session opens a fresh upstream', () => {
+    // Given a session that sent a request, and an upstream whose close throws
+    const harness = createFailingProviderHarness();
+    const broker = createChainBroker({ provider: harness.provider });
+    const first = broker.connect({ sessionId: 'a', onMessage: () => undefined, wireMode: 'object' });
+    first.send({ jsonrpc: '2.0', id: 1, method: 'system_chain', params: [] });
+    harness.flags.failClose = true;
+
+    // When every session is closed, and a later session sends a request
+    const error = catchError(() => {
+      broker.disconnectAll();
+    });
+    const second = broker.connect({ sessionId: 'b', onMessage: () => undefined, wireMode: 'object' });
+    second.send({ jsonrpc: '2.0', id: 2, method: 'system_chain', params: [] });
+
+    // Then the close's failure is thrown as is, and the later session opened a second upstream
+    expect(error).toEqual(new Error('close failed'));
+    expect(harness.getOpened()).toBe(2);
+  });
+
+  it("As a dotli integrator, I disconnect all while a session's release and the upstream's close both fail and I get both errors", () => {
+    // Given a following session and an idle one, and an upstream whose sends and close throw
+    const harness = createFailingProviderHarness();
+    const broker = createChainBroker({ provider: harness.provider });
+    connectFollowerAndIdle(harness, broker);
+    harness.flags.failSends = true;
+    harness.flags.failClose = true;
+
+    // When every session is closed
+    const error = catchError(() => {
+      broker.disconnectAll();
+    });
+
+    // Then both failures are thrown together, in the order they happened, and the upstream closed once
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error).toHaveProperty('errors', [new Error('send failed'), new Error('close failed')]);
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+});

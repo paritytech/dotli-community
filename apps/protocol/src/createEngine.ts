@@ -93,8 +93,8 @@ export function createEngine({
     /** Answers the name's root manifest, or the failure as a remote error, a mode that resolves no names included. */
     resolveRootManifest,
     /**
-     * Disconnects every scope's connections and releases the pool's chains. Throws what a connection's disconnect or
-     * the pool's release throws.
+     * Disconnects every scope's connections and releases the pool's chains. Throws what a connection's disconnect
+     * throws, never what closing a chain throws, which is reported.
      */
     dispose,
   };

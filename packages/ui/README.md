@@ -83,8 +83,8 @@ and no data source.
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar` and `ActionEntry`.
 - Stores: the page's dialog queue `modals` (`modals.store`, `modals.open(view, { signal, handoff })`,
   `modals.settle(id, result, { value })`, and `modals.refuseAll`, which answers every dialog with its refusal while the
-  overlays cannot render, and `modals.dispose`, which drops the open dialogs unanswered and tells a handed-off view it
-  was aborted, with the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
+  overlays cannot render, and `modals.dispose`, which rejects the open dialogs with an `AbortError` and tells a
+  handed-off view it was aborted, with the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
   `ModalButtonVariant`, `ModalHandoff`) and the page's toasts `toasts` (`store`, `show`, `push`, `dismiss`, `remove`,
   `dismissAll`, `setExpanded`, `clear`, `dispose`, which also stops the page listener, and the type `ToastEntry`).
   `modals.open` takes an optional handoff: once the dialog is answered it returns the view that takes the dialog's place

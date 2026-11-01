@@ -76,6 +76,17 @@ function waitForAuth(met: () => boolean): Promise<void> {
   return changes.until(met).finally(stop);
 }
 
+/** Resolves once a session read of the shared store reports that it failed, checked at each read. */
+function waitForFailedRead(): Promise<void> {
+  const changes = createChanges();
+  let failed = false;
+  const stop = coreStorage.subscribeSessionReads(next => {
+    failed ||= next;
+    changes.notify();
+  });
+  return changes.until(() => failed).finally(stop);
+}
+
 /** The core reporting a state, as its auth presenter does. */
 function reportFromCore(state: AuthState, pairing: PairingPresentation = PAIRING): void {
   session.reportCoreAuthState(state, pairing);
@@ -712,7 +723,7 @@ describe('session state', () => {
     ]);
   });
 
-  it('As a user whose live core signed me out, I get a session stored later and it is left for the core to pick up', async () => {
+  it('As a user whose live core signed me out, I get a session stored later and the copy shows it at once', async () => {
     // Given a page whose live core reported signed out
     onTestFinished(session.start());
     await waitForAuth(() => auth.get().tag === 'Disconnected');
@@ -720,9 +731,85 @@ describe('session state', () => {
 
     // When a sign-in is installed
     await coreStorage.installSession('0x010203', JSON.stringify(CONNECTED_DETAIL));
+    await waitForAuth(() => auth.get().tag === 'Connected');
 
-    // Then the page stays signed out
+    // Then the page shows the sign-in with its cached account, without waiting for the core
+    expect(auth.get()).toEqual({ tag: 'Connected', session: CONNECTED_DETAIL });
+  });
+
+  it('As a user whose core signed me out, I see a stored sign-in and lose it once the store drops it', async () => {
+    // Given a page whose core reported signed out and whose copy shows a sign-in stored since
+    onTestFinished(session.start());
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+    reportFromCore({ tag: 'Disconnected' });
+    await coreStorage.installSession('0x010203', JSON.stringify(CONNECTED_DETAIL));
+    await waitForAuth(() => auth.get().tag === 'Connected');
+
+    // When the store drops the session, as a core that cannot decode it does
+    await coreStorage.dropSessionIf('0x010203');
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+
+    // Then the page shows the core's own report again
     expect(auth.get()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a user whose sign-in failed, I see a stored sign-in and see the failure again once the store drops it', async () => {
+    // Given a page whose core reported a failed sign-in and whose copy shows a sign-in stored since
+    onTestFinished(session.start());
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+    reportFromCore({ tag: 'LoginFailed', value: { kind: 'Other', reason: 'boom' } });
+    await coreStorage.installSession('0x010203', JSON.stringify(CONNECTED_DETAIL));
+    await waitForAuth(() => auth.get().tag === 'Connected');
+
+    // When the store drops the session
+    await coreStorage.dropSessionIf('0x010203');
+    await waitForAuth(() => auth.get().tag === 'LoginFailed');
+
+    // Then the page shows the core's failure again
+    expect(auth.get()).toEqual({ tag: 'LoginFailed', kind: 'Other', reason: 'boom' });
+  });
+
+  it('As a user whose core reported while the store was down, I see a stored sign-in and am signed out once the store drops it', async () => {
+    // Given a page whose core reported signed out while the store could not be read, and whose copy shows a sign-in
+    // stored once the store answers again
+    onTestFinished(session.start());
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+    shared.readError = UNREACHABLE;
+    await coreStorage.createAdapters().readCoreStorage(AUTH_SESSION_KEY);
+    reportFromCore({ tag: 'Disconnected' });
+    await waitForAuth(() => auth.get().tag === 'Unreachable');
+    shared.readError = null;
+    await coreStorage.installSession('0x010203', JSON.stringify(CONNECTED_DETAIL));
+    await waitForAuth(() => auth.get().tag === 'Connected');
+
+    // When the store drops the session
+    await coreStorage.dropSessionIf('0x010203');
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+
+    // Then the page shows signed out, as the read that withdrew the sign-in has answered
+    expect(auth.get()).toEqual({ tag: 'Disconnected' });
+  });
+
+  it('As a user whose core signed me out, I see a stored sign-in and keep it while the store cannot be read', async () => {
+    // Given a page whose core reported signed out and whose copy shows a sign-in stored since, its states recorded
+    onTestFinished(session.start());
+    await waitForAuth(() => auth.get().tag === 'Disconnected');
+    reportFromCore({ tag: 'Disconnected' });
+    await coreStorage.installSession('0x010203', JSON.stringify(CONNECTED_DETAIL));
+    await waitForAuth(() => auth.get().tag === 'Connected');
+    const states = recordAuthStates();
+    const failedRead = waitForFailedRead();
+
+    // When the store becomes unreadable and the copy changes, then answers again with a control read after that one
+    shared.readError = UNREACHABLE;
+    shared.changeFromOtherTab(SESSION_KEY, '');
+    await failedRead;
+    shared.readError = null;
+    shared.changeFromOtherTab(SESSION_KEY, '0x040506');
+    await waitForAuth(() => states.length === 1);
+
+    // Then the failed read showed nothing, and the control read showed the session with its cached account
+    expect(states).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
   });
 
   it('As a signed-in user, I am signed out elsewhere and shown signed out at once', () => {

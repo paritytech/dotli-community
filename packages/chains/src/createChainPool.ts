@@ -8,7 +8,7 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks, ConnectionStatus } from './transportHooks.js';
-import { reportListener } from '@dotli/metrics';
+import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import { createListenerSet, log, type ListenerSet } from '@dotli/shared';
 import { createChainBroker, type ChainBroker } from './createChainBroker.js';
 import { createBrokerWarner, type BrokerWarner } from './createBrokerWarner.js';
@@ -78,7 +78,12 @@ export type ChainPool = {
    * someone holds is followed for its blocks until its last lease is released, and no chain is opened or kept.
    */
   watch(watcher: ChainPoolWatcher): () => void;
-} & Omit<ChainBrokerManager, 'connectRemote' | 'getLocalProvider'>;
+  /**
+   * Closes every chain and its sessions, without telling them of a halt. Never throws, and reports a chain that fails
+   * to close.
+   */
+  disconnectAll(): void;
+};
 
 type Entry = {
   readonly key: string;
@@ -107,7 +112,7 @@ type WatchEvent =
 
 const DEFAULT_DESTROY_DELAY_MS = 60_000;
 
-// Debug level, so lease traffic prints only with VITE_APP_DEBUG.
+// Names the pool in its log lines. Lease traffic logs at debug level, so it prints only with VITE_APP_DEBUG.
 const POOL_TAG = '[dot.li chain-pool]';
 
 /**
@@ -153,7 +158,7 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
       return;
     }
     entry.live = false;
-    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'unused' : halt.error);
+    log.debug(`${POOL_TAG} ${getShortKey(entry.key)} closing`, halt === null ? 'on release or unload' : halt.error);
     // The broker drops it with the other sessions.
     entry.watchFollow = null;
     if (entry.destroyTimer !== null) {
@@ -165,10 +170,20 @@ export function createChainPool({ createTransport, destroyDelay = DEFAULT_DESTRO
     // the rebuilt entry's status must not be overwritten afterwards.
     setStatus(entry.key, 'disconnected');
     report(entry);
-    if (halt === null) {
-      entry.broker.disconnectAll();
-    } else {
-      entry.broker.halt(halt.error);
+    // The entry is already gone, so one chain's failure must not keep the others open.
+    try {
+      if (halt === null) {
+        entry.broker.disconnectAll();
+      } else {
+        entry.broker.halt(halt.error);
+      }
+    } catch (error) {
+      reportDefect(error, {
+        flow: 'protocol',
+        step: 'chain_pool_close',
+        metric: S.CHAIN_POOL_CLOSE,
+        message: `${POOL_TAG} closing ${getShortKey(entry.key)} (${halt === null ? 'on release or unload' : 'on a halt'}) failed:`,
+      });
     }
   }
 

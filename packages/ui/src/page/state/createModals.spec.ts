@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createModals, type ModalHandoff, type ModalView } from './createModals.js';
-import { nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
+import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 
@@ -321,19 +321,53 @@ describe('a dialog that hands its place to a second view', () => {
 });
 
 describe('a dialog queue that is disposed', () => {
-  it('As a page that ends, I dispose the dialog queue and an open dialog stops listening to its signal', () => {
+  it('As a page that ends, I dispose the dialog queue and an open dialog stops listening to its signal', async () => {
     // Given an open dialog bound to a caller's abort signal
     const controller = new AbortController();
     const removed = vi.spyOn(controller.signal, 'removeEventListener');
-    void modals.open(buildView('Review'), { signal: controller.signal });
+    const answer = modals.open(buildView('Review'), { signal: controller.signal });
 
     // When the queue is disposed twice
     modals.dispose();
     modals.dispose();
 
-    // Then the signal listener is removed and the queue is empty
+    // Then the signal listener is removed, the queue is empty and the dialog rejected
     expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
     expect(modals.store.get()).toEqual([]);
+    await expect(answer).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('As a page that ends, I dispose the dialog queue and an open dialog rejects with an AbortError', async () => {
+    // Given an open dialog with no signal
+    const answer = modals.open(buildView('Review'));
+
+    // When the queue is disposed
+    modals.dispose();
+
+    // Then the dialog rejects with an AbortError that names the disposed scope
+    await expect(answer).rejects.toMatchObject({ name: 'AbortError', message: 'Blocking modal scope disposed' });
+  });
+
+  it('As a host whose handed-off view fails as the queue is disposed, I still see every open dialog reject', async () => {
+    // Given a dialog handed off to a view whose closed throws, then a second open dialog
+    const viewBug = new Error('view bug');
+    void modals.open(buildView('First'), {
+      handoff: () =>
+        buildHandoff(new AbortController().signal, () => {
+          throw viewBug;
+        }),
+    });
+    modals.settle(readFirstId(), 'yes');
+    const answer = modals.open(buildView('Second'));
+
+    // When the queue is disposed
+    const thrown = catchError(() => {
+      modals.dispose();
+    });
+
+    // Then the view's error propagates and the open dialog rejected with an AbortError
+    expect(thrown).toBe(viewBug);
+    await expect(answer).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('As a host, I dispose the dialog queue while a handed-off view is open and it hears that it was aborted, once', () => {

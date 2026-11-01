@@ -92,13 +92,25 @@ type SettleParams = {
   value?: string | undefined;
 };
 
-type Pending = {
-  handoff?: ((outcome: ModalOutcome<string>) => ModalHandoff | undefined) | undefined;
+type EntryBase = {
   resolve: (outcome: ModalOutcome<string>) => void;
   detach: () => void;
-  /** Tells a handed-off view that its dialog was disposed. */
-  abandon?: () => void;
 };
+
+type DialogEntry = EntryBase & {
+  kind: 'dialog';
+  handoff?: ((outcome: ModalOutcome<string>) => ModalHandoff | undefined) | undefined;
+  /** Rejects the dialog's promise, for a dialog that was disposed. */
+  reject: (error: DOMException) => void;
+};
+
+type HandoffEntry = EntryBase & {
+  kind: 'handoff';
+  /** Tells a handed-off view that its dialog was disposed. */
+  abandon: () => void;
+};
+
+type Pending = DialogEntry | HandoffEntry;
 
 // An AbortError reason passes through and a string reason becomes the message, so this text shows only for others.
 const MODAL_ABORTED = 'Blocking modal scope disposed';
@@ -119,7 +131,7 @@ export function createModals() {
     store,
     /**
      * Queues `view` and resolves with its answer. Rejects with an AbortError when `signal` has fired or fires before
-     * the answer, and with nothing else. A dialog `dispose` drops never settles. Once answered, `handoff` may return
+     * the answer, or when `dispose` drops the dialog, and with nothing else. Once answered, `handoff` may return
      * the view that takes the dialog's place without closing it. It sees every answer, refusals from `refuseAll`
      * included, so return `undefined` for those.
      */
@@ -136,9 +148,9 @@ export function createModals() {
      */
     refuseAll,
     /**
-     * Drops every open dialog unanswered, so their promises stay unsettled, and tells a handed-off view `aborted`.
-     * Safe to repeat. A handed-off view's `closed` that
-     * throws propagates. The queue works as a fresh one afterwards.
+     * Rejects every open dialog with an AbortError, then tells each handed-off view `aborted`. A handed-off view's
+     * `closed` that throws propagates, after every open dialog has rejected, and the views after it are not told. Safe
+     * to repeat. The queue works as a fresh one afterwards.
      */
     dispose,
   };
@@ -159,12 +171,16 @@ export function createModals() {
       }
       signal?.addEventListener('abort', rejectOnAbort, { once: true });
       pending.set(id, {
+        kind: 'dialog',
         // The queue holds every dialog's answers as plain strings, and this dialog only ever settles with its own `R`.
-        handoff: handoff as Pending['handoff'],
+        handoff: handoff as DialogEntry['handoff'],
         // The queue settles this dialog only with one of its own results.
         resolve: resolve as (outcome: ModalOutcome<string>) => void,
         detach: () => {
           signal?.removeEventListener('abort', rejectOnAbort);
+        },
+        reject: error => {
+          reject(error);
         },
       });
       entries.set([...entries.get(), { id, view }]);
@@ -179,7 +195,7 @@ export function createModals() {
     const outcome: ModalOutcome<string> = value === undefined ? { result } : { result, value };
     let next: ModalHandoff | undefined;
     try {
-      next = entry.handoff?.(outcome);
+      next = callHandoff(entry, outcome);
     } catch (error) {
       // The answer still reaches the caller, and the dialog closes as without a handoff.
       reportDefect(error, {
@@ -234,6 +250,7 @@ export function createModals() {
     }
     next.signal.addEventListener('abort', closeOnAbort, { once: true });
     pending.set(id, {
+      kind: 'handoff',
       resolve: outcome => {
         next.closed(outcome.result);
       },
@@ -250,8 +267,12 @@ export function createModals() {
   function dispose(): void {
     const dropped = detachAll();
     entries.set([]);
+    // Rejecting cannot throw, so it runs first and a throwing `closed` leaves no dialog unsettled.
     for (const entry of dropped) {
-      entry.abandon?.();
+      rejectDropped(entry);
+    }
+    for (const entry of dropped) {
+      abandonDropped(entry);
     }
   }
 
@@ -272,6 +293,35 @@ export function createModals() {
 
 /** The page's dialog queue. */
 export const modals = createModals();
+
+function callHandoff(entry: Pending, outcome: ModalOutcome<string>): ModalHandoff | undefined {
+  switch (entry.kind) {
+    case 'dialog':
+      return entry.handoff?.(outcome);
+    case 'handoff':
+      return undefined;
+  }
+}
+
+function rejectDropped(entry: Pending): void {
+  switch (entry.kind) {
+    case 'dialog':
+      entry.reject(toAbortError(undefined, MODAL_ABORTED));
+      return;
+    case 'handoff':
+      return;
+  }
+}
+
+function abandonDropped(entry: Pending): void {
+  switch (entry.kind) {
+    case 'dialog':
+      return;
+    case 'handoff':
+      entry.abandon();
+      return;
+  }
+}
 
 /** A dialog's refusal: its dismiss result, else its cancel or reject button's. */
 function findRefusal(view: ModalView<string>): string | undefined {

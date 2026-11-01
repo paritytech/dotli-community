@@ -7,7 +7,7 @@ import type {
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
 import { reportListener } from '@dotli/metrics';
-import { getErrorMessage, isRecord } from '@dotli/shared';
+import { combineErrors, getErrorMessage, isRecord } from '@dotli/shared';
 import {
   buildJsonRpcResult,
   cloneWithRewrittenFirstParam,
@@ -148,10 +148,23 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function disconnectAll(): void {
+    const errors: unknown[] = [];
     for (const sessionId of [...sessions.keys()]) {
-      disconnectSession(sessionId);
+      try {
+        disconnectSession(sessionId);
+      } catch (error) {
+        errors.push(error);
+      }
     }
-    disconnectUpstream();
+    try {
+      disconnectUpstream();
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 0) {
+      return;
+    }
+    throw combineErrors(errors, 'chain broker: closing every session and the upstream failed');
   }
 
   function halt(error?: unknown): void {
@@ -632,12 +645,17 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
   }
 
   function disconnectUpstream(): void {
-    pending.clear();
-    ownedTokens.clear();
-    earlySubscriptions.clear();
-    sharedFollows.clear();
-    upstream?.disconnect();
+    const closing = upstream;
+    // Dropped first, so a later `connect` opens a fresh upstream even when closing this one throws.
     upstream = null;
+    try {
+      pending.clear();
+      ownedTokens.clear();
+      earlySubscriptions.clear();
+      sharedFollows.clear();
+    } finally {
+      closing?.disconnect();
+    }
   }
 
   function handleLocalUnfollowRequest(session: Session, request: JsonRpcRequest): void {
@@ -674,7 +692,11 @@ export function createChainBroker({ provider, warn = createBrokerWarner() }: Par
      * connection it returns routes the session's messages and ends it.
      */
     connect,
-    /** Ends every session, releasing what each holds upstream, then closes the upstream. A later `connect` reopens it. */
+    /**
+     * Ends every session, releasing what each holds upstream, then closes the upstream. Every step runs even when one
+     * throws, and then the one `Error`, or an AggregateError otherwise, is thrown. A later `connect` reopens the
+     * upstream.
+     */
     disconnectAll,
     /**
      * The transport is gone for good. Each session first gets an error per request in flight and a `stop` per

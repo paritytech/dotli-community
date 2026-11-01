@@ -28,6 +28,12 @@ export const spans = {
   /** Count. The protocol frame could not read its session tuning, so the light client starts with defaults. */
   PROTOCOL_SESSION_TUNING: 'protocol.session_tuning',
 
+  /**
+   * Count. A held chain whose teardown threw as the pool closed it. Tagged `outcome` (error) and `reason` (the error's
+   * name).
+   */
+  CHAIN_POOL_CLOSE: 'chain_pool.close',
+
   RESOLVE_STORAGE_READ: 'resolve.storage_read',
 
   /**

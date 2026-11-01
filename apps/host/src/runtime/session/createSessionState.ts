@@ -122,9 +122,11 @@ export function createSessionState({
 
   // A core takes seconds to connect with a session stored for it, so while the page shows it signed out the copy may
   // show one at once. A store that comes back may end `Unreachable` with no news from the core, whose session read
-  // already ended. A pairing stays the core's, and the core's next report decides from there.
+  // already ended. A pairing stays the core's, and the core's next report decides from there. While a core's own report
+  // is open to it, the copy may also replace a sign-in it showed itself.
   function isCopyAllowedToShow(): boolean {
-    return speaker === 'copy' || isOpenToCopy(auth.get().tag);
+    const report = coreReport.get();
+    return speaker === 'copy' || isOpenToCopy(auth.get().tag) || (report !== null && isOpenToCopy(report.tag));
   }
 
   /** The session to show: the local wallet's when there is one, else the saved one with its cached account. */
@@ -142,8 +144,9 @@ export function createSessionState({
   }
 
   /**
-   * Shows the local wallet when there is one, else what was saved, while the copy may show it. A read
-   * that finds nothing ends only `Restoring` or `Unreachable`, and leaves a sign-out or a failure on show alone.
+   * Shows the local wallet when there is one, else what was saved, while the copy may show it. A read that finds
+   * nothing ends only `Restoring` or `Unreachable`, and, while a core speaks, withdraws a sign-in the copy showed
+   * to the core's own report. It leaves a sign-out or a failure on show alone.
    */
   async function applySavedSession(readSession: (restored: LoadRestore) => Promise<string | null>): Promise<void> {
     if (!isCopyAllowedToShow()) {
@@ -158,7 +161,16 @@ export function createSessionState({
     }
     if (session !== null) {
       auth.set({ tag: 'Connected', session });
-    } else if (isAwaitingSavedSession(auth.get().tag)) {
+      return;
+    }
+    const shown = auth.get().tag;
+    // A store that could not be read says nothing of a sign-out, so a sign-in on show stays.
+    // A sign-in the core reported itself is its own report, so withdrawing to that report leaves it on show.
+    if (speaker === 'core' && !lastReadFailed && shown === 'Connected') {
+      auth.set(getWithdrawnState(coreReport.get()));
+      return;
+    }
+    if (isAwaitingSavedSession(shown)) {
       auth.set({ tag: lastReadFailed ? 'Unreachable' : 'Disconnected' });
     }
   }
@@ -396,4 +408,15 @@ function getSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
     ...(info.fullUsername !== undefined ? { fullUsername: info.fullUsername } : {}),
     ...(primaryUsername !== undefined ? { primaryUsername } : {}),
   };
+}
+
+/**
+ * The state a page shows once the copy withdraws its sign-in, the core's own report, with `Unreachable` shown as
+ * `Disconnected` since the read that withdrew the sign-in has just answered.
+ */
+function getWithdrawnState(report: DotliAuthState | null): DotliAuthState {
+  if (report === null || report.tag === 'Unreachable') {
+    return { tag: 'Disconnected' };
+  }
+  return report;
 }

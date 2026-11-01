@@ -114,7 +114,7 @@ Which transport a pool builds depends on the backend:
 Closing the host pool's remote connection is cheap: the iframe or the worker
 keeps the smoldot chain.
 
-A tab that closes without its `beforeunload` (a crash, a killed process) tells
+A tab that closes without its `pagehide` (a crash, a killed process) tells
 the worker nothing. The worker pings each port every 20 s and lets go of one
 that answered nothing for three beats, releasing its connections. It first
 posts a `chain-halt` for each, so a tab that was only frozen reconnects when it

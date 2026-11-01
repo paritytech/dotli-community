@@ -65,8 +65,9 @@ listener set, the sync store, the status cell and a few formatting helpers.
   the last stop or `end`).
 - Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
   `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
-  `getErrorChain`, `getErrorName`, `getErrorMessage`, `toError`, `setErrorName` (sets an error's `name` in place and
-  returns it), `getEndpointHost`, `describeGatewayUnreachable`.
+  `combineErrors(errors, message)` (the one error, or an `AggregateError` of several), `getErrorChain`, `getErrorName`,
+  `getErrorMessage`, `toError`, `setErrorName` (sets an error's `name` in place and returns it), `getEndpointHost`,
+  `describeGatewayUnreachable`.
 - Storage: `createSafeStorage(open)`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`, and `ListableStorage`,
   which adds `keys` and is what `createSafeStorage` returns.
 - IndexedDB: `openIdb({ factory, name, version, upgrade })` (rejects with `IdbOpenBlockedError`, which carries the

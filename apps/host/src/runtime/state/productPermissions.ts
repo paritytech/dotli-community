@@ -7,6 +7,7 @@
 
 import { m, reportDefect, reportListener, spans as S } from '@dotli/metrics';
 import {
+  combineErrors,
   createAsyncTaskPool,
   createListenerSet,
   createSharedRun,
@@ -185,9 +186,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
           fromPrompt: true,
         });
         if (errors.length > 0) {
-          throw errors.length === 1 && errors[0] instanceof Error
-            ? errors[0]
-            : new AggregateError(errors, 'the prompt answer was not stored');
+          throw combineErrors(errors, 'the prompt answer was not stored');
         }
       },
       { pool: POOL },
@@ -267,7 +266,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
   }
 
   function reportFailure(errors: readonly unknown[]): void {
-    const error = errors.length === 1 ? errors[0] : new AggregateError(errors, 'some permissions kept their status');
+    const error = combineErrors(errors, 'some permissions kept their status');
     reportDefect(error, {
       flow: 'wallet',
       step: 'permissions_change',

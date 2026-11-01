@@ -30,8 +30,9 @@ flowchart LR
 - Gateway providers reconnect their WebSocket and replay subscriptions. They never import smoldot. They report status
   and halt through shared `ChainTransportHooks`.
 - The chain pool holds one connection per chain in a JS context, over whichever transport it is given. Each lease is a
-  broker session. An entry closes after its last lease is released, and at once when its transport halts. A watcher sees
-  each held chain's activity and best block.
+  broker session. An entry closes after its last lease is released, and at once when its transport halts. A chain whose
+  teardown fails is reported, and the pool still closes the others. A watcher sees each held chain's activity and best
+  block.
 - The broker multiplexes JSON-RPC sessions over one connection. Each request it sends upstream with an id has one owner,
   which gets the answer: a session, a shared follow, a release the broker sent itself, or a session that left, whose
   answered subscription is released at once. Events the node still sends for a subscription that is being released, by
