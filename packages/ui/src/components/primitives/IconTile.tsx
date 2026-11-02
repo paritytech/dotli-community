@@ -3,7 +3,7 @@
 
 import { Show, type Component } from 'solid-js';
 import { dynamic, type JSX } from '@solidjs/web';
-import type { IconProps } from '../icons/icon-props.js';
+import type { IconProps } from '../icons/iconProps.js';
 import s from './IconTile.module.css';
 
 /** The decorative tile that leads a modal or the sign-in's pending view. It draws `icon`, or else its children. */

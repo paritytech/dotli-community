@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from './icon-props.js';
+import type { IconProps } from './iconProps.js';
 
 /** A warning triangle with an exclamation mark. */
 export function AlertTriangleIcon(props: IconProps & { strokeWidth?: string | undefined }): JSX.Element {

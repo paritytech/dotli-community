@@ -1,0 +1,311 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { getActiveChainRoles } from '@dotli/config';
+import { createNetworkMonitorState, type NetworkMonitor } from './networkMonitorState.js';
+import { createNetworkHealthState } from './networkHealthState.js';
+import { buildChainActivity } from '../testing/buildChainActivity.js';
+import { getRelayGenesis } from '../testing/getRelayGenesis.js';
+import {
+  createFakePage,
+  createManualTimers,
+  type FakePage,
+  type ManualTimers,
+  resetAllStoresForTests as resetStores,
+} from '@dotli/shared/testing';
+
+type HealthMonitor = Pick<NetworkMonitor, 'subscribe' | 'getChainClocks'>;
+
+/** Every chain is connectable, so only what the monitor hears decides the health. */
+let monitor: NetworkMonitor;
+let page: FakePage;
+let timers: ManualTimers;
+let health: ReturnType<typeof createNetworkHealthState>;
+
+beforeEach(() => {
+  timers = createManualTimers();
+  page = createFakePage();
+  monitor = createNetworkMonitorState({ isConnectable: () => true, timers });
+  health = createNetworkHealthState({ timers });
+});
+
+afterEach(() => {
+  resetStores();
+});
+
+describe('The network health store', () => {
+  it('As a user, I start using every chain and see syncing until each delivers a block, then ok', () => {
+    // Given
+    startHealth();
+
+    // When
+    useAll();
+    const inUse = health.store.get();
+    blockAll(100);
+
+    // Then
+    expect([inUse, health.store.get()]).toEqual(['idle', 'ok']);
+  });
+
+  it('As a user whose chains stop producing blocks, I wait and see degraded without any new event', async () => {
+    // Given
+    startHealth();
+    useAll();
+    blockAll(100);
+
+    // When
+    await timers.advance(getEveryChainOverdueMs());
+
+    // Then
+    expect(health.store.get()).toBe('warn');
+  });
+
+  it('As a user, I get a later block and see the health recheck when the fastest chain is overdue from that block', async () => {
+    // Given
+    startHealth();
+    useAll();
+    const fastest = Math.min(...getActiveChainRoles().map(role => role.blockTimeMs));
+    const overdue = fastest * 3;
+    blockAll(100);
+
+    // When a block arrives later, moving the overdue time, and the clock reaches it and then passes it
+    await timers.advance(1000);
+    blockAll(101);
+    await timers.advance(overdue - 1);
+    const justBefore = health.store.get();
+    await timers.advance(2);
+
+    // Then
+    expect([justBefore, health.store.get()]).toEqual(['ok', 'warn']);
+  });
+
+  it('As a user, I go offline and the health hears it from the window and not from the document', () => {
+    // Given a health over a page that is online
+    startHealth();
+
+    // When the document fires offline, as nothing in a browser does, and then the window goes offline
+    page.document.dispatchEvent(new Event('offline'));
+    const afterDocument = health.store.get();
+    page.setOnline(false);
+
+    // Then
+    expect([afterDocument, health.store.get()]).toEqual(['quiet', 'err']);
+  });
+
+  it('As a user in another tab, I come back to the tab and see the health rechecked only then', async () => {
+    // Given
+    startHealth();
+    useAll();
+    blockAll(100);
+
+    // When
+    page.setVisibility('hidden');
+    await timers.advance(getEveryChainOverdueMs());
+    const pendingWhileHidden = timers.countPending();
+    const whileHidden = health.store.get();
+    page.setVisibility('visible');
+
+    // Then
+    expect({ pendingWhileHidden, whileHidden, shown: health.store.get() }).toEqual({
+      pendingWhileHidden: 0,
+      whileHidden: 'ok',
+      shown: 'warn',
+    });
+  });
+
+  it('As a user before any chain exists, I go offline and back and see each at once', () => {
+    // Given
+    startHealth();
+
+    // When
+    page.setOnline(false);
+    const offline = health.store.get();
+    page.setOnline(true);
+
+    // Then
+    expect([offline, health.store.get()]).toEqual(['err', 'quiet']);
+  });
+
+  it('As a user who went offline while the page booted, I wait for the network health to start and see it turn red', () => {
+    // Given a page that went offline before the health started
+    page.setOnline(false);
+
+    // When
+    startHealth();
+
+    // Then
+    expect(health.store.get()).toBe('err');
+  });
+
+  it('As a user before any app holds a chain, I open the page and see quiet', () => {
+    // When
+    startHealth();
+
+    // Then
+    expect(health.store.get()).toBe('quiet');
+  });
+
+  it('As a user loading a product, I watch the frame sync a chain and see syncing, then quiet once it is ready with nothing in use', () => {
+    // Given
+    startHealth();
+
+    // When
+    monitor.recordChainPhase('relay', 'syncing');
+    const syncing = health.store.get();
+    monitor.recordChainPhase('relay', 'ready');
+
+    // Then
+    expect([syncing, health.store.get()]).toEqual(['idle', 'quiet']);
+  });
+
+  it('As a user, I see a frame chain drop from ready back to connecting and the health turn unstable', () => {
+    // Given
+    startHealth();
+    monitor.recordChainPhase('relay', 'ready');
+
+    // When
+    monitor.recordChainPhase('relay', 'connecting');
+
+    // Then
+    expect(health.store.get()).toBe('warn');
+  });
+
+  it('As a user leaving the page, I stop the health store and it leaves its monitor with no listener', () => {
+    // Given: a monitor that counts who listens to it
+    const listening = new Set<() => void>();
+    const counted: HealthMonitor = {
+      getChainClocks: monitor.getChainClocks,
+      subscribe(listener) {
+        listening.add(listener);
+        const unsubscribe = monitor.subscribe(listener);
+        return function unsubscribeCounted(): void {
+          listening.delete(listener);
+          unsubscribe();
+        };
+      },
+    };
+    const stop = startHealth(counted);
+    const listenersWhileRunning = listening.size;
+
+    // When
+    stop();
+    useAll();
+    blockAll(100);
+
+    // Then: no listener is left, and later blocks change nothing
+    expect({ listenersWhileRunning, listenersAfterStop: listening.size, health: health.store.get() }).toEqual({
+      listenersWhileRunning: 1,
+      listenersAfterStop: 0,
+      health: 'quiet',
+    });
+  });
+
+  it('As a user whose page started the network health twice, I see one caller stop and the other still hear the window go offline', () => {
+    // Given
+    startHealth();
+    const stopSecond = startHealth();
+
+    // When
+    stopSecond();
+    page.setOnline(false);
+
+    // Then
+    expect(health.store.get()).toBe('err');
+  });
+
+  it('As a user whose page restarted the network health, I call a stop from before the restart and see a stalled chain still turn the health unstable', async () => {
+    // Given
+    const stopFirst = startHealth();
+    stopFirst();
+    startHealth();
+    useAll();
+    blockAll(100);
+
+    // When
+    stopFirst();
+    await timers.advance(getEveryChainOverdueMs());
+
+    // Then
+    expect(health.store.get()).toBe('warn');
+  });
+
+  it('As a user whose only live chain is released, I wait past its recheck and the indicator never turns unstable', async () => {
+    // Given
+    startHealth();
+    const relay = getRelayGenesis();
+    monitor.recordChainActivity(buildChainActivity({ genesisHash: relay }));
+    monitor.recordBestBlock(relay, 100);
+    const live = health.store.get();
+
+    // When
+    monitor.recordChainActivity(buildChainActivity({ genesisHash: relay, held: false }));
+    await timers.advance(60_000);
+
+    // Then
+    expect({ live, released: health.store.get(), pending: timers.countPending() }).toEqual({
+      live: 'ok',
+      released: 'quiet',
+      pending: 0,
+    });
+  });
+
+  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
+    // Given a follow on a monitor whose subscription counts its unsubscribes
+    let unsubscribes = 0;
+    const counting: HealthMonitor = {
+      ...monitor,
+      subscribe(listener) {
+        const unsubscribe = monitor.subscribe(listener);
+        return () => {
+          unsubscribes += 1;
+          unsubscribe();
+        };
+      },
+    };
+    const stop = startHealth(counting);
+
+    // When the stores reset, then the stop left from the ended follow runs
+    resetStores();
+    const afterReset = unsubscribes;
+    stop();
+
+    // Then the reset ended the follow once, the stop added nothing and the health stays quiet
+    expect({ afterReset, total: unsubscribes, health: health.store.get() }).toEqual({
+      afterReset: 1,
+      total: 1,
+      health: 'quiet',
+    });
+  });
+});
+
+/** Starts the health over `on`, on a page whose visibility and connectivity the test sets. */
+function startHealth(on: HealthMonitor = monitor): () => void {
+  return health.start({
+    monitor: on,
+    page: {
+      isHidden: () => page.document.hidden,
+      isOnline: () => page.window.onLine,
+      visibility: page.document,
+      connectivity: page.window,
+    },
+  });
+}
+
+/** Returns a wait after a block past which every active chain's next block is overdue. Never throws. */
+function getEveryChainOverdueMs(): number {
+  const slowest = Math.max(...getActiveChainRoles().map(role => role.blockTimeMs));
+  return slowest * 3 + 2000;
+}
+
+function useAll(): void {
+  for (const role of getActiveChainRoles()) {
+    monitor.recordChainActivity(buildChainActivity({ genesisHash: role.genesis }));
+  }
+}
+
+function blockAll(blockNumber: number): void {
+  for (const role of getActiveChainRoles()) {
+    monitor.recordBestBlock(role.genesis, blockNumber);
+  }
+}

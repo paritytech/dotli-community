@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createListeners, transferableBuffer, type Listeners, type Provider } from './provider.js';
+import { createListeners, type Listeners } from './createListeners.js';
+import type { Provider } from './provider.js';
+import { toTransferableBuffer } from './toTransferableBuffer.js';
 
 /**
  * Two connected providers that deliver on a microtask, in order, and detach each buffer like a browser transfer. As a
@@ -13,31 +15,33 @@ export function createProviderPair(): { left: Provider; right: Provider; deliver
   const leftSide = createListeners();
   const rightSide = createListeners();
 
-  const createSide = (own: Listeners, peer: Listeners): Provider => ({
-    isCorrectEnvironment: () => true,
-    postMessage(message) {
-      if (own.disposed()) {
-        throw new Error('The provider is disposed');
-      }
-      const buffer = transferableBuffer(message);
-      const moved = new Uint8Array(structuredClone(buffer, { transfer: [buffer] }));
-      queueMicrotask(() => {
-        if (peer.disposed()) {
-          return;
-        }
-        delivered.push(moved);
-        peer.deliver(moved);
-      });
-    },
-    subscribe: own.subscribe,
-    dispose() {
-      own.dispose();
-    },
-  });
-
   return {
     left: createSide(leftSide, rightSide),
     right: createSide(rightSide, leftSide),
     delivered,
   };
+
+  function createSide(own: Listeners, peer: Listeners): Provider {
+    return {
+      isCorrectEnvironment: () => true,
+      postMessage(message) {
+        if (own.isDisposed()) {
+          throw new Error('The provider is disposed');
+        }
+        const buffer = toTransferableBuffer(message);
+        const moved = new Uint8Array(structuredClone(buffer, { transfer: [buffer] }));
+        queueMicrotask(() => {
+          if (peer.isDisposed()) {
+            return;
+          }
+          delivered.push(moved);
+          peer.deliver(moved);
+        });
+      },
+      subscribe: own.subscribe,
+      dispose() {
+        own.dispose();
+      },
+    };
+  }
 }

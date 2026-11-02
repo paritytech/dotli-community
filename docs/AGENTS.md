@@ -13,7 +13,7 @@ This directory owns architecture and developer-reference docs for dotli.
 - `docs/abstract/`: general design thinking (event storming, review framework, simple versus easy).
 - `docs/assets/`: images the docs embed, such as the smoldot diagrams in `docs/resolution-design.md`.
 - `docs/claude/`: the architecture and code checklists the reviewer skill cites.
-- `docs/code/`: the glossary, the placement rules and the rule extraction procedure.
+- `docs/code/`: the glossary, the placement rules, the code style and the rule extraction procedure.
 - `docs/RFC/`: the RFC 2119 requirement keywords.
 
 `docs/_plans/` and `docs/_reviews/` are local working folders and are not committed.

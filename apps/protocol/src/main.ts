@@ -12,21 +12,22 @@ import {
   setResolutionId,
   spans as S,
 } from '@dotli/metrics';
-import { chainBytesReceived, installByteMeter, loadProvider } from '@dotli/chains';
+import { byteMeter, loadProvider } from '@dotli/chains';
 import { loadResolve } from '@dotli/resolver';
 
-import { errorMessage, log, serializeError } from '@dotli/shared';
+import { getErrorMessage, log, serializeError } from '@dotli/shared';
 import {
   TIMEOUTS,
   getActiveServicesConfig,
   isLocalhost,
   parseSettingsFromSearch,
   setActiveNetwork,
+  type Backend,
   type Network,
 } from '@dotli/config';
 
 import {
-  backendOfFrameMode,
+  getBackendOfFrameMode,
   createWireReport,
   isSharedAuthOriginAllowed,
   ProtocolFatalError,
@@ -35,38 +36,53 @@ import {
 } from '@dotli/protocol';
 import { createTransport, createWindowProvider } from '@dotli/transport';
 
-import { connectSharedWorker, registerWorkerRelay } from './shared-worker-link.js';
-import { readSessionTuning, resolveBudgetCapMs } from './session-tuning.js';
-import { createEngine, serveEngineScope, type ProtocolEngine } from './engine.js';
+import { connectSharedWorker } from './connectSharedWorker.js';
+import { createEngine, type ProtocolEngine } from './createEngine.js';
+import { createFrameBoot } from './createFrameBoot.js';
+import { createRefusalReporter } from './createRefusalReporter.js';
+import { createSharedStoreHandler } from './createSharedStoreHandler.js';
+import { createTelemetryHandler } from './createTelemetryHandler.js';
+import { disposeOnPageHide } from './disposeOnPageHide.js';
+import { FRAME_LOG_TAG } from './frameLogTag.js';
 import { loadGatewayChains, loadLightClientService } from './lazy.js';
-import { createSharedStoreHandler, serveLocalWallet, SHARED_AUTH_CHANNEL } from './shared-store-handler.js';
-import { createRefusalReporter, reportRefusals } from './refusal-report.js';
-import { intervalTicker, NET_BYTES_INTERVAL_MS, shareNetBytes } from './net-bytes.js';
-import { purgeWorkerCaches } from './worker-caches.js';
-import { createFrameBoot } from './frame-boot.js';
-import { createTelemetryHandler, lightClientDb } from './telemetry-handler.js';
+import { toWorkerName } from './parseWorkerNetwork.js';
+import { purgeWorkerCaches } from './purgeWorkerCaches.js';
+import { readResolveBudgetCap } from './readResolveBudgetCap.js';
+import { readSessionTuning } from './readSessionTuning.js';
+import { registerWorkerRelay } from './registerWorkerRelay.js';
+import { serveEngineScope } from './serveEngineMethods.js';
+import { serveLocalWallet } from './serveLocalWallet.js';
+import { shareNetBytes } from './shareNetBytes.js';
+import { SHARED_WORKER_MODE } from './sharedWorkerMode.js';
+import { toLightClientDb } from './toLightClientDb.js';
+import { withRefusalReports } from './withRefusalReports.js';
 
-// Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot traffic is
-// invisible to resource timing, so the speed readout needs this.
-installByteMeter();
+type Params = {
+  /** What made the boot fail, kept as the error's cause. */
+  cause?: unknown;
+};
+
+// Runs before `init()` loads the light client on demand, so its sockets are counted from the first. Smoldot's traffic
+// is invisible to resource timing, so only this meter counts it.
+byteMeter.install();
 
 // What the host hears of this frame's boot, on subscribe, so a failure before the host asks is not lost.
 const boot = createFrameBoot();
 
-// No reload here. The hidden iframe hands the failure to the parent, which shows and reports it, so no capture either.
+// No reload here. The failure reaches the host as the frame status's end, not as a capture.
 window.addEventListener('vite:preloadError', event => {
   // Typed as an Error, but the loader hands on whatever the import rejected with.
   const payload: unknown = event.payload;
-  log.error('[dot.li protocol] Asset failed to load', payload);
+  log.error(`${FRAME_LOG_TAG} Asset failed to load`, payload);
   // The browser's message names the chunk. Only Safari omits it.
-  const msg = payload === undefined ? 'no detail from the loader' : serializeError(payload);
-  boot.fail(new ProtocolFatalError(`Protocol iframe asset failed to load: ${msg}`, { cause: payload }));
+  const message = payload === undefined ? 'no detail from the loader' : serializeError(payload);
+  boot.fail(new ProtocolFatalError(`Protocol iframe asset failed to load: ${message}`, { cause: payload }));
 });
 
 initSentry('protocol');
 installGlobalErrorHandlers('protocol');
 
-// The host builds this frame's URL from its settings, so it is read once.
+// Read once, since the frame's URL does not change.
 const frameSearch = new URLSearchParams(window.location.search);
 
 // At module scope because auth-only and invalid-mode boots return early from init() yet belong to the resolution.
@@ -80,40 +96,46 @@ function adoptResolutionId(): void {
 }
 
 // What this frame's provider and transport drop, each counted once, whichever of them drops it.
-const wire = createWireReport('frame', { count: m.count });
+const wire = createWireReport({ side: 'frame', count: m.count });
 
 // The one channel to the host page. It answers the handshake at once, so it is bound before anything loads, and it
-// speaks only when spoken to. The host's hello names no page load, which this frame reads from its URL.
-const serving = createTransport(
-  protocolSchema,
-  createWindowProvider({
+// speaks only when spoken to. This frame reads its page load from its URL, never from a hello.
+const serving = createTransport({
+  schema: protocolSchema,
+  provider: createWindowProvider({
     listen: window,
     peer: () => window.parent,
     // The shared-auth allowlist guards every method served here, the shared stores and the wallet included, so sandboxed
     // apps never drive them or the chain bridge directly.
     origin: isSharedAuthOriginAllowed,
-    // Only a host page of an earlier release sends objects. It never hears an answer and fails by its own timeout.
+    // Objects come only from a host page of an earlier release. They are counted and never answered.
     onNotBytes: wire.onNotBytes,
     onRefusedOrigin: wire.onRefusedOrigin,
   }),
-  { handshake: 'respond', hello: { resolutionId: null }, onIssue: wire.onIssue },
-);
-serving.handleSubscription(protocolSchema.sections.frame.status, boot.frameStatus);
-serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.telemetry);
+  handshake: 'respond',
+  hello: { resolutionId: null },
+  onIssue: wire.onIssue,
+});
+serving.handleSubscription(protocolSchema.sections.frame.status, boot.handleStatus);
+serving.handleSubscription(protocolSchema.sections.frame.telemetry, boot.handleTelemetry);
 
 // What the stores, the wallet and the engine refuse is logged and counted, as well as answered.
-const served = reportRefusals(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
-const sharedStores = createSharedStoreHandler(served, {
-  storage: () => localStorage,
-  channel: typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SHARED_AUTH_CHANNEL) : null,
+const served = withRefusalReports(serving, createRefusalReporter({ warn: log.warn, count: m.count }));
+const sharedStores = createSharedStoreHandler({
+  serving: served,
+  readStorage: () => localStorage,
 });
-serveLocalWallet(served, siteId => {
-  sharedStores.walletChanged(siteId);
+// The frame serves the wallet as long as its page, so the stop goes unused.
+serveLocalWallet({
+  serving: served,
+  onChange: siteId => {
+    sharedStores.broadcastWalletChange(siteId);
+  },
 });
 
-/** A boot that cannot start, which the host answers by dropping this frame and building a new one after a wait. */
-function failInit(message: string, cause?: unknown): void {
-  log.error(`[dot.li protocol] ${message}`);
+/** Logs `message` and fails the boot for good, so this frame never serves. Never throws. */
+function failInit(message: string, { cause }: Params = {}): void {
+  log.error(`${FRAME_LOG_TAG} ${message}`);
   boot.fail(new ProtocolInitFailedError(message, cause === undefined ? undefined : { cause }));
 }
 
@@ -122,11 +144,11 @@ async function init(): Promise<void> {
   // No mode means an auth-only iframe.
   if (mode === null) {
     log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
-    boot.ready();
+    boot.markReady();
     return;
   }
   // An unknown mode errors instead of silently going auth-only.
-  const backend = backendOfFrameMode(mode);
+  const backend = getBackendOfFrameMode(mode);
   if (backend === null) {
     failInit(`Unknown protocol mode: "${mode}"`);
     return;
@@ -146,9 +168,9 @@ async function init(): Promise<void> {
     try {
       const deleted = await purgeWorkerCaches(indexedDB);
       log.event('Worker caches purged', { flow: 'protocol', databases: deleted.length });
-    } catch (err: unknown) {
-      log.error('[dot.li protocol] purgeWorkerCaches failed:', err);
-      failInit(`Failed to reset chain DB: ${errorMessage(err)}`, err);
+    } catch (error: unknown) {
+      log.error(`${FRAME_LOG_TAG} purgeWorkerCaches failed:`, error);
+      failInit(`Failed to reset chain DB: ${getErrorMessage(error)}`, { cause: error });
       return;
     }
   }
@@ -156,63 +178,77 @@ async function init(): Promise<void> {
   const initStart = performance.now();
   let initOutcome: 'ok' | 'error' = 'error';
   try {
-    if (backend === 'smoldot-shared-worker') {
-      if (typeof SharedWorker === 'undefined') {
-        failInit('SharedWorker is not available in this browser');
-        return;
-      }
-      // Before any further metrics, so every one carries the mode.
-      m.setDefaults({ protocol_mode: 'shared-worker' });
-      await initSharedWorkerMode(network);
-      m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
-    } else if (backend === 'rpc-gateway') {
-      m.setDefaults({ protocol_mode: 'rpc' });
-      await initRpcMode();
-      m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
-    } else {
-      m.setDefaults({ protocol_mode: 'direct' });
-      await initDirectMode();
-      m.count(S.PROTOCOL_MODE, { mode: 'direct' });
+    if (await startMode(backend, network)) {
+      initOutcome = 'ok';
     }
-    initOutcome = 'ok';
   } finally {
     const initMs = performance.now() - initStart;
     // A failed init is only a point in the distribution.
     if (initOutcome === 'ok') {
       m.measure(S.PROTOCOL_INIT, initMs);
     }
-    m.distribution(S.PROTOCOL_INIT, initMs, 'millisecond', { outcome: initOutcome });
+    m.distribution(S.PROTOCOL_INIT, initMs, { unit: 'millisecond', attributes: { outcome: initOutcome } });
+  }
+}
+
+/**
+ * Starts the mode `backend` names, tagging every later metric with it, and resolves whether it started. A browser
+ * without `SharedWorker` fails the boot and resolves `false`. Rejects with what the mode's start rejects with.
+ */
+async function startMode(backend: Backend, network: Network): Promise<boolean> {
+  switch (backend) {
+    case 'smoldot-shared-worker':
+      if (typeof SharedWorker === 'undefined') {
+        failInit('SharedWorker is not available in this browser');
+        return false;
+      }
+      // Before any further metrics, so every one carries the mode.
+      m.setDefaults({ protocol_mode: SHARED_WORKER_MODE });
+      await initSharedWorkerMode(network);
+      m.count(S.PROTOCOL_MODE, { mode: SHARED_WORKER_MODE });
+      return true;
+    case 'rpc-gateway':
+      m.setDefaults({ protocol_mode: 'rpc' });
+      await initRpcMode();
+      m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
+      return true;
+    case 'smoldot-direct':
+      m.setDefaults({ protocol_mode: 'direct' });
+      await initDirectMode();
+      m.count(S.PROTOCOL_MODE, { mode: 'direct' });
+      return true;
   }
 }
 
 async function initSharedWorkerMode(network: Network): Promise<void> {
   // Vite only rewrites a literal `new URL` argument, so the network travels in the worker name, not a query param.
-  const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
+  const worker = new SharedWorker(new URL('./protocolSharedWorker.ts', import.meta.url), {
     type: 'module',
-    name: `dotli-protocol-${network}`,
+    name: toWorkerName(network),
   });
   const link = connectSharedWorker({
     worker,
-    window,
+    page: window,
     resolutionId: getResolutionId(),
     readyTimeoutMs: TIMEOUTS.SHARED_WORKER_READY,
     onIssue: wire.onIssue,
   });
-  // The worker reports what it refuses, so these calls skip this frame's refusal report.
-  registerWorkerRelay(serving, link.transport, link.status, boot);
+  // The link and the relay live as long as the frame's page, so their stops go unused.
+  // Relayed calls skip this frame's refusal report, since the refusals they carry are not this frame's own.
+  registerWorkerRelay({ serving, worker: link.transport, workerStatus: link.status, boot });
   await link.ready;
-  boot.ready();
+  boot.markReady();
 }
 
 /**
- * Serves `engine` and reports the frame ready. The iframe serves its one parent, so one scope holds every connection.
+ * Serves `engine`, reports the frame ready, and disposes `engine` once the page is hidden for good. The iframe serves
+ * its one parent, so one scope holds every connection.
  */
 function serveEngine(engine: ProtocolEngine): void {
+  // The frame serves its engine as long as its page, so both stops go unused.
   serveEngineScope(served, engine);
-  boot.ready();
-  window.addEventListener('beforeunload', () => {
-    engine.cleanup();
-  });
+  disposeOnPageHide({ target: window, dispose: engine.dispose });
+  boot.markReady();
 }
 
 async function initDirectMode(): Promise<void> {
@@ -223,51 +259,54 @@ async function initDirectMode(): Promise<void> {
     loadLightClientService(),
   ]);
   const session = readSessionTuning(() => sessionStorage);
-  const lightClient = provider.createLightClient(provider.lightClientDeps(session, isLocalhost));
+  const lightClient = provider.createLightClient(provider.createLightClientDeps(session, isLocalhost));
   const service = lightClientService.startLightClientService({
     lightClient,
-    resolver: { createDotnsResolver: resolve.createDotnsResolver, enableSyncReporting: provider.enableSyncReporting },
+    resolver: {
+      createDotnsResolver: resolve.createDotnsResolver,
+      enableSyncReporting: provider.chainSync.enableSyncReporting,
+    },
     services: getActiveServicesConfig(),
   });
-  window.addEventListener('pagehide', service.stop);
+  // The service lives as long as the frame's page, so the stop goes unused.
+  disposeOnPageHide({ target: window, dispose: service.dispose });
 
   lightClient.subscribe(change => {
     if (change.kind === 'fatal') {
-      log.error(`[dot.li protocol] Light client died, signaling fatal: ${change.message}`);
+      log.error(`${FRAME_LOG_TAG} Light client died, signaling fatal: ${change.message}`);
       boot.fail(new ProtocolFatalError(change.message));
     }
   });
 
   boot.serveTelemetry(
     createTelemetryHandler({
-      onChainSync: provider.onChainSync,
-      // Telemetry only, attached by the host to the resolution it is tracing.
-      onChainDetail: provider.onChainDetail,
-      ...lightClientDb(lightClient),
-      netBytes: shareNetBytes(chainBytesReceived, intervalTicker(NET_BYTES_INTERVAL_MS)),
+      onChainSync: provider.chainSync.onChainSync,
+      // Telemetry only.
+      onChainDetail: provider.chainSync.onChainDetail,
+      ...toLightClientDb(lightClient),
+      onNetBytes: shareNetBytes({ read: byteMeter.readBytesReceived }),
       // This frame's light client is its own, so each database read is this tab's.
-      joinedSynced: () => false,
+      hasJoinedSynced: () => false,
     }),
   );
 
   const engine = createEngine({
     pool: service.pool,
     isChainSupported: lightClient.isChainSupported,
-    onWarmup: () => {
-      // Legacy-account auth reads People, which would race a cold warp sync. Resolution does not need it.
-      void service.dotns.waitForPeopleFinalized().catch((err: unknown) => {
-        log.warn('[dot.li protocol] People chain warm failed (retried on demand)', err);
-      });
+    onWarmup() {
+      // Warmed in the background, so a later People read does not wait on a cold warp sync. The warmup call never
+      // waits on it.
+      service.warmPeople(FRAME_LOG_TAG);
       return Promise.resolve();
     },
     resolver: service.dotns,
-    syncBudgetCapMs: resolveBudgetCapMs(session),
+    syncBudgetCapMs: readResolveBudgetCap(session),
   });
 
   serveEngine(engine);
 }
 
-// Gateway mode resolves names in the host process, so no resolver is wired here.
+// Gateway mode serves chain connections only, so no resolver is wired here.
 async function initRpcMode(): Promise<void> {
   const { openGatewayChains } = await loadGatewayChains();
   const engine = createEngine(openGatewayChains());
@@ -275,7 +314,7 @@ async function initRpcMode(): Promise<void> {
   serveEngine(engine);
 }
 
-void init().catch((err: unknown) => {
-  log.error('[dot.li protocol] Init failed:', err);
-  boot.fail(new ProtocolInitFailedError(serializeError(err), { cause: err }));
+void init().catch((error: unknown) => {
+  log.error(`${FRAME_LOG_TAG} Init failed:`, error);
+  boot.fail(new ProtocolInitFailedError(serializeError(error), { cause: error }));
 });

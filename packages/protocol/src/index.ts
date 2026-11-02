@@ -4,49 +4,56 @@
 export {
   SHARED_AUTH_KEY_PREFIX,
   SHARED_CORE_SESSION_KEY,
-  SHARED_MODE_KEY_PREFIX,
   buildSharedAuthStorageKey,
-  buildSharedModeStorageKey,
-  isSharedAuthOriginAllowed,
   isSharedAuthSiteId,
-  isSharedModeRequestMethod,
   isValidSharedAuthKey,
+} from './sharedAuthKeys.js';
+export {
+  SHARED_MODE_KEY_PREFIX,
+  buildSharedModeStorageKey,
+  isSharedModeRequestMethod,
   isValidSharedModeKey,
-} from './auth-storage.js';
-export { getProtocolOrigin, protocolClient, type ProtocolClient } from './client.js';
-export { backendOfFrameMode, type ProtocolFrameConfig, type ProtocolStatus } from './frame.js';
-export { isRemoteChainConnectable, isRemoteChainSupported, type RemoteChainProvider } from './remote-chain.js';
-export type { LocalWalletReadResult, SharedStoreStatus } from './shared-store.js';
+} from './sharedModeKeys.js';
+export { isSharedAuthOriginAllowed } from './isSharedAuthOriginAllowed.js';
+export { getProtocolOrigin } from './getProtocolOrigin.js';
+export type { ProtocolClient } from './createProtocolClient.js';
+export { getProtocolClient } from './createProtocolClient.js';
+export type { ProtocolFrameConfig, ProtocolStatus } from './frameTypes.js';
+export { getBackendOfFrameMode } from './getBackendOfFrameMode.js';
+export { isRemoteChainConnectable } from './isRemoteChainConnectable.js';
+export { isRemoteChainSupported } from './isRemoteChainSupported.js';
+export type { RemoteChainProvider } from './createRemoteChains.js';
+export type { LocalWalletReadResult, SharedStoreStatus } from './createSharedStore.js';
 export {
   ProtocolFatalError,
   ProtocolInitFailedError,
   ProtocolPortReleasedError,
   ProtocolVersionMismatchError,
-  failureOf,
-  frameStatusEnd,
   fromTransportError,
-  remoteEnd,
+  getFailure,
+  toFrameStatusEnd,
+  toRemoteEnd,
 } from './errors.js';
-export type { TelemetryEvent } from './codec-values.js';
-export {
-  isLocalWalletEntropy,
-  isLocalWalletIdentity,
-  protocolSchema,
-  type DomainFailure,
-  type FrameFailure,
-  type LocalWalletIdentity,
-  type LocalWalletRead,
-  type ProtocolContext,
-  type ProtocolHandler,
-  type ProtocolHello,
-  type ProtocolSchema,
-  type ProtocolServing,
-  type ProtocolTransport,
-  type RemoteFailure,
-  type SharedAuthChange,
-  type SubscriptionEnd,
+export type { TelemetryEvent } from './codecValues.js';
+export type {
+  DomainFailure,
+  FrameFailure,
+  LocalWalletIdentity,
+  LocalWalletRead,
+  ProtocolContext,
+  ProtocolHandler,
+  ProtocolHello,
+  ProtocolSchema,
+  ProtocolServing,
+  ProtocolTransport,
+  RemoteFailure,
+  SharedAuthChange,
+  SubscriptionEnd,
 } from './schema.js';
-export { budgetOf, callName, policyOf, type CallName, type MethodPolicy } from './method-policy.js';
-export { createFrameStatus, type FrameStatus, type FrameStatusEnd, type FrameStatusSink } from './frame-status.js';
-export { endListeners } from './subscription.js';
-export { createWireReport } from './wire-issues.js';
+export { isLocalWalletEntropy, isLocalWalletIdentity, protocolSchema } from './schema.js';
+export type { CallName, MethodPolicy } from './methodPolicy.js';
+export { getBudget, getCallName, getPolicy } from './methodPolicy.js';
+export type { FrameStatus, FrameStatusEnd, FrameStatusSink } from './createFrameStatus.js';
+export { createFrameStatus } from './createFrameStatus.js';
+export { createEndListeners } from './createEndListeners.js';
+export { createWireReport } from './createWireReport.js';

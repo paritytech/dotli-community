@@ -3,14 +3,14 @@
 
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { dismissToast, removeToast, type ToastEntry } from '../../page/state/toasts.js';
-import { toastIcon } from './toast-icon.js';
+import { toasts, type ToastEntry } from '../../page/state/createToasts.js';
+import { toastIcon } from './toastIcon.js';
 import { Button } from '../primitives/Button.js';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { IconButton } from '../primitives/IconButton.js';
 import s from './ToastCard.module.css';
 
-export interface ToastCardProps {
+export type ToastCardProps = {
   entry: ToastEntry;
   hidden: boolean;
   /** Place in the collapsed pile, 0 for the newest. */
@@ -18,7 +18,7 @@ export interface ToastCardProps {
   expanded: boolean;
   /** The stack holds one live toast, which keeps its close button while piled. */
   single: boolean;
-}
+};
 
 export function ToastCard(props: ToastCardProps): JSX.Element {
   // The stack keys cards by id, so it never changes.
@@ -35,7 +35,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
     () => props.entry.leaving && hidden(),
     removeNow => {
       if (removeNow) {
-        removeToast(id);
+        toasts.remove(id);
       }
     },
   );
@@ -53,7 +53,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
       data-hidden={hidden() ? '' : undefined}
       onAnimationEnd={() => {
         if (props.entry.leaving) {
-          removeToast(id);
+          toasts.remove(id);
         } else {
           setEntering(false);
         }
@@ -103,7 +103,7 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
         aria-label="Dismiss"
         onClick={event => {
           event.stopPropagation();
-          dismissToast(id);
+          toasts.dismiss(id);
         }}
       >
         <CloseIcon />

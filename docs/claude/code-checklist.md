@@ -4,7 +4,7 @@ Walk this for every file the diff touches. Cite the doc and section when flaggin
 
 - **blocking**: breaks an `## Architecture` rule in `AGENTS.md`, or puts a server in the trust path (`## Project`).
 - **major**: breaks any other documented rule. Rows from the `Tools:` label under `## Architecture` are major.
-- **minor**: comment, prose and naming.
+- **minor**: comment, prose, naming and the order inside a file.
 
 Severity only orders the work. Every finding is fixed in this branch.
 
@@ -18,10 +18,96 @@ above the linter: semantics, data flow and naming.
 
 - **major** (AGENTS.md § Project): A runtime API newer than the browser floor in shipped code.
 
+## Code shape
+
+- **major** (docs/code/style.md § A factory returns a plain object): A class for a stateful unit, other than an `Error`
+  subclass, a data structure, or a measured hot path kept private behind a factory.
+- **major** (docs/code/style.md § The public type comes from the implementation): A hand-written type that restates a
+  factory's return or a schema's shape, where the contract has one implementation.
+- **major** (docs/code/style.md § A module exports one named object per entity): A module that owns an entity and
+  exports its actions loose instead of in one object named after the entity.
+- **major** (docs/code/style.md § Declarations at the top, arrows inline): A top-level function or a named step inside a
+  factory written as an arrow const.
+- **major** (docs/code/style.md § Params object for factories, two positional inputs at most): A factory of a stateful
+  unit with positional params, or any function with more than two positional inputs.
+- **major** (docs/code/style.md § One job per function): A block inside a function that needs a comment to say what it
+  does, instead of a named function.
+- **major** (docs/code/style.md § Dependencies come in through parameters): A unit that imports a network client,
+  storage, a timer, the clock or a randomness source instead of taking it through its params.
+- **major** (docs/code/style.md § Inject through a framework only where the architecture defines it): A registry that
+  modules fill as a side effect of being imported, or injection along a path the architecture does not define.
+- **major** (docs/code/style.md § Wrap to add behaviour): A cross-cutting concern (cache, retry, dedupe, replay) built
+  into a core function instead of wrapped around it.
+- **major** (docs/code/style.md § Share knowledge, not look-alike code): A shared function that takes a flag or branch
+  per caller, or a domain rule shared across its boundary.
+- **major** (docs/code/style.md § Name repeated control flow as a combinator): The same control-flow pattern written
+  inline in two places instead of a named combinator.
+- **major** (docs/code/style.md § Derive, don't store): A stored value kept in sync with state it can be computed from.
+- **major** (docs/code/style.md § Private writable, public read-only): A module that exposes writable state, or writes
+  state another module owns.
+- **major** (docs/code/style.md § Mutate inside, stay immutable outside): A function that mutates its input or shared
+  state, other than an in-place algorithm named for it with a `CAUTION` JSDoc.
+- **major** (docs/code/style.md § Every subscription returns its cleanup): A `subscribe` without an unsubscribe, or a
+  unit holding a connection, timer or listener without `dispose()`.
+- **major** (docs/code/style.md § Guard first, then the happy path): Nested conditions where early returns would keep
+  the main logic unindented.
+- **major** (docs/code/style.md § `for...of` over `forEach` and `for...in`): A `forEach` with a callback, or `for...in`.
+- **major** (docs/code/style.md § Branch on a union in its own function): A union mapped by a ternary chain or an `if`
+  ladder inline, or a `switch` over a closed union with a `default`, unless it reads only some members and gives a
+  one-line reason.
+- **major** (docs/code/style.md § Brand values that look alike): An identifier or encoded value passed as a bare
+  `string` or `Uint8Array` where another kind could be passed in its place.
+- **major** (docs/code/style.md § Parse at the boundary): Data from the network, storage or another context used without
+  a schema parse where it enters, or defensive checks on data already parsed. A change to a stored record's shape
+  without its guard or migration.
+- **major** (docs/code/style.md § Every cross-boundary message has a versioned format): A message across a frame, a
+  worker or the network without a versioned schema or codec, built by hand by the sender, or a receiver that guesses at
+  an unknown version. An error across one that reaches its consumer as a name or message to match instead of a decoded
+  error class instance.
+- **major** (docs/code/style.md § Strict everywhere, escape hatches only in library code): `as`, `as never`,
+  `as unknown as X` or `@ts-expect-error` in application code, one in library code without a one-line reason, or an
+  exported function without a return type other than a factory whose type is derived from it.
+- **major** (docs/code/style.md § Throw errors, catch at the boundary): A result wrapper for a failure inside a layer (a
+  domain outcome union is fine), a catch that adds context without `{ cause }`, or failures told apart by their message
+  instead of `instanceof`.
+- **major** (docs/code/style.md § Thread an `AbortSignal`): An async API that waits on the network, a timer or another
+  context that a caller can stop but that takes no optional `signal`, or an abort that rejects with anything but
+  `signal.reason`.
+- **major** (AGENTS.md § Code style, General): A build value that gates code read through an import instead of a static
+  `import.meta.env.X` at its site.
+- **major** (docs/code/style.md § Serial when order matters): Independent steps awaited one after another, or steps run
+  in parallel where one reads what another writes.
+- **major** (docs/code/style.md § One concept per file, named after its export): A file with more than one factory or
+  concept, or a file not named after its main export in camelCase.
+- **major** (docs/code/style.md § One concept per file, named after its export): A helper, table, constant or piece of
+  state split into its own file although only one module's main export uses it.
+- **minor** (docs/code/style.md § Unions, not enums): A union derived from an `as const` list (`(typeof LIST)[number]`)
+  instead of written first and typing the list.
+- **minor** (docs/code/style.md § Comments): An exported generic helper, combinator or multi-step API with no usage
+  example in its JSDoc.
+- **major** (docs/code/style.md § Named exports and one explicit barrel): A default export, `export *`, a nested barrel,
+  or type and value exports on one line.
+- **major** (docs/code/style.md § Tests): Three or more inputs of one behaviour as separate tests instead of `it.each`,
+  an event stream asserted event by event, or a cache hit asserted with `toEqual`.
+- **minor** (docs/code/style.md § Main export before its helpers): Private helpers above the main export.
+- **minor** (docs/code/style.md § Function names start with a verb): A function name that starts with no verb (a role
+  callback slot or a third-party-fixed name aside), or a factory, predicate, wrapper or escape hatch without its
+  `createX`, `isX`, `hasX`, `withX` or `unsafe_` form.
+- **minor** (docs/code/style.md § Generic names are words): A type parameter named by a letter where it is not the one
+  obvious parameter, or a type extractor not named `InferX`.
+- **minor** (docs/code/style.md § Naming): An abbreviation other than a single-letter callback parameter, a type not
+  named for its role, a helper's params type not named `<FunctionName>Params`, or a module-level primitive or static
+  table not in SCREAMING_CASE.
+- **minor** (docs/code/style.md § Messages name the value and the place): An error message without the failing value or
+  the place it failed.
+- **minor** (docs/code/style.md § Comments): An exported library function without a one-sentence JSDoc and a usage
+  example.
+
 ## Errors and logging
 
 - **major** (AGENTS.md § Code style, TypeScript:): A `catch` that drops the error, with neither a rethrow with
-  `{ cause }` nor `captureException`, `log.error` and an outcome metric.
+  `{ cause }` nor `captureException`, `log.error` and an outcome metric. In a context with no logger, a `catch` that
+  neither posts the failure to its pages nor calls `console.error` with a reason.
 - **major** (AGENTS.md § Code style, TypeScript:): `log.warn` for progress or status. It is for real failures, and
   progress breadcrumbs use `log.event`.
 - **major** (AGENTS.md § Code style, TypeScript:): A free-standing wrapper that makes a dependency safe to call, where
@@ -31,6 +117,8 @@ above the linter: semantics, data flow and naming.
 
 - **major** (AGENTS.md § Code style, TypeScript:): More than one metric name for one event, or an outcome metric without
   `{ outcome, reason }`.
+- **major** (AGENTS.md § Code style, TypeScript:): An expected failure recorded as a breadcrumb alone (`recordExpected`)
+  instead of counted through `reportExpected`.
 
 ## Async and lifecycle
 
@@ -103,8 +191,8 @@ above the linter: semantics, data flow and naming.
   the role with an optional `who …` clause.
 - **minor** (AGENTS.md § Code style, Tests:): A test body without `// Given`, `// When` and `// Then`, or descriptive
   markers cut to bare ones.
-- **minor** (AGENTS.md § Code style, Tests:): A test whose call under test sits outside `// When`, or whose
-  `// Then` does more than assert.
+- **minor** (AGENTS.md § Code style, Tests:): A test whose call under test sits outside `// When`, or whose `// Then`
+  does more than assert.
 
 When you cite a rule, quote `file:line`, state it in one line with its doc and section, and suggest the fix in one or
 two sentences. Group findings by theme and end with the blocking, major and minor counts.

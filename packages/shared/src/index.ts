@@ -1,47 +1,64 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { toAbortError } from './abort.js';
-export {
-  createAsyncTaskPool,
-  type AsyncTaskParams,
-  type AsyncTaskPool,
-  type AsyncTaskPoolParams,
-} from './async-task-pool.js';
-export { endpointHost, gatewayUnreachable } from './error-copy.js';
-export { errorMessage, errorName, fullErrorChain, named, serializeError, toError } from './errors.js';
-export { deleteIdb, idbRequest, idbTransaction, openIdb } from './idb.js';
-export { OriginWipeError, wipeOriginStores, type OriginStores, type OriginWipePart } from './origin-wipe.js';
-export { blake2b } from './blake2b.js';
-export { bytesEqual } from './bytes-equal.js';
+export { areBytesEqual } from './areBytesEqual.js';
+export type { Branded } from './branded.js';
+export { CHAIN_HALTED_ERROR_DATA } from './chainHaltedErrorData.js';
+export { combineErrors } from './combineErrors.js';
+export type { AsyncTaskPool } from './createAsyncTaskPool.js';
+export { createAsyncTaskPool } from './createAsyncTaskPool.js';
+export { createDeferred } from './createDeferred.js';
+export { createLazyLoad } from './createLazyLoad.js';
+export type { ListenerSet } from './createListenerSet.js';
+export { createListenerSet } from './createListenerSet.js';
+export type { PendingReplies } from './createPendingReplies.js';
+export { createPendingReplies } from './createPendingReplies.js';
+export { createRandomId } from './createRandomId.js';
+export type { ListableStorage, SafeStorage } from './createSafeStorage.js';
+export { createSafeStorage } from './createSafeStorage.js';
+export { createSharedRun } from './createSharedRun.js';
+export type { StatusCell } from './createStatusCell.js';
+export { createStatusCell } from './createStatusCell.js';
+export { createStoreStatus } from './createStoreStatus.js';
+export type { ReadableStore, SyncStore } from './createSyncStore.js';
+export { createSyncStore, registerStoreStateReset, StoreListenerError } from './createSyncStore.js';
+export { deleteIdb } from './deleteIdb.js';
+export { describeGatewayUnreachable } from './describeGatewayUnreachable.js';
+export { formatDuration } from './formatDuration.js';
+export { formatElapsed } from './formatElapsed.js';
+export { formatRate } from './formatRate.js';
+export { formatSize } from './formatSize.js';
+export { getEndpointHost } from './getEndpointHost.js';
+export { getErrorChain } from './getErrorChain.js';
+export { getErrorMessage } from './getErrorMessage.js';
+export { getErrorName } from './getErrorName.js';
+export { getKeys } from './getKeys.js';
+export { hashBlake2b } from './hashBlake2b.js';
 export { fromHex, toHex } from './hex.js';
-export { bindLogSink, log, type LogLevel } from './log.js';
-export { formatRate, formatSize } from './byte-size.js';
-export { createLazyLoad } from './lazy-load.js';
-export { createListenerSet, type ListenerSet, type ListenerSetOptions } from './listener-set.js';
-export { listen, onDocumentVisible, onPageReturn, type VisibilitySource } from './listen.js';
-export { deferred } from './deferred.js';
-export { dur, elapsed } from './perf.js';
+export { IdbOpenBlockedError } from './idbOpenBlockedError.js';
+export { isRecord } from './isRecord.js';
+export { isShallowEqual } from './isShallowEqual.js';
+export { isStringArray } from './isStringArray.js';
+export { listen } from './listen.js';
+export type { VisibilitySource } from './listenForDocumentVisible.js';
+export { listenForDocumentVisible } from './listenForDocumentVisible.js';
+export { listenForPageReturn } from './listenForPageReturn.js';
+export type { LogEntry, LogLevel } from './log.js';
+export { bindLogSink, log } from './log.js';
 export { noop } from './noop.js';
-export { createPendingReplies, type PendingReplies } from './pending-replies.js';
-export { randomId } from './random-id.js';
-export { createStatusCell, storeStatus, untilStatus, type StatusCell, type StatusCellOptions } from './status-cell.js';
-export {
-  createSyncStore,
-  registerStoreStateReset,
-  shallowEqual,
-  StoreListenerError,
-  type ReadableStore,
-  type SyncStore,
-  type SyncStoreOptions,
-} from './sync-store.js';
-export {
-  pageLocalStorage,
-  pageSessionStorage,
-  safeStorage,
-  type ListableStorage,
-  type SafeStorage,
-} from './safe-storage.js';
-export { realTimers, type Timers } from './timers.js';
+export { openIdb } from './openIdb.js';
+export { pageLocalStorage } from './pageLocalStorage.js';
+export { pageSessionStorage } from './pageSessionStorage.js';
+export type { Timers } from './realTimers.js';
+export { realTimers } from './realTimers.js';
+export { runIdbTransaction } from './runIdbTransaction.js';
+export { serializeError } from './serializeError.js';
+export { setErrorName } from './setErrorName.js';
 export { sleep } from './sleep.js';
-export { withTimeout } from './with-timeout.js';
+export { toAbortError } from './toAbortError.js';
+export { toError } from './toError.js';
+export { waitForIdbRequest } from './waitForIdbRequest.js';
+export { waitForStatus } from './waitForStatus.js';
+export type { OriginStores, OriginWipePart } from './wipeOriginStores.js';
+export { OriginWipeError, wipeOriginStores } from './wipeOriginStores.js';
+export { withTimeout } from './withTimeout.js';

@@ -4,16 +4,16 @@
 import type { Backend } from '@dotli/config';
 import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import type { NetworkHealth } from '../components/chains/network-health.js';
+import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import type { NetworkItemProps } from '../components/chains/NetworkItem.js';
 
-export interface NetworkStores {
+export type NetworkStores = {
   health: ReadableStore<NetworkHealth>;
   network: ReadableStore<NetworkView>;
   product: ReadableStore<{ status: string }>;
   settings: ReadableStore<{ backend: Backend } | null>;
-}
+};
 
 /** The network button's props, for an island's own lifetime. */
 export function useNetworkPanel(stores: NetworkStores): NetworkItemProps {

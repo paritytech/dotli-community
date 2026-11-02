@@ -31,12 +31,12 @@ Imported by the apps' Vite and Astro configs. Beyond them, test and Storybook co
 inline-script entries, a page head takes the social meta entry, the dev scripts take the mode sync, runtime network
 config and serving entries, and an app runtime takes the signing worker entry.
 
-- `./app`: `dotliApp(appDir, site, roots)`, which returns each app's Vite config: the shared preset (env directory,
-  wasm, the runtime network config, the build info, the dev isolation headers, a locally trusted certificate for the dev
-  servers (not the preview), CSS modules, the worker and build options, and the compile-time values that strip the
-  Sentry SDK's debug logger) with the app's own merged over it and the Sentry upload last. Making it fills in the commit
-  and a `dotli@semver` Sentry release. It also returns the serving table it built from `roots`, for the app's own dev
-  plugins.
+- `./app`: `createDotliApp({ appDir, site, roots })`, whose `createViteConfig(own)` returns each app's Vite config: the
+  shared preset (env directory, wasm, the runtime network config, the build info, the dev isolation headers, a locally
+  trusted certificate for the dev servers (not the preview), CSS modules, the worker and build options, and the
+  compile-time values that strip the Sentry SDK's debug logger) with the app's own merged over it and the Sentry upload
+  last. Making it fills in the commit and a `dotli@semver` Sentry release. It also returns the serving table it built
+  from `roots`, for the app's own dev plugins.
 - `./css-modules`: CSS-modules options with one short-name counter across every Vite environment of a build.
 - `./inline-script`: a `?inline-script` import returns a module bundled into one classic script, as text a response
   writes into a document dotli does not build.
@@ -51,8 +51,9 @@ config and serving entries, and an app runtime takes the signing worker entry.
   `$DOTLI_NETWORK`, for the release and test servers, and the plugin that injects and serves it on opt-in.
 - `./serving`: the route, file and header table of the release, test and dev servers. `createLocalServing(roots)` builds
   what depends on the local roots once (the route of a host, the frame ancestors, the security, response and dev
-  headers, the dev servers' isolation plugin and the bypass of the dev proxy to the protocol app). What reads no roots,
-  such as the file a path resolves to and the headers of a policy for a given frame ancestors value, is a plain export.
+  headers, the dev servers' isolation plugin and the bypass of the dev proxy to the protocol app). What reads no roots
+  is a plain export: the hostname a request names, the path rules of the three builds, the header policy of a path, the
+  headers of a policy for a given frame ancestors value, the caching headers of a path, and the file a path resolves to.
 - `./dependency-versions`: the installed version of each direct workspace dependency in a scope, for the diagnostics
   panel.
 - `./build-info`: writes the build version file and reads the release version.

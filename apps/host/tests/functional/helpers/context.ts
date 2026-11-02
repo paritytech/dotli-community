@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Browser, BrowserContext, ConsoleMessage, Page } from '@playwright/test';
-import { IFRAME_FORWARDER, SHARED_WORKER_FORWARDER, WORKER_FORWARDER } from '../../iframe-logs-forwarder.js';
+import { IFRAME_FORWARDER, SHARED_WORKER_FORWARDER, WORKER_FORWARDER } from '../../iframeLogsForwarder.js';
 import { BROWSER_PERMISSIONS, seedPermissions } from '../fixtures/permissions.js';
 import { seedSettings, type SettingsSeed } from '../fixtures/settings.js';
-import { PROTOCOL_SHARED_WORKER, prependToWorker } from './worker-prelude.js';
+import { PROTOCOL_SHARED_WORKER, prependToWorker } from './workerPrelude.js';
 
-export interface TestSetup {
+export type TestSetup = {
   context: BrowserContext;
   page: Page;
-}
+};
 
 /** The caller closes the returned context. */
 export async function setupTest(browser: Browser, settings: SettingsSeed): Promise<TestSetup> {

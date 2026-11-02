@@ -5,15 +5,15 @@
 
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { chainDetail, eventCountLabel, groupDuration, memberDelta } from '../model/detail-format.js';
-import {
-  correlationKeyOf,
-  type StoredEvent,
-  type StoredSystemEvent,
-  type StoredTruapiEvent,
-} from '../model/event-store.js';
-import { summariseSystemEvent } from '../model/system-summary.js';
-import { tagKind } from '../model/row-format.js';
+import { getChainDetail } from '../model/getChainDetail.js';
+import { formatEventCount } from '../model/formatEventCount.js';
+import { formatGroupDuration } from '../model/formatGroupDuration.js';
+import { formatMemberDelta } from '../model/formatMemberDelta.js';
+import { formatProductId } from '../model/formatProductId.js';
+import { getCorrelationKey } from '../model/getCorrelationKey.js';
+import type { StoredEvent, StoredSystemEvent, StoredTruapiEvent } from '../model/storedEvent.js';
+import { summariseSystemEvent } from '../model/summariseSystemEvent.js';
+import { getTagKind } from '../model/getTagKind.js';
 import { Explanation } from './Explanation.js';
 import { KeyValue, KeyValueList } from '../shared/KeyValueList.js';
 import { IdValue } from '../shared/IdBadge.js';
@@ -32,78 +32,87 @@ export function GroupDetail(props: {
   group: StoredEvent[];
   first: StoredEvent | undefined;
 }): JSX.Element {
-  const ev = untrack(() => props.event);
-  const duration = untrack(() => groupDuration(props.first, props.group));
+  const event = untrack(() => props.event);
+  const duration = untrack(() => formatGroupDuration(props.first, props.group));
   return (
     <>
       <KeyValueList testId="td-detail-head">
-        {ev.kind === 'truapi' ? (
-          <>
-            <KeyValue name="requestId">
-              <IdValue id={correlationKeyOf(ev)} />
-            </KeyValue>
-            <KeyValue name="product">{ev.productId ?? '(no id)'}</KeyValue>
-          </>
-        ) : (
-          <>
-            <KeyValue name="flowId">
-              <IdValue id={correlationKeyOf(ev)} />
-            </KeyValue>
-            <KeyValue name="source">{ev.source}</KeyValue>
-            <KeyValue name="layer">{ev.layer}</KeyValue>
-          </>
-        )}
-        <KeyValue name="group">{eventCountLabel(props.group.length)}</KeyValue>
+        {renderHeadFields(event)}
+        <KeyValue name="group">{formatEventCount(props.group.length)}</KeyValue>
         <Show when={duration}>{d => <KeyValue name="duration">{d()}</KeyValue>}</Show>
       </KeyValueList>
-      <For each={props.group}>
-        {m => {
-          const delta = memberDelta(m, props.first);
-          return m.kind === 'truapi' ? (
-            <TruapiMember member={m} delta={delta} />
-          ) : (
-            <SystemMember member={m} delta={delta} />
-          );
-        }}
-      </For>
+      <For each={props.group}>{member => renderMember(member, formatMemberDelta(member, props.first))}</For>
     </>
   );
 }
 
+function renderHeadFields(event: StoredEvent): JSX.Element {
+  switch (event.kind) {
+    case 'truapi':
+      return (
+        <>
+          <KeyValue name="requestId">
+            <IdValue id={getCorrelationKey(event)} />
+          </KeyValue>
+          <KeyValue name="product">{formatProductId(event.productId)}</KeyValue>
+        </>
+      );
+    case 'system':
+      return (
+        <>
+          <KeyValue name="flowId">
+            <IdValue id={getCorrelationKey(event)} />
+          </KeyValue>
+          <KeyValue name="source">{event.source}</KeyValue>
+          <KeyValue name="layer">{event.layer}</KeyValue>
+        </>
+      );
+  }
+}
+
+function renderMember(member: StoredEvent, delta: string | null): JSX.Element {
+  switch (member.kind) {
+    case 'truapi':
+      return <TruapiMember member={member} delta={delta} />;
+    case 'system':
+      return <SystemMember member={member} delta={delta} />;
+  }
+}
+
 function TruapiMember(props: { member: StoredTruapiEvent; delta: string | null }): JSX.Element {
-  const m = untrack(() => props.member);
-  const chain = chainDetail(m.tag, m.payload);
+  const member = untrack(() => props.member);
+  const chain = getChainDetail(member.tag, member.payload);
   return (
-    <div class={s['member']} data-testid="td-detail-member" data-seq={String(m.seq)}>
+    <div class={s['member']} data-testid="td-detail-member" data-seq={String(member.seq)}>
       <Stack stretch>
         <Inline>
-          <Timestamp at={m.receivedAt} />
-          <DirectionArrow direction={m.direction} />
-          <MethodTag kind={tagKind(m.tag)}>{m.tag}</MethodTag>
+          <Timestamp at={member.receivedAt} />
+          <DirectionArrow direction={member.direction} />
+          <MethodTag kind={getTagKind(member.tag)}>{member.tag}</MethodTag>
           <Latency text={props.delta} />
         </Inline>
         <ChainSummary chain={chain} />
         <ChainFields chain={chain} />
-        <Payload payload={m.payload} />
+        <Payload payload={member.payload} />
       </Stack>
     </div>
   );
 }
 
 function SystemMember(props: { member: StoredSystemEvent; delta: string | null }): JSX.Element {
-  const m = untrack(() => props.member);
+  const member = untrack(() => props.member);
   return (
-    <div class={s['member']} data-testid="td-detail-member" data-seq={String(m.seq)}>
+    <div class={s['member']} data-testid="td-detail-member" data-seq={String(member.seq)}>
       <Stack stretch>
         <Inline>
-          <Timestamp at={m.receivedAt} />
-          <LayerBadge layer={m.layer} />
-          <MethodTag kind="system">{m.event}</MethodTag>
+          <Timestamp at={member.receivedAt} />
+          <LayerBadge layer={member.layer} />
+          <MethodTag kind="system">{member.event}</MethodTag>
           <Latency text={props.delta} />
         </Inline>
-        <Summary text={summariseSystemEvent(m)} />
-        <Explanation event={m} />
-        <Payload payload={m.payload} />
+        <Summary text={summariseSystemEvent(member)} />
+        <Explanation event={member} />
+        <Payload payload={member.payload} />
       </Stack>
     </div>
   );

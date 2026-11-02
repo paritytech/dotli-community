@@ -3,9 +3,9 @@
 
 import type { JSX } from '@solidjs/web';
 import { StatusDot } from '@dotli/ui';
-import type { PhoneAsk } from '../../runtime/phone-methods.js';
+import type { PhoneAsk } from '../../runtime/phoneMethods.js';
 import { PhoneIllustration } from './PhoneIllustration.js';
-import { ASK_COPY } from './phone-ask-copy.js';
+import { ASK_COPY } from './phoneAskCopy.js';
 import s from './PhoneWaiting.module.css';
 
 /** Sends the user to Polkadot App and says the request waits for the phone. */

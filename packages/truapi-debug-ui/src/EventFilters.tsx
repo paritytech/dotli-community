@@ -1,39 +1,31 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Only edits the filter state. The list does the matching.
+// Only edits the filter state, and matches no event itself.
 
 import { createMemo } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { compileQuery, type DirectionFilter, type FilterState } from './model/filters.js';
+import { compileQuery } from './model/compileQuery.js';
+import { DIRECTION_FILTERS, type DirectionFilter, type FilterState } from './model/filterState.js';
+import { formatProductId } from './model/formatProductId.js';
 import { FilterBar, FilterChips, FilterCheck, FilterGroup, FilterInput, type FilterChip } from './shared/Filters.js';
 import { IncomingIcon } from './icons/IncomingIcon.js';
 import { OutgoingIcon } from './icons/OutgoingIcon.js';
 import s from './EventFilters.module.css';
 
-const DIRECTIONS: readonly FilterChip<DirectionFilter>[] = [
-  { value: 'both', label: 'both' },
-  { value: 'outgoing', label: 'out', icon: OutgoingIcon },
-  { value: 'incoming', label: 'in', icon: IncomingIcon },
-];
+const DIRECTION_CHIPS: Record<DirectionFilter, Omit<FilterChip<DirectionFilter>, 'value'>> = {
+  both: { label: 'both' },
+  outgoing: { label: 'out', icon: OutgoingIcon },
+  incoming: { label: 'in', icon: IncomingIcon },
+};
+
+const DIRECTIONS: readonly FilterChip<DirectionFilter>[] = DIRECTION_FILTERS.map(direction => ({
+  value: direction,
+  ...DIRECTION_CHIPS[direction],
+}));
 
 const ALL_PRODUCTS = '__all';
 const NO_PRODUCT_ID = '__anon';
-
-/** A chip value per product filter: every product, events with no product id, or one product. */
-function productChipValue(product: string | null | undefined): string {
-  if (product === undefined) {
-    return ALL_PRODUCTS;
-  }
-  return product ?? NO_PRODUCT_ID;
-}
-
-function productFilter(value: string): string | null | undefined {
-  if (value === ALL_PRODUCTS) {
-    return undefined;
-  }
-  return value === NO_PRODUCT_ID ? null : value;
-}
 
 const QUERY_TITLE = 'substring or /regex/';
 
@@ -47,12 +39,12 @@ export function EventFilters(props: {
   /** The log's own controls, at the row's end. */
   controls: JSX.Element;
 }): JSX.Element {
-  const update = (patch: Partial<FilterState>): void => {
+  function updateFilters(patch: Partial<FilterState>): void {
     props.onChange({ ...props.filters, ...patch });
-  };
+  }
   const productChips = createMemo((): FilterChip<string>[] => [
     { value: ALL_PRODUCTS, label: 'all' },
-    ...props.products.map(product => ({ value: productChipValue(product ?? null), label: product ?? '(no id)' })),
+    ...props.products.map(product => ({ value: toProductChipValue(product ?? null), label: formatProductId(product) })),
   ]);
 
   return (
@@ -64,7 +56,7 @@ export function EventFilters(props: {
           label="TrUAPI"
           checked={props.filters.showTruapi}
           onChange={checked => {
-            update({ showTruapi: checked });
+            updateFilters({ showTruapi: checked });
           }}
         />
         <FilterCheck
@@ -73,7 +65,7 @@ export function EventFilters(props: {
           label="System"
           checked={props.filters.showSystem}
           onChange={checked => {
-            update({ showSystem: checked });
+            updateFilters({ showSystem: checked });
           }}
         />
       </FilterGroup>
@@ -83,7 +75,7 @@ export function EventFilters(props: {
           chips={DIRECTIONS}
           selected={props.filters.direction}
           onSelect={direction => {
-            update({ direction });
+            updateFilters({ direction });
           }}
         />
       </FilterGroup>
@@ -91,9 +83,9 @@ export function EventFilters(props: {
         <FilterChips
           testId="td-product-chip"
           chips={productChips()}
-          selected={productChipValue(props.filters.product)}
+          selected={toProductChipValue(props.filters.product)}
           onSelect={value => {
-            update({ product: productFilter(value) });
+            updateFilters({ product: toProductFilter(value) });
           }}
         />
       </FilterGroup>
@@ -105,7 +97,7 @@ export function EventFilters(props: {
           title={QUERY_TITLE}
           invalid={compileQuery(props.filters.tagQuery).invalid}
           onInput={tagQuery => {
-            update({ tagQuery });
+            updateFilters({ tagQuery });
           }}
         />
       </FilterGroup>
@@ -117,11 +109,26 @@ export function EventFilters(props: {
           title={QUERY_TITLE}
           invalid={compileQuery(props.filters.excludeQuery).invalid}
           onInput={excludeQuery => {
-            update({ excludeQuery });
+            updateFilters({ excludeQuery });
           }}
         />
       </FilterGroup>
       {props.controls}
     </FilterBar>
   );
+}
+
+/** A chip value per product filter: every product, events with no product id, or one product. */
+function toProductChipValue(product: string | null | undefined): string {
+  if (product === undefined) {
+    return ALL_PRODUCTS;
+  }
+  return product ?? NO_PRODUCT_ID;
+}
+
+function toProductFilter(value: string): string | null | undefined {
+  if (value === ALL_PRODUCTS) {
+    return undefined;
+  }
+  return value === NO_PRODUCT_ID ? null : value;
 }

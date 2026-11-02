@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
-import type { DotliAuthState } from '../runtime/session/auth-state.js';
-import type { TruapiSessionUiState } from '../runtime/session/session-state.js';
+import type { DotliAuthState } from '../runtime/session/types.js';
+import type { TruapiSessionUiState } from '../runtime/session/parseUiStateCache.js';
 import type { Account } from '../components/account/account.js';
 import { useAccount } from './account.js';
 
@@ -15,11 +15,14 @@ const PAIRING: DotliAuthState = { tag: 'Pairing', deeplink: 'polkadotapp://pair?
 /** The page's stores, as boot left them, and an account read from them under a fresh owner. */
 function mount(auth: DotliAuthState, loggedIn = auth.tag === 'Connected') {
   const stores = {
-    auth: createSyncStore<DotliAuthState>('account-test-auth', auth),
-    loggedIn: createSyncStore('account-test-logged-in', loggedIn),
-    walletMode: createSyncStore<{ mode: 'app' | 'local' }>('account-test-wallet-mode', { mode: 'app' }),
-    signingOut: createSyncStore('account-test-signing-out', false),
-    elsewhere: createSyncStore('account-test-elsewhere', false),
+    auth: createSyncStore<DotliAuthState>({ name: 'account-test-auth', initial: auth }),
+    loggedIn: createSyncStore({ name: 'account-test-logged-in', initial: loggedIn }),
+    walletMode: createSyncStore<{ mode: 'app' | 'local' }>({
+      name: 'account-test-wallet-mode',
+      initial: { mode: 'app' },
+    }),
+    signingOut: createSyncStore({ name: 'account-test-signing-out', initial: false }),
+    elsewhere: createSyncStore({ name: 'account-test-elsewhere', initial: false }),
   };
   const { account, dispose } = createRoot(d => ({ account: useAccount(stores), dispose: d }));
   flush();

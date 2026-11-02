@@ -101,7 +101,7 @@ jobs:
     # Over Playwright's 30 min globalTimeout, so Playwright cuts a stuck run off with diagnostics.
     timeout-minutes: 35
     env:
-      # Must match the host's `defaultNetwork()`.
+      # Must match the host's `getDefaultNetwork()`.
       SIGNING_HOST_NETWORK: paseo-next-v2
       # The CLI self-updates by default, which would make CI runs nondeterministic.
       TRUAPI_HOST_NO_UPDATE: '1'

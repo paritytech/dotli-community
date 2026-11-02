@@ -5,9 +5,9 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
 import { byId, byTestId } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
-import { productPill, setShield, storyShieldState } from '../../testing/stories/shield-fixtures.js';
-import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verification-shield.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
+import { productPill, setShield, storyShieldState } from '../../testing/stories/shieldFixtures.js';
+import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from './verificationShieldIds.js';
 import { VerificationShield } from './VerificationShield.js';
 
 const shown = openSurface({ surface: 'verification-tooltip' });

@@ -22,7 +22,7 @@ import type {
   PermissionGroup,
   PermissionStatus,
   PermissionTargets,
-} from '../../runtime/permissions.js';
+} from '../../runtime/permissionPolicy.js';
 import { PermissionRow } from './PermissionRow.js';
 import { PresetPicker } from './PresetPicker.js';
 import { presetOf, SECURE } from './presets.js';
@@ -40,7 +40,7 @@ const NOTICES: Record<PermissionsNotice, string> = {
   unavailable: 'Permissions are unavailable for this app.',
 };
 
-export interface PermissionsContentProps {
+export type PermissionsContentProps = {
   /** Every permission the menu offers, in the order `statuses` follows. */
   permissions: readonly MenuPermission[];
   notice: Accessor<PermissionsNotice | undefined>;
@@ -52,7 +52,7 @@ export interface PermissionsContentProps {
   onOpen: () => void;
   /** Writes `targets` for the app. Resolves with the permissions that still failed, and never rejects. */
   onChange: (targets: PermissionTargets) => Promise<readonly EnforceablePermissionName[]>;
-}
+};
 
 /** The permissions popover's body, its own chunk. */
 export function PermissionsContent(props: PermissionsContentProps): JSX.Element {

@@ -15,10 +15,10 @@ import s from './PermissionsItem.module.css';
 // Its own chunk, which the popover loads while the browser is idle.
 const Permissions = lazy(loadPermissionsContent, { export: 'PermissionsContent' });
 
-export interface PermissionsItemProps extends PermissionsContentProps {
+export type PermissionsItemProps = {
   /** The app has a permission granted, which the button marks. */
   hasGrants: Accessor<boolean>;
-}
+} & PermissionsContentProps;
 
 /** The permissions button and its popover. Its More row carries the grants mark while the app has a grant. */
 export function PermissionsItem(props: PermissionsItemProps): JSX.Element {

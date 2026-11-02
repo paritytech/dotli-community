@@ -27,7 +27,7 @@ ENV VITE_NETWORKS=paseo-next-v2,previewnet \
 # package version and "dev".
 ARG RELEASE_VERSION
 ARG RELEASE_COMMIT
-RUN if [ -n "${RELEASE_VERSION:-}" ]; then node scripts/set-version.ts "$RELEASE_VERSION"; fi \
+RUN if [ -n "${RELEASE_VERSION:-}" ]; then node scripts/setVersion.ts "$RELEASE_VERSION"; fi \
  && if [ -n "${RELEASE_COMMIT:-}" ]; then export VITE_COMMIT_SHA="$RELEASE_COMMIT"; fi \
  && npm run build:prod
 

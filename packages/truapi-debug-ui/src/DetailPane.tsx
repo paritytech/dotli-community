@@ -6,17 +6,22 @@
 
 import { createMemo, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from './model/event-store.js';
+import type { EventStore } from './model/createEventStore.js';
+import { getCorrelationKey } from './model/getCorrelationKey.js';
+import type { EventSeq, StoredEvent } from './model/storedEvent.js';
 import { GroupDetail } from './detail/GroupDetail.js';
 import { SingleDetail } from './detail/SingleDetail.js';
 import type { PanelView } from './ViewTabs.js';
 import { EmptyState } from './shared/EmptyState.js';
 import { Pane } from './shared/Pane.js';
 
+/** One event's detail, or its whole group's. */
+type DetailKind = 'single' | 'group';
+
 type Content =
   | { kind: 'empty'; message: string }
   | {
-      kind: 'single' | 'group';
+      kind: DetailKind;
       event: StoredEvent;
       group: StoredEvent[];
       first: StoredEvent | undefined;
@@ -24,22 +29,11 @@ type Content =
 
 type Snapshot = Content & { revision: number };
 
-function contentOf(store: EventStore, selectedSeq: EventSeq | null, view: PanelView): Content {
-  if (selectedSeq === null) {
-    return { kind: 'empty', message: 'Select an event on the left to inspect its payload.' };
-  }
-  const event = store.getBySeq(selectedSeq);
-  if (event === undefined) {
-    return { kind: 'empty', message: 'Selected event was evicted from the ring buffer.' };
-  }
-  const key = correlationKeyOf(event);
-  return {
-    kind: view === 'timeline' ? 'group' : 'single',
-    event,
-    group: store.eventsInGroup(key),
-    first: store.firstInGroup(key),
-  };
-}
+type Params = {
+  store: EventStore;
+  selectedSeq: EventSeq | null;
+  view: PanelView;
+};
 
 export function DetailPane(props: {
   revision: number;
@@ -52,26 +46,57 @@ export function DetailPane(props: {
   // The revision is kept in the snapshot because a minifier drops an unused property read, and with it the dependency.
   const snapshot = createMemo((): Snapshot => {
     const revision = props.revision;
-    return { revision, ...untrack(() => contentOf(props.store, props.selectedSeq, props.view)) };
+    return {
+      revision,
+      ...untrack(() => readContent({ store: props.store, selectedSeq: props.selectedSeq, view: props.view })),
+    };
   });
-  const selectPair = (seq: EventSeq): void => {
+  function selectPair(seq: EventSeq): void {
     props.onSelectPair(seq);
-  };
+  }
 
-  const render = (snap: Snapshot): JSX.Element => {
-    switch (snap.kind) {
+  function renderDetail(detail: Snapshot): JSX.Element {
+    switch (detail.kind) {
       case 'empty':
-        return <EmptyState testId="td-detail-empty">{snap.message}</EmptyState>;
+        return <EmptyState testId="td-detail-empty">{detail.message}</EmptyState>;
       case 'group':
-        return <GroupDetail event={snap.event} group={snap.group} first={snap.first} />;
+        return <GroupDetail event={detail.event} group={detail.group} first={detail.first} />;
       case 'single':
-        return <SingleDetail event={snap.event} group={snap.group} first={snap.first} onSelectPair={selectPair} />;
+        return (
+          <SingleDetail event={detail.event} group={detail.group} first={detail.first} onSelectPair={selectPair} />
+        );
     }
-  };
+  }
 
   return (
     <Pane testId="td-detail" label="Event detail" hidden={props.hidden} padded>
-      {render(snapshot())}
+      {renderDetail(snapshot())}
     </Pane>
   );
+}
+
+function readContent({ store, selectedSeq, view }: Params): Content {
+  if (selectedSeq === null) {
+    return { kind: 'empty', message: 'Select an event on the left to inspect its payload.' };
+  }
+  const event = store.getBySeq(selectedSeq);
+  if (event === undefined) {
+    return { kind: 'empty', message: 'Selected event was evicted from the ring buffer.' };
+  }
+  const key = getCorrelationKey(event);
+  return {
+    kind: getDetailKind(view),
+    event,
+    group: store.eventsInGroup(key),
+    first: store.firstInGroup(key),
+  };
+}
+
+function getDetailKind(view: PanelView): DetailKind {
+  switch (view) {
+    case 'list':
+      return 'single';
+    case 'timeline':
+      return 'group';
+  }
 }

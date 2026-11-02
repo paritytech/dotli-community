@@ -5,22 +5,22 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import type { PermissionStatus } from '../../runtime/permissions.js';
-import { expectPhone, openSurface } from '../../testing/stories/topbar-frame.js';
+import type { PermissionStatus } from '../../runtime/permissionPolicy.js';
+import { expectPhone, openSurface } from '../../testing/stories/topbarFrame.js';
 import { GroupFrame, moreRow, openMore } from '../../testing/stories/frames.js';
 import {
   givenApp,
   resetStoryPermissions,
   STORY_PERMISSIONS,
   storyPermissions,
-} from '../../testing/stories/permissions-fixtures.js';
+} from '../../testing/stories/permissionsFixtures.js';
 import {
   DEFAULT_SETTINGS,
   givenSettings,
   resetStorySettings,
   storySettings,
-} from '../../testing/stories/settings-fixtures.js';
-import { resetStoryNetwork, storyNetwork } from '../../testing/stories/network-fixtures.js';
+} from '../../testing/stories/settingsFixtures.js';
+import { resetStoryNetwork, storyNetwork } from '../../testing/stories/networkFixtures.js';
 import { NetworkItem } from '../chains/NetworkItem.js';
 import { PermissionsItem } from '../permissions/PermissionsItem.js';
 import { SettingsItem } from '../settings/SettingsItem.js';

@@ -19,6 +19,18 @@ timeouts.
   trusts it, and a production build takes it for any other domain.
 - The network table holds per-network service config. The active network is part of the settings, which the protocol
   frame and the sandbox set from their URL.
+- A build made for it takes a runtime config from a global a blocking script sets: endpoint overrides for the network
+  table, the enabled networks and the base domain. One module owns the build flag and the global, and a build without
+  the flag never reads the global. A value of the wrong shape, an unknown network or a field no override may change
+  throws and stops the boot, since a silently ignored override means running against the public chain. The module has
+  two readers:
+  - The network config reader parses the global once, where it enters. The global must be an object. A present `enabled`
+    must be a non-empty list of network names and replaces the build's list. A present `networks` must be an object of
+    per-network patches, which may change only a known network's label and endpoints.
+  - The base domain reader takes `baseDomain`, which must be a hostname of at least two segments that the page's
+    hostname ends with.
+- What enters from storage, the link or the runtime config is checked by a type guard where it enters, and a stored or
+  linked value this build does not know falls back to the default.
 - Backend (`smoldot-direct`, `smoldot-shared-worker`, `rpc-gateway`) and cache switches are settings beside the network.
   One pure function resolves them from the link, the cross-subdomain store and this origin's storage. A page sets its
   settings once at boot and the getters return them. A change reloads the page, so nothing sets them after. The resolver
@@ -38,32 +50,32 @@ timeouts.
 - Environment: `BASE_DOMAIN`, `SITE_ID`, `DEBUG`, `DEV_HOST_PORT`, `DEV_PROTOCOL_PORT`, `DEV_SANDBOX_PORT`, `LOCAL_ROOT`
   (the page's local root, or `null` when deployed), `isLocalhost` (whether it has one), `isSandboxOrigin`, `TIMEOUTS`,
   the waits more than one package keeps in step.
-- Origins: `hostPlace(hostname, root)` (the root or a subdomain is the `site`, `app.` and below a product, anything else
-  `foreign`), `localRootOf(hostname, dev)`, the local root a host sits under or `null`, among the roots a build trusts
-  (the page's own build unless `dev` says), for the checks that admit dotli's own pages.
-  `isSiteOrigin(origin, baseDomain, dev)`, whether an origin is dotli's own page: the root or a subdomain, never a
+- Origins: `getHostPlace(hostname, root)` (the root or a subdomain is the `site`, `app.` and below a product, anything
+  else `foreign`), `getLocalRoot(hostname, { dev })`, the local root a host sits under or `null`, among the roots a
+  build trusts (the page's own build unless `dev` says), for the checks that admit dotli's own pages.
+  `isSiteOrigin(origin, baseDomain, { dev })`, whether an origin is dotli's own page: the root or a subdomain, never a
   product, over https unless under a trusted local root.
-- Networks: `NetworkName`, `getNetwork`, `getEnabledNetworks`, `defaultNetwork` (the first enabled one),
-  `getActiveServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role helpers (`CHAIN_ROLES`,
-  `chainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
+- Networks: `NETWORK_NAMES` and its union `Network`, `getNetwork`, `getEnabledNetworks`, `getDefaultNetwork` (the first
+  enabled one), `getActiveServicesConfig`, `getActiveTldSuffix`, `withActiveTld`, the chain role helpers (`CHAIN_ROLES`,
+  `getChainRoleForGenesis`, `getActiveChainRoles`) and the gateway and genesis hash readers.
 - Settings: `getSettings`, `setSettings`, `subscribeSettings`, `getBackend`, `parseBackend`, `getCacheSettings`,
-  `isSharedWorkerAvailable`, `isVerifiedSession`, `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`,
-  `setActiveNetwork`, `writeLocalSettings`, `sharedSettingsOf`, `hasStoredSettings`, `ResolvedSettings`, `Settings`,
-  `SharedSettings`.
+  `isSharedWorkerAvailable({ scope })` (the page's global unless `scope` says), `isVerifiedSession`,
+  `parseSettingsFromSearch`, `writeSettingsToSearch`, `resolveSettings`, `setActiveNetwork`, `writeLocalSettings`,
+  `getSharedSettings`, `hasStoredSettings`, `ResolvedSettings`, `Settings`, `SharedSettings`.
 
 ### `@dotli/config/fixed`
 
 What a context that never receives the runtime network config may read: `DEBUG`, `CHAIN_ROLES`, `ChainRole`,
-`chainRoleForGenesis`, `getActiveFixedServicesConfig`, `FixedServicesConfig`, `getActiveSupportedGenesisHashes`,
+`getChainRoleForGenesis`, `getActiveFixedServicesConfig`, `FixedServicesConfig`, `getActiveSupportedGenesisHashes`,
 `isValidNetwork`, `Network`. A name joins only once it reads no overridable field.
 
 ### `@dotli/config/local-roots`
 
 `LOCAL_ROOTS`, the roots the local servers answer under, `LOOPBACK_ROOT`, the loopback one among them, and
-`trustedLocalRoots(dev)`, the ones a build takes for the root domain: `local.host` only in a development build, as it is
-a public name. It imports nothing, so a page, a build config and a script Node runs directly all load it.
+`getTrustedLocalRoots(dev)`, the ones a build takes for the root domain: `local.host` only in a development build, as it
+is a public name. It imports nothing, so a page, a build config and a script Node runs directly all load it.
 
 ### `@dotli/config/networks`
 
-The network table for Node tooling, which cannot load the bare entry: `NETWORK_NAME_TO_SERVICES_CONFIG`, `NetworkName`,
-`isValidNetwork`, `Network`. It reads no page state at load.
+The network table for Node tooling, which cannot load the bare entry: `NETWORK_NAME_TO_SERVICES_CONFIG`,
+`NETWORK_NAMES`, `isValidNetwork`, `Network`. It reads no page state at load.

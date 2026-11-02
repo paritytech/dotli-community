@@ -3,10 +3,10 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { Anchored } from './anchored.js';
+import type { Anchored } from './createAnchored.js';
 import { BottomSheet, SHEET_EXIT_MS, type BottomSheetProps } from './BottomSheet.js';
 import { FloatingLayer, type Placement } from './FloatingLayer.js';
-import { createPresence } from './presence.js';
+import { createPresence } from './createPresence.js';
 
 /** A FloatingLayer, or a BottomSheet on a phone whose content stays mounted until its slide out has played. */
 export function AnchoredContent(props: {
@@ -17,17 +17,20 @@ export function AnchoredContent(props: {
   testId?: string | undefined;
   trapFocus?: boolean | undefined;
   onOpened: (surface: HTMLElement) => void;
-  onKeyDown?: ((ev: KeyboardEvent, surface: HTMLElement) => void) | undefined;
+  onKeyDown?: ((event: KeyboardEvent, surface: HTMLElement) => void) | undefined;
   children: JSX.Element;
   sheetTestId: string;
   sheetBody?: BottomSheetProps['body'];
   sheetClass?: string | undefined;
-  onSheetPointerMove?: ((ev: PointerEvent) => void) | undefined;
+  onSheetPointerMove?: ((event: PointerEvent) => void) | undefined;
   sheetFocus: (wrapper: HTMLDivElement) => HTMLElement | undefined;
   sheetChildren: (wrapper: () => HTMLDivElement | undefined) => JSX.Element;
 }): JSX.Element {
   let wrapper: HTMLDivElement | undefined;
-  const sheetPresence = createPresence(() => props.state.sheet() && props.state.open(), SHEET_EXIT_MS);
+  const sheetPresence = createPresence({
+    open: () => props.state.sheet() && props.state.open(),
+    exitMs: SHEET_EXIT_MS,
+  });
   return (
     <Show
       when={props.state.sheet()}
@@ -49,8 +52,8 @@ export function AnchoredContent(props: {
           onOpened={surface => {
             props.onOpened(surface);
           }}
-          onKeyDown={(ev, surface) => {
-            props.onKeyDown?.(ev, surface);
+          onKeyDown={(event, surface) => {
+            props.onKeyDown?.(event, surface);
           }}
         >
           {props.children}
@@ -69,12 +72,12 @@ export function AnchoredContent(props: {
         initialFocus={() => (wrapper === undefined ? undefined : props.sheetFocus(wrapper))}
       >
         <div
-          ref={el => {
-            wrapper = el;
+          ref={element => {
+            wrapper = element;
           }}
           class={props.sheetClass}
           data-sheet=""
-          onPointerMove={ev => props.onSheetPointerMove?.(ev)}
+          onPointerMove={event => props.onSheetPointerMove?.(event)}
         >
           <Show when={sheetPresence()} keyed>
             {(_opening: number) => props.sheetChildren(() => wrapper)}

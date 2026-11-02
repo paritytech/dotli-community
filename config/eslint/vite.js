@@ -163,6 +163,7 @@ export const config = defineConfig([
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/no-confusing-void-expression': 'error',
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
       'no-console': 'error',
       eqeqeq: ['error', 'always'],
       'no-var': 'error',

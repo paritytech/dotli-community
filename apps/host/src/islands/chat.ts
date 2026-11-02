@@ -2,33 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, onCleanup } from 'solid-js';
-import type { ChatStore } from '../runtime/chat/store.js';
-import { productStore } from '../runtime/state/product.js';
+import type { ChatStore } from '../runtime/chat/createChatStore.js';
+import { productState } from '../runtime/state/productState.js';
 import { useStore } from '@dotli/ui';
-import { setChatWidth } from '../product-frame-layout.js';
+import { productFrameLayout } from '../createProductFrameLayout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';
 import type { ChatDockProps } from '../components/chat/ChatDock.js';
-import {
-  backToChatRooms,
-  chatButtonVisible,
-  chatPanelStore,
-  clearActiveChatRoom,
-  consumeComposerFocus,
-  currentChatProductId,
-  markFollowedRoomSeen,
-  openChatRoom,
-  persistChatPanelWidth,
-  setChatComposerError,
-  setChatPanelElement,
-  setChatPanelOpen,
-  setChatPanelWidth,
-} from '../state/chat-panel.js';
+import { chatPanelState } from '../state/chatPanelState.js';
 
 /** The open panel's view of `chat`, read only while the panel body lives. */
 function openFeed(chat: ChatStore): ChatFeed {
-  const productId = useStore(chatPanelStore, currentChatProductId);
-  const loadId = useStore(productStore, state => state.loadId);
-  onCleanup(markFollowedRoomSeen(chat.view));
+  const productId = useStore(chatPanelState.store, chatPanelState.getCurrentProductId);
+  const loadId = useStore(productState.store, state => state.loadId);
+  onCleanup(chatPanelState.markFollowedRoomSeen(chat.view));
   return {
     contacts: useStore(chat.view, state => state.contacts),
     contactsFailed: useStore(chat.view, state => state.contactsFailed),
@@ -55,31 +41,38 @@ function openFeed(chat: ChatStore): ChatFeed {
 /** What the chat panel shows of the page's chat state, for an island's own lifetime. */
 function useChatConversation(chat: ChatStore): ChatConversation {
   // Slices, so a width drag, a topbar toggle or the composer-focus flag never re-runs the rows.
-  const label = useStore(chatPanelStore, state => state.label);
-  const displayName = useStore(productStore, state => (state.status === 'loaded' ? state.displayName : undefined));
+  const label = useStore(chatPanelState.store, state => state.label);
+  const displayName = useStore(productState.store, state =>
+    state.status === 'loaded' ? state.displayName : undefined,
+  );
+
+  function claimComposerFocus(): boolean {
+    if (!chatPanelState.store.get().focusComposer) {
+      return false;
+    }
+    chatPanelState.consumeComposerFocus();
+    return true;
+  }
+
+  function send(roomId: string, text: string): Promise<void> {
+    const productId = chatPanelState.getCurrentProductId();
+    // The panel only opens for a loaded product, so there is always one while it can send.
+    return productId === null ? Promise.resolve() : chat.postUserMessage({ productId, roomId, text });
+  }
+
   return {
-    loggedIn: useStore(chatPanelStore, state => state.loggedIn),
+    loggedIn: useStore(chatPanelState.store, state => state.loggedIn),
     productName: () => displayName() ?? label(),
-    activeRoomId: useStore(chatPanelStore, state => state.activeRoomId),
-    unreadByRoom: useStore(chatPanelStore, state => state.unreadByRoom),
-    composerError: useStore(chatPanelStore, state => state.composerError),
+    activeRoomId: useStore(chatPanelState.store, state => state.activeRoomId),
+    unreadByRoom: useStore(chatPanelState.store, state => state.unreadByRoom),
+    composerError: useStore(chatPanelState.store, state => state.composerError),
     openFeed: () => openFeed(chat),
-    openRoom: openChatRoom,
-    backToRooms: backToChatRooms,
-    roomGone: clearActiveChatRoom,
-    claimComposerFocus: () => {
-      if (!chatPanelStore.get().focusComposer) {
-        return false;
-      }
-      consumeComposerFocus();
-      return true;
-    },
-    setComposerError: setChatComposerError,
-    send: (roomId, text) => {
-      const productId = currentChatProductId();
-      // The panel only opens for a loaded product, so there is always one while it can send.
-      return productId === null ? Promise.resolve() : chat.postUserMessage(productId, roomId, text);
-    },
+    openRoom: chatPanelState.openRoom,
+    backToRooms: chatPanelState.backToRooms,
+    roomGone: chatPanelState.clearActiveRoom,
+    claimComposerFocus,
+    setComposerError: chatPanelState.setComposerError,
+    send,
     actions: chat,
   };
 }
@@ -88,9 +81,12 @@ function useChatConversation(chat: ChatStore): ChatConversation {
  * The docked panel's props, for an island's own lifetime. It keeps the product frame clear of the open panel through
  * `reserveRight`, which takes the px the panel covers at the page's right edge.
  */
-export function useChatDock(chat: ChatStore, reserveRight: (px: number) => void = setChatWidth): ChatDockProps {
-  const open = useStore(chatPanelStore, state => state.open);
-  const width = useStore(chatPanelStore, state => state.width);
+export function useChatDock(
+  chat: ChatStore,
+  reserveRight: (px: number) => void = productFrameLayout.setChatWidth,
+): ChatDockProps {
+  const open = useStore(chatPanelState.store, state => state.open);
+  const width = useStore(chatPanelState.store, state => state.width);
   createEffect(
     () => (open() ? width() : 0),
     (px, previous) => {
@@ -102,14 +98,14 @@ export function useChatDock(chat: ChatStore, reserveRight: (px: number) => void 
   return {
     open,
     width,
-    topbarHidden: useStore(chatPanelStore, state => !state.topbarVisible),
-    available: useStore(chatPanelStore, chatButtonVisible),
+    topbarHidden: useStore(chatPanelState.store, state => !state.topbarVisible),
+    available: useStore(chatPanelState.store, chatPanelState.isButtonVisible),
     onClose: () => {
-      setChatPanelOpen(false);
+      chatPanelState.setOpen(false);
     },
-    onResize: setChatPanelWidth,
-    onResizeEnd: persistChatPanelWidth,
+    onResize: chatPanelState.setWidth,
+    onResizeEnd: chatPanelState.persistWidth,
     conversation: useChatConversation(chat),
-    handOver: setChatPanelElement,
+    handOver: chatPanelState.setElement,
   };
 }

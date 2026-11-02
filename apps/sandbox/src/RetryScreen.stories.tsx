@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
 import { showError } from '@dotli/ui';
-import { showRetryScreen } from './retry-screen.js';
+import { showRetryScreen } from './showRetryScreen.js';
 
 // The screens mount their own root, so each play shows one in the story's `#app` as the sandbox page does.
 
@@ -41,7 +41,7 @@ export const RetryScreenReplacesErrorPage: Story = {
     const canvas = within(canvasElement);
     await step('As a visitor whose load failed, retrying swaps the error page for the retry screen', async () => {
       // Given
-      showError('Failed to load content', 'd', () => undefined);
+      showError('Failed to load content', { detail: 'd', action: () => undefined });
 
       // When
       showRetryScreen();

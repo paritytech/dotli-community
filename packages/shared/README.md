@@ -10,6 +10,7 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - Owns generic helpers with no owner of their own: error copy, hex, byte sizes, timing, a timeout, abort, web storage
   that never throws, event listening with its own stop, the IndexedDB callbacks as promises and the wipe of an origin's
   stores.
+- Owns the wire constants several packages share, such as the marker on the answers of a halted chain.
 - Owns no page state, no dotNS rules, no metrics, no UI and no chain access. The log sink is bound from outside, and
   listener errors are reported through callbacks the caller passes in.
 
@@ -18,15 +19,15 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - One async task pool is the place for queueing, bounded concurrency, retries and abort. Callers name a pool and keep
   their task idempotent instead of hand-rolling in-flight flags.
 - A module that waits takes `Timers`, the page's own by default, which read the globals at each call. A spec passes
-  `manualTimers` and moves time itself, so it fakes no globals.
+  `createManualTimers()` and moves time itself, so it fakes no globals.
 - The sync store imports no Solid. Notifications are synchronous, and every store registers a reset so tests can restore
   all of them at once. It stays off Solid so boot-path code does not ship Solid's core.
 - A listener set delivers a value to every listener in order. A value emitted during delivery waits for the round in
   progress, and a listener that throws is reported through a callback while the others still hear the value. Each owner
   passes its own report.
-- IndexedDB's callbacks become promises in one helper: an open that rejects when an older tab blocks the upgrade, a
+- IndexedDB's callbacks become promises, one helper each: an open that rejects when an older tab blocks the upgrade, a
   request, a transaction that resolves once it commits and rejects on an abort, and a delete that rejects when a
-  connection blocks it.
+  connection blocks it past its timeout.
 - An origin wipe empties the databases, caches and service workers of one origin, each whatever happened to the one
   before, and rejects naming every part it left behind. A browser that cannot list its databases fails that part.
 - Web storage that the browser blocks or that is full reads as empty and drops writes, in one adapter, so no module
@@ -36,11 +37,15 @@ listener set, the sync store, the status cell and a few formatting helpers.
 - A lazy load runs one load at a time and keeps what it loaded for every later caller. A failed load rejects the caller
   that ran it and is not kept, so the next caller loads again, and only the first failure is passed to the caller's
   report hook.
+- A shared run begins with its first join and ends with its last stop or an `end`. A stop left over from an ended run
+  does nothing, so a reset never ends a later run.
 - A status cell is the status a layer publishes upward, over one listener set. Setting an equal value is ignored.
 - A timeout counts only time the page runs. A timer that fires seconds after it was due means the page was frozen, as a
-  backgrounded phone tab is, and the work with it, so the wait starts its budget again.
+  backgrounded phone tab is, and the work with it, so the wait starts its budget again. A caller's signal ends the wait
+  at once and leaves the work running.
 - The logger writes to the console only in debug builds, read from the `VITE_APP_DEBUG` build flag at load so the first
-  log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`.
+  log of every entry point honours it. Warn, error and event always reach the sink bound with `bindLogSink`, as one
+  entry object each.
 - Error helpers turn any thrown value into a string or a chain for wire formats, logs and Sentry.
 - A listener on an event target hands back its stop, and the page turning visible is one listener on its document, so no
   module keeps a handler only to remove it.
@@ -49,31 +54,53 @@ listener set, the sync store, the status cell and a few formatting helpers.
 
 ### `@dotli/shared`
 
-- Concurrency and state: `createAsyncTaskPool`, `createLazyLoad`, `createListenerSet`, `ListenerSet`,
-  `ListenerSetOptions`, `createSyncStore`, `StoreListenerError`, `registerStoreStateReset`, `shallowEqual`,
-  `createStatusCell`, `untilStatus` (a wait on a status cell until a verdict, which settles at once on the status there
-  is now and leaves through a signal), `storeStatus` (a sync store read as a status, for `untilStatus`), `toAbortError`,
-  `createPendingReplies`, `PendingReplies`, `deferred` (a promise with its resolve and reject).
-- Logging and errors: `log`, `bindLogSink`, `serializeError`, `fullErrorChain`, `errorName`, `errorMessage`, `toError`,
-  `named`, `endpointHost`, `gatewayUnreachable`.
-- Storage: `safeStorage`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`, and `ListableStorage`, which adds
-  `keys` and is what `safeStorage` returns.
-- IndexedDB: `openIdb`, `idbRequest`, `idbTransaction`, `deleteIdb`.
-- Events: `listen(target, type, handler)`, `onDocumentVisible(doc, handler)` and `onPageReturn(doc, win, handler)`
-  (focus or turning visible), each returning its stop, and `VisibilitySource` (a document as far as its visibility
-  goes).
-- Origin wipe: `wipeOriginStores` (which keeps the databases it is told to), `OriginWipeError`, `OriginStores`,
-  `OriginWipePart`.
+- Concurrency and state: `createAsyncTaskPool`, `AsyncTaskPool`, `createLazyLoad({ load, onFirstMiss? })`,
+  `createListenerSet`, `ListenerSet`, `createSyncStore({ name, initial, equals?, onListenerError? })`, `ReadableStore`,
+  `SyncStore`, `StoreListenerError`, `registerStoreStateReset`, `isShallowEqual`,
+  `createStatusCell({ initial, onListenerError })`, `StatusCell`, `waitForStatus(cell, verdict, { signal? })` (a wait on
+  a status cell until a verdict, which settles at once on the status there is now and leaves through a signal),
+  `createStoreStatus` (a sync store read as a status, for `waitForStatus`), `toAbortError`, `createPendingReplies` (its
+  `wait(id, { meta? })`, `getMeta(id)` and `listIds()`), `PendingReplies`, `createDeferred()` (a promise with its
+  resolve and reject), `createSharedRun({ begin })` (one run shared by every `join`, each with its own stop, ended by
+  the last stop or `end`).
+- Logging and errors: `log` (its `createChild(attrs)` is a logger that adds `attrs` to each entry), `LogLevel`,
+  `bindLogSink` (its sink is `{ emit(entry) }`), `LogEntry` (`{ level, message, attrs?, args? }`), `serializeError`,
+  `combineErrors(errors, message)` (the one error, or an `AggregateError` of several), `getErrorChain`, `getErrorName`,
+  `getErrorMessage`, `toError`, `setErrorName` (sets an error's `name` in place and returns it), `getEndpointHost`,
+  `describeGatewayUnreachable`.
+- Storage: `createSafeStorage(open)`, `pageLocalStorage`, `pageSessionStorage`, `SafeStorage`, and `ListableStorage`,
+  which adds `keys` and is what `createSafeStorage` returns.
+- IndexedDB: `openIdb({ factory, name, version, upgrade })` (rejects with `IdbOpenBlockedError`, which carries the
+  `databaseName`, when an older tab blocks the upgrade), `waitForIdbRequest(request)`,
+  `runIdbTransaction({ db, stores, mode, body })`, `deleteIdb(factory, name, { timeoutMs?, timers? })`.
+- Events: `listen({ target, type, handler })`, `listenForDocumentVisible(visibility, handler)` and
+  `listenForPageReturn({ visibility, target, handler })` (focus or turning visible), each returning its stop, and
+  `VisibilitySource` (a document as far as its visibility goes).
+- Origin wipe: `wipeOriginStores(stores, { keepDatabases? })` (which keeps the databases it is told to),
+  `OriginWipeError`, `OriginStores`, `OriginWipePart`.
+- Shape guards: `isRecord(value)` (a non-null, non-array object) and `isStringArray(value)` (an array whose every item
+  is a string), both type guards for a value read from an untyped source.
+- Typed keys: `getKeys(record)`, a record's own enumerable string keys typed by the record, so no caller casts what
+  `Object.keys` returns.
 - Byte counts as people read them: `formatSize`, `formatRate`.
-- Encoding and timing: `bytesEqual`, `blake2b`, `toHex`, `fromHex`, `dur`, `elapsed`, `withTimeout`, `sleep`,
-  `randomId`, `noop`, `Timers`, `realTimers`.
+- Types: `Branded<Value, Name>`, a `Value` the compiler tells apart from others of its base type, made only by the
+  constructor that casts to it.
+- Encoding and timing: `areBytesEqual(left, right)`, `hashBlake2b(data, outputBytes)`, `toHex`, `fromHex`,
+  `formatDuration(start, { now? })`, `formatElapsed(start, { now? })`,
+  `withTimeout({ work, ms, timeoutError, timers?, signal? })`, `sleep(ms, { signal?, timers? })`, `createRandomId()`,
+  `noop`, `Timers`, `realTimers`.
+- Wire constants several packages share: `CHAIN_HALTED_ERROR_DATA`, the `error.data` of a JSON-RPC answer to a request
+  its chain halted under.
 
 ### `@dotli/shared/testing`
 
 Test-only helpers, apart from the main entry so no browser bundle reaches them.
 
-- `resetAllStoresForTests`, `memoryStorage`, `must`, `nth`, `manualTimers` (timers a spec moves by hand, which count the
-  timers still pending), `FakePage` (a page with a document and a window, each firing the events the browser fires on
-  it, `pagehide` included), `recordLog` with `LogLine` (what the shared log writes until a test ends, at one level if
-  asked).
-- `untilDom` waits on the page for functional tests. It reads the DOM, so only they call it.
+- `resetAllStoresForTests`, `createMemoryStorage({ entries? })`, `must`, `nth`, `catchError(run)` (what `run` threw, or
+  undefined when it returned), `catchRejection(pending)` (the error `pending` rejects with, rejecting when it resolves
+  instead), `readOutcome(wait)` (`'resolved'` or the message `wait` rejected with, never rejecting),
+  `createManualTimers({ start? })` with `ManualTimers` (timers a spec moves by hand, whose `countPending()` counts the
+  timers still pending), `createFakePage()` with `FakePage` (a page with a document and a window, each firing the events
+  the browser fires on it, `pagehide` included), `recordLog` with `LogLine` (the `LogEntry` of each line the shared log
+  writes until a test ends, at one level if asked).
+- `waitForDom` waits on the page for functional tests. It reads the DOM, so only they call it.

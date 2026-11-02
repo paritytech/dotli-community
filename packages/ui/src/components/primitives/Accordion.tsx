@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import { ChevronDownIcon } from '../icons/ChevronDownIcon.js';
 import s from './Accordion.module.css';
 
-export interface AccordionProps {
+export type AccordionProps = {
   /** The header's text. A chevron follows it. */
   title: string;
   /**
@@ -19,7 +19,7 @@ export interface AccordionProps {
   testId?: string | undefined;
   summaryTestId?: string | undefined;
   children: JSX.Element;
-}
+};
 
 /** A section that folds its body away under a header, on the native disclosure element. */
 export function Accordion(props: AccordionProps): JSX.Element {

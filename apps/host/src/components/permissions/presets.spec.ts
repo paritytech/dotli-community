@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
-import { ALL_PERMISSIONS, type EnforceablePermissionName, type PermissionStatus } from '../../runtime/permissions.js';
+import {
+  ALL_PERMISSIONS,
+  type EnforceablePermissionName,
+  type PermissionStatus,
+} from '../../runtime/permissionPolicy.js';
 import { distance, PRESETS, presetOf, RESTRICTED, SECURE, TRUSTED, UNLIMITED, type Preset } from './presets.js';
 
 /** A preset's statuses in menu order, with `changes` laid over them. */

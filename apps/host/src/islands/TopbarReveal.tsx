@@ -5,16 +5,17 @@
 
 import type { JSX } from '@solidjs/web';
 import { RootBoundary, useStore } from '@dotli/ui';
-import { topbarStore } from '../state/topbar.js';
+import { topbarState } from '../state/topbarState.js';
 import { TopbarReveal as Reveal } from '../components/topbar/TopbarReveal.js';
-import { pageTopbarAutoHide, TOPBAR_REVEAL_SHORTCUT } from '../topbar-autohide.js';
+import { pageTopbarAutoHide } from '../createTopbarAutoHide.js';
+import { TOPBAR_REVEAL_SHORTCUT } from '../topbarRevealShortcut.js';
 
 /** The auto-hiding topbar's ways back, bound to the page's auto-hide. */
 export function TopbarReveal(): JSX.Element {
   return (
     <RootBoundary root="island:TopbarReveal">
       <Reveal
-        autoHide={useStore(topbarStore, state => state.autoHide)}
+        autoHide={useStore(topbarState.store, state => state.autoHide)}
         shortcut={TOPBAR_REVEAL_SHORTCUT}
         actions={pageTopbarAutoHide}
       />

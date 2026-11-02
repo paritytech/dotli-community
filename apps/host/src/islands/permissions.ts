@@ -3,8 +3,8 @@
 
 import type { ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import type { PermissionStatus, PermissionTargets } from '../runtime/permissions.js';
-import type { ChangeOutcome, PendingPermissions } from '../runtime/state/product-permissions.js';
+import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
+import type { ChangeOutcome, PendingPermissions } from '../runtime/state/productPermissions.js';
 import type { MenuPermission, PermissionsNotice } from '../components/permissions/permissions.js';
 import type { PermissionsItemProps } from '../components/permissions/PermissionsItem.js';
 
@@ -19,7 +19,7 @@ export type ReadPermissions =
   | { status: 'read'; label: string; statuses: readonly PermissionStatus[] };
 
 /** The page's product and permissions, and the intents that change them. */
-export interface PermissionsBinding {
+export type PermissionsBinding = {
   /** In menu order. */
   permissions: readonly MenuPermission[];
   product: ReadableStore<ShownProduct>;
@@ -28,7 +28,7 @@ export interface PermissionsBinding {
   pending: ReadableStore<PendingPermissions>;
   refresh: () => Promise<void>;
   change: (label: string, targets: PermissionTargets) => Promise<ChangeOutcome>;
-}
+};
 
 /** The permissions button's props, for an island's own lifetime. A change applies to the permissions last read. */
 export function usePermissionsPanel(binding: PermissionsBinding): PermissionsItemProps {

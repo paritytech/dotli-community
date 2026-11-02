@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import type { Backend } from '@dotli/config';
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
-import type { NetworkHealth } from '../components/chains/network-health.js';
+import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import { useNetworkPanel } from './network.js';
 
@@ -38,10 +38,10 @@ function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; r
 /** The page's stores, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
   const stores = {
-    health: createSyncStore<NetworkHealth>('network-test-health', 'quiet'),
-    network: createSyncStore<NetworkView>('network-test-network', NOTHING),
-    product: createSyncStore<{ status: string }>('network-test-product', { status: 'idle' }),
-    settings: createSyncStore<{ backend: Backend } | null>('network-test-settings', null),
+    health: createSyncStore<NetworkHealth>({ name: 'network-test-health', initial: 'quiet' }),
+    network: createSyncStore<NetworkView>({ name: 'network-test-network', initial: NOTHING }),
+    product: createSyncStore<{ status: string }>({ name: 'network-test-product', initial: { status: 'idle' } }),
+    settings: createSyncStore<{ backend: Backend } | null>({ name: 'network-test-settings', initial: null }),
   };
   const { store: network, readers } = countingStore(stores.network);
   const { panel, dispose } = createRoot(d => ({ panel: useNetworkPanel({ ...stores, network }), dispose: d }));

@@ -54,6 +54,8 @@ Tools:
   Don't hand-roll queues, in-flight flags, retry timers or concurrency limits.
 - Dedupe in-flight work with a named pool of size 1 and an idempotent task, so a repeated call finds the work done.
   Don't add join-by-key to the pool.
+- Use `createSharedRun` from `@dotli/shared` for work several callers start and stop, so it runs once and ends with its
+  last caller. Don't hand-roll caller counts.
 
 ## Packages
 
@@ -61,6 +63,10 @@ What each package owns and what it may import are in each package's `README.md` 
 the placement rules in `docs/code/placement.md`.
 
 ## Code style
+
+How code is shaped and how pieces combine (factories, functions, composition, state, types, errors, modules, naming)
+lives in `docs/code/style.md`. Read it before you design, plan or write code. Where a rule below says otherwise, the
+rule below wins.
 
 General:
 
@@ -73,6 +79,8 @@ General:
   TypeScript module that the framework or a build plugin emits.
 - Add a `package.json` `overrides` entry only when a clean resolve without it is vulnerable or broken. Give the reason
   in the commit or PR.
+- A build value that gates code is read as a static `import.meta.env.X` at each site, never through an import, so the
+  bundler drops the dead branch.
 
 Packages:
 
@@ -81,9 +89,13 @@ Packages:
 
 TypeScript:
 
-- Never swallow errors. Rethrow with `{ cause }`, or `captureException` + `log.error` + an outcome metric.
+- Never swallow errors. Rethrow with `{ cause }`, or `captureException` + `log.error` + an outcome metric. A context
+  with no logger or Sentry, such as a service worker, posts the failure to its pages, which report it, and calls
+  `console.error` with a one-line reason.
 - One metric name per event, with `{ outcome, reason }`. No `_FAILURE` / `_TIMEOUT` constants.
 - `log.warn` only for real failures. Progress breadcrumbs use `log.event`.
+- An expected failure, one the environment causes, is reported with `reportExpected`, so it is always counted. Never a
+  breadcrumb alone.
 - A guarantee such as never rejecting belongs to the object the page builds, not to a free-standing wrapper every caller
   must remember.
 - No `console.log`.
@@ -144,6 +156,7 @@ Tests:
 - Wait on signals, never sleep.
 - Pass fakes through parameters. Don't mock modules, and avoid overriding globals. Shape the code so tests drive it
   through its interface.
+- An optional parameter with a production default that only tests pass is fine.
 
 Git:
 

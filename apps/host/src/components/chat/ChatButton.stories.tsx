@@ -4,8 +4,8 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { TopbarFrame } from '../../testing/stories/topbar-frame.js';
-import { type ChatStage, chatStage } from '../../testing/stories/chat-fixtures.js';
+import { TopbarFrame } from '../../testing/stories/topbarFrame.js';
+import { type ChatStage, chatStage } from '../../testing/stories/chatFixtures.js';
 import { ChatButton } from './ChatButton.js';
 
 /** The story's chat, fresh for each. */

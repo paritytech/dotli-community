@@ -69,8 +69,8 @@ export const Disabled: Story = {
       <form
         data-testid="form"
         data-submitted={submitted() ? '' : undefined}
-        onSubmit={ev => {
-          ev.preventDefault();
+        onSubmit={event => {
+          event.preventDefault();
           setSubmitted(true);
         }}
       >
@@ -78,9 +78,12 @@ export const Disabled: Story = {
       </form>
     );
   },
-  play: async ({ args, canvas, userEvent, step }) => {
+  play: async ({ args, canvas, mount, userEvent, step }) => {
+    await step('When the form renders with a disabled button', async () => {
+      await mount();
+    });
     const button = canvas.getByRole('button', { name: 'Continue' });
-    await step('Given the button is disabled', async () => {
+    await step('Then the button shows disabled', async () => {
       await expect(button).toBeDisabled();
     });
     await step('When I press the disabled button', async () => {
@@ -98,14 +101,19 @@ export const Disabled: Story = {
 /** As a dotli user, I see a loading button busy with no label, and pressing it does nothing. */
 export const Loading: Story = {
   args: { loading: true, 'aria-label': 'Continue' },
-  play: async ({ args, canvas, userEvent, step }) => {
+  play: async ({ args, canvas, mount, userEvent, step }) => {
+    await step('When a loading button renders', async () => {
+      await mount();
+    });
     const button = canvas.getByRole('button', { name: 'Continue' });
     await step('Then the button is busy and shows no label', async () => {
       await expect(button).toHaveAttribute('aria-busy', 'true');
       await expect(button).not.toHaveTextContent('Continue');
     });
-    await step('When I press it, nothing happens', async () => {
+    await step('When I press it', async () => {
       await userEvent.click(button);
+    });
+    await step('Then nothing happens', async () => {
       await expect(args.onClick).not.toHaveBeenCalled();
     });
   },
@@ -118,7 +126,10 @@ export const Link: Story = {
       Open dot.li
     </ButtonLink>
   ),
-  play: async ({ canvas, step }) => {
+  play: async ({ canvas, mount, step }) => {
+    await step('When a link drawn as a button renders', async () => {
+      await mount();
+    });
     await step('Then the link points where it says', async () => {
       const link = canvas.getByRole('link', { name: 'Open dot.li' });
       await expect(link).toHaveAttribute('href', 'https://dot.li');

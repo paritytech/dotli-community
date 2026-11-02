@@ -5,10 +5,11 @@
 
 import type { JSX } from '@solidjs/web';
 import { LayerTracker, ModalFocusFallback, RootBoundary } from '@dotli/ui';
-import { productFrameFocus } from '../product-frame-layout.js';
+import { productFrameLayout } from '../createProductFrameLayout.js';
 import { TopbarActions as Actions } from '../components/topbar/TopbarActions.js';
-import { registerTopbarSurface } from '../state/topbar-surfaces.js';
-import { topbarActionRoom, topbarMorph } from '../topbar-status.js';
+import { topbarSurfaces } from '../state/topbarSurfaces.js';
+import { topbarMorph } from '../createTopbarMorph.js';
+import { getTopbarActionRoom } from '../getTopbarActionRoom.js';
 import { AccountButton } from './AccountButton.js';
 import { NetworkButton } from './NetworkButton.js';
 import { PermissionsButton } from './PermissionsButton.js';
@@ -20,8 +21,8 @@ import { SettingsButton } from './SettingsButton.js';
  */
 function TopbarProviders(props: { children: JSX.Element }): JSX.Element {
   return (
-    <LayerTracker value={registerTopbarSurface}>
-      <ModalFocusFallback value={productFrameFocus}>{props.children}</ModalFocusFallback>
+    <LayerTracker value={topbarSurfaces.register}>
+      <ModalFocusFallback value={productFrameLayout.getFocusFallback}>{props.children}</ModalFocusFallback>
     </LayerTracker>
   );
 }
@@ -35,7 +36,7 @@ export function TopbarActions(): JSX.Element {
     <RootBoundary root="island:TopbarActions">
       <TopbarProviders>
         <Actions
-          room={topbarActionRoom}
+          room={getTopbarActionRoom}
           morph={topbarMorph}
           network={<NetworkButton />}
           permissions={<PermissionsButton />}

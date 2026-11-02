@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { validateDotLabel, type DotLabelResult } from '@dotli/resolver';
 import { prefersReducedMotion } from '@dotli/ui';
 import { ArrowRightIcon } from '@dotli/ui/icons';
-import { dotUrl, typedName } from './dot-url.js';
+import { dotUrl, typedName } from './dotUrl.js';
 import { animatePlaceholder, PLACEHOLDER_NAMES } from './placeholder.js';
 import s from './NavForm.module.css';
 
@@ -23,14 +23,14 @@ const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], s
   reserved: "Names can't start with sn--",
 };
 
-export interface NavFormProps {
+export type NavFormProps = {
   /**
    * The TLD names resolve under, with its leading dot. Null until the browser knows the visitor's network, and the
    * form stays disabled until then, as the build renders it and a submit before hydration would reload with the
    * name lost.
    */
   suffix: Accessor<string | null>;
-}
+};
 
 /**
  * The landing page's name form.

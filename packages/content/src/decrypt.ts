@@ -5,6 +5,8 @@
 // ChaCha20-Poly1305 comes from @noble/ciphers because Web Crypto lacks it.
 
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { setErrorName } from '@dotli/shared';
+import { CONTENT_ERRORS } from './errors.js';
 
 const MAGIC = new Uint8Array([
   0x44,
@@ -19,50 +21,63 @@ const MAGIC = new Uint8Array([
   0x01, // "DOTLI_ENC\x01"
 ]);
 
-const SALT_LEN = 16;
-const NONCE_LEN = 12;
-const KEY_LEN = 32;
-const TAG_LEN = 16;
-const HEADER_LEN = MAGIC.length + SALT_LEN + NONCE_LEN;
+const SALT_LENGTH = 16;
+const NONCE_LENGTH = 12;
+const KEY_LENGTH = 32;
+const TAG_LENGTH = 16;
+const HEADER_LENGTH = MAGIC.length + SALT_LENGTH + NONCE_LENGTH;
 const PBKDF2_ITERATIONS = 100_000;
 
+/** Tells whether the bytes start with the encrypted-archive header and are long enough to hold a tag. Never throws. */
 export function isEncrypted(data: Uint8Array): boolean {
-  if (data.length < HEADER_LEN + TAG_LEN) {
+  if (data.length < HEADER_LENGTH + TAG_LENGTH) {
     return false;
   }
-  for (let i = 0; i < MAGIC.length; i++) {
-    if (data[i] !== MAGIC[i]) {
+  for (let index = 0; index < MAGIC.length; index++) {
+    if (data[index] !== MAGIC[index]) {
       return false;
     }
   }
   return true;
 }
 
+/**
+ * The plaintext of encrypted `data` under `password`. Rejects with an error named `CONTENT_ERRORS.WRONG_PASSWORD`,
+ * whose cause is the cipher's error, when the password is wrong or the bytes were altered, and with what Web Crypto
+ * rejects with when it cannot derive the key.
+ */
+export async function decryptContent(data: Uint8Array, password: string): Promise<Uint8Array> {
+  const salt = data.slice(MAGIC.length, MAGIC.length + SALT_LENGTH);
+  const nonce = data.slice(MAGIC.length + SALT_LENGTH, HEADER_LENGTH);
+  const ciphertext = data.slice(HEADER_LENGTH);
+
+  const key = await deriveKey(password, salt);
+  const aead = chacha20poly1305(key, nonce, MAGIC);
+  try {
+    return aead.decrypt(ciphertext);
+  } catch (error: unknown) {
+    throw setErrorName(
+      new Error('The password does not open the encrypted content', { cause: error }),
+      CONTENT_ERRORS.WRONG_PASSWORD,
+    );
+  }
+}
+
 async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password).buffer, 'PBKDF2', false, [
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password).buffer, 'PBKDF2', false, [
     'deriveBits',
   ]);
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
+      // The salt is sliced into its own buffer, never a SharedArrayBuffer, which the typing of `buffer` cannot tell.
       salt: salt.buffer as ArrayBuffer,
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
     keyMaterial,
-    KEY_LEN * 8,
+    KEY_LENGTH * 8,
   );
   return new Uint8Array(bits);
-}
-
-/** Throws on a wrong password or corrupted data. */
-export async function decryptContent(data: Uint8Array, password: string): Promise<Uint8Array> {
-  const salt = data.slice(MAGIC.length, MAGIC.length + SALT_LEN);
-  const nonce = data.slice(MAGIC.length + SALT_LEN, HEADER_LEN);
-  const ciphertext = data.slice(HEADER_LEN);
-
-  const key = await deriveKey(password, salt);
-  const aead = chacha20poly1305(key, nonce, MAGIC);
-  return aead.decrypt(ciphertext);
 }

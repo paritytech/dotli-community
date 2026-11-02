@@ -12,6 +12,6 @@
     "astro.config.ts",
     "vitest.config.ts",
     "eslint.config.js",
-    "sentry-check.ts"
+    "sentryCheck.ts"
   ]
 }

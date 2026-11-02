@@ -8,19 +8,18 @@ import { createRenderEffect, createRoot, createSignal, flush } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, spyOn, waitFor, within } from 'storybook/test';
 import {
-  counts,
-  debugPanel,
-  debugPanelBeforeEach,
+  getDebugPanel,
+  getPanel,
+  getPart,
   grab,
-  panel,
-  part,
-  resetCalls,
-  rowTag,
-  rows,
+  listRows,
+  readCounts,
+  readRowTag,
+  setUpDebugPanel,
   withFakeClock,
   type FakeClock,
-} from './testing/stories/debug-panel-fixtures.js';
-import { debugPanelStory } from './testing/stories/debug-panel-story.js';
+} from './testing/stories/debugPanelFixtures.js';
+import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
 const meta = {
   ...debugPanelStory,
@@ -29,33 +28,48 @@ const meta = {
   tags: ['!autodocs'],
   parameters: { ...debugPanelStory.parameters, debugPanel: { mount: false } },
   render: () => <div data-testid="story-host-page" />,
-  beforeEach: debugPanelBeforeEach,
+  beforeEach: setUpDebugPanel,
 } satisfies Meta;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function request(tag: string, requestId: string, direction: 'incoming' | 'outgoing' = 'outgoing'): void {
-  debugPanel().truapi({ tag, requestId, direction });
+/** Emits a TrUAPI message tagged `tag`, outgoing unless `direction` says otherwise. Never throws. */
+function emitMessage(
+  tag: string,
+  requestId: string,
+  { direction = 'outgoing' }: { direction?: 'incoming' | 'outgoing' } = {},
+): void {
+  getDebugPanel().emitTruapi({ tag, requestId, direction });
 }
 
 function fillWithPendingRequests(clock: FakeClock): void {
-  for (let i = 0; i < 2000; i++) {
-    request('host_sign_request', `r${String(i)}`);
+  for (let index = 0; index < 2000; index++) {
+    emitMessage('host_sign_request', `r${String(index)}`);
   }
-  clock.frame();
+  clock.passFrame();
 }
 
-function fillWithAnsweredPairs(clock: FakeClock, pairs = 1000): void {
-  for (let i = 0; i < pairs; i++) {
-    request('host_sign_request', `q${String(i)}`);
-    request('host_sign_response', `q${String(i)}`);
+function fillWithAnsweredPairs(clock: FakeClock, { pairs = 1000 }: { pairs?: number } = {}): void {
+  for (let index = 0; index < pairs; index++) {
+    emitMessage('host_sign_request', `q${String(index)}`);
+    emitMessage('host_sign_response', `q${String(index)}`);
   }
-  clock.frame();
+  clock.passFrame();
 }
 
-function pendingBadge(row: HTMLElement | undefined): HTMLElement | null {
+function findPendingBadge(row: HTMLElement | undefined): HTMLElement | null {
   return row?.querySelector('[data-testid="td-pending"]') ?? null;
+}
+
+/** Types `value` into the exclude filter as an input event reports it. Throws when the filter is not an input. */
+function setExcludeFilter(value: string): void {
+  const exclude = getPart('td-exclude-input');
+  if (!(exclude instanceof HTMLInputElement)) {
+    throw new Error('The exclude filter is not an input');
+  }
+  exclude.value = value;
+  exclude.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** Solid's dev warnings that an update reached too many subscribers, from now until the play ends. */
@@ -71,13 +85,13 @@ async function watchFanOut(play: (warnings: () => string[]) => Promise<void>): P
 /** Past Solid's dev threshold for a fan-out warning, which is 2000 subscribers. */
 const HUGE_FAN_OUT_READERS = 2500;
 
-/** As a dotli developer, the fan-out watch sees a huge fan-out, so its silence elsewhere means something. */
+/** As a dotli developer, I make a huge fan-out and the fan-out watch sees it, so its silence elsewhere means something. */
 export const FanOutWatchSeesFanOut: Story = {
   play: async ({ step }) =>
     watchFanOut(async fanOut => {
       const [shared, setShared] = createSignal(0);
       const dispose = createRoot(d => {
-        for (let i = 0; i < HUGE_FAN_OUT_READERS; i++) {
+        for (let index = 0; index < HUGE_FAN_OUT_READERS; index++) {
           createRenderEffect(shared, () => undefined);
         }
         return d;
@@ -101,29 +115,29 @@ export const FanOutWatchSeesFanOut: Story = {
 export const CollapsedIgnoresTraffic: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
+      const { mount, calls } = getDebugPanel();
       mount({ startCollapsed: true });
       fillWithPendingRequests(clock);
-      resetCalls(calls);
+      getDebugPanel().resetCalls();
       await step('When traffic arrives over ten frames while collapsed', () => {
-        for (let i = 0; i < 10; i++) {
-          request('host_sign_request', `new${String(i)}`);
-          clock.frame();
+        for (let index = 0; index < 10; index++) {
+          emitMessage('host_sign_request', `new${String(index)}`);
+          clock.passFrame();
         }
       });
       await step('Then nothing is matched or drawn', async () => {
-        await expect(calls.matches).toBe(0);
+        await expect(calls.matchesFilters).toBe(0);
         await expect(calls.formatPending).toBe(0);
-        await expect(rows()).toHaveLength(0);
+        await expect(listRows()).toHaveLength(0);
       });
       await step('When I expand', () => {
-        part('td-collapse').click();
+        getPart('td-collapse').click();
       });
       await step('Then it catches up once', async () => {
-        await expect(counts()).toBe('2000 events (+10 dropped)');
-        await expect(rows()).toHaveLength(2000);
-        await expect(pendingBadge(rows()[1999])).not.toBeNull();
-        await expect(calls.matches).toBeLessThanOrEqual(2010);
+        await expect(readCounts()).toBe('2000 events (+10 dropped)');
+        await expect(listRows()).toHaveLength(2000);
+        await expect(findPendingBadge(listRows()[1999])).not.toBeNull();
+        await expect(calls.matchesFilters).toBeLessThanOrEqual(2010);
       });
     }),
 };
@@ -132,18 +146,18 @@ export const CollapsedIgnoresTraffic: Story = {
 export const PendingClockStopsCollapsed: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      debugPanel().mount();
-      request('host_sign_request', 'r1');
-      clock.frame();
+      getDebugPanel().mount();
+      emitMessage('host_sign_request', 'r1');
+      clock.passFrame();
       const expanded = clock.timerCount();
       await step('When I collapse with a call pending', () => {
-        part('td-collapse').click();
+        getPart('td-collapse').click();
       });
       await step('Then the pending clock stops', async () => {
         await expect(clock.timerCount()).toBe(expanded - 1);
       });
       await step('When I expand', () => {
-        part('td-collapse').click();
+        getPart('td-collapse').click();
       });
       await step('Then it runs again', async () => {
         await expect(clock.timerCount()).toBe(expanded);
@@ -151,39 +165,39 @@ export const PendingClockStopsCollapsed: Story = {
     }),
 };
 
-/** As a developer using the debug panel, I see the Resolution clock run only while its running load is on screen. */
+/** As a developer using the debug panel, I start a load on the Resolution tab and its clock runs only while the running load is on screen. */
 export const ResolutionClockStopsHidden: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, system } = debugPanel();
+      const { mount, emitSystem } = getDebugPanel();
       mount();
       // Read on the Resolution tab, where the list and its pending clock are not active.
       let idle = 0;
       let running = 0;
       await step('Given the Resolution tab open with no load yet', async () => {
-        part('td-section', 'resolution').click();
-        clock.frame();
+        getPart('td-section', { value: 'resolution' }).click();
+        clock.passFrame();
         // Counted once the tab has rendered, so the timers the click started or stopped have settled.
-        await expect(within(part('td-res')).getByTestId('td-res-empty')).toBeInTheDocument();
+        await expect(within(getPart('td-res')).getByTestId('td-res-empty')).toBeInTheDocument();
         idle = clock.timerCount();
       });
       await step('When a load starts', async () => {
-        system('boot', 'started', 'flow-boot');
-        clock.frame();
-        await expect(within(part('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
+        emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-boot' });
+        clock.passFrame();
+        await expect(within(getPart('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
         running = clock.timerCount();
       });
       await step('Then its clock runs', async () => {
         await expect(running).toBe(idle + 1);
       });
       await step('When I collapse the panel', () => {
-        part('td-collapse').click();
+        getPart('td-collapse').click();
       });
       await step('Then the clock stops', async () => {
         await expect(clock.timerCount()).toBe(idle);
       });
       await step('When I expand it again', () => {
-        part('td-collapse').click();
+        getPart('td-collapse').click();
       });
       await step('Then the clock runs again', async () => {
         await expect(clock.timerCount()).toBe(running);
@@ -195,47 +209,47 @@ export const ResolutionClockStopsHidden: Story = {
 export const ResolutionTabIgnoresTraffic: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
+      const { mount, calls } = getDebugPanel();
       mount();
       fillWithPendingRequests(clock);
-      part('td-section', 'resolution').click();
-      resetCalls(calls);
+      getPart('td-section', { value: 'resolution' }).click();
+      getDebugPanel().resetCalls();
       await step('When TrUAPI traffic arrives with the Resolution tab open', () => {
-        for (let i = 0; i < 10; i++) {
-          request('host_sign_request', `new${String(i)}`);
-          clock.frame();
+        for (let index = 0; index < 10; index++) {
+          emitMessage('host_sign_request', `new${String(index)}`);
+          clock.passFrame();
         }
       });
       await step('Then neither the pending calls nor the resolution are recomputed', async () => {
         await expect(calls.formatPending).toBe(0);
         await expect(calls.buildResolution).toBe(0);
-        await expect(counts()).toBe('2000 events (+10 dropped)');
+        await expect(readCounts()).toBe('2000 events (+10 dropped)');
       });
       await step('When I go back to TrUAPI', () => {
-        part('td-section', 'truapi').click();
+        getPart('td-section', { value: 'truapi' }).click();
       });
       await step('Then the badges catch up once', async () => {
-        await expect(pendingBadge(rows()[1999])?.textContent).toMatch(/^\d+ms pending$/);
-        await expect(within(part('td-list')).getAllByTestId('td-pending')).toHaveLength(2000);
+        await expect(findPendingBadge(listRows()[1999])?.textContent).toMatch(/^\d+ms pending$/);
+        await expect(within(getPart('td-list')).getAllByTestId('td-pending')).toHaveLength(2000);
       });
     }),
 };
 
-/** As a developer using the debug panel, I see a system event redraw the Resolution view once. */
+/** As a developer using the debug panel, I get a system event and the Resolution view redraws once. */
 export const ResolutionRedrawsOnSystemEvent: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, calls, system } = debugPanel();
+      const { mount, calls, emitSystem } = getDebugPanel();
       mount();
-      part('td-section', 'resolution').click();
-      resetCalls(calls);
+      getPart('td-section', { value: 'resolution' }).click();
+      getDebugPanel().resetCalls();
       await step('When a system event lands', () => {
-        system('boot', 'started', 'flow-boot');
-        clock.frame();
+        emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-boot' });
+        clock.passFrame();
       });
       await step('Then the Resolution view redraws once', async () => {
         await expect(calls.buildResolution).toBe(1);
-        await expect(within(part('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
+        await expect(within(getPart('td-res')).getByTestId('td-res-summary')).toBeInTheDocument();
       });
     }),
 };
@@ -244,19 +258,17 @@ export const ResolutionRedrawsOnSystemEvent: Story = {
 export const FilteredFrameNoRelayout: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
+      const { mount, calls } = getDebugPanel();
       mount();
       // Below capacity, since at capacity every new event evicts a visible one.
-      fillWithAnsweredPairs(clock, 500);
-      const exclude = part('td-exclude-input') as HTMLInputElement;
-      exclude.value = 'noise';
-      exclude.dispatchEvent(new Event('input', { bubbles: true }));
-      part('td-tab', 'timeline').click();
-      resetCalls(calls);
+      fillWithAnsweredPairs(clock, { pairs: 500 });
+      setExcludeFilter('noise');
+      getPart('td-tab', { value: 'timeline' }).click();
+      getDebugPanel().resetCalls();
       await step('When frames bring only filtered-out events', () => {
-        for (let i = 0; i < 5; i++) {
-          request('noise_receive', `n${String(i)}`);
-          clock.frame();
+        for (let index = 0; index < 5; index++) {
+          emitMessage('noise_receive', `n${String(index)}`);
+          clock.passFrame();
         }
       });
       await step('Then the timeline is not laid out again', async () => {
@@ -270,18 +282,18 @@ export const OneEventAtCapacity: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock =>
       watchFanOut(async fanOut => {
-        const { mount, calls } = debugPanel();
+        const { mount, calls } = getDebugPanel();
         mount();
         fillWithPendingRequests(clock);
-        resetCalls(calls);
+        getDebugPanel().resetCalls();
         await step('When one more request arrives at 2000 pending', () => {
-          request('host_sign_request', 'new');
-          clock.frame();
+          emitMessage('host_sign_request', 'new');
+          clock.passFrame();
         });
         await step('Then only that event is filtered and rendered', async () => {
-          await expect(calls.matches).toBe(1);
+          await expect(calls.matchesFilters).toBe(1);
           await expect(calls.formatPending).toBeLessThanOrEqual(2);
-          await expect(pendingBadge(rows()[1999])).not.toBeNull();
+          await expect(findPendingBadge(listRows()[1999])).not.toBeNull();
           await expect(fanOut()).toEqual([]);
         });
       }),
@@ -293,15 +305,15 @@ export const PendingTickNoFanOut: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock =>
       watchFanOut(async fanOut => {
-        debugPanel().mount();
+        getDebugPanel().mount();
         fillWithPendingRequests(clock);
-        const badge = pendingBadge(rows()[0]);
+        const badge = findPendingBadge(listRows()[0]);
         await step('When a pending tick passes at 2000 pending', () => {
           clock.advance(1000);
         });
         await step('Then every badge updates without a fan-out warning', async () => {
           await expect(badge).toHaveTextContent('1.0s pending');
-          await expect(pendingBadge(rows()[1999])).toHaveTextContent('1.0s pending');
+          await expect(findPendingBadge(listRows()[1999])).toHaveTextContent('1.0s pending');
           await expect(fanOut()).toEqual([]);
         });
       }),
@@ -312,17 +324,17 @@ export const PendingTickNoFanOut: Story = {
 export const AnsweredPairAtCapacity: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, calls } = debugPanel();
+      const { mount, calls } = getDebugPanel();
       mount();
       fillWithAnsweredPairs(clock);
-      resetCalls(calls);
+      getDebugPanel().resetCalls();
       await step('When one more answered pair arrives at 1000 pairs', () => {
-        request('host_sign_request', 'z1');
-        request('host_sign_response', 'z1');
-        clock.frame();
+        emitMessage('host_sign_request', 'z1');
+        emitMessage('host_sign_response', 'z1');
+        clock.passFrame();
       });
       await step('Then only the new events are filtered', async () => {
-        await expect(calls.matches).toBe(2);
+        await expect(calls.matchesFilters).toBe(2);
         await expect(calls.formatPending).toBe(0);
       });
     }),
@@ -333,28 +345,28 @@ export const ClickRestylesChangedRows: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock =>
       watchFanOut(async fanOut => {
-        const { mount, calls } = debugPanel();
+        const { mount, calls } = getDebugPanel();
         mount();
         fillWithAnsweredPairs(clock);
-        resetCalls(calls);
+        getDebugPanel().resetCalls();
         await step('When I click a row at 2000 rows', () => {
-          rows()[500]?.click();
+          listRows()[500]?.click();
         });
         await step('Then only the rows whose selection changed are restyled', async () => {
-          await expect(rows()[500]).toHaveAttribute('data-selection', 'selected');
-          await expect(rows()[501]).toHaveAttribute('data-selection', 'paired');
-          await expect(calls.rowSelection).toBeLessThanOrEqual(4);
+          await expect(listRows()[500]).toHaveAttribute('data-selection', 'selected');
+          await expect(listRows()[501]).toHaveAttribute('data-selection', 'paired');
+          await expect(calls.getRowSelection).toBeLessThanOrEqual(4);
           await expect(fanOut()).toEqual([]);
         });
         await step('When I click another row', () => {
-          resetCalls(calls);
-          rows()[900]?.click();
+          getDebugPanel().resetCalls();
+          listRows()[900]?.click();
         });
         await step('Then again only the changed rows are restyled', async () => {
-          await expect(rows()[500]).not.toHaveAttribute('data-selection');
-          await expect(rows()[501]).not.toHaveAttribute('data-selection');
-          await expect(rows()[900]).toHaveAttribute('data-selection', 'selected');
-          await expect(calls.rowSelection).toBeLessThanOrEqual(4);
+          await expect(listRows()[500]).not.toHaveAttribute('data-selection');
+          await expect(listRows()[501]).not.toHaveAttribute('data-selection');
+          await expect(listRows()[900]).toHaveAttribute('data-selection', 'selected');
+          await expect(calls.getRowSelection).toBeLessThanOrEqual(4);
         });
       }),
     ),
@@ -365,20 +377,20 @@ export const ArrowsRestyleChangedRows: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock =>
       watchFanOut(async fanOut => {
-        const { mount, calls } = debugPanel();
+        const { mount, calls } = getDebugPanel();
         mount();
         fillWithPendingRequests(clock);
-        rows()[10]?.click();
-        resetCalls(calls);
+        listRows()[10]?.click();
+        getDebugPanel().resetCalls();
         await step('When I press ArrowDown twenty times at 2000 rows', () => {
-          for (let i = 0; i < 20; i++) {
-            part('td-list').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+          for (let index = 0; index < 20; index++) {
+            getPart('td-list').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
           }
         });
         await step('Then only the rows whose selection changed are restyled', async () => {
-          await expect(rows()[30]).toHaveAttribute('data-selection', 'selected');
-          await expect(rows()[10]).not.toHaveAttribute('data-selection');
-          await expect(calls.rowSelection).toBeLessThanOrEqual(40);
+          await expect(listRows()[30]).toHaveAttribute('data-selection', 'selected');
+          await expect(listRows()[10]).not.toHaveAttribute('data-selection');
+          await expect(calls.getRowSelection).toBeLessThanOrEqual(40);
           await expect(fanOut()).toEqual([]);
         });
       }),
@@ -388,24 +400,24 @@ export const ArrowsRestyleChangedRows: Story = {
 /** As a developer using the debug panel, I type a filter that keeps the selected event visible and the detail pane is left alone. */
 export const FilterKeepsDetail: Story = {
   play: async ({ userEvent, step }) => {
-    const { mount, system } = debugPanel();
+    const { mount, emitSystem } = getDebugPanel();
     mount();
-    system('boot', 'started', 'flow-boot-1');
-    request('host_sign_request', 'a1');
-    await waitFor(() => expect(rows()).toHaveLength(2));
+    emitSystem({ layer: 'boot', event: 'started', flowId: 'flow-boot-1' });
+    emitMessage('host_sign_request', 'a1');
+    await waitFor(() => expect(listRows()).toHaveLength(2));
     let explanation: HTMLDetailsElement | null = null;
     await step('Given the boot event selected with its explanation open', async () => {
-      await userEvent.click(rows()[0] ?? panel());
-      explanation = part('td-detail').querySelector('details');
-      await userEvent.click(explanation?.querySelector('summary') ?? panel());
+      await userEvent.click(listRows()[0] ?? getPanel());
+      explanation = getPart('td-detail').querySelector('details');
+      await userEvent.click(explanation?.querySelector('summary') ?? getPanel());
       await expect(explanation).toHaveAttribute('open');
     });
     await step('When I type a filter that keeps it visible', async () => {
-      await userEvent.type(part('td-tag-input'), 'boo');
+      await userEvent.type(getPart('td-tag-input'), 'boo');
     });
     await step('Then the detail pane is left alone', async () => {
-      await expect(rows()).toHaveLength(1);
-      await expect(part('td-detail').querySelector('details')).toBe(explanation);
+      await expect(listRows()).toHaveLength(1);
+      await expect(getPart('td-detail').querySelector('details')).toBe(explanation);
       await expect(explanation).toHaveAttribute('open');
     });
   },
@@ -415,32 +427,27 @@ export const FilterKeepsDetail: Story = {
 export const LatencyIndependentOfRow: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      debugPanel().mount({ capacity: 3 });
-      const latency = (): string | null | undefined =>
-        rows()
-          .find(r => rowTag(r) === 'host_sign_response')
+      getDebugPanel().mount({ capacity: 3 });
+      const readLatency = (): string | null | undefined =>
+        listRows()
+          .find(r => readRowTag(r) === 'host_sign_response')
           ?.querySelector('[data-testid="td-latency"]')?.textContent;
-      const exclude = part('td-exclude-input') as HTMLInputElement;
-      const filter = (value: string): void => {
-        exclude.value = value;
-        exclude.dispatchEvent(new Event('input', { bubbles: true }));
-      };
       await step('Given a reply 50ms after its request', async () => {
-        request('host_sign_request', 'r1');
+        emitMessage('host_sign_request', 'r1');
         clock.advance(50);
-        request('host_sign_response', 'r1', 'incoming');
-        clock.frame();
-        await expect(latency()).toBe('+50ms');
+        emitMessage('host_sign_response', 'r1', { direction: 'incoming' });
+        clock.passFrame();
+        await expect(readLatency()).toBe('+50ms');
       });
       await step('When the reply row is filtered out, the request evicted, and the reply row made again', () => {
-        filter('response');
-        request('noise_receive', 'n1');
-        request('noise_receive', 'n2');
-        clock.frame();
-        filter('');
+        setExcludeFilter('response');
+        emitMessage('noise_receive', 'n1');
+        emitMessage('noise_receive', 'n2');
+        clock.passFrame();
+        setExcludeFilter('');
       });
       await step('Then the latency is the same', async () => {
-        await expect(latency()).toBe('+50ms');
+        await expect(readLatency()).toBe('+50ms');
       });
     }),
 };
@@ -448,23 +455,23 @@ export const LatencyIndependentOfRow: Story = {
 /** As a developer using the debug panel, I scroll up to read a row and new events that evict the oldest leave the same row under me. */
 export const ScrolledUpKeepsRows: Story = {
   play: async ({ step }) => {
-    debugPanel().mount({ capacity: 50 });
-    for (let i = 0; i < 50; i++) {
-      request('x_receive', `r${String(i)}`);
+    getDebugPanel().mount({ capacity: 50 });
+    for (let index = 0; index < 50; index++) {
+      emitMessage('x_receive', `r${String(index)}`);
     }
-    await waitFor(() => expect(rows()).toHaveLength(50));
-    const list = part('td-list');
-    const rowHeight = (rows()[1]?.offsetTop ?? 0) - (rows()[0]?.offsetTop ?? 0);
-    const topRow = rows()[10];
+    await waitFor(() => expect(listRows()).toHaveLength(50));
+    const list = getPart('td-list');
+    const rowHeight = (listRows()[1]?.offsetTop ?? 0) - (listRows()[0]?.offsetTop ?? 0);
+    const topRow = listRows()[10];
     await step('Given I scrolled up to read the eleventh row', async () => {
       list.scrollTop = 10 * rowHeight;
       await expect(list.scrollTop).toBe(10 * rowHeight);
     });
     await step('When five new events evict the five oldest', async () => {
-      for (let i = 0; i < 5; i++) {
-        request('x_receive', `n${String(i)}`);
+      for (let index = 0; index < 5; index++) {
+        emitMessage('x_receive', `n${String(index)}`);
       }
-      await waitFor(() => expect(rows()[5]).toBe(topRow));
+      await waitFor(() => expect(listRows()[5]).toBe(topRow));
     });
     await step('Then the same row stays under me', async () => {
       await expect(list.scrollTop).toBe(5 * rowHeight);
@@ -476,21 +483,21 @@ export const ScrolledUpKeepsRows: Story = {
 export const EdgeDragRefitsOncePerFrame: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      debugPanel().mount();
-      const reports = debugPanel().host.dockReports;
-      const handle = grab(part('td-resize-handle'));
+      getDebugPanel().mount();
+      const reports = getDebugPanel().host.dockReports;
+      const handle = grab(getPart('td-resize-handle'));
       const before = reports.length;
       await step('When five moves land in one frame', () => {
-        for (let i = 0; i < 5; i++) {
-          handle.to(0, window.innerHeight - 268 - i);
+        for (let index = 0; index < 5; index++) {
+          handle.moveTo(0, window.innerHeight - 268 - index);
         }
       });
       await step('Then the panel follows and the host hears no new room yet', async () => {
-        await expect(panel().getBoundingClientRect().height).toBeCloseTo(272, 0);
+        await expect(getPanel().getBoundingClientRect().height).toBeCloseTo(272, 0);
         await expect(reports.length - before).toBe(0);
       });
       await step('When the frame passes', () => {
-        clock.frame();
+        clock.passFrame();
       });
       await step('Then the host hears the last move once', async () => {
         await expect(reports.length - before).toBe(1);
@@ -503,51 +510,51 @@ export const EdgeDragRefitsOncePerFrame: Story = {
 /** As a dotli developer, I drag the splitter through three moves and the list pane ends as wide as the last one. */
 export const SplitterMeasuresOnce: Story = {
   play: async ({ step }) => {
-    debugPanel().mount();
-    const left = part('td-body').getBoundingClientRect().left;
+    getDebugPanel().mount();
+    const left = getPart('td-body').getBoundingClientRect().left;
     await step('When I drag the splitter through three moves', () => {
-      const held = grab(part('td-body-splitter'));
-      held.to(left + 500, 0);
-      held.to(left + 510, 0);
-      held.to(left + 520, 0);
+      const held = grab(getPart('td-body-splitter'));
+      held.moveTo(left + 500, 0);
+      held.moveTo(left + 510, 0);
+      held.moveTo(left + 520, 0);
       held.release();
     });
     await step('Then the list pane is as wide as the last move', async () => {
-      await expect(part('td-views').getBoundingClientRect().width).toBeCloseTo(520, 0);
+      await expect(getPart('td-views').getBoundingClientRect().width).toBeCloseTo(520, 0);
     });
   },
 };
 
-/** As a dotli developer, rows evicted at capacity release their keys, which guards the keyed maps against growth. */
+/** As a dotli developer, I fill the panel past capacity and the evicted rows release their keys, which guards the keyed maps against growth. */
 export const EvictedRowsReleaseKeys: Story = {
   play: async ({ step }) =>
     withFakeClock(async clock => {
-      const { mount, keyedMaps } = debugPanel();
+      const { mount, keyedMaps } = getDebugPanel();
       mount({ capacity: 10 });
-      const subscribed = (): string[] => keyedMaps.flatMap(map => [...map.subscribedKeys()].map(String));
-      const seqsOf = (): string[] => rows().map(r => r.dataset['seq'] ?? '');
+      const listSubscribedKeys = (): string[] => keyedMaps.flatMap(map => [...map.subscribedKeys()].map(String));
+      const listRowSeqs = (): string[] => listRows().map(r => r.dataset['seq'] ?? '');
       let evicted: string[] = [];
       await step('Given ten requests, one selected', async () => {
-        for (let i = 0; i < 10; i++) {
-          request('host_sign_request', `old${String(i)}`);
+        for (let index = 0; index < 10; index++) {
+          emitMessage('host_sign_request', `old${String(index)}`);
         }
-        clock.frame();
-        rows()[0]?.click();
-        evicted = seqsOf();
-        await expect(subscribed().some(k => k.includes('old'))).toBe(true);
-        await expect(evicted.every(seq => subscribed().includes(seq))).toBe(true);
+        clock.passFrame();
+        listRows()[0]?.click();
+        evicted = listRowSeqs();
+        await expect(listSubscribedKeys().some(k => k.includes('old'))).toBe(true);
+        await expect(evicted.every(seq => listSubscribedKeys().includes(seq))).toBe(true);
       });
       await step('When ten new requests evict every row', () => {
-        for (let i = 0; i < 10; i++) {
-          request('host_sign_request', `new${String(i)}`);
+        for (let index = 0; index < 10; index++) {
+          emitMessage('host_sign_request', `new${String(index)}`);
         }
-        clock.frame();
+        clock.passFrame();
       });
       await step('Then no key of an evicted row is held, and the current rows hold theirs', async () => {
-        const keys = subscribed();
+        const keys = listSubscribedKeys();
         await expect(keys.filter(k => evicted.includes(k))).toEqual([]);
         await expect(keys.filter(k => k.includes('old'))).toEqual([]);
-        await expect(seqsOf().every(seq => keys.includes(seq))).toBe(true);
+        await expect(listRowSeqs().every(seq => keys.includes(seq))).toBe(true);
       });
     }),
 };

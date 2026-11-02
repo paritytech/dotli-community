@@ -41,19 +41,19 @@ flowchart LR
     Panel["Network panel<br/>(network-monitor)"]
     Probe["Settings probe"]
     Bitswap["Bitswap<br/>(Bulletin content)"]
-    Client["Protocol client<br/>createRemoteChainProvider"]
+    Client["Protocol client<br/>chains.createProvider"]
     HostPool[("Host chain pool")]
   end
 
   subgraph Iframe["Protocol iframe (apps/protocol, host origin)"]
-    Engine["Engine<br/>(engine.ts)"]
+    Engine["Engine<br/>(createEngine.ts)"]
     IframePool[("Iframe chain pool<br/>direct + rpc modes")]
     Resolver["Resolver reads<br/>(Asset Hub, People)"]
-    Observe["Watched chains<br/>(light-client-service.ts)"]
+    Observe["Watched chains<br/>(observeChains.ts)"]
   end
 
   subgraph Worker["SharedWorker (smoldot-shared-worker)"]
-    Sessions["Engine, a scope per tab<br/>(engine.ts)"]
+    Sessions["Engine, a scope per tab<br/>(createEngine.ts)"]
     WorkerPool[("Worker chain pool")]
     WResolver["Resolver reads<br/>(Asset Hub, People)"]
   end
@@ -88,7 +88,7 @@ In simple terms:
 - **The host pool's transport follows the backend.** In `rpc-gateway` it is
   the host page's own RPC socket. On the smoldot backends it is one remote
   connection per chain to the **protocol iframe** over `postMessage`
-  (`createFrameChainTransport`, through `createRemoteChainProvider`), which
+  (`createFrameChainTransport`, through `chains.createProvider`), which
   becomes one lease in the iframe's pool, next to the resolver's.
 - **Bitswap** keeps its own remote connection to the iframe: `@dotli/bitswap`
   cannot import the host pool. On the smoldot backends that lands on the same
@@ -114,7 +114,7 @@ Which transport a pool builds depends on the backend:
 Closing the host pool's remote connection is cheap: the iframe or the worker
 keeps the smoldot chain.
 
-A tab that closes without its `beforeunload` (a crash, a killed process) tells
+A tab that closes without its `pagehide` (a crash, a killed process) tells
 the worker nothing. The worker pings each port every 20 s and lets go of one
 that answered nothing for three beats, releasing its connections. It first
 posts a `chain-halt` for each, so a tab that was only frozen reconnects when it
@@ -128,7 +128,7 @@ flowchart TB
   L2["lease: remote:origin id<br/>(e.g. an app's connection)"] --> B
   L3["lease: remote:origin id"] --> B
   subgraph Entry["One entry per chain (genesis hash)"]
-    B["ChainBroker<br/>rewrites ids and tokens,<br/>shares chainHead follows"]
+    B["Chain broker<br/>rewrites ids and tokens,<br/>shares chainHead follows"]
     G["Watch guard<br/>ends transaction watches<br/>with 'dropped' on disconnect"]
     T["Transport<br/>(RPC socket or smoldot chain)"]
     B --> G --> T
@@ -139,7 +139,7 @@ flowchart TB
 
 - **Entry**: one per chain, built on the first lease. It holds the transport,
   a watch guard and a broker.
-- **Broker** (`ChainBroker`): many sessions share one transport. It rewrites
+- **Broker** (`createChainBroker`): many sessions share one transport. It rewrites
   every request id and subscription token so sessions cannot see or answer
   each other's traffic, and shares one `chainHead_v1_follow` between them.
 - **Lease**: a broker session. Local leases are named `local:N`; remote ones
@@ -165,7 +165,7 @@ flowchart TB
 
 ## The RPC transport
 
-An RPC chain socket (`packages/chains/src/rpc-chain.ts`) is a stack:
+An RPC chain socket (`packages/chains/src/createCoreRpcChainProvider.ts`) is a stack:
 
 ```mermaid
 flowchart TB
@@ -185,12 +185,12 @@ flowchart TB
   node a chain's socket is on.
 
 The smoldot transport (`createChainProvider` in
-`packages/chains/src/provider.ts`) is one chain on the light client, in the
+`packages/chains/src/createLightClient.ts`) is one chain on the light client, in the
 protocol iframe or the SharedWorker only. It does not reconnect underneath its
 users: when its stream ends, it halts.
 
 The host pool's transport on the smoldot backends (`createFrameChainTransport`
-in `apps/host/src/runtime/host-callbacks/frame-transport.ts`) wraps one remote
+in `apps/host/src/runtime/hostCallbacks/createFrameChainTransport.ts`) wraps one remote
 connection. It reports `connecting`, then `connected` as soon as the
 connection exists: the remote provider has no finer signal, and queues sends
 until the iframe accepts the connection. When the remote connection halts, it
@@ -257,8 +257,8 @@ sequenceDiagram
   takes a new lease, which rebuilds the chain (a papi client in the product
   re-follows on the `stop`, and lands there), through that chain's gate (see
   [chains follow the protocol status](#a-product-keeps-retrying-after-a-halt-chains-follow-the-protocol-status)).
-  The settings probe client hears `'chain'` (`hostChainProvider` reads the
-  reason with `haltReasonOf`).
+  The settings probe client hears `'chain'` (`getHostChainProvider` reads the
+  reason with `getHaltReason`).
 
 ### …a chain halts while a page is loading
 
@@ -280,8 +280,8 @@ sequenceDiagram
   Ctx-->>Host: CID
 ```
 
-- `withHaltRetry` in `packages/resolver/src/resolve.ts` wraps
-  `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
+- The `reads` pool's `retryIf` in `packages/resolver/src/createDotnsResolver.ts`
+  retries `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
   `resolveRootManifest`. Both smoldot backends (`smoldot-direct`,
   `smoldot-shared-worker`) run them.
 - A halt reaches a read in one of three shapes, and each one is retried:
@@ -369,7 +369,7 @@ connection limit) halts the connection with `'frame'`, and the status stays
 `ready`. So the next request takes a new lease at once, with no backoff.
 
 After `'chain'` a TrUAPI core connection takes its lease only through a chain
-gate per genesis hash (`apps/host/src/runtime/host-callbacks/redial-gate.ts`). A gate
+gate per genesis hash (`apps/host/src/runtime/hostCallbacks/createRedialGate.ts`). A gate
 is shared by every core connection to that chain, so concurrent connections
 dial once per window:
 
@@ -397,31 +397,32 @@ nothing hangs.
 | `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Wait for user demand, never redial on your own. A product's requests are demand, and take a new lease while the protocol status is not `failed` |
 
 Through the host pool the reason travels as a `ChainHaltError`
-(`packages/chains/src/chain-halted.ts`), and `haltReasonOf` reads it back.
+(`packages/chains/src/chainHaltError.ts`), and `getHaltReason` reads it back.
 Any other transport halt, such as a socket's, reads as `'chain'`.
 
 ## Where to look in the code
 
 | Piece | File |
 | --- | --- |
-| Pool | `packages/chains/src/chain-pool.ts` |
-| Broker | `packages/chains/src/broker.ts` |
-| Watch guard | `packages/chains/src/watch-guard.ts` |
-| Halted-chain marker, `ChainHaltError`, `haltReasonOf` | `packages/chains/src/chain-halted.ts` |
+| Pool | `packages/chains/src/createChainPool.ts` |
+| Broker | `packages/chains/src/createChainBroker.ts` |
+| Watch guard | `packages/chains/src/createWatchGuard.ts` |
+| Halted-chain marker | `packages/shared/src/chainHaltedErrorData.ts` |
+| Halted-chain error, `ChainHaltError`, `getHaltReason` | `packages/chains/src/createChainHaltedError.ts`, `packages/chains/src/chainHaltError.ts`, `packages/chains/src/getHaltReason.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
-| RPC transport | `packages/chains/src/rpc-chain.ts` |
-| smoldot transport | `packages/chains/src/provider.ts` |
-| Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/resolve.ts` |
-| Host error page classification | `apps/host/src/errors.ts` |
-| Host pool, TrUAPI chain connections, `hostChainProvider` | `apps/host/src/runtime/host-callbacks/Chain.ts` |
-| Host pool's transport on the smoldot backends | `apps/host/src/runtime/host-callbacks/frame-transport.ts` |
-| Host pool's chain gates | `apps/host/src/runtime/host-callbacks/redial-gate.ts` |
+| RPC transport | `packages/chains/src/createCoreRpcChainProvider.ts` |
+| smoldot transport | `packages/chains/src/createLightClient.ts` |
+| Name resolution on every backend, halt retry (`createDotnsResolver`) | `packages/resolver/src/createDotnsResolver.ts` |
+| Host error page classification | `apps/host/src/describeError.ts` |
+| Host pool, TrUAPI chain connections, `getHostChainProvider` | `apps/host/src/runtime/hostCallbacks/createHostChainPool.ts`, `apps/host/src/runtime/hostCallbacks/createChainConnect.ts`, `apps/host/src/runtime/hostCallbacks/getHostChainProvider.ts` |
+| Host pool's transport on the smoldot backends | `apps/host/src/runtime/hostCallbacks/createFrameChainTransport.ts` |
+| Host pool's chain gates | `apps/host/src/runtime/hostCallbacks/createRedialGate.ts` |
 | Settings probe | `apps/host/src/runtime/diagnostics.ts` (`queryFinalizedBlock`) |
-| Network panel | `apps/host/src/state/network-monitor.ts`, `ChainPool.watch` in `packages/chains/src/chain-pool.ts`, `packages/chains/src/header-number.ts` |
-| Bitswap | `packages/bitswap/src/client.ts`, `packages/bitswap/src/relay.ts` |
-| Protocol engine, a scope per tab | `apps/protocol/src/engine.ts` |
-| Watched chains | `apps/protocol/src/light-client-service.ts` (`observeChains`) |
-| SharedWorker ports and heartbeat | `apps/protocol/src/protocol-worker.ts` |
+| Network panel | `apps/host/src/state/networkMonitorState.ts`, `ChainPool.watch` in `packages/chains/src/createChainPool.ts`, `packages/chains/src/decodeHeaderNumber.ts` |
+| Bitswap | `packages/bitswap/src/createBitswapClient.ts`, `packages/bitswap/src/createSandboxBlockRelay.ts` |
+| Protocol engine, a scope per tab | `apps/protocol/src/createEngine.ts` |
+| Watched chains | `apps/protocol/src/observeChains.ts` (`observeChains`) |
+| SharedWorker ports and heartbeat | `apps/protocol/src/createWorkerLifecycle.ts` |
 
 ## Known limits
 

@@ -3,35 +3,28 @@
 
 import { createContext, createEffect, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createAnchored, createContentPreload, createTriggerWiring, SurfaceSlot, type Anchored } from './anchored.js';
-import type { CloseReason } from './close-reason.js';
+import { createAnchored, type Anchored } from './createAnchored.js';
+import { createContentPreload } from './createContentPreload.js';
+import { createTriggerWiring } from './createTriggerWiring.js';
+import { SurfaceSlot } from './SurfaceSlot.js';
+import type { CloseReason } from './closeReason.js';
 import type { Placement } from './FloatingLayer.js';
 import { PopoverSurface } from './PopoverSurface.js';
 
-export interface PopoverApi {
+export type PopoverApi = {
+  /** The surface element's id. */
   id: string;
+  /** Whether the popover is open. */
   open: Accessor<boolean>;
   /** Whether this opening is a bottom sheet. */
   sheet: Accessor<boolean>;
+  /** Closes the popover. Throws only what `onOpenChange` throws. */
   close: () => void;
-}
+};
 
 export type PopoverState = Anchored & PopoverApi;
 
-const PopoverContext = createContext<PopoverState | null>(null);
-
-export function usePopover(): PopoverApi {
-  const state = useContext(PopoverContext);
-  if (state === null) {
-    throw new Error('usePopover outside a Popover');
-  }
-  return state;
-}
-
-/** A press outside, a blur or focus moving away leaves focus where the user put it. */
-const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'sheet', 'trigger', 'programmatic']);
-
-export interface PopoverProps {
+export type PopoverProps = {
   id: string;
   title: string;
   /** Wired while given. */
@@ -45,7 +38,12 @@ export interface PopoverProps {
   preload?: (() => Promise<unknown>) | undefined;
   testId?: string | undefined;
   children: JSX.Element;
-}
+};
+
+const PopoverContext = createContext<PopoverState | null>(null);
+
+/** A press outside, a blur or focus moving away leaves focus where the user put it. */
+const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'sheet', 'trigger', 'programmatic']);
 
 /**
  * A non-modal panel opened from a button: anchored on wide screens, a bottom sheet on a phone.
@@ -53,14 +51,14 @@ export interface PopoverProps {
  * it pressed.
  */
 export function Popover(props: PopoverProps): JSX.Element {
-  const anchored = createAnchored(props, RETURN_FOCUS_ON);
-  const state: PopoverState & { setTrigger: (el: HTMLElement | undefined) => void } = Object.assign(anchored, {
-    close: () => {
+  const anchored = createAnchored({ props, returnFocusOn: RETURN_FOCUS_ON });
+  const state = Object.assign(anchored, {
+    close() {
       anchored.setOpen(false);
     },
   });
-  createTriggerWiring(state, () => props.trigger, 'dialog');
-  createContentPreload(() => props.preload);
+  createTriggerWiring({ state, trigger: () => props.trigger, haspopup: 'dialog' });
+  createContentPreload({ content: () => props.preload });
 
   createEffect(
     () => props.open,
@@ -80,4 +78,13 @@ export function Popover(props: PopoverProps): JSX.Element {
       </SurfaceSlot>
     </PopoverContext>
   );
+}
+
+/** The enclosing popover, for content that reads its state or closes it. Throws outside a Popover. */
+export function usePopover(): PopoverApi {
+  const state = useContext(PopoverContext);
+  if (state === null) {
+    throw new Error('usePopover outside a Popover');
+  }
+  return state;
 }

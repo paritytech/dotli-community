@@ -16,11 +16,11 @@ import s from './SettingsItem.module.css';
 // Its own chunk, which the popover loads while the browser is idle.
 const Settings = lazy(loadSettingsContent, { export: 'SettingsContent' });
 
-export interface SettingsItemProps extends SettingsContentProps {
+export type SettingsItemProps = {
   /** The page owns whether it is open, so a way into Settings from outside the bar can open it. */
   open: Accessor<boolean>;
   onOpenChange: (open: boolean) => void;
-}
+} & SettingsContentProps;
 
 function unverified(settings: SavedSettings | null): boolean {
   return settings?.verified === false;

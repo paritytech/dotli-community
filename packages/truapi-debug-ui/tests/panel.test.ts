@@ -5,13 +5,14 @@
 // does is in the Panel stories beside it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DotliDebugBus } from '@dotli/truapi-debug';
-import { createDotliDebugBus } from '@dotli/truapi-debug/testing';
+import type { DebugBus } from '@dotli/truapi-debug';
+import { createDebugBus } from '@dotli/truapi-debug/testing';
 import { fakeDebugPanelHost } from '../src/host.fake.js';
-import { setupTruapiDebugPanel } from '../src/truapi-debug-panel.js';
+import { setupTruapiDebugPanel } from '../src/truapiDebugPanel.js';
 import { PANEL_ID } from '../src/Panel.js';
+import { buildTruapiEvent } from '../src/testing/buildTruapiEvent.js';
 
-let bus: DotliDebugBus;
+let bus: DebugBus;
 let disposers: (() => void)[] = [];
 
 beforeEach(() => {
@@ -19,7 +20,7 @@ beforeEach(() => {
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   document.body.replaceChildren();
   localStorage.clear();
-  bus = createDotliDebugBus();
+  bus = createDebugBus();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableBuffering();
 });
@@ -39,35 +40,29 @@ function mount(): () => void {
   return dispose;
 }
 
-function rowCount(): number {
+function countRows(): number {
   return document.querySelectorAll(`#${PANEL_ID} [data-testid="td-list"] [data-testid="td-row"]`).length;
 }
 
-function counts(): string | null | undefined {
+function readCounts(): string | null | undefined {
   return document.querySelector(`#${PANEL_ID} [data-testid="td-counts"]`)?.textContent;
 }
 
-function request(requestId: string): void {
-  bus.emit({
-    kind: 'truapi',
-    direction: 'outgoing',
-    productId: 'app.dot',
-    requestId,
-    payload: { tag: 'a_request', value: {} },
-  });
+function emitRequest(requestId: string): void {
+  bus.emit(buildTruapiEvent({ tag: 'a_request', requestId }));
 }
 
 /** Let one animation frame pass, so a scheduled render runs. */
-function frame(): void {
+function passFrame(): void {
   vi.advanceTimersByTime(20);
 }
 
 describe('truapi debug panel: mount and dispose', () => {
-  it('As a dotli developer, a second setup while mounted is a no-op', () => {
+  it('As a dotli developer, I set the panel up again while it is mounted and nothing changes', () => {
     // Given
     mount();
-    request('r1');
-    frame();
+    emitRequest('r1');
+    passFrame();
 
     // When
     const secondDispose = mount();
@@ -75,23 +70,24 @@ describe('truapi debug panel: mount and dispose', () => {
 
     // Then
     expect(document.querySelectorAll(`#${PANEL_ID}`)).toHaveLength(1);
-    expect(rowCount()).toBe(1);
-    expect(counts()).toBe('1 events');
+    expect(countRows()).toBe(1);
+    expect(readCounts()).toBe('1 events');
   });
 
-  it('As a dotli developer, dispose removes the panel and stops every timer and subscription', () => {
+  it('As a dotli developer, I dispose the panel and it leaves the page with every timer and subscription stopped', () => {
     // Given
     const dispose = mount();
-    request('r1');
-    frame();
+    emitRequest('r1');
+    passFrame();
 
     // When
     dispose();
+    const timersAfterDispose = vi.getTimerCount();
+    emitRequest('r2');
 
     // Then
     expect(document.getElementById(PANEL_ID)).toBeNull();
-    expect(vi.getTimerCount()).toBe(0);
-    request('r2');
+    expect(timersAfterDispose).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
     expect(bus.hasListeners()).toBe(false);
   });

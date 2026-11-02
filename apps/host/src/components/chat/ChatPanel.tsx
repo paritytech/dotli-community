@@ -331,7 +331,7 @@ function PanelBody(props: { conversation: ChatConversation; onClose: () => void 
   );
 }
 
-export interface ChatPanelProps {
+export type ChatPanelProps = {
   open: Accessor<boolean>;
   /** In px, which a drag on the panel's edge starts from. */
   width: Accessor<number>;
@@ -341,7 +341,7 @@ export interface ChatPanelProps {
   /** The drag ended, so the width can be kept. */
   onResizeEnd: () => void;
   conversation: ChatConversation;
-}
+};
 
 export function ChatPanel(props: ChatPanelProps): JSX.Element {
   return (

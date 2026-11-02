@@ -6,14 +6,16 @@
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel, ResolutionRow } from '../model/resolution-view.js';
-import { axisTicks, blockView, rowMeta } from './format.js';
+import type { ResolutionModel, ResolutionRow } from '../model/buildResolution.js';
+import { listAxisTicks } from './listAxisTicks.js';
+import { toBlockView } from './toBlockView.js';
+import { formatRowMeta } from './formatRowMeta.js';
 import s from './Chart.module.css';
 
 export function Chart(props: { model: ResolutionModel }): JSX.Element {
   const span = (): number => Math.max(1, props.model.elapsedMs);
   const running = (): boolean => props.model.summary.outcome === 'running';
-  const ticks = createMemo(() => axisTicks(span()));
+  const ticks = createMemo(() => listAxisTicks(span()));
   return (
     <div data-testid="td-res-chart">
       <div class={s['row']} data-axis="">
@@ -39,7 +41,9 @@ export function Chart(props: { model: ResolutionModel }): JSX.Element {
 function ChartRow(props: { row: ResolutionRow; span: number; running: boolean }): JSX.Element {
   const blocks = createMemo(() => {
     const last = props.row.blocks.length - 1;
-    return props.row.blocks.map((b, i) => blockView(b, props.running && i === last, props.span));
+    return props.row.blocks.map((block, index) =>
+      toBlockView({ block, open: props.running && index === last, span: props.span }),
+    );
   });
   return (
     <div class={s['row']} data-testid="td-res-row" data-role={props.row.role}>
@@ -70,7 +74,7 @@ function ChartRow(props: { row: ResolutionRow; span: number; running: boolean })
         </Show>
       </div>
       <span class={s['meta']} data-testid="td-res-meta">
-        {rowMeta(props.row)}
+        {formatRowMeta(props.row)}
       </span>
     </div>
   );

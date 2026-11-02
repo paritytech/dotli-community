@@ -9,12 +9,12 @@ import { bindCaptureSink } from '@dotli/metrics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { resetAllStoresForTests } from '@dotli/shared/testing';
-import { memorySharedChannel, type MemorySharedChannel } from '../../src/runtime/shared-mode.fake.js';
-import { setAuthState } from '../../src/runtime/state/auth.js';
-import { createRecentLabels, type RecentLabels } from '../../src/recent-labels.js';
+import { createMemorySharedChannel, type MemorySharedChannel } from '../../src/runtime/sharedMode.fake.js';
+import { authState } from '../../src/runtime/state/authState.js';
+import { createRecentLabels } from '../../src/createRecentLabels.js';
 import { mountLandingPage } from '../helpers/landing.js';
 import { appears, byId, query } from '@dotli/ui/testing';
-import { setPageUrl } from '../happy-dom.js';
+import { setPageUrl } from '../happyDom.js';
 
 const captures = { exception: vi.fn(), expected: vi.fn() };
 bindCaptureSink(captures);
@@ -23,21 +23,22 @@ let page: ReturnType<typeof mountLandingPage> | null = null;
 /** The cross-subdomain store the recents read and write. */
 let shared: MemorySharedChannel;
 
-function mount(recents: RecentLabels = createRecentLabels(shared)): ReturnType<typeof mountLandingPage> {
-  page = mountLandingPage(recents);
+function mount(): ReturnType<typeof mountLandingPage> {
+  page = mountLandingPage({ recents: createRecentLabels({ channel: shared }) });
   return page;
 }
 
-function visited(...labels: string[]): void {
+/** Seeds the shared store with `labels` as the visitor's recent visits. */
+function seedVisits(...labels: string[]): void {
   shared.store.set('dotli_recent', JSON.stringify(labels));
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   setPageUrl('http://localhost:5173/');
-  shared = memorySharedChannel();
+  shared = createMemorySharedChannel();
   // A visitor not signed in, whose saved session has been read.
-  setAuthState({ tag: 'Disconnected' });
+  authState.set({ tag: 'Disconnected' });
   localStorage.clear();
   captures.exception.mockClear();
   document.body.innerHTML = '';
@@ -54,7 +55,7 @@ afterEach(() => {
 describe('landing page', () => {
   it("As a visitor, the page's document listener goes with it", async () => {
     // Given: the recent list's box, which its listener asks whether a press landed inside
-    visited('alpha');
+    seedVisits('alpha');
     mount();
     await appears('[data-testid="landing-recent-item"]');
     const list = byId('dotli-recent');

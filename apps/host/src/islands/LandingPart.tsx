@@ -3,15 +3,15 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
-import { showBrokenPage } from '../broken-page.js';
+import { pageScreen, RootBoundary, useStore } from '@dotli/ui';
+import { showBrokenPage } from '../showBrokenPage.js';
 
 /**
  * Wraps each landing island. The page is nothing but these, so one failing breaks the whole page. A full-page screen
  * takes the page over, and the islands and their timers go with it.
  */
 export function LandingPart(props: { children: JSX.Element; reload?: () => void }): JSX.Element {
-  const shown = useStore(pageContentStore, content => content === 'page');
+  const shown = useStore(pageScreen.store, content => content === 'page');
   return (
     <Show when={shown()}>
       <RootBoundary

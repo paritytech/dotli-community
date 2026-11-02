@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import { Portal } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
+import { appears } from '@dotli/ui/testing';
 import { Button } from '../primitives/Button.js';
 import { ModalLayer } from './ModalLayer.js';
 
@@ -71,18 +72,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const openFirst = async (user: { click: (el: Element) => Promise<void> }) => {
-  await user.click(body.getByTestId('behind'));
-  await waitFor(() => expect(body.getByTestId('first-backdrop')).toHaveAttribute('data-open'));
-};
-
 /** As a dotli user, I open a layer and the page behind goes inert and the open popover closes, then the page answers again when it closes. */
 export const PageBehindInertPopoversAside: Story = {
   play: async ({ canvasElement, userEvent, step }) => {
     const page = canvasElement.closest('body > *');
     const popover = body.getByTestId('native-popover');
-    await step('Given a native popover is open beside the page', async () => {
+    await step('When a native popover opens beside the page', () => {
       popover.showPopover();
+    });
+    await step('Then it is open', async () => {
       await expect(popover.matches(':popover-open')).toBe(true);
     });
     await step('When the first layer opens', () => openFirst(userEvent));
@@ -114,9 +112,9 @@ export const SecondLayerAloneAnswers: Story = {
     await step('Given the first layer is open', () => openFirst(userEvent));
     await step('When a second layer opens over it', async () => {
       await userEvent.click(body.getByTestId('open-second'));
-      await waitFor(() => expect(body.getByTestId('second-backdrop')).toHaveAttribute('data-open'));
     });
     await step('Then only the second answers, marked as following another', async () => {
+      await waitFor(() => expect(body.getByTestId('second-backdrop')).toHaveAttribute('data-open'));
       await expect(body.getByTestId('first-backdrop')).toHaveAttribute('inert');
       await expect(body.getByTestId('second-backdrop')).not.toHaveAttribute('inert');
       await expect(body.getByTestId('second-backdrop')).toHaveAttribute('data-follows');
@@ -134,9 +132,13 @@ export const SecondLayerAloneAnswers: Story = {
 /** As a keyboard user, I press Escape after clicking off the layer's controls and the layer is dismissed once. */
 export const EscapeWithFocusOnBody: Story = {
   play: async ({ userEvent, step }) => {
-    await step('Given the layer is open and I clicked off its controls', async () => {
-      await openFirst(userEvent);
-      (document.activeElement as HTMLElement | null)?.blur();
+    await step('Given the layer is open', () => openFirst(userEvent));
+    await step('When I click off its controls', () => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    await step('Then focus is on the body', async () => {
       await expect(document.activeElement).toBe(document.body);
     });
     await step('When I press Escape', async () => {
@@ -148,3 +150,8 @@ export const EscapeWithFocusOnBody: Story = {
     });
   },
 };
+
+async function openFirst(user: { click: (element: Element) => Promise<void> }): Promise<void> {
+  await user.click(body.getByTestId('behind'));
+  await appears('[data-testid="first-backdrop"][data-open]');
+}

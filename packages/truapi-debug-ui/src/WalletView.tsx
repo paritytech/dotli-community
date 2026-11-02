@@ -71,19 +71,19 @@ function ImportPrompt(props: { host: WalletHost }): JSX.Element {
 
 function LocalWallet(props: { host: WalletHost }): JSX.Element {
   const auth = useStore(untrack(() => props.host.auth));
-  const session = (): HostAuth['session'] => {
+  function getSession(): HostAuth['session'] {
     const state = auth();
     return state.tag === 'Connected' ? state.session : undefined;
-  };
+  }
 
   return (
     <Stack narrow>
       <KeyValueList>
         <KeyValue name="Identity account">
-          <Code testId="td-wallet-account">{session()?.identityAccountId ?? 'Activating'}</Code>
+          <Code testId="td-wallet-account">{getSession()?.identityAccountId ?? 'Activating'}</Code>
         </KeyValue>
         <KeyValue name="Username">
-          <Code testId="td-wallet-username">{session()?.liteUsername ?? 'None'}</Code>
+          <Code testId="td-wallet-username">{getSession()?.liteUsername ?? 'None'}</Code>
         </KeyValue>
       </KeyValueList>
       <Inline>

@@ -8,23 +8,23 @@ import { formatRate, formatSize } from '@dotli/shared';
 import { InfoIcon } from '@dotli/ui/icons';
 import { Accordion, Callout, StatusDot, Surface, SurfaceHead, Well } from '@dotli/ui';
 import { ChainGroup } from './ChainGroup.js';
-import type { NetworkHealth } from './network-health.js';
+import type { NetworkHealth } from './networkHealth.js';
 import type { ChainView, NetworkView } from './chains.js';
-import { describeNetworkStatus, needsCountdown } from './chains-format.js';
+import { describeNetworkStatus, needsCountdown } from './chainsFormat.js';
 import s from './ChainsContent.module.css';
 
 const PENDING_TICK_MS = 250;
 
 const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
-export interface ChainsContentProps {
+export type ChainsContentProps = {
   network: Accessor<NetworkView>;
   health: Accessor<NetworkHealth>;
   /** Until then the footer shows the product's download. */
   productLoaded: Accessor<boolean>;
   /** Undefined until the page has read its settings. */
   backend: Accessor<Backend | undefined>;
-}
+};
 
 /** The network popover's body, its own chunk. */
 export function ChainsContent(props: ChainsContentProps): JSX.Element {
@@ -110,7 +110,11 @@ export function ChainsContent(props: ChainsContentProps): JSX.Element {
           </div>
         </Accordion>
       </Show>
-      <div class={s['transfer']}>
+      <div
+        class={s['transfer']}
+        data-testid="chains-transfer"
+        data-empty={speed() === null && size() === null ? '' : undefined}
+      >
         <p class={s['transferRow']} data-testid="chains-transfer-row">
           <Show when={speed()}>
             {rate => (

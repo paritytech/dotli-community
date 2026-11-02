@@ -4,8 +4,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRoot, flush } from 'solid-js';
 import { createSyncStore } from '@dotli/shared';
-import type { PermissionStatus, PermissionTargets } from '../runtime/permissions.js';
-import type { ChangeOutcome, PendingPermissions } from '../runtime/state/product-permissions.js';
+import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
+import type { ChangeOutcome, PendingPermissions } from '../runtime/state/productPermissions.js';
 import type { MenuPermission } from '../components/permissions/permissions.js';
 import { type ReadPermissions, type ShownProduct, usePermissionsPanel } from './permissions.js';
 
@@ -18,9 +18,9 @@ const LOADED: ShownProduct = { status: 'loaded', label: 'app' };
 
 /** The page's product and permissions, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
-  const product = createSyncStore<ShownProduct>('permissions-test-product', { status: 'none' });
-  const state = createSyncStore<ReadPermissions>('permissions-test-state', { status: 'none' });
-  const pending = createSyncStore<PendingPermissions>('permissions-test-pending', null);
+  const product = createSyncStore<ShownProduct>({ name: 'permissions-test-product', initial: { status: 'none' } });
+  const state = createSyncStore<ReadPermissions>({ name: 'permissions-test-state', initial: { status: 'none' } });
+  const pending = createSyncStore<PendingPermissions>({ name: 'permissions-test-pending', initial: null });
   const intents = {
     refresh: vi.fn(() => Promise.resolve()),
     change: vi.fn((_label: string, _targets: PermissionTargets) => Promise.resolve<ChangeOutcome>({ failed: [] })),

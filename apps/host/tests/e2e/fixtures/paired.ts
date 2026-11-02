@@ -4,7 +4,7 @@
 import { test as base, expect, type Page, type Frame } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { STATE_FILE } from './paths.js';
-import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chain-backend.js';
+import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chainBackend.js';
 import { answerAccountDialog } from '../helpers/signing.js';
 
 const PORT = process.env['PORT'] ?? '5173';

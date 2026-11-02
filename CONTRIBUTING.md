@@ -52,8 +52,8 @@ What a package owns and exposes is in its `README.md`, and what it may import is
 exposes the entries its `package.json` lists under `exports`: most only `src/index.ts`, some also a `./testing` entry
 for other packages' tests. Never import another package's internal modules.
 
-- Inside a package, import relative paths with the `.js` extension (`./state/topbar.js`), as NodeNext resolution
-  requires. ESLint rejects a `.ts` extension, except in files Node loads directly.
+- Inside a package, import relative paths with the `.js` extension (`./foo.js`), as NodeNext resolution requires. ESLint
+  rejects a `.ts` extension, except in files Node loads directly.
 - A module loaded on demand gets a loader in `src/lazy.ts` (`loadBridge()`, typed `BridgeModule`), so it stays a
   separate chunk.
 - Build-time code that Node runs (the Vite plugins) lives in `@config/vite`, one subpath per plugin

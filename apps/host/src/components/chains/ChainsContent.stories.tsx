@@ -4,11 +4,11 @@
 import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { bindCaptureSink } from '@dotli/metrics';
-import { HISTORY_SLOTS } from './chain-strip.js';
+import { HISTORY_SLOTS } from './chainStrip.js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   bars,
   chain,
@@ -21,8 +21,8 @@ import {
   storyNetwork,
   VERDICTS,
   waitingOn,
-} from '../../testing/stories/network-fixtures.js';
-import type { LiveVerdict } from '../../network-verdict.js';
+} from '../../testing/stories/networkFixtures.js';
+import type { LiveVerdict } from '../../networkVerdict.js';
 import type { ChainView, TransferView } from './chains.js';
 import { NetworkItem } from './NetworkItem.js';
 
@@ -42,23 +42,23 @@ const rowTexts = (row: Element): (string | null)[] =>
     cell => cell.textContent,
   );
 
-interface ExpectedChain {
+type ExpectedChain = {
   label: string;
   peers?: { text: string; aria: string };
   cell:
     | { kind: 'unavailable' }
     | { kind: 'waiting'; text: string; ghost: 'searching' | 'counting' | 'due' }
     | { kind: 'bars'; titles: string[]; firstBlock: number };
-}
+};
 
-interface ExpectedBody {
+type ExpectedBody = {
   title: string;
   detail: string;
   tone: 'idle' | 'warn' | 'ok' | 'err' | 'quiet';
   chains: ExpectedChain[];
   speed?: [string, string];
   size?: [string, string];
-}
+};
 
 /** The body: head, status well, a group per known chain, transfer rows, tips. */
 async function expectBody(expected: ExpectedBody): Promise<void> {
@@ -615,12 +615,14 @@ export const TransferFooterEmpties: Story = {
     await open(ctx);
     await ctx.step('Given the speed and download rows', async () => {
       await expect(rows()).toEqual(['Speed2 kB/s', 'Downloading1 kB / 4 kB']);
+      await expect(query(document, '[data-testid="chains-transfer"]')).not.toHaveAttribute('data-empty');
     });
     await ctx.step('When the product loads', () => {
       setProductLoaded(true);
     });
     await ctx.step('Then the rows are empty', async () => {
       await waitFor(() => expect(rows()).toEqual(['', '']));
+      await expect(query(document, '[data-testid="chains-transfer"]')).toHaveAttribute('data-empty');
     });
   },
 };

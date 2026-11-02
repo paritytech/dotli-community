@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from './icon-props.js';
+import type { IconProps } from './iconProps.js';
 
 /** A cross, for closing the panel or a copy the browser refused. */
 export function CloseIcon(props: IconProps): JSX.Element {

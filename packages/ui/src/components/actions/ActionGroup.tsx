@@ -3,36 +3,23 @@
 
 import { createEffect, createMemo, createSignal, createUniqueId, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { AnchorBoundary } from '../floating/layer-context.js';
-import { ActionsContext, type ActionBar, type ActionEntry } from './actions-context.js';
-import { fitActions, layoutParent } from './fit.js';
+import { AnchorBoundary } from '../floating/layerContext.js';
+import { ActionsContext, type ActionBar, type ActionEntry } from './actionsContext.js';
+import { fitActions, findLayoutParent } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import s from './ActionGroup.module.css';
 
-function sameNames(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  return a.size === b.size && [...a].every(name => b.has(name));
-}
-
-function inDocumentOrder(a: ActionEntry, b: ActionEntry): number {
-  const ea = a.element();
-  const eb = b.element();
-  if (ea === undefined || eb === undefined) {
-    return 0;
-  }
-  return ea.compareDocumentPosition(eb) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-}
-
 /** A container animation that resizes the group's row every frame until it ends. */
-export interface ActionGroupMorph {
+export type ActionGroupMorph = {
   running: () => boolean;
   onEnd: (listener: () => void) => () => void;
-}
+};
 
 /** The ids of the More button and its menu, for a page that addresses them. */
-export interface MoreIds {
+export type MoreIds = {
   buttonId: string;
   menuId: string;
-}
+};
 
 /**
  * A row of actions. Items that do not fit move into More, lowest priority first, and come back as room frees up.
@@ -58,7 +45,7 @@ export function ActionGroup(props: {
   const [entries, setEntries] = createSignal<readonly ActionEntry[]>([], { ownedWrite: true });
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set(), {
     ownedWrite: true,
-    equals: sameNames,
+    equals: hasSameNames,
   });
 
   const [measuring, setMeasuring] = createSignal(false);
@@ -68,7 +55,7 @@ export function ActionGroup(props: {
   // Until the first measure, an item may still move into More, so `data-measured` tells when the row has settled.
   const [measured, setMeasured] = createSignal(false, { ownedWrite: true });
 
-  const measure = (): void => {
+  function measure(): void {
     // Detached or not rendered (a hidden container), there is nothing to measure against.
     if (group === undefined || !group.isConnected || group.clientWidth === 0) {
       return;
@@ -77,48 +64,50 @@ export function ActionGroup(props: {
     if (props.morph?.running() === true) {
       return;
     }
-    row ??= layoutParent(group);
+    row ??= findLayoutParent(group);
     const present = untrack(entries)
       .filter(entry => entry.visible())
-      .sort(inDocumentOrder);
-    const flags = fitActions(
-      present.map(entry => ({
+      .sort(compareDocumentOrder);
+    const flags = fitActions({
+      items: present.map(entry => ({
         width: entry.element()?.getBoundingClientRect().width ?? 0,
         priority: entry.priority,
       })),
-      props.room?.(group, row) ?? group.clientWidth,
-      Number.parseFloat(getComputedStyle(group).columnGap) || 0,
-      more?.getBoundingClientRect().width ?? 0,
-    );
-    setCollapsed(new Set(present.filter((_, i) => flags[i] === true).map(entry => entry.name)));
+      available: props.room?.(group, row) ?? group.clientWidth,
+      gap: Number.parseFloat(getComputedStyle(group).columnGap) || 0,
+      moreWidth: more?.getBoundingClientRect().width ?? 0,
+    });
+    setCollapsed(new Set(present.filter((_entry, index) => flags[index] === true).map(entry => entry.name)));
     setMeasured(true);
-  };
+  }
 
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
   onCleanup(() => observer?.disconnect());
   // In a content-sized pill the group's own size says nothing about its room, so the row and the window are
   // heard too. The row alone misses a widening window, as a pill under its max width keeps its size.
   onSettled(() => {
-    row ??= group === undefined ? null : layoutParent(group);
+    row ??= group === undefined ? null : findLayoutParent(group);
     if (row !== null) {
       observer?.observe(row);
     }
-    const onResize = (): void => {
-      measure();
-    };
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', handleResize);
     const offMorph = props.morph?.onEnd(measure);
     return () => {
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', handleResize);
       offMorph?.();
     };
   });
-  const observe = (el: HTMLElement): void => {
-    observer?.observe(el);
-  };
+
+  function handleResize(): void {
+    measure();
+  }
+
+  function observe(element: HTMLElement): void {
+    observer?.observe(element);
+  }
 
   const bar: ActionBar = {
-    register: entry => {
+    register(entry) {
       setEntries(list => [...list, entry]);
       onCleanup(() => {
         setEntries(list => list.filter(other => other !== entry));
@@ -143,16 +132,16 @@ export function ActionGroup(props: {
   const rows = createMemo(() =>
     entries()
       .filter(entry => entry.visible() && collapsed().has(entry.name))
-      .sort(inDocumentOrder),
+      .sort(compareDocumentOrder),
   );
 
   return (
     <ActionsContext value={bar}>
       <AnchorBoundary value={boundary}>
         <div
-          ref={el => {
-            group = el;
-            observe(el);
+          ref={element => {
+            group = element;
+            observe(element);
           }}
           class={s['group']}
           id={props.id}
@@ -165,9 +154,9 @@ export function ActionGroup(props: {
             rows={rows()}
             buttonId={props.more?.buttonId ?? `${moreId}-button`}
             menuId={props.more?.menuId ?? `${moreId}-menu`}
-            buttonRef={el => {
-              more = el;
-              observe(el);
+            buttonRef={element => {
+              more = element;
+              observe(element);
             }}
           />
           {props.end}
@@ -175,4 +164,17 @@ export function ActionGroup(props: {
       </AnchorBoundary>
     </ActionsContext>
   );
+}
+
+function hasSameNames(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
+  return first.size === second.size && [...first].every(name => second.has(name));
+}
+
+function compareDocumentOrder(first: ActionEntry, second: ActionEntry): number {
+  const firstElement = first.element();
+  const secondElement = second.element();
+  if (firstElement === undefined || secondElement === undefined) {
+    return 0;
+  }
+  return firstElement.compareDocumentPosition(secondElement) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
 }

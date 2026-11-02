@@ -6,7 +6,7 @@
 import { createSyncStore, type ReadableStore, type SyncStore } from '@dotli/shared';
 import type { DebugPanelHost, DiagnosticsRow, DockInset, HostAuth, HostProduct, HostWalletMode } from './host.js';
 
-export interface FakeDebugPanelHost {
+export type FakeDebugPanelHost = {
   host: DebugPanelHost;
   product: SyncStore<HostProduct>;
   auth: SyncStore<HostAuth>;
@@ -18,7 +18,7 @@ export interface FakeDebugPanelHost {
   dockReports: readonly DockInset[];
   /** How often the panel asked to leave debug mode. */
   leaveRequests: () => number;
-}
+};
 
 const ROWS: DiagnosticsRow[] = [
   ['Site', 'app.dot.li', true],
@@ -27,11 +27,14 @@ const ROWS: DiagnosticsRow[] = [
 
 /** `parts` replace the host's own, such as a recording wallet switch. */
 export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDebugPanelHost {
-  const product = createSyncStore<HostProduct>('fakeHostProduct', { status: 'none' });
-  const auth = createSyncStore<HostAuth>('fakeHostAuth', { tag: 'Restoring' });
-  const walletMode = createSyncStore<HostWalletMode>('fakeHostWalletMode', { mode: 'app', failure: null });
-  const topbarPresent = createSyncStore('fakeHostTopbarPresent', false);
-  const dockInset = createSyncStore<DockInset>('fakeHostDockInset', { right: 0, bottom: 0 });
+  const product = createSyncStore<HostProduct>({ name: 'fakeHostProduct', initial: { status: 'none' } });
+  const auth = createSyncStore<HostAuth>({ name: 'fakeHostAuth', initial: { tag: 'Restoring' } });
+  const walletMode = createSyncStore<HostWalletMode>({
+    name: 'fakeHostWalletMode',
+    initial: { mode: 'app', failure: null },
+  });
+  const topbarPresent = createSyncStore({ name: 'fakeHostTopbarPresent', initial: false });
+  const dockInset = createSyncStore<DockInset>({ name: 'fakeHostDockInset', initial: { right: 0, bottom: 0 } });
   const dockReports: DockInset[] = [];
   let leaves = 0;
   const host: DebugPanelHost = {
@@ -49,14 +52,18 @@ export function fakeDebugPanelHost(parts: Partial<DebugPanelHost> = {}): FakeDeb
     archive: () => Promise.resolve({}),
     contentInsets: { top: '0px', bottom: '0px' },
     topbarPresent: topbarPresent.get,
-    reportDockInset: inset => {
-      dockReports.push(inset);
-      dockInset.set(inset);
-    },
-    leaveDebugMode: () => {
-      leaves += 1;
-    },
+    reportDockInset,
+    leaveDebugMode,
     ...parts,
   };
   return { host, product, auth, walletMode, topbarPresent, dockInset, dockReports, leaveRequests: () => leaves };
+
+  function reportDockInset(inset: DockInset): void {
+    dockReports.push(inset);
+    dockInset.set(inset);
+  }
+
+  function leaveDebugMode(): void {
+    leaves += 1;
+  }
 }

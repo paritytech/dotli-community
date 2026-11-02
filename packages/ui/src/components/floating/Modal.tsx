@@ -3,15 +3,15 @@
 
 import { children, createEffect, createSignal, isHydrating, onSettled, Show, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { isPhoneViewport, watchPhoneViewport } from '../../page/phone-viewport.js';
-import type { IconProps } from '../icons/icon-props.js';
+import { isPhoneViewport, watchPhoneViewport } from '../../page/phoneViewport.js';
+import type { IconProps } from '../icons/iconProps.js';
 import { IconTile } from '../primitives/IconTile.js';
-import { InSheet } from './in-sheet.js';
+import { InSheet } from './inSheet.js';
 import { ModalLayer } from './ModalLayer.js';
 import { SheetFrame } from './SheetFrame.js';
 import s from './Modal.module.css';
 
-export interface ModalProps {
+export type ModalProps = {
   open: boolean;
   /** `dismiss`: Escape or the scrim. `close`: the sheet head's close button or a swipe. */
   onOpenChange: (open: boolean, reason?: 'dismiss' | 'close') => void;
@@ -37,7 +37,7 @@ export interface ModalProps {
   /** Receives the frame. */
   frameRef?: (el: HTMLDivElement) => void;
   children: JSX.Element;
-}
+};
 
 /**
  * A card on wide screens and a bottom sheet on a phone, following the viewport while open. The children resolve

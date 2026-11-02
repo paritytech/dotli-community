@@ -6,24 +6,22 @@ import { resolve } from 'node:path';
 import { DEV_HOST_PORT, DEV_PROTOCOL_PORT } from '@dotli/config';
 import { LOCAL_ROOTS } from '@dotli/config/local-roots';
 import astroSolid from '@config/astro-solid';
-import { dotliApp } from '@config/vite/app';
+import { createDotliApp } from '@config/vite/app';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { readReleaseVersion } from '@config/vite/build-info';
-import { dependencyVersions } from '@config/vite/dependency-versions';
+import { listDependencyVersions } from '@config/vite/dependency-versions';
 import { PROTOCOL_PREFIX } from '@config/vite/serving';
 import { spaFallback } from '@config/vite/spa-fallback';
 import { truapiSigningWorker } from '@config/vite/truapi-signing-worker';
 
-const app = dotliApp(import.meta.dirname, 'host', LOCAL_ROOTS);
+const app = createDotliApp({ appDir: import.meta.dirname, site: 'host', roots: LOCAL_ROOTS });
 
 // Direct dependencies only, so Diagnostics lists just what dot.li code imports. A missing one reads as "unknown".
-const dependencies = dependencyVersions(resolve(import.meta.dirname, '../..'), [
+const dependencies = listDependencyVersions(resolve(import.meta.dirname, '../..'), [
   'polkadot-api',
   '@polkadot-api/',
   '@parity/truapi',
 ]);
-const versionOf = (name: string): string => dependencies.find(dep => dep.name === name)?.version ?? 'unknown';
-const scoped = (prefix: string) => dependencies.filter(dep => dep.name.startsWith(prefix));
 
 // The protocol dev server speaks https with the local certificate, which Node does not trust.
 const protocolDevServer = { target: `https://localhost:${DEV_PROTOCOL_PORT}`, secure: false };
@@ -37,12 +35,12 @@ export default defineConfig({
   // two sites, so without this the signed-in flag and shared settings in the dev store never answer a product page.
   security: { allowedDomains: LOCAL_ROOTS.flatMap(root => [{ hostname: root }, { hostname: `**.${root}` }]) },
   base: app.base,
-  // nginx rate-limits and caches /assets/. `file` writes landing.html and session.html beside index.html, for the
-  // servers to pick by host and path.
+  // Hashed assets sit under /assets/, which is cached as immutable. `file` writes landing.html and session.html beside
+  // index.html, for the servers to pick by host and path.
   build: { assets: 'assets', format: 'file' },
   integrations: [
     astroSolid(),
-    // src/pwa.ts prompts for updates.
+    // The page registers the worker and prompts for updates itself.
     astroPwa({
       injectRegister: false,
       registerType: 'prompt',
@@ -78,23 +76,24 @@ export default defineConfig({
           'landing.html',
           'session.html',
           '**/truapi_signing_bg*.wasm',
-          '**/signing-worker*.js',
-          '**/local-wallet-core*.js',
-          '**/truapi-debug-panel*',
-          '**/debug-panel-host*',
-          '**/debug-wire-describe*',
+          '**/signingWorker*.js',
+          '**/localWalletCore*.js',
+          '**/truapiDebugPanel*',
+          '**/debugPanelHost*',
+          '**/debugWireDescribe*',
         ],
         cleanupOutdatedCaches: true,
         // Prompted updates need the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
         clientsClaim: false,
         maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,
-        // /__preview needs nginx's COEP/COOP/CORP headers, and host_version.json must show the file, not the shell.
+        // /__preview needs the isolation headers the shell's fallback would not carry, and host_version.json must show
+        // the file, not the shell.
         navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/, /^\/host_version\.json$/],
       },
     }),
   ],
-  vite: app.vite({
+  vite: app.createViteConfig({
     plugins: [spaFallback({ landing: '/landing', session: '/session' }, app.serving), truapiSigningWorker()],
     worker: {
       plugins: () => [truapiSigningWorker()],
@@ -105,10 +104,10 @@ export default defineConfig({
     define: {
       __DOTLI_VERSION__: JSON.stringify(readReleaseVersion(import.meta.dirname)),
       // smoldot is compiled into truapi-provider's wasm, so the provider version identifies the light client.
-      __LIGHT_CLIENT_VERSION__: JSON.stringify(versionOf('@parity/truapi-provider')),
-      __POLKADOT_API_VERSION__: JSON.stringify(versionOf('polkadot-api')),
-      __POLKADOT_API_VERSIONS__: JSON.stringify(scoped('@polkadot-api/')),
-      __PARITY_TRUAPI_VERSIONS__: JSON.stringify(scoped('@parity/truapi')),
+      __LIGHT_CLIENT_VERSION__: JSON.stringify(readDependencyVersion('@parity/truapi-provider')),
+      __POLKADOT_API_VERSION__: JSON.stringify(readDependencyVersion('polkadot-api')),
+      __POLKADOT_API_VERSIONS__: JSON.stringify(listScopedDependencies('@polkadot-api/')),
+      __PARITY_TRUAPI_VERSIONS__: JSON.stringify(listScopedDependencies('@parity/truapi')),
     },
     // Node would load the workspace sources to render the page, and cannot map their `.js` imports to `.ts` files.
     ssr: { noExternal: [/^@dotli\//] },
@@ -117,7 +116,7 @@ export default defineConfig({
       // protocol dev server. The protocol path goes there except on a product or sandbox host, where the path is the
       // product's own.
       proxy: {
-        [`${PROTOCOL_PREFIX}/`]: { ...protocolDevServer, bypass: app.serving.protocolProxyBypass },
+        [`${PROTOCOL_PREFIX}/`]: { ...protocolDevServer, bypass: app.serving.getProtocolProxyBypass },
         '/__dotli-mode/': protocolDevServer,
       },
       headers: {
@@ -127,3 +126,11 @@ export default defineConfig({
     },
   }),
 });
+
+function readDependencyVersion(name: string): string {
+  return dependencies.find(dependency => dependency.name === name)?.version ?? 'unknown';
+}
+
+function listScopedDependencies(prefix: string) {
+  return dependencies.filter(dependency => dependency.name.startsWith(prefix));
+}

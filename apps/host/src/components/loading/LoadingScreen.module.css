@@ -44,7 +44,7 @@
   top: 0;
 }
 
-/* Set by loading-controller.ts. */
+/* Set by loadingController.ts. */
 .screen[data-dismissing] {
   opacity: 0;
   pointer-events: none;

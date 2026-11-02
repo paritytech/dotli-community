@@ -3,11 +3,11 @@
 
 import { useContext, type Component } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { IconProps } from '../icons/icon-props.js';
-import { ActionsContext, type ActionAlert } from './actions-context.js';
+import type { IconProps } from '../icons/iconProps.js';
+import { ActionsContext, type ActionAlert } from './actionsContext.js';
 import s from './ActionItem.module.css';
 
-export interface ActionItemProps {
+export type ActionItemProps = {
   name: string;
   label: string;
   icon: Component<IconProps>;
@@ -24,7 +24,7 @@ export interface ActionItemProps {
   separated?: boolean;
   /** The view the item shows, its button first. */
   children: JSX.Element;
-}
+};
 
 /** Wraps an item's button and tells its group how to show it as a More row. Outside a group it is always inline. */
 export function ActionItem(props: ActionItemProps): JSX.Element {

@@ -12,7 +12,7 @@ FSL-1.1-Apache-2.0) terms is used to build the application and is not redistribu
 The application ships a copy of the Public Suffix List (https://publicsuffix.org/list/), under the Mozilla Public
 License 2.0 (`MPL-2.0`), unmodified and with its license header.
 
-> Generated from the resolved dependency tree (908 distinct third-party packages) by `scripts/third-party-notices.ts`.
+> Generated from the resolved dependency tree (908 distinct third-party packages) by `scripts/thirdPartyNotices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
 

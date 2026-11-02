@@ -23,6 +23,7 @@ import {
   type Transport,
 } from '@dotli/transport';
 import type { ExecutableManifest, RootManifest } from '@dotli/resolver';
+import { isRecord } from '@dotli/shared';
 import {
   executableManifestCodec,
   manifestResultCodec,
@@ -31,7 +32,7 @@ import {
   resolvePhaseCodec,
   rootManifestCodec,
   telemetryEventCodec,
-} from './codec-values.js';
+} from './codecValues.js';
 
 type ExecutableKind = ExecutableManifest['kind'];
 
@@ -55,10 +56,10 @@ export type LocalWalletIdentity = CodecType<typeof localWalletIdentity>;
 
 /** Whether `value` has the identity's shape, for one that reached the host without the codec. */
 export function isLocalWalletIdentity(value: unknown): value is LocalWalletIdentity {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return false;
   }
-  const { identityAccountId, liteUsername } = value as Record<string, unknown>;
+  const { identityAccountId, liteUsername } = value;
   return typeof identityAccountId === 'string' && (liteUsername === null || typeof liteUsername === 'string');
 }
 
@@ -196,7 +197,7 @@ export type ProtocolHandler<M> =
       : never;
 
 /** What serves the protocol's methods, each of whose own errors the schema declares. A transport is one. */
-export interface ProtocolServing {
+export type ProtocolServing = {
   handleRequest<P, R, E extends DomainFailure>(
     method: Request<P, R, E>,
     handler: RequestHandler<NoInfer<P>, NoInfer<R>, NoInfer<E>, ProtocolHello>,
@@ -205,4 +206,4 @@ export interface ProtocolServing {
     method: Subscription<S, V, I>,
     handler: SubscriptionHandler<NoInfer<S>, NoInfer<V>, NoInfer<I>, ProtocolHello>,
   ): () => void;
-}
+};

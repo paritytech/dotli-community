@@ -17,7 +17,7 @@ const service = {
   stops: 0,
   actions: [] as unknown[],
   actionFails: false,
-  renderCustomMessage: (_productId: string, _request: unknown, sink: Sink) => {
+  renderCustomMessage: ({ sink }: { sink: Sink }) => {
     service.sinks.push(sink);
     return () => {
       service.stops += 1;

@@ -5,14 +5,15 @@ import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
-import type { ModalEntry, ModalView } from '../../page/state/modals.js';
+import type { ModalEntry, ModalView } from '../../page/state/createModals.js';
 import { LockIcon } from '../../icons.js';
 import { CameraIcon, UploadIcon } from '../../testing/stories/glyphs.js';
 import { PromptDialog } from './PromptDialog.js';
 
 // Ids outside the store, so a pressed button settles nothing.
 let nextId = 1000;
-const entry = (view: ModalView<string>): ModalEntry => ({ id: nextId++, view });
+// The dialog is portalled into the body, outside the story's canvas.
+const body = within(document.body);
 
 const meta = {
   title: 'Overlays/PromptDialog',
@@ -20,7 +21,7 @@ const meta = {
   // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
   parameters: { chrome: true, docs: { story: { inline: false, height: '640px' } } },
   args: {
-    entry: entry({
+    entry: buildEntry({
       icon: CameraIcon,
       title: 'Permission Request',
       fields: [
@@ -47,16 +48,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The dialog is portalled into the body, outside the story's canvas.
-const body = within(document.body);
-const footer = (): [string, string | null][] =>
-  within(body.getByTestId('prompt-dialog-footer'))
-    .getAllByRole('button')
-    .map(button => [button.textContent, button.getAttribute('data-variant')]);
-
 /** As a dotli user, I meet a modal dialog named by its title with its icon, fields, notice and answers. */
 export const PermissionRequest: Story = {
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     await step('Then I meet a modal dialog named by its title, with its icon, fields, notice and answers', async () => {
       const frame = body.getByTestId('prompt-dialog-backdrop');
       await expect(frame).toHaveAttribute('role', 'dialog');
@@ -72,7 +69,7 @@ export const PermissionRequest: Story = {
       await expect(body.getByTestId('prompt-dialog-notice')).toHaveTextContent(
         'Granting this permission will reload the application.',
       );
-      await expect(footer()).toEqual([
+      await expect(readFooter()).toEqual([
         ['Deny', 'danger'],
         ['Always allow', 'secondary'],
         ['Allow once', 'primary'],
@@ -95,17 +92,24 @@ export const PermissionRequest: Story = {
 
 /** As a keyboard user, I find focus on the dialog and not on an answer, and Tab wraps between the answers. */
 export const FocusStartsOnDialog: Story = {
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     await step('Then focus is on the dialog, not on an answer', async () => {
       await waitFor(() => expect(body.getByTestId('prompt-dialog')).toHaveFocus());
     });
-    await step('When I press Tab on the last answer, then focus wraps to the first', async () => {
+    await step('When I press Tab on the last answer', async () => {
       body.getByRole('button', { name: 'Allow once' }).focus();
       await (await trustedInput()).keyboard('{Tab}');
+    });
+    await step('Then focus wraps to the first', async () => {
       await expect(body.getByRole('button', { name: 'Deny' })).toHaveFocus();
     });
-    await step('When I press Shift+Tab on the first, then focus wraps to the last', async () => {
+    await step('When I press Shift+Tab on the first', async () => {
       await (await trustedInput()).keyboard('{Shift>}{Tab}{/Shift}');
+    });
+    await step('Then focus wraps to the last', async () => {
       await expect(body.getByRole('button', { name: 'Allow once' })).toHaveFocus();
     });
   },
@@ -114,7 +118,7 @@ export const FocusStartsOnDialog: Story = {
 /** As a dotli user, I type into a password field that keeps its text to itself, and Unlock waits for a password. */
 export const PasswordPrompt: Story = {
   args: {
-    entry: entry({
+    entry: buildEntry({
       icon: LockIcon,
       title: 'Encrypted Content',
       fields: [],
@@ -130,7 +134,10 @@ export const PasswordPrompt: Story = {
       dismissOnBackdrop: false,
     }),
   },
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     const field = body.getByTestId('prompt-dialog-input');
     await step('Then the password field has the focus, and keeps what I type to itself', async () => {
       await expect(field).toHaveFocus();
@@ -140,14 +147,16 @@ export const PasswordPrompt: Story = {
       await expect(field).toHaveAttribute('spellcheck', 'false');
     });
     await step('And Cancel is not drawn destructive, and Unlock waits for a password', async () => {
-      await expect(footer()).toEqual([
+      await expect(readFooter()).toEqual([
         ['Cancel', 'secondary'],
         ['Unlock', 'primary'],
       ]);
       await expect(body.getByRole('button', { name: 'Unlock' })).toBeDisabled();
     });
-    await step('When I type one, then Unlock is ready', async () => {
+    await step('When I type one', async () => {
       await userEvent.type(field, 'hunter2');
+    });
+    await step('Then Unlock is ready', async () => {
       await expect(body.getByRole('button', { name: 'Unlock' })).toBeEnabled();
     });
   },
@@ -156,7 +165,7 @@ export const PasswordPrompt: Story = {
 /** As a screen reader user, I hear the wrong-password error announced. */
 export const WrongPassword: Story = {
   args: {
-    entry: entry({
+    entry: buildEntry({
       icon: LockIcon,
       title: 'Encrypted Content',
       fields: [],
@@ -173,7 +182,10 @@ export const WrongPassword: Story = {
       dismissOnBackdrop: false,
     }),
   },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     await step('Then the error is announced', async () => {
       await expect(body.getByRole('alert')).toHaveTextContent('Wrong password');
     });
@@ -183,7 +195,7 @@ export const WrongPassword: Story = {
 /** As a dotli user, I read a preimage submit prompt with its data size and answers. */
 export const PreimageSubmit: Story = {
   args: {
-    entry: entry({
+    entry: buildEntry({
       icon: UploadIcon,
       title: 'Submit Preimage',
       fields: [{ label: 'Data size', value: '12 KB' }],
@@ -199,7 +211,7 @@ export const PreimageSubmit: Story = {
 /** As a dotli user, I read a sign-transaction prompt where the answer that rejects is drawn destructive. */
 export const SignTransaction: Story = {
   args: {
-    entry: entry({
+    entry: buildEntry({
       title: 'Sign Transaction',
       fields: [
         { label: 'App', value: 'playground.dot' },
@@ -216,9 +228,12 @@ export const SignTransaction: Story = {
       dismissResult: 'dismissed',
     }),
   },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     await step('Then the answer that rejects the request is drawn destructive', async () => {
-      await expect(footer()).toEqual([
+      await expect(readFooter()).toEqual([
         ['Reject', 'danger'],
         ['Sign', 'primary'],
       ]);
@@ -229,7 +244,7 @@ export const SignTransaction: Story = {
 /** As a dotli user, I read a sign-message prompt with the code in monospace and the warning marked. */
 export const SignMessage: Story = {
   args: {
-    entry: entry({
+    entry: buildEntry({
       title: 'Sign Message',
       fields: [
         { label: 'App', value: 'playground.dot' },
@@ -245,7 +260,10 @@ export const SignMessage: Story = {
       dismissResult: 'dismissed',
     }),
   },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     await step('Then the code value is mono and the warning is marked', async () => {
       const fields = body.getAllByTestId('prompt-dialog-field');
       await expect(fields.map(field => field.hasAttribute('data-warning'))).toEqual([false, false, false, true]);
@@ -262,7 +280,10 @@ export const Phone: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When the dialog renders', async () => {
+      await mount();
+    });
     await step('Then a sheet headed by the title leads the prompt, with a Close button', async () => {
       const modal = body.getByTestId('prompt-dialog');
       const head = await within(modal).findByTestId('prompt-dialog-sheet-head');
@@ -272,3 +293,13 @@ export const Phone: Story = {
     });
   },
 };
+
+function buildEntry(view: ModalView<string>): ModalEntry {
+  return { id: nextId++, view };
+}
+
+function readFooter(): [string, string | null][] {
+  return within(body.getByTestId('prompt-dialog-footer'))
+    .getAllByRole('button')
+    .map(button => [button.textContent, button.getAttribute('data-variant')]);
+}

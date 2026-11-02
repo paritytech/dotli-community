@@ -5,20 +5,20 @@ import { resetAllStoresForTests } from '@dotli/shared/testing';
 import { Overlays, showNotification, type NotificationParams } from '@dotli/ui';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import type { PhoneOutcome } from '../../runtime/phone-outcome.js';
-import { phoneOutcomeNotice } from '../../runtime/phone-outcome-notice.js';
+import type { PhoneOutcome } from '../../runtime/phoneOutcome.js';
+import { getPhoneOutcomeNotice } from '../../runtime/getPhoneOutcomeNotice.js';
 
 const APP = 'dotli.dot';
 
 // The stack is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 
-interface Args {
+type Args = {
   outcome: PhoneOutcome;
   /** The toast's text, or undefined when the outcome shows none. */
   text: string | undefined;
   tone?: NonNullable<NotificationParams['tone']>;
-}
+};
 
 const meta = {
   title: 'Host/Signing/PhoneOutcomeToast',
@@ -32,7 +32,7 @@ const meta = {
   play: async ({ args, step }) => {
     let notice: NotificationParams | undefined;
     await step('When the waited request ends', () => {
-      notice = phoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
+      notice = getPhoneOutcomeNotice({ outcome: args.outcome, title: 'Sign Transaction', app: APP });
     });
     const { text, tone } = args;
     if (text === undefined) {

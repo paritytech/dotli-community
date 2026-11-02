@@ -18,7 +18,10 @@ type Story = StoryObj<typeof meta>;
 
 /** As a screen reader user, I hear a named switch that is off. */
 export const Off: Story = {
-  play: async ({ canvas, step }) => {
+  play: async ({ canvas, mount, step }) => {
+    await step('When the switch renders', async () => {
+      await mount();
+    });
     await step('Then I hear a named switch that is off', async () => {
       const toggle = canvas.getByRole('switch', { name: 'Notifications' });
       await expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -61,9 +64,12 @@ export const Interactive: Story = {
       />
     );
   },
-  play: async ({ args, canvas, userEvent, step }) => {
+  play: async ({ args, canvas, userEvent, mount, step }) => {
+    await step('When the switch renders', async () => {
+      await mount();
+    });
     const toggle = canvas.getByRole('switch', { name: 'Notifications' });
-    await step('Given the switch is off', async () => {
+    await step('Then the switch shows off', async () => {
       await expect(toggle).toHaveAttribute('aria-checked', 'false');
     });
     await step('When I press it', async () => {

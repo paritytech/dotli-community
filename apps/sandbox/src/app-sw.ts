@@ -4,7 +4,7 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
 
-import { startAppServiceWorker } from './app-service-worker.js';
+import { startAppServiceWorker } from './startAppServiceWorker.js';
 
 startAppServiceWorker({
   scope: self,

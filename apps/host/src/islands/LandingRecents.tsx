@@ -4,7 +4,8 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { landingRecentLabels, type RecentLabels } from '../recent-labels.js';
+import type { RecentLabels } from '../createRecentLabels.js';
+import { getLandingRecentLabels } from '../getLandingRecentLabels.js';
 import { RecentList } from '../components/landing/RecentList.js';
 import { useActiveTld, useRecents } from './landing.js';
 import { LandingPart } from './LandingPart.js';
@@ -25,6 +26,6 @@ export function LandingRecents(props: { recents?: RecentLabels }): JSX.Element {
 // Inside the part, so a failure binding the list shows the error page as a failure rendering it does.
 function BoundRecentList(props: { recents: RecentLabels | undefined }): JSX.Element {
   const suffix = useActiveTld();
-  const recents = useRecents(() => props.recents ?? landingRecentLabels(window));
+  const recents = useRecents(() => props.recents ?? getLandingRecentLabels(window));
   return <RecentList labels={recents.labels} suffix={suffix} onForget={recents.forget} />;
 }

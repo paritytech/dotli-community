@@ -3,7 +3,7 @@
 
 import { createSignal, onSettled, untrack, type Accessor } from 'solid-js';
 import { getActiveTldSuffix, subscribeSettings } from '@dotli/config';
-import type { RecentLabels } from '../recent-labels.js';
+import type { RecentLabels } from '../createRecentLabels.js';
 
 /**
  * The TLD the visitor's network registers names under. The visitor's network decides it, so the browser reads it once
@@ -24,10 +24,10 @@ export function useActiveTld(
 }
 
 /** The recently visited names and a way to forget one, for an island's own lifetime. */
-export interface Recents {
+export type Recents = {
   labels: Accessor<readonly string[]>;
   forget: (label: string) => void;
-}
+};
 
 /**
  * Loads the recents once settled, from the store `open` gives, if any. The build renders this too and has no store to

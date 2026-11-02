@@ -3,18 +3,18 @@
 
 import { createMemo } from 'solid-js';
 import type { ReadableStore } from '@dotli/shared';
-import type { DotliAuthState } from '../runtime/session/auth-state.js';
-import type { TruapiSessionUiState } from '../runtime/session/session-state.js';
+import type { DotliAuthState } from '../runtime/session/types.js';
+import type { TruapiSessionUiState } from '../runtime/session/parseUiStateCache.js';
 import { useStore } from '@dotli/ui';
 import type { Account } from '../components/account/account.js';
 
-export interface AccountStores {
+export type AccountStores = {
   auth: ReadableStore<DotliAuthState>;
   loggedIn: ReadableStore<boolean>;
   walletMode: ReadableStore<{ mode: 'app' | 'local' }>;
   signingOut: ReadableStore<boolean>;
   elsewhere: ReadableStore<boolean>;
-}
+};
 
 /** The account as the views read it, for an island's own lifetime. */
 export function useAccount(stores: AccountStores): Account {

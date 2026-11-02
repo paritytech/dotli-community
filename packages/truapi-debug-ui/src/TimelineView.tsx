@@ -3,12 +3,12 @@
 
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq, StoredEvent } from './model/event-store.js';
-import type { TimelineLane } from './model/timeline.js';
-import { wireHoverTooltips } from './shared/hover-tooltip.js';
+import type { EventSeq, StoredEvent } from './model/storedEvent.js';
+import type { TimelineLane } from './model/buildTimeline.js';
+import { wireHoverTooltips } from './shared/wireHoverTooltips.js';
 import { Pane } from './shared/Pane.js';
 import { Timeline } from './timeline/Timeline.js';
-import { usePanelWork } from './work.js';
+import { usePanelWork } from './panelWork.js';
 
 export function TimelineView(props: {
   active: boolean;
@@ -35,15 +35,15 @@ export function TimelineView(props: {
   );
 
   let container: HTMLDivElement | undefined;
-  const select = (seq: EventSeq, el: Element): void => {
+  function select(seq: EventSeq, element: Element): void {
     container?.focus({ preventScroll: true });
     props.onSelect(seq);
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  };
+    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
 
-  let unwireTooltips: (() => void) | undefined;
+  let disposeTooltips: (() => void) | undefined;
   onCleanup(() => {
-    unwireTooltips?.();
+    disposeTooltips?.();
   });
 
   return (
@@ -52,13 +52,13 @@ export function TimelineView(props: {
       label="Timeline"
       hidden={!props.active}
       ownFocus
-      ref={el => {
-        container = el;
-        unwireTooltips = wireHoverTooltips(
-          el,
-          untrack(() => props.tooltip),
-          untrack(() => props.panel),
-        );
+      ref={element => {
+        container = element;
+        disposeTooltips = wireHoverTooltips({
+          root: element,
+          tooltip: untrack(() => props.tooltip),
+          panel: untrack(() => props.panel),
+        });
       }}
     >
       <Timeline lanes={lanes()} selectedSeq={props.selectedSeq} onSelect={select} />

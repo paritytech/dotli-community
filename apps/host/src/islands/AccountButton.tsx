@@ -2,42 +2,42 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { authStore, loggedInStore } from '../runtime/state/auth.js';
-import { logout, startLogin } from '../runtime/auth-controller.js';
-import { sessionElsewhereStore } from '../runtime/state/session-elsewhere.js';
-import { signingOutStore } from '../runtime/state/sign-out.js';
-import { walletModeStore } from '../runtime/state/wallet-mode.js';
+import { authState } from '../runtime/state/authState.js';
+import { authControl } from '../runtime/createAuthController.js';
+import { sessionElsewhereState } from '../runtime/state/sessionElsewhereState.js';
+import { signingOutState } from '../runtime/state/signingOutState.js';
+import { walletModeState } from '../runtime/state/walletModeState.js';
 import { getProtocolOrigin } from '@dotli/protocol';
-import { routeUrl } from '../runtime/session-handoff/session-protocol.js';
+import { getRouteUrl } from '../runtime/sessionHandoff/sessionRoute.js';
 import { useStore } from '@dotli/ui';
 import { AccountItem } from '../components/account/AuthButton.js';
-import { authModalStore, setAuthModalTrigger } from '../state/auth-modal.js';
+import { authModalState } from '../state/authModalState.js';
 import { useAccount } from './account.js';
 
 /** The account button bound to the session, as the topbar and the landing page's corner show it. */
 export function AccountButton(props: { idPrefix?: string; showName?: boolean }): JSX.Element {
   const account = useAccount({
-    auth: authStore,
-    loggedIn: loggedInStore,
-    walletMode: walletModeStore,
-    signingOut: signingOutStore,
-    elsewhere: sessionElsewhereStore,
+    auth: authState.store,
+    loggedIn: authState.loggedInStore,
+    walletMode: walletModeState.store,
+    signingOut: signingOutState.store,
+    elsewhere: sessionElsewhereState.store,
   });
-  const modalOpen = useStore(authModalStore, state => state.open);
+  const modalOpen = useStore(authModalState.store, state => state.open);
   return (
     <AccountItem
       account={account}
       modalOpen={modalOpen}
       onSignIn={() => {
-        startLogin();
+        authControl.startLogin();
       }}
       onLogout={() => {
-        logout();
+        authControl.logout();
       }}
-      handOver={setAuthModalTrigger}
+      handOver={authModalState.setTrigger}
       idPrefix={props.idPrefix}
       showName={props.showName}
-      sitesUrl={routeUrl(getProtocolOrigin(), 'manage')}
+      sitesUrl={getRouteUrl(getProtocolOrigin(), 'manage')}
     />
   );
 }

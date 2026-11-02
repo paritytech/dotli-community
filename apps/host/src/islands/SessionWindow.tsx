@@ -5,23 +5,17 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { pageContentStore, RootBoundary, useStore } from '@dotli/ui';
-import { showBrokenPage } from '../broken-page.js';
+import { pageScreen, RootBoundary, useStore } from '@dotli/ui';
+import { showBrokenPage } from '../showBrokenPage.js';
 import { SessionWindow as Content } from '../components/account/SessionWindow.js';
-import {
-  closeIntent,
-  sessionWindowStore,
-  siteIntents,
-  siteListIntents,
-  windowIntents,
-} from '../state/session-window.js';
+import { sessionWindowState } from '../state/sessionWindowState.js';
 
 /**
  * The session window's content, bound to the view its entry writes. The page is nothing but this, so a failure breaks
  * the whole page, and a full-page screen takes it over.
  */
 export function SessionWindow(): JSX.Element {
-  const shown = useStore(pageContentStore, content => content === 'page');
+  const shown = useStore(pageScreen.store, content => content === 'page');
   return (
     <Show when={shown()}>
       <RootBoundary
@@ -38,53 +32,53 @@ export function SessionWindow(): JSX.Element {
 
 // Inside the boundary, so a store read that throws also breaks to the page's error screen.
 function BoundContent(): JSX.Element {
-  const screen = useStore(sessionWindowStore);
+  const screen = useStore(sessionWindowState.store);
   return (
     <Content
       screen={screen()}
       onClose={() => {
-        closeIntent()();
+        sessionWindowState.getCloseIntent()();
       }}
       onCancel={() => {
-        windowIntents().cancel();
+        sessionWindowState.getWindowIntents().cancel();
       }}
       onContinue={() => {
-        void windowIntents().continueWithStored();
+        void sessionWindowState.getWindowIntents().continueWithStored();
       }}
       onUseAnotherAccount={() => {
-        void windowIntents().useAnotherAccount();
+        void sessionWindowState.getWindowIntents().useAnotherAccount();
       }}
       onGoOnWithoutPhone={() => {
-        void windowIntents().goOnWithoutPhone();
+        void sessionWindowState.getWindowIntents().goOnWithoutPhone();
       }}
       onRetry={() => {
-        void windowIntents().retry();
+        void sessionWindowState.getWindowIntents().retry();
       }}
       onClosePhrase={() => {
-        void windowIntents().closePhrase();
+        void sessionWindowState.getWindowIntents().closePhrase();
       }}
-      onImportPhrase={phrase => windowIntents().importPhrase(phrase)}
-      isValidPhrase={phrase => windowIntents().isValidPhrase(phrase)}
+      onImportPhrase={phrase => sessionWindowState.getWindowIntents().importPhrase(phrase)}
+      isValidPhrase={phrase => sessionWindowState.getWindowIntents().isValidPhrase(phrase)}
       onConsent={() => {
-        void siteIntents().consent();
+        void sessionWindowState.getSiteIntents().consent();
       }}
       onDecline={() => {
-        siteIntents().decline();
+        sessionWindowState.getSiteIntents().decline();
       }}
       onSiteConfirm={() => {
-        siteIntents().confirm();
+        sessionWindowState.getSiteIntents().confirm();
       }}
       onSiteRetry={() => {
-        void siteIntents().retry();
+        void sessionWindowState.getSiteIntents().retry();
       }}
       onSiteCancel={() => {
-        siteIntents().cancel();
+        sessionWindowState.getSiteIntents().cancel();
       }}
       onRevoke={token => {
-        void siteListIntents().revoke(token);
+        void sessionWindowState.getSiteListIntents().revoke(token);
       }}
       onSiteListRetry={() => {
-        void siteListIntents().retry();
+        void sessionWindowState.getSiteListIntents().retry();
       }}
     />
   );

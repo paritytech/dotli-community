@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { test, expect, openHostPlayground, waitForHostPlaygroundFrame } from './fixtures/paired.js';
-import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/run-test.js';
+import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/runTest.js';
 import { answerHostDialogs, runWebSignedTest, type HostDialog } from './helpers/signing.js';
 
 // Not `describe.serial`, which would skip every test after the first failure. A failure costs a fresh worker instead.

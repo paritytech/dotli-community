@@ -12,7 +12,7 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
 import { byId, query } from '@dotli/ui/testing';
-import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { expectPhone, openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import {
   DEFAULT_CACHE,
   DEFAULT_SETTINGS,
@@ -21,7 +21,7 @@ import {
   resetStorySettings,
   settingsAsked,
   storySettings,
-} from '../../testing/stories/settings-fixtures.js';
+} from '../../testing/stories/settingsFixtures.js';
 import { SettingsItem } from './SettingsItem.js';
 
 const open = openSurface({ trigger: 'mode-button', surface: 'mode-popover' });
@@ -44,14 +44,14 @@ async function showCategory(click: (el: Element) => Promise<void>, category: Cat
 }
 
 /** What the popover shows for. */
-interface Shown {
+type Shown = {
   backend: Backend;
   network: Network;
   cache: CacheSettings;
   enabledNetworks: Network[];
   sharedWorkerSupported: boolean;
   debugOn: boolean;
-}
+};
 
 /** One choice card: its radio, its selection and its words. */
 async function expectChoice(

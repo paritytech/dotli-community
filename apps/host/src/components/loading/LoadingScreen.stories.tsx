@@ -4,7 +4,7 @@
 import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, waitFor, within } from 'storybook/test';
-import type { LoadingState } from '../../state/loading.js';
+import type { LoadingState } from '../../state/loadingState.js';
 import { LoadingScreen } from './LoadingScreen.js';
 
 // As the page's build-time render paints it.

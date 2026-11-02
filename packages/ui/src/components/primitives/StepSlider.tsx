@@ -3,16 +3,16 @@
 
 import { createSignal, For, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createDrags } from '../drag.js';
-import { handlesKey, stopAt, stopForKey } from './step-slider.js';
+import { createDrags } from '../createDrags.js';
+import { isHandledKey, getStopAt, getStopForKey } from './stepSliderStops.js';
 import s from './StepSlider.module.css';
 
-export interface StepSliderStop {
+export type StepSliderStop = {
   label: string;
   testId?: string;
-}
+};
 
-export interface StepSliderProps {
+export type StepSliderProps = {
   /** The slider's accessible name. */
   label: string;
   /** In order from the start of the track. */
@@ -30,7 +30,7 @@ export interface StepSliderProps {
   marked?: boolean;
   class?: string | undefined;
   testId?: string;
-}
+};
 
 /** One of a few named stops on a track, committed by the pointer release, label press or key that picks it. */
 export function StepSlider(props: StepSliderProps): JSX.Element {
@@ -42,67 +42,76 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
   const [pointerAt, setPointerAt] = createSignal<number | null>(null);
   const shown = (): number => dragged() ?? props.value;
   const last = (): number => Math.max(props.stops.length - 1, 0);
-  const stopPercent = (): number => (last() > 0 ? (shown() / last()) * 100 : 0);
-  const percent = (): number => {
+  function getStopPercent(index: number): number {
+    if (last() === 0) {
+      return 0;
+    }
+    return (index / last()) * 100;
+  }
+  function getPercent(): number {
     const at = pointerAt();
-    return at === null ? stopPercent() : at * 100;
-  };
+    return at === null ? getStopPercent(shown()) : at * 100;
+  }
   // The signal shows the stop, and this holds it for the release, which may land before the signal's write applies.
   let target: number | null = null;
   let track: HTMLDivElement | undefined;
   let layer: HTMLDivElement | undefined;
 
   /** Moves the held thumb under the pointer and picks the stop nearest to it. */
-  const follow = (clientX: number): void => {
+  function follow(clientX: number): void {
     const rect = layer?.getBoundingClientRect();
     if (rect === undefined || rect.width === 0) {
       target = shown();
     } else {
       const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      target = stopAt(fraction, props.stops.length);
+      target = getStopAt(fraction, props.stops.length);
       setPointerAt(fraction);
     }
     setDragged(target);
-  };
+  }
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function handlePointerDown(event: PointerEvent): void {
     if (event.button !== 0 || track === undefined) {
       return;
     }
     track.focus();
     follow(event.clientX);
-    drags.start(track, event, {
-      move: moved => {
-        follow(moved.clientX);
-      },
-      end: released => {
-        const at = target;
-        target = null;
-        setDragged(null);
-        setPointerAt(null);
-        if (released && at !== null) {
-          props.onCommit(at);
-        }
+    drags.start({
+      target: track,
+      down: event,
+      handlers: {
+        move: moved => {
+          follow(moved.clientX);
+        },
+        end(released) {
+          const at = target;
+          target = null;
+          setDragged(null);
+          setPointerAt(null);
+          if (released && at !== null) {
+            props.onCommit(at);
+          }
+        },
       },
     });
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (!handlesKey(event.key)) {
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (!isHandledKey(event.key)) {
       return;
     }
     event.preventDefault();
-    const next = stopForKey(event.key, props.value, props.stops.length);
+    const next = getStopForKey({ key: event.key, index: props.value, count: props.stops.length });
     if (next !== null) {
       props.onCommit(next);
     }
-  };
+  }
 
   return (
     <div class={[s['slider'], props.class]} data-testid={props.testId}>
       <div
-        ref={el => {
-          track = el;
+        ref={element => {
+          track = element;
         }}
         role="slider"
         tabindex="0"
@@ -114,27 +123,27 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
         class={s['track']}
         data-dragging={dragged() === null ? undefined : ''}
         data-marked={props.marked === true ? '' : undefined}
-        onPointerDown={onPointerDown}
-        onKeyDown={onKeyDown}
+        onPointerDown={handlePointerDown}
+        onKeyDown={handleKeyDown}
       >
         <span class={s['rail']} />
         <div
-          ref={el => {
-            layer = el;
+          ref={element => {
+            layer = element;
           }}
           class={s['layer']}
         >
-          <span class={s['fill']} style={{ width: `calc(${String(percent())}% + var(--fill-lead))` }} />
+          <span class={s['fill']} style={{ width: `calc(${String(getPercent())}% + var(--fill-lead))` }} />
           <For each={props.stops}>
             {(_stop, index) => (
               <span
                 class={s['tick']}
-                style={{ left: `${String(last() > 0 ? (index() / last()) * 100 : 0)}%` }}
-                data-filled={(last() > 0 ? (index() / last()) * 100 : 0) <= percent() ? '' : undefined}
+                style={{ left: `${String(getStopPercent(index()))}%` }}
+                data-filled={getStopPercent(index()) <= getPercent() ? '' : undefined}
               />
             )}
           </For>
-          <span class={s['thumb']} style={{ left: `${String(percent())}%` }} />
+          <span class={s['thumb']} style={{ left: `${String(getPercent())}%` }} />
         </div>
       </div>
       <div class={s['stops']}>
@@ -144,7 +153,7 @@ export function StepSlider(props: StepSliderProps): JSX.Element {
               type="button"
               tabindex="-1"
               class={s['stop']}
-              style={{ left: `${String(last() > 0 ? (index() / last()) * 100 : 0)}%` }}
+              style={{ left: `${String(getStopPercent(index()))}%` }}
               data-current={index() === shown() ? '' : undefined}
               data-testid={stop.testId}
               onClick={() => {

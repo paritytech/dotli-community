@@ -3,18 +3,12 @@
 
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { errorMessage, formatSize, type ReadableStore } from '@dotli/shared';
+import { getErrorMessage, formatSize, type ReadableStore } from '@dotli/shared';
 import { useStore } from '@dotli/ui';
-import {
-  imageType,
-  preview,
-  summaryLabel,
-  toFiles,
-  type ArchiveFile,
-  type ArchiveRead,
-  type LoadedArchive,
-  type Preview,
-} from './archive-preview.js';
+import { getImageType } from './getImageType.js';
+import { previewFile, type ArchiveFile, type Preview } from './previewFile.js';
+import { formatArchiveSummary } from './formatArchiveSummary.js';
+import { toLoadedArchive, type ArchiveRead, type LoadedArchive } from './toLoadedArchive.js';
 import type { ArchiveLoader } from './host.js';
 import type { HostProduct } from './host.js';
 import { Bar } from './shared/Bar.js';
@@ -26,13 +20,15 @@ import { Pane } from './shared/Pane.js';
 import { Stack } from './shared/Stack.js';
 import s from './ArchiveView.module.css';
 
-/** Cut so a huge bundle stays responsive. */
-const MAX_TEXT_CHARS = 1_000_000;
-
-export interface ObjectUrls {
+export type ObjectUrls = {
+  /** Returns a URL that serves `blob`. Never throws. */
   create: (blob: Blob) => string;
+  /** Frees `url`, a URL `create` returned. Never throws. */
   revoke: (url: string) => void;
-}
+};
+
+/** Cut so a huge bundle stays responsive. */
+const MAX_TEXT_CHARACTERS = 1_000_000;
 
 const pageObjectUrls: ObjectUrls = {
   create: blob => URL.createObjectURL(blob),
@@ -50,10 +46,10 @@ export function ArchiveView(props: {
 }): JSX.Element {
   const objectUrls = (): ObjectUrls => props.objectUrls ?? pageObjectUrls;
   const product = useStore(untrack(() => props.product));
-  const cid = (): string | undefined => {
+  function getCid(): string | undefined {
     const state = product();
     return state.status === 'loaded' ? state.cid : undefined;
-  };
+  }
   const [read, setRead] = createSignal<ArchiveRead>({ status: 'loading' });
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null);
   const [imageUrl, setImageUrl] = createSignal<string | null>(null);
@@ -61,7 +57,7 @@ export function ArchiveView(props: {
   // Read on first show, and again only for a new CID.
   let readCid: string | null = null;
   createEffect(
-    () => (props.active ? (cid() ?? null) : null),
+    () => (props.active ? (getCid() ?? null) : null),
     next => {
       if (next === null || next === readCid) {
         return;
@@ -72,12 +68,12 @@ export function ArchiveView(props: {
       props.load(next).then(
         files => {
           if (readCid === next) {
-            setRead(toFiles(files));
+            setRead(toLoadedArchive(files));
           }
         },
-        (err: unknown) => {
+        (error: unknown) => {
           if (readCid === next) {
-            setRead({ status: 'failed', reason: errorMessage(err) });
+            setRead({ status: 'failed', reason: getErrorMessage(error) });
           }
         },
       );
@@ -91,41 +87,41 @@ export function ArchiveView(props: {
   });
   const shown = createMemo((): Preview | undefined => {
     const file = selected();
-    return file === undefined ? undefined : preview(file);
+    return file === undefined ? undefined : previewFile(file);
   });
 
   let url: string | null = null;
-  const freeUrl = (): void => {
+  function revokeUrl(): void {
     if (url !== null) {
       objectUrls().revoke(url);
       url = null;
     }
-  };
+  }
   createEffect(
     () => (shown()?.kind === 'image' ? selected() : undefined),
     file => {
-      freeUrl();
-      const type = file === undefined ? undefined : imageType(file.path);
+      revokeUrl();
+      const type = file === undefined ? undefined : getImageType(file.path);
       if (file !== undefined && type !== undefined) {
         url = objectUrls().create(new Blob([file.bytes.slice()], { type }));
       }
       setImageUrl(url);
     },
   );
-  onCleanup(freeUrl);
+  onCleanup(revokeUrl);
 
-  const shownText = (): string | undefined => {
+  function getShownText(): string | undefined {
     const current = shown();
     return current?.kind === 'text' ? current.text : undefined;
-  };
-  const loaded = (): LoadedArchive | undefined => {
+  }
+  function getLoadedArchive(): LoadedArchive | undefined {
     const current = read();
     return current.status === 'loaded' ? current : undefined;
-  };
-  const failure = (): string | undefined => {
+  }
+  function getFailure(): string | undefined {
     const current = read();
     return current.status === 'failed' ? current.reason : undefined;
-  };
+  }
 
   return (
     <div class={s['archive']} data-testid="td-archive" hidden={!props.active}>
@@ -135,26 +131,26 @@ export function ArchiveView(props: {
             No product loaded yet.
           </EmptyState>
         </Match>
-        <Match when={cid() === undefined}>
+        <Match when={getCid() === undefined}>
           <EmptyState testId="td-archive-empty" class={s['whole']}>
             This product is not served from a CID, so it has no archive.
           </EmptyState>
         </Match>
-        <Match when={failure() !== undefined}>
+        <Match when={getFailure() !== undefined}>
           <EmptyState testId="td-archive-empty" class={s['whole']}>
-            Could not read the archive: {failure()}
+            Could not read the archive: {getFailure()}
           </EmptyState>
         </Match>
-        <Match when={loaded() === undefined}>
+        <Match when={getLoadedArchive() === undefined}>
           <EmptyState testId="td-archive-empty" class={s['whole']}>
-            Reading archive {cid()}…
+            Reading archive {getCid()}…
           </EmptyState>
         </Match>
-        <Match when={loaded()}>
+        <Match when={getLoadedArchive()}>
           {archive => (
             <>
               <div class={s['sidebar']}>
-                <Bar testId="td-archive-summary">{summaryLabel(archive())}</Bar>
+                <Bar testId="td-archive-summary">{formatArchiveSummary(archive())}</Bar>
                 <ItemList>
                   <For each={archive().files}>
                     {file => (
@@ -183,7 +179,7 @@ export function ArchiveView(props: {
                   </Match>
                   <Match when={shown()?.kind === 'image'}>
                     <Show when={imageUrl()}>
-                      {src => <img class={s['image']} src={src()} alt={selectedPath() ?? ''} />}
+                      {source => <img class={s['image']} src={source()} alt={selectedPath() ?? ''} />}
                     </Show>
                   </Match>
                   <Match when={shown()?.kind === 'binary'}>
@@ -191,13 +187,13 @@ export function ArchiveView(props: {
                       Binary, {formatSize(selected()?.bytes.length ?? 0)}
                     </EmptyState>
                   </Match>
-                  <Match when={shownText()}>
+                  <Match when={getShownText()}>
                     {text => (
                       <Stack>
-                        <Show when={text().length > MAX_TEXT_CHARS}>
-                          <Note>Showing the first {MAX_TEXT_CHARS.toLocaleString()} characters.</Note>
+                        <Show when={text().length > MAX_TEXT_CHARACTERS}>
+                          <Note>Showing the first {MAX_TEXT_CHARACTERS.toLocaleString()} characters.</Note>
                         </Show>
-                        <CodeBlock>{text().slice(0, MAX_TEXT_CHARS)}</CodeBlock>
+                        <CodeBlock>{text().slice(0, MAX_TEXT_CHARACTERS)}</CodeBlock>
                       </Stack>
                     )}
                   </Match>

@@ -29,15 +29,15 @@ import {
   Well,
 } from '@dotli/ui';
 import { AppearancePicker } from './Appearance.js';
-import type { ThemePref } from '../../runtime/state/theme.js';
+import type { ThemePreference } from '../../runtime/state/themeState.js';
 import type { ApplySettings, SavedSettings } from './settings.js';
 import s from './SettingsContent.module.css';
 
-interface Transport {
+type Transport = {
   value: Backend;
   description: string;
   recommended: boolean;
-}
+};
 
 const TRANSPORTS: readonly Transport[] = [
   { value: 'smoldot-direct', description: 'Verified in your browser, separate for each tab', recommended: true },
@@ -65,19 +65,19 @@ const CACHES: readonly [CacheKey, string][] = [
   ['skipWorkerCache', 'Worker cache'],
 ];
 
-export interface SettingsContentProps {
+export type SettingsContentProps = {
   /** Null until the page has read them. */
   settings: Accessor<SavedSettings | null>;
   /** dotli's version, beside the heading. */
   version: string;
-  theme: Accessor<ThemePref>;
-  onTheme: (theme: ThemePref) => void;
+  theme: Accessor<ThemePreference>;
+  onTheme: (theme: ThemePreference) => void;
   onApply: ApplySettings;
   /** The debug panel is on in this tab, so Advanced offers no way to turn it on. */
   debugMode: Accessor<boolean>;
   /** Reloads the tab with the debug panel. */
   onDebugMode: () => void;
-}
+};
 
 /**
  * One opening's panel, on General each time. Network and cache changes stay a draft across categories until Save and
@@ -103,16 +103,16 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
     );
   });
 
-  const clearAll = (): void => {
+  function clearAll(): void {
     if (untrack(clearing)) {
       return;
     }
     setClearing(true);
     // Wipes every origin whatever the cache toggles say, then re-seeds localStorage with the baseline.
     void props.onApply(persisted, persisted, { forceFullWipe: true });
-  };
+  }
 
-  const apply = (): void => {
+  function apply(): void {
     if (!untrack(dirty) || untrack(applying)) {
       return;
     }
@@ -125,7 +125,7 @@ function SettingsPanel(props: SettingsContentProps & { saved: SavedSettings }): 
       },
       persisted,
     );
-  };
+  }
 
   const networks = saved.enabledNetworks;
   const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;

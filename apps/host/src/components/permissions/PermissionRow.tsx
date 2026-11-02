@@ -3,8 +3,8 @@
 
 import { dynamic, type JSX } from '@solidjs/web';
 import { Row, SegmentedControl, type SegmentOption } from '@dotli/ui';
-import { permissionIcon } from './permission-icons.js';
-import type { EnforceablePermissionName, PermissionStatus } from '../../runtime/permissions.js';
+import { permissionIcon } from './permissionIcons.js';
+import type { EnforceablePermissionName, PermissionStatus } from '../../runtime/permissionPolicy.js';
 import type { PermissionEntry } from './permissions.js';
 import s from './PermissionRow.module.css';
 
@@ -15,14 +15,14 @@ const STATUS_OPTIONS: readonly SegmentOption<PermissionStatus>[] = [
   { value: 'denied', label: 'Deny', testId: 'permissions-popover-segment-denied' },
 ];
 
-export interface PermissionRowProps {
+export type PermissionRowProps = {
   perm: PermissionEntry;
   status: PermissionStatus;
   /** A segment other than the current status was pressed. */
   choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
   /** A change is pending, so the row shows its status but takes no press. */
   disabled?: boolean;
-}
+};
 
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
   const Icon = dynamic(() => permissionIcon(props.perm.name));

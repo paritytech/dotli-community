@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The panel's action button, in the header, Diagnostics and Wallet.
+// The panel's action button.
 
 import type { JSX } from '@solidjs/web';
 import s from './Button.module.css';
@@ -29,7 +29,7 @@ export function Button(props: {
       type={props.type ?? 'button'}
       data-testid={props.testId}
       data-active={props.active === true ? '' : undefined}
-      aria-expanded={props.expanded === undefined ? undefined : props.expanded ? 'true' : 'false'}
+      aria-expanded={toAriaExpanded(props.expanded)}
       title={props.title}
       aria-label={props.label}
       disabled={props.disabled}
@@ -41,4 +41,11 @@ export function Button(props: {
       {props.children}
     </button>
   );
+}
+
+function toAriaExpanded(expanded: boolean | undefined): 'true' | 'false' | undefined {
+  if (expanded === undefined) {
+    return undefined;
+  }
+  return expanded ? 'true' : 'false';
 }

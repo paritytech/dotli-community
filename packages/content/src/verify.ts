@@ -7,32 +7,17 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { equals as bytesEqual } from 'multiformats/bytes';
 import { CID } from 'multiformats/cid';
-import { log, named } from '@dotli/shared';
-import type { BlockSource } from './archive.js';
+import { log, setErrorName } from '@dotli/shared';
+import type { BlockSource } from './types.js';
 import { BLAKE2B_256, SHA2_256 } from './codecs.js';
 import { CONTENT_ERRORS } from './errors.js';
-
-function recomputeDigest(multihashCode: number, bytes: Uint8Array): Uint8Array {
-  switch (multihashCode) {
-    case SHA2_256:
-      return sha256(bytes);
-    case BLAKE2B_256:
-      return blake2b(bytes, { dkLen: 32 });
-    default:
-      // Fail closed, since a hash we cannot recompute is content we cannot verify.
-      throw named(
-        new Error(`Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`),
-        CONTENT_ERRORS.VERIFICATION,
-      );
-  }
-}
 
 /** Throws on a mismatch, or on a hash function it cannot recompute. */
 export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
   const expected = cid.multihash.digest;
   const actual = recomputeDigest(cid.multihash.code, bytes);
   if (!bytesEqual(actual, expected)) {
-    throw named(
+    throw setErrorName(
       new Error(`Content hash mismatch for ${cid.toString()}, refusing tampered content`),
       CONTENT_ERRORS.VERIFICATION,
     );
@@ -40,7 +25,7 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
 }
 
 /** `false` also for an unparseable CID or a hash it cannot recompute. */
-export function blockMatchesCid(cid: string, bytes: Uint8Array): boolean {
+export function isBlockMatchingCid(cid: string, bytes: Uint8Array): boolean {
   try {
     assertBlockMatchesCid(CID.parse(cid), bytes);
     return true;
@@ -49,7 +34,8 @@ export function blockMatchesCid(cid: string, bytes: Uint8Array): boolean {
   }
 }
 
-export function verifyingBlockSource(source: BlockSource): BlockSource {
+/** Hashes every block against its CID. The source it returns rejects on a mismatch. */
+export function createVerifyingBlockSource(source: BlockSource): BlockSource {
   return async (cid: CID): Promise<Uint8Array> => {
     const bytes = await source(cid);
     assertBlockMatchesCid(cid, bytes);
@@ -58,7 +44,7 @@ export function verifyingBlockSource(source: BlockSource): BlockSource {
 }
 
 /** Verifies only the root, for a source whose every block the host's relay already checked. */
-export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): BlockSource {
+export function createRootVerifyingBlockSource(rootCid: CID, source: BlockSource): BlockSource {
   return async (cid: CID): Promise<Uint8Array> => {
     const bytes = await source(cid);
     if (cid.equals(rootCid)) {
@@ -72,9 +58,24 @@ export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): Blo
 /** Ignores CID version, so v0 and v1 of the same content match, while a self-consistent foreign CAR does not. */
 export function assertSameContentId(actual: CID, expected: CID): void {
   if (actual.code !== expected.code || !bytesEqual(actual.multihash.bytes, expected.multihash.bytes)) {
-    throw named(
+    throw setErrorName(
       new Error(`CAR root ${actual.toString()} does not match requested ${expected.toString()}`),
       CONTENT_ERRORS.VERIFICATION,
     );
+  }
+}
+
+function recomputeDigest(multihashCode: number, bytes: Uint8Array): Uint8Array {
+  switch (multihashCode) {
+    case SHA2_256:
+      return sha256(bytes);
+    case BLAKE2B_256:
+      return blake2b(bytes, { dkLen: 32 });
+    default:
+      // Fail closed, since a hash we cannot recompute is content we cannot verify.
+      throw setErrorName(
+        new Error(`Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`),
+        CONTENT_ERRORS.VERIFICATION,
+      );
   }
 }

@@ -5,8 +5,9 @@ import { createSignal } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { trustedInput } from '@config/storybook/play';
+import { appears } from '@dotli/ui/testing';
 import { Button } from '../primitives/Button.js';
-import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layer-context.js';
+import { AnchorBoundary, LayerTracker, type TrackedLayer } from './layerContext.js';
 import { Popover } from './Popover.js';
 
 const onOther = fn().mockName('onOther');
@@ -15,12 +16,8 @@ const onOpenChangeA = fn().mockName('onOpenChangeA');
 const onOpenChangeB = fn().mockName('onOpenChangeB');
 /** The layers the page tracks, as an auto-hiding bar tracks its own. */
 const tracked = new Set<TrackedLayer>();
-const track = (layer: TrackedLayer): (() => void) => {
-  tracked.add(layer);
-  return () => {
-    tracked.delete(layer);
-  };
-};
+// The surface is portalled into the body, outside the story's canvas.
+const body = within(document.body);
 
 function Harness() {
   const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
@@ -61,7 +58,7 @@ function Harness() {
 
 /** Two popovers side by side, each placed under its own trigger, so neither covers the other's. */
 function TwoPopovers() {
-  const one = (key: 'a' | 'b', onChange: (open: boolean) => void) => {
+  function renderPopover(key: 'a' | 'b', onChange: (open: boolean) => void) {
     const [trigger, setTrigger] = createSignal<HTMLButtonElement | undefined>(undefined, { ownedWrite: true });
     return (
       <>
@@ -82,11 +79,12 @@ function TwoPopovers() {
         </Popover>
       </>
     );
-  };
+  }
+
   return (
     <div style={{ display: 'flex', gap: '8px' }}>
-      {one('a', onOpenChangeA)}
-      {one('b', onOpenChangeB)}
+      {renderPopover('a', onOpenChangeA)}
+      {renderPopover('b', onOpenChangeB)}
     </div>
   );
 }
@@ -107,23 +105,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The surface is portalled into the body, outside the story's canvas.
-const body = within(document.body);
-const surface = () => body.getByTestId('story-popover-surface');
-const openIt = async () => {
-  await (await trustedInput()).click(body.getByTestId('trigger'));
-  await waitFor(() => expect(surface()).toHaveAttribute('data-open'));
-};
-
 /** As a dotli user, I click another button while a popover is open and the popover closes and the button gets the click. */
 export const ClickOutsideReachesTarget: Story = {
   play: async ({ step }) => {
-    await step('Given the popover is open', openIt);
+    await step('Given the popover is open', openPopover);
     await step('When I click the Other button', async () => {
       await (await trustedInput()).click(body.getByTestId('other'));
     });
     await step('Then the popover closed and Other got the click', async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect(onOther).toHaveBeenCalledOnce();
     });
   },
@@ -132,12 +122,12 @@ export const ClickOutsideReachesTarget: Story = {
 /** As a dotli user, I click inside the product frame and the open popover closes while focus stays in the frame. */
 export const ClosesOnWindowBlur: Story = {
   play: async ({ step }) => {
-    await step('Given the popover is open', openIt);
+    await step('Given the popover is open', openPopover);
     await step('When I click inside the product iframe', async () => {
       await (await trustedInput()).click(body.getByTestId('product'));
     });
     await step('Then the popover closed and focus stayed in the iframe', async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect(document.activeElement).toBe(body.getByTestId('product'));
     });
   },
@@ -147,14 +137,16 @@ export const ClosesOnWindowBlur: Story = {
 export const EscapeReturnsFocusToTrigger: Story = {
   play: async ({ step }) => {
     await step('Given the popover is open and focus is on the body (as Safari leaves it)', async () => {
-      await openIt();
-      (document.activeElement as HTMLElement | null)?.blur();
+      await openPopover();
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     });
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then it closed and the trigger has focus', async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect(body.getByTestId('trigger')).toHaveFocus();
     });
   },
@@ -163,12 +155,12 @@ export const EscapeReturnsFocusToTrigger: Story = {
 /** As a dotli user, I click the trigger of an open popover and it closes once. */
 export const TriggerTogglesClosed: Story = {
   play: async ({ step }) => {
-    await step('Given the popover is open', openIt);
+    await step('Given the popover is open', openPopover);
     await step('When I click the trigger again', async () => {
       await (await trustedInput()).click(body.getByTestId('trigger'));
     });
     await step('Then it is closed, once', async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect(onOpenChange.mock.calls).toEqual([[true], [false]]);
     });
   },
@@ -177,16 +169,16 @@ export const TriggerTogglesClosed: Story = {
 /** As a dotli user, I open a modal dialog and the open popover closes. */
 export const ClosesWhenAModalOpens: Story = {
   play: async ({ step }) => {
-    await step('Given the popover is open', openIt);
+    await step('Given the popover is open', openPopover);
     await step('When a modal dialog opens', () => {
-      const d = document.createElement('dialog');
-      document.body.append(d);
-      d.showModal();
-      d.close();
-      d.remove();
+      const dialog = document.createElement('dialog');
+      document.body.append(dialog);
+      dialog.showModal();
+      dialog.close();
+      dialog.remove();
     });
     await step('Then the popover closed', async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
     });
   },
 };
@@ -195,8 +187,10 @@ export const ClosesWhenAModalOpens: Story = {
 export const OneClickMovesToAnotherPopover: Story = {
   render: () => <TwoPopovers />,
   play: async ({ step }) => {
-    await step('Given popover A is open', async () => {
+    await step("When I click A's trigger", async () => {
       await (await trustedInput()).click(body.getByTestId('trigger-a'));
+    });
+    await step('Then popover A is open', async () => {
       await waitFor(() => expect(body.getByTestId('surface-a')).toHaveAttribute('data-open'));
     });
     await step("When I click B's trigger once", async () => {
@@ -215,16 +209,16 @@ export const OneClickMovesToAnotherPopover: Story = {
 /** As a dotli user, I open a popover and the page tracks one open layer holding focus until I press Escape. */
 export const PageTracksOpenLayer: Story = {
   render: () => (
-    <LayerTracker value={track}>
+    <LayerTracker value={trackLayer}>
       <Harness />
     </LayerTracker>
   ),
   play: async ({ step }) => {
-    await step('Given the page tracks the layers below it, and the popover is open with focus inside', async () => {
-      await openIt();
+    await step('When I open the popover on a page that tracks the layers below it', openPopover);
+    await step('Then focus is inside the popover', async () => {
       await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
     });
-    await step('Then the page sees one layer, open and holding the focus', async () => {
+    await step('And the page sees one layer, open and holding the focus', async () => {
       const layers = [...tracked];
       await expect(layers).toHaveLength(1);
       await expect(layers[0]?.open()).toBe(true);
@@ -234,7 +228,7 @@ export const PageTracksOpenLayer: Story = {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step('Then the page sees it closed', async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await expect([...tracked].map(layer => layer.open())).toEqual([false]);
     });
   },
@@ -249,15 +243,31 @@ export const HiddenTriggerHandsFocusToBoundary: Story = {
   ),
   play: async ({ step }) => {
     await step('Given the popover is open and the page then hid its trigger', async () => {
-      await openIt();
+      await openPopover();
       body.getByTestId('trigger').style.display = 'none';
     });
     await step('When I press Escape', async () => {
       await (await trustedInput()).keyboard('{Escape}');
     });
     await step("Then it closed and the boundary's fallback has focus", async () => {
-      await waitFor(() => expect(surface()).not.toHaveAttribute('data-open'));
+      await waitFor(() => expect(getSurface()).not.toHaveAttribute('data-open'));
       await waitFor(() => expect(body.getByTestId('other')).toHaveFocus());
     });
   },
 };
+
+function trackLayer(layer: TrackedLayer): () => void {
+  tracked.add(layer);
+  return () => {
+    tracked.delete(layer);
+  };
+}
+
+function getSurface(): HTMLElement {
+  return body.getByTestId('story-popover-surface');
+}
+
+async function openPopover(): Promise<void> {
+  await (await trustedInput()).click(body.getByTestId('trigger'));
+  await appears('[data-testid="story-popover-surface"][data-open]');
+}

@@ -3,14 +3,14 @@
 
 import { createMemo, merge, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { shallowEqual } from '@dotli/shared';
-import type { SignInScreen, WindowScreen } from '../../state/session-window.js';
-import { isMobileDevice } from '../../device.js';
+import { isShallowEqual } from '@dotli/shared';
+import type { SignInScreen, WindowScreen } from '../../state/sessionWindowState.js';
+import { isMobileDevice } from '../../isMobileDevice.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
-import { createPhraseFormLoad } from './phrase-form-load.js';
-import type { SignInParts } from './sign-in/SignInViews.js';
-import { pairingPayload, sameSignInScreen } from './sign-in/same-screen.js';
-import { windowParts, type WindowPartsProps, type WindowStep } from './window-parts.js';
+import { createPhraseFormLoad } from './phraseFormLoad.js';
+import type { SignInParts } from './signIn/SignInViews.js';
+import { pairingPayload, sameSignInScreen } from './signIn/sameScreen.js';
+import { windowParts, type WindowPartsProps, type WindowStep } from './windowParts.js';
 import s from './SessionWindow.module.css';
 
 export type SessionWindowProps = Omit<
@@ -120,7 +120,7 @@ function signInOf(screen: WindowScreen): SignInScreen | null {
 }
 
 function sameStep(a: WindowStep, b: WindowStep): boolean {
-  return a.view === 'pairing' && b.view === 'pairing' ? sameSignInScreen(a.pairing, b.pairing) : shallowEqual(a, b);
+  return a.view === 'pairing' && b.view === 'pairing' ? sameSignInScreen(a.pairing, b.pairing) : isShallowEqual(a, b);
 }
 
 /**

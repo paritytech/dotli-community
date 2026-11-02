@@ -5,14 +5,10 @@
 // every tab: readers of the fields no override can change, and values that do not depend on the network config. A name
 // joins only once it reads no overridable field, directly or through a helper.
 
-export { DEBUG } from './config.js';
-export {
-  CHAIN_ROLES,
-  chainRoleForGenesis,
-  getActiveFixedServicesConfig,
-  getActiveSupportedGenesisHashes,
-  isValidNetwork,
-  type ChainRole,
-  type FixedServicesConfig,
-  type Network,
-} from './network.js';
+export { getActiveFixedServicesConfig, getActiveSupportedGenesisHashes } from './activeNetwork.js';
+export type { ChainRole } from './chainRoles.js';
+export { CHAIN_ROLES, getChainRoleForGenesis } from './chainRoles.js';
+export { DEBUG } from './debug.js';
+export type { Network } from './networkNames.js';
+export { isValidNetwork } from './networkNames.js';
+export type { FixedServicesConfig } from './types.js';

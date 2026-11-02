@@ -9,25 +9,25 @@
     "./src/landing.ts",
     "./src/main.ts",
     "./src/session.ts",
-    "./src/startup.ts"
+    "./src/startPage.ts"
   ],
   "scripts": {
     "build": "astro build",
-    "build:prod": "astro build && node ../../scripts/compress-dist.ts",
+    "build:prod": "astro build && node ../../scripts/compressDist.ts",
     "dev": "astro dev",
     "test": "vitest run",
     "test:functional": "playwright test --config=tests/functional/playwright.config.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
     "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} SIGNING_HOST_NETWORK=${SIGNING_HOST_NETWORK:-paseo-next-v2} playwright test --config=tests/e2e/playwright.config.ts",
-    "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=browse PERF_DOMAIN_B=host-playground playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
-    "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=browse PERF_DOMAIN_B=host-playground playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
+    "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=browse PERF_DOMAIN_B=host-playground playwright test --config=tests/performance/playwright.config.ts tests/performance/coldStart.spec.ts",
+    "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=browse PERF_DOMAIN_B=host-playground playwright test --config=tests/performance/playwright.config.ts tests/performance/coldStart.spec.ts",
     "test:perf:compare": "node tests/performance/compare.ts",
     "test:perf:compare:md": "node tests/performance/compare.ts --markdown",
     "lint": "eslint .",
     "typecheck": "astro check && tsc --noEmit -p tsconfig.shipped.json"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.11",
+    "@astrojs/check": "^0.9.12",
     "@config/eslint": "*",
     "@config/storybook": "*",
     "@config/typescript": "*",
@@ -35,15 +35,15 @@
     "@dotli/transport": "*",
     "@noble/hashes": "^2.4.0",
     "@playwright/test": "^1.64.1",
-    "@solidjs/vite-plugin": "3.0.0-next.50",
+    "@solidjs/vite-plugin": "3.0.0-next.55",
     "@types/qrcode": "^1.5.6",
-    "fake-indexeddb": "^6.2.6",
+    "fake-indexeddb": "^6.2.7",
     "jsqr": "^1.4.0",
     "multiformats": "^14.0.5",
     "playwright": "^1.64.1",
-    "simple-statistics": "^7.12.1",
-    "storybook": "^10.6.2",
-    "storybook-solidjs-vite": "^10.7.2"
+    "simple-statistics": "^8.0.0",
+    "storybook": "^10.6.5",
+    "storybook-solidjs-vite": "^10.7.4"
   },
   "dependencies": {
     "@config/astro-solid": "*",
@@ -66,12 +66,12 @@
     "@polkadot-api/signers-common": "^0.4.0",
     "@polkadot-labs/hdkd-helpers": "^0.0.34",
     "@scure/base": "^2.4.0",
-    "@solidjs/web": "2.0.0-rc.15",
-    "astro": "^7.4.1",
+    "@solidjs/web": "2.0.0-rc.20",
+    "astro": "^7.4.4",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^3.2.2",
+    "polkadot-api": "^3.3.0",
     "qrcode": "^1.5.4",
-    "solid-js": "2.0.0-rc.15",
+    "solid-js": "2.0.0-rc.20",
     "workbox-window": "^7.4.1"
   }
 }

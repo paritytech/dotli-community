@@ -10,7 +10,7 @@ import s from './ChatDock.module.css';
 
 const PageChatPanel = lazy(loadChatPanel, { export: 'ChatPanel' });
 
-export interface ChatDockProps {
+export type ChatDockProps = {
   open: Accessor<boolean>;
   /** In px. The panel is border-box, so this is exactly the room it takes. */
   width: Accessor<number>;
@@ -27,7 +27,7 @@ export interface ChatDockProps {
   handOver?: ((panel: HTMLElement) => () => void) | undefined;
   /** Read once. Without one, the panel's own chunk. */
   loadPanel?: (() => Promise<ChatPanelModule>) | undefined;
-}
+};
 
 /**
  * The docked product-chat panel. A chunk that fails to load or a panel that throws is reported and

@@ -13,6 +13,9 @@ import client from '../src/client.js';
 import type serverEntry from '../src/server.js';
 import { Counter, Label } from './fixtures/components.js';
 
+type ServerRenderer = typeof serverEntry;
+type Metadata = NonNullable<Parameters<ServerRenderer['renderToStaticMarkup']>[3]>;
+
 const ROOT = resolve(import.meta.dirname, '..');
 
 let server: ViteDevServer;
@@ -27,8 +30,9 @@ beforeAll(async () => {
     plugins: [solid({ ssr: true, solid: { hydratable: true } })],
   });
   // Solid's hydration bootstrap, which Astro puts before the first island.
-  const renderer = await serverRenderer();
+  const renderer = await loadServerRenderer();
   const script = /<script[^>]*>(.*)<\/script>/s.exec(renderer.renderHydrationScript?.() ?? '')?.[1] ?? '';
+  // The Function constructor types its result as the untyped `Function`.
   // eslint-disable-next-line @typescript-eslint/no-implied-eval -- runs Solid's own bootstrap script, as the page would.
   (new Function(script) as () => void)();
 });
@@ -41,25 +45,20 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-type ServerRenderer = typeof serverEntry;
-
-async function serverRenderer(): Promise<ServerRenderer> {
-  const mod = (await server.ssrLoadModule(resolve(ROOT, 'src/server.ts'))) as { default: ServerRenderer };
-  return mod.default;
+async function loadServerRenderer(): Promise<ServerRenderer> {
+  // Vite types every SSR-loaded module as a plain record.
+  const serverModule = (await server.ssrLoadModule(resolve(ROOT, 'src/server.ts'))) as { default: ServerRenderer };
+  return serverModule.default;
 }
 
 /** Server-renders `name` from the fixtures as a `client:load` island, in an island element. */
-async function island(name: 'Counter' | 'Label', props: Record<string, unknown>): Promise<HTMLElement> {
-  const renderer = await serverRenderer();
-  const fixtures = (await server.ssrLoadModule(resolve(ROOT, 'tests/fixtures/components.tsx'))) as Record<
-    string,
-    unknown
-  >;
-  const metadata = { astroStaticSlot: true, hydrate: 'load', displayName: name } as unknown as Parameters<
-    ServerRenderer['renderToStaticMarkup']
-  >[3];
+async function renderIsland(name: 'Counter' | 'Label', props: Record<string, unknown>): Promise<HTMLElement> {
+  const renderer = await loadServerRenderer();
+  const fixtures: Record<string, unknown> = await server.ssrLoadModule(resolve(ROOT, 'tests/fixtures/components.tsx'));
+  const metadata: Metadata = { astroStaticSlot: true, hydrate: 'load', displayName: name };
   const { html, attrs } = await renderer.renderToStaticMarkup.call(
-    { result: {} as never },
+    // A fresh object stands for one page render: the renderer only keys its page state by it.
+    { result: {} },
     fixtures[name],
     props,
     {},
@@ -73,42 +72,46 @@ async function island(name: 'Counter' | 'Label', props: Record<string, unknown>)
   return element;
 }
 
-function button(element: HTMLElement): HTMLButtonElement {
-  const el = element.querySelector('button');
-  if (el === null) {
+function getButton(element: HTMLElement): HTMLButtonElement {
+  const button = element.querySelector('button');
+  if (button === null) {
     throw new Error('no button in the island');
   }
-  return el;
+  return button;
 }
 
-function click(el: Element): void {
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+function click(target: Element): void {
+  target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   flush();
 }
 
 describe('Solid client entrypoint', () => {
-  it('As a client:load island, it hydrates the server markup in place, and the island reacts', async () => {
+  it('As a visitor, I open a client:load island and it hydrates the server markup in place and reacts to my click', async () => {
     // Given
-    const element = await island('Counter', { start: 1 });
-    const serverButton = button(element);
+    const element = await renderIsland('Counter', { start: 1 });
+    const serverButton = getButton(element);
 
     // When
     client(element)(Counter, { start: 1 }, {}, { client: 'load' });
     flush();
 
     // Then: the server's button is the live one.
-    expect(button(element)).toBe(serverButton);
+    expect(getButton(element)).toBe(serverButton);
     expect(element.querySelectorAll('button')).toHaveLength(1);
+
+    // When: the visitor clicks it.
     click(serverButton);
+
+    // Then
     expect(serverButton.textContent).toBe('2');
   });
 
-  it('As a hydrated island, astro:unmount disposes it', async () => {
+  it('As a visitor, I click a hydrated island after astro:unmount and it no longer reacts', async () => {
     // Given
-    const element = await island('Counter', { start: 1 });
+    const element = await renderIsland('Counter', { start: 1 });
     client(element)(Counter, { start: 1 }, {}, { client: 'load' });
     flush();
-    const live = button(element);
+    const live = getButton(element);
 
     // When
     element.dispatchEvent(new Event('astro:unmount'));
@@ -118,7 +121,7 @@ describe('Solid client entrypoint', () => {
     expect(live.textContent).toBe('1');
   });
 
-  it('As a client:only island, it replaces the fallback with a client render, and takes new props in place', () => {
+  it('As a visitor, I open a client:only island and a client render replaces the fallback and takes new props in place', () => {
     // Given
     const element = document.createElement('astro-island');
     element.setAttribute('ssr', '');
@@ -128,10 +131,10 @@ describe('Solid client entrypoint', () => {
     // When
     client(element)(Label, { text: 'one' }, {}, { client: 'only' });
     flush();
+    const label = element.querySelector('[data-testid="label"]');
 
     // Then
     expect(element.innerHTML).toBe('<span data-testid="label">one</span>');
-    const label = element.querySelector('[data-testid="label"]');
 
     // When: Astro renders the island again with new props.
     client(element)(Label, { text: 'two' }, {}, { client: 'only' });
@@ -142,7 +145,7 @@ describe('Solid client entrypoint', () => {
     expect(label?.textContent).toBe('two');
   });
 
-  it('As an island whose server render Astro skipped, it waits for the render (no ssr attribute)', () => {
+  it('As a visitor, I open an island whose server render Astro skipped and it keeps the fallback until the render arrives', () => {
     // Given
     const element = document.createElement('astro-island');
     element.innerHTML = '<p>fallback</p>';

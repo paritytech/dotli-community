@@ -5,16 +5,11 @@
 // serves the product's one block through the host's relay, which `smoldot-direct` uses.
 
 import { expect, type Page } from '@playwright/test';
-import {
-  assertNoContractKeys,
-  getProductFrame,
-  getProductLocation,
-  waitForSandboxErrorPage,
-} from '../product-frame.js';
-import { test } from './helpers/shared-mode-reset.js';
+import { assertNoContractKeys, getProductFrame, getProductLocation, waitForSandboxErrorPage } from '../productFrame.js';
+import { test } from './helpers/sharedModeReset.js';
 import { seedBackend } from './fixtures/settings.js';
 import { productPage, rawBlock } from './helpers/blocks.js';
-import { fakeProtocol } from './helpers/fake-protocol.js';
+import { fakeProtocol } from './helpers/fakeProtocol.js';
 import { isSandboxUrl } from './helpers/frames.js';
 import { PORT } from '../env.js';
 

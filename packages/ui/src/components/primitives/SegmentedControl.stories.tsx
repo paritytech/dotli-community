@@ -10,6 +10,8 @@ import { SunIcon } from '../icons/SunIcon.js';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl.js';
 
 type Theme = 'system' | 'light' | 'dark';
+type Args = Parameters<typeof SegmentedControl<Theme>>[0];
+
 const OPTIONS = [
   { value: 'system', label: 'System', testId: 'seg-system' },
   { value: 'light', label: 'Light', testId: 'seg-light' },
@@ -26,37 +28,24 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-type Args = Parameters<typeof SegmentedControl<Theme>>[0];
-
-// The owner takes each pick, as the Appearance picker does.
-const Owned = (args: Args) => {
-  const [value, setValue] = createSignal<Theme>(untrack(() => args.value));
-  return (
-    <SegmentedControl<Theme>
-      {...args}
-      value={value()}
-      onChange={next => {
-        setValue(next);
-        args.onChange(next);
-      }}
-    />
-  );
-};
-
-const tabStops = (canvas: { getByTestId: (id: string) => HTMLElement }): (string | null)[] =>
-  OPTIONS.map(option => canvas.getByTestId(option.testId).getAttribute('tabindex'));
-
 /** As a dotli user, I move through a labelled segmented control with the keyboard and pick Dark, which is reported. */
 export const Labels: Story = {
-  render: Owned,
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given System is pressed and I focus it', async () => {
-      await expect(canvas.getByTestId('seg-system')).toHaveAttribute('aria-pressed', 'true');
-      canvas.getByTestId('seg-system').focus();
+  render: renderOwned,
+  play: async ({ args, canvas, userEvent, mount, step }) => {
+    await step('When the control renders on System', async () => {
+      await mount();
     });
-    await step('When I press ArrowRight, then End, then Enter', async () => {
+    await step('Then System shows pressed', async () => {
+      await expect(canvas.getByTestId('seg-system')).toHaveAttribute('aria-pressed', 'true');
+    });
+    await step('When I focus it and press ArrowRight', async () => {
+      canvas.getByTestId('seg-system').focus();
       await userEvent.keyboard('{ArrowRight}');
+    });
+    await step('Then Light has focus', async () => {
       await expect(canvas.getByTestId('seg-light')).toHaveFocus();
+    });
+    await step('When I press End, then Enter', async () => {
       await userEvent.keyboard('{End}{Enter}');
     });
     await step('Then Dark is pressed and reported', async () => {
@@ -121,8 +110,11 @@ export const Large: Story = {
       />
     );
   },
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given the control is large', async () => {
+  play: async ({ args, canvas, userEvent, mount, step }) => {
+    await step('When a large control renders', async () => {
+      await mount();
+    });
+    await step('Then the control shows large', async () => {
       await expect(canvas.getByRole('group', { name: 'Theme' })).toHaveAttribute('data-size', 'lg');
     });
     await step('When I press Dark', async () => {
@@ -138,7 +130,10 @@ export const Large: Story = {
 /** As a screen reader user, I hear a named group with the current option pressed. */
 export const NamedGroup: Story = {
   args: { value: 'light' },
-  play: async ({ canvas, step }) => {
+  play: async ({ canvas, mount, step }) => {
+    await step('When the control renders on Light', async () => {
+      await mount();
+    });
     await step('Then I hear a named group with the current option pressed', async () => {
       const group = canvas.getByRole('group', { name: 'Theme' });
       await expect(group).toBeVisible();
@@ -164,16 +159,19 @@ export const PressingPickedChangesNothing: Story = {
 /** As a keyboard user, I find one Tab stop in the control and it follows the value I pick. */
 export const OneTabStopFollowsValue: Story = {
   args: { value: 'light' },
-  render: Owned,
-  play: async ({ canvas, userEvent, step }) => {
-    await step('Given the pressed option is the one Tab stop', async () => {
-      await expect(tabStops(canvas)).toEqual(['-1', '0', '-1']);
+  render: renderOwned,
+  play: async ({ canvas, userEvent, mount, step }) => {
+    await step('When the control renders on Light', async () => {
+      await mount();
+    });
+    await step('Then the pressed option is the one Tab stop', async () => {
+      await expect(readTabStops(canvas)).toEqual(['-1', '0', '-1']);
     });
     await step('When I pick Dark', async () => {
       await userEvent.click(canvas.getByRole('button', { name: 'Dark' }));
     });
     await step('Then the Tab stop follows the value', async () => {
-      await expect(tabStops(canvas)).toEqual(['-1', '-1', '0']);
+      await expect(readTabStops(canvas)).toEqual(['-1', '-1', '0']);
     });
   },
 };
@@ -181,9 +179,12 @@ export const OneTabStopFollowsValue: Story = {
 /** As a keyboard user, I find the first option is the Tab stop when none is pressed. */
 export const FirstIsTabStopWhenNonePressed: Story = {
   render: args => <SegmentedControl<Theme | 'unset'> {...args} value="unset" />,
-  play: async ({ canvas, step }) => {
+  play: async ({ canvas, mount, step }) => {
+    await step('When the control renders with no option pressed', async () => {
+      await mount();
+    });
     await step('Then the first option is the Tab stop', async () => {
-      await expect(tabStops(canvas)).toEqual(['0', '-1', '-1']);
+      await expect(readTabStops(canvas)).toEqual(['0', '-1', '-1']);
     });
   },
 };
@@ -191,63 +192,68 @@ export const FirstIsTabStopWhenNonePressed: Story = {
 /** As a keyboard user, I move focus between options with the arrows, Home and End, wrapping, and pick nothing. */
 export const ArrowsMoveWithoutPicking: Story = {
   args: { value: 'light' },
-  render: Owned,
+  render: renderOwned,
   play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given I focus the pressed option', async () => {
+    const focusedAfterKeys: (string | null | undefined)[] = [];
+    await step('When I focus the pressed option', () => {
       canvas.getByTestId('seg-light').focus();
+    });
+    await step('Then it has focus', async () => {
       await expect(canvas.getByTestId('seg-light')).toHaveFocus();
     });
-    await step('When I press the arrows, Home and End, then focus moves, wrapping, to each option', async () => {
-      const moves: [string, string][] = [
-        ['{ArrowRight}', 'seg-dark'],
-        ['{ArrowRight}', 'seg-system'],
-        ['{ArrowLeft}', 'seg-dark'],
-        ['{ArrowDown}', 'seg-system'],
-        ['{ArrowUp}', 'seg-dark'],
-        ['{Home}', 'seg-system'],
-        ['{End}', 'seg-dark'],
-      ];
-      for (const [key, focused] of moves) {
+    await step('When I press the arrows, Home and End', async () => {
+      for (const key of [
+        '{ArrowRight}',
+        '{ArrowRight}',
+        '{ArrowLeft}',
+        '{ArrowDown}',
+        '{ArrowUp}',
+        '{Home}',
+        '{End}',
+      ]) {
         await userEvent.keyboard(key);
-        await expect(canvas.getByTestId(focused)).toHaveFocus();
+        focusedAfterKeys.push(document.activeElement?.getAttribute('data-testid'));
       }
     });
-    await step('Then nothing is picked', async () => {
+    await step('Then focus moved, wrapping, to each option in turn', async () => {
+      await expect(focusedAfterKeys).toEqual([
+        'seg-dark',
+        'seg-system',
+        'seg-dark',
+        'seg-system',
+        'seg-dark',
+        'seg-system',
+        'seg-dark',
+      ]);
+    });
+    await step('And nothing is picked', async () => {
       await expect(args.onChange).not.toHaveBeenCalled();
       await expect(canvas.getByTestId('seg-light')).toHaveAttribute('aria-pressed', 'true');
     });
   },
 };
 
-// A button after the control, for Tab to land on.
-const WithNext = (args: Args) => (
-  <div style={{ display: 'flex', gap: '12px' }}>
-    <SegmentedControl<Theme> {...args} />
-    <button type="button" data-testid="after">
-      After
-    </button>
-  </div>
-);
-
 /** As a keyboard user, I find the option I arrowed to is the Tab stop while focus is inside, and Tab leaves the control at once. */
 export const ArrowedOptionIsTabStop: Story = {
   args: { value: 'light' },
-  render: WithNext,
+  render: renderWithNext,
   play: async ({ canvas, userEvent, step }) => {
-    await step('Given I arrow from the pressed option to the first', async () => {
+    await step('When I arrow from the pressed option to the first', async () => {
       canvas.getByTestId('seg-light').focus();
       await userEvent.keyboard('{ArrowLeft}');
+    });
+    await step('Then the arrowed option has focus and is the Tab stop while focus is inside', async () => {
       await expect(canvas.getByTestId('seg-system')).toHaveFocus();
+      await expect(readTabStops(canvas)).toEqual(['0', '-1', '-1']);
     });
-    await step('Then the arrowed option is the Tab stop while focus is inside', async () => {
-      await expect(tabStops(canvas)).toEqual(['0', '-1', '-1']);
-    });
-    await step('When I press Tab, then it leaves the control at once', async () => {
+    await step('When I press Tab', async () => {
       await userEvent.tab();
+    });
+    await step('Then focus leaves the control at once', async () => {
       await expect(canvas.getByTestId('after')).toHaveFocus();
     });
-    await step('Then the pressed option is the Tab stop again', async () => {
-      await expect(tabStops(canvas)).toEqual(['-1', '0', '-1']);
+    await step('And the pressed option is the Tab stop again', async () => {
+      await expect(readTabStops(canvas)).toEqual(['-1', '0', '-1']);
     });
   },
 };
@@ -255,15 +261,16 @@ export const ArrowedOptionIsTabStop: Story = {
 /** As a keyboard user, I type other keys and they reach the page untouched and pick nothing. */
 export const OtherKeysPassThrough: Story = {
   args: { value: 'light' },
-  render: WithNext,
+  render: renderWithNext,
   play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given the pressed option has focus', async () => {
+    await step('When I focus the pressed option and type a letter', async () => {
       canvas.getByTestId('seg-light').focus();
+      await userEvent.keyboard('a');
+    });
+    await step('Then the pressed option keeps focus', async () => {
       await expect(canvas.getByTestId('seg-light')).toHaveFocus();
     });
-    await step('When I type a letter and then press Tab', async () => {
-      await userEvent.keyboard('a');
-      await expect(canvas.getByTestId('seg-light')).toHaveFocus();
+    await step('When I press Tab', async () => {
       await userEvent.tab();
     });
     await step('Then the keys reach the page untouched and nothing is picked', async () => {
@@ -276,9 +283,12 @@ export const OtherKeysPassThrough: Story = {
 /** As a dotli user, I press an option of a disabled control, nothing is picked, and my focus stays on it. */
 export const Disabled: Story = {
   args: { disabled: true },
-  render: Owned,
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given the control is disabled', async () => {
+  render: renderOwned,
+  play: async ({ args, canvas, userEvent, mount, step }) => {
+    await step('When a disabled control renders', async () => {
+      await mount();
+    });
+    await step('Then the control shows disabled', async () => {
       await expect(canvas.getByRole('group')).toHaveAttribute('aria-disabled', 'true');
       await expect(canvas.getByTestId('seg-dark')).toHaveAttribute('aria-disabled', 'true');
     });
@@ -294,3 +304,34 @@ export const Disabled: Story = {
     });
   },
 };
+
+// The owner takes each pick.
+function renderOwned(args: Args) {
+  const [value, setValue] = createSignal<Theme>(untrack(() => args.value));
+  return (
+    <SegmentedControl<Theme>
+      {...args}
+      value={value()}
+      onChange={next => {
+        setValue(next);
+        args.onChange(next);
+      }}
+    />
+  );
+}
+
+// A button after the control, for Tab to land on.
+function renderWithNext(args: Args) {
+  return (
+    <div style={{ display: 'flex', gap: '12px' }}>
+      <SegmentedControl<Theme> {...args} />
+      <button type="button" data-testid="after">
+        After
+      </button>
+    </div>
+  );
+}
+
+function readTabStops(canvas: { getByTestId: (id: string) => HTMLElement }): (string | null)[] {
+  return OPTIONS.map(option => canvas.getByTestId(option.testId).getAttribute('tabindex'));
+}

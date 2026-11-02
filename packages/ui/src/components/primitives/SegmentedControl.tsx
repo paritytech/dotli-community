@@ -5,14 +5,14 @@ import { createSignal, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './SegmentedControl.module.css';
 
-export interface SegmentOption<V extends string> {
+export type SegmentOption<V extends string> = {
   value: V;
   label: string;
   icon?: JSX.Element;
   testId?: string;
-}
+};
 
-export interface SegmentedControlProps<V extends string> {
+export type SegmentedControlProps<V extends string> = {
   /** The group's accessible name. */
   label: string;
   options: readonly SegmentOption<V>[];
@@ -27,7 +27,7 @@ export interface SegmentedControlProps<V extends string> {
   disabled?: boolean;
   class?: string | undefined;
   testId?: string;
-}
+};
 
 const FOCUS_KEYS: Readonly<Record<string, (index: number, count: number) => number>> = {
   ArrowRight: (index, count) => (index + 1) % count,

@@ -9,7 +9,7 @@ product's archive, the wallet switch and diagnostics. It loads only in debug mod
   diagnostics.
 - The models behind the views: the event store and the correlation of a call with its answer, filters, rows and detail
   formatting, timeline lanes, resolution blocks, pending-call tracking, export, chain names and payload decoding, and
-  the stored dock position and section. They are plain modules with Node specs beside them.
+  the stored dock position and section. They are plain modules, tested under Node.
 - Its own components, icons, tokens and phone breakpoint. From the shared UI kit it takes only the Solid glue that reads
   a store and mounts a root, and the pointer drag, so a store read, a broken root and a drag behave as everywhere else
   on the page. Each icon is a Solid component that draws an `<svg>` in `currentColor`.
@@ -20,15 +20,19 @@ product's archive, the wallet switch and diagnostics. It loads only in debug mod
 ```mermaid
 flowchart LR
   host -- "loadTruapiDebugMount()" --> setup["setupTruapiDebugPanel({ host })"] --> panel[Panel]
-  bus --> feed[panel feed] --> store["EventStore and ResolutionRecorder"] --> panel
+  bus --> feed[panel feed] --> store["event store and resolution recorder"] --> panel
 ```
 
 - A lazy loader keeps the panel in its own chunk, and the package index is a pure barrel.
 - Setup installs the panel. A second call before disposing does nothing. Dispose also gives the product iframe its full
   size back through `host.reportDockInset`.
 - The feed subscribes to the bus at once, so the buffered boot replay is in the store before the panel mounts.
-- The models take their inputs as parameters and import no Solid, so the specs run under Node. Keys are stable, so a
-  view updates a box in place as traffic streams in.
+- The models take their inputs as parameters and import no Solid, so they are tested under Node. Each is one function or
+  factory in a module of its own. Keys are stable, so a view updates a box in place as traffic streams in.
+- The stateful models are factories that return plain objects, and their types come from the factories. The event store
+  takes its clock as a parameter, defaulting to the page clock, and stamps each TrUAPI message with it at insert. The
+  stored dock and section are each one object with `read` and `write` over a storage the caller may replace, and the
+  panel uses their page instances.
 - `DebugPanelHost` is the port: readable stores for product, auth and wallet mode, wallet switching (opening the page's
   phrase view and signing out), diagnostics, the archive loader (the host picks gateway or blocks), content insets, a
   dock inset callback, and leaving debug mode, which the host does on Hide. The panel imports no host module.
@@ -86,15 +90,15 @@ tab, and picking one opens the panel on it. A collapsed panel also stops reading
 
 ### Adding a host event
 
-Emit it on the debug bus with a layer, an event name, a flow id and a payload. Give it a one-line summary and a longer
-explanation in the panel's models.
+Add it to the debug bus's event union with a layer, an event name, a flow id and a payload, and emit it. The panel then
+fails the type check until its models give the event a one-line summary. A longer explanation is optional.
 
 ## Public API
 
 ### `@dotli/truapi-debug-ui`
 
 - `loadTruapiDebugMount`, `TruapiDebugMountModule`: the lazy loader of the panel mount, whose `setupTruapiDebugPanel`
-  installs the panel and returns a dispose.
+  takes one `SetupParams` object, installs the panel and returns a dispose.
 - `DebugPanelHost`: the port the host implements, with the diagnostics types it carries (`DiagnosticsSource`,
   `DiagnosticsRow`, `PackageVersion`).
 

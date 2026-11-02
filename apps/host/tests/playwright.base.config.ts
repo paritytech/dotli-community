@@ -6,7 +6,7 @@ import type { PlaywrightTestConfig } from '@playwright/test';
 const PORT = '5173';
 
 export const previewServer = {
-  command: 'node ../../../../scripts/preview-server.ts',
+  command: 'node ../../../../scripts/previewServer.ts',
   url: `http://localhost:${PORT}`,
   reuseExistingServer: true,
   timeout: 30_000,

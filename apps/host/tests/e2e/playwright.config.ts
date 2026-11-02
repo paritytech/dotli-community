@@ -58,7 +58,7 @@ export default defineConfig({
   workers: 1,
   globalTimeout: 30 * 60_000,
   // globalSetup returns the teardown closure that stops the signing host.
-  globalSetup: './global-setup.ts',
+  globalSetup: './globalSetup.ts',
   use: {
     ...baseConfig.use,
     trace: 'retain-on-failure',

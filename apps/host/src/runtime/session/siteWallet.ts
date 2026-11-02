@@ -1,0 +1,50 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// This site's local wallet, which the protocol frame keeps in the shared store under this site's id.
+
+import { SITE_ID } from '@dotli/config';
+import { reportExpected, spans as S } from '@dotli/metrics';
+import { getProtocolClient, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
+
+/** A wallet read, or why the frame could not answer it. */
+export type WalletRead = LocalWalletReadResult | { status: 'failed'; error: unknown };
+
+export type SiteWallet = {
+  /** Reads the stored wallet, or answers that there is none. Rejects when the protocol frame cannot answer. */
+  read(): Promise<LocalWalletReadResult>;
+  /**
+   * Stores the wallet's entropy, with the identity derived from it, where a `null` identity stores none yet. Rejects
+   * when the protocol frame cannot store it.
+   */
+  save(entropy: Uint8Array, identity: LocalWalletIdentity | null): Promise<void>;
+  /** Replaces the identity stored with the wallet and leaves its entropy as it is. Rejects as `save` does. */
+  updateIdentity(identity: LocalWalletIdentity): Promise<void>;
+  /** Forgets the wallet whatever version the store holds. Rejects when the protocol frame cannot forget it. */
+  forget(): Promise<void>;
+  /** Forgets the wallet only while the store holds `version`. Resolves whether it went. Rejects as `forget` does. */
+  forgetIf(version: Uint8Array): Promise<boolean>;
+};
+
+/** This site's local wallet in the shared store. Each call reaches the protocol frame when made. */
+export const siteWallet: SiteWallet = {
+  read: () => getProtocolClient().sharedWallet.read(SITE_ID),
+  save: (entropy, identity) => getProtocolClient().sharedWallet.save({ siteId: SITE_ID, entropy, identity }),
+  updateIdentity: identity => getProtocolClient().sharedWallet.updateIdentity(SITE_ID, identity),
+  forget: () => getProtocolClient().sharedWallet.forget(SITE_ID),
+  forgetIf: version => getProtocolClient().sharedWallet.forgetIf(SITE_ID, version),
+};
+
+/** Counts a failed wallet read made to check the page's sign-in as the environment's failure. Never throws. */
+export function recordPresenceWalletReadFailure(error: unknown): void {
+  reportExpected(error, { flow: 'wallet', step: 'presence_wallet_read', metric: S.SESSION_WALLET_READ });
+}
+
+/** The wallet read, or the failure of a read that rejected or threw. Never rejects. */
+export async function readWalletOrFailed(read: () => Promise<LocalWalletReadResult>): Promise<WalletRead> {
+  try {
+    return await read();
+  } catch (error) {
+    return { status: 'failed', error };
+  }
+}

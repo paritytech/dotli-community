@@ -137,7 +137,7 @@ These hold in every app and package. The `src/index.ts` entry and the `./testing
 - A shared fixture that reads the page is named `<name>.dom.ts`. Only functional tests and stories use it.
 - There is one Storybook, at the repo root. It runs every story in every app and package. Story fixtures and frames live
   in the package's `src/testing/stories/` and are never exported. Stories may also import `./testing` entries.
-- Helpers every package's tests use live once: in `@dotli/shared/testing`, the page wait `untilDom` included, and page
+- Helpers every package's tests use live once: in `@dotli/shared/testing`, the page wait `waitForDom` included, and page
   queries in `@dotli/ui/testing`.
 
 ## Cut rules

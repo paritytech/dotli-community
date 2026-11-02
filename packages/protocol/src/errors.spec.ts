@@ -9,23 +9,23 @@ import {
   ProtocolPortReleasedError,
   ProtocolRequestError,
   ProtocolVersionMismatchError,
-  failureOf,
-  frameStatusEnd,
+  getFailure,
+  toFrameStatusEnd,
   fromTransportError,
-  remoteEnd,
+  toRemoteEnd,
 } from './errors.js';
 import { protocolSchema } from './schema.js';
 
 const { frame, resolve, wallet } = protocolSchema.sections;
 
-describe('failureOf', () => {
+describe('getFailure', () => {
   it("As a frame that waits on another, I read its frame status end as the protocol's error classes", () => {
     // When
     const ends = [
-      failureOf(frame.status, domain({ tag: 'fatal', value: 'wasm trap' })),
-      failureOf(frame.status, domain({ tag: 'initFailed', value: 'chainHead follow stopped' })),
-      failureOf(frame.status, domain({ tag: 'released', value: 'The worker let go of this tab' })),
-      failureOf(frame.status, domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' })),
+      getFailure(frame.status, domain({ tag: 'fatal', value: 'wasm trap' })),
+      getFailure(frame.status, domain({ tag: 'initFailed', value: 'chainHead follow stopped' })),
+      getFailure(frame.status, domain({ tag: 'released', value: 'The worker let go of this tab' })),
+      getFailure(frame.status, domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' })),
     ];
 
     // Then
@@ -44,9 +44,9 @@ describe('failureOf', () => {
   it('As a frame that relays another, I read its failures under the names they crossed with and its call name', () => {
     // When
     const failures = [
-      failureOf(resolve.owner, domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' })),
-      failureOf(frame.heartbeat, hostFailure('TypeError: heartbeat refused')),
-      failureOf(wallet.read, denied()),
+      getFailure(resolve.owner, domain({ tag: 'syncTimeout', value: 'Asset Hub did not sync' })),
+      getFailure(frame.heartbeat, hostFailure('TypeError: heartbeat refused')),
+      getFailure(wallet.read, denied()),
     ];
 
     // Then
@@ -61,7 +61,7 @@ describe('failureOf', () => {
   });
 });
 
-describe('frameStatusEnd', () => {
+describe('toFrameStatusEnd', () => {
   it('As a frame, I end my status typed for a protocol failure and as its failure for any other, and the host reads each back', () => {
     // Given
     const errors = [
@@ -73,7 +73,8 @@ describe('frameStatusEnd', () => {
     ];
 
     // When
-    const ends = errors.map(frameStatusEnd);
+    const ends = errors.map(toFrameStatusEnd);
+    const read = ends.map(end => getFailure(frame.status, end));
 
     // Then
     expect(ends).toEqual([
@@ -83,7 +84,6 @@ describe('frameStatusEnd', () => {
       domain({ tag: 'versionMismatch', value: 'The peer speaks version 9' }),
       hostFailure('TypeError: boot broke'),
     ]);
-    const read = ends.map(end => failureOf(frame.status, end));
     expect(read.map(error => [error.name, error.message])).toEqual(errors.map(error => [error.name, error.message]));
   });
 });
@@ -94,8 +94,8 @@ describe('fromTransportError', () => {
     const mismatch = new TransportUnsupportedProtocolVersionError({ wire: 1, schema: 3 }, { wire: 1, schema: 9 });
 
     // When
-    const end = frameStatusEnd(fromTransportError(mismatch));
-    const read = failureOf(frame.status, end);
+    const end = toFrameStatusEnd(fromTransportError(mismatch));
+    const read = getFailure(frame.status, end);
 
     // Then
     expect(end).toEqual(domain({ tag: 'versionMismatch', value: mismatch.message }));
@@ -104,16 +104,18 @@ describe('fromTransportError', () => {
   });
 });
 
-describe('remoteEnd', () => {
+describe('toRemoteEnd', () => {
   it("As a frame, I type the resolver failures the host's error screen tells apart by name, and end any other as my own", () => {
     // Given
-    const named = (name: string, message: string): Error => Object.assign(new Error(message), { name });
+    function createNamedError(name: string, message: string): Error {
+      return Object.assign(new Error(message), { name });
+    }
 
     // When
     const failures = [
-      remoteEnd(named('NetworkSyncTimeoutError', 'Asset Hub did not sync')),
-      remoteEnd(named('ApiStoppedError', 'The light client stopped')),
-      remoteEnd(new TypeError('bad label')),
+      toRemoteEnd(createNamedError('NetworkSyncTimeoutError', 'Asset Hub did not sync')),
+      toRemoteEnd(createNamedError('ApiStoppedError', 'The light client stopped')),
+      toRemoteEnd(new TypeError('bad label')),
     ];
 
     // Then

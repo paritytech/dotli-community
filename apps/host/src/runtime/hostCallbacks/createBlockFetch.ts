@@ -1,0 +1,69 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { fetchBitswapBlock } from '@dotli/bitswap';
+import { fetchFromIpfs } from '@dotli/content';
+import { getBackend, type Backend } from '@dotli/config';
+
+/** A block as one content backend returned it. Empty data is a miss. */
+export type PreimageBlock = {
+  /** The block's bytes as served, not yet checked against the key. */
+  data: Uint8Array;
+  /** The backend that served it. */
+  source: Backend;
+};
+
+/** Fetches the block for `cid`, stopping where the backend honours `signal`. Rejects when the backend fails. */
+export type PreimageFetch = (cid: string, signal: AbortSignal) => Promise<PreimageBlock>;
+
+/** Where blocks come from on each backend. */
+export type BlockSources = {
+  /** The backend in force, never null. Never throws. */
+  backend: () => Backend;
+  /** Fetches over bitswap on the light client backends. Rejects when the fetch fails or `signal` aborts. */
+  fetchOverBitswap: (cid: string, signal: AbortSignal) => Promise<Uint8Array>;
+  /** Fetches over the IPFS gateway on Trusted Providers. Rejects when the fetch fails. */
+  fetchFromGateway: (cid: string) => Promise<Uint8Array>;
+};
+
+type FetchFromParams = {
+  /** The backend the block is fetched over. */
+  source: Backend;
+  cid: string;
+  signal: AbortSignal;
+};
+
+/**
+ * Fetches over the backend selected at call time, so a settings change applies to the next attempt. The fetch rejects
+ * with an error that names the backend, with the backend's failure as its cause.
+ */
+export function createBlockFetch({ backend, fetchOverBitswap, fetchFromGateway }: BlockSources): PreimageFetch {
+  function fetchFrom({ source, cid, signal }: FetchFromParams): Promise<Uint8Array> {
+    switch (source) {
+      case 'rpc-gateway':
+        return fetchFromGateway(cid);
+      case 'smoldot-direct':
+      case 'smoldot-shared-worker':
+        return fetchOverBitswap(cid, signal);
+    }
+  }
+
+  async function fetchBlock(cid: string, signal: AbortSignal): Promise<PreimageBlock> {
+    const source = backend();
+    try {
+      const data = await fetchFrom({ source, cid, signal });
+      return { data, source };
+    } catch (error) {
+      throw new Error(`Preimage fetch via ${source} failed`, { cause: error });
+    }
+  }
+
+  return fetchBlock;
+}
+
+/** The page's block fetch over the content backend in force. */
+export const fetchContentBlock = createBlockFetch({
+  backend: getBackend,
+  fetchOverBitswap: fetchBitswapBlock,
+  fetchFromGateway: async cid => (await fetchFromIpfs(cid)).data,
+});

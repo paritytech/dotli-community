@@ -2,41 +2,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { sha256 } from '@noble/hashes/sha2.js';
 import { blake2b } from '@noble/hashes/blake2.js';
+import { catchError } from '@dotli/shared/testing';
 import { CID } from 'multiformats/cid';
 import { create } from 'multiformats/hashes/digest';
+import { BLAKE2B_256, DAG_PB, RAW } from './codecs.js';
+import { createSha256Cid } from './testing/createSha256Cid.js';
+import { encodeText } from './testing/textCodec.js';
 import {
   assertBlockMatchesCid,
   assertSameContentId,
-  blockMatchesCid,
-  verifyingBlockSource,
-  rootVerifyingBlockSource,
+  createRootVerifyingBlockSource,
+  createVerifyingBlockSource,
+  isBlockMatchingCid,
 } from './verify.js';
 
-const RAW = 0x55;
-const DAG_PB = 0x70;
-const SHA2_256 = 0x12;
-const BLAKE2B_256 = 0xb220;
 const SHA2_512 = 0x13;
-
-function sha256Cid(bytes: Uint8Array, codec = RAW): CID {
-  return CID.createV1(codec, create(SHA2_256, sha256(bytes)));
-}
 
 function blake2bCid(bytes: Uint8Array, codec = RAW): CID {
   return CID.createV1(codec, create(BLAKE2B_256, blake2b(bytes, { dkLen: 32 })));
 }
 
-const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
-
-describe('blockMatchesCid', () => {
+describe('isBlockMatchingCid', () => {
   it('As the block relay, I keep bytes that hash to their CID', () => {
     // Given
-    const bytes = enc('hello dot.li');
+    const bytes = encodeText('hello dot.li');
 
     // When
-    const matches = blockMatchesCid(sha256Cid(bytes).toString(), bytes);
+    const matches = isBlockMatchingCid(createSha256Cid(bytes, RAW).toString(), bytes);
 
     // Then
     expect(matches).toBe(true);
@@ -44,11 +37,11 @@ describe('blockMatchesCid', () => {
 
   it('As the block relay, I never keep a block whose multihash I cannot recompute', () => {
     // Given a CID on the identity multihash (0x00)
-    const bytes = enc('hello dot.li');
+    const bytes = encodeText('hello dot.li');
     const cid = CID.createV1(RAW, create(0x00, bytes)).toString();
 
     // When
-    const matches = blockMatchesCid(cid, bytes);
+    const matches = isBlockMatchingCid(cid, bytes);
 
     // Then
     expect(matches).toBe(false);
@@ -59,7 +52,7 @@ describe('blockMatchesCid', () => {
     const cid = 'not-a-cid';
 
     // When
-    const matches = blockMatchesCid(cid, enc('hello dot.li'));
+    const matches = isBlockMatchingCid(cid, encodeText('hello dot.li'));
 
     // Then
     expect(matches).toBe(false);
@@ -69,78 +62,78 @@ describe('blockMatchesCid', () => {
 describe('assertBlockMatchesCid', () => {
   it('As a content loader, I accept bytes that hash to their sha2-256 CID', () => {
     // Given
-    const bytes = enc('hello dot.li');
+    const bytes = encodeText('hello dot.li');
 
     // When
-    const check = (): void => {
-      assertBlockMatchesCid(sha256Cid(bytes), bytes);
-    };
+    const error = catchError(() => {
+      assertBlockMatchesCid(createSha256Cid(bytes, RAW), bytes);
+    });
 
     // Then
-    expect(check).not.toThrow();
+    expect(error).toBeUndefined();
   });
 
   it('As a content loader, I accept bytes that hash to their blake2b-256 CID', () => {
     // Given
-    const bytes = enc('bulletin content');
+    const bytes = encodeText('bulletin content');
 
     // When
-    const check = (): void => {
+    const error = catchError(() => {
       assertBlockMatchesCid(blake2bCid(bytes), bytes);
-    };
+    });
 
     // Then
-    expect(check).not.toThrow();
+    expect(error).toBeUndefined();
   });
 
   it('As a content loader, I reject bytes a peer substituted under a valid CID', () => {
     // Given
-    const cid = sha256Cid(enc('the real index.html'));
-    const tampered = enc('<script>steal()</script>');
+    const cid = createSha256Cid(encodeText('the real index.html'), RAW);
+    const tampered = encodeText('<script>steal()</script>');
 
     // When
-    const check = (): void => {
+    const error = catchError(() => {
       assertBlockMatchesCid(cid, tampered);
-    };
+    });
 
     // Then
-    expect(check).toThrow(/hash mismatch/i);
+    expect(error).toMatchObject({ message: expect.stringMatching(/hash mismatch/i) as string });
   });
 
   it('As a content loader, I name a mismatch as a verification failure, so my caller can tell it from a transport one', () => {
     // Given
-    const cid = sha256Cid(enc('the real index.html'));
+    const cid = createSha256Cid(encodeText('the real index.html'), RAW);
 
     // When
-    const check = (): void => {
-      assertBlockMatchesCid(cid, enc('something else'));
-    };
+    const error = catchError(() => {
+      assertBlockMatchesCid(cid, encodeText('something else'));
+    });
 
     // Then
-    expect(check).toThrow(expect.objectContaining({ name: 'ContentVerificationError' }) as Error);
+    expect(error).toMatchObject({ name: 'ContentVerificationError' });
   });
 
   it('As a content loader, I fail closed on a multihash I cannot recompute', () => {
     // Given
-    const bytes = enc('payload');
+    const bytes = encodeText('payload');
     const cid = CID.createV1(RAW, create(SHA2_512, new Uint8Array(64)));
 
     // When
-    const check = (): void => {
+    const error = catchError(() => {
       assertBlockMatchesCid(cid, bytes);
-    };
+    });
 
     // Then
-    expect(check).toThrow(/unsupported multihash/i);
+    expect(error).toMatchObject({ message: expect.stringMatching(/unsupported multihash/i) as string });
   });
 });
 
-describe('verifyingBlockSource', () => {
+describe('createVerifyingBlockSource', () => {
   it('As a content loader, I pass on bytes that match the CID I asked for', async () => {
     // Given
-    const bytes = enc('block bytes');
-    const cid = sha256Cid(bytes);
-    const wrapped = verifyingBlockSource(() => Promise.resolve(bytes));
+    const bytes = encodeText('block bytes');
+    const cid = createSha256Cid(bytes, RAW);
+    const wrapped = createVerifyingBlockSource(() => Promise.resolve(bytes));
 
     // When
     const block = wrapped(cid);
@@ -151,8 +144,8 @@ describe('verifyingBlockSource', () => {
 
   it('As a content loader, I fail a block whose source returned bytes for another CID', async () => {
     // Given
-    const cid = sha256Cid(enc('expected'));
-    const wrapped = verifyingBlockSource(() => Promise.resolve(enc('attacker')));
+    const cid = createSha256Cid(encodeText('expected'), RAW);
+    const wrapped = createVerifyingBlockSource(() => Promise.resolve(encodeText('attacker')));
 
     // When
     const block = wrapped(cid);
@@ -162,23 +155,23 @@ describe('verifyingBlockSource', () => {
   });
 });
 
-describe('rootVerifyingBlockSource', () => {
+describe('createRootVerifyingBlockSource', () => {
   it('As a content loader, I pass on a root block that matches its CID', async () => {
     // Given
-    const rootCid = sha256Cid(enc('root'), DAG_PB);
-    const wrapped = rootVerifyingBlockSource(rootCid, () => Promise.resolve(enc('root')));
+    const rootCid = createSha256Cid(encodeText('root'), DAG_PB);
+    const wrapped = createRootVerifyingBlockSource(rootCid, () => Promise.resolve(encodeText('root')));
 
     // When
     const block = wrapped(rootCid);
 
     // Then
-    await expect(block).resolves.toEqual(enc('root'));
+    await expect(block).resolves.toEqual(encodeText('root'));
   });
 
   it('As a content loader, I fail a tampered root block', async () => {
     // Given
-    const rootCid = sha256Cid(enc('root'), DAG_PB);
-    const wrapped = rootVerifyingBlockSource(rootCid, () => Promise.resolve(enc('tampered root')));
+    const rootCid = createSha256Cid(encodeText('root'), DAG_PB);
+    const wrapped = createRootVerifyingBlockSource(rootCid, () => Promise.resolve(encodeText('tampered root')));
 
     // When
     const block = wrapped(rootCid);
@@ -189,77 +182,75 @@ describe('rootVerifyingBlockSource', () => {
 
   it('As a content loader, I pass interior blocks through without verifying them', async () => {
     // Given
-    const rootCid = sha256Cid(enc('root'), DAG_PB);
-    const childCid = sha256Cid(enc('child'));
-    const wrapped = rootVerifyingBlockSource(rootCid, () => Promise.resolve(enc('not the child bytes')));
+    const rootCid = createSha256Cid(encodeText('root'), DAG_PB);
+    const childCid = createSha256Cid(encodeText('child'), RAW);
+    const wrapped = createRootVerifyingBlockSource(rootCid, () => Promise.resolve(encodeText('not the child bytes')));
 
     // When
     const block = wrapped(childCid);
 
     // Then
-    await expect(block).resolves.toEqual(enc('not the child bytes'));
+    await expect(block).resolves.toEqual(encodeText('not the child bytes'));
   });
 });
 
 describe('assertSameContentId', () => {
   it('As a content loader, I accept an archive whose root is the CID I asked for', () => {
     // Given
-    const cid = sha256Cid(enc('root'), DAG_PB);
+    const cid = createSha256Cid(encodeText('root'), DAG_PB);
 
     // When
-    const check = (): void => {
+    const error = catchError(() => {
       assertSameContentId(cid, cid);
-    };
+    });
 
     // Then
-    expect(check).not.toThrow();
+    expect(error).toBeUndefined();
   });
 
   it('As a content loader, I take CIDv0 and CIDv1 of the same content as the same root', () => {
     // Given
-    const v1 = sha256Cid(enc('same content'), DAG_PB);
+    const v1 = createSha256Cid(encodeText('same content'), DAG_PB);
     const v0 = v1.toV0();
 
     // When
-    const checks = [
-      (): void => {
+    const errors = [
+      catchError(() => {
         assertSameContentId(v0, v1);
-      },
-      (): void => {
+      }),
+      catchError(() => {
         assertSameContentId(v1, v0);
-      },
+      }),
     ];
 
     // Then
-    for (const check of checks) {
-      expect(check).not.toThrow();
-    }
+    expect(errors).toEqual([undefined, undefined]);
   });
 
   it('As a content loader, I reject an archive whose declared root is not the one I asked for', () => {
     // Given
-    const requested = sha256Cid(enc('legit site'), DAG_PB);
-    const attacker = sha256Cid(enc('phishing clone'), DAG_PB);
+    const requested = createSha256Cid(encodeText('legit site'), DAG_PB);
+    const attacker = createSha256Cid(encodeText('phishing clone'), DAG_PB);
 
     // When
-    const check = (): void => {
+    const error = catchError(() => {
       assertSameContentId(attacker, requested);
-    };
+    });
 
     // Then
-    expect(check).toThrow(/does not match requested/i);
+    expect(error).toMatchObject({ message: expect.stringMatching(/does not match requested/i) as string });
   });
 
   it('As a content loader, I reject a root with a matching hash but a different codec', () => {
     // Given
-    const bytes = enc('ambiguous');
+    const bytes = encodeText('ambiguous');
 
     // When
-    const check = (): void => {
-      assertSameContentId(sha256Cid(bytes, RAW), sha256Cid(bytes, DAG_PB));
-    };
+    const error = catchError(() => {
+      assertSameContentId(createSha256Cid(bytes, RAW), createSha256Cid(bytes, DAG_PB));
+    });
 
     // Then
-    expect(check).toThrow(/does not match requested/i);
+    expect(error).toMatchObject({ message: expect.stringMatching(/does not match requested/i) as string });
   });
 });

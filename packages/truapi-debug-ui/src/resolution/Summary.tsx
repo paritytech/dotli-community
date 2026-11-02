@@ -5,12 +5,12 @@
 
 import { createMemo, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { ResolutionModel } from '../model/resolution-view.js';
-import { summaryFacts } from './format.js';
+import type { ResolutionModel } from '../model/buildResolution.js';
+import { listSummaryFacts } from './listSummaryFacts.js';
 import s from './Summary.module.css';
 
 export function Summary(props: { model: ResolutionModel }): JSX.Element {
-  const facts = createMemo(() => summaryFacts(props.model));
+  const facts = createMemo(() => listSummaryFacts(props.model));
   return (
     <dl class={s['summary']} data-testid="td-res-summary">
       <For each={facts()} keyed={fact => fact.key}>

@@ -18,7 +18,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "fake-indexeddb": "^6.2.6"
+    "fake-indexeddb": "^6.2.7"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0"

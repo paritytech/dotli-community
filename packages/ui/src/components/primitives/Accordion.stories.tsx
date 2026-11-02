@@ -24,39 +24,32 @@ type Story = StoryObj<typeof meta>;
 
 type Canvas = Parameters<NonNullable<Story['play']>>[0]['canvas'];
 
-const root = (canvas: Canvas): HTMLDetailsElement => {
-  const found = canvas.getByTestId('accordion');
-  if (!(found instanceof HTMLDetailsElement)) {
-    throw new Error('The accordion is not a details element');
-  }
-  return found;
-};
-
-const summary = (canvas: Canvas): HTMLElement => canvas.getByTestId('accordion-summary');
-
 /** As a dotli user, I open and close a section by pointer and it reports each change. */
 export const Pointer: Story = {
   args: { onToggle: fn() },
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('Given the section is closed', async () => {
-      await expect(root(canvas).open).toBe(false);
-      await expect(summary(canvas)).toHaveTextContent('Advanced');
+  play: async ({ args, canvas, mount, userEvent, step }) => {
+    await step('When a closed section renders', async () => {
+      await mount();
+    });
+    await step('Then the section shows closed', async () => {
+      await expect(getRoot(canvas).open).toBe(false);
+      await expect(getSummary(canvas)).toHaveTextContent('Advanced');
       await expect(canvas.getByTestId('accordion-body')).not.toBeVisible();
     });
     await step('When I click its header', async () => {
-      await userEvent.click(summary(canvas));
+      await userEvent.click(getSummary(canvas));
     });
     await step('Then it opens, shows its body and reports it', async () => {
-      await waitFor(() => expect(root(canvas).open).toBe(true));
+      await waitFor(() => expect(getRoot(canvas).open).toBe(true));
       await expect(canvas.getByTestId('accordion-body')).toBeVisible();
       await waitFor(() => expect(args.onToggle).toHaveBeenCalledTimes(1));
       await expect(args.onToggle).toHaveBeenCalledWith(true);
     });
     await step('When I click its header again', async () => {
-      await userEvent.click(summary(canvas));
+      await userEvent.click(getSummary(canvas));
     });
     await step('Then it closes and reports it', async () => {
-      await waitFor(() => expect(root(canvas).open).toBe(false));
+      await waitFor(() => expect(getRoot(canvas).open).toBe(false));
       await waitFor(() => expect(args.onToggle).toHaveBeenCalledTimes(2));
       await expect(args.onToggle).toHaveBeenLastCalledWith(false);
     });
@@ -72,20 +65,20 @@ export const Keyboard: Story = {
       await userEvent.tab();
     });
     await step('Then the header has focus and the section is closed', async () => {
-      await expect(summary(canvas)).toHaveFocus();
-      await expect(root(canvas).open).toBe(false);
+      await expect(getSummary(canvas)).toHaveFocus();
+      await expect(getRoot(canvas).open).toBe(false);
     });
     await step('When I press Enter', async () => {
       await userEvent.keyboard('{Enter}');
     });
     await step('Then it opens', async () => {
-      await waitFor(() => expect(root(canvas).open).toBe(true));
+      await waitFor(() => expect(getRoot(canvas).open).toBe(true));
     });
     await step('When I press Space', async () => {
       await userEvent.keyboard(' ');
     });
     await step('Then it closes', async () => {
-      await waitFor(() => expect(root(canvas).open).toBe(false));
+      await waitFor(() => expect(getRoot(canvas).open).toBe(false));
     });
   },
 };
@@ -102,12 +95,12 @@ export const TabIntoBody: Story = {
   play: async ({ canvas, step }) => {
     const userEvent = await trustedInput();
     await step('When I open the section from the keyboard and press Tab at once', async () => {
-      summary(canvas).focus();
+      getSummary(canvas).focus();
       await userEvent.keyboard('{Enter}');
       await userEvent.tab();
     });
     await step('Then focus is on the action in its body', async () => {
-      await expect(root(canvas).open).toBe(true);
+      await expect(getRoot(canvas).open).toBe(true);
       await expect(canvas.getByTestId('accordion-action')).toHaveFocus();
     });
   },
@@ -119,12 +112,12 @@ export const OwnerDecides: Story = {
   args: { open: false, onToggle: fn() },
   play: async ({ args, canvas, userEvent, step }) => {
     await step('When I click its header', async () => {
-      await userEvent.click(summary(canvas));
+      await userEvent.click(getSummary(canvas));
     });
     await step('Then its owner hears it should open and the section stays closed', async () => {
       await expect(args.onToggle).toHaveBeenCalledTimes(1);
       await expect(args.onToggle).toHaveBeenCalledWith(true);
-      await expect(root(canvas).open).toBe(false);
+      await expect(getRoot(canvas).open).toBe(false);
     });
     await step('When I press Enter on its header', async () => {
       await (await trustedInput()).keyboard('{Enter}');
@@ -132,7 +125,7 @@ export const OwnerDecides: Story = {
     await step('Then its owner hears it again and the section stays closed', async () => {
       await expect(args.onToggle).toHaveBeenCalledTimes(2);
       await expect(args.onToggle).toHaveBeenLastCalledWith(true);
-      await expect(root(canvas).open).toBe(false);
+      await expect(getRoot(canvas).open).toBe(false);
     });
     await step('When I press Space on its header', async () => {
       await (await trustedInput()).keyboard(' ');
@@ -140,7 +133,7 @@ export const OwnerDecides: Story = {
     await step('Then its owner hears it a third time and the section stays closed', async () => {
       await expect(args.onToggle).toHaveBeenCalledTimes(3);
       await expect(args.onToggle).toHaveBeenLastCalledWith(true);
-      await expect(root(canvas).open).toBe(false);
+      await expect(getRoot(canvas).open).toBe(false);
     });
   },
 };
@@ -155,9 +148,9 @@ export const BrowserOpens: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
     await step('When the browser opens the section itself', async () => {
       const toggled = new Promise(resolve => {
-        root(canvas).addEventListener('toggle', resolve, { once: true });
+        getRoot(canvas).addEventListener('toggle', resolve, { once: true });
       });
-      root(canvas).open = true;
+      getRoot(canvas).open = true;
       await toggled;
     });
     await step('Then its owner hears it opened', async () => {
@@ -165,12 +158,12 @@ export const BrowserOpens: Story = {
       await expect(args.onToggle).toHaveBeenCalledWith(true);
     });
     await step('When I click its header', async () => {
-      await userEvent.click(summary(canvas));
+      await userEvent.click(getSummary(canvas));
     });
     await step(
       'Then the section closes, back in step with its owner, and the owner hears it should close',
       async () => {
-        await expect(root(canvas).open).toBe(false);
+        await expect(getRoot(canvas).open).toBe(false);
         await expect(args.onToggle).toHaveBeenCalledTimes(2);
         await expect(args.onToggle).toHaveBeenLastCalledWith(false);
       },
@@ -178,8 +171,41 @@ export const BrowserOpens: Story = {
   },
 };
 
-// The owner takes each change and can close the section itself, as the permissions panel does on every opening.
-const Owned = (args: AccordionProps) => {
+/** As a dotli user, I open a controlled section, it reports it, and it follows its owner closing it. */
+export const Controlled: Story = {
+  args: { onToggle: fn() },
+  render: renderOwned,
+  play: async ({ args, canvas, userEvent, step }) => {
+    await step('When I click its header', async () => {
+      await userEvent.click(getSummary(canvas));
+    });
+    await step('Then its owner hears it and the section opens', async () => {
+      await expect(args.onToggle).toHaveBeenCalledTimes(1);
+      await expect(args.onToggle).toHaveBeenCalledWith(true);
+      await waitFor(() => expect(getRoot(canvas).open).toBe(true));
+    });
+    let toggled: Promise<unknown> = Promise.resolve();
+    await step('When its owner closes it', async () => {
+      toggled = new Promise(resolve => {
+        getRoot(canvas).addEventListener('toggle', resolve, { once: true });
+      });
+      await userEvent.click(canvas.getByTestId('owner-close'));
+    });
+    await step('Then it closes and reports nothing more', async () => {
+      await toggled;
+      await expect(getRoot(canvas).open).toBe(false);
+      await expect(args.onToggle).toHaveBeenCalledTimes(1);
+    });
+  },
+};
+
+/** As a dotli user, I see an open section. */
+export const Open: Story = {
+  render: args => <Accordion {...args} open onToggle={() => undefined} />,
+};
+
+// The owner takes each change and can close the section itself.
+function renderOwned(args: AccordionProps) {
   const [open, setOpen] = createSignal(false);
   return (
     <>
@@ -202,37 +228,16 @@ const Owned = (args: AccordionProps) => {
       />
     </>
   );
-};
+}
 
-/** As a dotli user, I open a controlled section, it reports it, and it follows its owner closing it. */
-export const Controlled: Story = {
-  args: { onToggle: fn() },
-  render: Owned,
-  play: async ({ args, canvas, userEvent, step }) => {
-    await step('When I click its header', async () => {
-      await userEvent.click(summary(canvas));
-    });
-    await step('Then its owner hears it and the section opens', async () => {
-      await expect(args.onToggle).toHaveBeenCalledTimes(1);
-      await expect(args.onToggle).toHaveBeenCalledWith(true);
-      await waitFor(() => expect(root(canvas).open).toBe(true));
-    });
-    let toggled: Promise<unknown> = Promise.resolve();
-    await step('When its owner closes it', async () => {
-      toggled = new Promise(resolve => {
-        root(canvas).addEventListener('toggle', resolve, { once: true });
-      });
-      await userEvent.click(canvas.getByTestId('owner-close'));
-    });
-    await step('Then it closes and reports nothing more', async () => {
-      await toggled;
-      await expect(root(canvas).open).toBe(false);
-      await expect(args.onToggle).toHaveBeenCalledTimes(1);
-    });
-  },
-};
+function getRoot(canvas: Canvas): HTMLDetailsElement {
+  const found = canvas.getByTestId('accordion');
+  if (!(found instanceof HTMLDetailsElement)) {
+    throw new Error('The accordion is not a details element');
+  }
+  return found;
+}
 
-/** As a dotli user, I see an open section. */
-export const Open: Story = {
-  render: args => <Accordion {...args} open onToggle={() => undefined} />,
-};
+function getSummary(canvas: Canvas): HTMLElement {
+  return canvas.getByTestId('accordion-summary');
+}

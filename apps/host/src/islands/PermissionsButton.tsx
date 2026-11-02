@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { ALL_PERMISSIONS } from '../runtime/permissions.js';
-import { productPermissions } from '../runtime/page-permissions.js';
-import { productStore } from '../runtime/state/product.js';
+import { ALL_PERMISSIONS } from '../runtime/permissionPolicy.js';
+import { productPermissions } from '../runtime/pagePermissions.js';
+import { productState } from '../runtime/state/productState.js';
 import { PermissionsItem } from '../components/permissions/PermissionsItem.js';
 import { usePermissionsPanel } from './permissions.js';
 
@@ -12,7 +12,7 @@ import { usePermissionsPanel } from './permissions.js';
 export function PermissionsButton(): JSX.Element {
   const panel = usePermissionsPanel({
     permissions: ALL_PERMISSIONS,
-    product: productStore,
+    product: productState.store,
     state: productPermissions.state,
     refresh: productPermissions.refresh,
     pending: productPermissions.pending,

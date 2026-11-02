@@ -1,0 +1,134 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * Seals a redirect sign-in's answer to the site's temporary key, so it can travel in the return address's fragment.
+ * The envelope is the one the site's client library opens: X25519 between a fresh key of the window and the site's
+ * key, HKDF-SHA-256 with the round id as salt to an AES-256-GCM key, and the round id as associated data, so an answer
+ * opens only for the round it was sealed for.
+ */
+
+import { base64urlnopad } from '@scure/base';
+
+import { PROTOCOL_VERSION } from '../sessionHandoff/sessionMessages.js';
+
+/** Whether this browser can seal to a site's key, or why not. */
+export type SealProbe = 'ok' | 'unsupported' | 'bad_key';
+
+type SealProbeParams = {
+  /** The crypto the probe runs on, the page's own by default. */
+  crypto?: Crypto;
+};
+
+type SealRedirectParams = {
+  returnTo: string;
+  /** The site's temporary key, which the answer is sealed to. */
+  sitePublicKey: Uint8Array;
+  round: string;
+  message: unknown;
+  /** The crypto the seal runs on and draws its IV from, the page's own by default. */
+  crypto?: Crypto;
+};
+
+type DeriveSharedSecretParams = {
+  subtle: SubtleCrypto;
+  privateKey: CryptoKey;
+  peerPublic: Uint8Array;
+};
+
+type DeriveAesKeyParams = DeriveSharedSecretParams & {
+  round: string;
+};
+
+const X25519 = { name: 'X25519' } as const;
+const HKDF_INFO = encodeUtf8('dotli:s:v1:redirect');
+const RESULT_KEY = 'dotli-s';
+const IV_BYTES = 12;
+
+/**
+ * Whether this browser can seal to `sitePublicKey`, checked before the round so a sealing failure never strands a
+ * signed answer. Never rejects.
+ */
+export async function probeSeal(
+  sitePublicKey: Uint8Array,
+  { crypto: webCrypto = crypto }: SealProbeParams = {},
+): Promise<SealProbe> {
+  const { subtle } = webCrypto;
+  let ephemeral: CryptoKeyPair;
+  try {
+    ephemeral = await generateEphemeralKeyPair(subtle);
+  } catch {
+    // A browser without X25519 is a verdict the caller shows and counts, not a failure to report.
+    return 'unsupported';
+  }
+  try {
+    await deriveSharedSecret({ subtle, privateKey: ephemeral.privateKey, peerPublic: sitePublicKey });
+    return 'ok';
+  } catch {
+    // A key of the wrong length or of small order is the site's bad request, not a failure to report.
+    return 'bad_key';
+  }
+}
+
+/**
+ * Seals `message` for `round` to `sitePublicKey` and resolves with `returnTo` with the envelope as its fragment. Rejects
+ * when the browser's crypto cannot seal to the key.
+ */
+export async function sealRedirect({
+  returnTo,
+  sitePublicKey,
+  round,
+  message,
+  crypto: webCrypto = crypto,
+}: SealRedirectParams): Promise<string> {
+  const { subtle } = webCrypto;
+  const ephemeral = await generateEphemeralKeyPair(subtle);
+  const ephemeralPublicKey = new Uint8Array(await subtle.exportKey('raw', ephemeral.publicKey));
+  const key = await deriveAesKey({ subtle, privateKey: ephemeral.privateKey, peerPublic: sitePublicKey, round });
+  const iv = webCrypto.getRandomValues(new Uint8Array(IV_BYTES));
+  const ciphertext = new Uint8Array(
+    await subtle.encrypt(
+      { name: 'AES-GCM', iv, additionalData: encodeUtf8(round) },
+      key,
+      encodeUtf8(JSON.stringify(message)),
+    ),
+  );
+  const envelope = {
+    v: PROTOCOL_VERSION,
+    round,
+    epk: base64urlnopad.encode(ephemeralPublicKey),
+    iv: base64urlnopad.encode(iv),
+    ct: base64urlnopad.encode(ciphertext),
+  };
+  const url = new URL(returnTo);
+  url.hash = `${RESULT_KEY}=${base64urlnopad.encode(encodeUtf8(JSON.stringify(envelope)))}`;
+  return url.href;
+}
+
+// The private key never leaves the browser's key store.
+async function generateEphemeralKeyPair(subtle: SubtleCrypto): Promise<CryptoKeyPair> {
+  return subtle.generateKey(X25519, false, ['deriveBits']);
+}
+
+async function deriveSharedSecret({ subtle, privateKey, peerPublic }: DeriveSharedSecretParams): Promise<ArrayBuffer> {
+  // A copy, since WebCrypto takes bytes only over a plain ArrayBuffer.
+  const peer = await subtle.importKey('raw', Uint8Array.from(peerPublic), X25519, false, []);
+  return subtle.deriveBits({ name: 'X25519', public: peer }, privateKey, 256);
+}
+
+async function deriveAesKey({ subtle, privateKey, peerPublic, round }: DeriveAesKeyParams): Promise<CryptoKey> {
+  const sharedSecret = await deriveSharedSecret({ subtle, privateKey, peerPublic });
+  const hkdf = await subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveKey']);
+  return subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: encodeUtf8(round), info: HKDF_INFO },
+    hkdf,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  );
+}
+
+// TextEncoder's bytes sit over a plain ArrayBuffer, which WebCrypto's types require.
+function encodeUtf8(text: string): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(text);
+}

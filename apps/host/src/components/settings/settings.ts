@@ -6,12 +6,12 @@
 import type { Network, Settings } from '@dotli/config';
 
 /** What is saved, and what this browser allows. */
-export interface SavedSettings extends Settings {
+export type SavedSettings = {
   enabledNetworks: readonly Network[];
   sharedWorkerAvailable: boolean;
   /** Whether the backend verifies chain data. */
   verified: boolean;
-}
+} & Settings;
 
 /** Saves `next` over `prior` and reloads the app. A full wipe clears every cache whatever `next` says. */
 export type ApplySettings = (next: Settings, prior: Settings, options?: { forceFullWipe?: boolean }) => Promise<void>;

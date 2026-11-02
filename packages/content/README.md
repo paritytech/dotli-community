@@ -23,8 +23,9 @@ flowchart LR
   block-fetching function, so this package does not import the transport.
 - The gateway path calls the active network's gateway and fetches a CAR or raw bytes. Its network is passed in, the
   page's own by default. On either source a raw root that holds a whole CAR is unpacked into its files.
-- A gateway that sends nothing for a while, or more bytes than one response may hold, fails the fetch with a named
-  error, so the visitor gets a retry instead of a load that never ends.
+- A gateway that sends nothing for a while or sends more bytes than one response may hold fails the fetch with a named
+  error, so the visitor gets a retry instead of a load that never ends. One the browser cannot reach fails with its own
+  named error whatever text the browser gives, so callers tell it from other failures by name.
 - Verification recomputes each block hash (sha2-256 or blake2b-256) and throws `ContentVerificationError`. Gateway
   content is verified block by block here. On the Bitswap source of a product load the host's block relay is the one
   per-block check: it hashes every block before the sandbox sees it and refuses one it cannot check. The walk here
@@ -32,7 +33,8 @@ flowchart LR
   product load may take a block source that bypasses the relay, so that read hashes every block here.
 - The archive step reads CAR files and UnixFS directories, plain or HAMT-sharded, into `ArchiveFiles`, a path to bytes
   map. A file is read through every level of its chunk tree and must come to the size it declares.
-- Decryption handles content in the layout external tooling writes, with ChaCha20-Poly1305.
+- Decryption handles content in the layout external tooling writes, with ChaCha20-Poly1305. A wrong password, or bytes
+  that were altered, fails with a named error.
 - Error names are kept apart from the code that throws them. Callers branch on `error.name`, since errors are rebuilt
   across `postMessage`.
 - The entry is pure re-exports so the bundler drops unused ones. Verification pulls the hash code, so the host's eager
@@ -43,7 +45,9 @@ flowchart LR
 ### `@dotli/content`
 
 - Fetch and archive: `fetchArchive`, `readArchiveFiles`, `fetchFromIpfs`, `packArchive`, `parseIpfsResponse`,
-  `ArchiveFiles`, `FetchResult`.
-- Verification: `CONTENT_ERRORS`.
-- Encryption and CIDs: `isEncrypted`, `decryptContent`, `hashToCid`.
-- Lazy loader: `loadVerify` loads the verify module on first use, with `assertBlockMatchesCid` and `blockMatchesCid`.
+  `ArchiveFiles`, `FetchResult`. `fetchArchive`, `fetchFromIpfs` and `parseIpfsResponse` take their input and one
+  options object.
+- Errors: `CONTENT_ERRORS`, the names of the verification, gateway (stalled, too large, unreachable) and wrong-password
+  failures.
+- Encryption and CIDs: `isEncrypted`, `decryptContent`, `createCidFromHash`.
+- Lazy loader: `loadVerify` loads the verify module on first use, with `assertBlockMatchesCid` and `isBlockMatchingCid`.

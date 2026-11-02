@@ -11,19 +11,19 @@ import { loadChainsContent } from '../../lazy.js';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import type { NetworkView } from './chains.js';
 import type { ChainsContentProps } from './ChainsContent.js';
-import { healthWord } from './network-health.js';
+import { healthWord } from './networkHealth.js';
 import s from './NetworkItem.module.css';
 
 // Its own chunk, which the popover loads while the browser is idle.
 const Chains = lazy(loadChainsContent, { export: 'ChainsContent' });
 
-export interface NetworkItemProps extends Omit<ChainsContentProps, 'network'> {
+export type NetworkItemProps = {
   /**
    * Called as the panel opens, under the panel's owner, so the network is followed only while it shows. The network
    * changes with every chunk, speed sample and block.
    */
   followNetwork: () => Accessor<NetworkView>;
-}
+} & Omit<ChainsContentProps, 'network'>;
 
 /** The panel's body, reading the network from its opening until it closes. */
 function OpenChains(props: NetworkItemProps): JSX.Element {

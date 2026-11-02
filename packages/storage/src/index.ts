@@ -1,43 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export { clearBlockCache, deleteCachedBlock, getCachedBlock, pruneBlockCache, putCachedBlock } from './block-cache.js';
-export {
-  appendMessage,
-  createRoom,
-  latestMessageTimestamps,
-  listBots,
-  listMessages,
-  listRooms,
-  registerBot,
-  setRoomFooter,
-  type ChatBotRecord,
-  type ChatMessageRecord,
-  type ChatRoomFooter,
-  type ChatRoomRecord,
-} from './chat.js';
-export { isExpectedDbError } from './db.js';
+export { blockCache } from './blockCache.js';
+export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord } from './chat.js';
+export { chat } from './chat.js';
+export type { CachedManifests } from './cidCache.js';
+export { cidCache } from './cidCache.js';
+export { isExpectedDbError } from './isExpectedDbError.js';
+export type { LocalWallet, LocalWalletIdentity, LocalWalletStore } from './localWallet.js';
+export { createLocalWalletStore, localWallet } from './localWallet.js';
+export { LocalWalletUnreadableError } from './localWalletUnreadableError.js';
+export type { ScheduledNotificationRecord } from './scheduledNotifications.js';
+export { scheduledNotifications } from './scheduledNotifications.js';
 export { SITE_GRANTS_DB_NAME, WALLET_DB_NAME } from './schema.js';
-export { createSiteGrantStore, siteGrants, type SiteGrant, type SiteGrantStore } from './site-grants.js';
-export { clearCidCache, evictCachedCid, getCachedCid, setCachedCid, type CachedManifests } from './cid-cache.js';
-export {
-  createLocalWalletStore,
-  forgetLocalWallet,
-  forgetLocalWalletIf,
-  loadLocalWallet,
-  LocalWalletUnreadableError,
-  saveLocalWallet,
-  updateLocalWalletIdentity,
-  type LocalWallet,
-  type LocalWalletIdentity,
-  type LocalWalletStore,
-} from './local-wallet.js';
-export {
-  allocateId,
-  cancel,
-  listAll,
-  removeById,
-  removeStale,
-  schedule,
-  type ScheduledNotificationRecord,
-} from './scheduled-notifications.js';
+export type { SiteGrant, SiteGrantStore } from './siteGrants.js';
+export { createSiteGrantStore, siteGrants } from './siteGrants.js';

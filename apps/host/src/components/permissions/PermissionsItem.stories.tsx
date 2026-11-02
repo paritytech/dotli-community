@@ -5,8 +5,8 @@ import type { JSX } from '@solidjs/web';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, within } from 'storybook/test';
 import { byId } from '@dotli/ui/testing';
-import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissions-fixtures.js';
-import { openSurface, TopbarFrame } from '../../testing/stories/topbar-frame.js';
+import { resetStoryPermissions, storyPermissions } from '../../testing/stories/permissionsFixtures.js';
+import { openSurface, TopbarFrame } from '../../testing/stories/topbarFrame.js';
 import { PermissionsItem } from './PermissionsItem.js';
 
 const open = openSurface({ trigger: 'permissions-button', surface: 'permissions-popover' });

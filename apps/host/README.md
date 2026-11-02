@@ -51,7 +51,48 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
 - The session layer (the auth state type, the session state the boot starts, the core's shared-store adapter, the
   signed-in flag, the restore rule and the session lease) sits apart from the TrUAPI host callbacks. State the runtime
   reads or writes (auth, product, permissions, theme, wallet mode) lives with the runtime, and the page chrome's own
-  state (topbar, URL pill, chat panel, network) lives with the page.
+  state (topbar, URL pill, chat panel, network) lives with the page. Each runtime state is one entity object: its
+  read-only store, its getters and the setters its writers call. The sign-in modal, the sign-in window, the chat panel,
+  the loading screen, the settings snapshot, the topbar state and the URL pill are entity objects the same way, and the
+  topbar's floating surfaces register with one registry object. The first three keep what their islands cannot be handed
+  at hydration (the control focus returns to, the window's intents, the panel's element) as private slots behind their
+  members. The chat store and the product connections it reaches the product through are each a factory with the page's
+  instance beside it, and the store stamps messages with the clock it is given. The network monitor, the network state
+  and the network health are factories the same way, and measure block arrival, read times and rechecks on the timers
+  they are given. The chat panel, the network state and the network health each follow their sources once however many
+  callers start them, and stop with the last caller's stop.
+- The shell's own module state is entities the same way, each a factory with the page's instance beside it: the boot
+  tracker that says where a boot failure happened, the product frame layout that writes the frame's geometry through the
+  writer it is given, the bar's morph that what is laid out against the bar waits out, the reload reason over the
+  storage it is given, the way into Settings from outside the bar, and the page's recently visited names. One that keeps
+  state registers its own reset as it is built. The page's start is a clock read of its own, taken once the shell's
+  startup has loaded.
+- Each shell module holds one concept and is named after what it exports, with the page's instance beside its factory.
+  The page start, the host start and the boot failure report are separate steps every entry imports, page start first,
+  as it brings in the shared stylesheet. A lazy chunk keeps the module name it loads by.
+- Each shell factory takes one params object, with the page's own parts as defaults, and the type of what it builds
+  comes from the factory. Other shell functions take at most two positional inputs, with options in a trailing object.
+  The runtime's prompts take one object per question.
+- The product loader, the loading screen, the load progress, the resolution trace, the main-thread monitor, the bar's
+  auto-hide, the product branding, the sandbox content's report and the failure screen wait and measure on the timers,
+  the monotonic clock, the repeating tick and the randomness they are given, the page's own by default. The page's
+  monotonic clock and its repeating tick each have one owner. The loader hands its clocks on to the parts of a load it
+  starts. It reads the protocol frame's telemetry and fetches the product's icon through the clients it is given, the
+  page's own by default. The journey and the failure sightings read the session storage they are given.
+- Every reload that tells the next boot why goes through one step. The topbar's binding, the service worker's update
+  offer, the main-thread monitor, the loading screen, the load progress, the bar's auto-hide on the shield, the sandbox
+  watch and the resolution trace each hand back the cleanup of what they listen to and the timers they hold. The trace
+  releases its own once it ends, and the sandbox watch once the sandbox speaks. A load that fails stops waiting for the
+  sandbox's outcome on its content and stops hearing a refused wire version. The page keeps the rest for its life.
+- Each TrUAPI host callback is a factory of its own, which takes its page dependencies as named params that default to
+  the page's own. The chain redial gates and the permission prompt rate limit measure time on the clock they are given.
+  The page's chain pool and its sources sit beside the pool's factory. The chain connect and the host chain providers
+  lease that pool, and the chain watcher watches it. A product's local storage is one factory whose page instance every
+  core shares, so a write from one runtime reaches the subscriptions of the others.
+- The product frame, its wait for a device permission answer, the scheduled notifications and the diagnostics' finalized
+  block query take the clock and timers they run on as params that default to the page's own. The scheduler takes its
+  repeating poll the same way, so their specs move time themselves. The channel to the local server's shared store takes
+  its origin and its `fetch`, the page's own by default.
 - Each entry chooses the page's role once, before the boot reads anything: a page (a product), the landing page, a
   preview opened on its own, a preview its preview host frames, the sign-in window or the sign-out window. The role
   alone says where a sign-in runs, whether the page shares the signed-in flag or raises it, whether a stored wallet
@@ -84,7 +125,8 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   is up, so one blocking prompt shows at a time. Its sign-in, phrase import and sign-out are the one interface every
   page offers, the debug panel's wallet tab included: they open the sign-in window, or on a preview or the landing page,
   pair in place and take a recovery phrase in the modal. That phrase check and the phrase form load only when the phrase
-  view first opens.
+  view first opens. The page's controller sits in one slot that boot fills and the islands call. An island that fails
+  before boot disables the modal through the slot, and the controller boot starts later keeps it disabled.
 - The sign-in window is a page on the bare host, with settings of its own that it never stores. It answers only an
   opener on an origin its rule allows, and replies to that origin alone. The first vetted hello names the round's party
   and its origin, and a request the window cannot read for that party is refused with its reason. For dot.li's own page,

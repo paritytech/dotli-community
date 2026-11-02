@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { ActionItem, Button, Popover } from '@dotli/ui';
 import { TOPBAR_PRIORITY } from '../topbar/priority.js';
 import { AccountAvatar } from './AccountAvatar.js';
-import { sessionDisplayName, sessionInitials } from './account-names.js';
+import { sessionDisplayName, sessionInitials } from './accountNames.js';
 import { UserIcon } from '../icons/UserIcon.js';
 import type { Account } from './account.js';
 import s from './AuthButton.module.css';
@@ -14,7 +14,7 @@ import { loadAccountContent } from '../../lazy.js';
 
 const AccountPanel = lazy(loadAccountContent, { export: 'AccountContent' });
 
-export interface AuthButtonProps {
+export type AuthButtonProps = {
   account: Account;
   /** Whether the auth modal is open, which the button announces while a click starts a sign-in. */
   modalOpen: Accessor<boolean>;
@@ -32,7 +32,7 @@ export interface AuthButtonProps {
   sitesUrl?: string | undefined;
   /** Gets the button once it is on the page. */
   buttonRef?: ((button: HTMLButtonElement) => void) | undefined;
-}
+};
 
 /** A signed-in account by where its keys live, in this browser or in Polkadot App. */
 function accountKind(account: Account): string {

@@ -3,12 +3,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { sleep } from './sleep.js';
-import { manualTimers } from './testing/manual-timers.js';
-import type { Timers } from './timers.js';
+import { createManualTimers } from './testing/createManualTimers.js';
+import type { Timers } from './realTimers.js';
 
 /** Manual timers that count the timers still waiting, so a spec sees whether a wait left one behind. */
 function countingTimers(): { timers: Timers & { advance: (ms: number) => Promise<void> }; pending: () => number } {
-  const inner = manualTimers();
+  const inner = createManualTimers();
   const live = new Set<unknown>();
   const timers = {
     ...inner,
@@ -33,7 +33,7 @@ describe('sleep', () => {
     // Given
     const { timers } = countingTimers();
     let woke = false;
-    void sleep(1_000, undefined, timers).then(() => {
+    void sleep(1_000, { timers }).then(() => {
       woke = true;
     });
 
@@ -54,7 +54,7 @@ describe('sleep', () => {
     // Given
     const { timers, pending } = countingTimers();
     const controller = new AbortController();
-    const wait = sleep(1_000, controller.signal, timers);
+    const wait = sleep(1_000, { signal: controller.signal, timers });
     const ended = expect(wait).rejects.toMatchObject({ name: 'AbortError' });
 
     // When
@@ -72,7 +72,7 @@ describe('sleep', () => {
     controller.abort();
 
     // When
-    const wait = sleep(1_000, controller.signal, timers);
+    const wait = sleep(1_000, { signal: controller.signal, timers });
 
     // Then
     await expect(wait).rejects.toMatchObject({ name: 'AbortError' });

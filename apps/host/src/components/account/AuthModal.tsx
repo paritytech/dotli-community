@@ -3,17 +3,17 @@
 
 import { createMemo, merge, onCleanup, untrack, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { shallowEqual } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
 import { Button, LayerTracker, Modal } from '@dotli/ui';
-import type { AuthModalState, AuthModalView, PairingView } from '../../state/auth-modal.js';
-import { isMobileDevice } from '../../device.js';
+import type { AuthModalState, AuthModalView, PairingView } from '../../state/authModalState.js';
+import { isMobileDevice } from '../../isMobileDevice.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
-import { createPhraseFormLoad, type PhraseForm } from './phrase-form-load.js';
-import type { DrawQr } from './qr-code.js';
-import { SIGN_IN_CLOSE_ID, type SignInParts } from './sign-in/SignInViews.js';
-import { signInParts, type SignInPartsProps } from './sign-in/sign-in-parts.js';
-import { pairingPayload, sameSignInScreen } from './sign-in/same-screen.js';
-import { windowWaitParts, type WindowWaitPartsProps } from './sign-in/window-wait-parts.js';
+import { createPhraseFormLoad, type PhraseForm } from './phraseFormLoad.js';
+import type { DrawQr } from './qrCode.js';
+import { SIGN_IN_CLOSE_ID, type SignInParts } from './signIn/SignInViews.js';
+import { signInParts, type SignInPartsProps } from './signIn/signInParts.js';
+import { pairingPayload, sameSignInScreen } from './signIn/sameScreen.js';
+import { windowWaitParts, type WindowWaitPartsProps } from './signIn/windowWaitParts.js';
 
 /** Where the modal stands on a wide screen: in the middle of a page with no topbar, or hung from the topbar's end. */
 export type AuthModalPlacement = 'center' | 'topbar-end';
@@ -37,7 +37,7 @@ const PHRASE_FORM_FAILED: PairingView = {
   subtitle: 'Try again.',
 };
 
-export interface AuthModalProps {
+export type AuthModalProps = {
   state: Accessor<AuthModalState>;
   placement: AuthModalPlacement;
   /** The user closed it: Cancel, Escape, the scrim, or the sheet's close or swipe. */
@@ -58,7 +58,7 @@ export interface AuthModalProps {
   isMobile?: (() => boolean) | undefined;
   /** Read once. Without one, the phrase form's own chunk. */
   loadPhraseScreen?: (() => Promise<PhraseScreenModule>) | undefined;
-}
+};
 
 /**
  * The sign-in modal: each view of a sign-in, or the recovery phrase form on a page that pairs in place, as a prompt.
@@ -92,7 +92,7 @@ export function AuthModal(props: AuthModalProps): JSX.Element {
     // A copy, so the screen it builds reads plain values.
     () => ({ ...shown().view }),
     // A new state may carry an equal view, which keeps the screen on show.
-    { equals: shallowEqual },
+    { equals: isShallowEqual },
   );
   // The first view of the screen on show, which a view on the same screen keeps.
   const screen = createMemo(view, { equals: sameSignInScreen });

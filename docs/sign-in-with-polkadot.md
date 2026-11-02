@@ -32,7 +32,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
 The wire protocol (routes, request fields, messages, results, refusals, the redirect seal and the headers) is
-normative. The library API is a recommendation, which its owners MAY shape differently.
+normative. The library API is a recommendation, which its owners MAY shape differently. This document specifies what
+each side sends, checks and does, never how it is built: where a site keeps its session, token or keys is the
+implementer's choice, within the rules stated here.
 
 - **Provider**: the origin of a dot.li deployment, such as `https://dot.li`. Session pages live under
   `<provider>/s/`.
@@ -80,7 +82,8 @@ normative. The library API is a recommendation, which its owners MAY shape diffe
 | Every browser partitions cross-site iframe storage and `BroadcastChannel`                       | No embedded dot.li frame on a third-party site. Session pages are the only channel                                  |
 | A product opened by path takes `<domain>/<label>`, and dotNS registers no name as short as `s` | Session pages live under `/s/`                                                                                      |
 | Browsers cap URL length                                                                         | A long call comes by message after the handshake, in popup mode only                                                |
-| WebCrypto has X25519 in all three engines                                                       | The redirect mode's temporary private key stays non-extractable                                                     |
+| WebCrypto has X25519, HKDF and AES-GCM in all three engines                                     | The redirect seal needs no library on either side                                                                   |
+| A public page can't fetch from `localhost`: Chrome guards the loopback address, Safari blocks mixed content | Redirect mode for a `localhost` site works only with a provider on `localhost` too                     |
 | In-app browsers and some mobile setups block or lose popups                                     | Sign-in has a redirect mode as a fallback                                                                           |
 | Safari clears script-writable storage after 7 days of browser use with no interaction on a site | Applies to each site and to dot.li's own store on the root domain (see Open problems)                               |
 | Session pages must not be framed                                                                | They send `frame-ancestors 'none'`, and a framed session page does nothing                                          |
@@ -387,8 +390,9 @@ try again, such as an unreachable chain, sends nothing until the user tries agai
 
 For contexts that lose popups. `/s/auth` only.
 
-The site creates a temporary X25519 key pair, keeps the private key non-extractable and the round for the tab, and
-navigates to `/s/auth` with `return_to` and `pub` in the request. The window answers by navigating back to `return_to`
+The site creates a temporary X25519 key pair, keeps the private key and the round until the round ends, and navigates
+to `/s/auth` with `return_to` and `pub` in the request. How it keeps them is its own choice. The private key MUST NOT
+leave the site's origin, and MUST NOT go to any server. The window answers by navigating back to `return_to`
 with the sealed answer in the fragment, which no server receives. Only the page holding the private key can read it.
 A redirect round needs no opener, and the window posts no message in it.
 
@@ -416,6 +420,9 @@ The site lists its return URLs at `<origin of return_to>/.well-known/polkadot-si
   CORS header that lets the provider read it, such as `Access-Control-Allow-Origin: *`, and MUST NOT redirect it.
 - A non-2xx answer, a redirect, a network or CORS failure, or no complete answer within 10 seconds makes the file
   unreachable.
+- A public provider can't reach a file on `localhost`, since browsers block a public page's requests to the loopback
+  address and to plain `http:`. A `localhost` site uses redirect mode only against a provider that also runs on
+  `localhost`.
 - A body over 64 KiB, a body that is not JSON, or one that is not an object whose `return_to` is an array of strings
   lists nothing.
 - `return_to` and each entry are compared after URL normalisation, as `new URL(value).href` does. An entry that is not
@@ -493,14 +500,14 @@ the session and site token in the site's own storage. It contains no dot.li code
   `unsupported_version` when `ready` lists no version it speaks.
 - **Check.** Ignore every answer for a round it did not start or already closed. Treat a window that closed with no
   answer as cancelled.
-- **Store.** Keep the session and the site token in the site's IndexedDB. Set the session's expiry from its own
+- **Store.** Keep the session and the site token in the site's own storage. Set the session's expiry from its own
   lifetime, since dot.li gives none. Replace the token when a result carries one. With a group, read the site token from
   the site's shared copy before each request and write a new one back to it. On `declined`, end the session.
 - **Restore.** Read the session on load, with no window and no network call.
 - **Sign.** Each transaction opens `/s/sign` and starts from a click. The result is the signed bytes, which the site
   submits.
-- **Redirect.** Create the temporary key pair with a non-extractable private key, keep it in IndexedDB and the round in
-  `sessionStorage`, navigate, and on return open the envelope and remove the fragment from the URL.
+- **Redirect.** Create the temporary key pair, keep the private key and the round on the site's origin until the round
+  ends, navigate, and on return open the envelope and remove the fragment from the URL.
 
 ### API
 

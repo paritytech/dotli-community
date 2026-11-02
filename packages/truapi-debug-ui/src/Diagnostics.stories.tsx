@@ -3,10 +3,11 @@
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor, within } from 'storybook/test';
-import type { DiagnosticsRow, DiagnosticsSource, PackageVersion } from './host.js';
-import { DiagnosticsView } from './Diagnostics.js';
-import { PanelEffectsContext, type PanelEffects } from './effects.js';
-import { debugPanelStory } from './testing/stories/debug-panel-story.js';
+import { createDeferred } from '@dotli/shared';
+import type { DiagnosticsRow, DiagnosticsSource } from './host.js';
+import { Diagnostics } from './Diagnostics.js';
+import { PanelEffectsContext, type PanelEffects } from './panelEffects.js';
+import { debugPanelStory } from './testing/stories/debugPanelStory.js';
 
 const ROWS: DiagnosticsRow[] = [
   ['Site', 'app.dot.li', true],
@@ -16,19 +17,6 @@ const ROWS: DiagnosticsRow[] = [
   ['AssetHub node', 'wss://live.example', true],
 ];
 
-/** The page's diagnostics as a story sets them, with no chain or build behind them. */
-function fakeSource(
-  packages: { polkadotApi: PackageVersion[]; parityTruapi: PackageVersion[] } = { polkadotApi: [], parityTruapi: [] },
-) {
-  return {
-    rows: fn(() => ROWS.map((row): DiagnosticsRow => [...row])),
-    lightClientVersion: () => '0.3.1',
-    packages: () => packages,
-    report: fn((_rows: readonly DiagnosticsRow[]) => Promise.resolve('Site: app.dot.li')),
-    openIssue: fn<(url: string) => void>(),
-  };
-}
-
 const source = fakeSource();
 
 /** Page effects that record what the tab asks of the browser. */
@@ -37,34 +25,47 @@ const effects = {
   download: fn<PanelEffects['download']>(),
 };
 
-/**
- * Renders the tab over `tabSource` itself. Passed through args it would arrive as the args store, whose methods the tab
- * reads once on purpose.
- */
-function view(tabSource: DiagnosticsSource) {
-  return (args: { active: boolean }) => (
-    <PanelEffectsContext value={effects}>
-      <DiagnosticsView active={args.active} source={tabSource} />
-    </PanelEffectsContext>
-  );
-}
-
 const meta = {
   ...debugPanelStory,
   title: 'Debug/Diagnostics',
-  component: DiagnosticsView,
+  component: Diagnostics,
   args: { active: true, source },
-  render: view(source),
-} satisfies Meta<typeof DiagnosticsView>;
+  render: renderDiagnostics(source),
+} satisfies Meta<typeof Diagnostics>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** The page's diagnostics as a story sets them, with no chain or build behind them. */
+function fakeSource({
+  packages = { polkadotApi: [], parityTruapi: [] },
+}: { packages?: ReturnType<DiagnosticsSource['packages']> } = {}) {
+  return {
+    rows: fn(() => ROWS.map((row): DiagnosticsRow => [...row])),
+    lightClientVersion: () => '0.3.1',
+    packages: () => packages,
+    report: fn<DiagnosticsSource['report']>(() => Promise.resolve('Site: app.dot.li')),
+    openIssue: fn<DiagnosticsSource['openIssue']>(),
+  };
+}
+
+/**
+ * Renders the tab over `tabSource` itself. Passed through args it would arrive as the args store, whose methods the tab
+ * reads once on purpose.
+ */
+function renderDiagnostics(tabSource: DiagnosticsSource) {
+  return (args: { active: boolean }) => (
+    <PanelEffectsContext value={effects}>
+      <Diagnostics active={args.active} source={tabSource} />
+    </PanelEffectsContext>
+  );
+}
+
 /** The value cell of the row labelled `label`. */
-function rowValue(canvasElement: HTMLElement, label: string): HTMLElement {
+function getRowValue(canvasElement: HTMLElement, label: string): HTMLElement {
   const row = within(canvasElement)
     .getAllByTestId('td-diag-row')
-    .find(el => within(el).queryByRole('term')?.textContent === label);
+    .find(candidate => within(candidate).queryByRole('term')?.textContent === label);
   if (row === undefined) {
     throw new Error(`no "${label}" row`);
   }
@@ -83,14 +84,14 @@ export const PageRowsAndVersion: Story = {
       const rows = within(canvas.getByTestId('td-diagnostics-rows')).getAllByRole('term');
       await expect(rows.map(term => term.textContent)).toEqual(ROWS.map(([label]) => label));
       for (const [label, value] of ROWS) {
-        await expect(rowValue(canvasElement, label)).toHaveTextContent(value);
+        await expect(getRowValue(canvasElement, label)).toHaveTextContent(value);
       }
       await expect(
         within(canvas.getByTestId('td-packages'))
           .getAllByRole('heading')
           .map(heading => heading.textContent),
       ).toEqual(['Light client']);
-      await expect(rowValue(canvasElement, '@parity/truapi-provider')).toHaveTextContent('0.3.1');
+      await expect(getRowValue(canvasElement, '@parity/truapi-provider')).toHaveTextContent('0.3.1');
     });
     await step('Then only the site and node rows can be copied, each named by the value it shows', async () => {
       await expect(canvas.getByRole('button', { description: 'Click to copy Site' })).toHaveAccessibleName(
@@ -105,15 +106,17 @@ export const PageRowsAndVersion: Story = {
   },
 };
 
-/** As a developer using the debug panel, I see every package listed under its group. */
+/** As a developer using the debug panel, I open the Diagnostics tab and every package is listed under its group. */
 export const PackagesByGroup: Story = {
-  render: view(
+  render: renderDiagnostics(
     fakeSource({
-      polkadotApi: [
-        { name: 'polkadot-api', version: '1.2.3' },
-        { name: '@polkadot-api/ws-provider', version: '0.4.0' },
-      ],
-      parityTruapi: [{ name: '@parity/truapi-host', version: '0.9.0' }],
+      packages: {
+        polkadotApi: [
+          { name: 'polkadot-api', version: '1.2.3' },
+          { name: '@polkadot-api/ws-provider', version: '0.4.0' },
+        ],
+        parityTruapi: [{ name: '@parity/truapi-host', version: '0.9.0' }],
+      },
     }),
   ),
   play: async ({ canvas, canvasElement, step }) => {
@@ -130,9 +133,9 @@ export const PackagesByGroup: Story = {
         '@polkadot-api/ws-provider',
         '@parity/truapi-host',
       ]);
-      await expect(rowValue(canvasElement, 'polkadot-api')).toHaveTextContent('1.2.3');
-      await expect(rowValue(canvasElement, '@polkadot-api/ws-provider')).toHaveTextContent('0.4.0');
-      await expect(rowValue(canvasElement, '@parity/truapi-host')).toHaveTextContent('0.9.0');
+      await expect(getRowValue(canvasElement, 'polkadot-api')).toHaveTextContent('1.2.3');
+      await expect(getRowValue(canvasElement, '@polkadot-api/ws-provider')).toHaveTextContent('0.4.0');
+      await expect(getRowValue(canvasElement, '@parity/truapi-host')).toHaveTextContent('0.9.0');
     });
   },
 };
@@ -159,12 +162,14 @@ export const CopyFlashes: Story = {
     });
     await step('Then its value is copied and the row reads Copied', async () => {
       await expect(effects.writeClipboard).toHaveBeenCalledWith('app.dot.li');
-      const site = within(rowValue(canvasElement, 'Site'));
+      const site = within(getRowValue(canvasElement, 'Site'));
       await waitFor(() => expect(site.getByRole('button')).toHaveTextContent('Copied'));
       await expect(site.getByRole('status')).toHaveTextContent('Copied');
     });
     await step('Then after a second it reads its value again', async () => {
-      await waitFor(() => expect(rowValue(canvasElement, 'Site')).toHaveTextContent('app.dot.li'), { timeout: 3000 });
+      await waitFor(() => expect(getRowValue(canvasElement, 'Site')).toHaveTextContent('app.dot.li'), {
+        timeout: 3000,
+      });
     });
   },
 };
@@ -185,7 +190,7 @@ export const CopyRefused: Story = {
       await userEvent.click(canvas.getByRole('button', { description: 'Click to copy Site' }));
     });
     await step('Then the row reads Copy failed', async () => {
-      const site = within(rowValue(canvasElement, 'Site'));
+      const site = within(getRowValue(canvasElement, 'Site'));
       await waitFor(() => expect(site.getByRole('button')).toHaveTextContent('Copy failed'));
       await expect(site.getByRole('status')).toHaveTextContent('Copy failed');
       await expect(canvas.getByRole('button', { description: 'Click to copy Site' })).toHaveAttribute(
@@ -193,7 +198,9 @@ export const CopyRefused: Story = {
       );
     });
     await step('Then after a second it reads its value again', async () => {
-      await waitFor(() => expect(rowValue(canvasElement, 'Site')).toHaveTextContent('app.dot.li'), { timeout: 3000 });
+      await waitFor(() => expect(getRowValue(canvasElement, 'Site')).toHaveTextContent('app.dot.li'), {
+        timeout: 3000,
+      });
       await expect(canvas.getByRole('button', { description: 'Click to copy Site' })).not.toHaveAttribute(
         'data-copy-failed',
       );
@@ -205,7 +212,7 @@ export const CopyRefused: Story = {
 export const ShareOnce: Story = {
   tags: ['!autodocs'],
   play: async ({ canvas, userEvent, step }) => {
-    const built = Promise.withResolvers<string>();
+    const built = createDeferred<string>();
     source.report.mockReturnValueOnce(built.promise);
     const share = canvas.getByRole('button', { name: 'Share diagnostic' });
     await step('When I click Share diagnostic twice while the report builds', async () => {

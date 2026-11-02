@@ -8,9 +8,18 @@ import { Button } from '../primitives/Button.js';
 import { BottomSheet } from './BottomSheet.js';
 import { handOffSheet } from './SheetFrame.js';
 
+/** What a hand-off left on both frames, read as `handOffSheet` returns, before any frame is drawn. */
+type HandOffMarks = {
+  taken: boolean;
+  leaving: { open: boolean; handoff: boolean };
+  coming: { open: boolean; handoff: boolean };
+};
+
 const onOpenChange = fn().mockName('onOpenChange');
 // The sheet is portalled into the body, outside the story's canvas.
 const body = within(document.body);
+const onMarks = fn<(marks: HandOffMarks) => void>().mockName('onMarks');
+const onThrow = fn().mockName('onThrow');
 
 function Harness(props: { initiallyOpen?: boolean }) {
   // The initial state only: later arg changes do not reopen it.
@@ -53,7 +62,10 @@ type Story = StoryObj<typeof meta>;
 /** As a dotli user, I see an open sheet announced as a modal dialog titled Settings. */
 export const Open: Story = {
   args: { initiallyOpen: true },
-  play: async ({ step }) => {
+  play: async ({ mount, step }) => {
+    await step('When an open sheet renders', async () => {
+      await mount();
+    });
     await step('Then the sheet is a modal dialog titled Settings', async () => {
       const dialog = document.getElementById('story-sheet');
       await waitFor(() => expect(dialog).toHaveAttribute('data-open'));
@@ -68,8 +80,10 @@ export const Open: Story = {
 export const EscapeClosesAndRestoresFocus: Story = {
   play: async ({ canvas, userEvent, step }) => {
     onOpenChange.mockClear();
-    await step('Given I opened the sheet from its button', async () => {
+    await step('When I open the sheet from its button', async () => {
       await userEvent.click(canvas.getByTestId('opener'));
+    });
+    await step('Then the sheet is open', async () => {
       await waitFor(() => expect(document.getElementById('story-sheet')).toHaveAttribute('data-open'));
     });
     await step('When I press Escape', async () => {
@@ -85,11 +99,16 @@ export const EscapeClosesAndRestoresFocus: Story = {
 /** As a dotli user, I press the scrim above a sheet and it closes. */
 export const ScrimClosesIt: Story = {
   args: { initiallyOpen: true },
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When an open sheet renders', async () => {
+      await mount();
+    });
     onOpenChange.mockClear();
-    await step('When I press the scrim above the sheet', async () => {
+    await step('Then the scrim shows above the sheet', async () => {
+      await waitFor(() => expect(body.getByTestId('story-sheet-scrim')).toBeVisible());
+    });
+    await step('When I press the scrim', async () => {
       const scrim = body.getByTestId('story-sheet-scrim');
-      await waitFor(() => expect(scrim).toBeVisible());
       await userEvent.pointer({ keys: '[MouseLeft]', target: scrim, coords: { clientX: 10, clientY: 10 } });
     });
     await step('Then it reports closed', async () => {
@@ -115,18 +134,6 @@ export const TabStaysInside: Story = {
   },
 };
 
-/** What a hand-off left on both frames, read as `handOffSheet` returns, before any frame is drawn. */
-interface HandOffMarks {
-  taken: boolean;
-  leaving: { open: boolean; handoff: boolean };
-  coming: { open: boolean; handoff: boolean };
-}
-
-const marks = (id: string) => {
-  const el = document.getElementById(id);
-  return { open: el?.hasAttribute('data-open') === true, handoff: el?.hasAttribute('data-handoff') === true };
-};
-
 function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMarks) => void }) {
   const [first, setFirst] = createSignal(true);
   const [second, setSecond] = createSignal(false);
@@ -144,7 +151,7 @@ function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMar
                   setSecond(true);
                 }
               });
-              props.onMarks({ taken, leaving: marks('first-sheet'), coming: marks('second-sheet') });
+              props.onMarks({ taken, leaving: readMarks('first-sheet'), coming: readMarks('second-sheet') });
             }}
           >
             Next
@@ -158,15 +165,18 @@ function HandOffHarness(props: { opensNext: boolean; onMarks: (marks: HandOffMar
   );
 }
 
-const onMarks = fn<(marks: HandOffMarks) => void>().mockName('onMarks');
-
 /** As a dotli user, I close a sheet that hands off to another and both sheets are marked, so the change reads as one move. */
 export const HandOff: Story = {
   render: () => <HandOffHarness opensNext onMarks={onMarks} />,
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the first sheet renders open', async () => {
+      await mount();
+    });
     onMarks.mockClear();
-    await step('When a sheet hands off to another as it closes', async () => {
+    await step('Then the first sheet is open', async () => {
       await waitFor(() => expect(document.getElementById('first-sheet')).toHaveAttribute('data-open'));
+    });
+    await step('When a sheet hands off to another as it closes', async () => {
       await userEvent.click(body.getByTestId('hand-off'));
     });
     await step('Then by the time the hand-off returns, the leaving and the coming sheet are both marked', async () => {
@@ -184,10 +194,15 @@ export const HandOff: Story = {
 /** As a dotli user, I close a sheet that hands off to nothing and it slides out as usual. */
 export const CloseWithoutHandOff: Story = {
   render: () => <HandOffHarness opensNext={false} onMarks={onMarks} />,
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the sheet renders open', async () => {
+      await mount();
+    });
     onMarks.mockClear();
-    await step('When a sheet closes in a hand-off that opens no other sheet', async () => {
+    await step('Then the sheet is open', async () => {
       await waitFor(() => expect(document.getElementById('first-sheet')).toHaveAttribute('data-open'));
+    });
+    await step('When it closes in a hand-off that opens no other sheet', async () => {
       await userEvent.click(body.getByTestId('hand-off'));
     });
     await step('Then it closed as usual, unmarked, so it slides out', async () => {
@@ -199,8 +214,6 @@ export const CloseWithoutHandOff: Story = {
     });
   },
 };
-
-const onThrow = fn().mockName('onThrow');
 
 function ThrowingHandOffHarness() {
   const [open, setOpen] = createSignal(true);
@@ -217,8 +230,8 @@ function ThrowingHandOffHarness() {
                 flush();
                 throw new Error('the row failed');
               });
-            } catch (err) {
-              onThrow(err);
+            } catch (error) {
+              onThrow(error);
             }
           }}
         >
@@ -232,10 +245,13 @@ function ThrowingHandOffHarness() {
 /** As a dotli user, I close a sheet whose hand-off throws and the sheet still closes and the page answers again. */
 export const HandOffThatThrows: Story = {
   render: () => <ThrowingHandOffHarness />,
-  play: async ({ userEvent, step }) => {
+  play: async ({ userEvent, mount, step }) => {
+    await step('When the sheet renders open', async () => {
+      await mount();
+    });
     onThrow.mockClear();
     const dialog = () => document.getElementById('first-sheet');
-    await step('Given the sheet is open', async () => {
+    await step('Then the sheet is open', async () => {
       await waitFor(() => expect(dialog()).toHaveAttribute('data-open'));
     });
     await step('When the hand-off it runs throws after the sheet was held', async () => {
@@ -248,3 +264,11 @@ export const HandOffThatThrows: Story = {
     });
   },
 };
+
+function readMarks(id: string): HandOffMarks['leaving'] {
+  const element = document.getElementById(id);
+  return {
+    open: element?.hasAttribute('data-open') === true,
+    handoff: element?.hasAttribute('data-handoff') === true,
+  };
+}

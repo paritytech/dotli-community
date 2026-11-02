@@ -8,12 +8,12 @@ import { isPhoneViewport } from '@dotli/ui';
 import { byTestId } from '@dotli/ui/testing';
 import { expectBefore } from '@config/storybook/play';
 import { must } from '@dotli/shared/testing';
-import type { PairingView } from '../../state/auth-modal.js';
-import type { SignInScreen } from '../../state/session-window.js';
+import type { PairingView } from '../../state/authModalState.js';
+import type { SignInScreen } from '../../state/sessionWindowState.js';
 import { loadPhraseScreen, type PhraseScreenModule } from '../../lazy.js';
-import { expectPhone } from '../../testing/stories/topbar-frame.js';
-import { windowPageStory } from '../../testing/stories/window-page.js';
-import type { DrawQr } from './qr-code.js';
+import { expectPhone } from '../../testing/stories/topbarFrame.js';
+import { windowPageStory } from '../../testing/stories/windowPage.js';
+import type { DrawQr } from './qrCode.js';
 import { SessionWindow } from './SessionWindow.js';
 
 const DEEPLINK = 'polkadotapp://pair?handshake=test';

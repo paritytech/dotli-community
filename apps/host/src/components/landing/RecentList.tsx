@@ -5,20 +5,20 @@ import { createSignal, For, onCleanup, onSettled, Show, type Accessor } from 'so
 import type { JSX } from '@solidjs/web';
 import { CloseIcon } from '@dotli/ui/icons';
 import { Row, SectionLabel, Well } from '@dotli/ui';
-import { dotUrl } from './dot-url.js';
+import { dotUrl } from './dotUrl.js';
 import s from './RecentList.module.css';
 
 // Touch has no hover, so a long press on a row reveals its remove button instead of navigating.
 const LONG_PRESS_MS = 450;
 
-export interface RecentListProps {
+export type RecentListProps = {
   /** Recently visited names. None hides the list. */
   labels: Accessor<readonly string[]>;
   /** The TLD shown beside each name, with its leading dot. Null until the browser knows the visitor's network. */
   suffix: Accessor<string | null>;
   /** The remove button of `label`'s row. */
   onForget: (label: string) => void;
-}
+};
 
 /** Recently visited names as a list of links. */
 export function RecentList(props: RecentListProps): JSX.Element {

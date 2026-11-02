@@ -22,9 +22,14 @@ and no data source.
 
 ## Design
 
-- The stores are sync stores built on `createSyncStore`. The overlays render their state and everything else opens,
-  pushes and settles through them. A toast's countdown runs only while a toast view is mounted and pauses while the tab
-  is hidden or the stack is expanded.
+- The toasts, the dialog queue and the page screen are entity objects, each built by a factory with one page instance
+  built with the defaults. The toasts and the page screen take the page as a param, and the toasts the timers too. The
+  dialog queue takes none. Building one reads neither the document nor the clock: the document is read on first use.
+  Each keeps its state in a sync store built on `createSyncStore`, exposed read-only as `store`, and registers its own
+  state reset, so the store registry's reset resets every instance. The overlays render their state and everything else
+  opens, pushes and settles through them. A toast's countdown runs only while a toast view is mounted and pauses while
+  the tab is hidden or the stack is expanded. A toast's `onDismiss` that throws is reported as a listener error, counted
+  as `listener.delivery`, and the toast leaves anyway.
 - Every component has a CSS module beside it. Colors come only from the tokens.
 - Floating layers share one stack that tracks shown modal layers and makes the page inert under the top one.
 - `Popover` and `DropdownMenu` render their surface from its first opening on and share the trigger wiring. A popover's
@@ -46,10 +51,10 @@ and no data source.
   Without `open` the browser opens and closes it. With `open` its owner holds the state, and a press on the header only
   reports the next state through `onToggle`. It animates its height where the browser can transition to `auto`, opens at
   once elsewhere, and never animates under reduced motion.
-- `showScreen` renders a screen's view into its own element in `#app`, or in the body of a page without one, which the
-  screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first. `clearScreen`
-  takes it down and keeps what the page put beside it, such as the product frame. `pageContentStore` says `screen` while
-  one is shown, so what the screen covered can end itself. A view that throws is reported.
+- `pageScreen.show` renders a screen's view into its own element in `#app`, or in the body of a page without one, which
+  the screen then fills itself. It keeps the element marked `data-overlays`. The screen before goes first.
+  `pageScreen.clear` takes it down and keeps what the page put beside it, such as the product frame. `pageScreen.store`
+  says `screen` while one is shown, so what the screen covered can end itself. A view that throws is reported.
 - Toasts and dialogs are queued on the stores and show once the app has mounted `Overlays`, in a container it marks
   `data-overlays` so that a full-page screen keeps it.
 - The notifier always shows a toast. While the tab is hidden or its window has lost focus, it also fires a system
@@ -76,32 +81,38 @@ and no data source.
   With `placement="topbar-end"` the same card hangs from the topbar's end.
 - Action group: `ActionGroup`, `ActionItem`, `ActionsContext`, `PINNED` for an item that never collapses, and the types
   `ActionGroupMorph`, `MoreIds`, `ActionAlert`, `ActionBar` and `ActionEntry`.
-- Stores: the modal store (`openModal`, `refuseModals`, which answers every dialog with its refusal while the overlays
-  cannot render, and the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
-  `ModalButtonVariant`, `ModalHandoff`) and the toast store (`toastsStore` and the type `ToastEntry`). `openModal` takes
-  an optional handoff: once the dialog is answered it returns the view that takes the dialog's place without closing it,
-  until a button, Escape, the scrim or its signal closes that view. The new view starts with an empty password field and
-  focus on the dialog, not a button, so a second press cannot answer it at once. A view's own `body` describes the
-  dialog, so a screen reader reads the new step when focus lands there. A handoff that throws is reported and the dialog
-  closes as without one. A view may draw its own `body` and set `closable: false` to hide the sheet's close button.
-- Page helpers: `focusables`, `runWhenIdle` and `preloadWhenIdle` with `IdleScheduler`, `isPhoneViewport`,
-  `watchPhoneViewport`, `prefersReducedMotion` and the type `StatusTone`.
-- Helpers: `useStore`, `createDrags` with the type `Drags` (one owner for a component's pointer drags, which cancels
-  every drag still held when the component cleans up), `focusLostOrInside`, `focusTrigger`.
-- Roots: `mountRoot` with `MountRootOptions`, `RootBoundary`, `ensureOverlayRoot`.
-- Screens and overlays: `showErrorPage` and `showError` with the types `ErrorAction`, `ErrorPageContent`, `ErrorText`
-  and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, `showScreen`, `clearScreen`,
-  `pageContentStore` and the type `PageContent`, `Overlays`, `showNotification` with the types `NotificationParams` and
-  `ShowNotification`, `createReloadOffer`, the page's one reload offer, and `listenForChunkFailures` with
-  `ChunkFailureDeps` (a failure is counted as `chunk.preload`).
+- Stores: the page's dialog queue `modals` (`modals.store`, `modals.open(view, { signal, handoff })`,
+  `modals.settle(id, result, { value })`, and `modals.refuseAll`, which answers every dialog with its refusal while the
+  overlays cannot render, and `modals.dispose`, which rejects the open dialogs with an `AbortError` and tells a
+  handed-off view it was aborted, with the types `ModalView`, `ModalOutcome`, `ModalEntry`, `ModalField`, `ModalButton`,
+  `ModalButtonVariant`, `ModalHandoff`) and the page's toasts `toasts` (`store`, `show`, `push`, `dismiss`, `remove`,
+  `dismissAll`, `setExpanded`, `clear`, `dispose`, which also stops the page listener, and the type `ToastEntry`).
+  `modals.open` takes an optional handoff: once the dialog is answered it returns the view that takes the dialog's place
+  without closing it, until a button, Escape, the scrim or its signal closes that view. The new view starts with an
+  empty password field and focus on the dialog, not a button, so a second press cannot answer it at once. A view's own
+  `body` describes the dialog, so a screen reader reads the new step when focus lands there. A handoff that throws is
+  reported and the dialog closes as without one. A view may draw its own `body` and set `closable: false` to hide the
+  sheet's close button.
+- Page helpers: `focusables`, `runWhenIdle(run, timeoutMs, { scheduler, timers })` and
+  `preloadWhenIdle(component, { scheduler, timers })`, `isPhoneViewport`, `watchPhoneViewport`, `prefersReducedMotion`
+  and the type `StatusTone`.
+- Helpers: `useStore(store)` and `useStore(store, select, { equals })`, `createDrags({ selection })` with the type
+  `Drags` (one owner for a component's pointer drags, which cancels every drag still held when the component cleans up),
+  `isFocusLostOrInside`, `focusTrigger`.
+- Roots: `mountRoot({ name, container, view, removeContainer, onBroken })`, `RootBoundary`, `ensureOverlayRoot`.
+- Screens and overlays: `showErrorPage` and `showError(title, { detail, action, tips })` with the types `ErrorAction`,
+  `ErrorPageContent`, `ErrorText` and `ShowErrorPage`, `ErrorFrame` and `ErrorDetail` with `ErrorFrameProps`, the page's
+  screen slot `pageScreen` (`pageScreen.store`, `pageScreen.show`, `pageScreen.clear`, `pageScreen.dispose`) and the
+  type `PageContent`, `Overlays`, `showNotification` with the types `NotificationParams` and `ShowNotification`,
+  `createReloadOffer({ notify, reload })`, the page's one reload offer, and
+  `listenForChunkFailures({ target, offerReload })` (a failure is counted as `chunk.preload`).
 
 ### `@dotli/ui/testing`
 
 Fakes for other packages' specs, stories and functional tests. Never imported by shipped code.
 
-- Modal store: `modalsStore`, `settleModal` (answers a dialog by its id, as its buttons do), `shownModal`,
-  `chooseModalButton`, `dismissModal`. Modal and toast state reset with the store registry's reset. Toasts:
-  `bindToastPage`. Viewport: `PHONE_QUERY`.
+- Dialogs, answered on the page's dialog queue as its buttons and backdrop would: `shownModal`, `chooseModalButton`,
+  `dismissModal`. Modal and toast state reset with the store registry's reset. Viewport: `PHONE_QUERY`.
 - Other: `settle`, the page queries `appears`, `byId`, `byTestId`, `query`, and `installPopoverPolyfill` for functional
   tests under happy-dom.
 

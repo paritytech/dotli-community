@@ -4,12 +4,12 @@
 // The notice fakes give whenever something a test may wait on changed, so a test checks again then rather than on a
 // timer.
 
-export interface Changes {
+export type Changes = {
   /** Wakes every waiter to check again. */
   notify: () => void;
   /** Resolves once `met` holds, checked now and at each notice. */
   until: (met: () => boolean) => Promise<void>;
-}
+};
 
 export function createChanges(): Changes {
   const waiters = new Set<() => void>();

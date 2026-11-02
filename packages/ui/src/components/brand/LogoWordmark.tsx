@@ -8,12 +8,12 @@ import type { JSX } from '@solidjs/web';
 const WIDTH = 191.5;
 const HEIGHT = 41.25;
 
-export interface LogoWordmarkProps {
+export type LogoWordmarkProps = {
   class?: JSX.ClassValue;
   testId?: string | undefined;
   /** In pixels. The width follows the wordmark's proportions. */
   height?: number | undefined;
-}
+};
 
 /** The Polkadot wordmark in the current text color. Reads as "Polkadot" to assistive technology. */
 export function LogoWordmark(props: LogoWordmarkProps): JSX.Element {

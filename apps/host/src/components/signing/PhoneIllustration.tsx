@@ -4,8 +4,8 @@
 import { createUniqueId } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { LogoSymbol } from '@dotli/ui/brand';
-import type { PhoneAsk } from '../../runtime/phone-methods.js';
-import { ASK_COPY } from './phone-ask-copy.js';
+import type { PhoneAsk } from '../../runtime/phoneMethods.js';
+import { ASK_COPY } from './phoneAskCopy.js';
 import s from './PhoneIllustration.module.css';
 
 const SYMBOL_HEIGHT = 46;

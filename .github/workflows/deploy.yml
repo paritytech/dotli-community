@@ -118,7 +118,7 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: node scripts/set-version.ts "$RELEASE_TAG"
+        run: node scripts/setVersion.ts "$RELEASE_TAG"
 
       # No VITE_COMMIT_SHA: the build reads it from the checkout, which is the PR head on a PR deploy.
       - run: npx turbo run build:prod
