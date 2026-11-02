@@ -66,12 +66,12 @@
     "@polkadot-api/signers-common": "^0.4.0",
     "@polkadot-labs/hdkd-helpers": "^0.0.34",
     "@scure/base": "^2.4.0",
-    "@solidjs/web": "2.0.0-rc.15",
+    "@solidjs/web": "2.0.0-rc.20",
     "astro": "^7.4.1",
     "neverthrow": "^8.2.0",
     "polkadot-api": "^3.2.2",
     "qrcode": "^1.5.4",
-    "solid-js": "2.0.0-rc.15",
+    "solid-js": "2.0.0-rc.20",
     "workbox-window": "^7.4.1"
   }
 }
