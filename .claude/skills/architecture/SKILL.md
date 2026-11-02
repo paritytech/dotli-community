@@ -263,6 +263,10 @@ Brainstorming and planning both carry it:
 - **Tasks sized for one short run.** A task rewrites at most four files by hand, or applies one mechanical rewrite
   across many files through one script. Split anything larger. Every turn re-sends everything the implementer has read,
   so one long task costs more than two short ones.
+- **Breaks declared.** Under a task's files, a `- Breaks:` line names each export the task removes, renames or retypes,
+  as its users import it, such as ``- Breaks: `createWidget`, `WidgetState` ``. Every file that uses one MUST be
+  declared by that task or an earlier one, or the commit leaves typecheck failing. A task that changes no export's shape
+  has no Breaks line. A deleted module counts as a break of its name without one.
 - **Code shape** (`docs/code/style.md`). The design names its building blocks in that doc's terms: the factories and
   their params, the wrappers, the error classes, the cross-boundary message formats. Every code snippet in the plan
   follows the doc, because implementers copy plan code. Each task's Context `Rules` cite the style sections that shape
@@ -305,8 +309,9 @@ Each pass checks `docs/_plans/<topic>-plan.md` against the actual repo:
 3. **Real?** Do the named paths, symbols, public surfaces and commands exist? A plan that references an imagined export
    fails at task 1.
 4. **Complete?** Does executing every task in order produce the stated outcome, with no missing wiring, registration or
-   test? Are `must_not_touch`, `out_of_scope` and the verification commands stated? Are the failure paths of each layer
-   walked? Is every task in exactly one review batch, sized and ordered as "Review batches" sets?
+   test? Does every export a task removes, renames or retypes sit on its Breaks line? Are `must_not_touch`,
+   `out_of_scope` and the verification commands stated? Are the failure paths of each layer walked? Is every task in
+   exactly one review batch, sized and ordered as "Review batches" sets?
 5. **Architecturally sound?** The Architecture gate (AGENTS.md § Architecture), placement against
    `docs/code/placement.md`, files split by responsibility, the vocabulary of the package or app, and the code shape
    against `docs/code/style.md`: the building blocks the plan names and every snippet it dictates.
@@ -328,18 +333,28 @@ unchanged section only where a change reaches into it.
 **Names check.** The time of a pass is model turns, and one lookup per name costs one turn each. So before every pass,
 run `node scripts/checkPlanNames.ts docs/_plans/<topic>-plan.md --base <rev>` and save its output in the scratchpad as
 `<topic>-names.pass-<n>.md`. `<rev>` is HEAD before step 6, and for an amendment the commit the plan's implementation
-started from. The script is deterministic: it reads committed trees, and the disk only for paths git ignores. It looks
-up every backticked repo path, every declared file, every symbol of a Read or Precedent entry and every
-`(<file>.md § <heading>)` citation, and whether each task has a Read entry. A non-zero exit means the input or the
-plan's format is wrong, and its message says which. Fix the cause and run it again. Never dispatch a pass without a
-check of the plan as it stands, and never edit the check's output.
+started from. The script is deterministic: it reads committed trees, the disk only for paths git ignores, and
+TypeScript's own type names from the installed `typescript` package. It looks up:
+
+- every backticked repo path and every declared file
+- every symbol of a Read or Precedent entry
+- every type name of the plan's TypeScript code and of its Interfaces and Produces lines
+- the users of each Breaks name and each deleted module that no task up to the breaking one declares
+- every `(<file>.md § <heading>)` citation, and whether each task has a Read entry
+
+A non-zero exit means the input or the plan's format is wrong, and its message says which. Fix the cause and run it
+again. Never dispatch a pass without a check of the plan as it stands, and never edit the check's output. Fix every "Not
+found" line the plan's text does not explain before the pass, since the check already proved it.
 
 The pass reads that file first and copies its Result line into its report. Each line is a lookup result, not a claim to
 verify:
 
 - It never repeats a lookup the check covers.
-- Each "Not found" line is a finding, unless the plan's own text explains it, such as a stale path a task removes. Each
-  "Found elsewhere" line is a finding only when its entry points the implementer at the wrong file.
+- Each "Not found" line is a finding, unless the plan's own text explains it, such as a stale path a task removes or
+  users a script's selector covers. Each "Found elsewhere" line is a finding only when its entry points the implementer
+  at the wrong file.
+- Each "Defined by the plan" line and each "as the plan says" line is a name the check took from the plan. The pass
+  confirms that a task adds it, or that the package exports it.
 - It looks up only what the check does not cover, such as a package export, a script in `package.json` or a command's
   flags, in a few batched commands.
 
