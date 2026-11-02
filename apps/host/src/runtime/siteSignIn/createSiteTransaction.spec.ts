@@ -738,7 +738,9 @@ describe('site transaction', () => {
     // Then the site hears the round was cancelled, and the phone was never asked to sign
     expect(round.posts).toEqual([{ type: 'dotli:s:cancelled' }]);
     expect(round.signedBy).toEqual([]);
-    expect(round.metrics.counted('session_pages.site_transaction')).toEqual([{ outcome: 'cancelled', reason: 'phone' }]);
+    expect(round.metrics.counted('session_pages.site_transaction')).toEqual([
+      { outcome: 'cancelled', reason: 'phone' },
+    ]);
   });
 
   it('As a user whose site account read failed, I press Try again and see the review again before the phone is asked again', async () => {
@@ -793,7 +795,7 @@ describe('site transaction action', () => {
       call: CALL,
       account: ACCOUNT,
       chain: chain.chain,
-      txSigner: createFakeTxSigner({}).txSigner,
+      txSigner: createFakeTxSigner().txSigner,
       accountReader,
     });
     const shown: string[] = [];
@@ -827,7 +829,7 @@ describe('site transaction action', () => {
       call: CALL,
       account: ACCOUNT,
       chain: chain.chain,
-      txSigner: createFakeTxSigner({}).txSigner,
+      txSigner: createFakeTxSigner().txSigner,
       accountReader,
     });
     const ended = new AbortController();
@@ -866,7 +868,7 @@ describe('site transaction action', () => {
       call: CALL,
       account: ACCOUNT,
       chain: chain.chain,
-      txSigner: createFakeTxSigner({}).txSigner,
+      txSigner: createFakeTxSigner().txSigner,
       accountReader: {
         account(account) {
           accounts.push(account);
@@ -935,11 +937,11 @@ describe('site transaction action', () => {
     const read = createDeferred<Uint8Array>();
     const action = getSiteTransactionAction({
       origin: SITE_ORIGIN,
-      genesis: NETWORK.assethub.genesis,
+      genesis: SERVICES.assethub.genesis,
       call: CALL,
       account: ACCOUNT,
       chain: chain.chain,
-      txSigner: createFakeTxSigner({}).txSigner,
+      txSigner: createFakeTxSigner().txSigner,
       accountReader: createFakeAccountReader({ reads: [() => read.promise] }).accountReader,
     });
     const ended = new AbortController();
