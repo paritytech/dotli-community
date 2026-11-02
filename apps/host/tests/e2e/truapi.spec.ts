@@ -12,7 +12,6 @@ const PERMISSION_ONCE: HostDialog = { title: 'Permission Request', answer: 'Allo
 const PERMISSION_ALLOW: HostDialog = { title: 'Permission Request', answer: 'Allow' };
 const IDENTITY_ONCE: HostDialog = { title: 'Identity Disclosure', answer: 'Allow once' };
 const ALLOCATION: HostDialog = { title: 'Resource Allocation', answer: 'Allow' };
-const PREIMAGE: HostDialog = { title: 'Submit Preimage', answer: 'Allow' };
 const SIGN_MESSAGE: HostDialog = { title: 'Sign Message', answer: 'Sign' };
 const SIGN_TRANSACTION: HostDialog = { title: 'Sign Transaction', answer: 'Sign' };
 
@@ -277,8 +276,8 @@ test.describe('dot.li > host-playground.dot', () => {
         { timeoutMs: 30_000 },
       );
 
-      // When the product submits a preimage, which spends the grant and asks only to confirm the submit
-      const spent = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', [PREIMAGE], {
+      // When the product submits a preimage, which spends the grant without asking again
+      const spent = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', [], {
         timeoutMs: 60_000,
       });
 
@@ -476,7 +475,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', [PERMISSION_ONCE, PREIMAGE], {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', [PERMISSION_ONCE], {
         timeoutMs: 60_000,
       });
 
@@ -492,7 +491,7 @@ test.describe('dot.li > host-playground.dot', () => {
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', [PERMISSION_ONCE, PREIMAGE], {
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', [PERMISSION_ONCE], {
         timeoutMs: 60_000,
       });
 
