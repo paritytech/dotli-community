@@ -83,7 +83,8 @@ finding. Check named paths, symbols and exports in a few batched commands, never
 
 6. **Walk the diff file by file.** For each violation, quote `file:line`, state the rule in one line, cite the checklist
    and section in the plain form (docs/claude/code-checklist.md § Tests), suggest a concrete fix in one or two
-   sentences, and tag the severity.
+   sentences, and tag the severity. Number the findings by severity, B1, B2 for blocking, M1 for major and m1 for minor,
+   so a fix brief can name them.
 
 7. **Group findings by theme**, one theme per checklist section: Layering, Placement, Package surfaces, Lazy loading and
    Complexity from the architecture checklist, and Code shape, Errors and logging, Metrics, Async and lifecycle, UI and
@@ -131,7 +132,7 @@ The body written to `docs/_reviews/<topic>-review.md`:
 (Skip entirely if no plan exists.)
 
 ### Layering (N blocking, M major)
-- **blocking** packages/resolver/src/<module>.ts:42, trusts a gateway's answer without proof (docs/claude/architecture-checklist.md § Layering)
+- **B1 blocking** packages/resolver/src/<module>.ts:42, trusts a gateway's answer without proof (docs/claude/architecture-checklist.md § Layering)
   Fix: verify the answer through the light client before returning it.
 
 ### Tests (...)
