@@ -36,6 +36,6 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "astro": "^7.4.1"
+    "astro": "^7.4.4"
   }
 }
