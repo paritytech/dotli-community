@@ -24,7 +24,6 @@ function createFakeTree(files: Record<string, string>): Tree {
       Object.keys(files)
         .filter(file => file === name || file.endsWith(`/${name}`))
         .sort(),
-    hasWord: word => Object.values(files).some(text => isWordIn(text, word)),
   };
 }
 
@@ -39,13 +38,9 @@ const NO_DISK = createFakeDisk({});
 
 const BUILTINS = new Set(['Promise', 'Record']);
 
-function check(
-  text: string,
-  files: Record<string, string>,
-  { disk = NO_DISK, dependencies = new Set<string>() }: { disk?: Disk; dependencies?: Set<string> } = {},
-) {
+function check(text: string, files: Record<string, string>, disk: Disk = NO_DISK) {
   const tree = createFakeTree(files);
-  return checkPlanNames(parsePlan(text, TOP_LEVEL, NO_BRANCHES, dependencies), tree, tree, disk, BUILTINS);
+  return checkPlanNames(parsePlan(text, TOP_LEVEL, NO_BRANCHES), tree, tree, disk, BUILTINS);
 }
 
 describe('parsePlan', () => {
@@ -167,6 +162,7 @@ describe('parsePlan', () => {
       'TValue',
       'build',
       'createX',
+      'run',
       'size',
     ]);
     assert.deepEqual(
@@ -279,11 +275,11 @@ describe('checkPlanNames', () => {
       '### Task 1: Bare names',
       '',
       '- Create: `packages/ui/src/added.ts`, `packages/ui/src/added.spec.ts`',
-      '- Modify: `packages/ui/src/useStore.ts`, `page/runWhenIdle.ts`, `page/missing.ts`',
+      '- Modify: `packages/ui/src/useWidget.ts`, `page/runWhenIdle.ts`, `page/missing.ts`',
       '- Read: `createToasts.ts` (`createToasts`, `clear`). `added.ts` (`brandNew`).',
     ].join('\n');
     const files = {
-      'packages/ui/src/useStore.ts': '',
+      'packages/ui/src/useWidget.ts': '',
       'packages/ui/src/page/runWhenIdle.ts': '',
       'packages/ui/src/page/state/createToasts.ts': 'export function createToasts() { const clear = () => {}; }',
     };
@@ -313,7 +309,7 @@ describe('checkPlanNames', () => {
     const disk = createFakeDisk({ 'docs/_plans/x-design.md': true, 'docs/_plans/gone-design.md': false });
 
     // When
-    const report = check(text, { 'apps/host/src/a.ts': '' }, { disk });
+    const report = check(text, { 'apps/host/src/a.ts': '' }, disk);
 
     // Then
     assert.deepEqual(
@@ -378,7 +374,7 @@ describe('checkPlanNames', () => {
       '',
       '**Interfaces:**',
       '',
-      '- Produces: `createX(store: WritableAtom<Made>): NetworkSnapshot`',
+      '- Produces: `createX(store: WritableAtom<Made>): WidgetSnapshot`',
     ].join('\n');
 
     // When
@@ -388,7 +384,7 @@ describe('checkPlanNames', () => {
     assert.deepEqual(
       report.notFound.map(item => item.text),
       [
-        '`NetworkSnapshot`, a type name the plan uses, is a word in no tracked file at the base commit or HEAD and no TypeScript built-in, the plan does not define it, and the plan names no package it comes from.',
+        '`WidgetSnapshot`, a type name the plan uses, is a word in no tracked file at the base commit or HEAD and no TypeScript built-in, the plan does not define it, and the plan names no package it comes from.',
       ],
     );
     assert.deepEqual(
@@ -429,28 +425,28 @@ describe('checkPlanNames', () => {
     const text = [
       '### Task 1: Retype',
       '',
-      '- Modify: `packages/shared/src/cell.ts`, `apps/host/src/one.ts`',
-      '- Breaks: `StatusCell.set`',
-      '- Read: `packages/shared/src/cell.ts`',
+      '- Modify: `packages/shared/src/widgetState.ts`, `apps/host/src/one.ts`',
+      '- Breaks: `WidgetState.set`',
+      '- Read: `packages/shared/src/widgetState.ts`',
       '',
       '### Task 2: Drop',
       '',
-      '- Delete: `packages/shared/src/makeStatus.ts`, `packages/shared/src/useStore.ts`',
-      '- Create: `packages/stores/src/useStore.ts`',
-      '- Read: `packages/shared/src/cell.ts`',
+      '- Delete: `packages/shared/src/makeWidget.ts`, `packages/shared/src/useWidget.ts`',
+      '- Create: `packages/stores/src/useWidget.ts`',
+      '- Read: `packages/shared/src/widgetState.ts`',
       '',
       '### Task 3: Later',
       '',
       '- Modify: `apps/host/src/two.ts`',
-      '- Read: `packages/shared/src/cell.ts`',
+      '- Read: `packages/shared/src/widgetState.ts`',
     ].join('\n');
     const files = {
-      'packages/shared/src/cell.ts': 'export type StatusCell = {};',
-      'packages/shared/src/makeStatus.ts': 'export function makeStatus() {}',
-      'packages/shared/src/useStore.ts': 'export function useStore() {}',
-      'apps/host/src/one.ts': 'StatusCell makeStatus useStore',
-      'apps/host/src/two.ts': 'StatusCell makeStatus',
-      'apps/host/src/three.ts': 'makeStatus',
+      'packages/shared/src/widgetState.ts': 'export type WidgetState = {};',
+      'packages/shared/src/makeWidget.ts': 'export function makeWidget() {}',
+      'packages/shared/src/useWidget.ts': 'export function useWidget() {}',
+      'apps/host/src/one.ts': 'WidgetState makeWidget useWidget',
+      'apps/host/src/two.ts': 'WidgetState makeWidget',
+      'apps/host/src/three.ts': 'makeWidget',
     };
 
     // When
@@ -460,8 +456,8 @@ describe('checkPlanNames', () => {
     assert.deepEqual(
       report.notFound.map(item => item.text),
       [
-        'Task 1 breaks `StatusCell`. `StatusCell` is a word at HEAD in 1 file only a later task declares: `apps/host/src/two.ts` (Task 3).',
-        'Task 2 deletes `packages/shared/src/makeStatus.ts`. `makeStatus` is a word at HEAD in 1 file no task declares: `apps/host/src/three.ts`. It is also in 1 file only a later task declares: `apps/host/src/two.ts` (Task 3).',
+        'Task 1 breaks `WidgetState`. `WidgetState` is a word at HEAD in 1 file only a later task declares: `apps/host/src/two.ts` (Task 3).',
+        'Task 2 deletes `packages/shared/src/makeWidget.ts`. `makeWidget` is a word at HEAD in 1 file no task declares: `apps/host/src/three.ts`. It is also in 1 file only a later task declares: `apps/host/src/two.ts` (Task 3).',
       ],
     );
   });

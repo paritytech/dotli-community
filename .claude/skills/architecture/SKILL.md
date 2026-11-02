@@ -264,7 +264,7 @@ Brainstorming and planning both carry it:
   across many files through one script. Split anything larger. Every turn re-sends everything the implementer has read,
   so one long task costs more than two short ones.
 - **Breaks declared.** Under a task's files, a `- Breaks:` line names each export the task removes, renames or retypes,
-  as its users import it, such as ``- Breaks: `createStoreStatus`, `StatusCell` ``. Every file that uses one MUST be
+  as its users import it, such as ``- Breaks: `createWidget`, `WidgetState` ``. Every file that uses one MUST be
   declared by that task or an earlier one, or the commit leaves typecheck failing. A task that changes no export's shape
   has no Breaks line. A deleted module counts as a break of its name without one.
 - **Code shape** (`docs/code/style.md`). The design names its building blocks in that doc's terms: the factories and

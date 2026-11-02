@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Looks up every name a plan in docs/_plans/ cites, so a plan review pass reads lookup results instead of running one
-// search per name. It reads committed trees, and the disk only for paths git ignores, so the same plan, commits and
-// ignored files always give the same report. It reports what it found and judges nothing.
+// search per name. It reads committed trees, the disk only for paths git ignores, and TypeScript's own type names, so
+// the same plan, commits and ignored files always give the same report. It reports what it found and judges nothing.
 //
 // Usage: node scripts/checkPlanNames.ts <plan> [--base <rev>]
 //
@@ -28,8 +28,6 @@ type DeclaredFile = Location & {
   bareName?: string | undefined;
 };
 
-type NamedPath = Location & { path: string };
-
 type ReadEntry = Location & {
   /** The repo paths of files the entry names. */
   files: string[];
@@ -38,37 +36,27 @@ type ReadEntry = Location & {
   symbols: Named[];
 };
 
-type Break = Named & {
-  /** The deleted file, when the break comes from a Delete line rather than a Breaks line. */
-  deleted?: string | undefined;
-};
-
-type Citation = Location & { file: string; heading: string };
-
 type Skipped = Location & { token: string; reason: string };
 
 export type PlanNames = {
-  /** The `- Create|Modify|Test|Delete|Rename|Move: \`path\`` entries, in plan order. */
+  /** The files of each `- Create|Modify|Test|Delete|Rename|Move:` bullet, in plan order. */
   declared: DeclaredFile[];
   /** Every other backticked repo path. */
-  paths: NamedPath[];
+  paths: (Location & { path: string })[];
   /** Each Read or Precedent entry of a task's Context. */
   reads: ReadEntry[];
   /** Each `(<file>.md § <heading>)` citation. */
-  citations: Citation[];
+  citations: (Location & { file: string; heading: string })[];
   /** Names not looked up: patterns, such as a glob or a placeholder, branch names and one-letter symbols. */
   skipped: Skipped[];
-  /**
-   * The names the plan defines, with the line of the first definition: a name its code declares, or the name a
-   * signature in an Interfaces or Produces line starts with.
-   */
+  /** The names the plan defines, with the line of the first definition. */
   defined: Map<string, number>;
   /** The type names, such as `NetworkState`, that the plan's code and its Interfaces and Produces lines use. */
   typeNames: Named[];
-  /** The names the plan's code imports from an npm package, with the package. */
+  /** The names the plan takes from an npm package, with the package. */
   imported: Map<string, string>;
-  /** The exported names each task removes, renames or retypes, from its Breaks lines and its deleted files. */
-  breaks: Break[];
+  /** The exported names each task removes, renames or retypes, from its Breaks lines and its deleted modules. */
+  breaks: (Named & { deleted?: string | undefined })[];
   /** Each task heading, with whether the task has a Read entry. */
   tasks: (Location & { hasRead: boolean })[];
 };
@@ -89,8 +77,6 @@ export type Tree = {
   readFile(path: string): string | undefined;
   /** The files that hold the word, sorted. Throws when git fails. */
   listFilesWithWord(word: string): string[];
-  /** Whether any file holds the word. Throws when git fails. */
-  hasWord(word: string): boolean;
   /** The files whose path ends with `/<name>`, sorted. Never throws. */
   listFilesNamed(name: string): string[];
 };
@@ -100,15 +86,21 @@ type Entry = Location & { text: string; also: number[] };
 export type Report = {
   notFound: Entry[];
   foundElsewhere: Entry[];
-  found: { paths: number; symbols: number; typeNames: number; citations: number; breaks: number; addedByPlan: number };
   /** The Read symbols found only because the plan defines them, which a reviewer checks a task really adds. */
   definedByPlan: Entry[];
+  found: { paths: number; symbols: number; typeNames: number; citations: number; breaks: number; addedByPlan: number };
   skipped: Skipped[];
 };
 
+const IDENT = '[A-Za-z_$][\\w$]*';
+
+const IS_IDENT = new RegExp(`^${IDENT}$`);
+
 const FILE_NAME = /^[\w.@/-]+\.(ts|tsx|mts|cts|js|mjs|cjs|jsx|json|md|css|astro|html|yml|yaml|toml|svg|txt|sh)$/;
 
-const IDENTIFIER = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?$/;
+const CODE_FILE = /\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
+
+const SYMBOL = new RegExp(`^${IDENT}(?:\\.${IDENT})*(?:\\(\\))?$`);
 
 const NOT_A_SYMBOL = new Set(['true', 'false', 'null', 'undefined', 'void', 'this', 'new', 'typeof', 'async', 'await']);
 
@@ -116,91 +108,41 @@ const PATH = /^[\w.@-]+(?:\/[\w.@-]+)+$/;
 
 const PATTERN = /[*{}<>$\s]/;
 
-const TASK_HEADING = /^#{2,6}\s+Task\s+([\w.-]+)/;
-
 const HEADING = /^#{1,6}\s+(.*?)\s*#*\s*$/;
 
-// The label in parentheses may hold code with parentheses of its own, as in "Modify (script, `f(x)` becomes `x`)".
-const DECLARED = /^\s*- (Create|Modify|Test|Delete|Rename|Move)(?: \((?:[^()`]|`[^`]*`|\([^()]*\))*\))?:/;
-
-// `- **Read:**`, `- **Read**:` and `- Read:` all open an entry.
-const READ_BULLET = /^(\s*)- (?:\*\*)?(Read|Precedent)(?:\*\*)?:(?:\*\*)?/;
-
-const BREAKS_BULLET = /^(\s*)- (?:\*\*)?Breaks(?:\*\*)?:/;
-
-const CODE_LANGUAGES = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'typescript', 'javascript']);
-
-const CODE_FILE = /\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
-
-// A type name starts with a capital and holds a lowercase letter, so a generic parameter such as `T` or a constant
-// such as `MAX_SIZE` is not one.
-const TYPE_NAME = /(?<![\w$.])[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*(?![\w$])/g;
-
-const DECLARATION =
-  /\b(?:function\*?|const|let|var|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)(?:\s*<([^>]*)>)?/g;
-
-const DESTRUCTURING = /\b(?:const|let|var)\s*[{[]([^}\]]*)[}\]]/g;
-
-const EXPORT_LIST = /\bexport\s+(?:type\s+)?\{([^}]*)\}/g;
-
-// A property or method at the start of a line of an object, class or interface, as in `close(): void` or `size?: number`.
-const PROPERTY = /^\s*(?:(?:readonly|static|async|get|set)\s+)*([A-Za-z_$][\w$]*)\??\s*:\s/;
-
-const METHOD =
-  /^\s*(?:(?:static|async|get|set)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\(([^()'"`]*)\)\s*(:[^=]*)?[{;]?\s*$/;
-
-// A signature in an Interfaces or Produces span starts with the name it defines, as in `createX(params): X`,
-// `INITIAL_X: X` or `type X = ...`. A bare name or a generic such as `ReadableAtom<X>` defines nothing.
-const SIGNATURE =
-  /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:(?:function|const|let|type|interface|class|enum)\s+)?(?:[A-Za-z_$][\w$]*\.)*([A-Za-z_$][\w$]*)(?:\s*<([^>]*)>)?\s*(?:\(|\??:|=)/;
-
-// A span the text assigns to, as in "`StatusSource<T>` = `{ get(): T }`" or a span wrapped onto the next line.
-const ASSIGNED = /`([A-Za-z_$][\w$]*)(?:<([^>`]*)>)?`?\s*=(?![=>])/g;
-
-// A line that says where its names come from, as in "`ReadableAtom` from `nanostores`". An npm package name is
-// lowercase, so "`subscribe` from `createSyncStore`" names no package.
-const FROM_PACKAGE = /\bfrom `((?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*)`/;
-
-const KEYWORDS = new Set([
-  'if',
-  'for',
-  'while',
-  'switch',
-  'catch',
-  'return',
-  'case',
-  'default',
-  'else',
-  'do',
-  'try',
-  'finally',
-  'throw',
-  'new',
-  'typeof',
-  'await',
-  'yield',
-  'function',
-  'import',
-  'export',
-]);
-
-const BULLET = /^(\s*)- /;
+const TASK_HEADING = /^#{2,6}\s+Task\s+([\w.-]+)/;
 
 const LABEL_LINE = /^([A-Z][^#*\-`].{0,60}):\s*$/;
 
 const CITATION = /\(([\w./-]+\.md) § ([^)]+)\)/g;
 
+// One bullet kind per line: a declared file list, whose label may hold code with parentheses, as in
+// "Modify (script, `f(x)` becomes `x`):", a Read or Precedent entry, or a Breaks line.
+const OPENER =
+  /^(\s*)- (?:(Create|Modify|Test|Delete|Rename|Move)(?: \((?:[^()`]|`[^`]*`|\([^()]*\))*\))?:|(?:\*\*)?(Read|Precedent|Breaks)(?:\*\*)?:)/;
+
+const CODE_LANGUAGES = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'typescript', 'javascript']);
+
+// A type name starts with a capital and holds a lowercase letter, so a generic parameter such as `T` or a constant
+// such as `MAX_SIZE` is not one.
+const TYPE_NAME = /(?<![\w$.])[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*(?![\w$])/g;
+
+// Code that starts with the name it defines, as in `createX(params): X`, `size?: number`, `Source<T> = ...` or
+// `class X extends Y {`. A bare name or a generic such as `ReadableAtom<X>` defines nothing.
+const DEFINED_FIRST = new RegExp(
+  `^(?:(?:export|default|async|readonly|static|get|set|function|const|let|var|type|interface|class|enum|namespace)\\s+)*(?:${IDENT}\\.)*(${IDENT})\\??(?:<([^>]*)>)?(?:\\(|\\s*[:=](?![:=>])|\\s+(?:\\{|extends\\b|implements\\b))`,
+);
+
+const IMPORT = /^\s*import\s+(?:type\s+)?(.*?)\s+from\s+['"]([^'"]+)['"]/;
+
+// A line that says where its names come from, as in "`ReadableAtom` from `nanostores`".
+const FROM_PACKAGE = /\bfrom `([^`]+)`/;
+
 /**
  * Splits a plan into the names it cites. `topLevel` holds the repo's top-level entries, which mark a repo path.
- * `branches` holds the branch names, which look like paths and are not checked. `dependencies` holds the npm packages the
- * repo's `package.json` files list.
+ * `branches` holds the branch names, which look like paths and are not checked.
  */
-export function parsePlan(
-  text: string,
-  topLevel: ReadonlySet<string>,
-  branches: ReadonlySet<string>,
-  dependencies: ReadonlySet<string> = new Set(),
-): PlanNames {
+export function parsePlan(text: string, topLevel: ReadonlySet<string>, branches: ReadonlySet<string>): PlanNames {
   const plan: PlanNames = {
     declared: [],
     paths: [],
@@ -213,35 +155,65 @@ export function parsePlan(
     breaks: [],
     tasks: [],
   };
+  const define = (name: string, generics: string | undefined, line: number): void => {
+    for (const each of [name, ...(generics ?? '').split(',').map(item => /\w+/.exec(item)?.[0] ?? '')]) {
+      if (each !== '' && !plan.defined.has(each)) {
+        plan.defined.set(each, line);
+      }
+    }
+  };
+  const defineFirst = (code: string, line: number): void => {
+    const first = DEFINED_FIRST.exec(code);
+    if (first) {
+      define(first[1] ?? '', first[2], line);
+    }
+  };
+  const addTypeNames = (code: string, at: Location): void => {
+    for (const match of code.matchAll(TYPE_NAME)) {
+      plan.typeNames.push({ ...at, name: match[0] });
+    }
+  };
+  // Prose such as "`X` from `y`" names a package only when the plan's code imports from `y`, so "derive from
+  // `speaker`" does not.
+  const saidFrom: (readonly [name: string, from: string])[] = [];
+
   const lines = text.split('\n');
   const labels = labelLines(lines);
   let fence: { isCode: boolean } | undefined;
   let section = '';
-  let read: { indent: number; entry: ReadEntry } | undefined;
-  let breaksIndent: number | undefined;
-  let declaring: { indent: number; verb: string; first: string | undefined } | undefined;
-  const saidFrom = new Map<string, string>();
+  let open:
+    | { indent: number; kind: 'declared'; verb: string; first?: string }
+    | { indent: number; kind: 'read'; entry: ReadEntry }
+    | { indent: number; kind: 'breaks' }
+    | undefined;
+
   lines.forEach((line, index) => {
     const at = { line: index + 1, task: labels[index] ?? '' };
     if (line.trimStart().startsWith('```')) {
-      const language = line.trim().slice(3).trim().split(/\s/)[0] ?? '';
-      fence = fence ? undefined : { isCode: CODE_LANGUAGES.has(language) };
+      fence = fence ? undefined : { isCode: CODE_LANGUAGES.has(line.trim().slice(3).trim().split(/\s/)[0] ?? '') };
       return;
     }
     if (fence) {
-      addImports(plan.imported, line);
+      const imported = IMPORT.exec(line);
+      const from = imported?.[2] ?? '';
+      // A relative or workspace import names repo code, which the tree lookups cover.
+      if (imported && !/^(?:\.|\/|@dotli\/)/.test(from)) {
+        const names = [...(imported[1] ?? '').matchAll(new RegExp(IDENT, 'g'))].map(match => match[0]);
+        // The package's own name counts too, so a Read entry that names it is not looked up as a symbol.
+        for (const name of [from, ...names].filter(item => item !== 'type' && item !== 'as')) {
+          plan.imported.set(name, from);
+        }
+      }
       const code = stripCode(line);
-      addCodeDefinitions(plan.defined, code, at.line);
+      defineFirst(code.trimStart(), at.line);
       if (fence.isCode) {
-        addTypeNames(plan.typeNames, code, at);
+        addTypeNames(code, at);
       }
       return;
     }
     if (HEADING.test(line)) {
       section = '';
-      read = undefined;
-      breaksIndent = undefined;
-      declaring = undefined;
+      open = undefined;
       if (TASK_HEADING.test(line)) {
         plan.tasks.push({ ...at, hasRead: false });
       }
@@ -250,131 +222,102 @@ export function parsePlan(
     const label = /^\*\*([^*]+?):?\*\*/.exec(line);
     if (label) {
       section = (label[1] ?? '').toLowerCase();
-      read = undefined;
-      breaksIndent = undefined;
-      declaring = undefined;
+      open = undefined;
     }
-    const bullet = BULLET.exec(line);
-    const ends = (indent: number): boolean =>
-      line.trim() !== '' && (bullet ? (bullet[1] ?? '').length <= indent : !/^\s/.test(line));
-    const readBullet = READ_BULLET.exec(line);
-    if (readBullet) {
-      read = { indent: (readBullet[1] ?? '').length, entry: { ...at, files: [], bareNames: [], symbols: [] } };
-      plan.reads.push(read.entry);
-      const task = plan.tasks.at(-1);
-      if (readBullet[2] === 'Read' && task?.task === at.task) {
-        task.hasRead = true;
-      }
-    } else if (read && ends(read.indent)) {
-      read = undefined;
+    // A bullet runs on over its wrapped lines and its deeper bullets, and ends at the next bullet as shallow as it.
+    const indent = /^\s*/.exec(line)?.[0].length ?? 0;
+    if (open && line.trim() !== '' && (line.trimStart().startsWith('- ') ? indent <= open.indent : indent === 0)) {
+      open = undefined;
     }
-    const breaksBullet = BREAKS_BULLET.exec(line);
-    if (breaksBullet) {
-      breaksIndent = (breaksBullet[1] ?? '').length;
-    } else if (breaksIndent !== undefined && ends(breaksIndent)) {
-      breaksIndent = undefined;
-    }
-    // A declared line may wrap, and its continuation lines declare files with the same verb.
-    const declaredLine = DECLARED.exec(line);
-    if (declaredLine) {
-      declaring = { indent: (bullet?.[1] ?? '').length, verb: declaredLine[1] ?? '', first: undefined };
-    } else if (declaring && ends(declaring.indent)) {
-      declaring = undefined;
-    }
-    const tokens = [...line.matchAll(/`([^`]+)`/g)].map(match => match[1] ?? '');
-    // A workspace package names repo code, which the tree lookups cover.
-    const fromPackage = FROM_PACKAGE.exec(line)?.[1];
-    if (fromPackage !== undefined && !fromPackage.startsWith('@dotli/')) {
-      for (const token of tokens.filter(item => item !== fromPackage && /^[A-Za-z_$][\w$]*$/.test(item))) {
-        if (!saidFrom.has(token)) {
-          saidFrom.set(token, fromPackage);
+    const opener = OPENER.exec(line);
+    if (opener) {
+      const verb = opener[2];
+      const kind = opener[3];
+      const openIndent = (opener[1] ?? '').length;
+      if (verb !== undefined) {
+        open = { indent: openIndent, kind: 'declared', verb };
+      } else if (kind === 'Breaks') {
+        open = { indent: openIndent, kind: 'breaks' };
+      } else {
+        open = { indent: openIndent, kind: 'read', entry: { ...at, files: [], bareNames: [], symbols: [] } };
+        plan.reads.push(open.entry);
+        const task = plan.tasks.at(-1);
+        if (kind === 'Read' && task?.task === at.task) {
+          task.hasRead = true;
         }
       }
     }
+
+    const spans = [...line.matchAll(/`([^`]+)`/g)].map(match => match[1] ?? '');
+    const from = FROM_PACKAGE.exec(line)?.[1];
+    if (from !== undefined) {
+      saidFrom.push(...spans.filter(span => span !== from && IS_IDENT.test(span)).map(span => [span, from] as const));
+    }
     if (section === 'interfaces' || /\bProduces:/.test(line)) {
-      addCodeDefinitions(plan.defined, line.replace(/`/g, ' '), at.line, { declarationsOnly: true });
-      for (const match of line.matchAll(ASSIGNED)) {
-        define(plan.defined, match[1] ?? '', at.line);
-        defineGenerics(plan.defined, match[2], at.line);
+      // A span may define a name, and may wrap onto the next line or be assigned outside its backticks, as in
+      // "`Source<T>` = `{ get(): T }`", so each span is read with the rest of its line.
+      for (const match of line.matchAll(/`/g)) {
+        defineFirst(line.slice(match.index + 1).replace(/`/g, ''), at.line);
       }
-      for (const token of tokens.filter(item => !FILE_NAME.test(item) && !PATH.test(item))) {
-        addSignature(plan.defined, token, at.line);
-        addTypeNames(plan.typeNames, stripCode(token), at);
+      for (const span of spans.filter(item => !FILE_NAME.test(item) && !PATH.test(item))) {
+        addTypeNames(stripCode(span), at);
       }
     }
-    tokens.forEach(token => {
-      const path = normalizePath(token);
+
+    for (const span of spans) {
+      const path = span.replace(/:\d+(?:-\d+)?$/, '').replace(/\/$/, '');
       const isRepoPath = path.includes('/') && topLevel.has(path.split('/')[0] ?? '');
       if (isRepoPath && PATTERN.test(path)) {
-        plan.skipped.push({ ...at, token, reason: 'a pattern, not a path' });
-        return;
-      }
-      if (isRepoPath && branches.has(token)) {
-        plan.skipped.push({ ...at, token, reason: 'a branch name' });
-        return;
-      }
-      if (isRepoPath && PATH.test(path)) {
-        if (declaring) {
-          plan.declared.push({ ...at, verb: declaring.verb, path });
-          declaring.first ??= path;
+        plan.skipped.push({ ...at, token: span, reason: 'a pattern, not a path' });
+      } else if (isRepoPath && branches.has(span)) {
+        plan.skipped.push({ ...at, token: span, reason: 'a branch name' });
+      } else if (isRepoPath && PATH.test(path)) {
+        if (open?.kind === 'declared') {
+          plan.declared.push({ ...at, verb: open.verb, path });
+          open.first ??= path;
         } else {
           plan.paths.push({ ...at, path });
         }
-        if (read && FILE_NAME.test(path)) {
-          read.entry.files.push(path);
+        if (open?.kind === 'read' && FILE_NAME.test(path)) {
+          open.entry.files.push(path);
         }
-        return;
-      }
-      if (FILE_NAME.test(token)) {
-        // A declared line may list more files by name alone, usually in the folder of its first path. With no path
-        // before it, as in "the `package.json` of each package", the name stands for every file of that name.
-        if (declaring) {
-          const first = declaring.first;
-          const path = first === undefined ? token : `${dirname(first)}/${token}`;
-          plan.declared.push({ ...at, verb: declaring.verb, path, bareName: token });
-        } else if (read) {
-          read.entry.bareNames.push(token);
+      } else if (FILE_NAME.test(span)) {
+        // A declared bullet may list more files by name alone, in the folder of its first path. With no path before
+        // it, as in "the `package.json` of each package", the name stands for every file of that name.
+        if (open?.kind === 'declared') {
+          const path = open.first === undefined ? span : `${dirname(open.first)}/${span}`;
+          plan.declared.push({ ...at, verb: open.verb, path, bareName: span });
+        } else if (open?.kind === 'read') {
+          open.entry.bareNames.push(span);
         }
-        return;
-      }
-      if (breaksIndent !== undefined && IDENTIFIER.test(token)) {
-        // Users import the export, so `StatusCell.set` breaks the users of `StatusCell`.
-        plan.breaks.push({ ...at, name: token.replace(/\(\)$/, '').split('.')[0] ?? '' });
-        return;
-      }
-      if (read && IDENTIFIER.test(token)) {
-        const name = token.replace(/\(\)$/, '').split('.').pop() ?? '';
+      } else if (open?.kind === 'breaks' && SYMBOL.test(span)) {
+        // Users import the export, so `WidgetState.set` breaks the users of `WidgetState`.
+        plan.breaks.push({ ...at, name: span.replace(/\(\)$/, '').split('.')[0] ?? '' });
+      } else if (open?.kind === 'read' && SYMBOL.test(span)) {
+        const name = span.replace(/\(\)$/, '').split('.').pop() ?? '';
         if (name.length === 1) {
-          plan.skipped.push({ ...at, token, reason: 'a one-letter name, read as a placeholder' });
+          plan.skipped.push({ ...at, token: span, reason: 'a one-letter name, read as a placeholder' });
         } else if (!NOT_A_SYMBOL.has(name)) {
-          read.entry.symbols.push({ ...at, name });
+          open.entry.symbols.push({ ...at, name });
         }
       }
-    });
+    }
   });
-  // Prose such as "`X` from `y`" names a package only when the plan's code imports from `y` or a package lists it, so
-  // "derive from `speaker`" does not.
-  const packages = new Set([...plan.imported.values(), ...dependencies]);
+
+  const packages = new Set(plan.imported.values());
   for (const [name, from] of saidFrom) {
     if (packages.has(from) && !plan.imported.has(name)) {
       plan.imported.set(name, from);
     }
   }
-  // A Read entry may name a package the plan imports from, which is no symbol.
-  for (const entry of plan.reads) {
-    for (const symbol of entry.symbols.filter(item => packages.has(item.name))) {
-      plan.skipped.push({ ...symbol, token: symbol.name, reason: 'a package the plan imports from' });
-    }
-    entry.symbols = entry.symbols.filter(item => !packages.has(item.name));
-  }
   // Deleting a module breaks every file that imports it by its name, unless the plan creates a module of that name.
   const fileName = (path: string): string => path.split('/').pop() ?? '';
-  const createdNames = new Set(
-    plan.declared.filter(item => item.verb === 'Create' || item.verb === 'Test').map(item => fileName(item.path)),
+  const created = new Set(
+    plan.declared.filter(file => file.verb === 'Create' || file.verb === 'Test').map(file => fileName(file.path)),
   );
   for (const file of plan.declared.filter(item => item.verb === 'Delete' && CODE_FILE.test(item.path))) {
     const name = fileName(file.path).replace(CODE_FILE, '');
-    if (/^[A-Za-z_$][\w$]*$/.test(name) && !createdNames.has(fileName(file.path))) {
+    if (IS_IDENT.test(name) && !created.has(fileName(file.path))) {
       plan.breaks.push({ line: file.line, task: file.task, name, deleted: file.path });
     }
   }
@@ -403,18 +346,24 @@ export function checkPlanNames(
     const entry = map.get(text);
     if (entry) {
       entry.also.push(at.line);
-      return;
+    } else {
+      map.set(text, { ...at, text, also: [] });
     }
-    map.set(text, { ...at, text, also: [] });
   };
+  const skipImported = (at: Named): boolean => {
+    const from = plan.imported.get(at.name);
+    if (from !== undefined) {
+      skipped.push({ ...at, token: at.name, reason: `from \`${from}\`, as the plan says` });
+    }
+    return from !== undefined;
+  };
+  const both = (list: (tree: Tree) => string[]): string[] => [...new Set([...list(base), ...list(head)])].sort();
   const inTrees = (path: string): boolean => base.hasPath(path) || head.hasPath(path);
   const exists = (path: string): boolean => inTrees(path) || (disk.isIgnored(path) && disk.exists(path));
   const missing = (path: string): string =>
     disk.isIgnored(path) ? 'is ignored by git and is not on disk' : 'exists neither at the base commit nor at HEAD';
-  const named = (name: string): string[] => [...new Set([...base.listFilesNamed(name), ...head.listFilesNamed(name)])];
+  const named = (name: string): string[] => both(tree => tree.listFilesNamed(name));
   const creations = plan.declared.filter(file => file.verb === 'Create' || file.verb === 'Test');
-  const createdByPlan = (path: string): boolean =>
-    creations.some(file => file.path === path || file.path.startsWith(`${path}/`));
 
   plan.declared.forEach((file, index) => {
     if (file.verb === 'Create') {
@@ -424,30 +373,26 @@ export function checkPlanNames(
       } else {
         found.addedByPlan++;
       }
-      return;
-    }
-    if (exists(file.path) || (file.bareName !== undefined && named(file.bareName).length > 0)) {
+    } else if (exists(file.path) || (file.bareName !== undefined && named(file.bareName).length > 0)) {
       found.paths++;
-      return;
-    }
-    const createdEarlier = creations.some(
-      creation => plan.declared.indexOf(creation) < index && creation.path === file.path,
-    );
-    if (file.verb === 'Test' || createdEarlier) {
+    } else if (
+      file.verb === 'Test' ||
+      creations.some(item => plan.declared.indexOf(item) < index && item.path === file.path)
+    ) {
       found.addedByPlan++;
-      return;
+    } else {
+      const fact =
+        file.bareName === undefined
+          ? `\`${file.path}\` ${missing(file.path)}`
+          : `\`${file.bareName}\` matches no tracked file name`;
+      add(notFound, file, `${file.verb} ${fact}, and no earlier task creates it.`);
     }
-    const fact =
-      file.bareName === undefined
-        ? `\`${file.path}\` ${missing(file.path)}`
-        : `\`${file.bareName}\` matches no tracked file name`;
-    add(notFound, file, `${file.verb} ${fact}, and no earlier task creates it.`);
   });
 
   for (const mention of plan.paths) {
     if (exists(mention.path)) {
       found.paths++;
-    } else if (createdByPlan(mention.path)) {
+    } else if (creations.some(file => file.path === mention.path || file.path.startsWith(`${mention.path}/`))) {
       found.addedByPlan++;
     } else {
       add(notFound, mention, `\`${mention.path}\` ${missing(mention.path)}, and no task creates it.`);
@@ -457,151 +402,120 @@ export function checkPlanNames(
   for (const entry of plan.reads) {
     // A bare file name stands for every tracked file of that name, so a symbol in any of them is found.
     const files = [...new Set([...entry.files.filter(inTrees), ...entry.bareNames.flatMap(named)])].sort();
+    const where = `in the entry at line ${String(entry.line)}`;
     for (const symbol of entry.symbols) {
       if (files.some(file => hasWord(base.readFile(file), symbol.name) || hasWord(head.readFile(file), symbol.name))) {
         found.symbols++;
         continue;
       }
-      const from = plan.imported.get(symbol.name);
-      if (from !== undefined) {
-        skipped.push({ ...symbol, token: symbol.name, reason: `from \`${from}\`, as the plan says` });
+      if (skipImported(symbol)) {
         continue;
       }
       const definedAt = plan.defined.get(symbol.name);
       if (definedAt !== undefined) {
         found.addedByPlan++;
-        add(
-          definedByPlan,
-          symbol,
-          `\`${symbol.name}\`, in the ${describeEntry(entry)}, is a word in none of the files it names. The plan defines it at line ${String(definedAt)}.`,
-        );
+        const text = `\`${symbol.name}\`, ${where}, is a word in none of the files it names. The plan defines it at line ${String(definedAt)}.`;
+        add(definedByPlan, symbol, text);
         continue;
       }
-      const elsewhere = [
-        ...new Set([...base.listFilesWithWord(symbol.name), ...head.listFilesWithWord(symbol.name)]),
-      ].sort();
+      const elsewhere = both(tree => tree.listFilesWithWord(symbol.name));
       if (elsewhere.length > 0 && files.length === 0) {
         // An entry that names no file it could be in leaves the repo as the only place to look.
         found.symbols++;
-        continue;
-      }
-      if (elsewhere.length > 0) {
-        const shown = elsewhere
-          .slice(0, 3)
-          .map(path => `\`${path}\``)
-          .join(', ');
-        const more = elsewhere.length > 3 ? ` and ${String(elsewhere.length - 3)} more files` : '';
-        add(
-          foundElsewhere,
-          symbol,
-          `\`${symbol.name}\`, in the ${describeEntry(entry)}, is a word in none of the files it names (${listFiles(files)}). It is in ${shown}${more}.`,
-        );
-        continue;
-      }
-      add(
-        notFound,
-        symbol,
-        `\`${symbol.name}\`, in the ${describeEntry(entry)}, is a word in no tracked file at the base commit or HEAD, and the plan does not define it.`,
-      );
-    }
-  }
-
-  const typeResults = new Map<string, 'found' | 'defined' | 'imported' | 'missing'>();
-  for (const type of plan.typeNames) {
-    let result = typeResults.get(type.name);
-    if (result === undefined) {
-      if (plan.defined.has(type.name)) {
-        result = 'defined';
-      } else if (plan.imported.has(type.name)) {
-        result = 'imported';
-        const from = plan.imported.get(type.name) ?? '';
-        skipped.push({ ...type, token: type.name, reason: `from \`${from}\`, as the plan says` });
-      } else if (builtins.has(type.name) || base.hasWord(type.name) || head.hasWord(type.name)) {
-        result = 'found';
+      } else if (elsewhere.length > 0) {
+        const own = files.length > 0 ? listItems(files.map(quote), 5) : 'none of them is in the repo';
+        const text = `\`${symbol.name}\`, ${where}, is a word in none of the files it names (${own}). It is in ${listItems(elsewhere.map(quote), 3)}.`;
+        add(foundElsewhere, symbol, text);
       } else {
-        result = 'missing';
+        const text = `\`${symbol.name}\`, ${where}, is a word in no tracked file at the base commit or HEAD, and the plan does not define it.`;
+        add(notFound, symbol, text);
       }
-      typeResults.set(type.name, result);
-      if (result === 'found') {
-        found.typeNames++;
-      } else if (result === 'defined') {
-        found.addedByPlan++;
-      }
-    }
-    if (result === 'missing') {
-      add(
-        notFound,
-        type,
-        `\`${type.name}\`, a type name the plan uses, is a word in no tracked file at the base commit or HEAD and no TypeScript built-in, the plan does not define it, and the plan names no package it comes from.`,
-      );
     }
   }
 
-  plan.breaks.forEach(broken => {
+  // Each type name is looked up once, and a missing one is reported on every line that uses it.
+  const missingTypes = new Set<string>();
+  const checkedTypes = new Set<string>();
+  for (const type of plan.typeNames) {
+    if (!checkedTypes.has(type.name)) {
+      checkedTypes.add(type.name);
+      if (skipImported(type)) {
+        continue;
+      }
+      if (plan.defined.has(type.name)) {
+        found.addedByPlan++;
+      } else if (builtins.has(type.name) || both(tree => tree.listFilesWithWord(type.name)).length > 0) {
+        found.typeNames++;
+      } else {
+        missingTypes.add(type.name);
+      }
+    }
+    if (missingTypes.has(type.name)) {
+      const text = `\`${type.name}\`, a type name the plan uses, is a word in no tracked file at the base commit or HEAD and no TypeScript built-in, the plan does not define it, and the plan names no package it comes from.`;
+      add(notFound, type, text);
+    }
+  }
+
+  for (const broken of plan.breaks) {
     const nextTask = plan.tasks.find(task => task.line > broken.line)?.line ?? Infinity;
-    const declares = (item: DeclaredFile, file: string): boolean =>
-      item.path === file ||
-      file.startsWith(`${item.path}/`) ||
-      (item.bareName !== undefined && file.endsWith(`/${item.bareName}`));
+    const declaring = (file: string): DeclaredFile[] =>
+      plan.declared.filter(
+        item =>
+          item.path === file ||
+          file.startsWith(`${item.path}/`) ||
+          (item.bareName !== undefined && file.endsWith(`/${item.bareName}`)),
+      );
     const users = head
       .listFilesWithWord(broken.name)
-      .filter(file => !plan.declared.some(item => item.line < nextTask && declares(item, file)));
+      .filter(file => !declaring(file).some(item => item.line < nextTask));
     if (users.length === 0) {
       found.breaks++;
-      return;
+      continue;
     }
-    const later = users.flatMap(file => {
-      const task = plan.declared.find(item => item.line >= nextTask && declares(item, file))?.task;
-      return task === undefined ? [] : [`\`${file}\` (${task})`];
-    });
-    const undeclared = users.filter(file => !plan.declared.some(item => declares(item, file)));
-    const action = broken.deleted === undefined ? `breaks \`${broken.name}\`` : `deletes \`${broken.deleted}\``;
-    const files = (count: number): string => `${String(count)} ${count === 1 ? 'file' : 'files'}`;
+    // Every user left is declared by no task or by a later one only.
+    const later = users.flatMap(file =>
+      declaring(file)
+        .slice(0, 1)
+        .map(item => `${quote(file)} (${item.task})`),
+    );
+    const undeclared = users.filter(file => declaring(file).length === 0).map(quote);
+    const count = (items: string[]): string => `${String(items.length)} ${items.length === 1 ? 'file' : 'files'}`;
     const parts = [
-      undeclared.length > 0 ? `${files(undeclared.length)} no task declares: ${listFiles(undeclared, 12)}.` : '',
-      later.length > 0
-        ? `${files(later.length)} only a later task declares: ${later.slice(0, 12).join(', ')}${later.length > 12 ? ` and ${String(later.length - 12)} more` : ''}.`
-        : '',
-    ].filter(Boolean);
+      ...(undeclared.length > 0 ? [`${count(undeclared)} no task declares: ${listItems(undeclared, 12)}.`] : []),
+      ...(later.length > 0 ? [`${count(later)} only a later task declares: ${listItems(later, 12)}.`] : []),
+    ];
+    const action = broken.deleted === undefined ? `breaks \`${broken.name}\`` : `deletes \`${broken.deleted}\``;
     add(
       notFound,
       broken,
       `${broken.task} ${action}. \`${broken.name}\` is a word at HEAD in ${parts.join(' It is also in ')}`,
     );
-  });
+  }
 
   for (const citation of plan.citations) {
     const content = head.readFile(citation.file) ?? base.readFile(citation.file);
     if (content === undefined) {
-      add(
-        notFound,
-        citation,
-        `\`${citation.file}\`, cited as (${citation.file} § ${citation.heading}), exists neither at the base commit nor at HEAD.`,
-      );
-      continue;
-    }
-    if (hasHeading(content, citation.heading)) {
+      const text = `\`${citation.file}\`, cited as (${citation.file} § ${citation.heading}), exists neither at the base commit nor at HEAD.`;
+      add(notFound, citation, text);
+    } else if (hasHeading(content, citation.heading)) {
       found.citations++;
-      continue;
+    } else {
+      const text = `\`${citation.file}\` has no heading or label line that "${citation.heading}" starts with, at HEAD.`;
+      add(notFound, citation, text);
     }
-    add(
-      notFound,
-      citation,
-      `\`${citation.file}\` has no heading or label line that "${citation.heading}" starts with, at HEAD.`,
-    );
   }
 
   for (const task of plan.tasks.filter(item => !item.hasRead)) {
     add(notFound, task, `${task.task} has no Read entry.`);
   }
 
-  const byLine = (a: Entry, b: Entry): number => a.line - b.line;
+  const byLine = (a: Location, b: Location): number => a.line - b.line;
   return {
     notFound: [...notFound.values()].sort(byLine),
     foundElsewhere: [...foundElsewhere.values()].sort(byLine),
-    found,
     definedByPlan: [...definedByPlan.values()].sort(byLine),
-    skipped: skipped.sort((a, b) => a.line - b.line),
+    found,
+    skipped: skipped.sort(byLine),
   };
 }
 
@@ -609,6 +523,12 @@ export function checkPlanNames(
 export function formatReport(report: Report, meta: { plan: string; base: string; head: string }): string {
   const { paths, symbols, typeNames, citations, breaks, addedByPlan } = report.found;
   const total = paths + symbols + typeNames + citations + breaks + addedByPlan;
+  const section = (title: string, items: string[]): string[] => [
+    `## ${title} (${String(items.length)})`,
+    '',
+    ...(items.length > 0 ? items : ['None.']),
+    '',
+  ];
   const entry = (item: Entry): string => {
     const also = item.also.length > 0 ? ` Also lines ${item.also.join(', ')}.` : '';
     return `- Line ${String(item.line)}, ${item.task}: ${item.text}${also}`;
@@ -620,53 +540,38 @@ export function formatReport(report: Report, meta: { plan: string; base: string;
     `- Base commit: \`${meta.base}\`. HEAD: \`${meta.head}\`. The working tree is read only for paths git ignores.`,
     `- Result: ${String(report.notFound.length)} not found, ${String(report.foundElsewhere.length)} found elsewhere, ${String(total)} found.`,
     '',
-    'Every line is the result of a lookup by `scripts/checkPlanNames.ts`, not a judgment. The check covers each',
-    'backticked repo path, each file a Create, Modify, Test, Delete, Rename or Move line declares, each backticked symbol',
-    'of a Read or Precedent entry, each type name of the TypeScript code blocks and of the Interfaces and Produces lines,',
-    'each `(<file>.md § <heading>)` citation, and whether each task has a Read entry. A symbol counts as found when it is',
-    'a word in any file its entry names, and a bare file name, such as `index.ts`, names every tracked file of that name.',
-    'For each name a Breaks line lists and each deleted module, it lists the files at HEAD that hold the name and that no',
-    'task up to and including the breaking one declares. The plan defines a name its code declares, or the name a',
-    'signature in an Interfaces or Produces line starts with, as in `createX(params): X`.',
+    'Every line is the result of a lookup by `scripts/checkPlanNames.ts`, not a judgment. What it looks up and how a',
+    'plan review pass reads each section is in `.claude/skills/architecture/SKILL.md`, section Names check.',
     '',
-    `## Not found (${String(report.notFound.length)})`,
-    '',
-    ...(report.notFound.length > 0 ? report.notFound.map(entry) : ['None.']),
-    '',
-    `## Found elsewhere (${String(report.foundElsewhere.length)})`,
-    '',
-    ...(report.foundElsewhere.length > 0 ? report.foundElsewhere.map(entry) : ['None.']),
-    '',
-    `## Defined by the plan (${String(report.definedByPlan.length)})`,
-    '',
-    ...(report.definedByPlan.length > 0 ? report.definedByPlan.map(entry) : ['None.']),
-    '',
+    ...section('Not found', report.notFound.map(entry)),
+    ...section('Found elsewhere', report.foundElsewhere.map(entry)),
+    ...section('Defined by the plan', report.definedByPlan.map(entry)),
     `## Found (${String(total)})`,
     '',
     `- ${String(paths)} paths, ${String(symbols)} Read symbols, ${String(typeNames)} type names and ${String(citations)} citations found at the base commit or HEAD.`,
     `- ${String(breaks)} broken names whose every user at HEAD a task up to the breaking one declares.`,
     `- ${String(addedByPlan)} names the plan itself adds: a Create or Test file, or a name the plan defines.`,
     '',
-    `## Not checked (${String(report.skipped.length)})`,
-    '',
-    ...(report.skipped.length > 0
-      ? report.skipped.map(item => `- Line ${String(item.line)}, ${item.task}: \`${item.token}\` is ${item.reason}.`)
-      : ['None.']),
-    '',
+    ...section(
+      'Not checked',
+      report.skipped.map(item => `- Line ${String(item.line)}, ${item.task}: \`${item.token}\` is ${item.reason}.`),
+    ),
   ].join('\n');
 }
 
 /** A committed tree, read through git. Throws when `rev` names no commit. */
 export function createGitTree(rev: string): Tree {
   const files = new Set(git(['ls-tree', '-r', '--name-only', '-z', rev]).split('\0').filter(Boolean));
-  const folders = new Set<string>();
-  for (const file of files) {
-    for (let end = file.lastIndexOf('/'); end > 0; end = file.lastIndexOf('/', end - 1)) {
-      folders.add(file.slice(0, end));
-    }
-  }
-  const contents = new Map<string, string>();
+  const folders = new Set(
+    [...files].flatMap(file =>
+      file
+        .split('/')
+        .slice(0, -1)
+        .map((_, index, parts) => parts.slice(0, index + 1).join('/')),
+    ),
+  );
   const sorted = [...files].sort();
+  const contents = new Map<string, string>();
   return {
     hasPath: path => files.has(path) || folders.has(path),
     listFilesNamed: name => sorted.filter(file => file === name || file.endsWith(`/${name}`)),
@@ -684,10 +589,7 @@ export function createGitTree(rev: string): Tree {
         maxBuffer: 1 << 26,
       });
       // git grep exits 1 when nothing matches.
-      if (result.status === 1) {
-        return [];
-      }
-      if (result.status !== 0) {
+      if (result.status !== 0 && result.status !== 1) {
         throw new Error(`git grep failed: ${result.stderr.trim()}`);
       }
       return result.stdout
@@ -696,43 +598,7 @@ export function createGitTree(rev: string): Tree {
         .map(line => line.slice(rev.length + 1))
         .sort();
     },
-    hasWord: word => {
-      const result = spawnSync('git', ['grep', '-q', '-w', '-F', '-e', word, rev, '--']);
-      if (result.status !== 0 && result.status !== 1) {
-        throw new Error(`git grep failed: ${result.stderr.toString().trim()}`);
-      }
-      return result.status === 0;
-    },
   };
-}
-
-/** The npm packages any tracked `package.json` of the trees lists. Throws when one is not valid JSON. */
-export function listDependencies(trees: Tree[]): Set<string> {
-  const names = new Set<string>();
-  for (const tree of trees) {
-    for (const file of tree.listFilesNamed('package.json')) {
-      const manifest = JSON.parse(tree.readFile(file) ?? '{}') as Record<string, unknown>;
-      for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
-        const listed = manifest[field];
-        if (typeof listed === 'object' && listed !== null) {
-          Object.keys(listed).forEach(name => names.add(name));
-        }
-      }
-    }
-  }
-  return names;
-}
-
-/** The type names TypeScript declares in its own libraries. Throws when TypeScript is not installed. */
-export function loadBuiltinTypeNames(): Set<string> {
-  const lib = join(pathDirname(createRequire(import.meta.url).resolve('typescript/package.json')), 'lib');
-  const names = new Set<string>();
-  for (const file of readdirSync(lib).filter(name => /^lib\..*\.d\.ts$/.test(name))) {
-    for (const match of readFileSync(join(lib, file), 'utf8').matchAll(/\b[A-Z][\w$]*/g)) {
-      names.add(match[0]);
-    }
-  }
-  return names;
 }
 
 /** The working tree, for paths git ignores. */
@@ -743,6 +609,16 @@ export function createDisk(): Disk {
   };
 }
 
+/** The type names TypeScript declares in its own libraries. Throws when TypeScript is not installed. */
+export function loadBuiltinTypeNames(): Set<string> {
+  const lib = join(pathDirname(createRequire(import.meta.url).resolve('typescript/package.json')), 'lib');
+  return new Set(
+    readdirSync(lib)
+      .filter(name => /^lib\..*\.d\.ts$/.test(name))
+      .flatMap(name => [...readFileSync(join(lib, name), 'utf8').matchAll(/\b[A-Z][\w$]*/g)].map(match => match[0])),
+  );
+}
+
 /** The section each line sits in: its task, else the nearest heading above it at the task headings' level or higher. */
 function labelLines(lines: string[]): string[] {
   let label = 'preamble';
@@ -751,20 +627,18 @@ function labelLines(lines: string[]): string[] {
   return lines.map(line => {
     if (line.trimStart().startsWith('```')) {
       inFence = !inFence;
-      return label;
     }
     const heading = inFence ? null : HEADING.exec(line);
-    if (!heading) {
-      return label;
-    }
-    const level = line.indexOf(' ');
-    const task = TASK_HEADING.exec(line);
-    if (task) {
-      label = `Task ${task[1] ?? ''}`;
-      taskLevel = level;
-    } else if (level <= taskLevel) {
-      label = `section "${heading[1] ?? ''}"`;
-      taskLevel = Infinity;
+    if (heading) {
+      const level = line.indexOf(' ');
+      const task = TASK_HEADING.exec(line);
+      if (task) {
+        label = `Task ${task[1] ?? ''}`;
+        taskLevel = level;
+      } else if (level <= taskLevel) {
+        label = `section "${heading[1] ?? ''}"`;
+        taskLevel = Infinity;
+      }
     }
     return label;
   });
@@ -778,27 +652,17 @@ function git(args: string[]): string {
   return result.stdout;
 }
 
-function normalizePath(token: string): string {
-  return token.replace(/:\d+(?:-\d+)?$/, '').replace(/\/$/, '');
-}
-
 function dirname(path: string): string {
   return path.slice(0, path.lastIndexOf('/'));
 }
 
-function describeEntry(entry: ReadEntry): string {
-  return `entry at line ${String(entry.line)}`;
+function quote(text: string): string {
+  return `\`${text}\``;
 }
 
-function listFiles(files: string[], max = 5): string {
-  if (files.length === 0) {
-    return 'none of them is in the repo';
-  }
-  const shown = files
-    .slice(0, max)
-    .map(file => `\`${file}\``)
-    .join(', ');
-  return files.length > max ? `${shown} and ${String(files.length - max)} more` : shown;
+function listItems(items: string[], max: number): string {
+  const more = items.length > max ? ` and ${String(items.length - max)} more` : '';
+  return `${items.slice(0, max).join(', ')}${more}`;
 }
 
 /** The line without its string literals and comments, so their words are not read as code. */
@@ -812,91 +676,8 @@ function stripCode(line: string): string {
     .replace(/\/\*.*?\*\//g, '');
 }
 
-function define(defined: Map<string, number>, name: string, line: number): void {
-  if (!defined.has(name)) {
-    defined.set(name, line);
-  }
-}
-
-function defineGenerics(defined: Map<string, number>, generics: string | undefined, line: number): void {
-  for (const generic of (generics ?? '').split(',')) {
-    const name = /^\s*([A-Za-z_$][\w$]*)/.exec(generic)?.[1];
-    if (name !== undefined) {
-      define(defined, name, line);
-    }
-  }
-}
-
-/** `declarationsOnly` reads only keyword declarations, such as `type X = ...`, for prose that wraps code. */
-function addCodeDefinitions(
-  defined: Map<string, number>,
-  code: string,
-  line: number,
-  { declarationsOnly = false } = {},
-): void {
-  for (const match of code.matchAll(DECLARATION)) {
-    define(defined, match[1] ?? '', line);
-    defineGenerics(defined, match[2], line);
-  }
-  if (declarationsOnly) {
-    return;
-  }
-  for (const match of [...code.matchAll(DESTRUCTURING), ...code.matchAll(EXPORT_LIST)]) {
-    for (const name of (match[1] ?? '').matchAll(/[A-Za-z_$][\w$]*/g)) {
-      define(defined, name[0], line);
-    }
-  }
-  const property = PROPERTY.exec(code)?.[1];
-  if (property !== undefined && !KEYWORDS.has(property)) {
-    define(defined, property, line);
-  }
-  // A call such as `run(task);` has the shape of a method too, so a method needs a return type or a body.
-  const method = METHOD.exec(code);
-  const name = method?.[1];
-  if (
-    method &&
-    name !== undefined &&
-    !KEYWORDS.has(name) &&
-    (method[3] !== undefined || code.trimEnd().endsWith('{'))
-  ) {
-    define(defined, name, line);
-  }
-}
-
-function addSignature(defined: Map<string, number>, token: string, line: number): void {
-  const signature = SIGNATURE.exec(token);
-  const name = signature?.[1];
-  if (name !== undefined && !KEYWORDS.has(name)) {
-    define(defined, name, line);
-    defineGenerics(defined, signature?.[2], line);
-  }
-}
-
-function addTypeNames(typeNames: Named[], code: string, at: Location): void {
-  for (const match of code.matchAll(TYPE_NAME)) {
-    typeNames.push({ ...at, name: match[0] });
-  }
-}
-
-function addImports(imported: Map<string, string>, line: string): void {
-  const match = /^\s*import\s+(?:type\s+)?(.*?)\s+from\s+['"]([^'"]+)['"]/.exec(line);
-  const from = match?.[2] ?? '';
-  // A relative or workspace import names repo code, which the tree lookups cover.
-  if (match === null || from.startsWith('.') || from.startsWith('/') || from.startsWith('@dotli/')) {
-    return;
-  }
-  for (const name of (match[1] ?? '').replace(/\btype\b/g, '').matchAll(/[A-Za-z_$][\w$]*/g)) {
-    if (name[0] !== 'as') {
-      imported.set(name[0], from);
-    }
-  }
-}
-
 function hasWord(text: string | undefined, word: string): boolean {
-  if (text === undefined) {
-    return false;
-  }
-  return new RegExp(`(?<![A-Za-z0-9_$])${word.replace(/\$/g, '\\$')}(?![A-Za-z0-9_$])`).test(text);
+  return text !== undefined && new RegExp(`(?<![\\w$])${word.replace(/\$/g, '\\$')}(?![\\w$])`).test(text);
 }
 
 function hasHeading(content: string, cited: string): boolean {
@@ -905,18 +686,16 @@ function hasHeading(content: string, cited: string): boolean {
   const targets = new Set(
     content
       .split('\n')
-      .map(line => HEADING.exec(line)?.[1] ?? LABEL_LINE.exec(line)?.[1])
-      .filter((target): target is string => target !== undefined)
+      .flatMap(line => HEADING.exec(line)?.[1] ?? LABEL_LINE.exec(line)?.[1] ?? [])
       .map(clean),
   );
   // A citation may add text after its target, as in "§ Code style, Tests:" or "§ Errors: \"quoted rule\"", and a target
   // may hold a comma or a colon itself, so every prefix that ends before one of those marks is a candidate.
   const ends = [...cited.matchAll(/[,:]| "| \(/g)].map(mark => mark.index);
-  const candidates = [cited, ...ends.map(end => cited.slice(0, end))].map(clean);
-  return candidates.some(candidate => candidate !== '' && targets.has(candidate));
+  return [cited, ...ends.map(end => cited.slice(0, end))].map(clean).some(item => item !== '' && targets.has(item));
 }
 
-function listCitations(text: string, lines: string[], labels: string[]): Citation[] {
+function listCitations(text: string, lines: string[], labels: string[]): PlanNames['citations'] {
   // Blank fenced code and join wrapped lines without moving any offset, so an offset still maps to its line.
   let inFence = false;
   const flat = lines
@@ -939,14 +718,13 @@ if (import.meta.main) {
   const baseFlag = args.indexOf('--base');
   const baseRev = baseFlag >= 0 ? args[baseFlag + 1] : 'HEAD';
   const positional = args.filter((arg, index) => !arg.startsWith('--') && !(baseFlag >= 0 && index === baseFlag + 1));
-  const unknownFlag = args.some(arg => arg.startsWith('--') && arg !== '--base');
   const planPath = positional[0];
   if (
     planPath === undefined ||
     positional.length > 1 ||
     baseRev === undefined ||
     baseRev.startsWith('--') ||
-    unknownFlag
+    args.some(arg => arg.startsWith('--') && arg !== '--base')
   ) {
     console.error('Usage: node scripts/checkPlanNames.ts <plan> [--base <rev>]');
     process.exit(1);
@@ -957,18 +735,15 @@ if (import.meta.main) {
     const baseTree = createGitTree(base);
     const headTree = head === base ? baseTree : createGitTree(head);
     const topLevel = new Set(
-      [
-        ...git(['ls-tree', '--name-only', base]).split('\n'),
-        ...git(['ls-tree', '--name-only', head]).split('\n'),
-      ].filter(Boolean),
+      [base, head].flatMap(rev => git(['ls-tree', '--name-only', rev]).split('\n')).filter(Boolean),
     );
     const refs = git(['for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads', 'refs/remotes']).split('\n');
     // A remote branch is also named without its remote, as in `main` for `origin/main`.
     const branches = new Set(refs.filter(Boolean).flatMap(name => [name, name.slice(name.indexOf('/') + 1)]));
-    const plan = parsePlan(readFileSync(planPath, 'utf8'), topLevel, branches, listDependencies([baseTree, headTree]));
+    const plan = parsePlan(readFileSync(planPath, 'utf8'), topLevel, branches);
     if (plan.declared.length === 0) {
       throw new Error(
-        'found no "- Create|Modify|Test|Delete|Rename|Move: `path`" line, so the plan does not follow the plan format',
+        'found no "- Create|Modify|Test|Delete|Rename|Move:" bullet, so the plan does not follow the plan format',
       );
     }
     const report = checkPlanNames(plan, baseTree, headTree, createDisk(), loadBuiltinTypeNames());
