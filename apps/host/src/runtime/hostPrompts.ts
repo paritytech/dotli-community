@@ -19,15 +19,6 @@ type AskPermissionParams = {
   allowOnce: boolean;
 };
 
-type ConfirmPreimageParams = {
-  /** The product that asks. */
-  label: string;
-  /** The preimage's size in bytes. */
-  size: number;
-  /** Ends the ask. */
-  signal: AbortSignal;
-};
-
 type ConfirmReviewParams<R extends string> = {
   /** The review the user answers. */
   dialog: ModalView<R>;
@@ -41,8 +32,6 @@ type ConfirmReviewParams<R extends string> = {
 export type HostPrompts = {
   /** Resolves the user's decision on `label`'s ask for `permission`. */
   askPermission: (params: AskPermissionParams) => Promise<PermissionPromptDecision>;
-  /** Resolves true when the user allows `label` to store a preimage of `size` bytes. */
-  confirmPreimage: (params: ConfirmPreimageParams) => Promise<boolean>;
   /** Resolves the result of the button the user chose. */
   confirmReview: <R extends string>(params: ConfirmReviewParams<R>) => Promise<R>;
   /** Shows the user a notification. */

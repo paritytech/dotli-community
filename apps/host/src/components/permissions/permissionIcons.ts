@@ -10,6 +10,7 @@ import { ClipboardIcon } from '../icons/ClipboardIcon.js';
 import { IdentityIcon } from '../icons/IdentityIcon.js';
 import { LocationIcon } from '../icons/LocationIcon.js';
 import { MicrophoneIcon } from '../icons/MicrophoneIcon.js';
+import { MotionIcon } from '../icons/MotionIcon.js';
 import { NfcIcon } from '../icons/NfcIcon.js';
 import { SignIcon } from '../icons/SignIcon.js';
 import { StatementIcon } from '../icons/StatementIcon.js';
@@ -21,6 +22,7 @@ const PERMISSION_ICONS: Readonly<Record<EnforceablePermissionName, Component<Ico
   Camera: CameraIcon,
   Microphone: MicrophoneIcon,
   Location: LocationIcon,
+  Motion: MotionIcon,
   Bluetooth: BluetoothIcon,
   NFC: NfcIcon,
   Clipboard: ClipboardIcon,

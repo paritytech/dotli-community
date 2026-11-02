@@ -199,46 +199,7 @@ describe('permission request', () => {
   });
 });
 
-describe('preimage submit', () => {
-  it('As a dotli user, I see the preimage dialog for my app and allow it and the submission goes ahead', async () => {
-    // When
-    const decision = prompts.confirmPreimage({ label: 'myapp', size: 2048, signal: createLiveSignal() });
-    const { view } = shownModal();
-    chooseModalButton('Allow');
-
-    // Then
-    expect(view.title).toBe('Submit Preimage');
-    expect(view.fields[0]).toEqual({ label: 'Application', value: withActiveTld('myapp') });
-    await expect(decision).resolves.toBe(true);
-  });
-
-  it('As a dotli user, I click the backdrop and then Cancel and only Cancel refuses the submission', async () => {
-    // Given
-    const decision = prompts.confirmPreimage({ label: 'myapp', size: 512, signal: createLiveSignal() });
-
-    // When
-    dismissModal();
-    const titleAfterBackdrop = shownModal().view.title;
-    chooseModalButton('Cancel');
-
-    // Then
-    expect(titleAfterBackdrop).toBe('Submit Preimage');
-    await expect(decision).resolves.toBe(false);
-  });
-
-  it('As a dotli integrator, I abort a preimage dialog and it rejects with AbortError and closes', async () => {
-    // Given
-    const controller = new AbortController();
-    const decision = prompts.confirmPreimage({ label: 'myapp', size: 10, signal: controller.signal });
-
-    // When
-    controller.abort();
-
-    // Then
-    await expect(decision).rejects.toMatchObject({ name: 'AbortError' });
-    expect(() => shownModal()).toThrow();
-  });
-
+describe('host prompt test id', () => {
   it("As a dotli developer, I open any host prompt and it carries the host's own test id", () => {
     // When
     void prompts.askPermission({ label: 'myapp', permission: 'Camera', signal: createLiveSignal(), allowOnce: false });

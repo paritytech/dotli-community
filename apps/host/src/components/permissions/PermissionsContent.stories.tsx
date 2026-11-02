@@ -80,7 +80,17 @@ async function expectPreset(id: string, modified: boolean): Promise<void> {
 const GROUPS = [
   {
     label: 'Device',
-    names: ['Notifications', 'Camera', 'Microphone', 'Location', 'Bluetooth', 'NFC', 'Clipboard', 'Biometrics'],
+    names: [
+      'Notifications',
+      'Camera',
+      'Microphone',
+      'Location',
+      'Motion',
+      'Bluetooth',
+      'NFC',
+      'Clipboard',
+      'Biometrics',
+    ],
   },
   { label: 'Account and chain', names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'] },
 ];

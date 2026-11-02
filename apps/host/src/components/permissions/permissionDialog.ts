@@ -10,6 +10,7 @@ const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
   Camera: 'Access your camera for photo and video capture',
   Microphone: 'Access your microphone for audio input',
   Location: 'Access your location for geolocation services',
+  Motion: "Read your device's motion and orientation sensors",
   Bluetooth: 'Connect to nearby Bluetooth devices',
   NFC: 'Read and write nearby NFC tags',
   Clipboard: 'Read text and data from your clipboard',

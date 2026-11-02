@@ -8,7 +8,6 @@ import type {
   CreateTransactionReview,
   IdentityDisclosureReview,
   PermissionDecision,
-  PreimageSubmitReview,
   ProductSubtreeReview,
   ResourceAllocationReview,
   SignPayloadReview,
@@ -42,7 +41,7 @@ import type { PhoneRequestTracker } from '../createPhoneRequestTracker.js';
 import { matchPhoneReview } from '../matchPhoneReview.js';
 
 /** The prompts a confirmation asks through and tells its outcome on. */
-type ConfirmationPrompts = Pick<HostPrompts, 'confirmPreimage' | 'confirmReview' | 'notify'>;
+type ConfirmationPrompts = Pick<HostPrompts, 'confirmReview' | 'notify'>;
 
 type ConfirmationCopy = {
   title: string;
@@ -58,8 +57,8 @@ type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismiss
 /** The step an answered review hands its place to, if any. */
 type ReviewHandoff = (decision: ConfirmationDecision) => ModalHandoff | undefined;
 
-/** PreimageSubmit gets its own modal. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' }>;
+/** The browser core serves no NFT purses, so a drain review is refused before any modal. */
+type ModalReview = Exclude<UserConfirmationReview, { tag: 'NftPurseDrain' }>;
 
 type Params = {
   /** The product the confirmations speak for. */
@@ -117,13 +116,6 @@ type CreateTransactionPayloadFieldsParams = {
   payload: ProductAccountTxPayload | LegacyAccountTxPayload;
 };
 
-type HandlePreimageSubmitReviewParams = {
-  label: string;
-  review: PreimageSubmitReview;
-  signal: AbortSignal;
-  prompts: ConfirmationPrompts;
-};
-
 type CreatePhoneWaitHandoffParams = {
   label: string;
   review: ModalReview;
@@ -135,8 +127,8 @@ type CreatePhoneWaitHandoffParams = {
 
 /**
  * Answers the core's per-action reviews and permission reviews by showing them in the page's prompt queue. A dismissed
- * permission review, a dismissed identity disclosure and a cancelled preimage submit permission reject with their
- * error texts.
+ * permission review and a dismissed identity disclosure reject with their error texts. A review of a request this
+ * host does not serve is refused without a modal.
  */
 export function createUserConfirmationAdapters({
   label,
@@ -159,23 +151,19 @@ export function createUserConfirmationAdapters({
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
     confirmUserAction: review =>
-      modalScope.enqueue(async (signal, hold) =>
-        review.tag === 'PreimageSubmit'
-          ? handlePreimageSubmitReview({ label, review: review.value, signal, prompts })
-          : (await confirm({ review, signal, allowOnce: false, hold })) === 'accepted',
-      ),
-    // The core stores AllowAlways and Deny, and honours AllowOnce for this request only.
+      review.tag === 'NftPurseDrain'
+        ? Promise.resolve(false)
+        : modalScope.enqueue(
+            async (signal, hold) => (await confirm({ review, signal, allowOnce: false, hold })) === 'accepted',
+          ),
+    // The core stores AllowAlways and Deny and decides how long AllowOnce lasts. A drain review is refused by a
+    // rejection, since a Deny would be stored.
     confirmPermission: review =>
-      modalScope.enqueue(async (signal, hold) => {
-        if (review.tag !== 'PreimageSubmit') {
-          return getPermissionDecision(await confirm({ review, signal, allowOnce: true, hold }));
-        }
-        // The dialog's Allow lasts one request, so its Cancel does too, where a Deny would be stored for good.
-        if (!(await handlePreimageSubmitReview({ label, review: review.value, signal, prompts }))) {
-          throw new Error(ERRORS.PREIMAGE_SUBMIT_CANCELLED);
-        }
-        return 'AllowOnce';
-      }),
+      review.tag === 'NftPurseDrain'
+        ? Promise.reject(new Error(ERRORS.UNSERVED_REQUEST))
+        : modalScope.enqueue(async (signal, hold) =>
+            getPermissionDecision(await confirm({ review, signal, allowOnce: true, hold })),
+          ),
   };
 }
 
@@ -524,15 +512,6 @@ function getConfirmationCopy(review: ModalReview): ConfirmationCopy {
     case 'ResourceAllocation':
       return { title: 'Resource Allocation', action: 'Allow' };
   }
-}
-
-function handlePreimageSubmitReview({
-  label,
-  review,
-  signal,
-  prompts,
-}: HandlePreimageSubmitReviewParams): Promise<boolean> {
-  return prompts.confirmPreimage({ label, size: Number(review.size), signal });
 }
 
 async function handleConfirmationReview(params: HandleConfirmationReviewParams): Promise<ConfirmationDecision> {

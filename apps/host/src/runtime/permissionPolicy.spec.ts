@@ -17,6 +17,7 @@ describe('isDevicePermission', () => {
     { name: 'Microphone', device: true },
     { name: 'Bluetooth', device: true },
     { name: 'Location', device: true },
+    { name: 'Motion', device: true },
     { name: 'Clipboard', device: true },
     { name: 'Biometrics', device: true },
     { name: 'NFC', device: true },
@@ -74,7 +75,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(listed).toEqual([]);
   });
 
-  it('As a user, I open the permissions menu and see the eight device permissions, then the four app permissions', () => {
+  it('As a user, I open the permissions menu and see the nine device permissions, then the four app permissions', () => {
     // Given the permissions the menu lists, in order
     const listed = ALL_PERMISSIONS;
 
@@ -89,6 +90,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
       'Camera',
       'Microphone',
       'Location',
+      'Motion',
       'Bluetooth',
       'NFC',
       'Clipboard',
@@ -96,8 +98,8 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     ]);
     expect(app).toEqual(['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit']);
     expect(groups).toEqual([
-      ...ALL_PERMISSIONS.slice(0, 8).map(() => 'device'),
-      ...ALL_PERMISSIONS.slice(8).map(() => 'app'),
+      ...ALL_PERMISSIONS.slice(0, 9).map(() => 'device'),
+      ...ALL_PERMISSIONS.slice(9).map(() => 'app'),
     ]);
   });
 });

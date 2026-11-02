@@ -29,6 +29,8 @@ export const DEVICE_PERMISSION_POLICY: Partial<Record<DevicePermissionName, stri
   Camera: 'camera',
   Microphone: 'microphone',
   Location: 'geolocation',
+  // Device motion and orientation events need both sensors.
+  Motion: 'accelerometer; gyroscope',
   Bluetooth: 'bluetooth',
   // Write is always allowed, read needs consent.
   Clipboard: 'clipboard-read',
@@ -56,6 +58,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'Camera', label: 'Camera', group: 'device' },
   { name: 'Microphone', label: 'Microphone', group: 'device' },
   { name: 'Location', label: 'Location', group: 'device' },
+  { name: 'Motion', label: 'Motion', group: 'device' },
   { name: 'Bluetooth', label: 'Bluetooth', group: 'device' },
   { name: 'NFC', label: 'NFC', group: 'device' },
   { name: 'Clipboard', label: 'Clipboard', group: 'device' },

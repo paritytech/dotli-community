@@ -16,6 +16,7 @@ export const STORY_PERMISSIONS: readonly MenuPermission[] = [
   { name: 'Camera', label: 'Camera', group: 'device' },
   { name: 'Microphone', label: 'Microphone', group: 'device' },
   { name: 'Location', label: 'Location', group: 'device' },
+  { name: 'Motion', label: 'Motion', group: 'device' },
   { name: 'Bluetooth', label: 'Bluetooth', group: 'device' },
   { name: 'NFC', label: 'NFC', group: 'device' },
   { name: 'Clipboard', label: 'Clipboard', group: 'device' },

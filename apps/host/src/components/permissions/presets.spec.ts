@@ -30,6 +30,7 @@ describe('permission presets', () => {
       Camera: 'granted',
       Microphone: 'granted',
       Location: 'ask',
+      Motion: 'ask',
       Bluetooth: 'ask',
       NFC: 'ask',
       Clipboard: 'granted',
@@ -51,44 +52,45 @@ describe('permission presets', () => {
   });
 
   it.each<[string, Preset, Partial<Record<EnforceablePermissionName, PermissionStatus>>, number[], Preset]>([
-    ['Secure with Location denied', SECURE, { Location: 'denied' }, [11, 1, 9, 13], SECURE],
-    ['Secure with Camera allowed', SECURE, { Camera: 'granted' }, [13, 1, 7, 11], SECURE],
+    ['Secure with Location denied', SECURE, { Location: 'denied' }, [12, 1, 9, 14], SECURE],
+    ['Secure with Camera allowed', SECURE, { Camera: 'granted' }, [14, 1, 7, 12], SECURE],
     [
       'Secure with Notifications, Clipboard, Camera and Microphone allowed',
       SECURE,
       { Notifications: 'granted', Clipboard: 'granted', Camera: 'granted', Microphone: 'granted' },
-      [16, 4, 4, 8],
+      [17, 4, 4, 9],
       SECURE,
     ],
-    ['Trusted with Location allowed', TRUSTED, { Location: 'granted' }, [21, 9, 1, 3], TRUSTED],
+    ['Trusted with Location allowed', TRUSTED, { Location: 'granted' }, [22, 9, 1, 4], TRUSTED],
     [
       'Trusted with Location and Bluetooth allowed',
       TRUSTED,
       { Location: 'granted', Bluetooth: 'granted' },
-      [22, 10, 2, 2],
+      [23, 10, 2, 3],
       TRUSTED,
     ],
     [
       'Trusted with Location, Bluetooth and NFC allowed',
       TRUSTED,
       { Location: 'granted', Bluetooth: 'granted', NFC: 'granted' },
-      [23, 11, 3, 1],
+      [24, 11, 3, 2],
       UNLIMITED,
     ],
-    ['Unlimited with Camera denied', UNLIMITED, { Camera: 'denied' }, [22, 12, 6, 2], UNLIMITED],
-    ['Restricted with Camera at Ask', RESTRICTED, { Camera: 'ask' }, [1, 11, 19, 23], RESTRICTED],
+    ['Unlimited with Camera denied', UNLIMITED, { Camera: 'denied' }, [24, 13, 7, 2], UNLIMITED],
+    ['Restricted with Camera at Ask', RESTRICTED, { Camera: 'ask' }, [1, 12, 20, 25], RESTRICTED],
     [
-      'Secure with six device permissions denied',
+      'Secure with seven device permissions denied',
       SECURE,
       {
         Camera: 'denied',
         Microphone: 'denied',
         Location: 'denied',
+        Motion: 'denied',
         Bluetooth: 'denied',
         NFC: 'denied',
         Biometrics: 'denied',
       },
-      [6, 6, 14, 18],
+      [6, 7, 15, 20],
       RESTRICTED,
     ],
   ])('As the slider, %s reads as the closest preset, modified', (_case, base, changes, distances, closest) => {
@@ -106,7 +108,13 @@ describe('permission presets', () => {
   it('As the slider, Trusted with every asked device permission allowed reads as Unlimited, not modified', () => {
     // When
     const shown = presetOf(
-      from(TRUSTED, { Location: 'granted', Bluetooth: 'granted', NFC: 'granted', Biometrics: 'granted' }),
+      from(TRUSTED, {
+        Location: 'granted',
+        Motion: 'granted',
+        Bluetooth: 'granted',
+        NFC: 'granted',
+        Biometrics: 'granted',
+      }),
     );
 
     // Then

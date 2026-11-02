@@ -85,6 +85,9 @@ export function createHostCallbacks({
       featureSupported: createFeatureSupported(),
       supportedChains: createSupportedChains(),
     },
+    // Every chain builds as V4. The V5-only extrinsics (allowances, PGAS claims, dotNS registrations) are built by
+    // native cores alone, and Bulletin preimages, the browser core's own, are V4 on every host.
+    extrinsicVersion: { transactionExtensionVersions: () => Promise.resolve({ chains: [] }) },
     productStorage: {
       read: localStorageCallbacks.read,
       write: localStorageCallbacks.write,
