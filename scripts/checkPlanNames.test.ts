@@ -24,6 +24,7 @@ function createFakeTree(files: Record<string, string>): Tree {
       Object.keys(files)
         .filter(file => file === name || file.endsWith(`/${name}`))
         .sort(),
+    hasWord: word => Object.values(files).some(text => isWordIn(text, word)),
   };
 }
 
@@ -36,9 +37,15 @@ function createFakeDisk(ignored: Record<string, boolean>): Disk {
 
 const NO_DISK = createFakeDisk({});
 
-function check(text: string, files: Record<string, string>, disk: Disk = NO_DISK) {
+const BUILTINS = new Set(['Promise', 'Record']);
+
+function check(
+  text: string,
+  files: Record<string, string>,
+  { disk = NO_DISK, dependencies = new Set<string>() }: { disk?: Disk; dependencies?: Set<string> } = {},
+) {
   const tree = createFakeTree(files);
-  return checkPlanNames(parsePlan(text, TOP_LEVEL, NO_BRANCHES), tree, tree, disk);
+  return checkPlanNames(parsePlan(text, TOP_LEVEL, NO_BRANCHES, dependencies), tree, tree, disk, BUILTINS);
 }
 
 describe('parsePlan', () => {
@@ -107,7 +114,65 @@ describe('parsePlan', () => {
       plan.skipped.map(item => `${item.token} is ${item.reason}`),
       ['apps/feature-x is a branch name', 'docs/** is a pattern, not a path'],
     );
-    assert.ok(plan.planWords.has('fenced'));
+  });
+
+  it('As a plan reviewer, I check declared lines whose label holds code or whose list wraps and get every file they declare', () => {
+    // Given
+    const text = [
+      '- Modify (script, `f(x)` becomes `x`): `apps/host/src/a.ts`,',
+      '  `apps/host/src/b.ts` and `c.ts`',
+      '- Modify (peer): the `package.json` of each package',
+      '- Rules: (docs/code/style.md § Errors), `apps/host/src/read.ts`',
+    ].join('\n');
+
+    // When
+    const plan = parsePlan(text, TOP_LEVEL, NO_BRANCHES);
+
+    // Then
+    assert.deepEqual(
+      plan.declared.map(file => `${file.verb} ${file.path}`),
+      ['Modify apps/host/src/a.ts', 'Modify apps/host/src/b.ts', 'Modify apps/host/src/c.ts', 'Modify package.json'],
+    );
+    assert.deepEqual(
+      plan.paths.map(item => item.path),
+      ['apps/host/src/read.ts'],
+    );
+  });
+
+  it('As a plan reviewer, I check a plan that defines names in code and signatures and get only those as defined', () => {
+    // Given
+    const text = [
+      '```ts',
+      'type Made<TValue> = {',
+      '  size?: number;',
+      '};',
+      'export function build() {}',
+      'run(task);',
+      '```',
+      '',
+      '**Interfaces:**',
+      '',
+      '- Produces: `createX(params): Missing`, `ReadableAtom<Other>`, `INITIAL: Snapshot`, and `Source<T>` = `{ get(): T }`.',
+    ].join('\n');
+
+    // When
+    const plan = parsePlan(text, TOP_LEVEL, NO_BRANCHES);
+
+    // Then
+    assert.deepEqual([...plan.defined.keys()].sort(), [
+      'INITIAL',
+      'Made',
+      'Source',
+      'T',
+      'TValue',
+      'build',
+      'createX',
+      'size',
+    ]);
+    assert.deepEqual(
+      [...new Set(plan.typeNames.map(type => type.name))],
+      ['Made', 'TValue', 'Missing', 'ReadableAtom', 'Other', 'Snapshot', 'Source'],
+    );
   });
 
   it('As a plan reviewer, I check a citation that a line break splits and get it whole, on the line it starts', () => {
@@ -203,7 +268,7 @@ describe('checkPlanNames', () => {
     assert.deepEqual(
       report.notFound.map(item => item.text),
       [
-        "`nowhere`, in the entry at line 4, is a word in no tracked file at the base commit or HEAD, and not in the plan's code blocks, Interfaces or Produces lines.",
+        '`nowhere`, in the entry at line 4, is a word in no tracked file at the base commit or HEAD, and the plan does not define it.',
       ],
     );
   });
@@ -232,7 +297,7 @@ describe('checkPlanNames', () => {
       report.notFound.map(item => item.text),
       [
         'Modify `page/missing.ts` matches no tracked file name, and no earlier task creates it.',
-        "`brandNew`, in the entry at line 5, is a word in no tracked file at the base commit or HEAD, and not in the plan's code blocks, Interfaces or Produces lines.",
+        '`brandNew`, in the entry at line 5, is a word in no tracked file at the base commit or HEAD, and the plan does not define it.',
       ],
     );
   });
@@ -248,7 +313,7 @@ describe('checkPlanNames', () => {
     const disk = createFakeDisk({ 'docs/_plans/x-design.md': true, 'docs/_plans/gone-design.md': false });
 
     // When
-    const report = check(text, { 'apps/host/src/a.ts': '' }, disk);
+    const report = check(text, { 'apps/host/src/a.ts': '' }, { disk });
 
     // Then
     assert.deepEqual(
@@ -297,6 +362,110 @@ describe('checkPlanNames', () => {
     );
   });
 
+  it('As a plan reviewer, I check the type names a plan uses and only the one nothing provides is not found', () => {
+    // Given
+    const text = [
+      '### Task 1: Types',
+      '',
+      '- Modify: `apps/host/src/a.ts`',
+      '- Read: `apps/host/src/a.ts`',
+      '- Only `WritableAtom` MAY be imported from `nanostores`. Both derive from `speaker`.',
+      '',
+      '```ts',
+      "import { atom } from 'nanostores';",
+      'type Made = Promise<Tracked>;',
+      '```',
+      '',
+      '**Interfaces:**',
+      '',
+      '- Produces: `createX(store: WritableAtom<Made>): NetworkSnapshot`',
+    ].join('\n');
+
+    // When
+    const report = check(text, { 'apps/host/src/a.ts': 'type Tracked = 1;' });
+
+    // Then
+    assert.deepEqual(
+      report.notFound.map(item => item.text),
+      [
+        '`NetworkSnapshot`, a type name the plan uses, is a word in no tracked file at the base commit or HEAD and no TypeScript built-in, the plan does not define it, and the plan names no package it comes from.',
+      ],
+    );
+    assert.deepEqual(
+      report.skipped.map(item => `${item.token} is ${item.reason}`),
+      ['WritableAtom is from `nanostores`, as the plan says'],
+    );
+  });
+
+  it('As a plan reviewer, I check a Read symbol only the plan defines and get it with the line that defines it', () => {
+    // Given
+    const text = [
+      '### Task 1: Add',
+      '',
+      '- Create: `apps/host/src/b.ts`',
+      '- Read: `apps/host/src/a.ts`: `added`, `x`',
+      '',
+      '**Interfaces:**',
+      '',
+      '- Produces: `added(): void`',
+    ].join('\n');
+
+    // When
+    const report = check(text, { 'apps/host/src/a.ts': '' });
+
+    // Then
+    assert.deepEqual(
+      report.definedByPlan.map(item => item.text),
+      ['`added`, in the entry at line 4, is a word in none of the files it names. The plan defines it at line 8.'],
+    );
+    assert.deepEqual(
+      report.skipped.map(item => `${item.token} is ${item.reason}`),
+      ['x is a one-letter name, read as a placeholder'],
+    );
+  });
+
+  it('As a plan reviewer, I check the names tasks break and get the users no task up to the breaking one declares', () => {
+    // Given
+    const text = [
+      '### Task 1: Retype',
+      '',
+      '- Modify: `packages/shared/src/cell.ts`, `apps/host/src/one.ts`',
+      '- Breaks: `StatusCell.set`',
+      '- Read: `packages/shared/src/cell.ts`',
+      '',
+      '### Task 2: Drop',
+      '',
+      '- Delete: `packages/shared/src/makeStatus.ts`, `packages/shared/src/useStore.ts`',
+      '- Create: `packages/stores/src/useStore.ts`',
+      '- Read: `packages/shared/src/cell.ts`',
+      '',
+      '### Task 3: Later',
+      '',
+      '- Modify: `apps/host/src/two.ts`',
+      '- Read: `packages/shared/src/cell.ts`',
+    ].join('\n');
+    const files = {
+      'packages/shared/src/cell.ts': 'export type StatusCell = {};',
+      'packages/shared/src/makeStatus.ts': 'export function makeStatus() {}',
+      'packages/shared/src/useStore.ts': 'export function useStore() {}',
+      'apps/host/src/one.ts': 'StatusCell makeStatus useStore',
+      'apps/host/src/two.ts': 'StatusCell makeStatus',
+      'apps/host/src/three.ts': 'makeStatus',
+    };
+
+    // When
+    const report = check(text, files);
+
+    // Then
+    assert.deepEqual(
+      report.notFound.map(item => item.text),
+      [
+        'Task 1 breaks `StatusCell`. `StatusCell` is a word at HEAD in 1 file only a later task declares: `apps/host/src/two.ts` (Task 3).',
+        'Task 2 deletes `packages/shared/src/makeStatus.ts`. `makeStatus` is a word at HEAD in 1 file no task declares: `apps/host/src/three.ts`. It is also in 1 file only a later task declares: `apps/host/src/two.ts` (Task 3).',
+      ],
+    );
+  });
+
   it('As a plan reviewer, I check a plan that names one missing path twice and get one entry with both lines', () => {
     // Given
     const text = [
@@ -336,7 +505,13 @@ describe('formatReport', () => {
     assert.match(text, /^- Result: 0 not found, 0 found elsewhere, 2 found\.$/m);
     assert.deepEqual(
       text.split('\n').filter(line => line.startsWith('## ')),
-      ['## Not found (0)', '## Found elsewhere (0)', '## Found (2)', '## Not checked (0)'],
+      [
+        '## Not found (0)',
+        '## Found elsewhere (0)',
+        '## Defined by the plan (0)',
+        '## Found (2)',
+        '## Not checked (0)',
+      ],
     );
   });
 });
