@@ -14,8 +14,7 @@ export type HostDialogTitle =
   | 'Product Account'
   | 'Resource Allocation'
   | 'Sign Message'
-  | 'Sign Transaction'
-  | 'Submit Preimage';
+  | 'Sign Transaction';
 
 /** The button that answers a host dialog. */
 export type HostAnswer = 'Always allow' | 'Allow' | 'Allow once' | 'Sign';

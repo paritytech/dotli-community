@@ -11,14 +11,13 @@ import type { HostPrompts, PermissionPromptDecision } from './hostPrompts.js';
 
 export type FakePrompt =
   | { kind: 'permission'; label: string; permission: EnforceablePermissionName; allowOnce: boolean }
-  | { kind: 'preimage'; label: string; size: number }
   | { kind: 'review'; dialog: ModalView<string> };
 
 type Pending = {
   /** The ask as it is now, or undefined once it is gone. A review reads its dialog from the store, which a handoff swaps. */
   prompt: () => FakePrompt | undefined;
   /** Answers the ask with `answer` and takes it off the queue. Never throws. */
-  settle: (answer: string | boolean) => void;
+  settle: (answer: string) => void;
 };
 
 type ShownPrompt = {
@@ -42,7 +41,6 @@ export function createFakePrompts() {
   const prompts: HostPrompts = {
     askPermission: ({ label, permission, signal, allowOnce }) =>
       ask({ kind: 'permission', label, permission, allowOnce }, signal),
-    confirmPreimage: ({ label, size, signal }) => ask({ kind: 'preimage', label, size }, signal),
     async confirmReview({ dialog, signal, handoff }) {
       const opened = modals.open(dialog, { signal, handoff: outcome => handoff?.(outcome.result) });
       const id = modals.store.get().at(-1)?.id;
@@ -53,7 +51,7 @@ export function createFakePrompts() {
             return entry === undefined ? undefined : { kind: 'review', dialog: entry.view };
           },
           settle(answer) {
-            modals.settle(id, String(answer));
+            modals.settle(id, answer);
           },
         });
         wake();
@@ -88,8 +86,6 @@ export function createFakePrompts() {
     waitForNotices,
     /** Answers the permission prompt on screen. Throws when no permission prompt is on screen. */
     decide,
-    /** Answers the preimage prompt on screen. Throws when no preimage prompt is on screen. */
-    allowPreimage,
     /**
      * Settles the review on screen with `result`, or closes the step a review handed off to with it. Throws when no
      * review is on screen.
@@ -98,8 +94,8 @@ export function createFakePrompts() {
     /** Presses the review button with this label. Throws when no review with that button is on screen. */
     chooseReviewButton,
     /**
-     * A backdrop click or Escape: settles a review or permission prompt that allows it, and leaves a preimage one up.
-     * Throws when no ask is on screen.
+     * A backdrop click or Escape: settles a review or permission prompt that allows it. Throws when no ask is on
+     * screen.
      */
     dismiss,
   };
@@ -210,14 +206,6 @@ export function createFakePrompts() {
     entry.settle(decision);
   }
 
-  function allowPreimage(allowed: boolean): void {
-    const { entry, prompt } = getShownPrompt();
-    if (prompt.kind !== 'preimage') {
-      throw new Error(`expected a preimage prompt on screen, a ${prompt.kind} prompt is`);
-    }
-    entry.settle(allowed);
-  }
-
   function settleReview(result: string): void {
     getShownReview();
     getShownPrompt().entry.settle(result);
@@ -242,8 +230,6 @@ export function createFakePrompts() {
         if (prompt.dialog.dismissOnBackdrop && prompt.dialog.dismissResult !== undefined) {
           entry.settle(prompt.dialog.dismissResult);
         }
-        return;
-      case 'preimage':
         return;
     }
   }

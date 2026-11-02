@@ -82,6 +82,17 @@ const PRODUCT_ACCOUNT = { dotNsIdentifier: 'product.dot', derivationIndex: { tag
 const SIGNED: PhoneResult = { kind: 'ok', value: { signature: '0x01' } };
 const REJECTED: PhoneResult = { kind: 'domain', value: { tag: 'Rejected' } };
 
+const DRAIN_REVIEW: UserConfirmationReview = {
+  tag: 'NftPurseDrain',
+  value: {
+    callingProductId: 'truapi-playground.dot',
+    fromPurse: 1,
+    owner: { tag: 'Root' },
+    itemCount: 2,
+    destination: { tag: 'Purse', value: { purse: 2 } },
+  },
+};
+
 const SIGN_FOOTER: [string, ModalButtonVariant][] = [
   ['Cancel', 'danger'],
   ['Sign', 'primary'],
@@ -553,41 +564,28 @@ describe('user confirmation modal', () => {
     await expect(confirmation).rejects.toThrow('User dismissed identity disclosure dialog');
   });
 
-  it('As a user, I allow a preimage submission from its dedicated dialog and the host confirms it', async () => {
+  it('As a product in the browser, I ask to move NFT purse items and the host refuses with no dialog', async () => {
     // Given
     const { confirmUserAction } = createPageAdapters();
 
     // When
-    const confirmation = confirmUserAction({
-      tag: 'PreimageSubmit',
-      value: { size: 2048n },
-    });
-    await waitForModal();
-
-    // Then
-    expect(page.getShown()).toEqual({ kind: 'preimage', label: 'localhost:3000', size: 2048 });
-
-    // When
-    page.allowPreimage(true);
-
-    // Then
-    await expect(confirmation).resolves.toBe(true);
-  });
-
-  it('As a user, I cancel a preimage submission and the host denies it', async () => {
-    // Given
-    const { confirmUserAction } = createPageAdapters();
-    const confirmation = confirmUserAction({
-      tag: 'PreimageSubmit',
-      value: { size: 512n },
-    });
-    await waitForModal();
-
-    // When
-    page.allowPreimage(false);
+    const confirmation = confirmUserAction(DRAIN_REVIEW);
 
     // Then
     await expect(confirmation).resolves.toBe(false);
+    expect(page.listPending()).toEqual([]);
+  });
+
+  it('As a product in the browser, I ask for an NFT purse drain permission and the host refuses it unstored', async () => {
+    // Given
+    const { confirmPermission } = createPageAdapters();
+
+    // When
+    const decision = confirmPermission(DRAIN_REVIEW);
+
+    // Then
+    await expect(decision).rejects.toThrow('This host does not serve the request');
+    expect(page.listPending()).toEqual([]);
   });
 
   it.each<{ label: string; open: () => void; footer: [string, ModalButtonVariant][] }>([
@@ -707,14 +705,6 @@ describe('user confirmation modal', () => {
       close: dismissModal,
       error: 'User dismissed permission dialog',
     },
-    {
-      label: 'cancel a preimage permission and no denial',
-      review: { tag: 'PreimageSubmit', value: { size: 512n } },
-      close() {
-        page.allowPreimage(false);
-      },
-      error: 'User cancelled preimage submission',
-    },
   ])('As a user, I $label is recorded', async ({ review, close, error }) => {
     // Given a permission review on show
     const decision = createPageAdapters().confirmPermission(review);
@@ -725,21 +715,6 @@ describe('user confirmation modal', () => {
 
     // Then
     await expect(decision).rejects.toThrow(error);
-  });
-
-  it('As a user, I allow a preimage permission and it is allowed once, not remembered', async () => {
-    // Given
-    const decision = createPageAdapters().confirmPermission({
-      tag: 'PreimageSubmit',
-      value: { size: 512n },
-    });
-    await waitForModal();
-
-    // When
-    page.allowPreimage(true);
-
-    // Then
-    await expect(decision).resolves.toBe('AllowOnce');
   });
 
   it('As a user, I press Escape on a one-off review and it answers no without throwing', async () => {

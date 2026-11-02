@@ -10,7 +10,9 @@ export const ERRORS = {
   ALIAS_PERMISSION_DISMISSED: 'User dismissed alias permission dialog',
   IDENTITY_DISCLOSURE_DISMISSED: 'User dismissed identity disclosure dialog',
   PERMISSION_DIALOG_DISMISSED: 'User dismissed permission dialog',
+  /** @deprecated Nothing produces this. Kept because a product may still match on the text. */
   PREIMAGE_SUBMIT_CANCELLED: 'User cancelled preimage submission',
+  UNSERVED_REQUEST: 'This host does not serve the request',
   PERMISSION_PROMPT_RATE_LIMITED: 'Permission prompt rate limited',
   SCHEDULE_LIMIT_REACHED: 'ScheduleLimitReached',
   STORAGE_READ_FAILED: 'Failed to read from storage',

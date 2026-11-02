@@ -9,7 +9,6 @@ import type { HostPrompts } from './runtime/hostPrompts.js';
 import { isDevicePermission } from './runtime/permissionPolicy.js';
 import { modals, showNotification, type ModalHandoff, type ModalOutcome, type ModalView } from '@dotli/ui';
 import { permissionRequestDialog } from './components/permissions/permissionDialog.js';
-import { preimageSubmitDialog } from './components/permissions/preimageDialog.js';
 
 type Params = {
   /** Where the dialogs queue. The page's overlays by default. */
@@ -40,9 +39,6 @@ export function createHostPrompts({ present = modals.open, notify = showNotifica
       });
       return (await ask({ view: dialog, signal })).result;
     },
-    confirmPreimage: async ({ label, size, signal }) =>
-      (await ask({ view: preimageSubmitDialog({ app: withActiveTld(label), dataSize: size }), signal })).result ===
-      'allow',
     confirmReview: async ({ dialog, signal, handoff }) =>
       (await ask({ view: dialog, signal, handoff: outcome => handoff?.(outcome.result) })).result,
     notify,

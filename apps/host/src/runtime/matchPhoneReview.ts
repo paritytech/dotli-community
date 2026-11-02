@@ -132,7 +132,7 @@ export function matchPhoneReview(
     case 'AccountAlias':
     case 'CreateProof':
     case 'IdentityDisclosure':
-    case 'PreimageSubmit':
+    case 'NftPurseDrain':
     case 'StatementStoreProductSign':
       return undefined;
   }

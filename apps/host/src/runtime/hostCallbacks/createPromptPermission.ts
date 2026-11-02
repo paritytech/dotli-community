@@ -61,7 +61,8 @@ type LastingPromptDecision = Exclude<PermissionPromptDecision, 'dismissed' | 'gr
 
 /**
  * Answers the core's device and remote permission asks from the stored status, or else by asking the user in the
- * page's prompt queue. Rejects when the prompts go past the rate limit or the user dismisses the dialog.
+ * page's prompt queue. Rejects when the prompts go past the rate limit, the user dismisses the dialog, or the
+ * permission guards a request this host does not serve.
  */
 export function createPromptPermission({
   label,
@@ -88,27 +89,39 @@ export function createPromptPermission({
     _product: ProductContext,
     request: RemotePermissionRequest,
   ): Promise<PermissionDecision> {
-    const name = getGatedRemotePermissionName(request.permission.tag);
-    if (name === null) {
-      return 'AllowOnce';
+    const gate = getRemotePermissionGate(request.permission.tag);
+    switch (gate.kind) {
+      case 'grant':
+        return 'AllowOnce';
+      case 'refuse':
+        throw new Error(ERRORS.UNSERVED_REQUEST);
+      case 'prompt':
+        return decidePromptPermission({ ...options, name: gate.name, kind: 'Remote' }, modalScope);
     }
-    return decidePromptPermission({ ...options, name, kind: 'Remote' }, modalScope);
   }
 
   return { devicePermission, remotePermission };
 }
 
+/** How the host answers one remote permission: by asking the user, or at once. */
+type RemotePermissionGate =
+  { kind: 'prompt'; name: EnforceablePermissionName } | { kind: 'grant' } | { kind: 'refuse' };
+
 // The host cannot enforce `Remote` (HTTP/WS) or `WebRtc`, since the sandbox cannot reliably intercept either. A prompt
-// would offer a choice the host could not keep, so both are auto-granted.
-function getGatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePermissionName | null {
+// would offer a choice the host could not keep, so both are auto-granted. The browser core serves no balances and no
+// NFT purses, so their permissions are refused, by a rejection rather than a `Deny` the core would store.
+function getRemotePermissionGate(tag: RemotePermission['tag']): RemotePermissionGate {
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
     case 'StatementSubmit':
-      return tag;
+      return { kind: 'prompt', name: tag };
     case 'Remote':
     case 'WebRtc':
-      return null;
+      return { kind: 'grant' };
+    case 'BalanceAccess':
+    case 'NftPurseRead':
+      return { kind: 'refuse' };
   }
 }
 

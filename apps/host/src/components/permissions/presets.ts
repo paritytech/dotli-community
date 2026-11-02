@@ -51,6 +51,7 @@ export const TRUSTED: Preset = {
     Camera: 'granted',
     Microphone: 'granted',
     Location: 'ask',
+    Motion: 'ask',
     Bluetooth: 'ask',
     NFC: 'ask',
     Clipboard: 'granted',

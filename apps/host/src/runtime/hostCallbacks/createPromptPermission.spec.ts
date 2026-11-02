@@ -345,6 +345,8 @@ function getRequestKey(request: PermissionAuthorizationRequest): string {
       return 'IdentityDisclosure';
     case 'AccountAccess':
       return `AccountAccess:${request.value.targetProductId}`;
+    case 'CrossProductSignature':
+      return `CrossProductSignature:${request.value.targetProductId}:${request.value.kind}`;
   }
 }
 

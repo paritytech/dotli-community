@@ -136,6 +136,7 @@ function toAuthorizationRequest(permission: PermissionName): PermissionAuthoriza
     case 'Bluetooth':
     case 'NFC':
     case 'Location':
+    case 'Motion':
     case 'Clipboard':
     case 'OpenUrl':
     case 'Biometrics':
