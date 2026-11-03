@@ -33,7 +33,6 @@ export { ActionsContext } from './components/actions/actionsContext.js';
 export { PINNED } from './components/actions/fit.js';
 export type { TrackedLayer } from './components/floating/layerContext.js';
 export { LayerTracker, ModalFocusFallback } from './components/floating/layerContext.js';
-export { useStore } from './components/useStore.js';
 export type { Drags } from './components/createDrags.js';
 export { createDrags } from './components/createDrags.js';
 export { focusTrigger, isFocusLostOrInside } from './components/focus.js';

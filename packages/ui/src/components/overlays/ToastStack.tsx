@@ -4,7 +4,7 @@
 import { createEffect, createMemo, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { toasts } from '../../page/state/createToasts.js';
-import { useStore } from '../useStore.js';
+import { useStore } from '@dotli/stores-solid';
 import { CloseIcon } from '../icons/CloseIcon.js';
 import { ToastCard } from './ToastCard.js';
 import { getPileDepths, isScrollingToNewest, getVisibleToasts } from './toastPile.js';

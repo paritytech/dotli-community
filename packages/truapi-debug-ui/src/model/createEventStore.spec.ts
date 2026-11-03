@@ -1,11 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// `version()` says when `list()` needs re-reading, without diffing it. Its per-frame
+// `version` says when `list()` needs re-reading, without diffing it. Its per-frame
 // bookkeeping must follow the ring buffer exactly, at a cost proportional to what changed, not to what is retained.
 
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import { createManualTimers, nth } from '@dotli/shared/testing';
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { buildSystemEvent } from '../testing/buildSystemEvent.js';
@@ -85,7 +84,7 @@ describe('createEventStore()', () => {
   });
 });
 
-describe('createEventStore() version()', () => {
+describe('createEventStore() version.get()', () => {
   it.each([
     {
       change: 'insert a TrUAPI event',
@@ -109,13 +108,13 @@ describe('createEventStore() version()', () => {
     // Given
     const store = createEventStore({ capacity: 10 });
     store.insertTruapi(buildTruapiEvent({ requestId: 'r1' }));
-    const before = store.version();
+    const before = store.version.get();
 
     // When
     apply(store);
 
     // Then
-    expect(store.version()).toBe(before + 1);
+    expect(store.version.get()).toBe(before + 1);
   });
 
   it('As the debug panel, I insert an event that evicts another and the version goes up once', () => {
@@ -123,55 +122,52 @@ describe('createEventStore() version()', () => {
     const store = createEventStore({ capacity: 2 });
     store.insertTruapi(buildTruapiEvent({ requestId: 'r1' }));
     store.insertTruapi(buildTruapiEvent({ requestId: 'r2' }));
-    const beforePrune = store.version();
+    const beforePrune = store.version.get();
 
     // When: at capacity 2, this insert evicts r1's event and prunes it in the same notify
     store.insertTruapi(buildTruapiEvent({ requestId: 'r3' }));
 
     // Then
     expect(store.dropped()).toBe(1);
-    expect(store.version()).toBe(beforePrune + 1);
+    expect(store.version.get()).toBe(beforePrune + 1);
   });
 
   it('As the debug panel while paused, I insert events and they are dropped with the version unchanged', () => {
     // Given
     const store = createEventStore({ capacity: 10 });
     store.setPaused(true);
-    const afterPause = store.version();
+    const afterPause = store.version.get();
 
     // When
     store.insertTruapi(buildTruapiEvent({ requestId: 'r1' }));
     store.insertDotli(HEARTBEAT);
 
     // Then
-    expect(store.version()).toBe(afterPause);
+    expect(store.version.get()).toBe(afterPause);
     expect(store.list()).toHaveLength(0);
   });
 });
 
-describe('createEventStore() subscribe()', () => {
-  it('As the debug panel, I notify a view that throws and the next view still hears the change while the throw is reported', () => {
+describe('createEventStore() version.listen()', () => {
+  it('As the debug panel, I follow the version and hear each change once, with a count that only grows', () => {
     // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    const store = createEventStore({ capacity: 10 });
-    store.subscribe(() => {
-      throw new TypeError('view broke');
+    const store = createEventStore({ capacity: 1 });
+    const start = store.version.get();
+    const heard: number[] = [];
+    const unlisten = store.version.listen(version => {
+      heard.push(version - start);
     });
-    let heard = 0;
-    store.subscribe(() => {
-      heard += 1;
-    });
+    onTestFinished(unlisten);
 
-    // When
+    // When: the second insert evicts the first, and the repeated Pause changes nothing
+    store.insertTruapi(buildTruapiEvent({ requestId: 'r1' }));
+    store.insertTruapi(buildTruapiEvent({ requestId: 'r2' }));
+    store.setPaused(true);
+    store.setPaused(true);
     store.clear();
 
     // Then
-    expect(heard).toBe(1);
-    expect(captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'debug_panel.event_store' } }]);
-    expect(metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'TypeError', owner: 'debug_panel.event_store' },
-    ]);
+    expect(heard).toEqual([1, 2, 3, 4]);
   });
 });
 
@@ -286,14 +282,14 @@ describe('createEventStore() while paused', () => {
     const store = createEventStore({ capacity: 10 });
     store.setPaused(true);
     store.insertTruapi(buildTruapiEvent({ tag: 'sign_request', requestId: 'r1' }));
-    const before = store.version();
+    const before = store.version.get();
 
     // When
     store.insertTruapi(buildTruapiEvent({ tag: 'sign_response', requestId: 'r1' }));
 
     // Then
     expect(store.list()).toEqual([]);
-    expect(store.version()).toBe(before);
+    expect(store.version.get()).toBe(before);
   });
 
   it('As a developer who paused the debug panel, I get two replies to a recorded call and only the first is kept', () => {

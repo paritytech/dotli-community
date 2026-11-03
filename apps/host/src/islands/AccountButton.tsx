@@ -9,7 +9,7 @@ import { signingOutState } from '../runtime/state/signingOutState.js';
 import { walletModeState } from '../runtime/state/walletModeState.js';
 import { getProtocolOrigin } from '@dotli/protocol';
 import { getRouteUrl } from '../runtime/sessionHandoff/sessionRoute.js';
-import { useStore } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import { AccountItem } from '../components/account/AuthButton.js';
 import { authModalState } from '../state/authModalState.js';
 import { useAccount } from './account.js';

@@ -4,7 +4,7 @@
 // What the debug panel reads of the host page and asks of it, so the panel imports none of the page's stores or
 // layers.
 
-import type { ReadableStore } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import type { ArchiveFiles } from '@dotli/content';
 
 /** The product on show. Only a dotNS product has a CID. */
@@ -70,10 +70,10 @@ export type ArchiveLoader = (cid: string) => Promise<ArchiveFiles>;
 
 export type DebugPanelHost = {
   /** The Archive tab reads the files of the product on show. */
-  product: ReadableStore<HostProduct>;
+  product: ReadableAtom<HostProduct>;
   /** The Wallet tab shows the local wallet's account from it. */
-  auth: ReadableStore<HostAuth>;
-  walletMode: ReadableStore<HostWalletMode>;
+  auth: ReadableAtom<HostAuth>;
+  walletMode: ReadableAtom<HostWalletMode>;
   walletSwitch: WalletSwitch;
   diagnostics: DiagnosticsSource;
   archive: ArchiveLoader;

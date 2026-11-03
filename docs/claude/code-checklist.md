@@ -134,7 +134,8 @@ above the linter: semantics, data flow and naming.
 - **major** (AGENTS.md § Code style, General:): JavaScript shipped as a string, such as a serialised function or an
   inline script block.
 - **major** (AGENTS.md § Code style, UI:): A Solid island for static markup, or more than one island in a module.
-- **major** (AGENTS.md § Code style, UI:): App state moved off `createSyncStore` to Solid signals or stores.
+- **major** (AGENTS.md § Code style, UI:): App state held in Solid signals or stores instead of a nanostores store, or a
+  component that copies a store into a Solid signal where `useStore` from `@dotli/stores-solid` would do.
 - **major** (AGENTS.md § Code style, UI:): An icon that is not a Solid component with an `<svg>` drawn in
   `currentColor`, such as markup in a string, a path-data constant, `innerHTML` or DOM calls.
 - **major** (AGENTS.md § Code style, UI:): A color not taken from the tokens in `packages/ui/src/global.css`, or a light

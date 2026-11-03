@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSignal, onSettled } from 'solid-js';
-import type { ReadableStore } from '@dotli/shared';
-import { useStore } from '@dotli/ui';
+import type { ReadableAtom } from 'nanostores';
+import { useStore } from '@dotli/stores-solid';
 import type { ThemePreference } from '../runtime/state/themeState.js';
 import type { ApplySettings, SavedSettings } from '../components/settings/settings.js';
 import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
@@ -11,8 +11,8 @@ import type { SettingsItemProps } from '../components/settings/SettingsItem.js';
 /** The page's settings and theme, and what acts on them. */
 export type SettingsBinding = {
   /** Null until boot has read them. */
-  settings: ReadableStore<SavedSettings | null>;
-  theme: ReadableStore<{ preference: ThemePreference }>;
+  settings: ReadableAtom<SavedSettings | null>;
+  theme: ReadableAtom<{ preference: ThemePreference }>;
   selectTheme: (theme: ThemePreference) => void;
   apply: ApplySettings;
   /** How the page's Open settings reaches the panel. Returns the unregister. */
@@ -36,7 +36,9 @@ export function useSettingsPanel(binding: SettingsBinding): SettingsItemProps {
     onOpenChange: setOpen,
     settings: useStore(binding.settings),
     version: binding.version,
-    theme: useStore(binding.theme, theme => theme.preference),
+    theme: useStore(binding.theme, theme => theme.preference, {
+      initial: { preference: 'system' } as const,
+    }),
     onTheme: binding.selectTheme,
     onApply: binding.apply,
     debugMode: binding.debugMode,

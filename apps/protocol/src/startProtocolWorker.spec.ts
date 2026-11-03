@@ -196,7 +196,6 @@ function createFakeLightClient({ presync, resolveDotName, sync = [], detail = []
     createDotnsResolver(params) {
       resolverParams = params;
       return {
-        status: { get: () => 'idle', subscribe: () => () => undefined },
         resolveDotName: resolveDotName ?? (() => Promise.resolve(null)),
         resolveExecutableManifest: () => Promise.reject(new Error('no manifests in this test')),
         resolveOwner: () => Promise.resolve(null),

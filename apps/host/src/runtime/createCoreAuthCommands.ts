@@ -5,7 +5,8 @@
 // hears what the core could not say for itself. A logout runs the end it is given through the commands' queue.
 
 import { reportDefect, reportExpected, spans as S } from '@dotli/metrics';
-import { createDeferred, getErrorMessage, getErrorName, log, type ReadableStore } from '@dotli/shared';
+import { createDeferred, getErrorMessage, getErrorName, log } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import {
   CANCELLED,
   createAuthCommands,
@@ -25,7 +26,7 @@ import type { WalletMode } from './state/walletModeState.js';
 
 type Params = {
   /** The page's auth state, which tells how a login ended. */
-  auth: ReadableStore<DotliAuthState>;
+  auth: ReadableAtom<DotliAuthState>;
   core: Pick<PageCore, 'acquire' | 'cancelPairing'>;
   session: Pick<SessionState, 'reportLoginFailure'>;
   /** A local wallet core keeps its session in memory, so its login stores nothing. */
@@ -131,7 +132,7 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
         woken.resolve(undefined);
       }),
       storedSession.subscribeStoredSession(nudge),
-      auth.subscribe(nudge),
+      auth.listen(nudge),
     ];
     signal.addEventListener('abort', nudge);
     return {

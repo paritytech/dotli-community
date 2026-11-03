@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, isShallowEqual, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { isShallowEqual, registerStoreStateReset, registerAtomReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 
 /**
  * How far a pairing got: the code being made, the code to scan, the phone approving, or a failure. `error` carries the
@@ -55,12 +56,10 @@ const INITIAL: AuthModalState = {
   view: { kind: 'spinner' },
 };
 
-const authModal = createSyncStore<AuthModalState>({
-  name: 'auth_modal',
-  initial: INITIAL,
-  equals: isSameAuthModal,
-});
-const store: ReadableStore<AuthModalState> = authModal;
+const authModal = atom<AuthModalState>(INITIAL);
+authModal.eq = isSameAuthModal;
+registerAtomReset(authModal);
+const store: ReadableAtom<AuthModalState> = authModal;
 
 // The modal hydrates as an island of its own, so the control focus returns to is handed over here, not passed in.
 let trigger: HTMLElement | undefined;

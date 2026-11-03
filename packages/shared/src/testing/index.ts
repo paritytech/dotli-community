@@ -3,7 +3,7 @@
 
 // Test-only helpers, apart from the barrel so no browser bundle reaches them.
 
-export { resetAllStoresForTests } from '../createSyncStore.js';
+export { resetAllStoresForTests } from '../storeResets.js';
 export { catchError } from './catchError.js';
 export { catchRejection } from './catchRejection.js';
 export type { FakePage } from './createFakePage.js';

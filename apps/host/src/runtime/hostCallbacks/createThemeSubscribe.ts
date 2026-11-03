@@ -3,13 +3,13 @@
 
 import type { ThemeHost } from '@parity/truapi-host';
 import type { HostThemeSubscribeItem } from '@parity/truapi';
-import type { ReadableStore } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { themeState, type ThemeState } from '../state/themeState.js';
 import { createResultStream } from './createResultStream.js';
 
 type Params = {
   /** The theme the product follows. The page's theme state by default. */
-  theme?: ReadableStore<ThemeState>;
+  theme?: ReadableAtom<ThemeState>;
 };
 
 /** Streams the theme variant now and on each change of it. Never throws. */
@@ -17,7 +17,7 @@ export function createThemeSubscribe({ theme = themeState.store }: Params = {}):
   function subscribeTheme(): ReturnType<Required<ThemeHost>['subscribeTheme']> {
     let sent = getThemeItem(theme.get());
     return createResultStream<HostThemeSubscribeItem>([sent], push =>
-      theme.subscribe(() => {
+      theme.listen(() => {
         const next = getThemeItem(theme.get());
         // The product sees only the variant, so a preference that resolves to the same one is nothing new.
         if (next.variant !== sent.variant) {

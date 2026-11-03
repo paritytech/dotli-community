@@ -8,7 +8,7 @@
  * the navigation ends the window's page.
  */
 
-import { createStoreStatus, createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
 import {
   createCancelledMessage,
@@ -65,10 +65,7 @@ export function createRedirectResponder({
   navigate,
   failed,
 }: Params) {
-  const store = createSyncStore<ResponderState>({
-    name: 'redirectResponder',
-    initial: { kind: 'vetted', origin, party: 'third' },
-  });
+  const store = atom<ResponderState>({ kind: 'vetted', origin, party: 'third' });
   let delivery: RedirectDelivery = 'none';
 
   /**
@@ -95,10 +92,8 @@ export function createRedirectResponder({
     );
   }
 
-  const status = createStoreStatus(store);
   const responder: Responder<unknown> = {
-    state: status.get,
-    subscribe: status.subscribe,
+    state: store,
     send(result, { siteToken } = {}) {
       sendAnswer({
         state: { kind: 'answered' },

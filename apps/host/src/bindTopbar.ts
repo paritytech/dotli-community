@@ -28,7 +28,6 @@ export function bindTopbar(bar: HTMLElement): () => void {
       bar.removeAttribute('aria-keyshortcuts');
     }
   }
-  render();
   const offTopbar = topbarState.store.subscribe(render);
 
   function unbind(): void {

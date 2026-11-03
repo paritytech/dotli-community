@@ -7,7 +7,7 @@ import { createManualTimers, resetAllStoresForTests, type ManualTimers } from '@
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import { createDebugBus } from '@dotli/truapi-debug/testing';
 import type { ChainDetail, ChainSyncEvent } from '@dotli/chains';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import type { PageContent } from '@dotli/ui';
 import { createLoadingController, type LoadingPhase } from './createLoadingController.js';
 import {
@@ -351,7 +351,7 @@ function setupLoad({ backend }: Params): LoadStand {
   const controller = createLoadingController({
     prefersReducedMotion: () => true,
     frames: { request: () => 0, cancel: () => undefined, now: readPageClock },
-    pageContent: createSyncStore<PageContent>({ name: 'load-progress-spec-page-content', initial: 'page' }),
+    pageContent: atom<PageContent>('page'),
     timers,
     poll: createManualPoll({ timers }),
   });

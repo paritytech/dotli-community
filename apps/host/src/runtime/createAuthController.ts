@@ -8,7 +8,8 @@
 
 import { withActiveTld } from '@dotli/config';
 import { reportDefect, spans as S } from '@dotli/metrics';
-import { getErrorMessage, log, type ReadableStore, registerStoreStateReset } from '@dotli/shared';
+import { getErrorMessage, log, registerStoreStateReset } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import type { AuthCommands } from './createAuthCommands.js';
 import type { BlockingModalCoordinator, BlockingModalScope } from './createBlockingModalCoordinator.js';
 import { createInPageSignIn, type InPagePhrase } from './createInPageSignIn.js';
@@ -22,7 +23,7 @@ import type {
   SignInRoute,
   StartLoginParams,
 } from './signInRoute.js';
-import { authState } from './state/authState.js';
+import { authState, type AuthState } from './state/authState.js';
 import { sessionElsewhereState } from './state/sessionElsewhereState.js';
 import { walletModeState, type WalletMode } from './state/walletModeState.js';
 import { createWindowSignIn } from './createWindowSignIn.js';
@@ -36,7 +37,10 @@ type Params = {
    * the bridge chunk fails to load.
    */
   commands: () => Promise<AuthCommands>;
-  auth: ReadableStore<DotliAuthState>;
+  /** The current auth step, read for each intent. */
+  auth: ReadableAtom<DotliAuthState>;
+  /** Hears every auth step, an equal one included, which the controller follows until it is disposed. */
+  subscribeAuthSteps: AuthState['subscribeSteps'];
   /** The sign-in window, or null for a page that pairs in place. */
   handoff: SessionHandoff | null;
   /** Writes the window's result into this page's copy. Rejects with the failed step as the cause. */
@@ -50,17 +54,18 @@ type Params = {
 };
 
 /** What the slot's `init` takes: the controller's params, less the page stores the slot reads itself. */
-type InitParams = Omit<Params, 'auth' | 'walletMode' | 'elsewhere'>;
+type InitParams = Omit<Params, 'auth' | 'subscribeAuthSteps' | 'walletMode' | 'elsewhere'>;
 
 type CommandStep = 'login' | 'logout' | 'cancel_login';
 
 export type AuthController = ReturnType<typeof createAuthController>;
 
-/** Returns the controller of the page's sign-in modal, which follows `auth` until it is disposed. */
+/** Returns the controller of the page's sign-in modal, which follows the auth steps until it is disposed. */
 export function createAuthController({
   coordinator,
   commands,
   auth,
+  subscribeAuthSteps,
   handoff,
   applyResult,
   walletMode,
@@ -267,10 +272,8 @@ export function createAuthController({
           modal,
         });
 
-  // The store never drops a set as equal, so every step of the ordered stream reaches here.
   let lastTag = auth.get().tag;
-  const unsubscribe = auth.subscribe(() => {
-    const state = auth.get();
+  const unlisten = subscribeAuthSteps(state => {
     const previous = lastTag;
     lastTag = state.tag;
     applyAuthState(state, previous);
@@ -368,7 +371,7 @@ export function createAuthController({
     },
     /** Stops following the auth state and closes the modal without cancelling a login. Never throws. */
     dispose(): void {
-      unsubscribe();
+      unlisten();
       closeAuthModal({ skipTruapiCancel: true });
     },
   };
@@ -401,6 +404,7 @@ export function createAuthControlSlot() {
     const started = createAuthController({
       ...params,
       auth: authState.store,
+      subscribeAuthSteps: authState.subscribeSteps,
       walletMode: walletModeState.getMode,
       elsewhere: () => sessionElsewhereState.store.get(),
     });

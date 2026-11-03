@@ -5,11 +5,11 @@
 // the layers above the transport to the frame there is now. Each iframe gets its own provider and transport, so a
 // message from a dropped iframe reaches only that iframe's disposed provider.
 
+import { atom } from 'nanostores';
 import { getResolutionId, m, reportListener, spans as S } from '@dotli/metrics';
 import {
   createAsyncTaskPool,
   createListenerSet,
-  createStatusCell,
   createDeferred,
   log,
   realTimers,
@@ -66,10 +66,8 @@ export function createProtocolFrame<E extends FrameElement>({
   const timeouts: ProtocolFrameTimeouts = { ...DEFAULT_FRAME_TIMEOUTS, ...timeoutOverrides };
   const wire = createWireReport({ side: 'host', count });
 
-  const status = createStatusCell<ProtocolStatus>({
-    initial: 'idle',
-    onListenerError: reportListener('protocol', 'protocol.status'),
-  });
+  const status = atom<ProtocolStatus>('idle');
+  const reportStatusListener = reportListener('protocol', 'protocol.status');
   const lostListeners = createListenerSet<Error>({
     onListenerError: reportListener('protocol', 'protocol.frame_lost'),
   });
@@ -98,7 +96,17 @@ export function createProtocolFrame<E extends FrameElement>({
     timers,
   });
 
-  const setStatus = status.set;
+  /**
+   * Sets the status. A listener's throw is a defect in its subscriber, so it is reported once every listener heard the
+   * change, and the step that moved the status goes on. Never throws.
+   */
+  function setStatus(next: ProtocolStatus): void {
+    try {
+      status.set(next);
+    } catch (thrown: unknown) {
+      reportStatusListener(thrown);
+    }
+  }
 
   /**
    * Drops the frame. Its transport is disposed after the status changed, so a caller its calls fail finds it down. The
@@ -225,15 +233,16 @@ export function createProtocolFrame<E extends FrameElement>({
   async function keepFrame(run: AbortSignal, config: ProtocolFrameConfig): Promise<void> {
     const kept = createFrameSlot();
     slot = kept;
-    // Before anything that can throw, so a failure is reported as this keeper's and is not retried by each caller.
-    setStatus('booting');
-    // A listener may have changed the config on `booting`, which dropped this boot and leaves nothing to mount for.
-    if (run.aborted) {
-      return;
-    }
     let phase: BootPhase = 'load';
     let readyAt: number | null = null;
     try {
+      // First, so a failure is reported as this keeper's and is not retried by each caller.
+      setStatus('booting');
+      // A listener heard `booting` and changed the config already when this set ran outside a listener round. Inside
+      // one, a later change drops this boot through the slot.
+      if (run.aborted) {
+        return;
+      }
       const iframe = createIframe(config);
       kept.iframe = iframe;
       const transport = await withTimeout({
@@ -404,9 +413,9 @@ export function createProtocolFrame<E extends FrameElement>({
     const reason = new Error(PROTOCOL_ERRORS.FRAME_RESET);
     keeper?.abort(reason);
     keeper = null;
-    loseFrame(reason, 'idle');
     // A listener that heard `idle` may have asked for the frame already, and a second keeper would orphan one. It
     // may also have configured again, so the frame is built with the latest config.
+    loseFrame(reason, 'idle');
     askForFrame(frameConfig);
   }
 
@@ -424,8 +433,7 @@ export function createProtocolFrame<E extends FrameElement>({
   }
 
   return {
-    getStatus: status.get,
-    subscribeStatus: status.subscribe,
+    status,
     configure,
     getTransport,
     waitUntilReady,

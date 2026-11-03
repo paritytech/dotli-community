@@ -3,8 +3,8 @@
 
 // Events are never mutated after insertion.
 
-import { reportListener } from '@dotli/metrics';
-import { createListenerSet, realTimers, type Timers } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
+import { realTimers, type Timers } from '@dotli/shared';
 import type { DotliDebugEvent, TruapiDebugMessageEvent } from '@dotli/truapi-debug';
 import { isRequestTag, isResponseTag } from './callTag.js';
 import { getCallKey } from './getCallKey.js';
@@ -22,21 +22,18 @@ type Params = {
   timers?: Pick<Timers, 'now'>;
 };
 
-type Listener = () => void;
-
 type AddToCountParams<Key> = {
   key: Key;
   /** Added to the count, negative to take away. */
   step: number;
 };
 
-/** A ring of `capacity` events that notifies its listeners on each change. */
+/** A ring of `capacity` events that bumps its version on each change. */
 export function createEventStore({ capacity, timers = realTimers }: Params) {
   const ring: StoredEvent[] = [];
   let paused = false;
   let nextSeq = 0;
   let droppedCount = 0;
-  let versionCount = 0;
   const firstByKey = new Map<string, StoredEvent>();
   const anchors = new WeakMap<StoredEvent, StoredEvent>();
   // Kept so `productIds()` needs no scan.
@@ -44,10 +41,9 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
   // Requests kept and not yet answered, by call key. A paused store still takes the one reply that closes each, so it
   // holds at most as many entries as the ring holds requests.
   const unanswered = new Map<string, number>();
-  // A view that throws on a change is a defect in the panel, reported while the other views still hear the change.
-  const listeners = createListenerSet<undefined>({
-    onListenerError: reportListener('ui', 'debug_panel.event_store'),
-  });
+  let changes = 0;
+  const versionAtom = atom(changes);
+  const version: ReadableAtom<number> = versionAtom;
 
   return {
     /** The most events the ring keeps. */
@@ -55,20 +51,26 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
     /** How many events the ring evicted since it was made or last cleared. Never throws. */
     dropped,
     /**
-     * Pauses or resumes recording. A change notifies the listeners, and a repeat of the current state does nothing.
-     * Never throws.
+     * Pauses or resumes recording. A change bumps the version, and a repeat of the current state does nothing.
+     * Never throws while the version's followers keep their rule.
      */
     setPaused,
     /** Whether recording is paused. Never throws. */
     isPaused,
-    /** Drops every kept event and the dropped count, then notifies the listeners. Never throws. */
+    /**
+     * Drops every kept event and the dropped count, then bumps the version. Never throws while the version's followers
+     * keep their rule.
+     */
     clear,
     /**
      * Keeps a TrUAPI message, stamped with the clock at insert. While paused it keeps only the reply that closes a call
-     * whose request the ring still holds. Never throws.
+     * whose request the ring still holds. Never throws while the version's followers keep their rule.
      */
     insertTruapi,
-    /** Keeps a host event under its own timestamp. Does nothing while paused. Never throws. */
+    /**
+     * Keeps a host event under its own timestamp. Does nothing while paused. Never throws while the version's followers
+     * keep their rule.
+     */
     insertDotli,
     /** The kept events, oldest first. The live ring, so a caller that holds on to it copies it first. Never throws. */
     list,
@@ -86,11 +88,9 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
     eventsInGroup,
     /** A new array of each product id the kept TrUAPI events carry, once, `undefined` among them. Never throws. */
     productIds,
-    /** Calls `listener` after each change and returns its unsubscribe. A throwing listener is reported, not thrown. */
-    subscribe,
     /**
-     * A count bumped on every notify, so a consumer can snapshot `list()` by comparing versions instead of diffing.
-     * Never throws.
+     * Counts the changes, one per change and never rewound, so a consumer can snapshot `list()` by comparing versions
+     * instead of diffing. A follower runs inside the change that bumps it, so it must not throw. `get` never throws.
      */
     version,
   };
@@ -190,14 +190,6 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
     return Array.from(productCounts.keys());
   }
 
-  function subscribe(listener: Listener): () => void {
-    return listeners.subscribe(listener);
-  }
-
-  function version(): number {
-    return versionCount;
-  }
-
   function pushAndEvict(stored: StoredEvent): void {
     ring.push(stored);
     const key = getCorrelationKey(stored);
@@ -261,7 +253,7 @@ export function createEventStore({ capacity, timers = realTimers }: Params) {
   }
 
   function notify(): void {
-    versionCount++;
-    listeners.emit(undefined);
+    changes += 1;
+    versionAtom.set(changes);
   }
 }

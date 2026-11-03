@@ -444,6 +444,11 @@ Batches replace the per-task review of `superpowers:subagent-driven-development`
 - A batch is a run of consecutive tasks that share one responsibility or one layer. It holds at most four tasks, so one
   review stays readable. A task whose interface later tasks build on SHOULD close its batch, so its review clears before
   they start.
+- Fill each batch up to that limit. Batches run one after another, so every review and fix round sits on the critical
+  path, and a batch of one pays that cost for a single task. A task that adds no logic of its own, such as moving
+  callers to a settled interface, a rename, removing dead code or a docs update, MUST join a neighbouring batch, even
+  one of another responsibility. A batch of one task is right only when the task closes its batch and the task before it
+  closed the previous one.
 - Batches run one after another. Inside a batch, tasks that touch disjoint files run in parallel, which that skill never
   does by default. Commits are made one at a time.
 - After the last task of a batch commits, one fresh reviewer gets that skill's task reviewer template, the plan path and
@@ -657,6 +662,7 @@ You are skipping the process when you see any of these.
 - **A plan review pass dispatched without a names check of the plan as it stands, or a pass that repeats its lookups.**
 - **A brief without the Architecture gate, or an implementer brief without the bans in words.**
 - **A per-task review, or a batch review before the batch's last task committed.**
+- **A batch of one task that adds no logic of its own.** It joins a neighbouring batch.
 - **Improvising around a plan-invalidating discovery, or a ruling that adds a file, package or public surface or changes
   a requirement.** That is an amendment.
 - **Amending the plan for a plain code bug.** A step 7 finding amends the plan only when its fix goes beyond a ruling.

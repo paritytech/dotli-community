@@ -14,7 +14,7 @@ describe('product store', () => {
     // Given a page as it opens
 
     // When
-    const state = productState.get();
+    const state = productState.store.get();
 
     // Then
     expect(state).toEqual({ status: 'none', loadId: 0 });
@@ -27,7 +27,7 @@ describe('product store', () => {
     productState.setLoaded({ label: 'myapp', productId: 'myapp.dot', details: { cid: 'bafyroot' } });
 
     // Then
-    expect(productState.get()).toEqual({
+    expect(productState.store.get()).toEqual({
       status: 'loaded',
       loadId: 1,
       label: 'myapp',
@@ -41,8 +41,8 @@ describe('product store', () => {
     productState.setLoaded({ label: 'myapp', productId: 'myapp.dot' });
     const seen: number[] = [];
     onTestFinished(
-      productState.store.subscribe(() => {
-        seen.push(productState.get().loadId);
+      productState.store.listen(() => {
+        seen.push(productState.store.get().loadId);
       }),
     );
 
@@ -53,7 +53,7 @@ describe('product store', () => {
 
     // Then
     expect(seen).toEqual([2, 3, 4]);
-    expect(productState.get()).toEqual({ status: 'loaded', loadId: 4, label: 'myapp', productId: 'myapp.dot' });
+    expect(productState.store.get()).toEqual({ status: 'loaded', loadId: 4, label: 'myapp', productId: 'myapp.dot' });
   });
 
   it('As a user, I hit a failed load and no product is left on show', () => {
@@ -64,6 +64,6 @@ describe('product store', () => {
     productState.setError();
 
     // Then
-    expect(productState.get()).toEqual({ status: 'error', loadId: 2 });
+    expect(productState.store.get()).toEqual({ status: 'error', loadId: 2 });
   });
 });

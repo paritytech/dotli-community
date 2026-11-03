@@ -252,7 +252,7 @@ describe('createRemoteChains', () => {
     // When
     people(() => undefined, onHalt);
     await settle();
-    const statusWhileWaiting = fake.frame.getStatus();
+    const statusWhileWaiting = fake.frame.status.get();
     const haltsWhileWaiting = onHalt.mock.calls.length;
     fake.lose(new Error('again'));
     await settle();
@@ -515,7 +515,7 @@ describe('chains.createProvider halts', () => {
     const onHalt = vi.fn<(reason: RemoteChainHalt) => void>();
     const received: JsonRpcMessage[] = [];
     let dialled: JsonRpcConnection | null = null;
-    host.client.frame.subscribeStatus(next => {
+    host.client.frame.status.listen(next => {
       if (next === 'idle' && dialled === null) {
         dialled = createPeopleProvider()(message => received.push(message), onHalt);
       }
@@ -574,7 +574,7 @@ describe('chains.createProvider halts', () => {
     const readies: Mock<() => void> = vi.fn<() => void>();
 
     // When
-    const unsubscribe = host.client.frame.subscribeStatus(status => {
+    const unsubscribe = host.client.frame.status.listen(status => {
       if (status === 'ready') {
         readies();
       }
@@ -611,13 +611,13 @@ describe('chains.createProvider halts', () => {
   it('As a dotli integrator, I see the protocol frame booting while connections wait on it, and failed until it rebuilds itself', async () => {
     // Given
     const provider = createPeopleProvider();
-    const statusBefore = host.client.frame.getStatus();
+    const statusBefore = host.client.frame.status.get();
     const framesBefore = host.countFrames();
 
     // When a connection starts a frame, and another connects while it boots
     provider(() => undefined);
     await settle();
-    const booting = host.client.frame.getStatus();
+    const booting = host.client.frame.status.get();
     provider(() => undefined);
     await settle();
 
@@ -630,7 +630,7 @@ describe('chains.createProvider halts', () => {
     const frame = await bootFrame();
 
     // Then
-    expect(host.client.frame.getStatus()).toBe('ready');
+    expect(host.client.frame.status.get()).toBe('ready');
     expect(frame.chains.connects).toHaveLength(2);
 
     // When it dies, and the frame starts rebuilding it after its interval
@@ -638,7 +638,7 @@ describe('chains.createProvider halts', () => {
     frame.status.fail(new ProtocolFatalError('boom'));
     await settle(FRAME_REBUILD_INTERVAL_MS - 1);
     const framesBeforeInterval = host.countFrames();
-    const statusBeforeInterval = host.client.frame.getStatus();
+    const statusBeforeInterval = host.client.frame.status.get();
     await settle(1);
 
     // Then
@@ -646,7 +646,7 @@ describe('chains.createProvider halts', () => {
     expect(framesBeforeInterval).toBe(0);
     expect(statusBeforeInterval).toBe('failed');
     expect(host.countFrames()).toBe(1);
-    expect(host.client.frame.getStatus()).toBe('booting');
+    expect(host.client.frame.status.get()).toBe('booting');
   });
 
   it('As a dotli integrator, I see a frame whose ready wait gave up report failed and halt the connection waiting on it', async () => {
@@ -654,7 +654,7 @@ describe('chains.createProvider halts', () => {
     const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     createPeopleProvider()(() => undefined, onHalt);
     await host.listen();
-    const booting = host.client.frame.getStatus();
+    const booting = host.client.frame.status.get();
 
     // When its ready wait times out
     await settle(240_000);
@@ -662,7 +662,7 @@ describe('chains.createProvider halts', () => {
     // Then
     expect(booting).toBe('listening');
     expect(onHalt.mock.calls).toEqual([['frame']]);
-    expect(host.client.frame.getStatus()).toBe('failed');
+    expect(host.client.frame.status.get()).toBe('failed');
   });
 
   it('As a dotli integrator, I see a consumer that throws while its queued send is closed, and the other consumers still halt', async () => {

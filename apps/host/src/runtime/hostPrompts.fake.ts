@@ -120,7 +120,7 @@ export function createFakePrompts() {
         }
       }
       waiters.add(check);
-      unsubscribe = modals.store.subscribe(check);
+      unsubscribe = modals.store.listen(check);
       check();
     });
   }

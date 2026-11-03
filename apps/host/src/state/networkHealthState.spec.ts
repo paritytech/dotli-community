@@ -15,7 +15,7 @@ import {
   resetAllStoresForTests as resetStores,
 } from '@dotli/shared/testing';
 
-type HealthMonitor = Pick<NetworkMonitor, 'subscribe' | 'getChainClocks'>;
+type HealthMonitor = Pick<NetworkMonitor, 'version' | 'getChainClocks'>;
 
 /** Every chain is connectable, so only what the monitor hears decides the health. */
 let monitor: NetworkMonitor;
@@ -172,21 +172,9 @@ describe('The network health store', () => {
   });
 
   it('As a user leaving the page, I stop the health store and it leaves its monitor with no listener', () => {
-    // Given: a monitor that counts who listens to it
-    const listening = new Set<() => void>();
-    const counted: HealthMonitor = {
-      getChainClocks: monitor.getChainClocks,
-      subscribe(listener) {
-        listening.add(listener);
-        const unsubscribe = monitor.subscribe(listener);
-        return function unsubscribeCounted(): void {
-          listening.delete(listener);
-          unsubscribe();
-        };
-      },
-    };
-    const stop = startHealth(counted);
-    const listenersWhileRunning = listening.size;
+    // Given
+    const stop = startHealth();
+    const listenersWhileRunning = monitor.version.lc;
 
     // When
     stop();
@@ -194,7 +182,7 @@ describe('The network health store', () => {
     blockAll(100);
 
     // Then: no listener is left, and later blocks change nothing
-    expect({ listenersWhileRunning, listenersAfterStop: listening.size, health: health.store.get() }).toEqual({
+    expect({ listenersWhileRunning, listenersAfterStop: monitor.version.lc, health: health.store.get() }).toEqual({
       listenersWhileRunning: 1,
       listenersAfterStop: 0,
       health: 'quiet',
@@ -255,12 +243,16 @@ describe('The network health store', () => {
     let unsubscribes = 0;
     const counting: HealthMonitor = {
       ...monitor,
-      subscribe(listener) {
-        const unsubscribe = monitor.subscribe(listener);
-        return () => {
-          unsubscribes += 1;
-          unsubscribe();
-        };
+      // A copy of the atom's members, so the health store follows it only through this `subscribe`.
+      version: {
+        ...monitor.version,
+        subscribe(listener) {
+          const unsubscribe = monitor.version.subscribe(listener);
+          return () => {
+            unsubscribes += 1;
+            unsubscribe();
+          };
+        },
       },
     };
     const stop = startHealth(counting);

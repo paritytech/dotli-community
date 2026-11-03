@@ -3,50 +3,25 @@
 
 import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
+import { atom, computed } from 'nanostores';
 import type { Backend } from '@dotli/config';
-import { createSyncStore, type ReadableStore } from '@dotli/shared';
 import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
-import { useNetworkPanel } from './network.js';
-
-const NOTHING: NetworkView = {
-  chains: [],
-  transfer: { bytesPerSecond: null, fetched: null, total: null },
-  readAt: 0,
-  verdict: { text: 'Not in use', tone: 'quiet' },
-};
-
-/** `store`, counting the readers subscribed to it. */
-function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; readers: { count: number } } {
-  const readers = { count: 0 };
-  return {
-    readers,
-    store: {
-      ...store,
-      subscribe: listener => {
-        readers.count += 1;
-        const unsubscribe = store.subscribe(listener);
-        return () => {
-          readers.count -= 1;
-          unsubscribe();
-        };
-      },
-    },
-  };
-}
+import { INITIAL_NETWORK, useNetworkPanel } from './network.js';
 
 /** The page's stores, as boot left them, and the panel's props read from them under a fresh owner. */
 function mount() {
   const stores = {
-    health: createSyncStore<NetworkHealth>({ name: 'network-test-health', initial: 'quiet' }),
-    network: createSyncStore<NetworkView>({ name: 'network-test-network', initial: NOTHING }),
-    product: createSyncStore<{ status: string }>({ name: 'network-test-product', initial: { status: 'idle' } }),
-    settings: createSyncStore<{ backend: Backend } | null>({ name: 'network-test-settings', initial: null }),
+    health: atom<NetworkHealth>('quiet'),
+    network: atom<NetworkView>(INITIAL_NETWORK),
+    product: atom<{ status: string }>({ status: 'idle' }),
+    settings: atom<{ backend: Backend } | null>(null),
   };
-  const { store: network, readers } = countingStore(stores.network);
+  // A computed, which has no `init`
+  const network = computed(stores.network, value => value);
   const { panel, dispose } = createRoot(d => ({ panel: useNetworkPanel({ ...stores, network }), dispose: d }));
   flush();
-  return { stores, panel, dispose, readers };
+  return { stores, panel, dispose, network };
 }
 
 describe('useNetworkPanel', () => {
@@ -94,23 +69,23 @@ describe('useNetworkPanel', () => {
 
   it('As the closed network button, nothing follows the network, and an open panel follows it until it closes', () => {
     // Given
-    const { stores, panel, dispose, readers } = mount();
-    expect(readers.count).toBe(0);
+    const { stores, panel, dispose, network } = mount();
+    expect(network.lc).toBe(0);
 
     // When the panel opens under its own owner
     const opened = createRoot(close => ({ network: panel.followNetwork(), close }));
-    stores.network.set({ ...NOTHING, readAt: 1 });
+    stores.network.set({ ...INITIAL_NETWORK, readAt: 1 });
     flush();
 
     // Then it reads the network as it changes
-    expect(readers.count).toBe(1);
+    expect(network.lc).toBe(1);
     expect(opened.network().readAt).toBe(1);
 
     // When it closes
     opened.close();
 
     // Then
-    expect(readers.count).toBe(0);
+    expect(network.lc).toBe(0);
     dispose();
   });
 });

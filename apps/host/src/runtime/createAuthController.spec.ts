@@ -12,10 +12,12 @@ import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '.
 import type { DotliAuthState } from './session/types.js';
 import { authModalState, type AuthModalState } from '../state/authModalState.js';
 import { authState } from './state/authState.js';
-import { createSyncStore, createDeferred } from '@dotli/shared';
+import { createDeferred, createListenerSet } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { catchError, nth, recordLog, resetAllStoresForTests } from '@dotli/shared/testing';
 import { productState } from './state/productState.js';
 import { createChanges, type Changes } from '../testing/changes.js';
+import { recordNotified } from '../testing/recordNotified.js';
 import type { SignInIntent } from './sessionHandoff/parseWindowRequest.js';
 import type { SessionResult } from './sessionHandoff/parseSessionResult.js';
 import type { PageCancelReason, SessionHandoff, SignInOutcome } from './sessionHandoff/createSessionHandoff.js';
@@ -65,7 +67,9 @@ type RecordCommandsParams = {
 const LOGIN_CANCELLED: LoginOutcome = { kind: 'cancelled' };
 
 const CLOSED_MODAL: AuthModalState = { open: false, productLabel: null, reason: null, view: { kind: 'spinner' } };
-const getAuthModalState = authModalState.store.get;
+function getAuthModalState(): AuthModalState {
+  return authModalState.store.get();
+}
 
 const PHRASE = 'twelve good words';
 const ENTROPY = new Uint8Array(16).fill(7);
@@ -120,7 +124,7 @@ function createFakePhrase({ outcome = 'reloading' }: CreateFakePhraseParams = {}
   return { phrase, used };
 }
 
-/** A controller over its own auth store, whose commands only record what they are asked. */
+/** A controller over its own auth store and steps, whose commands only record what they are asked. */
 function startController({
   coordinator = createBlockingModalCoordinator(),
   commands,
@@ -130,18 +134,27 @@ function startController({
   inPagePhrase = rejectNoPhrase,
   elsewhere = () => false,
 }: StartControllerParams = {}) {
-  const auth = createSyncStore<DotliAuthState>({
-    name: 'auth-test',
-    initial: { tag: 'Restoring' },
-    equals: () => false,
+  const auth = atom<DotliAuthState>({ tag: 'Restoring' });
+  const steps = createListenerSet<DotliAuthState>({
+    onListenerError: error => {
+      throw new Error('An auth step listener threw', { cause: error });
+    },
   });
+
+  // A repeated step reaches the steps, though the store drops it as equal.
+  function setAuthStep(next: DotliAuthState): void {
+    auth.set(next);
+    steps.emit(next);
+  }
+
   const changes = createChanges();
-  onTestFinished(authModalState.store.subscribe(changes.notify));
+  onTestFinished(authModalState.store.listen(changes.notify));
   const recorded = recordCommands({ changes });
   const controller = createAuthController({
     coordinator,
     commands: commands ?? (() => Promise.resolve(recorded.commands)),
     auth,
+    subscribeAuthSteps: steps.subscribe,
     handoff,
     applyResult,
     walletMode: () => walletMode,
@@ -154,8 +167,8 @@ function startController({
   return {
     /** The controller under test. */
     controller,
-    /** The auth store it follows, which the test sets as the core would. */
-    auth,
+    /** The auth state it follows, which the test sets as the core would. */
+    auth: { set: setAuthStep },
     /** The coordinator its modal leases come from. */
     coordinator,
     /** What the controller asked of the bridge chunk's commands. */
@@ -1356,12 +1369,7 @@ describe('auth controller: the sign-in window', () => {
     // Given the prompt on show and every later modal write recorded
     const { auth } = startController({ handoff: createFakeHandoff() });
     auth.set({ ...PAIRING, deeplink: '' });
-    const writes: AuthModalState[] = [];
-    onTestFinished(
-      authModalState.store.subscribe(() => {
-        writes.push(getAuthModalState());
-      }),
-    );
+    const writes = recordNotified(authModalState.store);
 
     // When: the core reports the pairing again, now with its deeplink
     auth.set(PAIRING);
@@ -1727,6 +1735,23 @@ describe('auth controller on the page stores', () => {
         productLabel: null,
         view: { kind: 'error', retry: true },
       });
+    });
+
+    it('As a user on the error view, I retry from the topbar and a retry that fails the same way shows the error again', () => {
+      // Given a booted page whose login failed, and a retry from the topbar
+      const { commands } = recordCommands({ changes: createChanges() });
+      authControl.init(buildInitParams(commands));
+      const failed = { tag: 'LoginFailed', kind: 'Other', reason: 'worker init failed' } as const;
+      authState.set(failed);
+      authControl.startLogin();
+      const retryView = getAuthModalState().view;
+
+      // When the core reports the same failure again
+      authState.set(failed);
+
+      // Then the spinner showed for the retry, and the error shows again
+      expect(retryView).toEqual({ kind: 'spinner' });
+      expect(getAuthModalState().view).toMatchObject({ kind: 'error', message: 'worker init failed' });
     });
   });
 });

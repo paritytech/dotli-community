@@ -10,13 +10,13 @@ import { toProductId } from './runtime/createTruapiRuntimeConfig.js';
 import { authState } from './runtime/state/authState.js';
 import { productState } from './runtime/state/productState.js';
 import { chatPanelState } from './state/chatPanelState.js';
-import { isPageActionNeeded } from './isPageActionNeeded.js';
+import { pageActionNeeded } from './pageActionNeeded.js';
 
 afterEach(() => {
   resetAllStoresForTests();
 });
 
-describe('isPageActionNeeded', () => {
+describe('pageActionNeeded', () => {
   it('As a user with the chat panel closed, I get a product message and the capsule leads with the action dot', async () => {
     // Given a loaded chat product, logged in, with the panel closed
     const chat = createChatStore({ repo: createMemoryChatRepo(), connections: createChatConnections() });
@@ -26,13 +26,13 @@ describe('isPageActionNeeded', () => {
     authState.set({ tag: 'Connected', session: { connected: true } });
 
     // When the product posts
-    const before = isPageActionNeeded();
+    const before = pageActionNeeded.get();
     await chat.postProductMessage({
       productId: product,
       roomId: 'main',
       content: { tag: 'Text', value: { text: 'hi' } },
     });
-    const after = isPageActionNeeded();
+    const after = pageActionNeeded.get();
 
     // Then
     expect({ before, after }).toEqual({ before: false, after: true });

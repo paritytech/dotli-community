@@ -153,6 +153,23 @@ describe('dialogs that cannot be shown', () => {
     await expect(asked).resolves.toEqual({ result: 'cancel' });
   });
 
+  it('As a page, I refuse all open dialogs while another opens, and every dialog settles with its refusal', async () => {
+    // Given
+    const first = modals.open(buildView('First'));
+    const second = modals.open(buildView('Second'));
+    const stop = modals.refuseAll();
+    onTestFinished(stop);
+
+    // When
+    const third = modals.open(buildView('Third'));
+
+    // Then
+    expect(modals.store.get()).toEqual([]);
+    await expect(first).resolves.toEqual({ result: 'dismissed' });
+    await expect(second).resolves.toEqual({ result: 'dismissed' });
+    await expect(third).resolves.toEqual({ result: 'dismissed' });
+  });
+
   it('As a product, I ask once the refusal stops and my request waits for an answer again', () => {
     // Given
     const stop = modals.refuseAll();
@@ -167,6 +184,29 @@ describe('dialogs that cannot be shown', () => {
     });
 
     // Then
+    expect(modals.store.get()).toHaveLength(1);
+  });
+});
+
+describe('a page that refuses twice', () => {
+  it('As a page, I call refuseAll twice and one listener refuses each new dialog, and both stops end it', async () => {
+    // Given
+    const stopFirst = modals.refuseAll();
+    const stopSecond = modals.refuseAll();
+    const listeners = modals.store.lc;
+
+    // When
+    stopFirst();
+    const afterFirstStop = modals.store.lc;
+    const askedAfterFirst = modals.open(buildView('After first'));
+    stopSecond();
+    void modals.open(buildView('After second'));
+
+    // Then
+    expect(listeners).toBe(1);
+    expect(afterFirstStop).toBe(1);
+    await expect(askedAfterFirst).resolves.toEqual({ result: 'dismissed' });
+    expect(modals.store.lc).toBe(0);
     expect(modals.store.get()).toHaveLength(1);
   });
 });

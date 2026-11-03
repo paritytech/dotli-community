@@ -5,7 +5,8 @@
 // their own screens through here, so a later screen always replaces an earlier one.
 
 import type { JSX } from '@solidjs/web';
-import { createSyncStore, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { registerStoreStateReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { mountRoot } from '../mount/root.js';
 import s from './pageScreen.module.css';
 
@@ -17,10 +18,12 @@ type Params = {
   page?: Document | undefined;
 };
 
+const INITIAL: PageContent = 'page';
+
 /** Builds the page's screen slot over `page`. Building one never reads the document. */
 export function createPageScreen({ page }: Params = {}) {
-  const content = createSyncStore<PageContent>({ name: 'page-content', initial: 'page' });
-  const store: ReadableStore<PageContent> = content;
+  const content = atom<PageContent>(INITIAL);
+  const store: ReadableAtom<PageContent> = content;
   let disposeShown: (() => void) | undefined;
 
   registerStoreStateReset(clear);
@@ -67,7 +70,7 @@ export function createPageScreen({ page }: Params = {}) {
   function clear(): void {
     disposeShown?.();
     disposeShown = undefined;
-    content.set('page');
+    content.set(INITIAL);
   }
 
   function dispose(): void {

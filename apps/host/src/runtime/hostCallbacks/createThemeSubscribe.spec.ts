@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { createThemeSubscribe } from './createThemeSubscribe.js';
-import { createSyncStore, isShallowEqual } from '@dotli/shared';
+import { isShallowEqual } from '@dotli/shared';
+import { atom, type WritableAtom } from 'nanostores';
 import type { ThemeState } from '../state/themeState.js';
 import { yielded } from '../../testing/fixtures.js';
 
@@ -66,10 +67,8 @@ describe('theme host callbacks', () => {
   });
 });
 
-function createTheme(resolved: 'light' | 'dark'): ReturnType<typeof createSyncStore<ThemeState>> {
-  return createSyncStore<ThemeState>({
-    name: 'theme_test',
-    initial: { preference: 'system', resolved },
-    equals: isShallowEqual,
-  });
+function createTheme(resolved: 'light' | 'dark'): WritableAtom<ThemeState> {
+  const theme = atom<ThemeState>({ preference: 'system', resolved });
+  theme.eq = isShallowEqual;
+  return theme;
 }

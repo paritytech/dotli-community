@@ -15,6 +15,10 @@ every caller checks a name against.
 
 - The resolver works over one Asset Hub client, created on first use and again after its follow stops. The connection is
   passed in, so it reads through the follow its owner already keeps. Work runs in named `createAsyncTaskPool` pools.
+- The client's status is held in one nanostores atom and replayed to each caller's phase callback. A caller hears each
+  change with the status there is when its turn comes, so a read started inside a store's listener round can hear the
+  latest phase twice and miss an earlier one. A callback's own throw is reported and the build goes on. A throw from a
+  listener of a store the callback writes reaches the build, so such a listener catches its own errors.
 - Contract reads go straight to Revive storage slots with no runtime call. Multi-slot reads pin one block and the
   contract's trie id, so bytes are never torn across blocks. Slot math and contenthash decoding sit in their own part.
 - Manifest records are read as text and checked by handwritten validators, kept apart so the eager path does not pull

@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { bindCaptureSink } from '@dotli/metrics';
-import { createDeferred, createSyncStore } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import type { PageUiModule } from './lazy.js';
 import { createSandboxUi, type SandboxUi } from './createSandboxUi.js';
 
@@ -19,7 +20,7 @@ function createFakeUi(): PageUiModule {
 function createHarness(load: () => Promise<PageUiModule>, { queued = [] }: { queued?: readonly unknown[] } = {}) {
   const captures = { exception: vi.fn(), expected: vi.fn() };
   onTestFinished(bindCaptureSink(captures));
-  const toasts = createSyncStore<{ items: readonly unknown[] }>({ name: 'test-toasts', initial: { items: queued } });
+  const toasts = atom<{ items: readonly unknown[] }>({ items: queued });
   const texts: string[] = [];
   const hideFallback = vi.fn<() => void>();
   const ui: SandboxUi = createSandboxUi({ load, toasts, showFallback: text => texts.push(text), hideFallback });

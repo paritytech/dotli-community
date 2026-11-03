@@ -8,7 +8,7 @@ import { Button, type ButtonVariant } from '../../components/primitives/Button.j
 import { Callout, Well } from '../../components/primitives/Well.js';
 import { Field } from '../../components/primitives/Field.js';
 import { Modal } from '../../components/floating/Modal.js';
-import { useStore } from '../../components/useStore.js';
+import { useStore } from '@dotli/stores-solid';
 import {
   modals,
   type ModalButton,

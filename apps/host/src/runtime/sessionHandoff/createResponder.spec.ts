@@ -9,8 +9,9 @@ import type { SessionResult } from './parseSessionResult.js';
 import { SIGNED_OUT_RESULT } from './roundAnswer.js';
 import { createFakeMessageBus, createFakeWindowHandle, type FakeWindowHandle } from './listenToMessages.fake.js';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
+import { recordNotified } from '../../testing/recordNotified.js';
 import { getOpenerParty, type OpenerParty } from './openerRule.js';
-import { createResponder, type ResponderState } from './createResponder.js';
+import { createResponder } from './createResponder.js';
 
 type OpenWindowParams = {
   /** The window's opener, a fake one by default, or null for a window no page opened. */
@@ -69,12 +70,7 @@ function openWindow<Result = SessionResult>(options: OpenWindowParams = {}) {
     listen: messages.listen,
     onPageRestore: pageRestores.subscribe,
   });
-  const states: ResponderState[] = [];
-  onTestFinished(
-    responder.subscribe(state => {
-      states.push(state);
-    }),
-  );
+  const states = recordNotified(responder.state);
   return {
     responder,
     opener,
@@ -98,7 +94,7 @@ describe('session window responder', () => {
 
     // Then ready went to my opener whatever its origin, naming only the versions it speaks, and I wait
     expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
-    expect(window.responder.state()).toEqual({ kind: 'connecting' });
+    expect(window.responder.state.get()).toEqual({ kind: 'connecting' });
   });
 
   it('As a user in the sign-in window, I open it and it takes hello only from its opener on an allowed origin', () => {
@@ -131,7 +127,7 @@ describe('session window responder', () => {
     window.post({ data: createHello('r2'), origin: PAGE, source: opener });
 
     // Then nothing changed and nothing more was said
-    expect(window.responder.state()).toEqual({ kind: 'connecting' });
+    expect(window.responder.state.get()).toEqual({ kind: 'connecting' });
     expect(window.states).toEqual([]);
     expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
   });
@@ -146,7 +142,7 @@ describe('session window responder', () => {
     window.post({ data: createHello('r1', { version: 2 }), origin: PRODUCT, source: opener });
 
     // Then nothing changed, nothing was refused and nothing more was said
-    expect(window.responder.state()).toEqual({ kind: 'connecting' });
+    expect(window.responder.state.get()).toEqual({ kind: 'connecting' });
     expect(window.metrics.counted('session_window.refused')).toEqual([]);
     expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
   });
@@ -161,7 +157,7 @@ describe('session window responder', () => {
     window.post({ data: createHello('r1'), origin: PAGE, source: opener });
 
     // Then I refused for good, told only that origin the round and why, and counted why under a closed set of reasons
-    expect(window.responder.state()).toEqual({ kind: 'refused' });
+    expect(window.responder.state.get()).toEqual({ kind: 'refused' });
     expect(opener.posted.slice(1)).toEqual([
       { message: { type: 'dotli:s:refused', round: 'r1', reason: 'origin_not_allowed' }, target: PRODUCT },
     ]);
@@ -179,14 +175,14 @@ describe('session window responder', () => {
     const window = openWindow({ opener });
 
     // Then I listen to nobody
-    expect(window.responder.state()).toEqual({ kind: 'no-opener' });
+    expect(window.responder.state.get()).toEqual({ kind: 'no-opener' });
     expect(window.countListeners()).toBe(0);
 
     // When a result is sent
     window.responder.send(RESULT);
 
     // Then it has nowhere to go
-    expect(window.responder.state()).toEqual({ kind: 'no-opener' });
+    expect(window.responder.state.get()).toEqual({ kind: 'no-opener' });
   });
 
   it('As a user in the sign-in window, I finish and the result is sent once with nothing more said', () => {
@@ -202,7 +198,28 @@ describe('session window responder', () => {
 
     // Then the result was the last word, sent once
     expect(getPostedTypes(opener).slice(1)).toEqual(['dotli:s:result']);
-    expect(window.responder.state()).toEqual({ kind: 'answered' });
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
+  });
+
+  it("As a responder follower, I am told once per change and each time read the responder's latest state", () => {
+    // Given a window whose first follower sends the result once vetted, and a second follower behind it
+    const window = openWindow();
+    const opener = must(window.opener, 'an opener');
+    onTestFinished(
+      window.responder.state.listen(state => {
+        if (state.kind === 'vetted') {
+          window.responder.send(RESULT);
+        }
+      }),
+    );
+    const heard = recordNotified(window.responder.state);
+
+    // When the opener is vetted, which the first follower answers at once
+    window.post({ data: createHello('r1'), origin: PAGE, source: opener });
+
+    // Then the second follower was told twice, both times of the answer
+    expect(heard).toEqual([{ kind: 'answered' }, { kind: 'answered' }]);
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it('As a user signing out in the sign-out window, I sign out before the opener is vetted and the empty result goes out once after the vetting', () => {
@@ -221,7 +238,7 @@ describe('session window responder', () => {
     expect(opener.posted.slice(1)).toEqual([
       { message: { type: 'dotli:s:result', round: 'r1', result: {} }, target: PAGE },
     ]);
-    expect(window.responder.state()).toEqual({ kind: 'answered' });
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it('As an operator, I see a foreign opener of the sign-in window refused and counted under a bounded reason, never its host', () => {
@@ -260,12 +277,12 @@ describe('session window responder', () => {
 
     // When the opener says hello for another round, and then for my request's round
     window.post({ data: createHello('r2'), origin: PAGE, source: opener });
-    const afterOtherRound = window.responder.state();
+    const afterOtherRound = window.responder.state.get();
     window.post({ data: createHello('r1'), origin: PAGE, source: opener });
 
     // Then the other round changed nothing, and my own round vetted me again
     expect(afterOtherRound).toEqual({ kind: 'connecting' });
-    expect(window.responder.state()).toEqual({ kind: 'vetted', origin: PAGE, party: 'first' });
+    expect(window.responder.state.get()).toEqual({ kind: 'vetted', origin: PAGE, party: 'first' });
   });
 
   it('As a user in a restored sign-in window whose result was finished before the vetting, I return to it and the result is sent with that vetting', () => {
@@ -285,7 +302,7 @@ describe('session window responder', () => {
     expect(opener.posted.slice(2)).toEqual([
       { message: { type: 'dotli:s:result', round: 'r1', result: RESULT }, target: PAGE },
     ]);
-    expect(window.responder.state()).toEqual({ kind: 'answered' });
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it('As a user in a restored sign-in window that already sent its result, I return to it and nothing more is said', () => {
@@ -300,7 +317,7 @@ describe('session window responder', () => {
 
     // Then nothing more is posted and the window stays answered
     expect(opener.posted).toHaveLength(2);
-    expect(window.responder.state()).toEqual({ kind: 'answered' });
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it('As a user in a restored sign-in window that refused its opener, I return to it and nothing starts again', () => {
@@ -313,7 +330,7 @@ describe('session window responder', () => {
     window.restorePage();
 
     // Then it stays refused and posts nothing more
-    expect(window.responder.state()).toEqual({ kind: 'refused' });
+    expect(window.responder.state.get()).toEqual({ kind: 'refused' });
     expect(opener.posted).toHaveLength(2);
   });
 
@@ -330,7 +347,7 @@ describe('session window responder', () => {
 
     // Then nothing threw, and it stays refused with no listener left
     expect(thrown).toBeUndefined();
-    expect(window.responder.state()).toEqual({ kind: 'refused' });
+    expect(window.responder.state.get()).toEqual({ kind: 'refused' });
     expect(window.countListeners()).toBe(0);
   });
 
@@ -360,7 +377,7 @@ describe('session window responder', () => {
     expect(opener.posted.slice(1)).toEqual([
       { message: { type: 'dotli:s:refused', round: 'r1', reason: 'bad_request' }, target: SITE },
     ]);
-    expect(window.responder.state()).toEqual({ kind: 'refused' });
+    expect(window.responder.state.get()).toEqual({ kind: 'refused' });
   });
 
   it('As a user in a session window, I cancel and only the vetted site hears it', () => {
@@ -374,7 +391,7 @@ describe('session window responder', () => {
 
     // Then the cancel went to the site as the round's last word
     expect(opener.posted.slice(1)).toEqual([{ message: { type: 'dotli:s:cancelled', round: 'r1' }, target: SITE }]);
-    expect(window.responder.state()).toEqual({ kind: 'answered' });
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it('As a user in a session window not yet vetted, I cancel after a refusal and nothing is said, since no origin is known', () => {
@@ -388,7 +405,7 @@ describe('session window responder', () => {
 
     // Then only ready went out, and the window still waits
     expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
-    expect(window.responder.state()).toEqual({ kind: 'connecting' });
+    expect(window.responder.state.get()).toEqual({ kind: 'connecting' });
   });
 
   it('As a site, I get a result with a site token from the session window and the token travels beside the result', () => {
@@ -420,7 +437,7 @@ describe('session window responder', () => {
 
     // Then the result was the only word after ready, and the window stays answered
     expect(getPostedTypes(opener)).toEqual(['dotli:s:ready', 'dotli:s:result']);
-    expect(window.responder.state()).toEqual({ kind: 'answered' });
+    expect(window.responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it.each<{ name: string; end: (window: ReturnType<typeof openWindow>) => void }>([
@@ -468,7 +485,7 @@ describe('session window responder', () => {
       message: { type: 'dotli:s:refused', round: 'r1', reason: 'declined' },
       target: SITE,
     });
-    expect(window.responder.state()).toEqual({ kind: 'refused' });
+    expect(window.responder.state.get()).toEqual({ kind: 'refused' });
   });
 
   it('As a site opening the sign-out window, I say hello after its read and a refusal is all I hear', () => {
@@ -479,7 +496,7 @@ describe('session window responder', () => {
 
     // When a site says hello and the round is refused
     window.post({ data: createHello('r1'), origin: SITE, source: opener });
-    const vetted = window.responder.state();
+    const vetted = window.responder.state.get();
     window.responder.refuse('bad_request');
 
     // Then the vetting sent nothing, and only the refusal went out
@@ -501,7 +518,7 @@ describe('session window responder', () => {
     window.post({ data: createHello('r1'), origin: SITE, source: opener });
 
     // Then it is vetted again and heard only ready twice
-    expect(window.responder.state()).toEqual({ kind: 'vetted', origin: SITE, party: 'third' });
+    expect(window.responder.state.get()).toEqual({ kind: 'vetted', origin: SITE, party: 'third' });
     expect(opener.posted.map(posted => posted.message)).toEqual([READY, READY]);
   });
 
@@ -515,7 +532,7 @@ describe('session window responder', () => {
 
     // When the opener, now on another site, says hello, and then the first page says hello again
     window.post({ data: createHello('r1'), origin: OTHER_SITE, source: opener });
-    const afterOther = { state: window.responder.state(), posted: opener.posted.length };
+    const afterOther = { state: window.responder.state.get(), posted: opener.posted.length };
     window.post({ data: createHello('r1'), origin: PAGE, source: opener });
 
     // Then the other site changed nothing and was not refused, and the result went to the first page alone
@@ -624,7 +641,7 @@ describe('session window responder', () => {
 
     // Then the first one counts, and the window is vetted again
     expect(call).toBe('0x0a03');
-    expect(window.responder.state()).toEqual({ kind: 'vetted', origin: SITE, party: 'third' });
+    expect(window.responder.state.get()).toEqual({ kind: 'vetted', origin: SITE, party: 'third' });
   });
 
   it('As a site whose sign window was restored before my payload came, I send it before my new hello and it counts', async () => {
@@ -653,7 +670,7 @@ describe('session window responder', () => {
     window.restorePage();
 
     // Then nothing changed, nothing more was said and no listener is left
-    expect(window.responder.state()).toEqual({ kind: 'connecting' });
+    expect(window.responder.state.get()).toEqual({ kind: 'connecting' });
     expect(window.states).toEqual([]);
     expect(opener.posted).toEqual([{ message: READY, target: '*' }]);
     expect(window.countListeners()).toBe(0);

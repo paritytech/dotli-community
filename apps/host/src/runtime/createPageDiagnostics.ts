@@ -137,7 +137,7 @@ async function formatDiagnosticsReport({
     `  Worker cache: ${cache.skipWorkerCache ? 'off' : 'on'}`,
   );
 
-  const product = productState.get();
+  const product = productState.store.get();
   if (product.status === 'loaded') {
     const productLabel = product.label;
     lines.push('', 'Permissions:');
@@ -194,7 +194,7 @@ function buildBaseDiagnosticsRows({ page = readBrowserPage() }: BuildBaseDiagnos
     ...buildTransportRows(backend, sha),
   ];
 
-  const product = productState.get();
+  const product = productState.store.get();
   if (product.status === 'loaded' && product.manifestVersion !== undefined) {
     rows.push(['Manifest', `v${String(product.manifestVersion)}`]);
   }

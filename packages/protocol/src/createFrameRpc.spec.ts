@@ -232,7 +232,7 @@ describe('createFrameRpc', () => {
     // When a request is made, and the frame then comes up
     void rpc.request(resolve.owner, { label: 'doom' });
     await settle();
-    const statusWhileWaiting = fake.frame.getStatus();
+    const statusWhileWaiting = fake.frame.status.get();
     const servedWhileWaiting = [...served];
     fake.setStatus('ready');
     await settle();

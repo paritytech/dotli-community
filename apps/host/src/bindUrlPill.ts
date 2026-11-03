@@ -19,7 +19,6 @@ export function bindUrlPill(bar: HTMLElement): () => void {
     domain.textContent = text.domain;
     tld.textContent = text.tld;
   }
-  render();
   return urlPillState.store.subscribe(render);
 }
 

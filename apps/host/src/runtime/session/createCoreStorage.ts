@@ -19,6 +19,7 @@ import {
   openIdb,
   toHex,
 } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { pageRole } from '../pageRole.js';
 import { sessionPresence } from './createPagePresence.js';
 import { createPageSignInFlag, type SignInFlag, type StoredSignIn } from './signInFlag.js';
@@ -42,10 +43,8 @@ export type SharedSessionStore = {
   clearIf(key: string, expected: string): Promise<boolean>;
   /** Hears the keys other tabs change. Returns the unsubscribe. */
   subscribe(listener: (key: string) => void): () => void;
-  /** The store's status now. Never throws. */
-  getStatus(): SharedStoreStatus;
-  /** Calls `listener` on each change of the status only. Returns the unsubscribe. */
-  subscribeStatus(listener: (status: SharedStoreStatus) => void): () => void;
+  /** The store's status, reached when called, so building the store reaches no protocol client. Never throws. */
+  getStatusStore: () => ReadableAtom<SharedStoreStatus>;
 };
 
 /** A read of the saved session, or why the store could not answer it. */
@@ -65,12 +64,7 @@ export type HostCoreStorage = ReturnType<typeof createCoreStorage>;
 /** The saved session as session state reads it. */
 export type StoredSession = Pick<
   HostCoreStorage,
-  | 'readSession'
-  | 'subscribeSessionReads'
-  | 'readUiCache'
-  | 'writeUiCache'
-  | 'subscribeStatus'
-  | 'subscribeStoredSession'
+  'readSession' | 'subscribeSessionReads' | 'readUiCache' | 'writeUiCache' | 'getStatusStore' | 'subscribeStoredSession'
 >;
 
 type Params = {
@@ -331,8 +325,9 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
         listener();
       }
     });
-    let lastStatus = shared.getStatus();
-    const unsubscribeStatus = shared.subscribeStatus(status => {
+    const sharedStatus = shared.getStatusStore();
+    let lastStatus = sharedStatus.get();
+    const unsubscribeStatus = sharedStatus.listen(status => {
       const recovered = lastStatus === 'unavailable' && status === 'available';
       lastStatus = status;
       // A core whose own read failed holds no session, so the store coming back is a change for it.
@@ -401,10 +396,11 @@ export function createCoreStorage({ shared, flag, local = () => localStorage, ke
     readUiCache,
     /** Null clears it. Never throws, and reports its own failure, as a stale cache only costs a stale name. */
     writeUiCache,
-    /** The shared store's status now. Never throws. */
-    getStatus: (): SharedStoreStatus => shared.getStatus(),
-    /** Calls `listener` on each change of the shared store's status. Returns the unsubscribe. */
-    subscribeStatus: (listener: (status: SharedStoreStatus) => void): (() => void) => shared.subscribeStatus(listener),
+    /**
+     * The shared store's status, reached when called, so building the storage reaches no protocol client. Never
+     * throws.
+     */
+    getStatusStore: shared.getStatusStore,
     /**
      * Calls `listener` for a session written in this tab, changed by another tab, or readable again once the store is
      * back. Returns the unsubscribe.
@@ -439,8 +435,7 @@ function createSiteSharedSessionStore(): SharedSessionStore {
           listener(change.value.key);
         }
       }),
-    getStatus: () => getProtocolClient().sharedStore.getStatus(),
-    subscribeStatus: listener => getProtocolClient().sharedStore.subscribeStatus(listener),
+    getStatusStore: () => getProtocolClient().sharedStore.status,
   };
 }
 

@@ -3,6 +3,7 @@
 
 import type { SharedStoreStatus } from '@dotli/protocol';
 import { createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import type { HostCoreStorage, SharedSessionStore } from './createCoreStorage.js';
 
 /** An in-memory shared auth store with the protocol frame's failure modes. */
@@ -61,8 +62,7 @@ export function createFakeSharedSessionStore({
   const writeWaiters = new Map<string, ((value: string) => void)[]>();
   const clearWaiters = new Map<string, ReturnType<typeof createDeferred<undefined>>[]>();
   const changeListeners = new Set<(key: string) => void>();
-  const statusListeners = new Set<(status: SharedStoreStatus) => void>();
-  let current = status;
+  const current = atom(status);
   const store: FakeSharedSessionStore = {
     entries,
     reads: [],
@@ -142,23 +142,9 @@ export function createFakeSharedSessionStore({
         changeListeners.delete(handleChange);
       }
     },
-    getStatus: () => current,
-    subscribeStatus(listener) {
-      function handleStatus(next: SharedStoreStatus): void {
-        listener(next);
-      }
-      statusListeners.add(handleStatus);
-      return unsubscribe;
-
-      function unsubscribe(): void {
-        statusListeners.delete(handleStatus);
-      }
-    },
+    getStatusStore: () => current,
     setStatus(next) {
-      current = next;
-      for (const listener of [...statusListeners]) {
-        listener(next);
-      }
+      current.set(next);
     },
     changeFromOtherTab(key, value) {
       entries.set(key, value);
@@ -166,7 +152,7 @@ export function createFakeSharedSessionStore({
         listener(key);
       }
     },
-    statusListenerCount: () => statusListeners.size,
+    statusListenerCount: () => current.lc,
   };
   return store;
 }

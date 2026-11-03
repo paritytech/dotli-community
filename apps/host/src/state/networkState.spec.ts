@@ -21,37 +21,27 @@ describe('network store', () => {
     resetStores();
   });
 
-  it('As a user with the chains popover open, I watch a chain come up and see each phase and the verdict until the network state stops', () => {
+  it('As a user with the chains popover open, I watch a chain come up and see each phase and the verdict', () => {
     // Given
-    const { store, start } = createNetworkState({ timers });
-    const stop = start({ monitor });
+    const store = createNetworkState({ timers, monitor });
 
     // When
     monitor.recordChainPhase('relay', 'syncing');
     const syncing = store.get();
     monitor.recordChainPhase('relay', 'ready');
     const ready = getRelayPhase(store.get());
-    stop();
-    monitor.recordChainPhase('relay', 'stalled');
 
     // Then
-    expect({
-      syncing: getRelayPhase(syncing),
-      syncingVerdict: syncing.verdict,
-      ready,
-      afterStop: getRelayPhase(store.get()),
-    }).toEqual({
+    expect({ syncing: getRelayPhase(syncing), syncingVerdict: syncing.verdict, ready }).toEqual({
       syncing: 'syncing',
       syncingVerdict: { text: 'Connecting', tone: 'idle' },
       ready: 'ready',
-      afterStop: 'ready',
     });
   });
 
   it('As a user opening the chains popover after a change nobody watched, I read the chains as of my opening and then hear each change', async () => {
     // Given a change while nobody is subscribed, and the popover opening five seconds later
-    const { store, start } = createNetworkState({ timers });
-    onTestFinished(start({ monitor }));
+    const store = createNetworkState({ timers, monitor });
     monitor.recordChainPhase('relay', 'syncing');
     await timers.advance(5_000);
 
@@ -68,73 +58,81 @@ describe('network store', () => {
     });
   });
 
-  it('As a user before the network state starts, I watch a chain come up and see no chain listed', () => {
-    // Given a monitor that heard a chain, the store never started
-    const { store } = createNetworkState({ timers });
+  it('As the network panel, I read a fresh snapshot after each monitor change, and none is built while nobody reads', async () => {
+    // Given a monitor that counts the snapshots built from it
+    const { monitor: counting, builds } = countBuilds(monitor);
+    const store = createNetworkState({ timers, monitor: counting });
 
-    // When
+    // When the monitor changes with nobody reading, then the panel reads after each change
     monitor.recordChainPhase('relay', 'syncing');
+    const unread = builds.count;
+    await timers.advance(1_000);
+    const syncing = store.get();
+    monitor.recordChainPhase('relay', 'ready');
+    const ready = store.get();
 
     // Then
-    expect(store.get().chains).toEqual([]);
+    expect({
+      unread,
+      syncing: { phase: getRelayPhase(syncing), readAt: syncing.readAt },
+      ready: getRelayPhase(ready),
+      builds: builds.count,
+    }).toEqual({
+      unread: 0,
+      syncing: { phase: 'syncing', readAt: 1_000 },
+      ready: 'ready',
+      builds: 2,
+    });
   });
 
-  it('As a user whose page started the network state twice, I see one caller stop and still hear each chain change once', () => {
+  it('As a follower, I listen to the network store and hear each monitor change', () => {
     // Given
-    const { store, start } = createNetworkState({ timers });
-    const notified = recordNotified(store);
-    onTestFinished(start({ monitor }));
-    const stopSecond = start({ monitor });
+    const store = createNetworkState({ timers, monitor });
+    const heard: string[] = [];
+    onTestFinished(
+      store.listen(value => {
+        heard.push(getRelayPhase(value) ?? 'none');
+      }),
+    );
 
     // When
-    stopSecond();
     monitor.recordChainPhase('relay', 'syncing');
+    monitor.recordChainPhase('relay', 'ready');
 
     // Then
-    expect(notified.map(getRelayPhase)).toEqual([null, 'syncing']);
+    expect(heard).toEqual(['syncing', 'ready']);
   });
 
-  it('As a user with the chains popover open on a page that restarted the network state, I call a stop from before the restart and still see the chains popover follow each change', () => {
-    // Given a reader, so the store shows what the follow last heard
-    const { store, start } = createNetworkState({ timers });
-    recordNotified(store);
-    const stopFirst = start({ monitor });
-    stopFirst();
-    onTestFinished(start({ monitor }));
+  it('As a test, I reset the stores while the network snapshot is read, and it rebuilds from the cleared monitor', () => {
+    // Given a mounted snapshot that has seen a phase
+    const store = createNetworkState({ timers, monitor });
+    const stop = store.listen(() => undefined);
+    monitor.recordChainPhase('relay', 'syncing');
 
     // When
-    stopFirst();
-    monitor.recordChainPhase('relay', 'syncing');
-
-    // Then
-    expect(getRelayPhase(store.get())).toBe('syncing');
-  });
-
-  it('As a store reset during a follow, I end it once and a stop left from it does nothing', () => {
-    // Given a follow on a monitor whose subscription counts its unsubscribes
-    const { start } = createNetworkState({ timers });
-    let unsubscribes = 0;
-    const counting: NetworkMonitor = {
-      ...monitor,
-      subscribe(listener) {
-        const unsubscribe = monitor.subscribe(listener);
-        return () => {
-          unsubscribes += 1;
-          unsubscribe();
-        };
-      },
-    };
-    const stop = start({ monitor: counting });
-
-    // When the stores reset, then the stop left from the ended follow runs
     resetStores();
-    const afterReset = unsubscribes;
+    const phase = getRelayPhase(store.get());
     stop();
 
-    // Then the reset ended the follow once and the stop added nothing
-    expect({ afterReset, total: unsubscribes }).toEqual({ afterReset: 1, total: 1 });
+    // Then
+    expect(phase).toBeNull();
   });
 });
+
+/** `from`, counting each snapshot read of its chains. */
+function countBuilds(from: NetworkMonitor): { monitor: NetworkMonitor; builds: { count: number } } {
+  const builds = { count: 0 };
+  return {
+    builds,
+    monitor: {
+      ...from,
+      getNetworkStatus() {
+        builds.count += 1;
+        return from.getNetworkStatus();
+      },
+    },
+  };
+}
 
 function getRelayPhase(state: NetworkState): ChainPhase | null | undefined {
   return state.chains.find(chain => chain.role === 'relay')?.phase;

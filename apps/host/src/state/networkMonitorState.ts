@@ -6,9 +6,9 @@
 
 import { getActiveChainRoles, type ChainRole } from '@dotli/config';
 import type { ChainActivity } from '@dotli/chains';
-import { reportListener } from '@dotli/metrics';
 import { isRemoteChainConnectable } from '@dotli/protocol';
-import { createListenerSet, realTimers, registerStoreStateReset, type Timers } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
+import { realTimers, registerStoreStateReset, type Timers } from '@dotli/shared';
 
 export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
@@ -109,8 +109,9 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   // Not cleared on release, because the frame's chains live on whether or not this tab holds them.
   const frameWasReady = new Set<ChainRole>();
   let transfer = createIdleTransfer();
-  // A throwing listener is a defect in its reader, so it is reported, and the other listeners still hear the change.
-  const listeners = createListenerSet<undefined>({ onListenerError: reportListener('ui', 'network_monitor') });
+  let changes = 0;
+  const versionAtom = atom(changes);
+  const version: ReadableAtom<number> = versionAtom;
   registerStoreStateReset(() => {
     known = null;
     extras.clear();
@@ -118,9 +119,14 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     phases.clear();
     frameWasReady.clear();
     transfer = createIdleTransfer();
+    // After the clears and never back to 0, so a computed over the model rebuilds from the cleared model and cannot
+    // match a version it already built at.
+    notify();
   });
 
   return {
+    /** Counts the changes made to the model, so a follower reads it again when the count moves. */
+    version,
     /**
      * Records who holds a chain and how its connection stands. A chain outside the known roles is listed only while
      * something holds it. Never throws.
@@ -143,11 +149,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     recordTransfer,
     /** Records a known chain's phase. An unchanged phase is dropped. Never throws. */
     recordChainPhase,
-    /**
-     * Calls `listener` on every change until the returned unsubscribe. A listener that throws is reported, and the
-     * others still hear the change.
-     */
-    subscribe,
     /** Returns the transfer as last merged. Never throws. */
     getTransfer,
     /**
@@ -163,7 +164,8 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
   };
 
   function notify(): void {
-    listeners.emit(undefined);
+    changes += 1;
+    versionAtom.set(changes);
   }
 
   /** Seeded on first use, so a network chosen before boot is the one listed. */
@@ -300,10 +302,6 @@ export function createNetworkMonitorState({ isConnectable, timers = realTimers }
     }
     phases.set(role, phase);
     notify();
-  }
-
-  function subscribe(listener: () => void): () => void {
-    return listeners.subscribe(listener);
   }
 
   function isReachable(state: ChainState): boolean {

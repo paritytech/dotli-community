@@ -3,7 +3,8 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { SHARED_CORE_SESSION_KEY, type LocalWalletIdentity, type LocalWalletReadResult } from '@dotli/protocol';
-import { createStoreStatus, createSyncStore, waitForStatus, type ReadableStore } from '@dotli/shared';
+import { waitForStatus } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import type { DotliAuthState } from '../session/types.js';
 import { createCoreStorage } from '../session/createCoreStorage.js';
 import { createNonOwnerSignInFlag } from '../session/signInFlag.js';
@@ -42,13 +43,18 @@ function createPage(stored: Params = {}) {
       readStoredSignIn: () => Promise.resolve('none'),
     }),
   });
-  const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' }, equals: () => false });
+  const auth = atom<DotliAuthState>({ tag: 'Disconnected' });
   const session = createSessionState({
     store: storage,
     async restore() {
       return { local: null, session: await storage.readSession(), wallet: { status: 'none' }, presence: 'present' };
     },
-    auth,
+    auth: {
+      store: auth,
+      set: next => {
+        auth.set(next);
+      },
+    },
     setElsewhere: () => undefined,
     isLocalWallet: () => false,
     isResumeOffered: () => true,
@@ -71,8 +77,8 @@ function createPage(stored: Params = {}) {
 }
 
 /** Waits until the page shows a sign-in, checking at each state it publishes. */
-function waitUntilSignedIn(auth: ReadableStore<DotliAuthState>): Promise<void> {
-  return waitForStatus(createStoreStatus(auth), state => state.tag === 'Connected');
+function waitUntilSignedIn(auth: ReadableAtom<DotliAuthState>): Promise<void> {
+  return waitForStatus(auth, state => state.tag === 'Connected');
 }
 
 describe('applying a sign-in window result', () => {

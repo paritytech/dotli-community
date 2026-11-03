@@ -10,7 +10,8 @@
 
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createSyncStore, log, isShallowEqual, type ReadableStore } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
+import { createAsyncTaskPool, log, isShallowEqual } from '@dotli/shared';
 import { reportLazyMiss } from '../../reportLazyMiss.js';
 import type { PairingView } from '../../state/authModalState.js';
 import type {
@@ -44,10 +45,10 @@ export type PhraseCheck = {
 
 export type WindowFlowParams = {
   /** Watched only, so the flow learns where the round stands and never answers the opener itself. */
-  responder: Pick<Responder<unknown>, 'state' | 'subscribe'>;
+  responder: Pick<Responder<unknown>, 'state'>;
   /** The page's one flag keeper, so the flow's flag writes and the store writes stay in order. */
   signIns: SignInFlag;
-  auth: ReadableStore<DotliAuthState>;
+  auth: ReadableAtom<DotliAuthState>;
   commands: AuthCommands;
   store: Pick<HostCoreStorage, 'readSession' | 'readUiCache' | 'writeUiCache'>;
   wallet: {
@@ -147,11 +148,9 @@ export function createWindowFlow({
   deliver,
   close,
 }: WindowFlowParams) {
-  const screen = createSyncStore<SignInScreen>({
-    name: 'sessionWindowFlow',
-    initial: getResponderScreen(responder.state(), { pairing: getPairingView(SPINNER, auth.get()) }),
-    equals: isShallowEqual,
-  });
+  const initial = getResponderScreen(responder.state.get(), { pairing: getPairingView(SPINNER, auth.get()) });
+  const screen = atom<SignInScreen>(initial);
+  screen.eq = isShallowEqual;
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   let phase: Phase = { kind: 'waiting' };
@@ -271,7 +270,7 @@ export function createWindowFlow({
   /** Ends the round with what the store holds: handed to `deliver`, or said as done when no page opened the window. */
   function endRound(result: SessionResult): void {
     phase = { kind: 'ended' };
-    if (responder.state().kind === 'no-opener') {
+    if (responder.state.get().kind === 'no-opener') {
       log.event('sign-in window signed in with no opener', { flow: 'wallet' });
       show({ view: 'done-no-opener' });
       return;
@@ -514,12 +513,11 @@ export function createWindowFlow({
     const { intent } = phase;
     void runStep({ name: 'decide', run: () => decide(intent), failure: 'view' });
   }
-  const stops = [responder.subscribe(handleResponderState)];
-  handleResponderState(responder.state());
+  const stops = [responder.state.subscribe(handleResponderState)];
 
   // Shown only: the login's answer, not the auth state, decides how a pairing ends.
   stops.push(
-    auth.subscribe(() => {
+    auth.listen(() => {
       change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
     }),
   );
@@ -614,7 +612,7 @@ export function createWindowFlow({
       close();
     },
   };
-  const shownScreen: ReadableStore<SignInScreen> = screen;
+  const shownScreen: ReadableAtom<SignInScreen> = screen;
 
   return {
     /** What the window shows, which is always a view of a sign-in. */

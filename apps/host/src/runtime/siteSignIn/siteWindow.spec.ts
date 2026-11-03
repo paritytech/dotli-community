@@ -2,19 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ProductAccountId } from '@parity/truapi';
+import { atom, type ReadableAtom } from 'nanostores';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import {
-  createSyncStore,
-  createDeferred,
-  fromHex,
-  createStoreStatus,
-  isRecord,
-  toHex,
-  waitForStatus,
-} from '@dotli/shared';
+import { createDeferred, fromHex, isRecord, toHex, waitForStatus } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -28,6 +21,7 @@ import { findLeakedSecrets, MAIN_BLOB, WALLET_ACCOUNT, WALLET_ENTROPY } from '..
 import { MAIN_KEY } from '../../testing/siteRoundConstants.js';
 import { MainAccountError, getMainAccount, type MainAccount } from './createMainAccountSource.js';
 import { parsePublicSuffixList } from './parsePublicSuffixList.js';
+import type { SignInScreen } from '../../state/sessionWindowState.js';
 import type { DisplayCall } from './toDisplayCall.js';
 import type { SiteChain } from './createSiteChain.js';
 import type { SiteSignRequest } from './parseSiteSignRequest.js';
@@ -41,12 +35,17 @@ type CreateWindowPartsParams = {
   leaveFlowsRunning?: boolean;
   /** Holds each read of the main session until it settles, which keeps a window flow open. */
   sessionReadHeld?: Promise<void>;
+  /** Shows this screen source in place of each window flow's own, which the window flow keeps running behind it. */
+  flowScreen?: ReadableAtom<SignInScreen>;
 };
 
 type OpenTransactionWindowParams = {
   /** A read of the old token's grant that waits for it, which makes the request carry that token. */
   grantRead?: Promise<void>;
 };
+
+/** What a site's window flow calls once it stored a sign-in. */
+type SiteWindowFlowDeliver = Parameters<SiteWindowParams['createWindowFlow']>[0]['deliver'];
 
 /** One view the window showed, with the page or route it names. */
 type ShownView = { view: string; pageHost?: string | null; route?: string };
@@ -95,6 +94,7 @@ function createWindowParts({
   mainAccount = () => Promise.resolve(MAIN),
   leaveFlowsRunning = false,
   sessionReadHeld = Promise.resolve(),
+  flowScreen,
 }: CreateWindowPartsParams = {}) {
   const metrics = bindRecordingSentry({ onFinished: onTestFinished });
   recordLog({ onFinished: onTestFinished, level: 'error' });
@@ -110,10 +110,10 @@ function createWindowParts({
     cancelLogin: () => undefined,
   };
   const closed = createDeferred<undefined>();
-  const auth = createSyncStore<DotliAuthState>({ name: 'testSiteWindowAuth', initial: CONNECTED });
+  const auth = atom<DotliAuthState>(CONNECTED);
   const flows: WindowFlow[] = [];
-  // The listeners on the screens of the window flows the window started.
-  const flowScreenListeners = new Set<() => void>();
+  // What each window flow was told to do once it stored a sign-in.
+  const deliveries: SiteWindowFlowDeliver[] = [];
   const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
@@ -146,18 +146,12 @@ function createWindowParts({
         ...flow,
       });
       flows.push(started);
-      const screen: WindowFlow['screen'] = {
-        ...started.screen,
-        subscribe(listener) {
-          flowScreenListeners.add(listener);
-          const stop = started.screen.subscribe(listener);
-          return () => {
-            flowScreenListeners.delete(listener);
-            stop();
-          };
-        },
+      deliveries.push(flow.deliver);
+      return {
+        ...started,
+        screen: flowScreen ?? started.screen,
+        dispose: leaveFlowsRunning ? () => undefined : started.dispose,
       };
-      return { ...started, screen, dispose: leaveFlowsRunning ? () => undefined : started.dispose };
     },
     grants: createSiteGrantStore({ idb: createMemorySiteGrantsIdb() }),
     groups: {
@@ -175,8 +169,9 @@ function createWindowParts({
     metrics,
     auth,
     flows,
-    /** How many listeners the window flows' screens hold for the window. */
-    countFlowScreenListeners: (): number => flowScreenListeners.size,
+    deliveries,
+    /** How many listeners the window flows' own screens hold. */
+    countFlowScreenListeners: (): number => flows.reduce((count, flow) => count + flow.screen.lc, 0),
     closed: closed.promise,
     /** Every message the opener got, ready included. */
     readPosted: () => opener.posted.map(({ message }) => message),
@@ -191,18 +186,18 @@ function createWindowParts({
 /** What the window showed of `window`, each view with the page or route it names, from now on. */
 function watchWindow({ site, screen, dispose }: SiteWindow) {
   const shown: ShownView[] = [];
-  function record(): void {
-    shown.push(getShownView(screen.get()));
-  }
-  record();
-  onTestFinished(screen.subscribe(record));
+  onTestFinished(
+    screen.subscribe(next => {
+      shown.push(getShownView(next));
+    }),
+  );
   return {
     site,
     screen,
     dispose,
     shown,
     /** Resolves once the window shows `view`. */
-    waitForView: (view: string) => waitForStatus(createStoreStatus(screen), current => current.view === view),
+    waitForView: (view: string) => waitForStatus(screen, current => current.view === view),
   };
 }
 
@@ -354,7 +349,7 @@ describe('site sign-in window', () => {
 
     // When it is disposed and the round then reaches its consent view
     page.dispose();
-    await waitForStatus(createStoreStatus(page.site.screen), current => current.view === 'consent');
+    await waitForStatus(page.site.screen, current => current.view === 'consent');
 
     // Then the window still shows only what it showed as it opened
     expect(page.shown).toEqual([{ view: 'site-signing', route: 'auth' }]);
@@ -379,7 +374,7 @@ describe('site sign-in window', () => {
     const changes = page.flows.map(flow => {
       const seen: unknown[] = [];
       onTestFinished(
-        flow.screen.subscribe(() => {
+        flow.screen.listen(() => {
           seen.push(flow.screen.get());
         }),
       );
@@ -451,6 +446,44 @@ describe('site sign-in window', () => {
 
     // Then nothing threw
     expect(thrown).toBeUndefined();
+  });
+});
+
+describe('site window screen chain', () => {
+  it("As the site window, I read the current flow's latest screen at once through the chain, and keep it while the flow screen is null", async () => {
+    // Given a window flow that shows a connecting screen, whose earlier listener moves a pairing on to a failed one
+    const connecting: SignInScreen = {
+      view: 'connecting',
+      pageHost: ORIGIN,
+      failure: null,
+      pairing: { kind: 'spinner' },
+    };
+    const pairing: SignInScreen = { view: 'pairing', pageHost: ORIGIN, failure: null, pairing: { kind: 'spinner' } };
+    const failed: SignInScreen = { view: 'failed', pageHost: ORIGIN, failure: 'step', pairing: { kind: 'spinner' } };
+    const flowScreen = atom<SignInScreen>(connecting);
+    onTestFinished(
+      flowScreen.listen(current => {
+        if (current.view === 'pairing') {
+          flowScreen.set(failed);
+        }
+      }),
+    );
+    const never = new Promise<void>(() => undefined);
+    const page = openSignInWindow({ flowScreen, sessionReadHeld: never });
+    await page.waitForView('consent');
+
+    // When the user consents, so the site hands the window to its flow
+    void page.site.consent();
+    await page.waitForView('connecting');
+    flowScreen.set(pairing);
+    const shownWithFlow = page.screen.get();
+    // And the flow stores its sign-in, which empties the flow screen while the site's round has not moved on
+    must(page.deliveries[0], 'a delivery')({ session: { blob: MAIN_BLOB, uiState: MAIN_UI_STATE }, localWallet: null });
+    const shownAfterDelivery = page.screen.get();
+
+    // Then the window shows the flow's latest screen, and keeps it while the flow screen is null
+    expect(shownWithFlow).toEqual(failed);
+    expect(shownAfterDelivery).toEqual(failed);
   });
 });
 
@@ -558,7 +591,7 @@ describe('site transaction window', () => {
     // When it is disposed and the round then reaches its consent view
     watched.dispose();
     grantRead.resolve(undefined);
-    await waitForStatus(createStoreStatus(watched.site.screen), current => current.view === 'consent');
+    await waitForStatus(watched.site.screen, current => current.view === 'consent');
 
     // Then the window still shows only what it showed as it opened
     expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }]);

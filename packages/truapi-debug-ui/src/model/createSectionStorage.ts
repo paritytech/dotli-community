@@ -3,7 +3,8 @@
 
 // Imports no Solid, so the spec runs under Node.
 
-import { pageLocalStorage } from '@dotli/shared';
+import { pageLocalStorage, registerAtomReset } from '@dotli/shared';
+import { createPersistentAtom } from '@dotli/stores-persistent';
 import type { PanelStorage } from './panelStorage.js';
 
 /** The panel's top-level tabs. Only `truapi` shows the captured events. */
@@ -19,28 +20,24 @@ const SECTION_STORAGE_KEY = 'truapi-debug:section';
 /** Every panel section, in display order. */
 export const PANEL_SECTIONS: readonly PanelSection[] = ['truapi', 'resolution', 'archive', 'diagnostics', 'wallet'];
 
-/** The panel's open tab, kept in `storage` from one mount to the next. */
+/**
+ * The panel's open tab, kept in `storage` from one mount to the next. TrUAPI when nothing there parses, and going back
+ * to TrUAPI removes the key. Never throws.
+ */
 export function createSectionStorage({ storage = pageLocalStorage }: Params = {}) {
-  return {
-    /** The stored tab, or TrUAPI when none or an unknown one is stored. Throws only what `storage` throws. */
-    read,
-    /** Stores `section` for the next mount. Throws only what `storage` throws. */
-    write,
-  };
-
-  function read(): PanelSection {
-    const stored = storage.getItem(SECTION_STORAGE_KEY);
-    return isPanelSection(stored) ? stored : 'truapi';
-  }
-
-  function write(section: PanelSection): void {
-    storage.setItem(SECTION_STORAGE_KEY, section);
-  }
+  return createPersistentAtom<PanelSection>({
+    key: SECTION_STORAGE_KEY,
+    storage,
+    initial: 'truapi',
+    decode: decodeSection,
+    encode: String,
+  });
 }
 
-/** The page's stored tab, in the page's local storage. */
+/** The page's open tab, in the page's local storage. It reads its key on first start. */
 export const sectionStorage = createSectionStorage();
+registerAtomReset(sectionStorage);
 
-function isPanelSection(value: string | null): value is PanelSection {
-  return PANEL_SECTIONS.some(section => section === value);
+function decodeSection(raw: string): PanelSection | undefined {
+  return PANEL_SECTIONS.find(section => section === raw);
 }

@@ -25,7 +25,7 @@ export type FeedOpen = (ends: FeedEnds) => () => void;
 export type FeedFrame<T> = {
   /** The transport of the frame there is now. Rejects when no frame can be reached. */
   getTransport(): Promise<T>;
-} & Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus'>;
+} & Pick<ProtocolFrame, 'status'>;
 
 type Params<T> = {
   feed: FeedName;
@@ -149,7 +149,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
   }
 
   // A new frame relays nothing to a feed held on the one it replaces.
-  frame.subscribeStatus(status => {
+  frame.status.listen(status => {
     if (wanted && status === 'booting') {
       ask();
     }
@@ -162,7 +162,7 @@ export function createFeedKeeper<T>({ feed, frame, opener, boots, timers }: Para
      */
     follow(): void {
       wanted = true;
-      if (boots || hasFrame(frame.getStatus())) {
+      if (boots || hasFrame(frame.status.get())) {
         ask();
       }
     },

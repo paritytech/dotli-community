@@ -13,7 +13,8 @@ import {
   type Network,
 } from '@dotli/config';
 
-import { createSyncStore, type ReadableStore } from '@dotli/shared';
+import { registerAtomReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 
 export type SettingsState = {
   backend: Backend;
@@ -31,8 +32,9 @@ type Params = {
 };
 
 // Null until `init` seeds it, so a build-time render reads no settings.
-const settings = createSyncStore<SettingsState | null>({ name: 'settings', initial: null });
-const store: ReadableStore<SettingsState | null> = settings;
+const settings = atom<SettingsState | null>(null);
+registerAtomReset(settings);
+const store: ReadableAtom<SettingsState | null> = settings;
 
 /** The settings the page booted with. */
 export const settingsState = {

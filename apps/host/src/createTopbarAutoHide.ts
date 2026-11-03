@@ -218,12 +218,12 @@ export function createTopbarAutoHide({
     const { signal } = listeners;
     const page = getPage();
 
-    const unsubscribe = productState.store.subscribe(() => {
-      if (productState.get().status === 'error') {
+    const unlisten = productState.store.listen(() => {
+      if (productState.store.get().status === 'error') {
         setContentShown(false);
       }
     });
-    signal.addEventListener('abort', unsubscribe);
+    signal.addEventListener('abort', unlisten);
 
     page.document.addEventListener('focusin', syncFocus, { signal });
     page.document.addEventListener(

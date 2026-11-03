@@ -59,6 +59,7 @@ const meta = {
   parameters: { chrome: true },
   beforeEach: () => {
     stage = chatStage({ open: true });
+    return stage.dispose;
   },
 } satisfies Meta<typeof PanelOnPage>;
 

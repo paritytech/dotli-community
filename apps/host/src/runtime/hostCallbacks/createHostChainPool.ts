@@ -79,7 +79,7 @@ export function createHostChainPool({
 }
 
 /** The page's protocol frame status, read from the protocol client on each call. */
-export const protocolFrame: FrameStatusSource = { getProtocolStatus: () => getProtocolClient().frame.getStatus() };
+export const protocolFrame: FrameStatusSource = { getProtocolStatus: () => getProtocolClient().frame.status.get() };
 
 /** The page's one host chain pool. */
 export const hostChainPool = createHostChainPool();

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { createAsyncTaskPool, createDeferred, createSyncStore } from '@dotli/shared';
+import { createAsyncTaskPool, createDeferred } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { catchRejection, nth } from '@dotli/shared/testing';
 import { bindReports } from '../testing/bindReports.js';
 import { createAuthCommands } from './createAuthCommands.js';
@@ -379,7 +380,7 @@ describe('paired sign-out', () => {
 
   it('As a user whose core reads signed out once the window cleared the store, I sign out and the session my copy held is still ended', async () => {
     // Given the core commands over a core that already reports signed out
-    const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial: { tag: 'Disconnected' } });
+    const auth = atom<DotliAuthState>({ tag: 'Disconnected' });
     const commands = createAuthCommands({
       auth,
       login: () => Promise.resolve({ kind: 'cancelled' }),

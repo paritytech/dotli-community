@@ -8,7 +8,8 @@
 // it takes.
 
 import { m, spans as S } from '@dotli/metrics';
-import { createDeferred, createStoreStatus, createSyncStore, listen, log } from '@dotli/shared';
+import { createDeferred, listen, log } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import type { OpenerParty, Party, SessionOpenerVerdict } from './openerRule.js';
 import { listenToMessages, type MessageEventLike, type WindowHandle } from './listenToMessages.js';
 import {
@@ -37,10 +38,8 @@ export type ResponderState =
 
 /** The window's side of a round, which answers its opener at most once. */
 export type Responder<Result> = {
-  /** Where the window stands with its opener now. */
-  state(): ResponderState;
-  /** Calls `listener` with each new state until the returned unsubscribe. */
-  subscribe(listener: (state: ResponderState) => void): () => void;
+  /** Where the window stands with its opener, read with `get` and followed with `listen`. */
+  state: ReadableAtom<ResponderState>;
   /**
    * Sends the result to the vetted opener, once, with the site's token when one is given. A window waiting to be vetted
    * again sends it on that vetting. Without an opener there is nobody to send it to.
@@ -91,12 +90,7 @@ type AnswerParams<Result> = {
 
 /** The window's side of `round`, which says ready to its opener at once when it has one. */
 export function createResponder<Result>({ opener, judge, round, listen, onPageRestore }: Params): Responder<Result> {
-  const store = createSyncStore<ResponderState>({
-    name: 'sessionResponder',
-    initial: {
-      kind: opener === null ? 'no-opener' : 'connecting',
-    },
-  });
+  const store = atom<ResponderState>({ kind: opener === null ? 'no-opener' : 'connecting' });
   // The first origin vetted, which the window answers alone, since the opener tab may move to another site while the
   // window sits in the back-forward cache.
   let pinned: { origin: string; party: Party } | null = null;
@@ -208,11 +202,8 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
     }
   }
 
-  const status = createStoreStatus(store);
-
   return {
-    state: status.get,
-    subscribe: status.subscribe,
+    state: store,
     send(result, { siteToken } = {}) {
       const state = store.get();
       switch (state.kind) {

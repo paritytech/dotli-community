@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { atom, type WritableAtom } from 'nanostores';
 import { spans as S } from '@dotli/metrics';
 import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
-import { createStatusCell, createDeferred, type StatusCell } from '@dotli/shared';
+import { createDeferred } from '@dotli/shared';
 import { createManualTimers, recordLog, type ManualTimers } from '@dotli/shared/testing';
 import { createFeedKeeper, type FeedEnds, type FeedFrame, type FeedName } from './createFeedKeeper.js';
 import type { ProtocolStatus } from './frameTypes.js';
@@ -30,10 +31,13 @@ describe('createFeedKeeper', () => {
   let opened: HeldSubscription[];
   let current: Transport;
 
-  let status: StatusCell<ProtocolStatus>;
+  let status: WritableAtom<ProtocolStatus>;
   /** The frame, ready with `current` as its transport unless a test says otherwise. */
   function createFrame(transport = (): Promise<Transport> => Promise.resolve(current)): FeedFrame<Transport> {
-    return { getStatus: status.get, subscribeStatus: status.subscribe, getTransport: transport };
+    return {
+      status,
+      getTransport: transport,
+    };
   }
 
   /** A keeper following `frame`, recording each subscription it opens. */
@@ -57,12 +61,7 @@ describe('createFeedKeeper', () => {
     timers = createManualTimers();
     opened = [];
     current = { name: 'first' };
-    status = createStatusCell<ProtocolStatus>({
-      initial: 'ready',
-      onListenerError: error => {
-        throw error;
-      },
-    });
+    status = atom<ProtocolStatus>('ready');
     recordLog({ onFinished: onTestFinished });
   });
 

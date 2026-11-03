@@ -107,7 +107,7 @@ describe('frame.configure', () => {
     // Then
     expect(host.countFrames()).toBe(0);
     expect(settled).toBe(false);
-    expect(host.client.frame.getStatus()).toBe('idle');
+    expect(host.client.frame.status.get()).toBe('idle');
   });
 
   it('As a dotli integrator on a page that never configures the frame, I make a request and it fails after the configure wait and names why', async () => {
@@ -121,7 +121,7 @@ describe('frame.configure', () => {
     // Then
     await expect(read).resolves.toMatchObject({ message: PROTOCOL_ERRORS.FRAME_UNCONFIGURED });
     expect(host.countFrames()).toBe(0);
-    expect(host.client.frame.getStatus()).toBe('idle');
+    expect(host.client.frame.status.get()).toBe('idle');
   });
 
   it('As a dotli integrator, I request before the frame is configured and my requests go through once the host configures it, on one frame', async () => {
@@ -156,7 +156,7 @@ describe('frame.configure', () => {
     host.getFrameStatus().markReady();
     await host.listen();
     const statuses: ProtocolStatus[] = [];
-    host.client.frame.subscribeStatus(status => statuses.push(status));
+    host.client.frame.status.listen(status => statuses.push(status));
 
     // When
     host.client.frame.configure({ ...FRAME_CONFIG });
@@ -165,7 +165,7 @@ describe('frame.configure', () => {
     // Then
     expect(host.getIframe()).toBe(frame);
     expect(statuses).toEqual([]);
-    expect(host.client.frame.getStatus()).toBe('ready');
+    expect(host.client.frame.status.get()).toBe('ready');
   });
 
   it('As the host, I change the config of a booted frame, and it is rebuilt at once with the new one', async () => {
@@ -183,7 +183,7 @@ describe('frame.configure', () => {
     expect((await warmup).message).toBe(PROTOCOL_ERRORS.FRAME_RESET);
     expect(old.isConnected).toBe(false);
     expect(readFrameParams(host.getIframe())['mode']).toBe('rpc');
-    expect(host.client.frame.getStatus()).toBe('booting');
+    expect(host.client.frame.status.get()).toBe('booting');
   });
 
   it('As the host, I take a pending reset that asks for a clean chain database, and a frame booted without it is rebuilt with it', async () => {
@@ -210,7 +210,7 @@ describe('frame.configure', () => {
 
     // Then
     expect(host.countFrames()).toBe(0);
-    expect(host.client.frame.getStatus()).toBe('idle');
+    expect(host.client.frame.status.get()).toBe('idle');
   });
 });
 
@@ -261,13 +261,13 @@ describe('protocol iframe listening handshake', () => {
 
     // Then
     await expect(read).resolves.toBe('0x0102');
-    expect(host.client.frame.getStatus()).toBe('listening');
+    expect(host.client.frame.status.get()).toBe('listening');
   });
 
   it('As a returning user whose protocol iframe died, I find the shared store rebuilt it unasked and available again', async () => {
     // Given
     const statuses: SharedStoreStatus[] = [];
-    onTestFinished(host.client.sharedStore.subscribeStatus(status => statuses.push(status)));
+    onTestFinished(host.client.sharedStore.status.listen(status => statuses.push(status)));
     const failed = host.client.sharedAuth.read(SITE_ID, SHARED_CORE_SESSION_KEY).catch(() => 'failed');
     const dead = host.getIframe();
     await timers.advance(5_000);
@@ -281,7 +281,7 @@ describe('protocol iframe listening handshake', () => {
     expect(await failed).toBe('failed');
     expect(rebuilt).not.toBe(dead);
     expect(statuses.slice(-2)).toEqual(['unavailable', 'available']);
-    expect(host.client.sharedStore.getStatus()).toBe('available');
+    expect(host.client.sharedStore.status.get()).toBe('available');
   });
 
   it('As a returning user whose protocol iframe keeps dying, I see a new one tried after a wait that doubles each time', async () => {
@@ -355,7 +355,7 @@ describe('protocol iframe listening handshake', () => {
   it('As a returning user whose protocol frame dies, I see the shared store report it down and rebuild it unasked', async () => {
     // Given a frame that listens
     const statuses: SharedStoreStatus[] = [];
-    onTestFinished(host.client.sharedStore.subscribeStatus(status => statuses.push(status)));
+    onTestFinished(host.client.sharedStore.status.listen(status => statuses.push(status)));
     onTestFinished(host.client.sharedAuth.subscribe(() => undefined));
     const dead = host.getIframe();
     const status = host.getFrameStatus();
@@ -364,7 +364,7 @@ describe('protocol iframe listening handshake', () => {
     // When it dies, and with no request waiting the store builds a new frame 2 s later, which listens
     status.fail(new ProtocolFatalError('boom'));
     await timers.advance(1_999);
-    const statusAfterFatal = host.client.sharedStore.getStatus();
+    const statusAfterFatal = host.client.sharedStore.status.get();
     const framesBeforeInterval = host.countFrames();
     await timers.advance(1);
     const rebuilt = host.getIframe();
@@ -376,6 +376,6 @@ describe('protocol iframe listening handshake', () => {
     expect(dead.isConnected).toBe(false);
     expect(rebuilt).not.toBe(dead);
     expect(statuses.slice(-2)).toEqual(['unavailable', 'available']);
-    expect(host.client.sharedStore.getStatus()).toBe('available');
+    expect(host.client.sharedStore.status.get()).toBe('available');
   });
 });

@@ -7,7 +7,8 @@
 // or the window flow's while the site hands the window to that flow. A transaction's round starts only once the window
 // has the site's call.
 
-import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
+import { isShallowEqual } from '@dotli/shared';
 import type { SiteGrantStore } from '@dotli/storage';
 import type { SignInScreen, SiteWindowScreen } from '../../state/sessionWindowState.js';
 import type { Responder } from '../sessionHandoff/createResponder.js';
@@ -117,7 +118,7 @@ export async function openSiteTransaction({
 /** The window for a site's round on `route`, which `createRound` makes with the start of the window flow it reuses. */
 function openSiteWindow({ origin, responder, createWindowFlow, route, createRound }: OpenSiteWindowParams) {
   // The window flow's screen, while a flow the site started has not stored its sign-in.
-  const flowScreen = createSyncStore<SignInScreen | null>({ name: 'siteWindowFlow', initial: null });
+  const flowScreen = atom<SignInScreen | null>(null);
   const stops: (() => void)[] = [];
   // Aborts on dispose, after which the round starts no flow, as nothing would release it.
   const lifetime = new AbortController();
@@ -143,17 +144,14 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
       close,
     });
     flowScreen.set(flow.screen.get());
-    stopFollowing = flow.screen.subscribe(() => {
+    stopFollowing = flow.screen.listen(() => {
       flowScreen.set(flow.screen.get());
     });
     stops.push(stopFollowing, flow.dispose);
   });
 
-  const screen = createSyncStore<SignInScreen | SiteWindowScreen>({
-    name: 'siteWindow',
-    initial: { view: 'site-signing', origin, route },
-    equals: isShallowEqual,
-  });
+  const screen = atom<SignInScreen | SiteWindowScreen>({ view: 'site-signing', origin, route });
+  screen.eq = isShallowEqual;
 
   // Until the window flow shows a view, the window keeps what it showed.
   function showCurrent(): void {
@@ -164,7 +162,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     }
   }
 
-  stops.push(site.screen.subscribe(showCurrent), flowScreen.subscribe(showCurrent));
+  stops.push(site.screen.listen(showCurrent), flowScreen.listen(showCurrent));
   showCurrent();
 
   function dispose(): void {
@@ -174,7 +172,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     }
   }
 
-  const shownScreen: ReadableStore<SignInScreen | SiteWindowScreen> = screen;
+  const shownScreen: ReadableAtom<SignInScreen | SiteWindowScreen> = screen;
   return {
     /** The site's round, with the intents of its views. */
     site,

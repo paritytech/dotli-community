@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { createSyncStore } from '@dotli/shared';
+import { atom } from 'nanostores';
 import { nth, recordLog } from '@dotli/shared/testing';
 import { bindReports } from '../testing/bindReports.js';
 import { CoreRedialError } from './coreRedialError.js';
@@ -39,7 +39,7 @@ function createHarness({
 }: CreateHarnessParams = {}) {
   const { captures, counted } = bindReports();
   const fakes = createFakePageCore();
-  const auth = createSyncStore<DotliAuthState>({ name: 'auth', initial, equals: () => false });
+  const auth = atom<DotliAuthState>(initial);
   const session = { reportLoginFailure: vi.fn() };
   // A pairing's session is stored by default, so a login completes once the core reports it.
   const storedSession = createFakeStoredSession({ blob: stored });

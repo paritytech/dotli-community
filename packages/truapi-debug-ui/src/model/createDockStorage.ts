@@ -3,7 +3,8 @@
 
 // Imports no Solid, so the spec runs under Node.
 
-import { pageLocalStorage } from '@dotli/shared';
+import { pageLocalStorage, registerAtomReset } from '@dotli/shared';
+import { createPersistentAtom } from '@dotli/stores-persistent';
 import type { PanelStorage } from './panelStorage.js';
 
 export type DockPosition = 'bottom' | 'right';
@@ -15,23 +16,26 @@ type Params = {
 
 const DOCK_STORAGE_KEY = 'truapi-debug:dock';
 
-/** The panel's dock, kept in `storage` from one mount to the next. */
+const DOCK_POSITIONS: readonly DockPosition[] = ['bottom', 'right'];
+
+/**
+ * The panel's dock, kept in `storage` from one mount to the next. Bottom when nothing there parses, and docking back
+ * to the bottom removes the key. Never throws.
+ */
 export function createDockStorage({ storage = pageLocalStorage }: Params = {}) {
-  return {
-    /** The stored dock, or bottom when none is stored. Throws only what `storage` throws. */
-    read,
-    /** Stores `dock` for the next mount. Throws only what `storage` throws. */
-    write,
-  };
-
-  function read(): DockPosition {
-    return storage.getItem(DOCK_STORAGE_KEY) === 'right' ? 'right' : 'bottom';
-  }
-
-  function write(dock: DockPosition): void {
-    storage.setItem(DOCK_STORAGE_KEY, dock);
-  }
+  return createPersistentAtom<DockPosition>({
+    key: DOCK_STORAGE_KEY,
+    storage,
+    initial: 'bottom',
+    decode: decodeDock,
+    encode: String,
+  });
 }
 
-/** The page's stored dock, in the page's local storage. */
+/** The page's dock, in the page's local storage. It reads its key on first start. */
 export const dockStorage = createDockStorage();
+registerAtomReset(dockStorage);
+
+function decodeDock(raw: string): DockPosition | undefined {
+  return DOCK_POSITIONS.find(dock => dock === raw);
+}

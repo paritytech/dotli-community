@@ -56,7 +56,7 @@ describe('topbar store equality', () => {
     topbarState.setVisible(false);
 
     // Then
-    expect(notified).toEqual([{ ...topbarState.store.initial, visible: false }]);
+    expect(notified).toEqual([{ ...topbarState.store.init, visible: false }]);
   });
 
   it('As a user with a prompt open, I get the same prompt report again and the topbar does not redraw', () => {

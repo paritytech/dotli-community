@@ -79,7 +79,7 @@ type StartTransactionParams = {
 } & Omit<CreateFakeChainParams, 'steps'>;
 
 /** The responder calls a site's round makes. */
-type RoundResponder = Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state' | 'subscribe'>;
+type RoundResponder = Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state'>;
 
 /** A started transaction round over fakes. */
 type StartedTransaction = Awaited<ReturnType<typeof startTransactionWith>>;
@@ -291,10 +291,9 @@ async function startTransactionWith(options: StartTransactionParams, responder: 
       closed.resolve(undefined);
     },
   });
-  const views: SiteScreen['view'][] = [flow.screen.get().view];
+  const views: SiteScreen['view'][] = [];
   onTestFinished(
-    flow.screen.subscribe(() => {
-      const { view } = flow.screen.get();
+    flow.screen.subscribe(({ view }) => {
       views.push(view);
       if (view === 'site-review') {
         steps.push('review');

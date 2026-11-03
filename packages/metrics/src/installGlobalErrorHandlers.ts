@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as Sentry from '@sentry/browser';
-import { log, StoreListenerError } from '@dotli/shared';
+import { log } from '@dotli/shared';
 
 import { getNonErrorExtra } from './getNonErrorExtra.js';
 import type { SentrySource } from './initSentry.js';
-import { sentryCaptureSink } from './sentryCaptureSink.js';
 import { toNonErrorThrow } from './toNonErrorThrow.js';
 
 // Read in this module, not shared, so the metrics-off build drops the SDK.
@@ -36,16 +35,6 @@ export function installGlobalErrorHandlers(source: SentrySource): void {
   });
 
   self.addEventListener('error', (event: ErrorEvent) => {
-    if (event.error instanceof StoreListenerError) {
-      log.error(`[dot.li ${source}] store listener failed:`, event.error);
-      // The listener's own error keeps the issue title and grouping of its real type, and the log line names the store.
-      sentryCaptureSink.exception(event.error.cause instanceof Error ? event.error.cause : event.error, {
-        flow: 'ui',
-        step: 'store_listener',
-        tags: { store: event.error.store, kind: 'store_listener_error', source },
-      });
-      return;
-    }
     log.error(`[dot.li ${source}] window error:`, event.error ?? event.message);
     const extra: Record<string, unknown> = {
       filename: event.filename,

@@ -3,32 +3,39 @@
 
 import { noop } from './noop.js';
 import { raceAbort, type Settle } from './raceAbort.js';
-import type { StatusCell } from './createStatusCell.js';
+
+/** Anything with a current value and a listener for the changes after it, such as a store. */
+export type StatusSource<T> = {
+  /** The current status. Never throws. */
+  get: () => T;
+  /** The listener hears each change after the call, never the current value. Returns its unsubscribe. */
+  listen(listener: (value: T) => void): () => void;
+};
 
 type Params = {
   signal?: AbortSignal;
 };
 
 /**
- * Waits on the status until `verdict` settles the wait with `true` or fails it with an error, and fails with the
+ * Waits on the source's status until `verdict` settles the wait with `true` or fails it with an error, and fails with the
  * signal's reason when `signal` aborts first.
  *
  * @example
- * await waitForStatus(createStoreStatus(store), shown => shown.phase === 'ready', { signal });
+ * await waitForStatus(store, shown => shown.phase === 'ready', { signal });
  */
 export function waitForStatus<T>(
-  cell: Pick<StatusCell<T>, 'get' | 'subscribe'>,
+  source: StatusSource<T>,
   verdict: (status: T) => boolean | Error,
   { signal }: Params = {},
 ): Promise<void> {
   return raceAbort({ signal, start });
 
   function start(settle: Settle<void>): () => void {
-    // The status there is now settles the wait at once, so a cell already there costs no subscription.
-    if (settleOn(cell.get())) {
+    // The status there is now settles the wait at once, so a status already there costs no listener.
+    if (settleOn(source.get())) {
       return noop;
     }
-    return cell.subscribe(settleOn);
+    return source.listen(settleOn);
 
     /** Whether `status` settled the wait. */
     function settleOn(status: T): boolean {

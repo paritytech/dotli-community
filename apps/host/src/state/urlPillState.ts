@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
+import { isShallowEqual, registerAtomReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 
 /** "verified" means the visitor's light client checked it, "trusted" means an RPC provider did. */
 export type ShieldState = 'verified' | 'trusted';
@@ -19,8 +20,10 @@ export type UrlPillState =
       shield: ShieldState | null;
     };
 
-const urlPill = createSyncStore<UrlPillState>({ name: 'url_pill', initial: { kind: 'none' }, equals: isShallowEqual });
-const store: ReadableStore<UrlPillState> = urlPill;
+const urlPill = atom<UrlPillState>({ kind: 'none' });
+urlPill.eq = isShallowEqual;
+registerAtomReset(urlPill);
+const store: ReadableAtom<UrlPillState> = urlPill;
 
 /** What the URL pill shows: no pill, a local product, or a `.dot` product with its verification shield. */
 export const urlPillState = {

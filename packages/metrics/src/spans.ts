@@ -280,6 +280,12 @@ export const spans = {
   WALLET_CORE_REDIAL: 'wallet.core_redial',
 
   /**
+   * Count. Telling a pairing core that the stored session changed threw, so the core may miss a login from another tab.
+   * Tagged `outcome` (error) and `reason` (the error's name).
+   */
+  PAGE_CORE_SESSION_FOLLOW: 'page_core.session_follow',
+
+  /**
    * One `acquire` the session lease made of the page core. Tagged `outcome` (ok or error) and, on error, `reason`: `boot`
    * for a first boot that failed and `redial` for a replacement that could not boot.
    */

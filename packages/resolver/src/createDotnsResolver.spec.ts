@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type M
 import { must } from '@dotli/shared/testing';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
+import { atom } from 'nanostores';
 import { getActiveServicesConfig } from '@dotli/config';
+import { spans as S } from '@dotli/metrics';
 import { bindLogSink } from '@dotli/shared';
 import { ApiStoppedError } from './apiStoppedError.js';
 import { createDotnsResolver, type ChainClient, type DotnsResolver } from './createDotnsResolver.js';
@@ -364,9 +366,51 @@ describe('createDotnsResolver', () => {
     // Then
     expect(owner).toBeNull();
     expect(captured).toEqual(Array(3).fill({ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }));
-    expect(sentry.counted('listener.delivery')).toEqual(
+    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual(
       Array(3).fill({ outcome: 'error', reason: 'Error', owner: 'resolver.status' }),
     );
+  });
+
+  it('As the host waiting on a name after the client is ready, I get my answer even when my phase callback throws on the replayed phase, and the throw is reported', async () => {
+    // Given a ready client and a phase callback that throws
+    const captured = recordCaptures({ onFinished: onTestFinished });
+    const sentry = bindRecordingSentry({ onFinished: onTestFinished });
+    const { dotns } = createResolver();
+    await dotns.resolveOwner('alice');
+
+    // When
+    const owner = await dotns.resolveOwner('alice', {
+      onPhase: () => {
+        throw new Error('callback broke');
+      },
+    });
+
+    // Then
+    expect(owner).toBeNull();
+    expect(captured).toEqual([{ flow: 'resolve', step: 'listener', tags: { owner: 'resolver.status' } }]);
+    expect(sentry.counted(S.LISTENER_DELIVERY)).toEqual([
+      { outcome: 'error', reason: 'Error', owner: 'resolver.status' },
+    ]);
+  });
+
+  it('As the host waiting on a name, I start a resolve from a store listener and hear asset-hub-syncing for both early phases', async () => {
+    // Given a store whose listener starts a resolve
+    const { dotns } = createResolver();
+    const trigger = atom(0);
+    const phases: string[] = [];
+    let resolving: Promise<string | null> | undefined;
+    onTestFinished(
+      trigger.listen(() => {
+        resolving = dotns.resolveDotName('alice', { onPhase: phase => phases.push(phase) });
+      }),
+    );
+
+    // When
+    trigger.set(1);
+    await resolving;
+
+    // Then
+    expect(phases).toEqual(['asset-hub-syncing', 'asset-hub-syncing', 'asset-hub-ready', 'resolving-content']);
   });
 
   it('As the protocol worker, I see the presync fail when Asset Hub never syncs, and the next read tries again', async () => {

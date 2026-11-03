@@ -6,7 +6,7 @@
 
 import { Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { useStore } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import type { DebugPanelHost, HostAuth } from './host.js';
 import { Button } from './shared/Button.js';
 import { Callout } from './shared/Callout.js';

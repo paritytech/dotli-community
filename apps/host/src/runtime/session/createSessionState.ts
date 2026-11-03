@@ -4,10 +4,11 @@
 // The one writer of the auth store. It shows the session of the saved copy or of the core that speaks for the page,
 // and whether a sign-in made elsewhere waits for the page.
 
-import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
-import { createAsyncTaskPool, createSyncStore, type ReadableStore } from '@dotli/shared';
+import type { AuthState as CoreAuthState, SessionUiInfo } from '@parity/truapi-host';
+import { createAsyncTaskPool, registerAtomReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { isResumeOffered, pageRole } from '../pageRole.js';
-import { authState } from '../state/authState.js';
+import { authState, type AuthState } from '../state/authState.js';
 import { walletModeState } from '../state/walletModeState.js';
 import { sessionElsewhereState } from '../state/sessionElsewhereState.js';
 import { pageWalletBoot, type Restored } from '../createWalletBoot.js';
@@ -17,12 +18,7 @@ import { parseUiStateCache, type TruapiSessionUiState } from './parseUiStateCach
 import type { DotliAuthState, Presence } from './types.js';
 
 /** The auth store as its one writer sees it. */
-export type AuthStateWriter = {
-  /** Returns the current auth step. Never throws. */
-  get(): DotliAuthState;
-  /** Publishes the next auth step. Never throws. */
-  set(next: DotliAuthState): void;
-};
+export type AuthStateWriter = Pick<AuthState, 'store' | 'set'>;
 
 /** What session state takes from the restore on load. */
 type LoadRestore = Pick<Restored, 'local' | 'session' | 'wallet' | 'presence'>;
@@ -71,7 +67,7 @@ export function createSessionState({
   // before it says nothing of another sign-in once this one ends.
   let flag: Presence = 'unknown';
   const auth: AuthStateWriter = {
-    get: () => authStore.get(),
+    store: authStore.store,
     set(next) {
       if (next.tag === 'Connected') {
         flag = 'unknown';
@@ -93,8 +89,9 @@ export function createSessionState({
   // itself. The page core says when its last core went.
   let speaker: 'copy' | 'core' = 'copy';
 
-  const coreReportStore = createSyncStore<DotliAuthState | null>({ name: 'sessionCoreReport', initial: null });
-  const coreReport: ReadableStore<DotliAuthState | null> = coreReportStore;
+  const coreReportStore = atom<DotliAuthState | null>(null);
+  registerAtomReset(coreReportStore);
+  const coreReport: ReadableAtom<DotliAuthState | null> = coreReportStore;
 
   let stop: (() => void) | null = null;
 
@@ -103,7 +100,7 @@ export function createSessionState({
   }
 
   function reportFlag(presence: Presence): void {
-    const { tag } = auth.get();
+    const { tag } = auth.store.get();
     if (tag === 'Connected') {
       return;
     }
@@ -126,7 +123,7 @@ export function createSessionState({
   // is open to it, the copy may also replace a sign-in it showed itself.
   function isCopyAllowedToShow(): boolean {
     const report = coreReport.get();
-    return speaker === 'copy' || isOpenToCopy(auth.get().tag) || (report !== null && isOpenToCopy(report.tag));
+    return speaker === 'copy' || isOpenToCopy(auth.store.get().tag) || (report !== null && isOpenToCopy(report.tag));
   }
 
   /** The session to show: the local wallet's when there is one, else the saved one with its cached account. */
@@ -163,7 +160,7 @@ export function createSessionState({
       auth.set({ tag: 'Connected', session });
       return;
     }
-    const shown = auth.get().tag;
+    const shown = auth.store.get().tag;
     // A store that could not be read says nothing of a sign-out, so a sign-in on show stays.
     // A sign-in the core reported itself is its own report, so withdrawing to that report leaves it on show.
     if (speaker === 'core' && !lastReadFailed && shown === 'Connected') {
@@ -187,7 +184,7 @@ export function createSessionState({
 
   /** A store that is down cannot confirm a logout or a session, so a user who is not signed in waits on it. */
   function markUnreachable(): void {
-    const tag = auth.get().tag;
+    const tag = auth.store.get().tag;
     if (tag === 'Restoring' || tag === 'Disconnected') {
       auth.set({ tag: 'Unreachable' });
     }
@@ -219,7 +216,7 @@ export function createSessionState({
       if (stop !== null) {
         return stop;
       }
-      const stopStatus = store.subscribeStatus(status => {
+      const stopStatus = store.getStatusStore().listen(status => {
         if (status === 'unavailable') {
           markUnreachable();
         }
@@ -261,7 +258,7 @@ export function createSessionState({
      * A state the core reported, which also keeps the UI-state cache. From then the page is
      * that core's, which follows the copy itself, until the page's last core went.
      */
-    reportCoreAuthState(state: AuthState, pairing: PairingPresentation): void {
+    reportCoreAuthState(state: CoreAuthState, pairing: PairingPresentation): void {
       speaker = 'core';
       switch (state.tag) {
         case 'Pairing': {

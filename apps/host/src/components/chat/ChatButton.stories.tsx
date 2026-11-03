@@ -18,6 +18,7 @@ const meta = {
   args: stage.button,
   beforeEach: () => {
     stage = chatStage({ available: false });
+    return stage.dispose;
   },
   render: () => (
     <TopbarFrame>

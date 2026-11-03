@@ -211,8 +211,19 @@ export function createPageCore({
         }
         // A local wallet core holds its session in memory, so the stored one is not its to follow.
         if (!booted.local) {
+          // Runs in store listeners, where a throw would reach the store's writer, and in a microtask, where it would be
+          // uncaught, so it is reported here and the stale check still runs.
           function followStore(): void {
-            booted.runtime.notifySessionStoreChanged();
+            try {
+              booted.runtime.notifySessionStoreChanged();
+            } catch (error) {
+              reportDefect(error, {
+                flow: 'wallet',
+                step: 'session_follow',
+                metric: S.PAGE_CORE_SESSION_FOLLOW,
+                message: '[dot.li page-core] telling the core the stored session changed failed:',
+              });
+            }
             // The store coming back can answer a wallet read that failed when this core booted.
             void booted.isStale().then(stale => {
               if (stale) {

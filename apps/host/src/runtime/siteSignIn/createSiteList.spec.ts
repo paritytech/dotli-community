@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createDeferred, createStoreStatus, waitForStatus } from '@dotli/shared';
+import { createDeferred, waitForStatus } from '@dotli/shared';
 import { recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore, type SiteGrant, type SiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -60,7 +60,7 @@ async function openSiteList(options: OpenSiteListParams = {}) {
   const list = createSiteList({ grants });
   /** Resolves once the list's screen meets `verdict`. */
   function waitForScreen(verdict: (screen: SiteListScreen) => boolean): Promise<void> {
-    return waitForStatus(createStoreStatus(list.screen), verdict);
+    return waitForStatus(list.screen, verdict);
   }
   return { list, stored, metrics, errors, waitForScreen };
 }

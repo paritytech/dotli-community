@@ -1332,6 +1332,32 @@ describe('page core after a failed wallet read', () => {
     expect(requests).toHaveLength(1);
     expect(outcomes).toEqual(['ok']);
   });
+
+  it('As the page, I tell the core of a stored session change that throws and the failure is reported while the stale check still runs', async () => {
+    // Given a pairing core whose runtime throws when told of a store change, and a store that now holds the wallet
+    let walletFound = false;
+    const { core, runtimes, storeListeners, counted, changes } = createReportingHarness({
+      walletFound: () => walletFound,
+    });
+    recordLog({ onFinished: onTestFinished, level: 'error' });
+    await core.acquire();
+    const pairing = nth(runtimes, 0);
+    await changes.until(() => pairing.notifySessionStoreChanged.mock.calls.length === 1);
+    pairing.notifySessionStoreChanged.mockImplementation(() => {
+      throw new Error('notify broke');
+    });
+    walletFound = true;
+
+    // When the store reports a change
+    for (const listener of [...storeListeners]) {
+      listener();
+    }
+    await changes.until(() => counted('wallet.core_redial').length === 1);
+
+    // Then the failure is counted once and the stale check still retired the pairing core
+    expect(counted('page_core.session_follow')).toEqual([{ outcome: 'error', reason: 'Error' }]);
+    expect(counted('wallet.core_redial')).toEqual([{ outcome: 'ok', reason: 'stale' }]);
+  });
 });
 
 describe('page core retirement', () => {

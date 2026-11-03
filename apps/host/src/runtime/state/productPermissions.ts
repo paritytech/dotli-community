@@ -11,11 +11,11 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   createSharedRun,
-  createSyncStore,
   realTimers,
-  type ReadableStore,
+  registerAtomReset,
   type Timers,
 } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
   ALL_PERMISSIONS,
@@ -62,7 +62,7 @@ type Params = {
   /** The core's permission store. */
   registry: Pick<PermissionAuthorizations, 'getStatuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
-  product: ReadableStore<ProductState>;
+  product: ReadableAtom<ProductState>;
   /** What a retry waits on. The page's own timers by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
@@ -116,14 +116,13 @@ const POOL = 'product-permissions';
 
 /** Builds the permissions store of the product on show, over the core's `registry`. Building one reads nothing. */
 export function createProductPermissions({ registry, product, timers = realTimers }: Params) {
-  const permissions = createSyncStore<ProductPermissionsState>({
-    name: 'product_permissions',
-    initial: NONE,
-    equals: isSameState,
-  });
-  const pendingChange = createSyncStore<PendingPermissions>({ name: 'product_permissions_pending', initial: null });
-  const state: ReadableStore<ProductPermissionsState> = permissions;
-  const pending: ReadableStore<PendingPermissions> = pendingChange;
+  const permissions = atom<ProductPermissionsState>(NONE);
+  permissions.eq = isSameState;
+  registerAtomReset(permissions);
+  const pendingChange = atom<PendingPermissions>(null);
+  registerAtomReset(pendingChange);
+  const state: ReadableAtom<ProductPermissionsState> = permissions;
+  const pending: ReadableAtom<PendingPermissions> = pendingChange;
 
   // One listener's failure must not keep the change from the others.
   const changes = createListenerSet<PermissionsChange>({
@@ -198,7 +197,6 @@ export function createProductPermissions({ registry, product, timers = realTimer
   }
 
   function beginFollowing(): () => void {
-    followProduct();
     return product.subscribe(followProduct);
   }
 

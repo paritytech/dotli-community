@@ -5,13 +5,13 @@
 
 import {
   createSharedRun,
-  createSyncStore,
   pageLocalStorage,
   registerStoreStateReset,
+  registerAtomReset,
   isShallowEqual,
-  type ReadableStore,
   type SafeStorage,
 } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
 import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
 import { productState } from '../runtime/state/productState.js';
@@ -49,7 +49,7 @@ const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 560;
 const DEFAULT_PANEL_WIDTH = 360;
 
-const INITIAL: ChatPanelState = {
+const panel = atom<ChatPanelState>({
   label: null,
   runtimeProductId: null,
   available: false,
@@ -61,15 +61,11 @@ const INITIAL: ChatPanelState = {
   focusComposer: false,
   width: DEFAULT_PANEL_WIDTH,
   topbarVisible: true,
-};
-
-// A drag past the clamp and repeated product or topbar events rebuild an equal state.
-const panel = createSyncStore<ChatPanelState>({
-  name: 'chat_panel',
-  initial: INITIAL,
-  equals: isShallowEqual,
 });
-const store: ReadableStore<ChatPanelState> = panel;
+// A drag past the clamp and repeated product or topbar events rebuild an equal state.
+panel.eq = isShallowEqual;
+registerAtomReset(panel);
+const store: ReadableAtom<ChatPanelState> = panel;
 
 let widthStorage: WidthStorage = pageLocalStorage;
 
@@ -187,7 +183,7 @@ function markRoomSeen(roomId: string): void {
   update({ unreadByRoom: rest });
 }
 
-function markFollowedRoomSeen(view: ReadableStore<ChatView>): () => void {
+function markFollowedRoomSeen(view: ReadableAtom<ChatView>): () => void {
   let shown: ChatView['messages'] = null;
   function markLandedRead(): void {
     const { messages, roomId } = view.get();
@@ -199,7 +195,6 @@ function markFollowedRoomSeen(view: ReadableStore<ChatView>): () => void {
       markRoomSeen(roomId);
     }
   }
-  markLandedRead();
   return view.subscribe(markLandedRead);
 }
 
@@ -244,9 +239,9 @@ function beginFollowing({ chat, storage }: Required<Params>): () => void {
   followSessionAndTopbar();
   followProduct();
   const unsubscribes = [
-    authState.loggedInStore.subscribe(followSessionAndTopbar),
-    topbarState.store.subscribe(followSessionAndTopbar),
-    productState.store.subscribe(followProduct),
+    authState.loggedInStore.listen(followSessionAndTopbar),
+    topbarState.store.listen(followSessionAndTopbar),
+    productState.store.listen(followProduct),
     chat.subscribe(countUnreadMessage),
   ];
   function unsubscribe(): void {
@@ -259,13 +254,13 @@ function beginFollowing({ chat, storage }: Required<Params>): () => void {
 
 function followSessionAndTopbar(): void {
   update({
-    loggedIn: authState.isLoggedIn(),
+    loggedIn: authState.loggedInStore.get(),
     topbarVisible: topbarState.get().visible,
   });
 }
 
 function followProduct(): void {
-  const product = productState.get();
+  const product = productState.store.get();
   if (product.status === 'error') {
     update({ label: null, runtimeProductId: null, available: false });
     return;

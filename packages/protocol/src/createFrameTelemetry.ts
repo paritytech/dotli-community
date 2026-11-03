@@ -12,7 +12,7 @@ import { protocolSchema, type ProtocolTransport } from './schema.js';
 import { subscribe } from './subscribe.js';
 
 type Params = {
-  frame: Pick<ProtocolFrame, 'getStatus' | 'subscribeStatus' | 'getTransport'>;
+  frame: Pick<ProtocolFrame, 'status' | 'getTransport'>;
   /** What a reopen of the feed waits on, after the frame ended it while it stays up. */
   timers?: Timers;
 };
@@ -69,7 +69,7 @@ export function createFrameTelemetry({ frame, timers = realTimers }: Params) {
 
   // Cleared when a new frame boots, not when one is lost, which happens before the host's pending rejection and
   // would strip the tags from the very failures they explain.
-  frame.subscribeStatus(status => {
+  frame.status.listen(status => {
     if (status === 'booting') {
       smoldotDbOutcomes.clear();
     }

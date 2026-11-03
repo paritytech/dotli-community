@@ -4,14 +4,13 @@
 // Publishes the pill's box as root properties, because the popovers that drop from it are portalled to
 // <body> and cannot see it.
 
-import type { ReadableStore } from '@dotli/shared';
+import type { ReadableAtom } from 'nanostores';
 import { createPillPlacement } from './createPillPlacement.js';
 import { topbarMorph, type TopbarMorph } from './createTopbarMorph.js';
 import { getCapsuleStatus } from './getCapsuleStatus.js';
 import { getPillBox, type PillBox } from './getPillBox.js';
-import { isPageActionNeeded } from './isPageActionNeeded.js';
+import { pageActionNeeded } from './pageActionNeeded.js';
 import type { NetworkHealth } from './networkVerdict.js';
-import { chatPanelState } from './state/chatPanelState.js';
 import { topbarState } from './state/topbarState.js';
 
 type Params = {
@@ -25,7 +24,7 @@ type Params = {
  */
 export function bindTopbarStatus(
   bar: HTMLElement,
-  health: ReadableStore<NetworkHealth>,
+  health: ReadableAtom<NetworkHealth>,
   { morph = topbarMorph }: Params = {},
 ): () => void {
   const offline = bar.querySelector('#topbar-offline');
@@ -36,7 +35,7 @@ export function bindTopbarStatus(
   function render(): void {
     const status = getCapsuleStatus({
       health: health.get(),
-      action: isPageActionNeeded(),
+      action: pageActionNeeded.get(),
       online: navigator.onLine,
     });
     bar.dataset['tone'] = status.tone;
@@ -66,9 +65,8 @@ export function bindTopbarStatus(
 
   render();
   place();
-  const offHealth = health.subscribe(render);
-  const offTopbar = topbarState.store.subscribe(render);
-  const offChat = chatPanelState.store.subscribe(render);
+  const offHealth = health.listen(render);
+  const offAction = pageActionNeeded.listen(render);
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place);
   observer?.observe(bar);
   window.addEventListener('resize', place);
@@ -77,8 +75,7 @@ export function bindTopbarStatus(
 
   function unbind(): void {
     offHealth();
-    offTopbar();
-    offChat();
+    offAction();
     observer?.disconnect();
     window.removeEventListener('resize', place);
     window.removeEventListener('online', render);

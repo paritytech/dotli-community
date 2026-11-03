@@ -11,11 +11,10 @@ import { reportDefect, reportExpected, reportListener, spans as S } from '@dotli
 import {
   createAsyncTaskPool,
   createListenerSet,
-  createSyncStore,
   createRandomId,
   isShallowEqual,
   realTimers,
-  type ReadableStore,
+  registerAtomReset,
   type Timers,
 } from '@dotli/shared';
 import {
@@ -26,6 +25,7 @@ import {
   type ChatRoomFooter,
   type ChatRoomRecord,
 } from '@dotli/storage';
+import { atom, type ReadableAtom } from 'nanostores';
 import { chatConnections, type ChatConnection, type ChatConnections } from './createChatConnections.js';
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomFooter, ChatRoomRecord };
@@ -157,8 +157,10 @@ const NO_VIEW: ChatView = {
 export function createChatStore({ repo, connections, timers = realTimers }: Params) {
   // A broken subscriber must not fail the product's call that made the write.
   const listeners = createListenerSet<ChatChange>({ onListenerError: reportListener('chat', 'chat_store.change') });
-  const viewChange = createSyncStore<ChatView>({ name: 'chat_view', initial: NO_VIEW, equals: isShallowEqual });
-  const view: ReadableStore<ChatView> = viewChange;
+  const viewChange = atom<ChatView>(NO_VIEW);
+  viewChange.eq = isShallowEqual;
+  registerAtomReset(viewChange);
+  const view: ReadableAtom<ChatView> = viewChange;
   let target: ChatFollow | null = null;
   // One read of each kind at a time, so results land in the order they were read. A change marks its read stale, and
   // a queued read that finds it fresh does nothing, so a burst of changes costs one more read.
