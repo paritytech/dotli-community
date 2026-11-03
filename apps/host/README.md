@@ -59,8 +59,9 @@ by `.dot` name inside a sandbox iframe. See the root [README](../../README.md) f
   members. The chat store and the product connections it reaches the product through are each a factory with the page's
   instance beside it, and the store stamps messages with the clock it is given. The network monitor, the network state
   and the network health are factories the same way, and measure block arrival, read times and rechecks on the timers
-  they are given. The chat panel, the network state and the network health each follow their sources once however many
-  callers start them, and stop with the last caller's stop.
+  they are given. The chat panel and the network health each follow their sources once however many callers start them,
+  and stop with the last caller's stop. The network state is derived from the monitor and rebuilds only while something
+  reads it.
 - The shell's own module state is entities the same way, each a factory with the page's instance beside it: the boot
   tracker that says where a boot failure happened, the product frame layout that writes the frame's geometry through the
   writer it is given, the bar's morph that what is laid out against the bar waits out, the reload reason over the

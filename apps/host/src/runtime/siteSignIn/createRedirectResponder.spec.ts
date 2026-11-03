@@ -58,7 +58,7 @@ describe('redirect responder', () => {
     const { responder } = openRedirectResponder(sealed);
 
     // Then it starts vetted for the return address's origin, with no answer on its way
-    expect(responder.state()).toEqual({ kind: 'vetted', origin: ORIGIN, party: 'third' });
+    expect(responder.state.get()).toEqual({ kind: 'vetted', origin: ORIGIN, party: 'third' });
     expect(responder.delivery()).toBe('none');
   });
 
@@ -146,7 +146,7 @@ describe('redirect responder', () => {
 
       // When the round ends, and the window navigates
       end(responder);
-      const stateAtOnce = responder.state();
+      const stateAtOnce = responder.state.get();
       const url = await navigated;
 
       // Then the state was set at once, the message is sealed, and the window navigates once after forgetting
@@ -171,7 +171,7 @@ describe('redirect responder', () => {
     // Then nothing more was sealed or sent, and the state stays answered
     expect(seals).toHaveLength(1);
     expect(events).toEqual(['forget', `navigate ${SEALED}`]);
-    expect(responder.state()).toEqual({ kind: 'answered' });
+    expect(responder.state.get()).toEqual({ kind: 'answered' });
   });
 
   it('As a user whose browser fails to seal, I am told the window failed and nothing is sent', async () => {
@@ -187,7 +187,7 @@ describe('redirect responder', () => {
     // forgotten or navigated, and the state stays as set
     expect(failed).toEqual({ error, siteToken: 'tok', delivery: 'failed' });
     expect(events).toEqual(['failed']);
-    expect(responder.state()).toEqual({ kind: 'answered' });
+    expect(responder.state.get()).toEqual({ kind: 'answered' });
     expect(responder.delivery()).toBe('failed');
   });
 
@@ -245,7 +245,7 @@ describe('redirect responder', () => {
     const { responder } = openRedirectResponder();
     const seen: string[] = [];
     onTestFinished(
-      responder.subscribe(state => {
+      responder.state.listen(state => {
         seen.push(state.kind);
       }),
     );

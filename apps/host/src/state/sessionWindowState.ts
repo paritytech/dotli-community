@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, isShallowEqual, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { isShallowEqual, registerStoreStateReset, type ReadableStore } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import type { SiteList, SiteListScreen } from '../runtime/siteSignIn/createSiteList.js';
 import type { SiteRound, SiteScreen } from '../runtime/siteSignIn/createSiteRound.js';
 import { closeWindow } from '../sessionWindowPage.js';
@@ -116,12 +117,14 @@ export type SiteIntents = Pick<SiteRound, 'consent' | 'decline' | 'confirm' | 'r
 export type SiteListIntents = Pick<SiteList, 'revoke' | 'retry'>;
 
 // The page renders its first paint from this, so it starts where every window starts.
-const sessionWindow = createSyncStore<WindowScreen>({
-  name: 'sessionWindow',
-  initial: { view: 'connecting', pageHost: null, failure: null, pairing: { kind: 'spinner' } },
-  equals: isShallowEqual,
+const INITIAL: WindowScreen = { view: 'connecting', pageHost: null, failure: null, pairing: { kind: 'spinner' } };
+
+const sessionWindow = atom<WindowScreen>(INITIAL);
+sessionWindow.eq = isShallowEqual;
+registerStoreStateReset(() => {
+  sessionWindow.set(INITIAL);
 });
-const store: ReadableStore<WindowScreen> = sessionWindow;
+const store: ReadableAtom<WindowScreen> = sessionWindow;
 
 // The window's island hydrates on its own and so cannot be handed what its controls ask, which is set here instead.
 let windowIntents: WindowIntents | null = null;

@@ -15,7 +15,7 @@ import {
   resetAllStoresForTests as resetStores,
 } from '@dotli/shared/testing';
 
-type HealthMonitor = Pick<NetworkMonitor, 'subscribe' | 'getChainClocks'>;
+type HealthMonitor = Pick<NetworkMonitor, 'version' | 'getChainClocks'>;
 
 /** Every chain is connectable, so only what the monitor hears decides the health. */
 let monitor: NetworkMonitor;
@@ -173,16 +173,19 @@ describe('The network health store', () => {
 
   it('As a user leaving the page, I stop the health store and it leaves its monitor with no listener', () => {
     // Given: a monitor that counts who listens to it
-    const listening = new Set<() => void>();
+    const listening = new Set<unknown>();
     const counted: HealthMonitor = {
       getChainClocks: monitor.getChainClocks,
-      subscribe(listener) {
-        listening.add(listener);
-        const unsubscribe = monitor.subscribe(listener);
-        return function unsubscribeCounted(): void {
-          listening.delete(listener);
-          unsubscribe();
-        };
+      version: {
+        ...monitor.version,
+        listen(listener) {
+          listening.add(listener);
+          const unsubscribe = monitor.version.listen(listener);
+          return function unsubscribeCounted(): void {
+            listening.delete(listener);
+            unsubscribe();
+          };
+        },
       },
     };
     const stop = startHealth(counted);
@@ -255,12 +258,15 @@ describe('The network health store', () => {
     let unsubscribes = 0;
     const counting: HealthMonitor = {
       ...monitor,
-      subscribe(listener) {
-        const unsubscribe = monitor.subscribe(listener);
-        return () => {
-          unsubscribes += 1;
-          unsubscribe();
-        };
+      version: {
+        ...monitor.version,
+        listen(listener) {
+          const unsubscribe = monitor.version.listen(listener);
+          return () => {
+            unsubscribes += 1;
+            unsubscribe();
+          };
+        },
       },
     };
     const stop = startHealth(counting);

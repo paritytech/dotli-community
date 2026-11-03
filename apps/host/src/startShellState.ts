@@ -7,19 +7,17 @@
 import { productPermissions } from './runtime/pagePermissions.js';
 import { topbarState } from './state/topbarState.js';
 import { chatPanelState } from './state/chatPanelState.js';
-import { networkState } from './state/networkState.js';
 import { pageTopbarAutoHide } from './createTopbarAutoHide.js';
 import { networkHealthState } from './state/networkHealthState.js';
 import { pageTheme } from './createThemeController.js';
 
 /**
- * Starts the theme, network, network health, chat panel, product permission and topbar auto-hide state, once a page.
+ * Starts the theme, network health, chat panel, product permission and topbar auto-hide state, once a page.
  * Each lasts the page's life, so their stops go unused. Throws only as one of them does.
  */
 export function startShellState(): void {
   topbarState.setPresent();
   pageTheme.startTheme();
-  networkState.start();
   networkHealthState.start();
   chatPanelState.start();
   productPermissions.start();

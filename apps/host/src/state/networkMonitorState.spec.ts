@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
-import { bindRecordingSentry, recordCaptures } from '@dotli/metrics/testing';
 import type { ChainActivity } from '@dotli/chains';
 import {
   classifyGap,
@@ -274,7 +273,7 @@ describe('The network monitor tracks blocks', () => {
     // Given
     use(getRelayGenesis());
     let calls = 0;
-    const unsubscribe = monitor.subscribe(() => {
+    const unsubscribe = monitor.version.listen(() => {
       calls += 1;
     });
 
@@ -390,6 +389,24 @@ describe('The network monitor tracks the phase of each chain', () => {
 });
 
 describe('The network monitor repaints the panel only on a change', () => {
+  it('As a follower, I hear the version bump once per changed record, and not for an unchanged one', () => {
+    // Given
+    const versions: number[] = [];
+    onTestFinished(
+      monitor.version.listen(value => {
+        versions.push(value);
+      }),
+    );
+
+    // When
+    monitor.recordTransfer({ bytesPerSecond: 10 });
+    monitor.recordTransfer({ bytesPerSecond: 10 });
+    monitor.recordTransfer({ bytesPerSecond: 20 });
+
+    // Then
+    expect(versions).toEqual([1, 2]);
+  });
+
   it.each<{ reports: string; send: () => void; sendChanged: () => void }>([
     {
       reports: 'peer counts',
@@ -423,7 +440,7 @@ describe('The network monitor repaints the panel only on a change', () => {
     ({ send, sendChanged }) => {
       // Given
       let woken = 0;
-      monitor.subscribe(() => {
+      monitor.version.listen(() => {
         woken += 1;
       });
 
@@ -553,29 +570,6 @@ describe('The network monitor judges how each chain is used', () => {
 
     // Then
     expect(getChainByKey(EXTRA)).toMatchObject({ state: 'live', alarm: true });
-  });
-
-  it('As a user with the network panel open, I get a change while one renderer throws and see it reported and the next renderer still updated', () => {
-    // Given
-    const captured = recordCaptures({ onFinished: onTestFinished });
-    const metrics = bindRecordingSentry({ onFinished: onTestFinished });
-    monitor.subscribe(() => {
-      throw new TypeError('renderer broke');
-    });
-    let heard = 0;
-    monitor.subscribe(() => {
-      heard += 1;
-    });
-
-    // When
-    monitor.recordTransfer({ bytesPerSecond: 10 });
-
-    // Then
-    expect(heard).toBe(1);
-    expect(captured).toEqual([{ flow: 'ui', step: 'listener', tags: { owner: 'network_monitor' } }]);
-    expect(metrics.counted('listener.delivery')).toEqual([
-      { outcome: 'error', reason: 'TypeError', owner: 'network_monitor' },
-    ]);
   });
 });
 

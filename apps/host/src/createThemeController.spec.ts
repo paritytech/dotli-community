@@ -3,7 +3,7 @@
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { themeState } from './runtime/state/themeState.js';
-import { createThemeController, type ThemeController } from './createThemeController.js';
+import { createThemeController, createThemePreference, type ThemeController } from './createThemeController.js';
 import type { SafeStorage } from '@dotli/shared';
 import { createMemoryStorage, resetAllStoresForTests } from '@dotli/shared/testing';
 import { createBlockedStorage } from './testing/createBlockedStorage.js';
@@ -11,11 +11,11 @@ import { createFakeColorScheme, type FakeColorScheme } from './testing/createFak
 
 /** The page a theme controller runs on: its storage, the OS scheme and the root element's attributes. */
 type ThemePage = {
-  local: Pick<SafeStorage, 'getItem' | 'setItem'>;
+  local: Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
   os: FakeColorScheme;
   /** The attributes the controller set on the root element. */
   root: Map<string, string>;
-  /** Builds a controller over this page. */
+  /** Builds a controller over this page, reading its stored theme as a page load does. */
   loadController: () => ThemeController;
 };
 
@@ -69,6 +69,36 @@ describe('theme controller', () => {
     // Then
     expect(root.get('data-theme-pref')).toBe('system');
     expect(root.get('data-theme')).toBe('dark');
+  });
+
+  it('As a returning user, I see the theme I chose, stored as its plain name', () => {
+    // Given a choice made in an earlier visit
+    const { local, root, loadController } = setupThemePage({ scheme: 'dark' });
+    const earlier = loadController();
+    earlier.startTheme();
+    earlier.selectThemePref('light');
+
+    // When the page loads again
+    loadController().startTheme();
+
+    // Then
+    expect(local.getItem('dotli-theme')).toBe('light');
+    expect(root.get('data-theme-pref')).toBe('light');
+    expect(themeState.get()).toEqual({ preference: 'light', resolved: 'light' });
+  });
+
+  it('As a user with a stored theme from an older build that does not parse, I see the system theme', () => {
+    // Given
+    const { local, root, loadController } = setupThemePage({ scheme: 'light' });
+    local.setItem('dotli-theme', 'auto');
+    const { startTheme } = loadController();
+
+    // When
+    startTheme();
+
+    // Then
+    expect(root.get('data-theme-pref')).toBe('system');
+    expect(themeState.get()).toEqual({ preference: 'system', resolved: 'light' });
   });
 
   it('As a dotli user whose browser blocks storage, I open dotli and the theme falls back to System and follows the OS', () => {
@@ -140,7 +170,7 @@ describe('theme controller', () => {
     expect(onThemeChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('As a dotli user, I select System and the theme resolves from the OS', () => {
+  it('As a dotli user, I select System and the theme resolves from the OS, with no choice left stored', () => {
     // Given
     const { local, root, loadController } = setupThemePage({ scheme: 'light' });
     local.setItem('dotli-theme', 'dark');
@@ -151,7 +181,7 @@ describe('theme controller', () => {
     selectThemePref('system');
 
     // Then
-    expect(local.getItem('dotli-theme')).toBe('system');
+    expect(local.getItem('dotli-theme')).toBeNull();
     expect(root.get('data-theme-pref')).toBe('system');
     expect(root.get('data-theme')).toBe('light');
   });
@@ -251,7 +281,7 @@ function setupThemePage({ scheme, blocked = false }: Params): ThemePage {
     root,
     loadController() {
       return createThemeController({
-        storage: local,
+        preference: createThemePreference({ storage: local }),
         colorScheme: () => os,
         root: () => ({
           setAttribute(name: string, value: string) {

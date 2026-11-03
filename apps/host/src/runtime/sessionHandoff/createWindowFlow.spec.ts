@@ -4,7 +4,8 @@
 import { describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createSyncStore, createDeferred, isRecord, waitForStatus } from '@dotli/shared';
+import { atom, type WritableAtom } from 'nanostores';
+import { createDeferred, isRecord, waitForStatus } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindowState.js';
 import type { AuthCommands, LoginOutcome } from '../createAuthCommands.js';
@@ -36,6 +37,8 @@ type OpenWindowParams = {
   opener?: boolean;
   stored?: Stored;
   auth?: DotliAuthState;
+  /** Runs with the window's auth state before the flow is built, so what it registers is heard before the flow. */
+  beforeFlow?: (auth: WritableAtom<DotliAuthState>) => void;
   /** The phrase check's loader, by default one that has it at once. */
   loadPhrase?: WindowFlowParams['loadPhrase'];
   /** Whether what the flow delivers goes on to the opener, as the window's own delivery sends it. True by default. */
@@ -94,11 +97,10 @@ function openWindow(options: OpenWindowParams = {}) {
     sayHello();
   }
   const presence = createFakeSessionPresence({ state: 'present' });
-  const auth = createSyncStore<DotliAuthState>({
-    name: 'testAuth',
-    initial: options.auth ?? { tag: 'Disconnected' },
-    equals: () => false,
-  });
+  // Notifies on every set, as the page's auth state does.
+  const auth = atom<DotliAuthState>(options.auth ?? { tag: 'Disconnected' });
+  auth.eq = () => false;
+  options.beforeFlow?.(auth);
   const main = {
     session: options.stored?.session ?? null,
     uiState: options.stored?.uiState ?? null,
@@ -383,9 +385,9 @@ describe('session window flow', () => {
     // When its type is read
     const watched = expectTypeOf<FlowResponder>();
 
-    // Then it has a state and a subscription, and no send
+    // Then it has a state, and no subscription or send
     watched.toHaveProperty('state');
-    watched.toHaveProperty('subscribe');
+    watched.not.toHaveProperty('subscribe');
     watched.not.toHaveProperty('send');
   });
 
@@ -1445,7 +1447,7 @@ describe('session window flow', () => {
     // Then the flow shows what it showed and started nothing, while the responder it does not own was vetted
     expect(flow.screen.get()).toBe(shown);
     expect(calls).toEqual([]);
-    expect(responder.state()).toMatchObject({ kind: 'vetted', origin: PAGE });
+    expect(responder.state.get()).toMatchObject({ kind: 'vetted', origin: PAGE });
   });
 
   it('As a dotli integrator, I dispose a flow that delivered and it closes nothing when its responder answers after it', async () => {
@@ -1463,7 +1465,7 @@ describe('session window flow', () => {
     responder.send(must(delivered[0], 'a delivered result'));
 
     // Then the window was not closed by the flow
-    expect(responder.state()).toEqual({ kind: 'answered' });
+    expect(responder.state.get()).toEqual({ kind: 'answered' });
     expect(calls).toEqual([]);
   });
 
@@ -1482,6 +1484,40 @@ describe('session window flow', () => {
     // Then nothing threw, and the failed view stays
     expect(thrown).toBeUndefined();
     expect(flow.screen.get().view).toBe('failed');
+  });
+
+  it("As the session window, I read the flow's new screen at once after the responder or auth changes it", () => {
+    // Given a listener, registered before the flow, that moves auth on from Pairing to Authenticating
+    const { flow, auth, responder, vet } = openWindow({
+      beforeFlow(source) {
+        source.listen(state => {
+          if (state.tag === 'Pairing') {
+            source.set({ tag: 'Authenticating' });
+          }
+        });
+      },
+    });
+    const seen = [flow.screen.get().pairing];
+    flow.screen.listen(() => {
+      seen.push(flow.screen.get().pairing);
+    });
+    // And a reader of the flow's screen that the responder runs after the flow's own follower, in the same delivery
+    let readHost: string | null | undefined;
+    responder.state.listen(state => {
+      if (state.kind === 'vetted') {
+        readHost = flow.screen.get().pageHost;
+      }
+    });
+
+    // When auth starts pairing and then the opener is vetted
+    auth.set(PAIRING);
+    vet();
+
+    // Then the screen shows the step auth moved on to, never the code it moved past, and the reader inside the
+    // responder's delivery already saw the page it names
+    expect(flow.screen.get().pairing).toEqual({ kind: 'authenticating' });
+    expect(seen.some(pairing => pairing.kind === 'pairing')).toBe(false);
+    expect(readHost).toBe('browse.dot.li');
   });
 
   it('As a dotli integrator, I dispose a flow twice and see no error', () => {

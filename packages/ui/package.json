@@ -34,6 +34,7 @@
     "@dotli/shared": "*",
     "@dotli/stores-solid": "*",
     "@solidjs/web": "2.0.0-rc.20",
+    "nanostores": "1.5.5",
     "solid-js": "2.0.0-rc.20"
   }
 }

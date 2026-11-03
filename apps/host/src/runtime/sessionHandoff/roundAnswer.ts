@@ -57,7 +57,7 @@ type RefuseRoundParams = {
 };
 
 type AnswerSignInParams<Booted> = {
-  responder: Pick<Responder<unknown>, 'state' | 'subscribe' | 'refuse'>;
+  responder: Pick<Responder<unknown>, 'state' | 'refuse'>;
   request: SessionRequest;
   /** The networks this deployment runs. */
   enabled: readonly Network[];
@@ -66,7 +66,7 @@ type AnswerSignInParams<Booted> = {
 };
 
 type AnswerSignOutParams = Omit<AnswerSignInParams<never>, 'responder' | 'booted'> & {
-  responder: Pick<Responder<typeof SIGNED_OUT_RESULT>, 'state' | 'subscribe' | 'refuse' | 'send'>;
+  responder: Pick<Responder<typeof SIGNED_OUT_RESULT>, 'state' | 'refuse' | 'send'>;
   /**
    * Settles once the window read what it ends. Rejects for a sign-out that failed before it read, such as one whose
    * boot failed, which reports its own failure.
@@ -160,9 +160,9 @@ export function answerSignOut({ responder, request, enabled, read }: AnswerSignO
 }
 
 /** Resolves with the responder's first vetting, or null once it can have none: no opener, or one it refused. */
-async function waitForFirstVetting(responder: Pick<Responder<unknown>, 'state' | 'subscribe'>): Promise<Vetted | null> {
+async function waitForFirstVetting(responder: Pick<Responder<unknown>, 'state'>): Promise<Vetted | null> {
   let vetting: Vetted | null | undefined;
-  await waitForStatus({ get: responder.state, listen: responder.subscribe }, state => {
+  await waitForStatus(responder.state, state => {
     vetting = getVetting(state);
     return vetting !== undefined;
   });

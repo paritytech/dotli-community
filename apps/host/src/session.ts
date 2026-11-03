@@ -316,8 +316,8 @@ async function openSiteTransactionFlow({
 
 /** Shows where the responder stands until the returned function stops it. */
 function showResponder(responder: Responder<unknown>): () => void {
-  sessionWindowState.setScreen(getResponderScreen(responder.state()));
-  return responder.subscribe(state => {
+  sessionWindowState.setScreen(getResponderScreen(responder.state.get()));
+  return responder.state.listen(state => {
     sessionWindowState.setScreen(getResponderScreen(state));
   });
 }
@@ -431,7 +431,7 @@ async function signIn(taken: SessionRequest, enabled: readonly Network[]): Promi
   // Before the boot, so the handshake runs while the frame comes up. Until the window knows the flow it runs, it shows
   // Connecting. The responder lives as long as the window's page, so nothing disposes it.
   const responder = startPageResponder<unknown>(taken.round, judgeOpener);
-  if (responder.state().kind === 'no-opener') {
+  if (responder.state.get().kind === 'no-opener') {
     // No hello names a party, so the request is read at once as dot.li's own.
     const request = parseWindowRequest(taken);
     if (request?.route !== 'auth') {

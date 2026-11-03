@@ -1,10 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, type ReadableStore } from '@dotli/shared';
+import { registerStoreStateReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 
-const elsewhere = createSyncStore<boolean>({ name: 'sessionElsewhere', initial: false });
-const store: ReadableStore<boolean> = elsewhere;
+const INITIAL = false;
+
+const elsewhere = atom<boolean>(INITIAL);
+registerStoreStateReset(() => {
+  elsewhere.set(INITIAL);
+});
+const store: ReadableAtom<boolean> = elsewhere;
 
 /** Whether a sign-in exists on the site that this page does not hold. */
 export const sessionElsewhereState = {
@@ -14,5 +20,9 @@ export const sessionElsewhereState = {
    */
   store,
   /** Publishes whether a sign-in exists on the site that this page does not hold. Never throws. */
-  set: elsewhere.set,
+  set,
 };
+
+function set(next: boolean): void {
+  elsewhere.set(next);
+}

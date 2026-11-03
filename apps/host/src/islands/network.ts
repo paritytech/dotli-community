@@ -7,6 +7,7 @@ import { useStore } from '@dotli/stores-solid';
 import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
 import type { NetworkItemProps } from '../components/chains/NetworkItem.js';
+import { INITIAL_NETWORK } from '../state/networkState.js';
 
 export type NetworkStores = {
   health: ReadableStore<NetworkHealth>;
@@ -20,7 +21,7 @@ export function useNetworkPanel(stores: NetworkStores): NetworkItemProps {
   return {
     health: useStore(stores.health),
     // The network store rebuilds only while someone reads it, so the panel subscribes only while it is open.
-    followNetwork: () => useStore(stores.network),
+    followNetwork: () => useStore(stores.network, value => value, { initial: INITIAL_NETWORK }),
     productLoaded: useStore(stores.product, product => product.status === 'loaded'),
     backend: useStore(stores.settings, settings => settings?.backend),
   };

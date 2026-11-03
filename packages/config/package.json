@@ -18,7 +18,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@dotli/shared": "*"
+    "@dotli/shared": "*",
+    "nanostores": "1.5.5"
   },
   "devDependencies": {
     "@config/eslint": "*",

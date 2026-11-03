@@ -208,6 +208,68 @@ describe('chat panel state', () => {
     });
   });
 
+  it.each([
+    { stored: '480', opened: 480 },
+    { stored: 'wide', opened: 360 },
+    { stored: '100', opened: 360 },
+  ])(
+    'As a returning user, I open the panel at the width I saved, a stored width that does not parse opens at the default, and a stored width below the minimum opens at the default (stored $stored)',
+    ({ stored, opened }) => {
+      // Given a width saved in an earlier session and a product with chat
+      local.setItem('dotli:chat-panel-width', stored);
+      showProduct('app');
+
+      // When
+      chatPanelState.setOpen(true);
+
+      // Then
+      expect(chatPanelState.store.get().width).toBe(opened);
+    },
+  );
+
+  it('As the chat panel, I follow the login, topbar, product and chat changes and read each new value at once', async () => {
+    // Given each input set from inside the listener of the one before, and every listener reading the panel
+    const seen: unknown[] = [];
+    onTestFinished(
+      authState.loggedInStore.listen(() => {
+        seen.push({ loggedIn: chatPanelState.store.get().loggedIn });
+        topbarState.setVisible(false);
+      }),
+    );
+    onTestFinished(
+      topbarState.store.listen(() => {
+        seen.push({ topbarVisible: chatPanelState.store.get().topbarVisible });
+        productState.setLoaded({ label: 'app', productId: toProductId('app'), details: { chat: true } });
+      }),
+    );
+    onTestFinished(
+      productState.store.listen(() => {
+        seen.push({ label: chatPanelState.store.get().label });
+      }),
+    );
+    onTestFinished(
+      chat.subscribe(change => {
+        if (change.kind === 'message') {
+          seen.push({ unreadByRoom: chatPanelState.store.get().unreadByRoom });
+        }
+      }),
+    );
+
+    // When
+    authState.set({ tag: 'Connected', session: { connected: true } });
+    await postProductMessage('app', 'a');
+
+    // Then
+    expect(seen).toEqual([{ loggedIn: true }, { topbarVisible: false }, { label: 'app' }, { unreadByRoom: { a: 1 } }]);
+    expect(chatPanelState.store.get()).toMatchObject({
+      loggedIn: true,
+      topbarVisible: false,
+      label: 'app',
+      available: true,
+      unreadByRoom: { a: 1 },
+    });
+  });
+
   it('As a user, I drag the panel past its clamp, clear no error and keep the topbar, and the panel redraws only for a new width', () => {
     // Given
     productState.setLoaded({ label: 'app', productId: 'app.dot', details: { chat: true } });

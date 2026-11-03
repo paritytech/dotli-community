@@ -9,14 +9,14 @@
 // wallet, reaches the site.
 
 import { m, type MetricOutcome } from '@dotli/metrics';
+import { atom, type ReadableAtom } from 'nanostores';
 import {
   createAsyncTaskPool,
-  createSyncStore,
   createDeferred,
   log,
   isShallowEqual,
+  registerStoreStateReset,
   waitForStatus,
-  type ReadableStore,
 } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import type { Responder } from '../sessionHandoff/createResponder.js';
@@ -97,7 +97,7 @@ export type SiteRoundParams<Result> = {
   /** The vetted opener's origin, the site the round answers. */
   origin: string;
   /** Answers the site, and says when the round is answered. */
-  responder: Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state' | 'subscribe'>;
+  responder: Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state'>;
   /** The main store's grants, which the round reads, keeps and forgets. */
   grants: SiteGrantStore;
   /** The registrable domains a site's group is judged by. */
@@ -159,7 +159,11 @@ export function createSiteRound<Result>({
 }: SiteRoundParams<Result>) {
   const { route } = action;
   const working: SiteActionScreen = { view: 'site-signing', origin, route };
-  const screen = createSyncStore<SiteScreen>({ name: 'siteRound', initial: working, equals: isShallowEqual });
+  const screen = atom<SiteScreen>(working);
+  screen.eq = isShallowEqual;
+  registerStoreStateReset(() => {
+    screen.set(working);
+  });
   // One step at a time, so a second press waits for the first and finds the view it left.
   const steps = createAsyncTaskPool({ poolSize: 1 });
   // Aborted as the round's last word goes out, so nothing after it posts or changes the main store.
@@ -247,9 +251,7 @@ export function createSiteRound<Result>({
    * back-forward cache meanwhile, which sends the result it holds.
    */
   function closeOnceAnswered(): void {
-    void waitForStatus({ get: responder.state, listen: responder.subscribe }, state => state.kind === 'answered').then(
-      close,
-    );
+    void waitForStatus(responder.state, state => state.kind === 'answered').then(close);
   }
 
   function fail(failure: SiteRoundFailure): void {
@@ -507,7 +509,7 @@ export function createSiteRound<Result>({
 
   void runStep(start);
 
-  const shownScreen: ReadableStore<SiteScreen> = screen;
+  const shownScreen: ReadableAtom<SiteScreen> = screen;
 
   return {
     /** What the window shows for the site. */

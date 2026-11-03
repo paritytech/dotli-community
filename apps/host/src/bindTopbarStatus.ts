@@ -9,9 +9,8 @@ import { createPillPlacement } from './createPillPlacement.js';
 import { topbarMorph, type TopbarMorph } from './createTopbarMorph.js';
 import { getCapsuleStatus } from './getCapsuleStatus.js';
 import { getPillBox, type PillBox } from './getPillBox.js';
-import { isPageActionNeeded } from './isPageActionNeeded.js';
+import { isPageActionNeeded, pageActionNeeded } from './isPageActionNeeded.js';
 import type { NetworkHealth } from './networkVerdict.js';
-import { chatPanelState } from './state/chatPanelState.js';
 import { topbarState } from './state/topbarState.js';
 
 type Params = {
@@ -67,8 +66,7 @@ export function bindTopbarStatus(
   render();
   place();
   const offHealth = health.listen(render);
-  const offTopbar = topbarState.store.listen(render);
-  const offChat = chatPanelState.store.listen(render);
+  const offAction = pageActionNeeded.listen(render);
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place);
   observer?.observe(bar);
   window.addEventListener('resize', place);
@@ -77,8 +75,7 @@ export function bindTopbarStatus(
 
   function unbind(): void {
     offHealth();
-    offTopbar();
-    offChat();
+    offAction();
     observer?.disconnect();
     window.removeEventListener('resize', place);
     window.removeEventListener('online', render);

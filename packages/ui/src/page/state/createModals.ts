@@ -4,8 +4,9 @@
 // The overlays render the first entry. Everything that decides how a dialog settles lives
 // here, outside Solid.
 
-import { createSyncStore, registerStoreStateReset, toAbortError, type ReadableStore } from '@dotli/shared';
+import { createSharedRun, registerStoreStateReset, toAbortError } from '@dotli/shared';
 import { reportDefect, spans as S } from '@dotli/metrics';
+import { atom, type ReadableAtom } from 'nanostores';
 import type { Component } from 'solid-js';
 import type { IconProps } from '../../components/icons/iconProps.js';
 
@@ -123,8 +124,14 @@ export function createModals() {
   // Registered before the store, so the pending dialogs detach before the store empties.
   registerStoreStateReset(resetState);
 
-  const entries = createSyncStore<readonly ModalEntry[]>({ name: 'modals', initial: [] });
-  const store: ReadableStore<readonly ModalEntry[]> = entries;
+  const initial: readonly ModalEntry[] = [];
+  const entries = atom<readonly ModalEntry[]>(initial);
+  registerStoreStateReset(() => {
+    entries.set(initial);
+  });
+  const store: ReadableAtom<readonly ModalEntry[]> = entries;
+  // One listener serves every refuseAll caller, so a repeated call adds none.
+  const refusal = createSharedRun({ begin: () => entries.listen(refuseOpen) });
 
   return {
     /** The open dialogs, oldest first. */
@@ -218,7 +225,7 @@ export function createModals() {
 
   function refuseAll(): () => void {
     refuseOpen();
-    return entries.listen(refuseOpen);
+    return refusal.join();
   }
 
   function refuseOpen(): void {

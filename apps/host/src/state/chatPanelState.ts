@@ -5,13 +5,14 @@
 
 import {
   createSharedRun,
-  createSyncStore,
   pageLocalStorage,
   registerStoreStateReset,
   isShallowEqual,
   type ReadableStore,
   type SafeStorage,
 } from '@dotli/shared';
+import { createPersistentAtom } from '@dotli/stores-persistent';
+import { atom, type ReadableAtom, type WritableAtom } from 'nanostores';
 import { chatStore, type ChatChange, type ChatStore, type ChatView } from '../runtime/chat/createChatStore.js';
 import { toProductId } from '../runtime/createTruapiRuntimeConfig.js';
 import { productState } from '../runtime/state/productState.js';
@@ -35,7 +36,7 @@ export type ChatPanelState = {
   topbarVisible: boolean;
 };
 
-type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem'>;
+type WidthStorage = Pick<SafeStorage, 'getItem' | 'setItem' | 'removeItem'>;
 
 type Params = {
   /** The chat store whose product messages count as unread, the page's by default. */
@@ -64,14 +65,16 @@ const INITIAL: ChatPanelState = {
 };
 
 // A drag past the clamp and repeated product or topbar events rebuild an equal state.
-const panel = createSyncStore<ChatPanelState>({
-  name: 'chat_panel',
-  initial: INITIAL,
-  equals: isShallowEqual,
+const panel = atom<ChatPanelState>(INITIAL);
+panel.eq = isShallowEqual;
+registerStoreStateReset(() => {
+  panel.set(INITIAL);
 });
-const store: ReadableStore<ChatPanelState> = panel;
+const store: ReadableAtom<ChatPanelState> = panel;
 
 let widthStorage: WidthStorage = pageLocalStorage;
+// Built on first use from the storage in place then, so an open before the follows start reads the page's.
+let savedWidth: WritableAtom<number> | undefined;
 
 // The panel hydrates as an island of its own, so its element is handed over here, not passed in.
 let panelElement: HTMLElement | undefined;
@@ -126,10 +129,10 @@ export const chatPanelState = {
   setElement,
 };
 
-// The store resets itself. The width storage beside it goes back to the page's, the follows end and the element is
-// let go.
+// The width storage goes back to the page's and its saved width is dropped, the follows end and the element is let go.
 registerStoreStateReset(() => {
   widthStorage = pageLocalStorage;
+  savedWidth = undefined;
   run.end();
   panelElement = undefined;
 });
@@ -159,7 +162,7 @@ function setOpen(open: boolean): void {
   if (state.open === open) {
     return;
   }
-  update(open ? { open, width: readStoredWidth() } : { open });
+  update(open ? { open, width: getSavedWidth().get() } : { open });
 }
 
 function openRoom(roomId: string): void {
@@ -218,7 +221,7 @@ function setWidth(width: number): void {
 }
 
 function persistWidth(): void {
-  widthStorage.setItem(PANEL_WIDTH_KEY, String(panel.get().width));
+  getSavedWidth().set(panel.get().width);
 }
 
 function start({ chat = chatStore, storage = pageLocalStorage }: Params = {}): () => void {
@@ -240,7 +243,10 @@ function setElement(element: HTMLElement): () => void {
 }
 
 function beginFollowing({ chat, storage }: Required<Params>): () => void {
-  widthStorage = storage;
+  if (storage !== widthStorage) {
+    widthStorage = storage;
+    savedWidth = undefined;
+  }
   followSessionAndTopbar();
   followProduct();
   const unsubscribes = [
@@ -304,12 +310,23 @@ function countUnreadMessage(change: ChatChange): void {
   });
 }
 
-function readStoredWidth(): number {
-  const raw = Number(widthStorage.getItem(PANEL_WIDTH_KEY));
-  if (Number.isFinite(raw) && raw >= MIN_PANEL_WIDTH) {
-    return Math.min(raw, MAX_PANEL_WIDTH);
+function getSavedWidth(): WritableAtom<number> {
+  savedWidth ??= createPersistentAtom({
+    key: PANEL_WIDTH_KEY,
+    storage: widthStorage,
+    initial: DEFAULT_PANEL_WIDTH,
+    decode: decodeWidth,
+    encode: String,
+  });
+  return savedWidth;
+}
+
+function decodeWidth(raw: string): number | undefined {
+  const width = Number(raw);
+  if (Number.isFinite(width) && width >= MIN_PANEL_WIDTH) {
+    return Math.min(width, MAX_PANEL_WIDTH);
   }
-  return DEFAULT_PANEL_WIDTH;
+  return undefined;
 }
 
 function clampWidth(width: number): number {

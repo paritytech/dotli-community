@@ -11,11 +11,11 @@ import {
   createAsyncTaskPool,
   createListenerSet,
   createSharedRun,
-  createSyncStore,
   realTimers,
-  type ReadableStore,
+  registerStoreStateReset,
   type Timers,
 } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import type { PermissionAuthorizations } from '../createPermissionAuthorizations.js';
 import {
   ALL_PERMISSIONS,
@@ -62,7 +62,7 @@ type Params = {
   /** The core's permission store. */
   registry: Pick<PermissionAuthorizations, 'getStatuses' | 'setStatus'>;
   /** The product on show, whose permissions the store holds. */
-  product: ReadableStore<ProductState>;
+  product: ReadableAtom<ProductState>;
   /** What a retry waits on. The page's own timers by default. */
   timers?: Pick<Timers, 'setTimeout' | 'clearTimeout'>;
 };
@@ -111,19 +111,23 @@ const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 300;
 
 const NONE: ProductPermissionsState = { status: 'none' };
+const NO_PENDING: PendingPermissions = null;
 
 const POOL = 'product-permissions';
 
 /** Builds the permissions store of the product on show, over the core's `registry`. Building one reads nothing. */
 export function createProductPermissions({ registry, product, timers = realTimers }: Params) {
-  const permissions = createSyncStore<ProductPermissionsState>({
-    name: 'product_permissions',
-    initial: NONE,
-    equals: isSameState,
+  const permissions = atom<ProductPermissionsState>(NONE);
+  permissions.eq = isSameState;
+  registerStoreStateReset(() => {
+    permissions.set(NONE);
   });
-  const pendingChange = createSyncStore<PendingPermissions>({ name: 'product_permissions_pending', initial: null });
-  const state: ReadableStore<ProductPermissionsState> = permissions;
-  const pending: ReadableStore<PendingPermissions> = pendingChange;
+  const pendingChange = atom<PendingPermissions>(NO_PENDING);
+  registerStoreStateReset(() => {
+    pendingChange.set(NO_PENDING);
+  });
+  const state: ReadableAtom<ProductPermissionsState> = permissions;
+  const pending: ReadableAtom<PendingPermissions> = pendingChange;
 
   // One listener's failure must not keep the change from the others.
   const changes = createListenerSet<PermissionsChange>({

@@ -3,18 +3,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { createRoot, flush } from 'solid-js';
+import { atom, computed } from 'nanostores';
 import type { Backend } from '@dotli/config';
 import { createSyncStore, type ReadableStore } from '@dotli/shared';
 import type { NetworkHealth } from '../components/chains/networkHealth.js';
 import type { NetworkView } from '../components/chains/chains.js';
+import { INITIAL_NETWORK } from '../state/networkState.js';
 import { useNetworkPanel } from './network.js';
-
-const NOTHING: NetworkView = {
-  chains: [],
-  transfer: { bytesPerSecond: null, fetched: null, total: null },
-  readAt: 0,
-  verdict: { text: 'Not in use', tone: 'quiet' },
-};
 
 /** `store`, counting the readers subscribed to it. */
 function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; readers: { count: number } } {
@@ -39,11 +34,12 @@ function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; r
 function mount() {
   const stores = {
     health: createSyncStore<NetworkHealth>({ name: 'network-test-health', initial: 'quiet' }),
-    network: createSyncStore<NetworkView>({ name: 'network-test-network', initial: NOTHING }),
+    network: atom<NetworkView>(INITIAL_NETWORK),
     product: createSyncStore<{ status: string }>({ name: 'network-test-product', initial: { status: 'idle' } }),
     settings: createSyncStore<{ backend: Backend } | null>({ name: 'network-test-settings', initial: null }),
   };
-  const { store: network, readers } = countingStore(stores.network);
+  // A computed, which has no `init`
+  const { store: network, readers } = countingStore(computed(stores.network, value => value));
   const { panel, dispose } = createRoot(d => ({ panel: useNetworkPanel({ ...stores, network }), dispose: d }));
   flush();
   return { stores, panel, dispose, readers };
@@ -99,7 +95,7 @@ describe('useNetworkPanel', () => {
 
     // When the panel opens under its own owner
     const opened = createRoot(close => ({ network: panel.followNetwork(), close }));
-    stores.network.set({ ...NOTHING, readAt: 1 });
+    stores.network.set({ ...INITIAL_NETWORK, readAt: 1 });
     flush();
 
     // Then it reads the network as it changes

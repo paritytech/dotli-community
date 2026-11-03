@@ -79,7 +79,7 @@ type StartTransactionParams = {
 } & Omit<CreateFakeChainParams, 'steps'>;
 
 /** The responder calls a site's round makes. */
-type RoundResponder = Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state' | 'subscribe'>;
+type RoundResponder = Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state'>;
 
 /** A started transaction round over fakes. */
 type StartedTransaction = Awaited<ReturnType<typeof startTransactionWith>>;

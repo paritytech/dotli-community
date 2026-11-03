@@ -103,6 +103,54 @@ describe('logged-in session', () => {
     expect(seen).toEqual([true, false]);
   });
 
+  it('As an auth follower, I hear every step, a repeated LoginFailed included, and isLoggedIn already matches the step I hear', () => {
+    // Given a follower that reads the step and the session through the store's readers as it hears each step
+    const failed = { tag: 'LoginFailed', kind: 'Other', reason: 'declined' } as const;
+    const heard: { step: string; loggedIn: boolean }[] = [];
+    onTestFinished(
+      authState.store.listen(() => {
+        heard.push({ step: authState.get().tag, loggedIn: authState.isLoggedIn() });
+      }),
+    );
+
+    // When the user signs in, pairs again, fails twice the same way and is signed out
+    authState.set(CONNECTED);
+    authState.set({ tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' });
+    authState.set(failed);
+    authState.set(failed);
+    authState.set({ tag: 'Disconnected' });
+
+    // Then every step reached the follower with the session it brings
+    expect(heard).toEqual([
+      { step: 'Connected', loggedIn: true },
+      { step: 'Pairing', loggedIn: true },
+      { step: 'LoginFailed', loggedIn: true },
+      { step: 'LoginFailed', loggedIn: true },
+      { step: 'Disconnected', loggedIn: false },
+    ]);
+  });
+
+  it('As a logged-in follower, I hear the change after the step that caused it', () => {
+    // Given a follower of the session that reads the auth step as it hears each change
+    const heard: { loggedIn: boolean; step: string }[] = [];
+    onTestFinished(
+      authState.loggedInStore.listen(loggedIn => {
+        heard.push({ loggedIn, step: authState.get().tag });
+      }),
+    );
+
+    // When the user signs in, pairs again and is signed out
+    authState.set(CONNECTED);
+    authState.set({ tag: 'Pairing', deeplink: 'polkadotapp://pair?handshake=test', label: 'x' });
+    authState.set({ tag: 'Disconnected' });
+
+    // Then each change came with the step that caused it already current, and pairing again changed nothing
+    expect(heard).toEqual([
+      { loggedIn: true, step: 'Connected' },
+      { loggedIn: false, step: 'Disconnected' },
+    ]);
+  });
+
   it('As a logged-in user, I connect again and the session announces nothing new', () => {
     // Given
     authState.set(CONNECTED);

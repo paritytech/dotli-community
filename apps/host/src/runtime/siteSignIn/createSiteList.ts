@@ -5,7 +5,8 @@
 // only the grants, so it needs no opener, no handshake and no core.
 
 import { m, spans as S } from '@dotli/metrics';
-import { createAsyncTaskPool, createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
+import { createAsyncTaskPool, isShallowEqual, registerStoreStateReset } from '@dotli/shared';
 import type { SiteGrant, SiteGrantStore } from '@dotli/storage';
 import { reportWalletFailure } from '../walletFailure.js';
 
@@ -36,10 +37,11 @@ type ListMiss = 'read' | 'forget';
 /** Makes the list of the sites the grants name, and reads it at once. */
 export function createSiteList({ grants }: Params) {
   // Until the first read lands, so an empty list never shows before the grants are known.
-  const screen = createSyncStore<SiteListScreen>({
-    name: 'siteList',
-    initial: { view: 'sites-loading' },
-    equals: isShallowEqual,
+  const initial: SiteListScreen = { view: 'sites-loading' };
+  const screen = atom<SiteListScreen>(initial);
+  screen.eq = isShallowEqual;
+  registerStoreStateReset(() => {
+    screen.set(initial);
   });
   // One read or revoke at a time, so a revoke sees the list the last read left and no older read lands after it.
   const steps = createAsyncTaskPool({ poolSize: 1 });
@@ -83,7 +85,7 @@ export function createSiteList({ grants }: Params) {
 
   void steps.call(readList);
 
-  const shownScreen: ReadableStore<SiteListScreen> = screen;
+  const shownScreen: ReadableAtom<SiteListScreen> = screen;
 
   return {
     /** What the list shows. */

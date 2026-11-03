@@ -24,12 +24,12 @@ and no data source.
 
 - The toasts, the dialog queue and the page screen are entity objects, each built by a factory with one page instance
   built with the defaults. The toasts and the page screen take the page as a param, and the toasts the timers too. The
-  dialog queue takes none. Building one reads neither the document nor the clock: the document is read on first use.
-  Each keeps its state in a sync store built on `createSyncStore`, exposed read-only as `store`, and registers its own
-  state reset, so the store registry's reset resets every instance. The overlays render their state and everything else
-  opens, pushes and settles through them. A toast's countdown runs only while a toast view is mounted and pauses while
-  the tab is hidden or the stack is expanded. A toast's `onDismiss` that throws is reported as a listener error, counted
-  as `listener.delivery`, and the toast leaves anyway.
+  dialog queue takes none. Building one reads neither the document nor the clock: the document is read on first use. The
+  dialog queue, the toasts and the page screen keep their state in an atom. Each exposes it read-only as `store` and
+  registers its own state reset, so the store registry's reset resets every instance. The overlays render their state
+  and everything else opens, pushes and settles through them. A toast's countdown runs only while a toast view is
+  mounted and pauses while the tab is hidden or the stack is expanded. A toast's `onDismiss` that throws is reported as
+  a listener error, counted as `listener.delivery`, and the toast leaves anyway.
 - Every component has a CSS module beside it. Colors come only from the tokens.
 - Floating layers share one stack that tracks shown modal layers and makes the page inert under the top one.
 - `Popover` and `DropdownMenu` render their surface from its first opening on and share the trigger wiring. A popover's

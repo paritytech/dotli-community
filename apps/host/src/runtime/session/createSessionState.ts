@@ -5,7 +5,8 @@
 // and whether a sign-in made elsewhere waits for the page.
 
 import type { AuthState, SessionUiInfo } from '@parity/truapi-host';
-import { createAsyncTaskPool, createSyncStore, type ReadableStore } from '@dotli/shared';
+import { createAsyncTaskPool, registerStoreStateReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { isResumeOffered, pageRole } from '../pageRole.js';
 import { authState } from '../state/authState.js';
 import { walletModeState } from '../state/walletModeState.js';
@@ -59,6 +60,8 @@ export type PairingPresentation = {
 /** The page's session state, as its factory builds it. */
 export type SessionState = ReturnType<typeof createSessionState>;
 
+const NO_CORE_REPORT: DotliAuthState | null = null;
+
 export function createSessionState({
   store,
   restore,
@@ -93,8 +96,11 @@ export function createSessionState({
   // itself. The page core says when its last core went.
   let speaker: 'copy' | 'core' = 'copy';
 
-  const coreReportStore = createSyncStore<DotliAuthState | null>({ name: 'sessionCoreReport', initial: null });
-  const coreReport: ReadableStore<DotliAuthState | null> = coreReportStore;
+  const coreReportStore = atom<DotliAuthState | null>(NO_CORE_REPORT);
+  registerStoreStateReset(() => {
+    coreReportStore.set(NO_CORE_REPORT);
+  });
+  const coreReport: ReadableAtom<DotliAuthState | null> = coreReportStore;
 
   let stop: (() => void) | null = null;
 
@@ -254,7 +260,7 @@ export function createSessionState({
     /** The page's last core went, so the saved copy speaks for the page again, read at once and on each change. */
     reportCoresGone(): void {
       speaker = 'copy';
-      coreReportStore.set(null);
+      coreReportStore.set(NO_CORE_REPORT);
       void refresh();
     },
     /**

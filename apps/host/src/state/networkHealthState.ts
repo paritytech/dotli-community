@@ -4,15 +4,8 @@
 // Rechecks when the first live chain would turn overdue, because a stalled chain sends no event. A hidden tab is
 // judged when it shows.
 
-import {
-  createSharedRun,
-  createSyncStore,
-  listen,
-  realTimers,
-  registerStoreStateReset,
-  type ReadableStore,
-  type Timers,
-} from '@dotli/shared';
+import { createSharedRun, listen, realTimers, registerStoreStateReset, type Timers } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 import { networkMonitorState, type NetworkMonitor } from './networkMonitorState.js';
 import { getNextOverdueAt, judgeNetworkHealth, type NetworkHealth } from '../networkVerdict.js';
 
@@ -35,14 +28,15 @@ type Params = {
 
 type StartParams = {
   /** The monitor to judge, the page's unless given another. */
-  monitor?: Pick<NetworkMonitor, 'subscribe' | 'getChainClocks'>;
+  monitor?: Pick<NetworkMonitor, 'version' | 'getChainClocks'>;
   /** The page around the chains, the browser's unless given another. */
   page?: HealthPage;
 };
 
 export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
-  const health = createSyncStore<NetworkHealth>({ name: 'network-health', initial: 'quiet' });
-  const store: ReadableStore<NetworkHealth> = health;
+  const initial: NetworkHealth = 'quiet';
+  const health = atom<NetworkHealth>(initial);
+  const store: ReadableAtom<NetworkHealth> = health;
   let recheck: unknown = null;
   /** Lets a notify that moves no deadline leave `recheck` be. */
   let recheckAt: number | null = null;
@@ -50,7 +44,7 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   registerStoreStateReset(() => {
     run.end();
     disarm();
-    health.set('quiet');
+    health.set(initial);
   });
 
   return {
@@ -71,7 +65,7 @@ export function createNetworkHealthState({ timers = realTimers }: Params = {}) {
   function beginFollowing({ monitor, page }: Required<StartParams>): () => void {
     judge();
     const unsubscribes = [
-      monitor.subscribe(judge),
+      monitor.version.listen(judge),
       listen({ target: page.connectivity, type: 'online', handler: judge }),
       listen({ target: page.connectivity, type: 'offline', handler: judge }),
       listen({ target: page.visibility, type: 'visibilitychange', handler: judge }),

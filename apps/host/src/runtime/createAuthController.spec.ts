@@ -65,7 +65,9 @@ type RecordCommandsParams = {
 const LOGIN_CANCELLED: LoginOutcome = { kind: 'cancelled' };
 
 const CLOSED_MODAL: AuthModalState = { open: false, productLabel: null, reason: null, view: { kind: 'spinner' } };
-const getAuthModalState = authModalState.store.get;
+function getAuthModalState(): AuthModalState {
+  return authModalState.store.get();
+}
 
 const PHRASE = 'twelve good words';
 const ENTROPY = new Uint8Array(16).fill(7);
@@ -1727,6 +1729,23 @@ describe('auth controller on the page stores', () => {
         productLabel: null,
         view: { kind: 'error', retry: true },
       });
+    });
+
+    it('As a user on the error view, I retry from the topbar and a retry that fails the same way shows the error again', () => {
+      // Given a booted page whose login failed, and a retry from the topbar
+      const { commands } = recordCommands({ changes: createChanges() });
+      authControl.init(buildInitParams(commands));
+      const failed = { tag: 'LoginFailed', kind: 'Other', reason: 'worker init failed' } as const;
+      authState.set(failed);
+      authControl.startLogin();
+      const retryView = getAuthModalState().view;
+
+      // When the core reports the same failure again
+      authState.set(failed);
+
+      // Then the spinner showed for the retry, and the error shows again
+      expect(retryView).toEqual({ kind: 'spinner' });
+      expect(getAuthModalState().view).toMatchObject({ kind: 'error', message: 'worker init failed' });
     });
   });
 });

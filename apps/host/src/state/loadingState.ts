@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, isShallowEqual, type ReadableStore } from '@dotli/shared';
+import { isShallowEqual, registerStoreStateReset } from '@dotli/shared';
+import { atom, type ReadableAtom } from 'nanostores';
 
 /** `gone` is terminal: no phase follows it. */
 export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
@@ -26,21 +27,23 @@ export type LoadingState = {
   phase: LoadingScreenPhase;
 };
 
-const loading = createSyncStore<LoadingState>({
-  name: 'loading',
-  initial: {
-    progress: 0,
-    step: ['Reaching out'],
-    explanation: '',
-    explanationOpacity: 1,
-    srText: '',
-    warning: null,
-    phase: 'active',
-  },
-  // A write can come every frame, and an unchanged frame notifies nobody.
-  equals: isShallowEqual,
+const INITIAL: LoadingState = {
+  progress: 0,
+  step: ['Reaching out'],
+  explanation: '',
+  explanationOpacity: 1,
+  srText: '',
+  warning: null,
+  phase: 'active',
+};
+
+const loading = atom<LoadingState>(INITIAL);
+// A write can come every frame, and an unchanged frame notifies nobody.
+loading.eq = isShallowEqual;
+registerStoreStateReset(() => {
+  loading.set(INITIAL);
 });
-const store: ReadableStore<LoadingState> = loading;
+const store: ReadableAtom<LoadingState> = loading;
 
 /** The loading screen's progress, step line, explanation and phase. */
 export const loadingState = {
