@@ -23,9 +23,9 @@ function countingStore<T>(store: ReadableStore<T>): { store: ReadableStore<T>; r
     readers,
     store: {
       ...store,
-      subscribe: listener => {
+      listen: listener => {
         readers.count += 1;
-        const unsubscribe = store.subscribe(listener);
+        const unsubscribe = store.listen(listener);
         return () => {
           readers.count -= 1;
           unsubscribe();

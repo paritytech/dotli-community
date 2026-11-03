@@ -4,7 +4,8 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { RootBoundary, useStore } from '@dotli/ui';
+import { RootBoundary } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import { topbarState } from '../state/topbarState.js';
 import { TopbarReveal as Reveal } from '../components/topbar/TopbarReveal.js';
 import { pageTopbarAutoHide } from '../createTopbarAutoHide.js';

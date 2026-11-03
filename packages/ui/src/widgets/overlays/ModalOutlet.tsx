@@ -3,7 +3,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { useStore } from '../../components/useStore.js';
+import { useStore } from '@dotli/stores-solid';
 import { modals, type ModalEntry } from '../../page/state/createModals.js';
 import { PromptDialog } from './PromptDialog.js';
 

@@ -200,7 +200,7 @@ function markFollowedRoomSeen(view: ReadableStore<ChatView>): () => void {
     }
   }
   markLandedRead();
-  return view.subscribe(markLandedRead);
+  return view.listen(markLandedRead);
 }
 
 function setComposerError(message: string | null): void {
@@ -244,9 +244,9 @@ function beginFollowing({ chat, storage }: Required<Params>): () => void {
   followSessionAndTopbar();
   followProduct();
   const unsubscribes = [
-    authState.loggedInStore.subscribe(followSessionAndTopbar),
-    topbarState.store.subscribe(followSessionAndTopbar),
-    productState.store.subscribe(followProduct),
+    authState.loggedInStore.listen(followSessionAndTopbar),
+    topbarState.store.listen(followSessionAndTopbar),
+    productState.store.listen(followProduct),
     chat.subscribe(countUnreadMessage),
   ];
   function unsubscribe(): void {

@@ -134,7 +134,7 @@ export function createFakeFrame({
 
   const frame: ProtocolFrame = {
     getStatus: status.get,
-    subscribeStatus: status.subscribe,
+    subscribeStatus: status.listen,
     configure: () => undefined,
     getTransport: () => waitForHost(['listening', 'ready']),
     waitUntilReady: () => waitForHost(['ready']),

@@ -4,7 +4,7 @@
 import { describe, expect, expectTypeOf, it, onTestFinished } from 'vitest';
 import type { LocalWalletIdentity, LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import { createSyncStore, createDeferred, createStoreStatus, isRecord, waitForStatus } from '@dotli/shared';
+import { createSyncStore, createDeferred, isRecord, waitForStatus } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import type { ContinueOffer, SignInScreen, WindowView } from '../../state/sessionWindowState.js';
 import type { AuthCommands, LoginOutcome } from '../createAuthCommands.js';
@@ -284,7 +284,7 @@ function openWindow(options: OpenWindowParams = {}) {
 
 /** Waits until the flow shows a screen that `met` accepts. */
 function waitForScreen(flow: WindowFlow, met: (screen: SignInScreen) => boolean): Promise<void> {
-  return waitForStatus(createStoreStatus(flow.screen), met);
+  return waitForStatus(flow.screen, met);
 }
 
 /** What the view on show offers, null on a view other than Continue. */
@@ -1355,7 +1355,7 @@ describe('session window flow', () => {
       });
       const views: WindowView[] = [];
       onTestFinished(
-        flow.screen.subscribe(() => {
+        flow.screen.listen(() => {
           views.push(flow.screen.get().view);
         }),
       );

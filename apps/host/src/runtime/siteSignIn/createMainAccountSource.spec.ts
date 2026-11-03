@@ -46,13 +46,11 @@ function createSourceOverCore({ acquireFailures = [], booted = Promise.resolve()
   let waits = 0;
   const coreReport: ReadableStore<DotliAuthState | null> = {
     get: report.get,
-    initial: report.initial,
     init: report.init,
-    listen: report.listen,
-    subscribe(listener) {
+    listen(listener) {
       waits += 1;
       changes.notify();
-      return report.subscribe(listener);
+      return report.listen(listener);
     },
   };
   const failures = [...acquireFailures];

@@ -57,6 +57,7 @@
     "@dotli/sandbox-wire": "*",
     "@dotli/shared": "*",
     "@dotli/storage": "*",
+    "@dotli/stores-solid": "*",
     "@dotli/truapi-debug": "*",
     "@dotli/truapi-debug-ui": "*",
     "@dotli/ui": "*",

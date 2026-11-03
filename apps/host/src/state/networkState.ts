@@ -66,9 +66,7 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
   // and the next `get` rebuilds it.
   const store: ReadableStore<NetworkState> = {
     get,
-    initial: network.initial,
     init: network.init,
-    subscribe,
     listen,
   };
 
@@ -88,18 +86,6 @@ export function createNetworkState({ timers = realTimers }: Params = {}) {
       network.set(readSnapshot(feed));
     }
     return network.get();
-  }
-
-  function subscribe(listener: () => void): () => void {
-    const reader = {};
-    readers.add(reader);
-    const unsubscribe = network.subscribe(listener);
-    return unsubscribeReader;
-
-    function unsubscribeReader(): void {
-      readers.delete(reader);
-      unsubscribe();
-    }
   }
 
   function listen(listener: (value: NetworkState, oldValue: NetworkState | undefined) => void): () => void {

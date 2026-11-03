@@ -205,7 +205,7 @@ async function startRound(options: StartRoundParams = {}) {
   });
   const screens: SiteScreen[] = [flow.screen.get()];
   onTestFinished(
-    flow.screen.subscribe(() => {
+    flow.screen.listen(() => {
       screens.push(flow.screen.get());
     }),
   );

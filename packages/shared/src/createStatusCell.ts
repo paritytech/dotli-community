@@ -33,9 +33,7 @@ export function createStatusCell<T>({ initial, onListenerError }: Params<T>) {
     get,
     /** Does nothing when `next` is the status already. */
     set,
-    /** Called on each change only, in order. A listener subscribed twice is two subscriptions. */
-    subscribe,
-    /** Like `subscribe`, and the listener hears the status it replaced too. */
+    /** Hears each change only, in order, with the status it replaced. A listener given twice is two subscriptions. */
     listen,
   };
 
@@ -50,12 +48,6 @@ export function createStatusCell<T>({ initial, onListenerError }: Params<T>) {
     const oldValue = value;
     value = next;
     listeners.emit({ value: next, oldValue });
-  }
-
-  function subscribe(listener: (value: T) => void): () => void {
-    return listeners.subscribe(change => {
-      listener(change.value);
-    });
   }
 
   function listen(listener: (value: T, oldValue: T | undefined) => void): () => void {

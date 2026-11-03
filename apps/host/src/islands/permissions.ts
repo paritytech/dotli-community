@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ReadableStore } from '@dotli/shared';
-import { useStore } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import type { PermissionStatus, PermissionTargets } from '../runtime/permissionPolicy.js';
 import type { ChangeOutcome, PendingPermissions } from '../runtime/state/productPermissions.js';
 import type { MenuPermission, PermissionsNotice } from '../components/permissions/permissions.js';

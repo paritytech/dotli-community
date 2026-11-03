@@ -32,6 +32,7 @@
   "dependencies": {
     "@dotli/metrics": "*",
     "@dotli/shared": "*",
+    "@dotli/stores-solid": "*",
     "@solidjs/web": "2.0.0-rc.20",
     "solid-js": "2.0.0-rc.20"
   }

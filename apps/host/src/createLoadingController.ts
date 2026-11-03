@@ -430,7 +430,7 @@ export function createLoadingController({
     loadingState.update({ phase: 'gone' });
   }
 
-  const stopFollowingPageContent = pageContent.subscribe(() => {
+  const stopFollowingPageContent = pageContent.listen(() => {
     if (pageContent.get() === 'screen') {
       hideLoading();
     }

@@ -24,7 +24,7 @@ describe('theme store', () => {
     // Given
     let heard = 0;
     onTestFinished(
-      themeState.store.subscribe(() => {
+      themeState.store.listen(() => {
         heard += 1;
       }),
     );

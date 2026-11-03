@@ -30,6 +30,7 @@
     "@dotli/content": "*",
     "@dotli/metrics": "*",
     "@dotli/shared": "*",
+    "@dotli/stores-solid": "*",
     "@dotli/truapi-debug": "*",
     "@dotli/ui": "*",
     "@solidjs/web": "2.0.0-rc.20",

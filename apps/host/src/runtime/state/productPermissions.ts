@@ -199,7 +199,7 @@ export function createProductPermissions({ registry, product, timers = realTimer
 
   function beginFollowing(): () => void {
     followProduct();
-    return product.subscribe(followProduct);
+    return product.listen(followProduct);
   }
 
   function followProduct(): void {

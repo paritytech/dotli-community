@@ -4,7 +4,8 @@
 // One module per island, so Astro loads only this island's code when its directive fires.
 
 import type { JSX } from '@solidjs/web';
-import { LayerTracker, RootBoundary, useStore } from '@dotli/ui';
+import { LayerTracker, RootBoundary } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import { UrlPillShield as Shield } from '../components/shield/UrlPillShield.js';
 import { topbarSurfaces } from '../state/topbarSurfaces.js';
 import { urlPillState } from '../state/urlPillState.js';

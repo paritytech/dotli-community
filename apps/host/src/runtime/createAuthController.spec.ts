@@ -136,7 +136,7 @@ function startController({
     equals: () => false,
   });
   const changes = createChanges();
-  onTestFinished(authModalState.store.subscribe(changes.notify));
+  onTestFinished(authModalState.store.listen(changes.notify));
   const recorded = recordCommands({ changes });
   const controller = createAuthController({
     coordinator,
@@ -1358,7 +1358,7 @@ describe('auth controller: the sign-in window', () => {
     auth.set({ ...PAIRING, deeplink: '' });
     const writes: AuthModalState[] = [];
     onTestFinished(
-      authModalState.store.subscribe(() => {
+      authModalState.store.listen(() => {
         writes.push(getAuthModalState());
       }),
     );

@@ -519,7 +519,7 @@ export function createWindowFlow({
 
   // Shown only: the login's answer, not the auth state, decides how a pairing ends.
   stops.push(
-    auth.subscribe(() => {
+    auth.listen(() => {
       change({ pairing: getPairingView(screen.get().pairing, auth.get()) });
     }),
   );

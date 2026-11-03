@@ -4,7 +4,7 @@
 // Responders a spec runs a site's round over: one that records what the window posts, and the window's real one over a
 // fake opener, vetted by the site.
 
-import { createStoreStatus, createSyncStore } from '@dotli/shared';
+import { createSyncStore } from '@dotli/shared';
 import { createFakePageEvents } from '../../testing/pageEvents.js';
 import { createResponder, type Responder, type ResponderState } from './createResponder.js';
 import { createFakeMessageBus, createFakeWindowHandle } from './listenToMessages.fake.js';
@@ -42,7 +42,6 @@ export function createRecordingResponder({ origin, onHeld }: CreateRecordingResp
   const posts: SiteRoundPost[] = [];
   const vetted: ResponderState = { kind: 'vetted', origin, party: 'third' };
   const round = createSyncStore<ResponderState>({ name: 'testSiteRoundResponder', initial: vetted });
-  const status = createStoreStatus(round);
   let held: SiteRoundPost | null = null;
   function end(post: SiteRoundPost, state: ResponderState): void {
     const { kind } = round.get();
@@ -54,8 +53,8 @@ export function createRecordingResponder({ origin, onHeld }: CreateRecordingResp
     round.set(state);
   }
   const responder: Pick<Responder<unknown>, 'send' | 'refuse' | 'cancel' | 'state' | 'subscribe' | 'dispose'> = {
-    state: status.get,
-    subscribe: status.subscribe,
+    state: round.get,
+    subscribe: round.listen,
     send(result, { siteToken } = {}) {
       const post: SiteRoundPost = {
         type: 'dotli:s:result',

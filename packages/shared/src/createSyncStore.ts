@@ -1,23 +1,20 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Plain stores with no framework in them. Components read one through `useStore` in `@dotli/ui`.
+// Plain stores with no framework in them. Components read one through `useStore` in `@dotli/stores-solid`.
 
 import { registerStoreStateReset } from './storeResets.js';
 
 export type ReadableStore<T> = {
   /** The current value. Never throws. */
   get: () => T;
-  /** What a build-time render shows, as nothing writes a store then. */
-  initial: T;
-  /** The value the store was built with, as a nanostores store names it. */
+  /** The value the store was built with, which a build-time render shows, as nothing writes a store then. */
   init: T | undefined;
   /**
-   * Notifications are synchronous, so a listener calling another store's setter runs that nested set
-   * and its listeners before the outer setter notifies its own.
+   * Hears each change with the new value and the one it replaced, with no first call. Notifications are synchronous, so
+   * a listener calling another store's setter runs that nested set and its listeners before the outer setter notifies
+   * its own.
    */
-  subscribe(listener: () => void): () => void;
-  /** Like `subscribe`, without a first call. The listener hears the new value and the one it replaced. */
   listen(listener: (value: T, oldValue: T | undefined) => void): () => void;
 };
 
@@ -38,11 +35,11 @@ type Params<T> = {
 };
 
 /**
- * A plain store that notifies its subscribers synchronously on each change.
+ * A plain store that notifies its listeners synchronously on each change.
  *
  * @example
  * const view = createSyncStore<View>({ name: 'view', initial, equals });
- * const stop = view.subscribe(() => render(view.get())); // a listener reads the value with get
+ * const stop = view.listen(value => render(value));
  */
 export function createSyncStore<T>({
   name,
@@ -52,23 +49,19 @@ export function createSyncStore<T>({
 }: Params<T>) {
   let current = initial;
   const listeners = new Set<(value: T, oldValue: T) => void>();
-  const subscribed = new Map<() => void, () => void>();
   registerStoreStateReset(reset);
 
   return {
     get,
-    /** What a build-time render shows, as nothing writes a store then. */
-    initial,
-    /** The value the store was built with. */
+    /** The value the store was built with, which a build-time render shows. */
     init: initial,
     /** A value equal to the current one is dropped and notifies nobody. */
     set,
     /**
-     * Notifications are synchronous, so a listener calling another store's setter runs that nested set
-     * and its listeners before the outer setter notifies its own.
+     * Hears each change with the new value and the one it replaced, with no first call. Notifications are synchronous,
+     * so a listener calling another store's setter runs that nested set and its listeners before the outer setter
+     * notifies its own.
      */
-    subscribe,
-    /** Like `subscribe`, under the same delivery and error rules, and its listener hears the replaced value too. */
     listen,
     /** Tests only. */
     reset,
@@ -84,7 +77,7 @@ export function createSyncStore<T>({
     }
     const previous = current;
     current = next;
-    // Snapshot so a listener that unsubscribes (itself or another) during
+    // Snapshot so a listener that unlistens (itself or another) during
     // notification neither skips nor repeats anyone in this round.
     for (const listener of [...listeners]) {
       try {
@@ -94,25 +87,6 @@ export function createSyncStore<T>({
         onListenerError(new StoreListenerError(name, cause));
       }
     }
-  }
-
-  function subscribe(listener: () => void): () => void {
-    // One wrapper per function, so a function subscribed twice is one subscription that its first unsubscribe removes.
-    let callListener = subscribed.get(listener);
-    if (callListener === undefined) {
-      callListener = () => {
-        listener();
-      };
-      subscribed.set(listener, callListener);
-    }
-    listeners.add(callListener);
-    return () => {
-      const wrapper = subscribed.get(listener);
-      if (wrapper !== undefined) {
-        listeners.delete(wrapper);
-        subscribed.delete(listener);
-      }
-    };
   }
 
   function listen(listener: (value: T, oldValue: T) => void): () => void {

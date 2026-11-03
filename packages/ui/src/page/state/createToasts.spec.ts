@@ -265,7 +265,7 @@ describe('toast store', () => {
     // Given
     let notified = 0;
     onTestFinished(
-      toasts.store.subscribe(() => {
+      toasts.store.listen(() => {
         notified += 1;
       }),
     );

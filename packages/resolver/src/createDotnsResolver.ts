@@ -187,7 +187,7 @@ export function createDotnsResolver({ assetHub, people, dotns, source, open = op
     }
     // A caller that arrives after a phase was reached hears it too.
     tellPhase(onPhase, status.get());
-    return status.subscribe(next => {
+    return status.listen(next => {
       tellPhase(onPhase, next);
     });
   }

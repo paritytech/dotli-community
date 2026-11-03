@@ -63,7 +63,7 @@ let role: PageRole;
 /** Every auth state the store publishes from now on. */
 function recordAuthStates(): unknown[] {
   const states: unknown[] = [];
-  auth.subscribe(() => {
+  auth.listen(() => {
     states.push(auth.get());
   });
   return states;
@@ -72,7 +72,7 @@ function recordAuthStates(): unknown[] {
 /** Waits on the auth store, checking again at each state it publishes rather than on a timer. */
 function waitForAuth(met: () => boolean): Promise<void> {
   const changes = createChanges();
-  const stop = auth.subscribe(changes.notify);
+  const stop = auth.listen(changes.notify);
   return changes.until(met).finally(stop);
 }
 
@@ -961,7 +961,7 @@ describe('session state', () => {
       onTestFinished(session.start());
       await waitForAuth(() => auth.get().tag === 'Disconnected');
       const seen: boolean[] = [];
-      auth.subscribe(() => {
+      auth.listen(() => {
         seen.push(elsewhere);
       });
 

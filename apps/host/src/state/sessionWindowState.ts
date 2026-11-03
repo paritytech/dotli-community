@@ -176,7 +176,7 @@ registerStoreStateReset(() => {
 
 function showScreen(source: ReadableStore<WindowScreen>): () => void {
   sessionWindow.set(source.get());
-  return source.subscribe(() => {
+  return source.listen(() => {
     sessionWindow.set(source.get());
   });
 }

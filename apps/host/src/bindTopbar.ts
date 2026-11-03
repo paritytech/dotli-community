@@ -29,7 +29,7 @@ export function bindTopbar(bar: HTMLElement): () => void {
     }
   }
   render();
-  const offTopbar = topbarState.store.subscribe(render);
+  const offTopbar = topbarState.store.listen(render);
 
   function unbind(): void {
     offTopbar();

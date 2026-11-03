@@ -91,7 +91,7 @@ async function startSignIn(options: Params = {}) {
   });
   const views: SiteScreen['view'][] = [flow.screen.get().view];
   onTestFinished(
-    flow.screen.subscribe(() => {
+    flow.screen.listen(() => {
       views.push(flow.screen.get().view);
     }),
   );

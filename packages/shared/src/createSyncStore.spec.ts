@@ -7,11 +7,11 @@ import { resetAllStoresForTests } from './storeResets.js';
 import { isShallowEqual } from './isShallowEqual.js';
 
 describe('createSyncStore', () => {
-  it('As a subscriber, I am notified synchronously after each set, and the getter is already current', () => {
+  it('As a follower, I am notified synchronously after each set, and the getter is already current', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: 0 });
     const seen: number[] = [];
-    store.subscribe(() => {
+    store.listen(() => {
       seen.push(store.get());
     });
 
@@ -47,20 +47,20 @@ describe('createSyncStore', () => {
     ]);
   });
 
-  it('As a subscriber, I subscribe one function twice and hold one subscription that my first unsubscribe removes', () => {
+  it('As a follower, I listen with one function twice and hold two subscriptions that each unlisten alone', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: 0 });
     const listener = vi.fn();
-    const unsubscribe = store.subscribe(listener);
-    store.subscribe(listener);
+    const unlistenFirst = store.listen(listener);
+    store.listen(listener);
 
     // When
     store.set(1);
-    unsubscribe();
+    unlistenFirst();
     store.set(2);
 
     // Then
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 
   it('As a reader, I read init and get the value the store was built with', () => {
@@ -74,29 +74,29 @@ describe('createSyncStore', () => {
     expect(store.init).toBe('built');
   });
 
-  it('As a subscriber, I unsubscribe and am no longer notified', () => {
+  it('As a follower, I unlisten and am no longer notified', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: 'a' });
     const listener = vi.fn();
-    const unsubscribe = store.subscribe(listener);
+    const unlisten = store.listen(listener);
 
     // When
-    unsubscribe();
+    unlisten();
     store.set('b');
 
     // Then
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('As a subscriber, I unsubscribe during a notify and the other listeners are neither skipped nor repeated', () => {
+  it('As a follower, I unlisten during a notify and the other listeners are neither skipped nor repeated', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: 0 });
     const calls: string[] = [];
-    const unsubscribeFirst = store.subscribe(() => {
+    const unlistenFirst = store.listen(() => {
       calls.push('first');
-      unsubscribeFirst();
+      unlistenFirst();
     });
-    store.subscribe(() => {
+    store.listen(() => {
       calls.push('second');
     });
 
@@ -114,10 +114,10 @@ describe('createSyncStore', () => {
     const store = createSyncStore({ name: 'topbar', initial: 0, onListenerError: error => reported.push(error) });
     const after = vi.fn();
     const cause = new Error('listener boom');
-    store.subscribe(() => {
+    store.listen(() => {
       throw cause;
     });
-    store.subscribe(after);
+    store.listen(after);
 
     // When
     store.set(1);
@@ -130,12 +130,12 @@ describe('createSyncStore', () => {
     expect(reported[0]).toMatchObject({ store: 'topbar', message: 'store topbar listener failed', cause });
   });
 
-  it('As a test author, I call resetAllStoresForTests and every store is restored, its subscribers notified', () => {
+  it('As a test author, I call resetAllStoresForTests and every store is restored, its listeners notified', () => {
     // Given
     const textStore = createSyncStore({ name: 'test', initial: 'a' });
     const listStore = createSyncStore<string[]>({ name: 'test', initial: [] });
     const onTextChange = vi.fn();
-    textStore.subscribe(onTextChange);
+    textStore.listen(onTextChange);
     textStore.set('changed');
     listStore.set(['x']);
     onTextChange.mockClear();
@@ -154,7 +154,7 @@ describe('createSyncStore', () => {
     const value = { n: 1 };
     const store = createSyncStore({ name: 'test', initial: value });
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.listen(listener);
 
     // When
     store.set(value);
@@ -169,7 +169,7 @@ describe('createSyncStore', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: { n: 1 } });
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.listen(listener);
 
     // When
     store.set({ n: 1 });
@@ -183,7 +183,7 @@ describe('createSyncStore', () => {
     const first = { n: 1, s: 'a' };
     const store = createSyncStore({ name: 'test', initial: first, equals: isShallowEqual });
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.listen(listener);
 
     // When
     store.set({ n: 1, s: 'a' });
@@ -205,7 +205,7 @@ describe('createSyncStore', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: { id: 1, label: 'a' }, equals: (a, b) => a.id === b.id });
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.listen(listener);
 
     // When
     store.set({ id: 1, label: 'b' });
@@ -220,7 +220,7 @@ describe('createSyncStore', () => {
     // Given
     const store = createSyncStore({ name: 'test', initial: 'a' });
     const listener = vi.fn();
-    store.subscribe(listener);
+    store.listen(listener);
 
     // When
     resetAllStoresForTests();

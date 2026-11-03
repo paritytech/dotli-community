@@ -3,7 +3,7 @@
 
 import { createSignal, onSettled } from 'solid-js';
 import type { ReadableStore } from '@dotli/shared';
-import { useStore } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import type { ThemePreference } from '../runtime/state/themeState.js';
 import type { ApplySettings, SavedSettings } from '../components/settings/settings.js';
 import type { SettingsItemProps } from '../components/settings/SettingsItem.js';

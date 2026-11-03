@@ -29,7 +29,7 @@ export const authState = {
 };
 
 // Subscribed at import, before any other auth listener, so every other listener sees the session already.
-auth.subscribe(followSession);
+auth.listen(followSession);
 
 function followSession(): void {
   const { tag } = auth.get();

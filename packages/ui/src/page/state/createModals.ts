@@ -218,7 +218,7 @@ export function createModals() {
 
   function refuseAll(): () => void {
     refuseOpen();
-    return entries.subscribe(refuseOpen);
+    return entries.listen(refuseOpen);
   }
 
   function refuseOpen(): void {

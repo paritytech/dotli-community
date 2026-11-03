@@ -33,7 +33,7 @@ describe('createFeedKeeper', () => {
   let status: StatusCell<ProtocolStatus>;
   /** The frame, ready with `current` as its transport unless a test says otherwise. */
   function createFrame(transport = (): Promise<Transport> => Promise.resolve(current)): FeedFrame<Transport> {
-    return { getStatus: status.get, subscribeStatus: status.subscribe, getTransport: transport };
+    return { getStatus: status.get, subscribeStatus: status.listen, getTransport: transport };
   }
 
   /** A keeper following `frame`, recording each subscription it opens. */

@@ -106,7 +106,7 @@ export function createMainAccountSource({ acquire, coreReport }: Params) {
           listener(getReport());
         }
         down.addEventListener('abort', notify, { once: true });
-        const unsubscribeReport = coreReport.subscribe(notify);
+        const unsubscribeReport = coreReport.listen(notify);
         function unsubscribe(): void {
           down.removeEventListener('abort', notify);
           unsubscribeReport();

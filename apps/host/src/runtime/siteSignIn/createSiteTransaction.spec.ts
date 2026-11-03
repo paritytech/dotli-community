@@ -293,7 +293,7 @@ async function startTransactionWith(options: StartTransactionParams, responder: 
   });
   const views: SiteScreen['view'][] = [flow.screen.get().view];
   onTestFinished(
-    flow.screen.subscribe(() => {
+    flow.screen.listen(() => {
       const { view } = flow.screen.get();
       views.push(view);
       if (view === 'site-review') {

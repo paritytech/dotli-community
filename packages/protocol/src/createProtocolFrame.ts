@@ -425,7 +425,7 @@ export function createProtocolFrame<E extends FrameElement>({
 
   return {
     getStatus: status.get,
-    subscribeStatus: status.subscribe,
+    subscribeStatus: status.listen,
     configure,
     getTransport,
     waitUntilReady,

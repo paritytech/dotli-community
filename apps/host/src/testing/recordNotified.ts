@@ -8,7 +8,7 @@ import type { ReadableStore } from '@dotli/shared';
 export function recordNotified<Value>(store: ReadableStore<Value>): Value[] {
   const notified: Value[] = [];
   onTestFinished(
-    store.subscribe(() => {
+    store.listen(() => {
       notified.push(store.get());
     }),
   );

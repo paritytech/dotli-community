@@ -111,7 +111,7 @@ describe('theme controller', () => {
     const { loadController } = setupThemePage({ scheme: 'light' });
     const { startTheme } = loadController();
     const onThemeChanged = vi.fn();
-    onTestFinished(themeState.store.subscribe(onThemeChanged));
+    onTestFinished(themeState.store.listen(onThemeChanged));
 
     // When
     startTheme();
@@ -127,7 +127,7 @@ describe('theme controller', () => {
     const { startTheme, selectThemePref } = loadController();
     startTheme();
     const onThemeChanged = vi.fn();
-    onTestFinished(themeState.store.subscribe(onThemeChanged));
+    onTestFinished(themeState.store.listen(onThemeChanged));
 
     // When
     selectThemePref('dark');
@@ -163,7 +163,7 @@ describe('theme controller', () => {
     const { startTheme } = loadController();
     let changes = 0;
     onTestFinished(
-      themeState.store.subscribe(() => {
+      themeState.store.listen(() => {
         changes += 1;
       }),
     );

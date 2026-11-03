@@ -30,7 +30,7 @@ describe('auth store', () => {
     authState.set(step);
     let heard = 0;
     onTestFinished(
-      authState.store.subscribe(() => {
+      authState.store.listen(() => {
         heard += 1;
       }),
     );
@@ -90,7 +90,7 @@ describe('logged-in session', () => {
     // Given
     const seen: boolean[] = [];
     onTestFinished(
-      authState.store.subscribe(() => {
+      authState.store.listen(() => {
         seen.push(authState.isLoggedIn());
       }),
     );
@@ -108,7 +108,7 @@ describe('logged-in session', () => {
     authState.set(CONNECTED);
     let notified = 0;
     onTestFinished(
-      authState.loggedInStore.subscribe(() => {
+      authState.loggedInStore.listen(() => {
         notified += 1;
       }),
     );

@@ -218,7 +218,7 @@ export function createTopbarAutoHide({
     const { signal } = listeners;
     const page = getPage();
 
-    const unsubscribe = productState.store.subscribe(() => {
+    const unsubscribe = productState.store.listen(() => {
       if (productState.get().status === 'error') {
         setContentShown(false);
       }

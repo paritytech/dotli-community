@@ -753,7 +753,7 @@ function readStep(): readonly StepPart[] {
 function recordExplanations(): string[] {
   const seen: string[] = [readExplanation()];
   onTestFinished(
-    loadingState.store.subscribe(() => {
+    loadingState.store.listen(() => {
       const text = readExplanation();
       if (text !== seen[seen.length - 1]) {
         seen.push(text);

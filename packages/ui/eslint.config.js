@@ -11,7 +11,7 @@ const message = 'ui holds primitives with no domain and no data source, so the p
 // ui sits at the bottom of the UI stack: the packages built on it, the runtime, the data packages, `@dotli/config`,
 // `@parity/*` and the chain client libraries all stay above it. The tooling configs may use `@config/*`.
 const scopeBan = onlyAllowedScopes(
-  ['@dotli/shared', '@dotli/metrics', '@config/eslint', '@config/vite', '@config/storybook'],
+  ['@dotli/shared', '@dotli/stores-solid', '@dotli/metrics', '@config/eslint', '@config/vite', '@config/storybook'],
   message,
 );
 const dataLibraryBan = {
@@ -19,9 +19,9 @@ const dataLibraryBan = {
   message,
 };
 
-// The same, for `import()`. Of the workspace only shared and metrics pass.
+// The same, for `import()`. Of the workspace only shared, stores-solid and metrics pass.
 const dynamicBan = dynamicImportBan(
-  '^(?!@dotli.shared([^\\w-]|$)|@dotli.metrics([^\\w-]|$))(@dotli|@config|@parity|polkadot-api|@polkadot-api|@polkadot-labs)([^\\w-]|$)',
+  '^(?!@dotli.shared([^\\w-]|$)|@dotli.stores-solid([^\\w-]|$)|@dotli.metrics([^\\w-]|$))(@dotli|@config|@parity|polkadot-api|@polkadot-api|@polkadot-labs)([^\\w-]|$)',
   message,
 );
 
@@ -35,11 +35,20 @@ export default defineConfig([
     },
   },
   ...importBans([scopeBan, dataLibraryBan]),
-  // Shipped modules and specs reach only shared and metrics of the workspace.
-  ...importBans([onlyAllowedScopes(['@dotli/shared', '@dotli/metrics'], message), dataLibraryBan], ['src/**']),
+  // Shipped modules and specs reach only shared, stores-solid and metrics of the workspace.
+  ...importBans(
+    [onlyAllowedScopes(['@dotli/shared', '@dotli/stores-solid', '@dotli/metrics'], message), dataLibraryBan],
+    ['src/**'],
+  ),
   // Stories are plays, so they may also reach ui's own testing entry and the shared play helpers.
   ...importBans(
-    [onlyAllowedScopes(['@dotli/shared', '@dotli/metrics', '@dotli/ui', '@config/storybook'], message), dataLibraryBan],
+    [
+      onlyAllowedScopes(
+        ['@dotli/shared', '@dotli/stores-solid', '@dotli/metrics', '@dotli/ui', '@config/storybook'],
+        message,
+      ),
+      dataLibraryBan,
+    ],
     ['src/**/*.stories.tsx'],
   ),
   {

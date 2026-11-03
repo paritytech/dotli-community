@@ -46,7 +46,7 @@ export function createSandboxUi({ load, toasts, showFallback, hideFallback }: Pa
     },
   });
 
-  const unsubscribeToasts = toasts.subscribe(showQueued);
+  const unsubscribeToasts = toasts.listen(showQueued);
   showQueued();
 
   return {

@@ -41,7 +41,7 @@ describe('product store', () => {
     productState.setLoaded({ label: 'myapp', productId: 'myapp.dot' });
     const seen: number[] = [];
     onTestFinished(
-      productState.store.subscribe(() => {
+      productState.store.listen(() => {
         seen.push(productState.get().loadId);
       }),
     );

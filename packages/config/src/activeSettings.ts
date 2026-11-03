@@ -17,7 +17,7 @@ export function activeSettings(): Settings | null {
 
 /** Calls `listener` after each change to the settings. Returns the function that stops it. */
 export function subscribeSettings(listener: () => void): () => void {
-  return store.subscribe(listener);
+  return store.listen(listener);
 }
 
 /** Returns a function that puts the previous settings back, for tests. */

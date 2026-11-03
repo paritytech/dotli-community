@@ -22,6 +22,6 @@ describe('loading store', () => {
     loadingState.update({ explanationOpacity: 1 });
 
     // Then
-    expect(notified).toEqual([{ ...loadingState.store.initial, explanation: 'Reaching out', explanationOpacity: 1 }]);
+    expect(notified).toEqual([{ ...loadingState.store.init, explanation: 'Reaching out', explanationOpacity: 1 }]);
   });
 });

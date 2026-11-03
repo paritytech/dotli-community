@@ -8,7 +8,7 @@
  * the navigation ends the window's page.
  */
 
-import { createStoreStatus, createSyncStore } from '@dotli/shared';
+import { createSyncStore } from '@dotli/shared';
 import type { Responder, ResponderState } from '../sessionHandoff/createResponder.js';
 import {
   createCancelledMessage,
@@ -95,10 +95,9 @@ export function createRedirectResponder({
     );
   }
 
-  const status = createStoreStatus(store);
   const responder: Responder<unknown> = {
-    state: status.get,
-    subscribe: status.subscribe,
+    state: store.get,
+    subscribe: store.listen,
     send(result, { siteToken } = {}) {
       sendAnswer({
         state: { kind: 'answered' },

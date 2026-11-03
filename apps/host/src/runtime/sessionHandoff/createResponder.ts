@@ -8,7 +8,7 @@
 // it takes.
 
 import { m, spans as S } from '@dotli/metrics';
-import { createDeferred, createStoreStatus, createSyncStore, listen, log } from '@dotli/shared';
+import { createDeferred, createSyncStore, listen, log } from '@dotli/shared';
 import type { OpenerParty, Party, SessionOpenerVerdict } from './openerRule.js';
 import { listenToMessages, type MessageEventLike, type WindowHandle } from './listenToMessages.js';
 import {
@@ -208,11 +208,9 @@ export function createResponder<Result>({ opener, judge, round, listen, onPageRe
     }
   }
 
-  const status = createStoreStatus(store);
-
   return {
-    state: status.get,
-    subscribe: status.subscribe,
+    state: store.get,
+    subscribe: store.listen,
     send(result, { siteToken } = {}) {
       const state = store.get();
       switch (state.kind) {

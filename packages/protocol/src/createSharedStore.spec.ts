@@ -96,9 +96,9 @@ describe('createSharedStore', () => {
         throw error;
       },
     });
-    const frame: ProtocolFrame = { ...createFakeFrame().frame, getStatus: cell.get, subscribeStatus: cell.subscribe };
+    const frame: ProtocolFrame = { ...createFakeFrame().frame, getStatus: cell.get, subscribeStatus: cell.listen };
     let rebuilt = false;
-    cell.subscribe(next => {
+    cell.listen(next => {
       if (next === 'listening' && !rebuilt) {
         rebuilt = true;
         cell.set('idle');

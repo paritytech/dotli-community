@@ -20,7 +20,7 @@ export function bindUrlPill(bar: HTMLElement): () => void {
     tld.textContent = text.tld;
   }
   render();
-  return urlPillState.store.subscribe(render);
+  return urlPillState.store.listen(render);
 }
 
 function getPillText(state: UrlPillState): { domain: string; tld: string } {

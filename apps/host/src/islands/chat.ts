@@ -4,7 +4,7 @@
 import { createEffect, onCleanup } from 'solid-js';
 import type { ChatStore } from '../runtime/chat/createChatStore.js';
 import { productState } from '../runtime/state/productState.js';
-import { useStore } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import { productFrameLayout } from '../createProductFrameLayout.js';
 import type { ChatConversation, ChatFeed } from '../components/chat/chat.js';
 import type { ChatDockProps } from '../components/chat/ChatDock.js';
@@ -20,7 +20,7 @@ function openFeed(chat: ChatStore): ChatFeed {
     contactsFailed: useStore(chat.view, state => state.contactsFailed),
     messages: useStore(chat.view, state => state.messages),
     messagesFailed: useStore(chat.view, state => state.messagesFailed),
-    onChange: listener => chat.view.subscribe(listener),
+    onChange: listener => chat.view.listen(listener),
     follow: shown => {
       createEffect(
         () => {

@@ -17,7 +17,7 @@ export function createThemeSubscribe({ theme = themeState.store }: Params = {}):
   function subscribeTheme(): ReturnType<Required<ThemeHost>['subscribeTheme']> {
     let sent = getThemeItem(theme.get());
     return createResultStream<HostThemeSubscribeItem>([sent], push =>
-      theme.subscribe(() => {
+      theme.listen(() => {
         const next = getThemeItem(theme.get());
         // The product sees only the variant, so a preference that resolves to the same one is nothing new.
         if (next.variant !== sent.variant) {

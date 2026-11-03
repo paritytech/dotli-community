@@ -5,7 +5,8 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { pageScreen, RootBoundary, useStore } from '@dotli/ui';
+import { pageScreen, RootBoundary } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import { showBrokenPage } from '../showBrokenPage.js';
 import { SessionWindow as Content } from '../components/account/SessionWindow.js';
 import { sessionWindowState } from '../state/sessionWindowState.js';

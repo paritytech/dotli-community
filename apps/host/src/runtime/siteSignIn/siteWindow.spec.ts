@@ -6,15 +6,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { LocalWalletReadResult } from '@dotli/protocol';
 import { bindRecordingSentry } from '@dotli/metrics/testing';
-import {
-  createSyncStore,
-  createDeferred,
-  fromHex,
-  createStoreStatus,
-  isRecord,
-  toHex,
-  waitForStatus,
-} from '@dotli/shared';
+import { createSyncStore, createDeferred, fromHex, isRecord, toHex, waitForStatus } from '@dotli/shared';
 import { catchError, must, recordLog } from '@dotli/shared/testing';
 import { createSiteGrantStore } from '@dotli/storage';
 import { createMemorySiteGrantsIdb } from '@dotli/storage/testing';
@@ -112,8 +104,8 @@ function createWindowParts({
   const closed = createDeferred<undefined>();
   const auth = createSyncStore<DotliAuthState>({ name: 'testSiteWindowAuth', initial: CONNECTED });
   const flows: WindowFlow[] = [];
-  // The listeners on the screens of the window flows the window started.
-  const flowScreenListeners = new Set<() => void>();
+  // One entry per listen on the screens of the window flows the window started.
+  const flowScreenListeners = new Set<object>();
   const params: Omit<SiteWindowParams, 'request'> = {
     origin: ORIGIN,
     self: SELF,
@@ -148,11 +140,12 @@ function createWindowParts({
       flows.push(started);
       const screen: WindowFlow['screen'] = {
         ...started.screen,
-        subscribe(listener) {
-          flowScreenListeners.add(listener);
-          const stop = started.screen.subscribe(listener);
+        listen(listener) {
+          const listening = {};
+          flowScreenListeners.add(listening);
+          const stop = started.screen.listen(listener);
           return () => {
-            flowScreenListeners.delete(listener);
+            flowScreenListeners.delete(listening);
             stop();
           };
         },
@@ -195,14 +188,14 @@ function watchWindow({ site, screen, dispose }: SiteWindow) {
     shown.push(getShownView(screen.get()));
   }
   record();
-  onTestFinished(screen.subscribe(record));
+  onTestFinished(screen.listen(record));
   return {
     site,
     screen,
     dispose,
     shown,
     /** Resolves once the window shows `view`. */
-    waitForView: (view: string) => waitForStatus(createStoreStatus(screen), current => current.view === view),
+    waitForView: (view: string) => waitForStatus(screen, current => current.view === view),
   };
 }
 
@@ -354,7 +347,7 @@ describe('site sign-in window', () => {
 
     // When it is disposed and the round then reaches its consent view
     page.dispose();
-    await waitForStatus(createStoreStatus(page.site.screen), current => current.view === 'consent');
+    await waitForStatus(page.site.screen, current => current.view === 'consent');
 
     // Then the window still shows only what it showed as it opened
     expect(page.shown).toEqual([{ view: 'site-signing', route: 'auth' }]);
@@ -379,7 +372,7 @@ describe('site sign-in window', () => {
     const changes = page.flows.map(flow => {
       const seen: unknown[] = [];
       onTestFinished(
-        flow.screen.subscribe(() => {
+        flow.screen.listen(() => {
           seen.push(flow.screen.get());
         }),
       );
@@ -558,7 +551,7 @@ describe('site transaction window', () => {
     // When it is disposed and the round then reaches its consent view
     watched.dispose();
     grantRead.resolve(undefined);
-    await waitForStatus(createStoreStatus(watched.site.screen), current => current.view === 'consent');
+    await waitForStatus(watched.site.screen, current => current.view === 'consent');
 
     // Then the window still shows only what it showed as it opened
     expect(watched.shown).toEqual([{ view: 'site-signing', route: 'sign' }]);

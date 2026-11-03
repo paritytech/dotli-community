@@ -143,7 +143,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
       close,
     });
     flowScreen.set(flow.screen.get());
-    stopFollowing = flow.screen.subscribe(() => {
+    stopFollowing = flow.screen.listen(() => {
       flowScreen.set(flow.screen.get());
     });
     stops.push(stopFollowing, flow.dispose);
@@ -164,7 +164,7 @@ function openSiteWindow({ origin, responder, createWindowFlow, route, createRoun
     }
   }
 
-  stops.push(site.screen.subscribe(showCurrent), flowScreen.subscribe(showCurrent));
+  stops.push(site.screen.listen(showCurrent), flowScreen.listen(showCurrent));
   showCurrent();
 
   function dispose(): void {

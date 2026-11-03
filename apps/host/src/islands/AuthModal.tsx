@@ -5,7 +5,8 @@
 
 import type { JSX } from '@solidjs/web';
 import { authControl } from '../runtime/createAuthController.js';
-import { LayerTracker, ModalFocusFallback, RootBoundary, useStore } from '@dotli/ui';
+import { LayerTracker, ModalFocusFallback, RootBoundary } from '@dotli/ui';
+import { useStore } from '@dotli/stores-solid';
 import { productFrameLayout } from '../createProductFrameLayout.js';
 import { AuthModal as Modal, type AuthModalPlacement } from '../components/account/AuthModal.js';
 import { authModalState } from '../state/authModalState.js';

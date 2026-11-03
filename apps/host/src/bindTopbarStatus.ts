@@ -66,9 +66,9 @@ export function bindTopbarStatus(
 
   render();
   place();
-  const offHealth = health.subscribe(render);
-  const offTopbar = topbarState.store.subscribe(render);
-  const offChat = chatPanelState.store.subscribe(render);
+  const offHealth = health.listen(render);
+  const offTopbar = topbarState.store.listen(render);
+  const offChat = chatPanelState.store.listen(render);
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place);
   observer?.observe(bar);
   window.addEventListener('resize', place);

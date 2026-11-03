@@ -131,7 +131,7 @@ export function createCoreAuthCommands({ auth, core, session, walletMode, stored
         woken.resolve(undefined);
       }),
       storedSession.subscribeStoredSession(nudge),
-      auth.subscribe(nudge),
+      auth.listen(nudge),
     ];
     signal.addEventListener('abort', nudge);
     return {

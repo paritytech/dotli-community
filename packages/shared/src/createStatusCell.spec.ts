@@ -23,7 +23,7 @@ describe('createStatusCell', () => {
     // Given
     const { cell } = recordingCell('up');
     const heard: Status[] = [];
-    cell.subscribe(value => {
+    cell.listen(value => {
       heard.push(value);
     });
 

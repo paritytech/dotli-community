@@ -19,7 +19,6 @@ export { createSafeStorage } from './createSafeStorage.js';
 export { createSharedRun } from './createSharedRun.js';
 export type { StatusCell } from './createStatusCell.js';
 export { createStatusCell } from './createStatusCell.js';
-export { createStoreStatus } from './createStoreStatus.js';
 export type { ReadableStore, SyncStore } from './createSyncStore.js';
 export { createSyncStore, StoreListenerError } from './createSyncStore.js';
 export { registerStoreStateReset } from './storeResets.js';
