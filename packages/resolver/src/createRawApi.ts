@@ -6,7 +6,12 @@
 // from that child trie. `trie_id` is never cached, because a redeploy would then return stale data.
 
 import type { SubstrateClient } from '@polkadot-api/substrate-client';
-import { DisjointError, OperationInaccessibleError, StopError } from '@polkadot-api/substrate-client';
+import {
+  DisjointError,
+  OperationInaccessibleError,
+  OperationLimitError,
+  StopError,
+} from '@polkadot-api/substrate-client';
 import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
 import { mergeUint8 } from '@polkadot-api/utils';
 import { reportDefect, reportListener, spans as S } from '@dotli/metrics';
@@ -25,13 +30,15 @@ export type Api = {
   /**
    * Resolves `null` when the account is missing or not a contract. Rejects with `ApiStoppedError` once the follow
    * stopped, and otherwise with the storage error, such as `OperationInaccessibleError` when no peer serves the read
-   * within its retry window.
+   * within its retry window. A read the server refuses for its operation limit is retried within the same window, then
+   * rejects with `OperationLimitError`.
    */
   resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null>;
   /**
    * Pass `atHash` and `trieId` to pin a multi-slot read to one block. Resolves `null` when unset. Rejects with
    * `ApiStoppedError` once the follow stopped, and otherwise with the storage error, such as
-   * `OperationInaccessibleError` when no peer serves the read within its retry window.
+   * `OperationInaccessibleError` when no peer serves the read within its retry window. A read the server refuses for its
+   * operation limit is retried within the same window, then rejects with `OperationLimitError`.
    */
   readSlot(
     contractAddress: string,
@@ -43,6 +50,8 @@ export type Api = {
   /** Ends the follow and never throws. Leaves the owning `SubstrateClient` alive. */
   destroy(): void;
 };
+
+type ReadStorageParams = { hash: string; key: string; childTrie: string | null };
 
 type Params = {
   client: SubstrateClient;
@@ -59,21 +68,25 @@ const ACCOUNT_INFO_OF_PREFIX = mergeUint8([
 
 const decodeVecU8 = Hex().dec;
 
-const INACCESSIBLE_RETRY_WINDOW_MS = 30_000;
+const RETRY_WINDOW_MS = 30_000;
+
+// A server refuses operations past its per-follow limit, so each follow stays well under a common one.
+const MAX_STORAGE_OPERATIONS = 8;
 
 // Failures past a read's window, which end its retries.
 const pastWindow = new WeakSet();
 
 /**
  * A light client answers `operationInaccessible` just after syncing, before any peer served the proof. The raw client
- * does not retry it as papi's observable client does. A read retries for 30 s from its first attempt, so a read no
- * peer serves fails however long each attempt takes.
+ * does not retry it as papi's observable client does. A server also refuses an operation while its follow has too many
+ * running. A read retries for 30 s from when it is asked for, queueing for an operation slot included, so a read no peer
+ * serves fails however long each attempt takes.
  */
-const inaccessibleReads = createAsyncTaskPool({
+const retriedReads = createAsyncTaskPool({
   poolSize: Infinity,
   retryCount: Number.POSITIVE_INFINITY,
   retryDelay: 750,
-  retryIf: error => error instanceof OperationInaccessibleError && !pastWindow.has(error),
+  retryIf: error => isRetried(error) && !pastWindow.has(error),
 });
 
 /** Opens its own `chainHead` follow without runtime. The caller owns the client. */
@@ -82,6 +95,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
   let stopped = false;
   const stops = createListenerSet<undefined>({ onListenerError: reportListener('resolve', 'resolver.stop') });
   const ready = createDeferred<undefined>();
+  const operations = createAsyncTaskPool({ poolSize: MAX_STORAGE_OPERATIONS });
 
   function markStopped(error?: unknown): void {
     if (stopped) {
@@ -185,14 +199,19 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
     }
   }
 
+  // Each attempt queues on its own, so a retry wait holds no operation slot.
+  function readStorage({ hash, key, childTrie }: ReadStorageParams): Promise<string | null> {
+    return readWithRetry(
+      () => operations.call(() => withStopGuard(() => follow.storage(hash, 'value', key, childTrie))),
+      now,
+    );
+  }
+
   async function resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null> {
     // `AccountInfoOf` uses the Identity hasher.
     const address = fromHex(contractAddress);
     const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, address]);
-    const accountInfoHex = await readWithRetry(
-      () => withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null)),
-      now,
-    );
+    const accountInfoHex = await readStorage({ hash: atHash, key: toHex(mainKey), childTrie: null });
     if (accountInfoHex === null) {
       return null;
     }
@@ -234,10 +253,7 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
       return null;
     }
     const childKey = Blake2256(fromHex(slotKey));
-    const valueHex = await readWithRetry(
-      () => withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie))),
-      now,
-    );
+    const valueHex = await readStorage({ hash, key: toHex(childKey), childTrie: toHex(trie) });
     return valueHex === null ? null : fromHex(valueHex);
   }
 
@@ -274,14 +290,18 @@ export function createRawApi({ client, now = () => performance.now() }: Params):
 
 function readWithRetry<T>(read: () => Promise<T>, now: () => number): Promise<T> {
   const started = now();
-  return inaccessibleReads.call(async () => {
+  return retriedReads.call(async () => {
     try {
       return await read();
     } catch (error) {
-      if (error instanceof OperationInaccessibleError && now() - started >= INACCESSIBLE_RETRY_WINDOW_MS) {
+      if (isRetried(error) && now() - started >= RETRY_WINDOW_MS) {
         pastWindow.add(error);
       }
       throw error;
     }
   });
+}
+
+function isRetried(error: unknown): error is OperationInaccessibleError | OperationLimitError {
+  return error instanceof OperationInaccessibleError || error instanceof OperationLimitError;
 }
